@@ -7,6 +7,9 @@ import {
 import type { Hono } from "hono";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { AppDeps } from "../types.js";
+import { getProviderInstallations } from "../services/system/provider-installations.js";
+import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
+import { resolveBridgeLaunchForProviderId } from "../services/system/provider-bridge-launch.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
 import { ApiError } from "../errors.js";
@@ -286,26 +289,49 @@ export function registerHostRoutes(
   get(routes.providerCliStatus, async (context) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
-    const result = await callHostRetryableOnlineRpc(deps, {
-      hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "provider_cli.status",
-      },
-    });
+    const result = await getProviderInstallations(deps, { hostId });
     return context.json(result);
   });
 
   post(routes.providerCliInstall, async (context, payload) => {
     const hostId = context.req.param("id");
     assertUsableHostId(deps, { hostId });
+    await deps.providerRegistry.whenProviderRegistered(payload.provider);
+    const registration = deps.providerRegistry.get(payload.provider);
+    if (
+      registration === null ||
+      !registration.info.experimental_providerInstallation
+    ) {
+      throw new ApiError(
+        404,
+        "provider_installation_unavailable",
+        `Provider installation is unavailable for ${payload.provider}`,
+      );
+    }
+    const bridgeLaunch = resolveBridgeLaunchForProviderId(
+      deps,
+      payload.provider,
+    );
+    if (bridgeLaunch === null) {
+      throw new ApiError(
+        409,
+        "provider_bridge_unavailable",
+        `Provider bridge is unavailable for ${payload.provider}`,
+      );
+    }
+    const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
+      deps,
+      payload.provider,
+    );
     const result = await callHostOnlineRpc(deps, {
       hostId,
       timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,
       command: {
-        type: "provider_cli.install",
-        provider: payload.provider,
-        actionKind: payload.actionKind,
+        type: "provider.installation.run",
+        providerId: payload.provider,
+        action: payload.actionKind,
+        bridgeLaunch,
+        ...(acpLaunchSpec === undefined ? {} : { acpLaunchSpec }),
       },
     });
     return new Response(providerCliInstallEventsToNdjson(result.events), {

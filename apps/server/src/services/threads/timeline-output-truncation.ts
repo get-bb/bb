@@ -4,8 +4,8 @@ import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
  * Caps the largest inline strings in a timeline window. A handful of tool/
  * command outputs and diffs are enormous (observed up to ~1 MB) and dominate
  * both payload bytes and client parse/render cost. The window only needs a
- * readable preview; the full content stays available on demand via the
- * (un-truncated) `timeline/turn-summary-details` route once the turn completes.
+ * readable preview. Turn details return full content when the complete selected
+ * slice stays under the safe byte limit.
  *
  * Conservative by design: the threshold is far above a normal output, so only
  * true outliers are touched. Conversation/message text is never truncated.
@@ -21,8 +21,7 @@ import type { ThreadTimelineResponse, TimelineRow } from "@bb/server-contract";
  */
 export const DEFAULT_MAX_INLINE_OUTPUT_CHARS = 32_000;
 
-const TRUNCATION_SUFFIX_TAIL =
-  " more characters truncated — open the turn to view the full output]";
+const TRUNCATION_SUFFIX_TAIL = " more characters truncated]";
 
 /**
  * The read-boundary truncation produces this same suffix from SQL, so the

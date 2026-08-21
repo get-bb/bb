@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "approval-deny",
+  "threadId": "thr_u2tfvkng98",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "accept-edits mode; an out-of-sandbox command denied.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 33,
+    "provider→bridge": 57,
+    "bridge→provider": 6
+  }
+}

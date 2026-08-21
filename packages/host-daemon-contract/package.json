@@ -2,6 +2,7 @@
   "name": "@bb/host-daemon-contract",
   "version": "0.0.1",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -12,6 +13,16 @@
       "source": "./src/local.ts",
       "types": "./src/local.ts",
       "default": "./src/local.ts"
+    },
+    "./protocol": {
+      "source": "./src/protocol.ts",
+      "types": "./src/protocol.ts",
+      "default": "./src/protocol.ts"
+    },
+    "./workspace": {
+      "source": "./src/workspace.ts",
+      "types": "./src/workspace.ts",
+      "default": "./src/workspace.ts"
     }
   },
   "types": "./src/index.ts",
@@ -23,6 +34,7 @@
   "dependencies": {
     "@bb/domain": "workspace:*",
     "@bb/hono-typed-routes": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
     "hono": "^4.7.0",
     "zod": "^4.3.6"
   },

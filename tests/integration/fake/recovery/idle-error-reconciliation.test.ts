@@ -12,6 +12,7 @@ import {
 } from "@bb/db";
 import {
   createRecoveryThread,
+  RECOVERY_TEST_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
@@ -61,6 +62,6 @@ describe.sequential(
 
         const afterReconnect = await getThread(harness.api, thread.id);
         expect(afterReconnect.status).toBe("error");
-      }));
+      }), RECOVERY_TEST_TIMEOUT_MS);
   },
 );

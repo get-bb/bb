@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { PluginPanelActionEntry } from "@/components/plugin/PluginPanelActions";
 import {
   NewTabActions,
@@ -9,10 +10,12 @@ import {
 
 type NewTabPageFileSearchProps = Omit<NewTabFileSearchProps, "idleActions">;
 
-export interface NewTabPageProps extends NewTabPageFileSearchProps {
+interface NewTabPageProps extends NewTabPageFileSearchProps {
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
   pluginActions?: readonly PluginPanelActionEntry[];
+  startTerminalDisabled?: boolean;
+  startTerminalTrailing?: ReactNode;
 }
 
 /**
@@ -21,11 +24,12 @@ export interface NewTabPageProps extends NewTabPageFileSearchProps {
  * overlays that can be occluded by native browser/webview surfaces.
  */
 export function NewTabPage({
+  autoFocus,
   currentThreadId,
   environmentId,
   hostId,
-  focusRequest,
   initialQuery,
+  onAutoFocusHandled,
   onOpenBrowser,
   onSelect,
   onStartTerminal,
@@ -33,6 +37,8 @@ export function NewTabPage({
   projectId,
   recentItemsThreadId,
   showFileSearch,
+  startTerminalDisabled,
+  startTerminalTrailing,
 }: NewTabPageProps) {
   return (
     <div className="flex min-h-full flex-col gap-3 bg-sidebar px-4 pb-3 pt-1">
@@ -41,15 +47,18 @@ export function NewTabPage({
         environmentId={environmentId}
         hostId={hostId}
         currentThreadId={currentThreadId}
-        focusRequest={focusRequest}
+        autoFocus={autoFocus}
         idleActions={
           <NewTabActions
             onOpenBrowser={onOpenBrowser}
             onStartTerminal={onStartTerminal}
             pluginActions={pluginActions}
+            startTerminalDisabled={startTerminalDisabled}
+            startTerminalTrailing={startTerminalTrailing}
           />
         }
         initialQuery={initialQuery}
+        onAutoFocusHandled={onAutoFocusHandled}
         onSelect={onSelect}
         recentItemsThreadId={recentItemsThreadId}
         showFileSearch={showFileSearch}

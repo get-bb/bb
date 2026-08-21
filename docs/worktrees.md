@@ -111,6 +111,14 @@ it. If you
 want to keep work the agent did, commit and push (or open a PR) from inside
 the worktree before letting the thread go.
 
+Before bb removes the directory, it stops every process whose working
+directory is inside the worktree — the agent's provider process, its
+background jobs (dev servers, MCP servers, `nohup` jobs), and any process
+you started there yourself, such as a shell you `cd`'d into the worktree or
+an editor terminal. Each process gets `SIGTERM`, then `SIGKILL` after a
+short grace period. Move your own shells out of the worktree before you
+delete the environment if you want to keep them.
+
 ## If something isn't working
 
 A few quick checks:

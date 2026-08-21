@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { createFakeAdapter } from "@bb/agent-runtime/test";
 import { shellSingleQuote, waitForSetupMarkerCount } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
@@ -15,7 +14,12 @@ import { createTestGitRepo } from "../../helpers/seed.js";
 import { scaleTimeoutMs } from "../../helpers/time.js";
 import { DEFAULT_TIMEOUT_MS } from "./shared.js";
 
-const FANOUT_PROVIDERS: ReadonlyArray<string> = ["codex", "claude-code", "pi"];
+// Three distinct providers, each its own scripted echo bridge process.
+const FANOUT_PROVIDERS: ReadonlyArray<string> = [
+  "fake",
+  "fake-alpha",
+  "fake-beta",
+];
 const THREADS_PER_PROVIDER = 5;
 // Same-source managed worktrees serialize through the git worktree metadata lock.
 const FRESH_FANOUT_TIMEOUT_MS = scaleTimeoutMs(45_000);
@@ -66,7 +70,7 @@ describe.sequential(
               { type: "text", text: "first concurrent setup", mentions: [] },
             ],
             projectId: project.id,
-            providerId: "codex",
+            providerId: "fake",
             workspace: { type: "managed-worktree" },
           }),
           createHostThread(harness.api, {
@@ -75,7 +79,7 @@ describe.sequential(
               { type: "text", text: "second concurrent setup", mentions: [] },
             ],
             projectId: project.id,
-            providerId: "claude-code",
+            providerId: "fake-alpha",
             workspace: { type: "managed-worktree" },
           }),
         ]);
@@ -115,79 +119,67 @@ describe.sequential(
       }));
 
     it("starts five fresh managed-worktree threads per provider concurrently", () =>
-      withHarness(
-        {
-          adapterFactory: (providerId) =>
-            createFakeAdapter({
-              displayName: providerId,
-              id: providerId,
-            }),
-        },
-        async (harness) => {
-          const project = await createProjectFixture(harness, {
-            name: "Fresh Environment Fanout",
-          });
-          const requests = FANOUT_PROVIDERS.flatMap((providerId) =>
-            Array.from({ length: THREADS_PER_PROVIDER }, (_, index) => ({
-              index: index + 1,
-              providerId,
-            })),
-          );
+      withHarness(async (harness) => {
+        const project = await createProjectFixture(harness, {
+          name: "Fresh Environment Fanout",
+        });
+        const requests = FANOUT_PROVIDERS.flatMap((providerId) =>
+          Array.from({ length: THREADS_PER_PROVIDER }, (_, index) => ({
+            index: index + 1,
+            providerId,
+          })),
+        );
 
-          const spawned = await Promise.all(
-            requests.map(async (request) => {
-              const token = `${request.providerId}-fresh-${request.index}`;
-              const thread = await createHostThread(harness.api, {
-                hostId: harness.hostId,
-                input: [{ type: "text", text: token, mentions: [] }],
-                projectId: project.id,
-                providerId: request.providerId,
-                workspace: { type: "managed-worktree" },
-              });
-              return { ...request, thread, token };
-            }),
-          );
+        const spawned = await Promise.all(
+          requests.map(async (request) => {
+            const token = `${request.providerId}-fresh-${request.index}`;
+            const thread = await createHostThread(harness.api, {
+              hostId: harness.hostId,
+              input: [{ type: "text", text: token, mentions: [] }],
+              projectId: project.id,
+              providerId: request.providerId,
+              workspace: { type: "managed-worktree" },
+            });
+            return { ...request, thread, token };
+          }),
+        );
 
-          const readyThreads = await Promise.all(
-            spawned.map(async (entry) => ({
-              ...entry,
-              thread: await waitForThreadStatus(
-                harness.api,
-                entry.thread.id,
-                "idle",
-                FRESH_FANOUT_TIMEOUT_MS,
-              ),
-            })),
-          );
+        const readyThreads = await Promise.all(
+          spawned.map(async (entry) => ({
+            ...entry,
+            thread: await waitForThreadStatus(
+              harness.api,
+              entry.thread.id,
+              "idle",
+              FRESH_FANOUT_TIMEOUT_MS,
+            ),
+          })),
+        );
 
-          for (const entry of readyThreads) {
-            expect(entry.thread.environmentId).toBeTruthy();
-            const output = await getThreadOutput(harness.api, entry.thread.id);
-            if (!output?.includes(entry.token)) {
-              const events = await getThreadEvents(
-                harness.api,
-                entry.thread.id,
-              );
-              throw new Error(
-                [
-                  `Missing output for ${entry.thread.id}`,
-                  `provider=${entry.providerId}`,
-                  `token=${entry.token}`,
-                  `status=${entry.thread.status}`,
-                  `output=${JSON.stringify(output)}`,
-                  `events=${events
-                    .map((event) => `${event.seq}:${event.type}`)
-                    .join(",")}`,
-                ].join("; "),
-              );
-            }
-            expect(
-              (await getThreadEvents(harness.api, entry.thread.id)).every(
-                (event) => event.threadId === entry.thread.id,
-              ),
-            ).toBe(true);
+        for (const entry of readyThreads) {
+          expect(entry.thread.environmentId).toBeTruthy();
+          const output = await getThreadOutput(harness.api, entry.thread.id);
+          if (!output?.includes(entry.token)) {
+            const events = await getThreadEvents(harness.api, entry.thread.id);
+            throw new Error(
+              [
+                `Missing output for ${entry.thread.id}`,
+                `provider=${entry.providerId}`,
+                `token=${entry.token}`,
+                `status=${entry.thread.status}`,
+                `output=${JSON.stringify(output)}`,
+                `events=${events
+                  .map((event) => `${event.seq}:${event.type}`)
+                  .join(",")}`,
+              ].join("; "),
+            );
           }
-        },
-      ));
+          expect(
+            (await getThreadEvents(harness.api, entry.thread.id)).every(
+              (event) => event.threadId === entry.thread.id,
+            ),
+          ).toBe(true);
+        }
+      }));
   },
 );

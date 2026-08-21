@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
@@ -23,7 +23,7 @@ interface UpdateAttempt {
   protocolVersion: number;
 }
 
-export type ProtocolSelfUpdateResult = "failed" | "skipped" | "updated";
+type ProtocolSelfUpdateResult = "failed" | "skipped" | "updated";
 
 export interface ProtocolSelfUpdater {
   handleProtocolMismatch(options?: {
@@ -31,7 +31,7 @@ export interface ProtocolSelfUpdater {
   }): Promise<ProtocolSelfUpdateResult>;
 }
 
-export interface ProtocolSelfUpdateInstaller {
+interface ProtocolSelfUpdateInstaller {
   (tarballPath: string): Promise<void>;
 }
 
@@ -127,6 +127,14 @@ const defaultRunProcess: SelfUpdateProcessRunner = async (
   await execFileAsync(command, args, options);
 };
 
+// bb-app depends on native add-ons whose binaries are fetched or built by npm
+// lifecycle scripts. npm >= 12 blocks dependency install scripts for global
+// installs unless they are named in --allow-scripts; the installed package's
+// own package.json#allowScripts is not consulted for `npm install -g`.
+// npm 10 ignores the unknown flag; npm 11 accepts it.
+const BB_APP_ALLOW_SCRIPTS_ARG =
+  "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher";
+
 async function defaultInstallTarball(
   tarballPath: string,
   runProcess: SelfUpdateProcessRunner,
@@ -136,9 +144,23 @@ async function defaultInstallTarball(
   const path = inheritedPath
     ? `${executableDirectory}${delimiter}${inheritedPath}`
     : executableDirectory;
-  await runProcess("npm", ["install", "-g", tarballPath], {
-    env: { ...process.env, PATH: path },
-  });
+  // Installer-managed services keep bb-app under their enrollment data dir.
+  // Legacy/manual daemons omit this and retain their existing global behavior.
+  const rawConfiguredPrefix = process.env.BB_APP_NPM_PREFIX?.trim();
+  const configuredPrefix =
+    rawConfiguredPrefix === "" ? undefined : rawConfiguredPrefix;
+  if (configuredPrefix !== undefined && !isAbsolute(configuredPrefix)) {
+    throw new Error("BB_APP_NPM_PREFIX must be an absolute path");
+  }
+  const prefixArgs =
+    configuredPrefix === undefined ? [] : ["--prefix", configuredPrefix];
+  await runProcess(
+    "npm",
+    ["install", "-g", BB_APP_ALLOW_SCRIPTS_ARG, ...prefixArgs, tarballPath],
+    {
+      env: { ...process.env, PATH: path },
+    },
+  );
 }
 
 export function createProtocolSelfUpdater(

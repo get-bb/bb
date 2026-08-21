@@ -4,6 +4,10 @@ import {
   buildAudioInputConstraints,
   useAudioInputDevicePreferenceValue,
 } from "@/lib/audio-input-device-preference";
+import {
+  isDocumentVisible,
+  subscribeToDocumentVisibility,
+} from "@/lib/document-visibility";
 
 type VoiceInputState = "idle" | "recording" | "transcribing" | "error";
 
@@ -229,23 +233,11 @@ export function useVoiceInput(options: UseVoiceInputOptions) {
   }, [releaseRecordingWakeLock, stopMediaStream]);
 
   useEffect(() => {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const handleVisibilityChange = () => {
-      if (
-        document.visibilityState === "visible" &&
-        shouldHoldWakeLockRef.current
-      ) {
+    return subscribeToDocumentVisibility(() => {
+      if (isDocumentVisible() && shouldHoldWakeLockRef.current) {
         requestRecordingWakeLock();
       }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
+    });
   }, [requestRecordingWakeLock]);
 
   const start = useCallback(async () => {

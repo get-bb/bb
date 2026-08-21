@@ -1,6 +1,7 @@
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
   ResourceActivitySection,
+  ResourceDetailConfigurationSection,
   ResourceDetailOverviewSection,
   ResourceDetailPage,
   ResourceDetailReleaseSection,
@@ -19,17 +20,21 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { Link } from "react-router-dom";
+import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
   pluginHasUpdateSurfaces,
 } from "@/components/plugin/management/PluginUpdatesCard";
 import {
+  CatalogEntryIcon,
   formatAbsoluteDate,
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import { ExperimentalUrlLink } from "@/components/plugin/ExperimentalUrlLink";
 import {
   PluginHealthBanner,
   PluginIncludes,
@@ -42,7 +47,6 @@ import {
 } from "@/components/tools/plugin-detail-table";
 import { PluginBannerBar } from "@/components/tools/plugin-detail-banner";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
-import { appToast } from "@/components/ui/app-toast";
 import {
   usePluginSource,
   type PluginCatalogSearchEntry,
@@ -53,16 +57,17 @@ import {
   subscribePluginFrontendDiagnostics,
   type PluginFrontendDiagnostic,
 } from "@/lib/plugin-frontend";
+import { usePluginSlots } from "@/lib/plugin-slots";
+import { useClipboardCopy } from "@/lib/clipboard";
 
-function pluginSourceLabel(plugin: PluginListItem): string | null {
-  return plugin.provenance === "builtin" || plugin.provenance === "catalog"
-    ? "BB Official"
-    : null;
-}
-
-/** Passive provenance shown beside an installed plugin's name. */
+/**
+ * Passive publisher shown beside an installed plugin's name: `BB Official` for
+ * a plugin bundled with the app, the listing marketplace's display name for a
+ * catalog install. A plugin the user added from a source wears no pill —
+ * naming a publisher there would be a trust signal bb cannot back.
+ */
 export function PluginProvenancePill({ plugin }: { plugin: PluginListItem }) {
-  const label = pluginSourceLabel(plugin);
+  const label = plugin.publisherLabel;
   return label === null ? null : <ProvenancePill label={label} />;
 }
 
@@ -74,18 +79,23 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
 }
 
-function PluginPath({ path }: { path: string }) {
-  const [copied, setCopied] = useState(false);
+/**
+ * What a removal deletes, matching the server's `remove`: settings, secrets,
+ * and schedules go with the registration on every source kind; only managed
+ * git/npm files are deleted from disk. Moving a local plugin is an install of
+ * the new path, which keeps that configuration.
+ */
+export function pluginRemovalDescription(plugin: PluginListItem): string {
+  return pluginIsLocalSource(plugin)
+    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
+    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
+}
 
-  async function copyPath() {
-    try {
-      await navigator.clipboard.writeText(path);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    } catch {
-      appToast.error("Failed to copy path.");
-    }
-  }
+function PluginPath({ path }: { path: string }) {
+  const { copied, copy } = useClipboardCopy({
+    text: path,
+    errorMessage: "Failed to copy path.",
+  });
 
   return (
     <TooltipProvider delayDuration={250}>
@@ -94,7 +104,7 @@ function PluginPath({ path }: { path: string }) {
           <button
             type="button"
             aria-label={`Copy plugin path: ${path}`}
-            onClick={copyPath}
+            onClick={() => void copy()}
             className="group -ml-1.5 mt-0.5 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-subtle-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <span className="min-w-0 truncate text-left font-mono">
@@ -114,7 +124,15 @@ function PluginPath({ path }: { path: string }) {
 }
 
 /**
- * Read-only detail for an uninstalled BB Official catalog entry.
+ * The repository link's text: the URL without its scheme, so a GitHub entry
+ * reads as `github.com/owner/repo` and a reader knows the destination.
+ */
+function repositoryLinkLabel(url: string): string {
+  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
+}
+
+/**
+ * Read-only detail for an uninstalled catalog entry.
  *
  * The catalog exposes identity, category, description, and compatibility. It
  * cannot enumerate runtime capabilities until the plugin is installed and
@@ -130,16 +148,42 @@ export function CatalogPluginDetail({
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
-      leading={
-        <PluginIcon
-          pluginId={entry.pluginId}
-          icon={entry.icon}
-          className="size-full"
-        />
-      }
+      leading={<CatalogEntryIcon entry={entry} className="size-full" />}
       title={entry.displayName}
-      titleMeta={<ProvenancePill label="BB Official" />}
-      metadata={<span>{entry.category}</span>}
+      titleMeta={<ProvenancePill label={entry.publisherLabel} />}
+      metadata={
+        <>
+          <span>{entry.category}</span>
+          {entry.author === null ? null : (
+            <span>
+              {" · By: "}
+              {entry.author.url === null ? (
+                entry.author.name
+              ) : (
+                <ExperimentalUrlLink
+                  href={entry.author.url}
+                  className="underline underline-offset-2"
+                >
+                  {entry.author.name}
+                </ExperimentalUrlLink>
+              )}
+            </span>
+          )}
+          {entry.repositoryUrl === null ? null : (
+            <span>
+              {" · "}
+              <a
+                href={entry.repositoryUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
+                {repositoryLinkLabel(entry.repositoryUrl)}
+              </a>
+            </span>
+          )}
+        </>
+      }
       actions={
         <ResourceInstallControl
           accessibleLabel={`Install ${entry.displayName}`}
@@ -178,39 +222,10 @@ export function CatalogPluginDetailBanner({
   );
 }
 
-/**
- * The installed plugin page's highest-priority runtime condition.
- *
- * These render outside ToolsScrollPage rather than inside the detail column.
- * Only present-tense operational health belongs in this selector; acquisition
- * compatibility uses CatalogPluginDetailBanner, while release opportunities
- * and history stay with the version controls in the detail page.
- */
-export type PluginDetailBannerKind =
-  | "failed"
-  | "degraded"
-  | "incompatible"
-  | "missing"
-  | "needs-configuration";
-
-export function pluginDetailBannerKind(
-  plugin: PluginListItem,
-  hasFrontendFailure: boolean,
-): PluginDetailBannerKind | null {
-  if (!plugin.enabled) return null;
-  if (plugin.status === "error") return "failed";
-  if (plugin.status === "degraded") return "degraded";
-  if (plugin.status === "incompatible") return "incompatible";
-  if (plugin.status === "missing") return "missing";
-  if (plugin.status === "needs-configuration") return "needs-configuration";
-  if (hasFrontendFailure) return "failed";
-  return null;
-}
-
 function pluginHealthBannerState(
   plugin: PluginListItem,
   frontendDiagnostic: PluginFrontendDiagnostic | undefined,
-): { plugin: PluginListItem; reloadable?: boolean } | null {
+): { plugin: PluginListItem } | null {
   if (!plugin.enabled) return null;
   if (pluginRuntimeStatusPresentation(plugin) !== null) return { plugin };
 
@@ -248,7 +263,6 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
     <PluginHealthBanner
       plugin={banner.plugin}
       runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
-      reloadable={banner.reloadable}
     />
   );
 }
@@ -272,6 +286,7 @@ export function PluginDetail({
   onOpenSource: (plugin: PluginListItem) => void;
   onDelete: (plugin: PluginListItem) => void;
 }) {
+  const { settingsSections } = usePluginSlots();
   // Hooks run before the loading and not-found returns below, so this has to
   // tolerate a null plugin rather than read `plugin.id` unconditionally.
   const sourceQuery = usePluginSource(plugin?.id ?? "", {
@@ -320,6 +335,9 @@ export function PluginDetail({
     (plugin.updateState.availableVersion !== null ||
       plugin.updateState.blockedVersion !== null ||
       plugin.updateState.lastFailure !== null);
+  const hasConfiguration =
+    plugin.hasSettings ||
+    settingsSections.some((section) => section.pluginId === plugin.id);
 
   const pluginName = plugin.name ?? plugin.id;
   // Uninstall is destructive and irreversible-ish, so it belongs with the other
@@ -378,12 +396,10 @@ export function PluginDetail({
         />
       }
       overflowMenu={
-        overflowItems.length > 0 ? (
-          <ResourceOverflowMenu
-            label={`${pluginName} actions`}
-            items={overflowItems}
-          />
-        ) : undefined
+        <ResourceOverflowMenu
+          label={`${pluginName} actions`}
+          items={overflowItems}
+        />
       }
     >
       <ResourceDetailStack>
@@ -392,11 +408,40 @@ export function PluginDetail({
             {plugin.description ?? "This plugin does not describe itself."}
           </p>
         </ResourceDetailOverviewSection>
+        {hasConfiguration ? (
+          <ResourceDetailConfigurationSection
+            id="configuration"
+            className="scroll-mt-4"
+            label="Configuration"
+          >
+            {/* Configuration lives on the Settings page; the detail page
+                only points there so one surface owns the form. */}
+            <p className="max-w-none text-sm leading-relaxed text-muted-foreground">
+              This plugin is configured from{" "}
+              <Link
+                to={getPluginConfigurationRoutePath({ pluginId: plugin.id })}
+                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                its Settings page
+                <Icon
+                  name="ChevronRight"
+                  className="size-3.5 no-underline"
+                  aria-hidden
+                />
+              </Link>
+            </p>
+          </ResourceDetailConfigurationSection>
+        ) : null}
         <ResourceDetailReleaseSection
           label="Release"
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
+            ) : hasUpdateManagement ? (
+              <CheckPluginUpdatesButton
+                pluginId={plugin.id}
+                appearance="inline"
+              />
             ) : undefined
           }
         >
@@ -407,10 +452,7 @@ export function PluginDetail({
             >
               {installedValue}
             </PluginDetailFieldRow>
-            <PluginDetailFieldRow
-              label="Version"
-              labelClassName="font-medium"
-            >
+            <PluginDetailFieldRow label="Version" labelClassName="font-medium">
               <span className="font-mono text-xs">{plugin.version}</span>
             </PluginDetailFieldRow>
             {hasReleaseUpdate ? (

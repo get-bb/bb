@@ -37,7 +37,7 @@ export class PluginActivationRolledBackError extends Error {
   }
 }
 
-export interface PluginActivationContext {
+interface PluginActivationContext {
   deps: PluginServiceDeps;
   now: () => number;
   artifactRetentionMs: number;

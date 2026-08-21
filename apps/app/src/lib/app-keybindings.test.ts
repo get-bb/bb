@@ -23,6 +23,15 @@ const MOD_N: AppShortcut = {
   shift: false,
 };
 
+const ALT_P: AppShortcut = {
+  key: "p",
+  mod: false,
+  meta: false,
+  control: false,
+  alt: true,
+  shift: false,
+};
+
 const CONTEXT: AppCommandContext = {
   mainSurface: true,
   modalOpen: false,
@@ -77,11 +86,15 @@ describe("app keybindings", () => {
     ).toBe(true);
   });
 
-  // macOS composes Option+M into "µ", so an Alt chord that matched on `key`
-  // alone would never fire there — the physical code carries the match instead.
-  it("matches alt chords by physical key across platforms", () => {
-    const ALT_M: AppShortcut = {
-      key: "m",
+  // macOS composes Option+letter chords, so matching on `key` alone would never
+  // fire the composer cycles there — the physical code carries the match.
+  it.each([
+    ["m", "µ", "KeyM"],
+    ["p", "π", "KeyP"],
+    ["t", "†", "KeyT"],
+  ])("matches Alt+%s by physical key when macOS reports %s", (key, composed, code) => {
+    const shortcut: AppShortcut = {
+      key,
       mod: false,
       meta: false,
       control: false,
@@ -91,17 +104,74 @@ describe("app keybindings", () => {
     expect(
       matchesAppShortcut(
         {
-          key: "µ",
-          code: "KeyM",
+          key: composed,
+          code,
           metaKey: false,
           ctrlKey: false,
           altKey: true,
           shiftKey: false,
         },
-        ALT_M,
+        shortcut,
         true,
       ),
     ).toBe(true);
+  });
+
+  it.each([
+    ["m", "Â", "KeyM"],
+    ["p", "∏", "KeyP"],
+    ["t", "ˇ", "KeyT"],
+  ])(
+    "matches Alt+Shift+%s by physical key when macOS reports %s",
+    (key, composed, code) => {
+      expect(
+        matchesAppShortcut(
+          {
+            key: composed,
+            code,
+            metaKey: false,
+            ctrlKey: false,
+            altKey: true,
+            shiftKey: true,
+          },
+          { ...ALT_P, key, shift: true },
+          true,
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it("keeps forward and backward Alt cycles mutually exclusive", () => {
+    const input = {
+      key: "m",
+      code: "KeyM",
+      metaKey: false,
+      ctrlKey: false,
+      altKey: true,
+      shiftKey: false,
+    };
+    const forward = { ...ALT_P, key: "m" };
+    const backward = { ...forward, shift: true };
+
+    expect(matchesAppShortcut(input, forward, false)).toBe(true);
+    expect(matchesAppShortcut(input, backward, false)).toBe(false);
+    expect(
+      matchesAppShortcut(
+        { ...input, key: "M", shiftKey: true },
+        forward,
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      matchesAppShortcut(
+        { ...input, key: "M", shiftKey: true },
+        backward,
+        false,
+      ),
+    ).toBe(true);
+  });
+
+  it("matches an uncomposed alt chord by key across platforms", () => {
     expect(
       matchesAppShortcut(
         {
@@ -112,7 +182,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        ALT_M,
+        { ...ALT_P, key: "m" },
         false,
       ),
     ).toBe(true);
@@ -129,7 +199,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        { ...ALT_M, key: "a" },
+        { ...ALT_P, key: "a" },
         false,
       ),
     ).toBe(true);
@@ -143,7 +213,7 @@ describe("app keybindings", () => {
           altKey: true,
           shiftKey: false,
         },
-        { ...ALT_M, key: "q" },
+        { ...ALT_P, key: "q" },
         false,
       ),
     ).toBe(false);
@@ -186,5 +256,9 @@ describe("app keybindings", () => {
     expect(formatAppShortcut(MOD_N, "Win32")).toBe("Ctrl + N");
     expect(formatAppShortcutAria(MOD_N, "MacIntel")).toBe("Meta+N");
     expect(formatAppShortcutAria(MOD_N, "Win32")).toBe("Control+N");
+
+    expect(formatAppShortcut(ALT_P, "MacIntel")).toBe("⌥ P");
+    expect(formatAppShortcut(ALT_P, "Win32")).toBe("Alt + P");
+    expect(formatAppShortcutAria(ALT_P, "MacIntel")).toBe("Alt+P");
   });
 });

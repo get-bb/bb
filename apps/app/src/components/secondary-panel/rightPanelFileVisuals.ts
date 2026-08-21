@@ -1,15 +1,15 @@
 import type { IconName } from "@bb/shared-ui/icon";
 
-export interface RightPanelFileVisual {
+interface RightPanelFileVisual {
   iconName: IconName;
   label: string;
 }
 
-export interface ResolveRightPanelFileVisualArgs {
+interface ResolveRightPanelFileVisualArgs {
   path: string;
 }
 
-export interface GetFileNameFromPathArgs {
+interface GetFileNameFromPathArgs {
   path: string;
 }
 

@@ -3,12 +3,7 @@ export interface ProviderModelInfo {
   modelId: string;
 }
 
-interface ValidateProviderModelConfigArgs {
-  name: string;
-  value: string;
-}
-
-export interface ParseProviderModelConfigArgs {
+interface ParseProviderModelConfigArgs {
   name: string;
   value: string;
 }
@@ -29,8 +24,8 @@ export function parseProviderModelConfig(
   );
 }
 
-export function validateProviderModelConfig(
-  args: ValidateProviderModelConfigArgs,
+function validateProviderModelConfig(
+  args: ParseProviderModelConfigArgs,
 ): string {
   parseProviderModelConfig(args);
   return args.value;
@@ -38,6 +33,13 @@ export function validateProviderModelConfig(
 
 export function validateInferenceModel(value: string): string {
   return validateProviderModelConfig({ name: "BB_INFERENCE", value });
+}
+
+export function validateInferenceFallbackModel(value: string): string {
+  return validateProviderModelConfig({
+    name: "BB_INFERENCE_FALLBACK",
+    value,
+  });
 }
 
 export function validateTranscriptionModel(value: string): string {

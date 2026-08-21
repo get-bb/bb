@@ -14,7 +14,7 @@ import { useState, type ComponentProps, type ReactElement } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import type { PluginMessageActionRegistration } from "@bb/plugin-sdk";
+import type { PluginMessageActionRegistration } from "@get-bb/plugin-sdk";
 import {
   conversationRow,
   delegationRow,
@@ -91,6 +91,37 @@ function SameThreadSearchNavigationHarness() {
         workspaceRootPath={undefined}
       />
     </>
+  );
+}
+
+function EditActionAvailabilityHarness({
+  onEditMessage,
+}: {
+  onEditMessage: NonNullable<
+    ComponentProps<typeof ThreadTimelineRows>["onEditMessage"]
+  >;
+}) {
+  const [rows] = useState(() => [
+    conversationRow({
+      id: "earlier_user_message",
+      role: "user",
+      text: "An earlier request.",
+      sourceSeqStart: 3,
+    }),
+    conversationRow({
+      id: "latest_user_message",
+      role: "user",
+      text: "The latest request.",
+      sourceSeqStart: 7,
+    }),
+  ]);
+  return (
+    <ThreadTimelineRows
+      timelineRows={rows}
+      onEditMessage={onEditMessage}
+      threadRuntimeDisplayStatus="active"
+      workspaceRootPath={undefined}
+    />
   );
 }
 
@@ -272,12 +303,6 @@ describe("ThreadTimelineRows actions", () => {
     expect(
       latestMessage?.querySelector('[aria-label="Message actions"]'),
     ).toBeNull();
-    expect(
-      latestMessage?.querySelector('[aria-label="Copy message"]')?.className,
-    ).toContain("max-md:pointer-coarse:opacity-100");
-    expect(
-      latestMessage?.querySelector('[aria-label="Add to chat"]')?.className,
-    ).toContain("max-md:pointer-coarse:size-7");
   });
 
   it("uses inline mobile actions only for the last user message", () => {
@@ -314,12 +339,100 @@ describe("ThreadTimelineRows actions", () => {
     expect(
       latestMessage?.querySelector('[aria-label="Message actions"]'),
     ).toBeNull();
-    expect(
-      latestMessage?.querySelector('[aria-label="Copy message"]')?.className,
-    ).toContain("max-md:pointer-coarse:size-7");
-    expect(
-      latestMessage?.querySelector('[aria-label="Add to chat"]')?.className,
-    ).toContain("max-md:pointer-coarse:size-7");
+  });
+
+  it("keeps edit actions available while the thread is active", () => {
+    const onEditMessage = vi.fn();
+    renderWithRouter(
+      <EditActionAvailabilityHarness onEditMessage={onEditMessage} />,
+    );
+    const editButtons = screen.getAllByRole("button", {
+      name: "Edit message",
+    });
+    expect(editButtons).toHaveLength(2);
+    fireEvent.click(editButtons[0]!);
+    expect(onEditMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: "earlier_user_message" }),
+    );
+  });
+
+  it("does not offer edit for a steer request", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "Change direction.",
+            turnRequest: {
+              isGrouped: false,
+              kind: "steer",
+              status: "accepted",
+            },
+          }),
+        ]}
+        onEditMessage={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).not.toContain('aria-label="Edit message"');
+  });
+
+  it("does not offer edit for one bubble in a grouped request", () => {
+    const markup = toMarkup(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "One message in a group.",
+            turnRequest: {
+              isGrouped: true,
+              kind: "message",
+              status: "accepted",
+            },
+          }),
+        ]}
+        onEditMessage={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    expect(markup).not.toContain('aria-label="Edit message"');
+  });
+
+  it("offers edit for an attachment-only request without requiring add-to-chat", () => {
+    const onEditMessage = vi.fn();
+    renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            role: "user",
+            text: "",
+            sourceSeqStart: 11,
+            attachments: {
+              webImages: 0,
+              localImages: 1,
+              localFiles: 0,
+              imageUrls: [],
+              localImagePaths: ["uploads/screenshot.png"],
+              localFilePaths: [],
+            },
+          }),
+        ]}
+        onEditMessage={onEditMessage}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit message" }));
+    expect(onEditMessage).toHaveBeenCalledWith({
+      messageId: expect.any(String),
+      expectedRequestSequence: 11,
+      input: [{ type: "localImage", path: "uploads/screenshot.png" }],
+    });
   });
 
   it("keeps the last real user action footer inline when a remote-image-only row follows", () => {
@@ -806,7 +919,6 @@ describe("ThreadTimelineRows actions", () => {
     const addToChat = await screen.findByRole("button", {
       name: "Add to chat",
     });
-    expect(addToChat.className).toContain("max-md:pointer-coarse:min-h-7");
     fireEvent.click(addToChat);
     expect(onSelectionAddToChat).toHaveBeenCalledWith("chat actions");
   });
@@ -850,9 +962,20 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("ignores sidebar search scroll state for a different thread", () => {
-    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
+    // Row wrappers schedule frames of their own (containment arming), so run
+    // every frame synchronously and assert on the reveal itself.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
 
-    renderWithRouter(
+    const { container } = renderWithRouter(
       <ThreadTimelineRows
         threadId="thr_side_chat"
         timelineRows={[
@@ -876,7 +999,12 @@ describe("ThreadTimelineRows actions", () => {
       ],
     );
 
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(
+      container
+        .querySelector('[data-timeline-row-id="side_chat_message"]')
+        ?.classList.contains("bb-search-flash"),
+    ).toBe(false);
   });
 
   it("scrolls sidebar search matches to the nested row instead of the containing parent", async () => {

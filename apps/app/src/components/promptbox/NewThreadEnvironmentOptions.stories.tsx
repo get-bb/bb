@@ -105,7 +105,6 @@ function EnvironmentOptionsStrip({
                 variant="option"
                 muted
                 value={null}
-                currentBranch="main"
                 options={STORY_BRANCH_OPTIONS}
                 currentOptionLabel="Current: main"
                 currentOptionTitle="Use the current checkout without switching branches"
@@ -183,7 +182,6 @@ export function Overview() {
             branch={{
               currentOptionLabel: "Current (detached)",
               currentOptionTitle: "Detached HEAD at a1b2c3d",
-              currentBranch: null,
               triggerLabel: "Current (detached)",
               triggerTitle: "Detached HEAD at a1b2c3d",
               optionDisabledReason: "Detached",
@@ -198,7 +196,6 @@ export function Overview() {
             branch={{
               currentOptionLabel: "Current (empty repo)",
               currentOptionTitle: "Repository has no commits yet",
-              currentBranch: null,
               triggerLabel: "Current (empty repo)",
               triggerTitle: "Repository has no commits yet",
               optionDisabledReason: "Empty",

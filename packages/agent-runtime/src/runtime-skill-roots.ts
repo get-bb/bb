@@ -1,5 +1,5 @@
 import path from "node:path";
-import { isAcpProviderId } from "@bb/agent-providers";
+import { isAcpProviderId } from "./provider-catalog.js";
 import type {
   AgentRuntimeAcpSkillRoot,
   AgentRuntimeClaudeCodeSkillRoot,
@@ -8,12 +8,12 @@ import type {
   AgentRuntimeSkillRoot,
 } from "./types.js";
 
-export interface FilterSkillRootsForProviderArgs {
+interface FilterSkillRootsForProviderArgs {
   providerId: string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
-export interface NormalizeSkillRootsArgs {
+interface NormalizeSkillRootsArgs {
   skillRoots: readonly AgentRuntimeSkillRoot[] | undefined;
 }
 

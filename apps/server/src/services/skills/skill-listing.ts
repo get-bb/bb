@@ -21,6 +21,7 @@ import type { ProjectCommandWorkspace as CommandWorkspace } from "../projects/pr
 import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
+import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
@@ -30,9 +31,10 @@ const SERVER_SKILL_CONTENT_LIMIT_BYTES = 25 * 1024 * 1024;
  * Providers with a skill surface. A bb skill is discovered under each, so the
  * listing queries all of them and de-dupes provider-agnostic bb skills by path.
  */
-export const SKILL_COMMAND_SURFACE_PROVIDERS: readonly SkillProvider[] = [
+const SKILL_COMMAND_SURFACE_PROVIDERS: readonly SkillProvider[] = [
   "claude-code",
   "codex",
+  "acp-cursor",
 ];
 
 /** Deterministic page grouping order; also keeps listing output test-stable. */
@@ -40,18 +42,12 @@ const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
   "bb-project",
   "bb-user",
   "bb-builtin",
-  "claude-project",
-  "claude-user",
-  "codex-project",
-  "codex-user",
+  "shared-project",
+  "shared-user",
+  "provider-project",
+  "provider-user",
   "plugin",
 ];
-
-function hostPathDirname(filePath: string): string {
-  return /^[a-zA-Z]:[\\/]/u.test(filePath)
-    ? path.win32.dirname(filePath)
-    : path.posix.dirname(filePath);
-}
 
 function hostPathBasename(filePath: string): string {
   return /^[a-zA-Z]:[\\/]/u.test(filePath)
@@ -89,24 +85,25 @@ export function mapSkillScope(
     case "bb-builtin":
       return { scope: "bb-builtin", provider: null, manageable: false };
     case "provider-project":
-      return provider === "claude-code"
-        ? { scope: "claude-project", provider, manageable: true }
-        : { scope: "codex-project", provider, manageable: true };
+      return { scope: "provider-project", provider, manageable: true };
     case "provider-user":
-      if (isBundledProviderSkill(filePath)) {
-        return provider === "claude-code"
-          ? { scope: "claude-user", provider, manageable: false }
-          : { scope: "codex-user", provider, manageable: false };
-      }
-      return provider === "claude-code"
-        ? { scope: "claude-user", provider, manageable: true }
-        : { scope: "codex-user", provider, manageable: true };
+      // A provider's own bundled skills live under `.system/` and are not the
+      // user's to manage; everything else under a provider user root is.
+      return {
+        scope: "provider-user",
+        provider,
+        manageable: !isBundledProviderSkill(filePath),
+      };
+    case "shared-project":
+      return { scope: "shared-project", provider: null, manageable: false };
+    case "shared-user":
+      return { scope: "shared-user", provider: null, manageable: false };
     case "plugin":
       return { scope: "plugin", provider, manageable: false };
   }
 }
 
-export interface ProviderSkillDiscovery {
+interface ProviderSkillDiscovery {
   provider: SkillProvider;
   skills: DiscoveredSkill[];
 }
@@ -120,6 +117,14 @@ function compareSkillSummaries(
     SKILL_SCOPE_ORDER.indexOf(right.scope);
   if (scopeDelta !== 0) {
     return scopeDelta;
+  }
+  // Provider used to be baked into the scope, so scope order also grouped by
+  // provider. Keep that grouping explicitly now that it is not.
+  const providerDelta = (left.provider ?? "").localeCompare(
+    right.provider ?? "",
+  );
+  if (providerDelta !== 0) {
+    return providerDelta;
   }
   const nameDelta = left.name.localeCompare(right.name);
   if (nameDelta !== 0) {
@@ -233,24 +238,31 @@ export async function listProjectSkills(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
 ): Promise<SkillSummary[]> {
-  const perProvider = await Promise.all(
-    SKILL_COMMAND_SURFACE_PROVIDERS.map(
-      async (provider): Promise<ProviderSkillDiscovery> => {
-        const result = await callHostRetryableOnlineRpc(deps, {
-          hostId: args.workspace.hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-          command: {
-            type: "host.list_skills",
-            providerId: provider,
-            cwd: args.workspace.cwd,
-          },
-        });
-        return { provider, skills: result.skills };
-      },
+  const [perProvider, sharedSkills] = await Promise.all([
+    Promise.all(
+      SKILL_COMMAND_SURFACE_PROVIDERS.map(
+        async (provider): Promise<ProviderSkillDiscovery> => {
+          const result = await callHostRetryableOnlineRpc(deps, {
+            hostId: args.workspace.hostId,
+            timeoutMs: COMMAND_TIMEOUT_MS,
+            command: {
+              type: "host.list_skills",
+              providerId: provider,
+              cwd: args.workspace.cwd,
+            },
+          });
+          return { provider, skills: result.skills };
+        },
+      ),
     ),
-  );
+    resolveSharedSkills(deps, {
+      hostId: args.workspace.hostId,
+      cwd: args.workspace.cwd,
+    }),
+  ]);
   return [
     ...assembleSkillList(perProvider),
+    ...sharedSkills.summaries,
     ...listServerOwnedSkills(deps),
     ...listBbPluginSkills(deps),
   ].sort(compareSkillSummaries);

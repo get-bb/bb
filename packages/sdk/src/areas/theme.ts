@@ -51,17 +51,21 @@ export function createThemeArea(args: CreateSdkAreaArgs): ThemeArea {
       );
     },
     async set(input) {
-      const selection =
-        typeof input === "string"
-          ? {
+      if (typeof input === "string") {
+        const appearance = (
+          await transport.readJson(transport.api.v1.system.config.$get())
+        ).appearance;
+        return transport.readJson(
+          transport.api.v1.settings.appearance.$put({
+            json: {
               themeId: input,
-              faviconColor: (
-                await transport.readJson(transport.api.v1.system.config.$get())
-              ).appearance.faviconColor,
-            }
-          : input;
+              faviconColor: appearance.faviconColor,
+            },
+          }),
+        );
+      }
       return transport.readJson(
-        transport.api.v1.settings.appearance.$put({ json: selection }),
+        transport.api.v1.settings.appearance.$put({ json: input }),
       );
     },
   };

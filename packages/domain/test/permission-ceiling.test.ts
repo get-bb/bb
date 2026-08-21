@@ -31,7 +31,7 @@ describe("clampPermissionModeToCeiling", () => {
       clampPermissionModeToCeiling({
         ceiling: "full",
         permissionMode: "accept-edits",
-        supportedPermissionModes: ["full"],
+        permissionModes: ["full"],
       }),
     ).toBe("accept-edits");
   });
@@ -41,7 +41,7 @@ describe("clampPermissionModeToCeiling", () => {
       clampPermissionModeToCeiling({
         ceiling: "auto",
         permissionMode: "full",
-        supportedPermissionModes: ["accept-edits", "full"],
+        permissionModes: ["accept-edits", "full"],
       }),
     ).toBe("accept-edits");
   });
@@ -51,7 +51,7 @@ describe("clampPermissionModeToCeiling", () => {
       clampPermissionModeToCeiling({
         ceiling: "auto",
         permissionMode: "full",
-        supportedPermissionModes: ["full"],
+        permissionModes: ["full"],
       }),
     ).toBeNull();
   });

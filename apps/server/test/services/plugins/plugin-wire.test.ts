@@ -13,7 +13,7 @@ const BASE = "http://127.0.0.1:3334";
 const EVIL_ORIGIN = "https://evil.example";
 
 const WIRE_SOURCE = `
-  import { defineRpcContract } from "@bb/plugin-sdk";
+  import { defineRpcContract } from "@get-bb/plugin-sdk";
   import { z } from "zod";
   const rpcContract = defineRpcContract({
     echo: {
@@ -45,6 +45,46 @@ const WIRE_SOURCE = `
     bb.http.route("GET", "/boom", () => {
       throw new Error("route boom");
     });
+    // A structurally valid Response whose prototype is not this realm's
+    // Response, as a handler running in another realm would return (#1661).
+    bb.http.route("GET", "/foreign", () => {
+      const real = new Response(JSON.stringify({ foreign: true }), {
+        status: 201,
+        statusText: "Created",
+        headers: { "content-type": "application/json", "x-foreign": "yes" },
+      });
+      return {
+        status: real.status,
+        statusText: real.statusText,
+        headers: real.headers,
+        body: real.body,
+        arrayBuffer: () => real.arrayBuffer(),
+        clone: () => real.clone(),
+      };
+    });
+    // Streams two chunks; the second is only produced after the test releases
+    // it, so buffering the whole body would hang the first read.
+    bb.http.route("GET", "/foreign-stream", () => {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          controller.enqueue(encoder.encode("first;"));
+          await globalThis.__releaseSecondChunk;
+          controller.enqueue(encoder.encode("second"));
+          controller.close();
+        },
+      });
+      const real = new Response(stream, { status: 200 });
+      return {
+        status: real.status,
+        statusText: real.statusText,
+        headers: real.headers,
+        body: real.body,
+        arrayBuffer: () => real.arrayBuffer(),
+        clone: () => real.clone(),
+      };
+    });
+    bb.http.route("GET", "/not-a-response", () => ({ status: 200 }));
     bb.rpc.register(rpcContract, {
       echo: async (input: any) => ({ echoed: input }),
       boom: async () => {
@@ -391,6 +431,59 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     expect(entry?.statusDetail).toContain("http GET /boom failed");
   });
 
+  it("adopts a structurally valid Response from another realm (#1661)", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/foreign`,
+    );
+    expect(response).toBeInstanceOf(Response);
+    expect(response.status).toBe(201);
+    expect(response.headers.get("x-foreign")).toBe("yes");
+    expect(await response.json()).toEqual({ foreign: true });
+    const entry = harness.pluginService.list().find((p) => p.id === "wire");
+    expect(entry?.handlerStats.errorCount).toBe(0);
+  });
+
+  it("streams a foreign response body instead of buffering it", async () => {
+    let release!: () => void;
+    (globalThis as any).__releaseSecondChunk = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      const response = await harness.app.request(
+        `${BASE}/api/v1/plugins/wire/http/foreign-stream`,
+      );
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const first = await reader.read();
+      expect(decoder.decode(first.value)).toBe("first;");
+      release();
+      let rest = "";
+      for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        rest += decoder.decode(chunk.value, { stream: true });
+      }
+      expect(rest).toBe("second");
+    } finally {
+      release();
+      delete (globalThis as any).__releaseSecondChunk;
+    }
+  });
+
+  it("rejects a non-Response return with a pointed 500 at the invoke boundary", async () => {
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/wire/http/not-a-response`,
+    );
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining(
+        "http route handler must return a Response",
+      ),
+    });
+  });
+
   it("successful reload atomically replaces the complete route and rpc tables", async () => {
     await writeFile(
       join(rootDir, "server.ts"),
@@ -581,7 +674,7 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     const genDir = await writePlugin(join(harness.config.dataDir, "fixtures"), {
       name: "bb-plugin-gen",
       serverSource: `
-        import { defineRpcContract } from "@bb/plugin-sdk";
+        import { defineRpcContract } from "@get-bb/plugin-sdk";
         import { z } from "zod";
         const rpcContract = defineRpcContract({ gen: { input: z.record(z.string(), z.unknown()), output: z.object({ gen: z.number() }) } });
         export default function plugin(bb: any) {

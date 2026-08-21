@@ -17,12 +17,6 @@ import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provisio
 const WORKSPACE_RESOLUTION_FAILURE_CODES: readonly WorkspaceResolutionFailureCode[] =
   workspaceResolutionFailureCodeSchema.options;
 
-interface BuildWorkspaceResolutionFailureArgs {
-  code: WorkspaceResolutionFailureCode;
-  message: string;
-  workspacePath: string;
-}
-
 interface WorkspaceResolutionFailureFromErrorArgs {
   error: unknown;
   workspacePath: string;
@@ -73,57 +67,47 @@ function isPermissionDeniedError(
   return code === "EACCES" || code === "EPERM";
 }
 
-export function buildWorkspaceResolutionFailure(
-  args: BuildWorkspaceResolutionFailureArgs,
-): WorkspaceResolutionFailure {
-  return {
-    code: args.code,
-    message: args.message,
-    workspacePath: args.workspacePath,
-  };
-}
-
 export function workspaceResolutionFailureFromError(
   args: WorkspaceResolutionFailureFromErrorArgs,
 ): WorkspaceResolutionFailure {
   const { error, workspacePath } = args;
   if (error instanceof WorkspaceError) {
-    return buildWorkspaceResolutionFailure({
+    return {
       code: isWorkspaceResolutionFailureCode(error.code)
         ? error.code
         : "unknown",
       message: error.message,
       workspacePath,
-    });
+    };
   }
   if (error instanceof CommandDispatchError) {
-    return buildWorkspaceResolutionFailure({
+    return {
       code: isWorkspaceResolutionFailureCode(error.code)
         ? error.code
         : "unknown",
       message: error.message,
       workspacePath,
-    });
+    };
   }
   if (isPermissionDeniedError(error)) {
-    return buildWorkspaceResolutionFailure({
+    return {
       code: "permission_denied",
       message: error.message,
       workspacePath,
-    });
+    };
   }
   if (error instanceof Error && error.message.trim().length > 0) {
-    return buildWorkspaceResolutionFailure({
+    return {
       code: "unknown",
       message: error.message,
       workspacePath,
-    });
+    };
   }
-  return buildWorkspaceResolutionFailure({
+  return {
     code: "unknown",
     message: "Unknown workspace resolution failure",
     workspacePath,
-  });
+  };
 }
 
 export async function resolveWorkspaceForCommand(
@@ -161,11 +145,11 @@ export async function resolveWorkspaceForCommand(
       if (!workspace.isGitRepo) {
         return {
           ok: false,
-          failure: buildWorkspaceResolutionFailure({
+          failure: {
             code: "not_git_repo",
             message: `Path is not a git repository: ${entry.workspace.path}`,
             workspacePath: entry.workspace.path,
-          }),
+          },
         };
       }
     }
@@ -176,11 +160,11 @@ export async function resolveWorkspaceForCommand(
     ) {
       return {
         ok: false,
-        failure: buildWorkspaceResolutionFailure({
+        failure: {
           code: "not_worktree",
           message: `Path is not a git worktree: ${entry.workspace.path}`,
           workspacePath: entry.workspace.path,
-        }),
+        },
       };
     }
     return { ok: true, entry };

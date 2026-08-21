@@ -1,16 +1,11 @@
 import {
   createTerminalSession,
   getTerminalSession,
-  getTerminalSessionForThread,
-  getThreadlessTerminalSessionForEnvironment,
-  listTerminalSessionsByThread,
-  markDaemonTerminalSessionsDisconnected,
-  markEnvironmentTerminalSessionsExited,
-  markTerminalSessionExited,
-  markTerminalSessionUserInput,
-  markThreadTerminalSessionsExited,
+  listTerminalSessions,
+  updateTerminalSession,
+  updateTerminalSessions,
 } from "@bb/db";
-import type { EnvironmentStatus } from "@bb/domain";
+import type { EnvironmentStatus, TerminalSessionCloseReason } from "@bb/domain";
 import {
   hostDaemonServerWsMessageSchema,
   type HostDaemonServerWsMessage,
@@ -64,6 +59,112 @@ interface TerminalRouteFixture {
   thread: ReturnType<typeof seedThread>;
 }
 
+type TestDb = TestAppHarness["db"];
+
+function getTerminalSessionForThread(
+  db: TestDb,
+  args: { terminalId: string; threadId: string },
+) {
+  return getTerminalSession(db, { ...args, kind: "thread" });
+}
+
+function getThreadlessTerminalSessionForEnvironment(
+  db: TestDb,
+  args: { environmentId: string; terminalId: string },
+) {
+  return getTerminalSession(db, {
+    ...args,
+    kind: "threadless-environment",
+  });
+}
+
+function listTerminalSessionsByThread(db: TestDb, threadId: string) {
+  return listTerminalSessions(db, {
+    scope: { kind: "thread", threadId },
+    visible: false,
+  });
+}
+
+function markTerminalSessionExited(
+  db: TestDb,
+  args: {
+    closeReason: TerminalSessionCloseReason;
+    exitCode: number | null;
+    terminalId: string;
+  },
+) {
+  return updateTerminalSession(db, {
+    scope: { kind: "terminal", terminalId: args.terminalId },
+    update: {
+      closeReason: args.closeReason,
+      exitCode: args.exitCode,
+      kind: "exit",
+    },
+  });
+}
+
+function markTerminalSessionUserInput(
+  db: TestDb,
+  args: { now: number; terminalId: string; threadId: string },
+) {
+  return updateTerminalSession(db, {
+    now: args.now,
+    scope: {
+      kind: "thread",
+      terminalId: args.terminalId,
+      threadId: args.threadId,
+    },
+    update: { kind: "user-input" },
+  });
+}
+
+function markTerminalSessionsExited(
+  db: TestDb,
+  scope: Parameters<typeof updateTerminalSessions>[1]["scope"],
+  closeReason: TerminalSessionCloseReason,
+) {
+  return updateTerminalSessions(db, {
+    scope: { ...scope, statuses: ["starting", "running", "disconnected"] },
+    update: { closeReason, kind: "exit" },
+  });
+}
+
+function markThreadTerminalSessionsExited(
+  db: TestDb,
+  args: { closeReason: TerminalSessionCloseReason; threadId: string },
+) {
+  return markTerminalSessionsExited(
+    db,
+    { kind: "thread", threadId: args.threadId },
+    args.closeReason,
+  );
+}
+
+function markEnvironmentTerminalSessionsExited(
+  db: TestDb,
+  args: { closeReason: TerminalSessionCloseReason; environmentId: string },
+) {
+  return markTerminalSessionsExited(
+    db,
+    { environmentId: args.environmentId, kind: "environment" },
+    args.closeReason,
+  );
+}
+
+function markDaemonTerminalSessionsDisconnected(
+  db: TestDb,
+  args: { daemonSessionId: string },
+) {
+  return updateTerminalSessions(db, {
+    scope: {
+      daemonSessionId: args.daemonSessionId,
+      kind: "daemon",
+      statuses: ["starting", "running"],
+    },
+    update: { kind: "disconnect" },
+  });
+}
+
 type TerminalOpenMessage = Extract<
   HostDaemonServerWsMessage,
   { type: "terminal.open" }
@@ -76,6 +177,7 @@ interface PendingTerminalOpen {
 
 interface CreateTerminalRouteFixtureArgs {
   environmentStatus?: EnvironmentStatus;
+  terminalCloseTimeoutMs?: number;
 }
 
 function createFakeDaemonSocket(): FakeDaemonSocket {
@@ -137,7 +239,11 @@ async function waitForDaemonMessage(
 async function createTerminalRouteFixture(
   args: CreateTerminalRouteFixtureArgs = {},
 ): Promise<TerminalRouteFixture> {
-  const harness = await createTestAppHarness();
+  const harness = await createTestAppHarness(
+    args.terminalCloseTimeoutMs === undefined
+      ? {}
+      : { terminalCloseTimeoutMs: args.terminalCloseTimeoutMs },
+  );
   const seeded = seedHostSession(harness.deps, { id: "terminal-host" });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: seeded.host.id,
@@ -1465,7 +1571,10 @@ describe("public terminal routes", () => {
       throw new Error(`Expected terminal.open, received ${openMessage.type}`);
     }
     expect(
-      getTerminalSession(fixture.harness.db, { terminalId: stored.id }),
+      getTerminalSession(fixture.harness.db, {
+        kind: "terminal",
+        terminalId: stored.id,
+      }),
     ).toMatchObject({ status: "running" });
     acknowledgeTerminalOpen(fixture, openMessage);
 
@@ -1548,7 +1657,10 @@ describe("public terminal routes", () => {
     const response = await responsePromise;
     expect(response.status).toBe(502);
     expect(
-      getTerminalSession(fixture.harness.db, { terminalId: stored.id }),
+      getTerminalSession(fixture.harness.db, {
+        kind: "terminal",
+        terminalId: stored.id,
+      }),
     ).toMatchObject({ status: "running" });
     expect(
       readDaemonMessages(fixture.socket).filter(
@@ -1607,6 +1719,136 @@ describe("public terminal routes", () => {
         status: "exited",
       },
     );
+  });
+
+  it("completes a terminal close when its daemon acknowledgement times out", async () => {
+    const fixture = await createTerminalRouteFixture({
+      terminalCloseTimeoutMs: 50,
+    });
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "zsh",
+    });
+
+    const responsePromise = fixture.harness.app.request(
+      `/api/v1/terminals/${stored.id}/close`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "force", reason: "user" }),
+      },
+    );
+
+    await expect(waitForDaemonMessage(fixture.socket)).resolves.toMatchObject({
+      type: "terminal.close",
+      terminalId: stored.id,
+      reason: "user",
+    });
+    const response = await responsePromise;
+
+    expect(response.status).toBe(200);
+    expect(terminalSessionSchema.parse(await readJson(response))).toMatchObject(
+      {
+        id: stored.id,
+        closeReason: "user",
+        exitCode: null,
+        status: "exited",
+      },
+    );
+    expect(
+      getTerminalSessionForThread(fixture.harness.db, {
+        terminalId: stored.id,
+        threadId: fixture.thread.id,
+      }),
+    ).toMatchObject({
+      closeReason: "user",
+      daemonSessionId: null,
+      exitCode: null,
+      status: "exited",
+    });
+  });
+
+  it("keeps an undeliverable terminal close available for reconnect cleanup", async () => {
+    const fixture = await createTerminalRouteFixture();
+    harnesses.push(fixture.harness);
+    const stored = createTerminalSession(fixture.harness.db, {
+      cols: 80,
+      daemonSessionId: fixture.session.id,
+      environmentId: fixture.environment.id,
+      hostId: fixture.host.id,
+      initialCwd: "/tmp/terminal-workspace",
+      rows: 24,
+      status: "running",
+      threadId: fixture.thread.id,
+      title: "zsh",
+    });
+    fixture.harness.hub.unregisterDaemon(fixture.session.id);
+
+    const response = await fixture.harness.app.request(
+      `/api/v1/terminals/${stored.id}/close`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "force", reason: "user" }),
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(apiErrorSchema.parse(await readJson(response))).toMatchObject({
+      code: "host_disconnected",
+    });
+    expect(
+      getTerminalSessionForThread(fixture.harness.db, {
+        terminalId: stored.id,
+        threadId: fixture.thread.id,
+      }),
+    ).toMatchObject({
+      closeReason: null,
+      daemonSessionId: null,
+      status: "disconnected",
+    });
+
+    const replacementSession = seedSession(
+      fixture.harness.deps,
+      fixture.host.id,
+    );
+    const replacementSocket = createFakeDaemonSocket();
+    onDaemonSocketOpen(fixture.harness.deps, {
+      hostId: fixture.host.id,
+      sessionId: replacementSession.id,
+      socket: replacementSocket,
+    });
+
+    expect(await waitForDaemonMessage(replacementSocket)).toEqual({
+      type: "connect-shares.replace",
+      generation: 0,
+      ports: [],
+    });
+    await expect(
+      waitForDaemonMessage(replacementSocket, 1),
+    ).resolves.toMatchObject({
+      type: "terminal.close",
+      terminalId: stored.id,
+      reason: "daemon-disconnect",
+    });
+    expect(
+      getTerminalSessionForThread(fixture.harness.db, {
+        terminalId: stored.id,
+        threadId: fixture.thread.id,
+      }),
+    ).toMatchObject({
+      closeReason: "daemon-disconnect",
+      daemonSessionId: null,
+      status: "exited",
+    });
   });
 
   it("does not close a dirty terminal unless force mode is requested", async () => {

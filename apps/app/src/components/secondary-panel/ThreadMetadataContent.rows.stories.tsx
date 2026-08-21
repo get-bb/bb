@@ -56,6 +56,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={parentThreads}
             canAssignToParent
@@ -74,6 +75,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={[]}
             canAssignToParent={false}
@@ -92,6 +94,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread({ parentThreadId: "thr_codex_parent" })}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName="Codex Parent"
             parentThreads={parentThreads}
             canAssignToParent={false}
@@ -110,6 +113,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={parentThreads}
             canAssignToParent
@@ -245,16 +249,12 @@ export function Branch() {
     <StoryCard>
       <StoryRow label="feature branch">
         <RowStage>
-          <BranchRow
-            thread={makeThread()}
-            workspaceStatus={makeWorkspaceStatus()}
-          />
+          <BranchRow workspaceStatus={makeWorkspaceStatus()} />
         </RowStage>
       </StoryRow>
       <StoryRow label="long branch">
         <RowStage>
           <BranchRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               checkout: {
                 kind: "branch",
@@ -274,7 +274,6 @@ export function Branch() {
       <StoryRow label="detached checkout">
         <RowStage>
           <BranchRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               checkout: {
                 kind: "detached",
@@ -298,7 +297,6 @@ export function MergeBase() {
       <StoryRow label="feature branch">
         <RowStage>
           <MergeBaseRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus()}
             selectedMergeBaseBranch={undefined}
             mergeBaseBranchOptions={["main", "develop", "release/2026-04"]}
@@ -310,7 +308,6 @@ export function MergeBase() {
       <StoryRow label="loading candidates">
         <RowStage>
           <MergeBaseRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus()}
             selectedMergeBaseBranch={undefined}
             mergeBaseBranchOptions={undefined}
@@ -322,7 +319,6 @@ export function MergeBase() {
       <StoryRow label="picker open">
         <RowStage>
           <MergeBaseRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus()}
             selectedMergeBaseBranch={undefined}
             mergeBaseBranchOptions={["main", "develop", "release/2026-04"]}
@@ -634,6 +630,7 @@ export function GitStatus() {
                 state: "dirty_uncommitted",
                 insertions: 47,
                 deletions: 21,
+                lineStatsComplete: true,
                 files: [
                   {
                     path: "apps/app/src/components/sidebar/ProjectRow.tsx",
@@ -676,6 +673,7 @@ export function GitStatus() {
                 commits: [],
                 insertions: 0,
                 deletions: 0,
+                lineStatsComplete: true,
                 files: [],
               },
             })}
@@ -699,6 +697,7 @@ export function GitStatus() {
                 commits: [],
                 insertions: 0,
                 deletions: 0,
+                lineStatsComplete: true,
                 files: [],
               },
             })}
@@ -722,6 +721,7 @@ export function GitStatus() {
                 commits: [],
                 insertions: 0,
                 deletions: 0,
+                lineStatsComplete: true,
                 files: [],
               },
             })}
@@ -741,6 +741,7 @@ export function GitStatus() {
                 state: "untracked",
                 insertions: 0,
                 deletions: 0,
+                lineStatsComplete: false,
                 files: [
                   {
                     path: "scratch.md",
@@ -842,6 +843,7 @@ export function Commits() {
                 commits: aheadCommits,
                 insertions: 0,
                 deletions: 0,
+                lineStatsComplete: true,
                 files: [],
               },
             })}
@@ -867,13 +869,13 @@ export function ChangedFiles() {
       <StoryRow label="uncommitted">
         <RowStage>
           <ChangedFilesRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 hasUncommittedChanges: true,
                 state: "dirty_uncommitted",
                 insertions: 47,
                 deletions: 21,
+                lineStatsComplete: true,
                 files: [
                   {
                     path: "apps/app/src/components/sidebar/ProjectRow.tsx",
@@ -903,7 +905,6 @@ export function ChangedFiles() {
       <StoryRow label="committed, not merged">
         <RowStage>
           <ChangedFilesRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               mergeBase: {
                 mergeBaseBranch: "main",
@@ -914,6 +915,7 @@ export function ChangedFiles() {
                 commits: [],
                 insertions: 110,
                 deletions: 24,
+                lineStatsComplete: true,
                 files: [
                   {
                     path: "apps/app/src/components/right-panel/ThreadMetadataContent.stories.tsx",
@@ -937,13 +939,13 @@ export function ChangedFiles() {
       <StoryRow label="uncommitted + committed">
         <RowStage>
           <ChangedFilesRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 hasUncommittedChanges: true,
                 state: "dirty_and_committed_unmerged",
                 insertions: 47,
                 deletions: 21,
+                lineStatsComplete: true,
                 files: [
                   {
                     path: "apps/app/src/components/sidebar/ProjectRow.tsx",
@@ -974,6 +976,7 @@ export function ChangedFiles() {
                 commits: [],
                 insertions: 110,
                 deletions: 24,
+                lineStatsComplete: true,
                 files: [
                   {
                     path: "apps/app/src/components/right-panel/ThreadMetadataContent.stories.tsx",

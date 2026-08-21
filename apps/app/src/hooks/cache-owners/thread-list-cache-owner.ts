@@ -12,8 +12,8 @@ import {
   type CachedSidebarNavigationSnapshot,
 } from "./query-cache";
 import {
+  getCachedThreadLists,
   restoreCachedThreadLists,
-  snapshotCachedThreadLists,
   type CachedThreadListSnapshot,
 } from "./thread-list-cache-data";
 import {
@@ -62,7 +62,7 @@ export async function beginArchiveEnvironmentThreadsTransaction({
     ),
   );
 
-  const previousThreadLists = snapshotCachedThreadLists(queryClient, {
+  const previousThreadLists = getCachedThreadLists(queryClient, {
     queryKey: threadsQueryKey(),
   });
   const previousSidebarNavigation =

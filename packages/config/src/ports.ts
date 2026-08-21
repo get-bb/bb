@@ -15,7 +15,7 @@ export interface RuntimePortLoaderArgs extends EnvLoaderArgs {
   repoRoot?: string;
 }
 
-export interface RuntimePortDefaultArgs {
+interface RuntimePortDefaultArgs {
   homeDir: string;
   repoRoot?: string;
 }
@@ -52,19 +52,7 @@ function resolveDevHostDaemonPortDefault(
   }).ports.hostDaemonPort;
 }
 
-export function resolveServerPortDefault(
-  args: RuntimePortDefaultArgs,
-): number | undefined {
-  return resolveDevServerPortDefault(args);
-}
-
-export function resolveHostDaemonPortDefault(
-  args: RuntimePortDefaultArgs,
-): number | undefined {
-  return resolveDevHostDaemonPortDefault(args);
-}
-
-export function loadRuntimePortValue(args: LoadRuntimePortValueArgs): number {
+function loadRuntimePortValue(args: LoadRuntimePortValueArgs): number {
   const loader = resolveEnvLoader(args);
   const configuredPort = readOptionalEnvVar({
     context: loader.context,
@@ -93,7 +81,7 @@ export function loadServerPortValue(args: RuntimePortLoaderArgs = {}): number {
   return loadRuntimePortValue({
     ...args,
     definition: BB_SERVER_PORT_ENV,
-    devDefault: resolveServerPortDefault({
+    devDefault: resolveDevServerPortDefault({
       homeDir: loader.context.homeDir,
       repoRoot: args.repoRoot,
     }),
@@ -111,7 +99,7 @@ export function loadHostDaemonPortValue(
   return loadRuntimePortValue({
     ...args,
     definition: BB_HOST_DAEMON_PORT_ENV,
-    devDefault: resolveHostDaemonPortDefault({
+    devDefault: resolveDevHostDaemonPortDefault({
       homeDir: loader.context.homeDir,
       repoRoot: args.repoRoot,
     }),

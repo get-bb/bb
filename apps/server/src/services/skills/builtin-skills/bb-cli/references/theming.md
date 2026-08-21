@@ -243,6 +243,38 @@ and semantics:
 3. `bb theme set <name>` — activate it. To edit later, change the file in place
    and re-run `bb theme set <name>`.
 
+## Code themes (diffs and file previews)
+
+Code colors follow the active UI palette. Built-in palettes use the matching
+Shiki pair. A custom or plugin theme may declare Pierre / VS Code JSON; if it
+does not, diffs use `pierre-dark` / `pierre-light`.
+
+A custom theme folder may ship Pierre / VS Code theme JSON:
+
+```text
+<bb-data-dir>/theme/my-theme/
+  theme.css
+  pierre-dark.json
+  pierre-light.json
+```
+
+Or name the files in `theme.json`:
+
+```json
+{
+  "codeTheme": {
+    "dark": "pierre-dark.json",
+    "light": "github-light"
+  }
+}
+```
+
+Each side is a bundled Shiki / Pierre name, or a folder-relative `.json` file
+with `{ name, type, colors, tokenColors }`. See https://diffs.com/theme.
+
+There is no separate code-theme setting. `bb theme show` prints the resolved
+Pierre names for the active palette.
+
 Other commands:
 
 - `bb theme set <id> [--favicon-color <color>]` — switch to a built-in

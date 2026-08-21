@@ -1,6 +1,13 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildPluginApp } from "./build-plugin-app.js";
 import {
@@ -109,7 +116,7 @@ describe("plugin build toolchain", () => {
         );
         await writeFile(
           join(pluginDir, "app.tsx"),
-          `import { definePluginApp } from "@bb/plugin-sdk/app";\n` +
+          `import { definePluginApp } from "@get-bb/plugin-sdk/app";\n` +
             `export default definePluginApp({});\n`,
         );
 
@@ -121,6 +128,61 @@ describe("plugin build toolchain", () => {
         expect(css).toContain("--");
       },
       600_000,
+    );
+
+    // The fetch is bb's own npm child and passes --ignore-scripts. A bb
+    // launched through a package manager inherits the user's .npmrc as
+    // npm_config_*, and npm 11/12 refuses an inherited allow-scripts on a
+    // project-scoped install (EALLOWSCRIPTS). A fake npm on PATH records what
+    // the child actually saw; it installs nothing, so the resolve fails after
+    // the spawn, which is all this test needs.
+    it.skipIf(process.platform === "win32")(
+      "keeps script-policy npm config out of the fetch",
+      async () => {
+        const binDir = join(baseDir, "bin");
+        const envDump = join(baseDir, "npm-env.txt");
+        await mkdir(binDir, { recursive: true });
+        const fakeNpm = join(binDir, "npm");
+        await writeFile(fakeNpm, `#!/bin/sh\nenv > "${envDump}"\nexit 0\n`);
+        await chmod(fakeNpm, 0o755);
+
+        const overrides: Record<string, string> = {
+          PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}`,
+          npm_config_allow_scripts: "@github/keytar,node-pty",
+          NPM_CONFIG_IGNORE_SCRIPTS: "false",
+          npm_config_registry: "https://registry.example.invalid/",
+        };
+        const previous = new Map<string, string | undefined>();
+        for (const [key, value] of Object.entries(overrides)) {
+          previous.set(key, process.env[key]);
+          process.env[key] = value;
+        }
+        try {
+          await expect(
+            resolvePluginBuildToolchain(baseDir, { ignoreLocal: true }),
+          ).rejects.toThrow(/incomplete or misversioned/);
+        } finally {
+          for (const [key, value] of previous) {
+            if (value === undefined) delete process.env[key];
+            else process.env[key] = value;
+          }
+        }
+
+        const seen = new Map(
+          (await readFile(envDump, "utf8"))
+            .split("\n")
+            .filter((line) => line.includes("="))
+            .map((line) => {
+              const at = line.indexOf("=");
+              return [line.slice(0, at), line.slice(at + 1)] as const;
+            }),
+        );
+        expect(seen.has("npm_config_allow_scripts")).toBe(false);
+        expect(seen.has("NPM_CONFIG_IGNORE_SCRIPTS")).toBe(false);
+        expect(seen.get("npm_config_registry")).toBe(
+          "https://registry.example.invalid/",
+        );
+      },
     );
 
     it("reuses an already-fetched toolchain without reinstalling", async () => {

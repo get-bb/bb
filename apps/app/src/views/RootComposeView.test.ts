@@ -12,54 +12,84 @@ import type {
 import { describe, expect, it } from "vitest";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import type { ReuseThreadOption } from "@/components/pickers/WorktreePicker";
-import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
-import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
-import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
+import {
+  hasPromptBranchSelectionChanged,
+  hasPromptOptionValueChanged,
+  mergeMissingPromptDraftAttachments,
+  resolveNewThreadProjectDefaultsState,
+  resolveNewThreadSubmitDisabledReason,
+  restorePromptDraftAfterOptionChange,
+  type ResolveNewThreadSubmitDisabledReasonArgs,
+} from "@/components/promptbox/NewThreadComposer";
+import { getProjectStoredPromptAttachmentPaths } from "@bb/client-core";
+import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
 import {
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
-  hasPromptBranchSelectionChanged,
-  hasPromptOptionValueChanged,
   hasSingleUseRootComposeTargetState,
-  mergeMissingPromptDraftAttachments,
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
-  requestRootComposePluginFocus,
-  resolveRootComposeProjectDefaultsState,
-  restorePromptDraftAfterOptionChange,
-  resolveRootComposePanelThreadId,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
+import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import {
-  isProjectSourceWorktreeUnavailable,
+  resolveProjectSourceWorktreeDisabledReason,
   resolveComposeHostId,
   resolveRootComposeEffectiveEnvironmentValue,
   resolveRootComposeProjectRouting,
   resolveRootComposeProviderRouting,
 } from "./root-compose-environment-selection";
 
-describe("requestRootComposePluginFocus", () => {
-  it("routes host focus through the subscriber that reveals the root composer", () => {
-    let focusRequests = 0;
-    const unsubscribe = subscribeComposerFocusRequests(
-      "bb.promptDraft.new-thread",
-      () => {
-        focusRequests += 1;
-      },
-    );
+describe("root-compose project file routing", () => {
+  it("uses a persisted opener host instead of the newly selected context", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+          experimental_hostId: "host_opened",
+        },
+        selectedEnvironmentId: "env_selected",
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({ environmentId: null, hostId: "host_opened" });
+  });
 
-    requestRootComposePluginFocus("bb.promptDraft.new-thread");
+  it("keeps primary-host routing when a persisted opener omits a host", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+        },
+        selectedEnvironmentId: null,
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({ environmentId: null, hostId: null });
+  });
 
-    expect(focusRequests).toBe(1);
-    unsubscribe();
+  it("retains live routing for a native project file tab", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: null,
+        selectedEnvironmentId: "env_selected",
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({
+      environmentId: "env_selected",
+      hostId: "host_selected",
+    });
   });
 });
-
-describe("resolveRootComposeProjectDefaultsState", () => {
+describe("resolveNewThreadProjectDefaultsState", () => {
   const storedDefaults = {
     providerId: "codex",
     model: "gpt-5.6-sol",
@@ -70,7 +100,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("keeps optimistic null defaults unresolved while the fallback query is pending", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: undefined,
@@ -83,7 +113,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("uses the authoritative saved defaults when the delayed query resolves", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: storedDefaults,
@@ -96,7 +126,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("only confirms absence after the fallback query succeeds with null", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: null,
@@ -109,7 +139,7 @@ describe("resolveRootComposeProjectDefaultsState", () => {
 
   it("does not treat a previous project's placeholder as authoritative", () => {
     expect(
-      resolveRootComposeProjectDefaultsState({
+      resolveNewThreadProjectDefaultsState({
         cachedDefaults: null,
         projectFound: true,
         queryData: storedDefaults,
@@ -118,6 +148,97 @@ describe("resolveRootComposeProjectDefaultsState", () => {
         queryIsSuccess: true,
       }),
     ).toEqual({ status: "pending" });
+  });
+});
+
+describe("resolveNewThreadSubmitDisabledReason", () => {
+  const readyState = {
+    branchMutationBlockerTitle: null,
+    isCopyingAttachments: false,
+    isLoadingModels: false,
+    isSubmitting: false,
+    isUploading: false,
+    managedWorktreeUnavailableReason: null,
+    modelLoadError: null,
+    projectDefaultsStatus: "resolved",
+    projectDefaultsUnavailable: false,
+    promptInputEmpty: false,
+    providerDisplayName: "Codex",
+    selectedProviderId: "codex",
+    selectedThreadModel: "gpt-5.6-sol",
+    submissionEnvironmentUnavailable: false,
+  } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+
+  it.each<
+    [
+      label: string,
+      change: Partial<ResolveNewThreadSubmitDisabledReasonArgs>,
+      reason: string,
+    ]
+  >([
+    [
+      "model loading after a machine switch",
+      { isLoadingModels: true },
+      "Loading models from the selected machine...",
+    ],
+    [
+      "provider setup failure",
+      {
+        modelLoadError: {
+          providerId: "codex",
+          code: "auth_required",
+        },
+      },
+      "Could not load models for Codex. Authentication is required.",
+    ],
+    [
+      "project-default failure",
+      {
+        projectDefaultsStatus: "error",
+        projectDefaultsUnavailable: true,
+      },
+      "Could not load the project's execution defaults.",
+    ],
+    [
+      "an incomplete environment selection",
+      { submissionEnvironmentUnavailable: true },
+      "Select an environment.",
+    ],
+    [
+      "an unavailable worktree",
+      {
+        managedWorktreeUnavailableReason:
+          "Project source has no commits. Create an initial commit before creating a worktree",
+      },
+      "Project source has no commits. Create an initial commit before creating a worktree",
+    ],
+    [
+      "a blocked branch checkout",
+      { branchMutationBlockerTitle: "Checkout blocked by uncommitted changes" },
+      "Checkout blocked by uncommitted changes",
+    ],
+    [
+      "an empty prompt",
+      { promptInputEmpty: true },
+      "Enter a prompt or attach a file.",
+    ],
+  ])("reports %s", (_label, change, reason) => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({ ...readyState, ...change }),
+    ).toBe(reason);
+  });
+
+  it("returns no reason when every submission requirement is ready", () => {
+    expect(resolveNewThreadSubmitDisabledReason(readyState)).toBeNull();
+  });
+
+  it("allows a selected fallback model after a transient model-list failure", () => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({
+        ...readyState,
+        modelLoadError: { providerId: "claude-code", code: "timeout" },
+      }),
+    ).toBeNull();
   });
 });
 
@@ -170,7 +291,6 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -702,14 +822,16 @@ describe("shouldNavigateAfterThreadCreate", () => {
   });
 });
 
-describe("isProjectSourceWorktreeUnavailable", () => {
-  it("treats unknown checkout metadata as unavailable for worktree creation", () => {
-    expect(isProjectSourceWorktreeUnavailable(undefined)).toBe(false);
+describe("resolveProjectSourceWorktreeDisabledReason", () => {
+  it("explains why non-git and commitless sources cannot create worktrees", () => {
+    expect(resolveProjectSourceWorktreeDisabledReason(undefined)).toBeNull();
     expect(
-      isProjectSourceWorktreeUnavailable(makeProjectBranchesResponse({})),
-    ).toBe(false);
+      resolveProjectSourceWorktreeDisabledReason(
+        makeProjectBranchesResponse({}),
+      ),
+    ).toBeNull();
     expect(
-      isProjectSourceWorktreeUnavailable(
+      resolveProjectSourceWorktreeDisabledReason(
         makeProjectBranchesResponse({
           checkout: {
             kind: "unknown",
@@ -721,7 +843,20 @@ describe("isProjectSourceWorktreeUnavailable", () => {
           originDefaultBranch: null,
         }),
       ),
-    ).toBe(true);
+    ).toBe("New worktrees require a Git repository with at least one commit");
+    expect(
+      resolveProjectSourceWorktreeDisabledReason(
+        makeProjectBranchesResponse({
+          checkout: { kind: "unborn", branchName: "main" },
+          defaultBranch: null,
+          defaultBranchRelation: null,
+          defaultWorktreeBaseBranch: null,
+          originDefaultBranch: null,
+        }),
+      ),
+    ).toBe(
+      "Project source has no commits. Create an initial commit before creating a worktree",
+    );
   });
 });
 
@@ -1011,49 +1146,6 @@ describe("buildRootComposeTerminalSessions", () => {
         },
       }),
     ).toEqual([matching]);
-  });
-});
-
-describe("resolveRootComposePanelThreadId", () => {
-  it("uses the most-recent thread from the selected reuse worktree", () => {
-    expect(
-      resolveRootComposePanelThreadId({
-        environmentId: "env_b",
-        reuseThreadOptions: [
-          {
-            environmentId: "env_a",
-            branchName: "main",
-            name: null,
-            threads: [{ id: "thr_a", title: "Thread A" }],
-          },
-          {
-            environmentId: "env_b",
-            branchName: "feature",
-            name: "Feature worktree",
-            threads: [
-              { id: "thr_b_recent", title: "Recent thread" },
-              { id: "thr_b_old", title: "Old thread" },
-            ],
-          },
-        ],
-      }),
-    ).toBe("thr_b_recent");
-  });
-
-  it("returns null without a selected reuse worktree", () => {
-    expect(
-      resolveRootComposePanelThreadId({
-        environmentId: null,
-        reuseThreadOptions: [
-          {
-            environmentId: "env_a",
-            branchName: "main",
-            name: null,
-            threads: [{ id: "thr_a", title: "Thread A" }],
-          },
-        ],
-      }),
-    ).toBeNull();
   });
 });
 

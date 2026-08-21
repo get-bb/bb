@@ -6,8 +6,10 @@ import type {
   ExistingThreadExecutionInputSources,
   ThreadTimelineResponse,
 } from "@bb/server-contract";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BbHttpError, sdk } from "@/lib/sdk";
+import { wsManager } from "@/lib/ws";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import {
   threadQueuedMessagesQueryKey,
@@ -18,6 +20,7 @@ import {
   useClearThreadGoal,
   useCreateThreadQueuedMessage,
   useDeleteThreadQueuedMessage,
+  useEditThreadMessage,
   useSetThreadQueuedMessageGroupBoundary,
   useSendThreadMessage,
 } from "./thread-runtime-mutations";
@@ -30,6 +33,7 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
       threads: {
         cancelPlan: vi.fn(),
         clearGoal: vi.fn(),
+        editMessage: vi.fn(),
         queuedMessages: {
           create: vi.fn(),
           delete: vi.fn(),
@@ -97,14 +101,6 @@ function makeBannerTimeline(): ThreadTimelineResponse {
   };
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
-    resolve = resolvePromise;
-  });
-  return { promise, resolve };
-}
-
 const executionInputSources = {
   model: "explicit",
   serviceTier: "client-preference",
@@ -113,8 +109,14 @@ const executionInputSources = {
 } satisfies ExistingThreadExecutionInputSources;
 
 beforeEach(() => {
+  vi.mocked(wsManager.getConnectionState).mockReturnValue("connected");
   vi.mocked(sdk.threads.cancelPlan).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.clearGoal).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.editMessage).mockResolvedValue({
+    ok: true,
+    operationId: "edit-op-1",
+    requestSequence: 42,
+  });
   vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true });
   vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
@@ -129,6 +131,67 @@ afterEach(() => {
 });
 
 describe("thread runtime mutations", () => {
+  it("keeps the existing timeline while an edit is pending and lets connected realtime own success", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const edit = createDeferredPromise<{
+      ok: true;
+      operationId: string;
+      requestSequence: number;
+    }>();
+    vi.mocked(sdk.threads.editMessage).mockReturnValueOnce(edit.promise);
+    const timeline = makeBannerTimeline();
+    queryClient.setQueryData(threadTimelineQueryKey("thread-1"), timeline);
+    const { result } = renderHook(() => useEditThreadMessage(), {
+      wrapper,
+    });
+
+    let editPromise!: Promise<unknown>;
+    act(() => {
+      editPromise = result.current.mutateAsync({
+        id: "thread-1",
+        operationId: "edit-op-1",
+        expectedRequestSequence: 41,
+        input: [{ type: "text", text: "Replacement", mentions: [] }],
+      });
+    });
+    await waitFor(() => expect(sdk.threads.editMessage).toHaveBeenCalledOnce());
+    expect(queryClient.getQueryData(threadTimelineQueryKey("thread-1"))).toBe(
+      timeline,
+    );
+    expect(invalidateQueries).not.toHaveBeenCalled();
+
+    edit.resolve({
+      ok: true,
+      operationId: "edit-op-1",
+      requestSequence: 42,
+    });
+    await act(async () => {
+      await editPromise;
+    });
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it("invalidates rewritten history after edit success when realtime is disconnected", async () => {
+    vi.mocked(wsManager.getConnectionState).mockReturnValue("reconnecting");
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useEditThreadMessage(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        id: "thread-1",
+        operationId: "edit-op-disconnected",
+        expectedRequestSequence: 41,
+        input: [{ type: "text", text: "Replacement", mentions: [] }],
+      });
+    });
+
+    expect(invalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: threadTimelineQueryKey("thread-1") }),
+    );
+  });
+
   it.each([
     ["Plan", useCancelThreadPlan, () => sdk.threads.cancelPlan],
     ["Goal", useClearThreadGoal, () => sdk.threads.clearGoal],
@@ -137,7 +200,7 @@ describe("thread runtime mutations", () => {
     async (_label, useMutationHook, getSdkMethod) => {
       const { queryClient, wrapper } = createQueryClientTestHarness();
       const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-      const cancellation = deferred<{ ok: true }>();
+      const cancellation = createDeferredPromise<{ ok: true }>();
       vi.mocked(getSdkMethod()).mockReturnValueOnce(cancellation.promise);
       queryClient.setQueryData(
         threadTimelineQueryKey("thread-1"),

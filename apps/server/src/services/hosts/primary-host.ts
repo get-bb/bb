@@ -11,28 +11,12 @@ import {
 
 type PrimaryHostDeps = Pick<AppDeps, "config" | "db" | "hub">;
 
-export interface ReadPrimaryHostIdArgs {
+interface ReadPrimaryHostIdArgs {
   dataDir: string;
 }
 
-export interface AssertPrimaryHostIdArgs {
+interface AssertUsableHostIdArgs {
   hostId: string;
-}
-
-export interface AssertUsableHostIdArgs {
-  hostId: string;
-}
-
-function unsupportedHostError(): ApiError {
-  return new ApiError(
-    400,
-    "unsupported_host",
-    "This operation only supports the primary machine",
-  );
-}
-
-function unusableHostError(): ApiError {
-  return new ApiError(400, "unsupported_host", "Host cannot run threads");
 }
 
 function primaryHostUnavailableError(): ApiError {
@@ -43,7 +27,7 @@ function primaryHostUnavailableError(): ApiError {
   );
 }
 
-export function readPrimaryHostIdFromDataDir(
+function readPrimaryHostIdFromDataDir(
   args: ReadPrimaryHostIdArgs,
 ): string | null {
   try {
@@ -95,16 +79,6 @@ export function requirePrimaryHostId(deps: PrimaryHostDeps): string {
   return hostId;
 }
 
-export function assertPrimaryHostId(
-  deps: PrimaryHostDeps,
-  args: AssertPrimaryHostIdArgs,
-): void {
-  const primaryHostId = requirePrimaryHostId(deps);
-  if (args.hostId !== primaryHostId) {
-    throw unsupportedHostError();
-  }
-}
-
 /**
  * Validates an explicit execution target. Any non-destroyed persistent host is
  * accepted; connectivity remains a dispatch-time concern.
@@ -113,10 +87,7 @@ export function assertUsableHostId(
   deps: PrimaryHostDeps,
   args: AssertUsableHostIdArgs,
 ): void {
-  const host = requireNonDestroyedHostWithStatus(deps, args.hostId);
-  if (host.type !== "persistent") {
-    throw unusableHostError();
-  }
+  requireNonDestroyedHostWithStatus(deps, args.hostId);
 }
 
 export function requireConnectedPrimaryHostId(deps: PrimaryHostDeps): string {

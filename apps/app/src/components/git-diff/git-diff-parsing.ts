@@ -5,8 +5,6 @@ export type ParsedGitDiffFile = ReturnType<
   typeof parsePatchFiles
 >[number]["files"][number];
 
-export type { GitDiffFileChangeKind };
-
 export interface GitDiffStats {
   filesCount: number;
   insertions: number;
@@ -24,7 +22,47 @@ export function parseGitDiffFiles(
   }
 }
 
-export interface GitDiffContextEnrichmentInput {
+/** A normalized single-file patch plus the file it parsed to. */
+interface NormalizedFilePatch {
+  /** Complete patch text, including a `diff --git` header. */
+  patch: string;
+  file: ParsedGitDiffFile;
+}
+
+/**
+ * Normalize and parse patch text for exactly ONE file.
+ *
+ * Patch sources disagree about headers: `git diff` emits a `diff --git` line,
+ * GitHub's REST API and inline review hunks emit bare `@@` hunks. Only the
+ * `diff --git` line puts the parser in git-aware mode — without it the `a/`
+ * and `b/` prefixes survive into the file names and every file reads as a
+ * rename. Completing the header from `path` is what makes one host renderer
+ * able to accept both shapes.
+ *
+ * Returns null when nothing renderable parses out — including the case that
+ * matters most in practice, text that is not a patch at all: completing a
+ * header in front of it still parses, just to a file with no hunks, which
+ * would render as an empty diff instead of showing the caller their content.
+ */
+export function normalizeFilePatch({
+  patch,
+  path,
+}: {
+  patch: string;
+  path: string;
+}): NormalizedFilePatch | null {
+  const normalizedPatch = patch.replace(/\r\n/g, "\n").trimEnd();
+  if (normalizedPatch.length === 0) return null;
+  const normalizedPath = normalizeGitDiffPath(path) ?? path;
+  const patchText = normalizedPatch.startsWith("diff --git")
+    ? `${normalizedPatch}\n`
+    : `diff --git a/${normalizedPath} b/${normalizedPath}\n--- a/${normalizedPath}\n+++ b/${normalizedPath}\n${normalizedPatch}\n`;
+  const file = parseGitDiffFiles(patchText)[0];
+  if (file === undefined || file.hunks.length === 0) return null;
+  return { patch: patchText, file };
+}
+
+interface GitDiffContextEnrichmentInput {
   fileDiff: ParsedGitDiffFile;
   oldFile: FileContents;
   newFile: FileContents;
@@ -32,9 +70,11 @@ export interface GitDiffContextEnrichmentInput {
 }
 
 /**
- * Reparses a card's raw file patch with both full file sides attached. The
- * diff renderer only exposes expand-context controls when `isPartial` is false
- * and `additionLines` / `deletionLines` contain complete file contents.
+ * Reparses a raw file patch with both full file sides attached. The returned
+ * file is only enriched when the supplied paths and every hunk line agree with
+ * the original patch. `@pierre/diffs` trusts caller-supplied contents, so this
+ * check prevents unrelated, empty, or swapped files from being presented as
+ * expandable context.
  */
 export function enrichGitDiffFileForContext({
   fileDiff,
@@ -42,59 +82,98 @@ export function enrichGitDiffFileForContext({
   newFile,
   patchText,
 }: GitDiffContextEnrichmentInput): ParsedGitDiffFile {
-  if (!patchText) return fileDiff;
+  if (!patchText || !doFullFilePathsMatch(fileDiff, oldFile, newFile)) {
+    return fileDiff;
+  }
 
+  // Do not inherit the partial diff's cache key. Pierre treats matching cache
+  // keys as semantic equality, but callers may refresh the full contents while
+  // retaining the same patch identity.
+  const enrichedFile = processFile(patchText, { oldFile, newFile });
+  if (
+    enrichedFile === undefined ||
+    enrichedFile.isPartial ||
+    !doFullFileHunksMatch(fileDiff, enrichedFile)
+  ) {
+    return fileDiff;
+  }
+  return enrichedFile;
+}
+
+function doFullFilePathsMatch(
+  fileDiff: ParsedGitDiffFile,
+  oldFile: FileContents,
+  newFile: FileContents,
+): boolean {
+  const expectedNewPath = normalizeGitDiffPath(fileDiff.name);
+  const expectedOldPath =
+    normalizeGitDiffPath(fileDiff.prevName) ?? expectedNewPath;
   return (
-    processFile(patchText, {
-      oldFile,
-      newFile,
-      cacheKey:
-        fileDiff.cacheKey === undefined
-          ? undefined
-          : `${fileDiff.cacheKey}:context`,
-    }) ?? fileDiff
+    expectedOldPath !== undefined &&
+    expectedNewPath !== undefined &&
+    normalizeGitDiffPath(oldFile.name) === expectedOldPath &&
+    normalizeGitDiffPath(newFile.name) === expectedNewPath
   );
 }
 
-export function summarizeGitDiff(
-  files: ParsedGitDiffFile[],
-  diff: string,
-): GitDiffStats {
-  if (files.length > 0) {
-    let insertions = 0;
-    let deletions = 0;
-    for (const file of files) {
-      const fileStats = summarizeGitDiffFile(file);
-      insertions += fileStats.insertions;
-      deletions += fileStats.deletions;
-    }
-    return { filesCount: files.length, insertions, deletions };
-  }
+function doFullFileHunksMatch(
+  partialFile: ParsedGitDiffFile,
+  fullFile: ParsedGitDiffFile,
+): boolean {
+  return partialFile.hunks.every(
+    (hunk) =>
+      doLineRangesMatch({
+        expectedLines: partialFile.deletionLines,
+        expectedStart: hunk.deletionLineIndex,
+        actualLines: fullFile.deletionLines,
+        actualStart: hunk.deletionStart - 1,
+        count: hunk.deletionCount,
+      }) &&
+      doLineRangesMatch({
+        expectedLines: partialFile.additionLines,
+        expectedStart: hunk.additionLineIndex,
+        actualLines: fullFile.additionLines,
+        actualStart: hunk.additionStart - 1,
+        count: hunk.additionCount,
+      }),
+  );
+}
 
-  let insertions = 0;
-  let deletions = 0;
-  let filesCount = 0;
-  for (const line of diff.split("\n")) {
-    if (line.startsWith("diff --git ")) {
-      filesCount += 1;
-      continue;
-    }
-    if (line.startsWith("+++ ")) continue;
-    if (line.startsWith("--- ")) continue;
-    if (line.startsWith("+")) {
-      insertions += 1;
-      continue;
-    }
-    if (line.startsWith("-")) {
-      deletions += 1;
+function doLineRangesMatch({
+  expectedLines,
+  expectedStart,
+  actualLines,
+  actualStart,
+  count,
+}: {
+  expectedLines: string[];
+  expectedStart: number;
+  actualLines: string[];
+  actualStart: number;
+  count: number;
+}): boolean {
+  if (
+    expectedStart < 0 ||
+    actualStart < 0 ||
+    count < 0 ||
+    expectedStart + count > expectedLines.length ||
+    actualStart + count > actualLines.length
+  ) {
+    return false;
+  }
+  for (let index = 0; index < count; index += 1) {
+    if (
+      normalizeComparableDiffLine(expectedLines[expectedStart + index]) !==
+      normalizeComparableDiffLine(actualLines[actualStart + index])
+    ) {
+      return false;
     }
   }
-  return {
-    filesCount:
-      filesCount > 0 ? filesCount : insertions > 0 || deletions > 0 ? 1 : 0,
-    insertions,
-    deletions,
-  };
+  return true;
+}
+
+function normalizeComparableDiffLine(line: string | undefined): string {
+  return line?.endsWith("\r\n") ? `${line.slice(0, -2)}\n` : (line ?? "");
 }
 
 export function summarizeGitDiffFile(
@@ -167,10 +246,6 @@ export function isPreviewableImagePath(path: string | undefined): boolean {
   return (
     extension !== undefined && IMAGE_GIT_DIFF_FILE_EXTENSIONS.has(extension)
   );
-}
-
-export function isImageGitDiffFile(file: ParsedGitDiffFile): boolean {
-  return isPreviewableImagePath(file.name);
 }
 
 export function isSvgGitDiffFile(file: ParsedGitDiffFile): boolean {

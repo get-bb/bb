@@ -11,7 +11,7 @@
 //
 // The type-only import is erased at load time; this file runs as-is.
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 
 const SIGNATURE_VERSION = "v0";
 /** Slack replays are rejected past this age (Slack's own recommendation). */
@@ -108,7 +108,10 @@ export default async function plugin(bb: BbPluginApi) {
       const current = await settings.get();
       if (!current.signingSecret) {
         return context.json(
-          { ok: false, error: `slack-bot is not configured. ${CONFIGURE_HINT}` },
+          {
+            ok: false,
+            error: `slack-bot is not configured. ${CONFIGURE_HINT}`,
+          },
           503,
         );
       }
@@ -120,7 +123,10 @@ export default async function plugin(bb: BbPluginApi) {
         rawBody,
       });
       if (!verified) {
-        return context.json({ ok: false, error: "invalid Slack signature" }, 401);
+        return context.json(
+          { ok: false, error: "invalid Slack signature" },
+          401,
+        );
       }
 
       let body: any;
@@ -135,7 +141,10 @@ export default async function plugin(bb: BbPluginApi) {
         return context.json({ challenge: body.challenge });
       }
 
-      if (body?.type === "event_callback" && body.event?.type === "app_mention") {
+      if (
+        body?.type === "event_callback" &&
+        body.event?.type === "app_mention"
+      ) {
         const event = body.event as {
           channel: string;
           text: string;
@@ -143,7 +152,9 @@ export default async function plugin(bb: BbPluginApi) {
           thread_ts?: string;
         };
         if (!current.project) {
-          bb.log.warn(`mention ignored — no project configured. ${CONFIGURE_HINT}`);
+          bb.log.warn(
+            `mention ignored — no project configured. ${CONFIGURE_HINT}`,
+          );
           return context.json({ ok: true });
         }
         const prompt = stripMentions(event.text);
@@ -208,7 +219,9 @@ export default async function plugin(bb: BbPluginApi) {
     });
     const result = (await response.json()) as { ok: boolean; error?: string };
     if (!result.ok) {
-      bb.log.warn(`chat.postMessage failed: ${result.error ?? "unknown error"}`);
+      bb.log.warn(
+        `chat.postMessage failed: ${result.error ?? "unknown error"}`,
+      );
     }
   });
 

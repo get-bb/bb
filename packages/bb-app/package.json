@@ -1,6 +1,6 @@
 {
   "name": "bb-app",
-  "version": "0.36.0",
+  "version": "0.39.0",
   "description": "bb app launcher for npx",
   "keywords": [
     "bb",
@@ -47,10 +47,10 @@
     "dist",
     "!dist/*.map",
     "host-daemon/dist/bb",
-    "host-daemon/dist/bb-acp-bridge.mjs",
-    "host-daemon/dist/bb-claude-code-bridge.mjs",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
     "host-daemon/dist/bb-pi-bridge.mjs",
+    "host-daemon/dist/bb-plugin-host-worker.mjs",
+    "host-daemon/dist/bb-provider-bridge-worker.mjs",
     "host-daemon/dist/daemon-bundle.mjs",
     "server/dist",
     "!server/dist/index.js.map",

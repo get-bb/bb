@@ -10,7 +10,7 @@ import {
   type ResourceDiagnostic,
 } from "@earendil-works/pi-coding-agent";
 
-export type CreateConfiguredPiServicesOptions = Omit<
+type CreateConfiguredPiServicesOptions = Omit<
   CreateAgentSessionServicesOptions,
   "agentDir" | "cwd" | "resourceLoaderReloadOptions" | "settingsManager"
 > & {
@@ -35,6 +35,26 @@ function resolveProjectTrusted(
   // The bridge has no trust prompt. Pi treats an unresolved `ask` decision as
   // untrusted in every non-interactive mode, so BB must do the same.
   return settingsManager.getDefaultProjectTrust() === "always";
+}
+
+/** Build Pi settings with the same saved and default project-trust policy. */
+function createConfiguredPiSettingsManager(
+  cwd: string,
+  agentDir: string,
+): SettingsManager {
+  const resolvedCwd = resolve(cwd);
+  const resolvedAgentDir = resolve(agentDir);
+  const settingsManager = SettingsManager.create(
+    resolvedCwd,
+    resolvedAgentDir,
+    {
+      projectTrusted: false,
+    },
+  );
+  settingsManager.setProjectTrusted(
+    resolveProjectTrusted(resolvedCwd, resolvedAgentDir, settingsManager),
+  );
+  return settingsManager;
 }
 
 function formatResourceErrors(
@@ -84,7 +104,7 @@ function collectServiceErrors(services: AgentSessionServices): string[] {
   return [...new Set(errors)];
 }
 
-export interface LoadedPiServices {
+interface LoadedPiServices {
   /** Problems found in the user's Pi configuration. Empty when it is clean. */
   configErrors: string[];
   services: AgentSessionServices;
@@ -103,12 +123,7 @@ export async function loadConfiguredPiServices(
 ): Promise<LoadedPiServices> {
   const cwd = resolve(options.cwd);
   const agentDir = resolve(options.agentDir ?? getAgentDir());
-  const settingsManager = SettingsManager.create(cwd, agentDir, {
-    projectTrusted: false,
-  });
-  settingsManager.setProjectTrusted(
-    resolveProjectTrusted(cwd, agentDir, settingsManager),
-  );
+  const settingsManager = createConfiguredPiSettingsManager(cwd, agentDir);
 
   const services = await createAgentSessionServices({
     ...options,

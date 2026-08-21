@@ -84,6 +84,12 @@ export function applyAppThemeCss(css: string): void {
  * Apply the palette cached from the previous load. Called once at startup
  * before the server's /system/config (and thus the authoritative appearance)
  * has loaded, so a non-default palette doesn't flash the default first.
+ *
+ * index.html already injects the cached CSS into `#bb-app-theme` before the
+ * first paint (see the inline script at the end of <body>). This call adopts
+ * that element and only re-appends it when something was inserted into <head>
+ * after it — the dev server's `<style data-vite-dev-id>` tags land after the
+ * pre-paint element — so the palette overrides keep winning by source order.
  */
 export function applyCachedAppThemeCss(): void {
   if (typeof document === "undefined") return;
@@ -93,5 +99,10 @@ export function applyCachedAppThemeCss(): void {
   } catch {
     cached = null;
   }
-  if (cached) applyAppThemeCss(cached);
+  if (!cached) return;
+  const style = getOrCreateStyleElement();
+  if (style && style !== document.head.lastElementChild) {
+    document.head.appendChild(style);
+  }
+  applyAppThemeCss(cached);
 }

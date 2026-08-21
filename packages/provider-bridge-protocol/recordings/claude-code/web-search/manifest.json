@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "web-search",
+  "threadId": "thr_wbu8jrugzu",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "A turn that uses web search or fetch (or a shell fallback).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 14,
+    "provider→bridge": 52,
+    "bridge→provider": 9
+  }
+}

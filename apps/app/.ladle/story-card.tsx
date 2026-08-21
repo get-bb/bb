@@ -26,7 +26,7 @@ const StoryCardContext = createContext<{
   valueAlign: "start",
 });
 
-export interface StoryCardProps {
+interface StoryCardProps {
   children: ReactNode;
   className?: string;
   labelWidth?: string;
@@ -90,7 +90,7 @@ export function StoryCard({
   );
 }
 
-export interface StoryRowProps {
+interface StoryRowProps {
   label: ReactNode;
   hint?: ReactNode;
   children: ReactNode;

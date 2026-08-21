@@ -8,11 +8,16 @@ import {
   HostDaemonOnlineRpcResult,
   HostDaemonSettledCommandType,
 } from "@bb/host-daemon-contract";
+import semver from "semver";
 import {
   defaultListModels,
+  defaultProviderHealth,
+  defaultProviderInstallationRun,
+  defaultProviderInstallationStatus,
+  defaultProviderUsage,
   ExpectedCommandDispatchError,
+  resolveRuntimeBridgeLaunch,
   type CommandOf,
-  requireExistingEnvironment,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
 import {
@@ -20,10 +25,9 @@ import {
   provisionEnvironment,
 } from "./command-handlers/environment.js";
 import {
-  createCaffeinateManager,
-  type CaffeinateManager,
-} from "./command-handlers/caffeinate.js";
-import { listHostBranches } from "./command-handlers/host-branches.js";
+  listHostBranchOptions,
+  listHostBranches,
+} from "./command-handlers/host-branches.js";
 import {
   installGlobalSkills,
   readGlobalSkillsStatus,
@@ -55,16 +59,18 @@ import {
   completeCodexInference,
   transcribeCodexVoice,
 } from "./codex-chatgpt-client.js";
-import { discoverRepos } from "./command-handlers/discover-repos.js";
-import { getProviderUsage } from "./provider-usage.js";
 import {
-  getKnownAcpAgentsStatus,
-  getProviderCliStatus,
-  ProviderCliInstallInProgressError,
-  streamProviderCliInstall,
-} from "./provider-cli-health.js";
+  ProviderInstallationInProgressError,
+  streamProviderInstallation,
+} from "./provider-installation.js";
+import type {
+  ExperimentalProviderInstallationStatus,
+  ExperimentalProviderInstallationVerification,
+} from "@bb/provider-bridge-protocol";
 import {
+  discardThreadRewind,
   ensureThreadRuntime,
+  prepareThreadRewind,
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
@@ -80,14 +86,13 @@ import {
   resolveWorkspaceForCommand,
   workspaceResolutionFailureFromError,
 } from "./workspace-resolution.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
-const defaultCaffeinateManager = createCaffeinateManager();
 
 export {
   CommandDispatchError,
   getErrorCode,
-  noopEventSink,
   type CommandDispatchOptions,
 } from "./command-dispatch-support.js";
 
@@ -116,12 +121,6 @@ function providerCliEnvFromShellEnv(
   shellEnv: NodeJS.ProcessEnv,
 ): NodeJS.ProcessEnv {
   return shellEnv.PATH ? { ...process.env, PATH: shellEnv.PATH } : process.env;
-}
-
-function getCaffeinateManager(
-  options: CommandDispatchOptions,
-): CaffeinateManager {
-  return options.caffeinateManager ?? defaultCaffeinateManager;
 }
 
 function handleProviderCliInstallEventLine(
@@ -169,39 +168,133 @@ async function readProviderCliInstallEvents(
   return events;
 }
 
-async function installProviderCliOnHost(
-  command: CommandOf<"provider_cli.install">,
+function failProviderInstallationVerification(args: {
+  providerId: string;
+  events: ProviderCliInstallEvent[];
+  message: string;
+}): ProviderCliInstallEvent[] {
+  const verifiedEvents = [...args.events];
+  const completedIndex = verifiedEvents.findIndex(
+    (event) => event.type === "completed" && event.success,
+  );
+  const completedEvent = verifiedEvents[completedIndex];
+  if (completedEvent?.type !== "completed") {
+    return args.events;
+  }
+  verifiedEvents[completedIndex] = { ...completedEvent, success: false };
+  verifiedEvents.splice(completedIndex, 0, {
+    type: "error",
+    provider: args.providerId,
+    message: args.message,
+  });
+  return verifiedEvents;
+}
+
+function installationVerificationPassed(
+  verification: ExperimentalProviderInstallationVerification,
+  status: ExperimentalProviderInstallationStatus,
+): boolean {
+  switch (verification.kind) {
+    case "installed":
+      return status.installed;
+    case "version_at_least": {
+      const actual =
+        status.currentVersion === null
+          ? null
+          : semver.valid(status.currentVersion);
+      const expected = semver.valid(verification.version);
+      return (
+        actual !== null && expected !== null && semver.gte(actual, expected)
+      );
+    }
+    case "version_changed": {
+      const actual = status.currentVersion;
+      if (actual === null) return false;
+      const parsedActual = semver.valid(actual);
+      const parsedPrevious = semver.valid(verification.previousVersion);
+      return parsedActual !== null && parsedPrevious !== null
+        ? semver.gt(parsedActual, parsedPrevious)
+        : actual !== verification.previousVersion;
+    }
+  }
+  return false;
+}
+
+async function runProviderInstallationOnHost(
+  command: CommandOf<"provider.installation.run">,
   options: CommandDispatchOptions,
-): Promise<HostDaemonOnlineRpcResult<"provider_cli.install">> {
+): Promise<HostDaemonOnlineRpcResult<"provider.installation.run">> {
   try {
     const env = providerCliEnvFromShellEnv(
       options.runtimeManager.getShellEnv(),
     );
-    const streamInstall =
-      options.streamProviderCliInstall ?? streamProviderCliInstall;
-    const events = await readProviderCliInstallEvents(
-      streamInstall({
-        provider: command.provider,
-        actionKind: command.actionKind,
-        env,
-      }),
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
     );
-    if (
-      shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall({
-        command,
-        events,
-      })
-    ) {
-      await options.runtimeManager.invalidateProviderMaintenanceRuntime();
-    }
-    return { events };
-  } catch (error) {
-    if (error instanceof ProviderCliInstallInProgressError) {
+    const maintenanceArgs = {
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      bridgeLaunch,
+    };
+    const run = await (
+      options.providerInstallationRun ?? defaultProviderInstallationRun
+    )({ ...maintenanceArgs, action: command.action });
+    if (!run.available) {
       return {
         events: [
           {
             type: "error",
-            provider: command.provider,
+            provider: command.providerId,
+            message: run.message,
+          },
+        ],
+      };
+    }
+    const stream =
+      options.streamProviderInstallation ?? streamProviderInstallation;
+    let events = await readProviderCliInstallEvents(
+      stream({
+        providerId: command.providerId,
+        plan: run.command,
+        env,
+      }),
+    );
+    if (events.some((event) => event.type === "completed" && event.success)) {
+      try {
+        const status = await (
+          options.providerInstallationStatus ??
+          defaultProviderInstallationStatus
+        )(maintenanceArgs);
+        if (!installationVerificationPassed(run.verification, status)) {
+          events = failProviderInstallationVerification({
+            providerId: command.providerId,
+            events,
+            message: `${command.providerId} ${command.action} exited successfully, but the provider could not verify the installed result.`,
+          });
+        }
+      } catch {
+        events = failProviderInstallationVerification({
+          providerId: command.providerId,
+          events,
+          message: `${command.providerId} ${command.action} exited successfully, but its installation status could not be verified.`,
+        });
+      }
+    }
+    if (events.some((event) => event.type === "completed" && event.success)) {
+      await options.runtimeManager.invalidateProviderMaintenanceRuntime();
+    }
+    return { events };
+  } catch (error) {
+    if (error instanceof ProviderInstallationInProgressError) {
+      return {
+        events: [
+          {
+            type: "error",
+            provider: command.providerId,
             message: error.message,
           },
         ],
@@ -211,29 +304,37 @@ async function installProviderCliOnHost(
   }
 }
 
-function shouldInvalidateProviderMaintenanceRuntimeAfterProviderCliInstall(args: {
-  command: CommandOf<"provider_cli.install">;
-  events: readonly ProviderCliInstallEvent[];
-}): boolean {
-  return (
-    // Codex model listing goes through the resident provider-maintenance
-    // app-server, so a Codex CLI update can leave a stale model catalog alive.
-    args.command.provider === "codex" &&
-    args.events.some(
-      (event) =>
-        event.type === "completed" &&
-        event.provider === args.command.provider &&
-        event.success,
-    )
-  );
-}
-
 const commandHandlers: CommandHandlerMap = {
+  "thread.rewind.discard": async (command, options) => {
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
+    try {
+      return await discardThreadRewind(command, options);
+    } finally {
+      release();
+    }
+  },
+  "thread.rewind.prepare": async (command, options) => {
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
+    try {
+      return await prepareThreadRewind(command, options);
+    } finally {
+      release();
+    }
+  },
   "thread.start": async (command, options) => {
-    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
-      command.environmentId,
-      command.threadId,
-    );
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
     try {
       return await startThread(command, options);
     } finally {
@@ -241,10 +342,11 @@ const commandHandlers: CommandHandlerMap = {
     }
   },
   "turn.submit": async (command, options) => {
-    const release = options.runtimeManager.retainEnvironmentForThreadCommand(
-      command.environmentId,
-      command.threadId,
-    );
+    const release =
+      await options.runtimeManager.retainEnvironmentForThreadCommand(
+        command.environmentId,
+        command.threadId,
+      );
     try {
       const entry = await ensureThreadRuntime(command, options);
       return await submitTurn(command, entry, options);
@@ -253,25 +355,58 @@ const commandHandlers: CommandHandlerMap = {
     }
   },
   "thread.stop": async (command, options) => {
-    const entry = await requireExistingEnvironment(
+    // Release before the target runtime lookup. A moved thread often has no
+    // runtime in its new environment yet, and the old owner must still stop.
+    const released =
+      await options.runtimeManager.releaseThreadFromOtherEnvironments({
+        activeTurn: "interrupt",
+        environmentId: command.environmentId,
+        threadId: command.threadId,
+      });
+    const entry = await options.runtimeManager.getOrAwait(
       command.environmentId,
-      options.runtimeManager,
     );
+    if (!entry) {
+      // No loaded runtime means the idempotent stop already reached its goal.
+      await options.eventSink.flush();
+      return {
+        providerCheckpointId: released.providerCheckpointId,
+      };
+    }
+    let providerCheckpointId = released.providerCheckpointId;
     if (entry.runtime.hasThread(command.threadId)) {
       // Stop can be dispatched while the start/submit RPC is still in flight
       // and the turn/started event has not been observed yet. Wait for the
       // runtime to learn the active turn (event-driven, resolves null on
       // timeout or when the thread goes idle) so the provider stop carries
-      // the right turn id.
-      await entry.runtime.waitForActiveTurn(command.threadId, {
-        timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
+      // the right turn id. A release does not wait: the server already
+      // settled the thread as idle, so waiting only burns the full timeout on
+      // every runtime it unloads.
+      //
+      // A release can still lose a race with a turn that started after the
+      // server read the thread. Stopping then would end accepted work and
+      // leave the server holding an active thread with no runtime, so a
+      // release skips a busy runtime instead. A later idle release unloads it.
+      if (command.intent === "release") {
+        if (entry.runtime.getActiveTurnId(command.threadId) !== null) {
+          await options.eventSink.flush();
+          return { providerCheckpointId };
+        }
+      } else {
+        await entry.runtime.waitForActiveTurn(command.threadId, {
+          timeoutMs: THREAD_STOP_ACTIVE_TURN_WAIT_MS,
+        });
+      }
+      const result = await entry.runtime.stopThread({
+        threadId: command.threadId,
       });
-      await entry.runtime.stopThread({ threadId: command.threadId });
+      providerCheckpointId =
+        result.providerCheckpointId ?? providerCheckpointId;
     }
     // Stop completion finalizes server-side thread state. Flush provider
     // events first so buffered lifecycle events cannot arrive after that.
     await options.eventSink.flush();
-    return {};
+    return { providerCheckpointId };
   },
   "thread.goal.clear": async (command, options) => {
     const entry = await ensureThreadRuntime(command, options);
@@ -282,22 +417,26 @@ const commandHandlers: CommandHandlerMap = {
     return result;
   },
   "thread.plan.cancel": async (command, options) => {
-    const entry = await requireExistingEnvironment(
-      command.environmentId,
-      options.runtimeManager,
+    // A moved thread keeps its turn in the environment it left, and the new
+    // environment may hold no runtime yet. Cancel where the turn runs.
+    const owners = options.runtimeManager.listThreadOwnerEntries(
+      command.threadId,
     );
-    if (!entry.runtime.hasThread(command.threadId)) {
+    if (owners.length === 0) {
       throw new ExpectedCommandDispatchError(
         "unknown_thread_runtime",
         `No provider runtime available for thread ${command.threadId}`,
       );
     }
-    if (
-      entry.runtime.getActiveTurnId(command.threadId) !== command.expectedTurnId
-    ) {
+    const owner = owners.find(
+      (entry) =>
+        entry.runtime.getActiveTurnId(command.threadId) ===
+        command.expectedTurnId,
+    );
+    if (!owner) {
       return { cancelled: false };
     }
-    await entry.runtime.stopThread({ threadId: command.threadId });
+    await owner.runtime.stopThread({ threadId: command.threadId });
     await options.eventSink.flush();
     return { cancelled: true };
   },
@@ -308,6 +447,8 @@ const commandHandlers: CommandHandlerMap = {
     if (!entry) {
       return {};
     }
+    // Rename does not move the provider session, so it must not stop a turn
+    // that still runs in the environment the thread left.
     await entry.runtime.renameThread({
       threadId: command.threadId,
       title: command.title,
@@ -321,23 +462,35 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    // Archive works on stored provider state, not on the live session, so it
+    // must not stop a turn in the environment the thread left.
     await entry.runtime.archiveThread({
       threadId: command.threadId,
       providerId: command.providerId,
       providerThreadId: command.providerThreadId,
+      bridgeLaunch,
     });
     return {};
   },
   "thread.unarchive": async (command, options) => {
-    const runtime =
-      await options.runtimeManager.ensureProviderMaintenanceRuntime({
-        dataDir: options.dataDir,
-      });
-    await runtime.unarchiveThread({
-      threadId: command.threadId,
-      providerId: command.providerId,
-      providerThreadId: command.providerThreadId,
-    });
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    await options.runtimeManager.withProviderMaintenanceRuntime(
+      { dataDir: options.dataDir },
+      (runtime) =>
+        runtime.unarchiveThread({
+          threadId: command.threadId,
+          providerId: command.providerId,
+          providerThreadId: command.providerThreadId,
+          bridgeLaunch,
+        }),
+    );
     return {};
   },
   "interactive.resolve": resolveInteractiveRequest,
@@ -349,6 +502,7 @@ const commandHandlers: CommandHandlerMap = {
       dataDir: options.dataDir,
       projectSlug: command.projectSlug,
       remoteUrl: command.remoteUrl,
+      ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
       ...(command.targetPath !== undefined
         ? { targetPath: command.targetPath }
         : {}),
@@ -402,18 +556,30 @@ const commandHandlers: CommandHandlerMap = {
       runtimeManager: options.runtimeManager,
       workspaceContext: command.workspaceContext,
     });
+    const cliOptions = userExecutableProcessOptions(
+      options.runtimeManager.getShellEnv(),
+    );
     switch (command.operation) {
       case "ready":
-        await entry.workspace.runPullRequestAction({ operation: "ready" });
+        await entry.workspace.runPullRequestAction(
+          { operation: "ready" },
+          cliOptions,
+        );
         break;
       case "draft":
-        await entry.workspace.runPullRequestAction({ operation: "draft" });
+        await entry.workspace.runPullRequestAction(
+          { operation: "draft" },
+          cliOptions,
+        );
         break;
       case "merge":
-        await entry.workspace.runPullRequestAction({
-          operation: "merge",
-          method: command.method,
-        });
+        await entry.workspace.runPullRequestAction(
+          {
+            operation: "merge",
+            method: command.method,
+          },
+          cliOptions,
+        );
         break;
       default: {
         const _exhaustive: never = command;
@@ -438,13 +604,24 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
-  "project.inspect": async (command) => inspectProjectPath(command.path),
+  "project.inspect": async (command, options) =>
+    inspectProjectPath(
+      command.path,
+      userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
+    ),
   "project.clone_default_path": async (command, options) => ({
     path: resolveProjectCloneDefaultPath(options.dataDir, command.projectSlug),
   }),
   "host.pick_folder": pickHostFolder,
-  "host.caffeinate": async (command, options) =>
-    getCaffeinateManager(options).setEnabled(command.enabled),
+  "plugin.host.call": async () => {
+    throw new Error("plugin.host.call must be routed by CommandRouter");
+  },
+  "plugin.host.cancel": async () => {
+    throw new Error("plugin.host.cancel must be routed by CommandRouter");
+  },
+  "plugin.host.dispose": async () => {
+    throw new Error("plugin.host.dispose must be routed by CommandRouter");
+  },
   "host.list_commands": listHostCommands,
   "host.list_skills": listHostSkills,
   "host.delete_skill": deleteHostSkill,
@@ -452,34 +629,74 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.install_global_skills": installGlobalSkills,
   "host.global_skills_status": async (command) =>
     readGlobalSkillsStatus(command, {}),
+  "host.list_branch_options": listHostBranchOptions,
   "host.list_branches": listHostBranches,
   "host.file_metadata": readHostFileMetadata,
   "host.read_file": readHostFile,
   "host.read_file_relative": readHostRelativeFile,
   "host.write_file": writeHostFile,
-  "provider.list_models": async (command, options) =>
-    (options.listModels ?? defaultListModels)({
+  "provider.list_models": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (options.listModels ?? defaultListModels)({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
-    }),
-  "known_acp_agents.status": async (command) =>
-    getKnownAcpAgentsStatus({ agents: command.agents }),
-  "provider.usage": async () => getProviderUsage(),
-  "provider_cli.status": async (_command, options) =>
-    getProviderCliStatus({
-      env: providerCliEnvFromShellEnv(options.runtimeManager.getShellEnv()),
-    }),
-  "provider_cli.install": installProviderCliOnHost,
-  "workspace.discover_repos": async (command, options) =>
-    discoverRepos({
-      maxDepth: command.maxDepth,
-      sinceDays: command.sinceDays,
-      limit: command.limit,
-      env: options.runtimeManager.getShellEnv(),
-    }),
+      bridgeLaunch,
+    });
+  },
+  "provider.health": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (options.providerHealth ?? defaultProviderHealth)({
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      bridgeLaunch,
+    });
+  },
+  "provider.usage": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (options.providerUsage ?? defaultProviderUsage)({
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      bridgeLaunch,
+    });
+  },
+  "provider.installation.status": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    return (
+      options.providerInstallationStatus ?? defaultProviderInstallationStatus
+    )({
+      providerId: command.providerId,
+      ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
+      ...(command.acpLaunchSpec !== undefined
+        ? { acpLaunchSpec: command.acpLaunchSpec }
+        : {}),
+      ...(command.requirement !== undefined
+        ? { requirement: command.requirement }
+        : {}),
+      bridgeLaunch,
+    });
+  },
+  "provider.installation.run": runProviderInstallationOnHost,
   "workspace.status": async (command, options) => {
     const resolution = await resolveWorkspaceForCommand({
       dataDir: options.dataDir,
@@ -497,6 +714,8 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         outcome: "available",
         workspaceStatus: await resolution.entry.workspace.getStatus({
           mergeBaseBranch: command.mergeBaseBranch,
+          maxUntrackedLineStatFiles: command.maxUntrackedLineStatFiles,
+          maxUntrackedLineStatBytes: command.maxUntrackedLineStatBytes,
         }),
       };
     } catch (error) {
@@ -528,6 +747,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
           target: command.target,
           maxDiffBytes: command.maxDiffBytes,
           maxFileListBytes: command.maxFileListBytes,
+          maxUntrackedFiles: command.maxUntrackedFiles,
         }),
       };
     } catch (error) {
@@ -557,6 +777,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         outcome: "available",
         ...(await resolution.entry.workspace.diffFiles({
           target: command.target,
+          maxFiles: command.maxFiles,
         })),
       };
     } catch (error) {
@@ -617,7 +838,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         ? { outcome: "absent" }
         : { outcome: "unavailable", message: resolution.failure.message };
     }
-    const lookup = await resolution.entry.workspace.getPullRequest();
+    const lookup = await resolution.entry.workspace.getPullRequest(
+      userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
+    );
     switch (lookup.outcome) {
       case "found":
         return { outcome: "available", pullRequest: lookup.pullRequest };

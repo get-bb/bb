@@ -28,21 +28,12 @@ import { cn } from "@bb/shared-ui/lib/utils";
 export const HEADER_ICON_BUTTON_CLASS = COARSE_POINTER_HEADER_ICON_BUTTON_CLASS;
 
 /**
- * Header icon button whose glyph is painted one optical step smaller than
- * {@link HEADER_ICON_BUTTON_CLASS} while keeping the same button box (and hit
- * target). Used for visually dense glyphs that otherwise read oversized next
- * to compact header controls.
- */
-export const HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS =
-  COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
-
-/**
  * Shared geometry for the maximize and close controls at the end of a pane
  * header. Keeping both controls on one class gives their button boxes and
  * glyphs the same center axis.
  */
 export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
-  HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
+  COARSE_POINTER_HEADER_REDUCED_GLYPH_ICON_BUTTON_CLASS;
 
 /**
  * Seam that separates a header row from the body below it. Every app header
@@ -50,6 +41,15 @@ export const HEADER_PANE_ACTION_ICON_BUTTON_CLASS =
  * call site. Panes without it read as if their title bar floats on the body.
  */
 export const HEADER_SEAM_CLASS = "border-b border-border-seam-vertical/60";
+
+/**
+ * Shared page-header surface treatment. Secondary chrome that sits beside a
+ * page header can reuse this token so the two regions read as one title row.
+ * No `backdrop-blur`: the header is a non-overlapping flex sibling above the
+ * scroller, so nothing paints behind it and a blur would only add a
+ * compositing pass on every frame.
+ */
+export const APP_PAGE_HEADER_SURFACE_CLASS = "bg-surface-scrim";
 
 interface AppPageHeaderProps {
   center?: ReactNode;
@@ -94,7 +94,8 @@ export function AppPageHeader({
       className={cn(
         CHROME_ROW_HEIGHT_CLASS,
         HEADER_SEAM_CLASS,
-        "relative shrink-0 bg-surface-scrim px-4 backdrop-blur-sm",
+        APP_PAGE_HEADER_SURFACE_CLASS,
+        "relative shrink-0 select-none px-4",
         usesDesktopChrome && isWindowDragRegion && MACOS_WINDOW_DRAG_CLASS,
         className,
       )}

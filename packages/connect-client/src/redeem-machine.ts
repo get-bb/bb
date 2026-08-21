@@ -12,7 +12,7 @@ const redeemMachineResponseSchema = z.object({
 
 const redeemMachineErrorSchema = z.object({ error: z.string() });
 
-export type ConnectMachineRedeemErrorCode =
+type ConnectMachineRedeemErrorCode =
   | "already_used"
   | "expired"
   | "invalid_code"

@@ -7,7 +7,7 @@ export const DEFAULT_MAX_RECONNECT_DELAY_MS = 30_000;
  * counter (so a brief blip after a stable session does not jump to long delays).
  * Equality with the threshold does not reset — the comparison is strict `>`.
  */
-export const DEFAULT_STABLE_CONNECTION_MS = 10_000;
+const DEFAULT_STABLE_CONNECTION_MS = 10_000;
 
 export interface ReconnectBackoffOptions {
   baseDelayMs?: number;

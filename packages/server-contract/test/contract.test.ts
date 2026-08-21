@@ -200,21 +200,25 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "System provider lookups may target a host indirectly or directly and may omit provider id to use the host default.",
+      "System provider lookups may target a host indirectly or directly, omit provider id to use the host default, and omit capability to return the full roster.",
     fields: [
       "systemExecutionOptionsQuerySchema.environmentId",
       "systemExecutionOptionsQuerySchema.hostId",
       "systemExecutionOptionsQuerySchema.providerId",
+      "systemProvidersQuerySchema.capability",
       "systemProvidersQuerySchema.environmentId",
       "systemProvidersQuerySchema.hostId",
     ],
   },
   {
     reason:
-      "Thread event queries may omit pagination parameters to start from the beginning with the default page size.",
+      "Thread event queries may omit filters and pagination to read the default ascending page from the beginning.",
     fields: [
       "threadEventsQuerySchema.afterSeq",
+      "threadEventsQuerySchema.beforeSeq",
       "threadEventsQuerySchema.limit",
+      "threadEventsQuerySchema.order",
+      "threadEventsQuerySchema.types",
     ],
   },
   {
@@ -222,7 +226,6 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Thread list queries may omit filters and pagination to include the corresponding unfiltered/default set.",
     fields: [
       "threadListQuerySchema.archived",
-      "threadListQuerySchema.childOrigin",
       "threadListQuerySchema.sectionId",
       "threadListQuerySchema.limit",
       "threadListQuerySchema.hasParent",
@@ -834,7 +837,6 @@ describe("server-contract canonical schemas", () => {
           parentThreadId: null,
           sourceThreadId: null,
           originKind: null,
-          childOrigin: null,
           originPluginId: null,
           visibility: "visible",
           archivedAt: null,
@@ -1247,7 +1249,7 @@ describe("server-contract canonical schemas", () => {
     ).toThrow();
   });
 
-  it("defaults startedOnBehalfOf, originKind, and childOrigin to null", () => {
+  it("defaults startedOnBehalfOf and originKind to null", () => {
     const parsed = createThreadRequestSchema.parse({
       projectId: "proj_123",
       providerId: "codex",
@@ -1261,7 +1263,6 @@ describe("server-contract canonical schemas", () => {
     });
     expect(parsed.startedOnBehalfOf).toBeNull();
     expect(parsed.originKind).toBeNull();
-    expect(parsed.childOrigin).toBeNull();
   });
 
   it("accepts sdk as a thread creation origin", () => {
@@ -1381,13 +1382,13 @@ describe("server-contract canonical schemas", () => {
         workspace: { type: "unmanaged", path: null },
       },
       startedOnBehalfOf: { initiator: "agent", senderThreadId: "thr_source" },
-      childOrigin: "fork",
+      originKind: "fork",
     });
     expect(parsed.startedOnBehalfOf).toEqual({
       initiator: "agent",
       senderThreadId: "thr_source",
     });
-    expect(parsed.childOrigin).toBe("fork");
+    expect(parsed.originKind).toBe("fork");
   });
 
   it("rejects startedOnBehalfOf without a sender thread or with initiator user", () => {
@@ -1425,7 +1426,7 @@ describe("server-contract canonical schemas", () => {
     ).toThrow();
   });
 
-  it("rejects an unknown childOrigin", () => {
+  it("rejects an unknown originKind", () => {
     expect(() =>
       createThreadRequestSchema.parse({
         projectId: "proj_123",
@@ -1437,7 +1438,7 @@ describe("server-contract canonical schemas", () => {
           hostId: "host_abc",
           workspace: { type: "unmanaged", path: null },
         },
-        childOrigin: "branch",
+        originKind: "branch",
       }),
     ).toThrow();
   });
@@ -1470,11 +1471,6 @@ describe("server-contract clients", () => {
       publicClient.threads[":id"].send.$url({ param: { id: "thr_123" } })
         .pathname,
     ).toBe("/api/v1/threads/thr_123/send");
-    expect(
-      publicClient.threads[":id"]["composer-bootstrap"].$url({
-        param: { id: "thr_123" },
-      }).pathname,
-    ).toBe("/api/v1/threads/thr_123/composer-bootstrap");
     expect(
       publicClient.threads[":id"]["queued-messages"].$url({
         param: { id: "thr_123" },
@@ -1536,6 +1532,11 @@ describe("server-contract clients", () => {
         param: { id: "thr_123" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/thread-storage/files");
+    expect(
+      publicClient.threads[":id"]["thread-storage"].location.$url({
+        param: { id: "thr_123" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/thread-storage/location");
     expect(
       publicClient.threads[":id"]["thread-storage"].paths.$url({
         param: { id: "thr_123" },

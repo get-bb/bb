@@ -13,19 +13,19 @@ import type {
 } from "./thread-create-request.js";
 import { resolveCreateThreadExecutionDefaults } from "./thread-default-policy.js";
 
-export interface RememberProjectExecutionDefaultsForCreateArgs {
+interface RememberProjectExecutionDefaultsForCreateArgs {
   execution: ResolvedThreadExecutionOptions;
   request: ThreadCreateServiceRequest;
 }
 
-export interface ResolveProjectExecutionDefaultsForCreateArgs {
+interface ResolveProjectExecutionDefaultsForCreateArgs {
   executionInputSources?: ThreadCreateServiceRequestInput["executionInputSources"];
   model?: ThreadCreateServiceRequestInput["model"];
   projectId: string;
   providerId?: ThreadCreateServiceRequestInput["providerId"];
 }
 
-export interface ResolvedProjectExecutionDefaultsForCreate {
+interface ResolvedProjectExecutionDefaultsForCreate {
   executionDefaults: ProjectExecutionDefaults | null;
   providerId: string;
   requestedModel: string | null;
@@ -42,7 +42,6 @@ interface ResolveRequestedCreateExecutionValueArgs<TValue> {
 }
 
 function shouldRememberProjectExecutionDefaults(args: {
-  childOrigin?: ThreadCreateServiceRequest["childOrigin"];
   environment: ThreadCreateServiceRequest["environment"];
   origin: ThreadCreateServiceRequest["origin"];
   originKind?: ThreadCreateServiceRequest["originKind"];
@@ -54,7 +53,7 @@ function shouldRememberProjectExecutionDefaults(args: {
   // Fork/side-chat spawns inherit execution from their source thread and carry
   // forced/inherited values the user never picked in the composer (e.g. a side
   // chat's readonly mode). They must not reshape the project's stored defaults.
-  if ((args.originKind ?? args.childOrigin) !== null) return false;
+  if (args.originKind !== null) return false;
   return args.origin === "app";
 }
 
@@ -73,7 +72,7 @@ function resolveRequestedCreateExecutionValue<TValue>({
 }
 
 export function resolveProjectExecutionDefaultsForCreate(
-  deps: Pick<AppDeps, "db">,
+  deps: Pick<AppDeps, "db" | "providerRegistry">,
   args: ResolveProjectExecutionDefaultsForCreateArgs,
 ): ResolvedProjectExecutionDefaultsForCreate {
   const storedDefaults = getProjectExecutionDefaults(deps.db, {
@@ -89,10 +88,13 @@ export function resolveProjectExecutionDefaultsForCreate(
     sources: args.executionInputSources,
     value: args.model,
   });
-  const resolution = resolveCreateThreadExecutionDefaults({
-    requestedProviderId,
-    storedDefaults,
-  });
+  const resolution = resolveCreateThreadExecutionDefaults(
+    deps.providerRegistry,
+    {
+      requestedProviderId,
+      storedDefaults,
+    },
+  );
   const { executionDefaults, providerId } = resolution;
 
   return {

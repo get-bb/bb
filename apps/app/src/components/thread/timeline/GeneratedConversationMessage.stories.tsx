@@ -31,6 +31,7 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 }
 
 const acceptedMessage = {
+  isGrouped: false,
   kind: "message" as const,
   status: "accepted" as const,
 };
@@ -164,7 +165,7 @@ export function Overview() {
             <ConversationMessageContent
               role="user"
               initiator="system"
-              childOrigin={null}
+              originKind={null}
               senderThreadId={null}
               senderThreadTitle={null}
               senderIsPluginSideChat={false}
@@ -188,7 +189,7 @@ export function Overview() {
           <ConversationMessageContent
             role="user"
             initiator="agent"
-            childOrigin={null}
+            originKind={null}
             senderThreadId="thr_worker2"
             senderThreadTitle="Worker 2"
             senderIsPluginSideChat={false}
@@ -211,7 +212,7 @@ export function Overview() {
           <ConversationMessageContent
             role="user"
             initiator="system"
-            childOrigin={null}
+            originKind={null}
             senderThreadId={null}
             senderThreadTitle={null}
             senderIsPluginSideChat={false}
@@ -241,7 +242,7 @@ export function ClippedAgentMessage() {
           <ConversationMessageContent
             role="user"
             initiator="agent"
-            childOrigin={null}
+            originKind={null}
             senderThreadId="thr_host_hermes"
             senderThreadTitle="Host Hermes on Flue"
             senderIsPluginSideChat={false}

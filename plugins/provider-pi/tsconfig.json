@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "noEmit": true,
+    "skipLibCheck": true,
+    "paths": {
+      "@get-bb/plugin-sdk": [
+        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts"
+      ],
+      "@get-bb/plugin-sdk/app": [
+        "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "server.ts"
+  ]
+}

@@ -19,7 +19,7 @@ interface UpsertHostListArgs {
   hosts: HostListQueryData;
 }
 
-export interface ThreadDetailBootstrapIngestionArgs {
+interface ThreadDetailBootstrapIngestionArgs {
   queryClient: QueryClient;
   thread: ThreadWithIncludesResponse;
 }

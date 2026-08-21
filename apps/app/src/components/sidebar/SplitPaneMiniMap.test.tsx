@@ -63,35 +63,4 @@ describe("SplitPaneMiniMap", () => {
     expect(miniMap.getAttribute("shape-rendering")).toBe("crispEdges");
     expect(miniMap.classList).not.toContain("opacity-60");
   });
-
-  it("subdues an inactive split icon without changing its slot tokens", () => {
-    render(
-      <SplitPaneMiniMap
-        label="Inactive two-pane split"
-        slots={[
-          {
-            paneId: "pane-left",
-            rect: { x: 0, y: 0, w: 0.5, h: 1 },
-            isMe: true,
-            isFocused: false,
-          },
-          {
-            paneId: "pane-right",
-            rect: { x: 0.5, y: 0, w: 0.5, h: 1 },
-            isMe: false,
-            isFocused: true,
-          },
-        ]}
-      />,
-    );
-
-    const miniMap = screen.getByRole("img", {
-      name: "Inactive two-pane split",
-    });
-    const [representedSlot, focusedSlot] = miniMap.querySelectorAll("rect");
-
-    expect(miniMap.classList).toContain("opacity-60");
-    expect(representedSlot?.classList).toContain("fill-muted-foreground/45");
-    expect(focusedSlot?.classList).toContain("stroke-muted-foreground/30");
-  });
 });

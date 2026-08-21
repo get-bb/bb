@@ -7,27 +7,18 @@ import {
   type ThreadMetadataGenerationOutcome,
 } from "./title-generation.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import { INFERENCE_POLICY } from "../ai/inference.js";
 
-type ThreadMetadataInferenceDeps = LoggedWorkSessionDeps;
-
-// Two 2.5s attempts preserve roughly the old 5s managed provisioning
-// blocking budget while recovering transient metadata inference timeouts.
-export const MANAGED_THREAD_METADATA_TIMEOUT_MS = 2_500;
-export const MANAGED_THREAD_METADATA_TIMEOUT_MAX_ATTEMPTS = 2;
-
-export interface ThreadMetadataInferenceArgs {
+interface ThreadMetadataInferenceArgs {
   environmentId: string | null;
   generateBranchName: boolean;
-  generateTitle: boolean;
   input: PromptInput[];
-  provisioningId: string | null;
-  timeoutMaxAttempts?: number;
-  timeoutMs?: number;
+  provisioningId: string;
   threadId: string;
   writeTranscript: boolean;
 }
 
-export interface ThreadMetadataInferenceResult {
+interface ThreadMetadataInferenceResult {
   branchSlug: string | null;
   titleApplied: boolean;
   title: string | null;
@@ -35,13 +26,11 @@ export interface ThreadMetadataInferenceResult {
 
 interface MetadataTextArgs {
   generateBranchName: boolean;
-  generateTitle: boolean;
   outcome: ThreadMetadataGenerationOutcome;
 }
 
 interface MetadataRequirements {
   generateBranchName: boolean;
-  generateTitle: boolean;
 }
 
 interface MetadataCompletedEntryArgs extends MetadataTextArgs {
@@ -49,17 +38,13 @@ interface MetadataCompletedEntryArgs extends MetadataTextArgs {
 }
 
 function metadataStartedText(args: MetadataRequirements): string {
-  if (args.generateTitle && args.generateBranchName) {
-    return "Generating title and branch name";
-  }
-  if (args.generateBranchName) {
-    return "Generating branch name";
-  }
-  return "Generating title";
+  return args.generateBranchName
+    ? "Generating title and branch name"
+    : "Generating title";
 }
 
 function metadataCompletedText(args: MetadataTextArgs): string {
-  const hasTitle = args.generateTitle && Boolean(args.outcome.metadata?.title);
+  const hasTitle = Boolean(args.outcome.metadata?.title);
   const hasBranchName =
     args.generateBranchName && Boolean(args.outcome.metadata?.branchSlug);
 
@@ -91,34 +76,22 @@ function metadataCompletedEntry(
       durationMs: args.outcome.durationMs,
       branchNameGenerated:
         args.generateBranchName && Boolean(args.outcome.metadata?.branchSlug),
-      titleGenerated:
-        args.generateTitle && Boolean(args.outcome.metadata?.title),
+      titleGenerated: Boolean(args.outcome.metadata?.title),
       ...(args.outcome.reason ? { reason: args.outcome.reason } : {}),
     },
   };
 }
 
 export async function inferThreadMetadata(
-  deps: ThreadMetadataInferenceDeps,
+  deps: LoggedWorkSessionDeps,
   args: ThreadMetadataInferenceArgs,
 ): Promise<ThreadMetadataInferenceResult> {
-  if (!args.generateTitle && !args.generateBranchName) {
-    return {
-      branchSlug: null,
-      title: null,
-      titleApplied: false,
-    };
-  }
-
   const startedAt = Date.now();
   const provisioningId = args.provisioningId;
   const transcriptEnvironmentId = args.writeTranscript
     ? args.environmentId
     : null;
   if (transcriptEnvironmentId) {
-    if (provisioningId === null) {
-      throw new Error("Cannot write provisioning transcript without an id");
-    }
     appendThreadProvisioningEvent(deps, {
       threadId: args.threadId,
       environmentId: transcriptEnvironmentId,
@@ -139,13 +112,11 @@ export async function inferThreadMetadata(
   const outcome = await generateThreadMetadataWithOutcome(deps, {
     input: args.input,
     threadId: args.threadId,
-    ...(args.timeoutMaxAttempts !== undefined
-      ? { timeoutMaxAttempts: args.timeoutMaxAttempts }
-      : {}),
-    ...(args.timeoutMs ? { timeoutMs: args.timeoutMs } : {}),
+    timeoutMaxAttempts: INFERENCE_POLICY.threadMetadata.maxAttempts,
+    timeoutMs: INFERENCE_POLICY.threadMetadata.timeoutMs,
   });
 
-  if (transcriptEnvironmentId && provisioningId) {
+  if (transcriptEnvironmentId) {
     appendThreadProvisioningEvent(deps, {
       threadId: args.threadId,
       environmentId: transcriptEnvironmentId,
@@ -154,7 +125,6 @@ export async function inferThreadMetadata(
       entries: [
         metadataCompletedEntry({
           generateBranchName: args.generateBranchName,
-          generateTitle: args.generateTitle,
           outcome,
           startedAt,
         }),
@@ -163,7 +133,7 @@ export async function inferThreadMetadata(
   }
 
   let titleApplied = false;
-  if (args.generateTitle && outcome.metadata?.title) {
+  if (outcome.metadata?.title) {
     try {
       titleApplied = applyGeneratedThreadTitle(deps, {
         threadId: args.threadId,
@@ -184,7 +154,7 @@ export async function inferThreadMetadata(
     branchSlug: args.generateBranchName
       ? (outcome.metadata?.branchSlug ?? null)
       : null,
-    title: args.generateTitle ? (outcome.metadata?.title ?? null) : null,
+    title: outcome.metadata?.title ?? null,
     titleApplied,
   };
 }

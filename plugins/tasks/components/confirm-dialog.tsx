@@ -20,7 +20,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel,
-  destructive = false,
+  confirmDisabled = false,
   onConfirm,
 }: {
   open: boolean;
@@ -28,7 +28,8 @@ export function ConfirmDialog({
   title: string;
   description: ReactNode;
   confirmLabel: string;
-  destructive?: boolean;
+  /** Keeps the dialog open but blocks confirming until the caller is ready. */
+  confirmDisabled?: boolean;
   onConfirm: () => void;
 }) {
   return (
@@ -47,8 +48,9 @@ export function ConfirmDialog({
             Cancel
           </Button>
           <Button
-            variant={destructive ? "destructive" : "default"}
+            variant="destructive"
             size="sm"
+            disabled={confirmDisabled}
             onClick={() => {
               onOpenChange(false);
               onConfirm();

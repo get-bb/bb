@@ -253,6 +253,18 @@ describe("prompt editor rich markdown restore", () => {
     expect(roundTripRichMarkdown(value)).toEqual(value);
   });
 
+  it("round-trips a large single line with thousands of Markdown delimiters", () => {
+    const value: PromptEditorValue = {
+      text: Array.from(
+        { length: 4_000 },
+        (_, index) => `const v${index}=\`value_${index}\`;`,
+      ).join(""),
+      mentions: [],
+    };
+
+    expect(roundTripRichMarkdown(value)).toEqual(value);
+  });
+
   it("keeps marked mention markdown valid when restoring rich text", () => {
     const mentionText = "@thr";
     const text = `**${mentionText} done**`;

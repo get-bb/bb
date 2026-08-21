@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Label } from "../../shared/contract.js";
 import { useProjects } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
-import { NewTaskDialog } from "../manage/index.js";
+import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import { DetailToasts, useDetailToasts } from "../detail/toast.js";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { useLabels, useListTasks, useTaskListMeta } from "./data.js";
@@ -20,7 +21,8 @@ import {
   storeListPreference,
   type ListPreference,
 } from "./list-preference.js";
-import { sortTasks, type TaskSort } from "../../shared/sort.js";
+import { sortTasks } from "../../shared/sort.js";
+import type { TaskSort } from "../../shared/pagination.js";
 import { StatusIcon } from "./icons.js";
 import {
   listScrollScopeKey,
@@ -36,7 +38,7 @@ import { editedTasks, matchesFilters } from "./optimistic.js";
 import { useListTaskEdits } from "./use-task-edits.js";
 import { TaskRow } from "./row.js";
 
-export interface ListViewProps {
+interface ListViewProps {
   /** null renders the cross-project "All tasks" list. */
   projectId: string | null;
   /** Only tasks with agents currently working (the Active route). */
@@ -72,20 +74,22 @@ function EmptyState({
 
 function LoadingRows() {
   return (
-    <div className="px-3.5 pt-3">
-      <Skeleton className="mb-3 h-4 w-28" />
-      {Array.from({ length: 7 }, (_, index) => (
-        <div
-          key={index}
-          className="flex h-[34px] items-center gap-2 border-b border-border-hairline"
-        >
-          <Skeleton className="size-3.5 rounded-full" />
-          <Skeleton className="h-3 w-12" />
-          <Skeleton className="size-3.5 rounded-full" />
-          <Skeleton className="h-3 w-3/5" />
-        </div>
-      ))}
-    </div>
+    <DelayedLoading>
+      <div className="px-3.5 pt-3">
+        <Skeleton className="mb-3 h-4 w-28" />
+        {Array.from({ length: 7 }, (_, index) => (
+          <div
+            key={index}
+            className="flex h-[34px] items-center gap-2 border-b border-border-hairline"
+          >
+            <Skeleton className="size-3.5 rounded-full" />
+            <Skeleton className="h-3 w-12" />
+            <Skeleton className="size-3.5 rounded-full" />
+            <Skeleton className="h-3 w-3/5" />
+          </div>
+        ))}
+      </div>
+    </DelayedLoading>
   );
 }
 
@@ -148,9 +152,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     labelIds,
   });
   const meta = useTaskListMeta(tasksQuery.data);
-  const edits = useListTaskEdits(tasksQuery.data, (message) =>
-    push("error", message),
-  );
+  const edits = useListTaskEdits(tasksQuery.data, (message) => push(message));
 
   const labelsById = useMemo(
     () => new Map((labels.data ?? []).map((label) => [label.id, label])),
@@ -215,6 +217,28 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   useEffect(() => {
     if (!tasksQuery.isLoading) settledScope.current = scopeKey;
   }, [scopeKey, tasksQuery.isLoading, tasksQuery.data]);
+  // The route scope is the fetch identity across views: All, Active, or one
+  // project. Switching it reuses this ListView instance, whose query still
+  // holds the previous route's result, so the body below must read as loading
+  // until this route's own fetch settles: returning from an empty Active to
+  // All must not present Active's emptiness as "No tasks yet". Narrower than
+  // `scopeKey` on purpose, so filter and sort changes keep painting the rows
+  // they already have. State, not a ref: settling has to rerender the body.
+  const routeScope = `${projectId ?? "-"}/${activeOnly}`;
+  const [settledRouteScope, setSettledRouteScope] = useState(routeScope);
+  const routeScopeChanged = settledRouteScope !== routeScope;
+  const previousRouteScope = useRef(routeScope);
+  useEffect(() => {
+    // The query's own effect flips `isLoading` in this same commit, but this
+    // effect still reads the previous render's value, so the commit that
+    // changes the route scope must never settle it; a later resolved commit
+    // does.
+    const routeScopeJustChanged = previousRouteScope.current !== routeScope;
+    previousRouteScope.current = routeScope;
+    if (!routeScopeJustChanged && !tasksQuery.isLoading) {
+      setSettledRouteScope(routeScope);
+    }
+  }, [routeScope, tasksQuery.isLoading, tasksQuery.data]);
   useListScrollRestoration(scrollRef, scopeKey, {
     contentReady: tasksQuery.data !== undefined && tasksQuery.data.length > 0,
     loading: tasksQuery.isLoading || scopeChanged,
@@ -222,9 +246,16 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   });
 
   let body: React.ReactNode;
-  if (tasksQuery.data === undefined || displayTasks === undefined) {
+  if (
+    routeScopeChanged ||
+    tasksQuery.data === undefined ||
+    displayTasks === undefined
+  ) {
+    // While a changed route scope is in flight, any held data or error is the
+    // previous route's; only a settled result may claim this scope is empty
+    // or broken.
     body =
-      tasksQuery.error !== null ? (
+      !routeScopeChanged && tasksQuery.error !== null ? (
         <EmptyState
           icon="AlertCircle"
           title="Couldn't load tasks"

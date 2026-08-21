@@ -118,6 +118,25 @@ const compactionPending: TimelineRow = systemRow({
   completedAt: null,
 });
 
+// Claude Code emits `conversation_reset` after resolving `/clear` locally.
+// The provider adapter normalizes that signal to `thread/context/cleared`,
+// which projects as a standalone completed context-management operation.
+const contextCleared: TimelineRow = systemRow({
+  id: "thr_iqcz6et4rd:op:context-clear:4372",
+  threadId: "thr_iqcz6et4rd",
+  turnId: "019dab16-44f1-7c10-9af3-7a85c3f2b1d2",
+  sourceSeqStart: 4372,
+  sourceSeqEnd: 4372,
+  startedAt: 1777890173200,
+  createdAt: 1777890173200,
+  systemKind: "operation",
+  operationKind: "context-clear",
+  title: "Context cleared",
+  detail: null,
+  status: "completed",
+  completedAt: 1777890173200,
+});
+
 // thr_m8dsv5hjpi — `system/thread/interrupted` event with reason
 // "manual-stop". `parseOperationMessage` maps the reason to a title via
 // threadInterruptedTitle() and sets status="interrupted". Detail is null:
@@ -412,6 +431,14 @@ export function Operations() {
             {...baseProps}
             timelineRows={[compactionCompleted]}
           />
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="context-clear"
+        hint="thread/context/cleared → standalone completed operation"
+      >
+        <TimelineStage>
+          <ThreadTimelineRows {...baseProps} timelineRows={[contextCleared]} />
         </TimelineStage>
       </StoryRow>
       <StoryRow

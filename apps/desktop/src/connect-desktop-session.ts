@@ -17,14 +17,14 @@ const rpcSuccessSchema = z.object({
   }),
 });
 
-export interface DesktopSessionCookie {
+interface DesktopSessionCookie {
   domain: string;
   expiresAt: number;
   name: string;
   value: string;
 }
 
-export interface DesktopCookie {
+interface DesktopCookie {
   domain?: string;
   name: string;
   value: string;
@@ -45,7 +45,7 @@ export interface DesktopCookieStore {
   }): Promise<void>;
 }
 
-export type ConnectDesktopSessionFailureCode =
+type ConnectDesktopSessionFailureCode =
   | "cookie_install_failed"
   | "cookie_verification_failed"
   | "invalid_response"
@@ -62,13 +62,12 @@ export type ConnectDesktopSessionResult =
       ok: false;
     };
 
-export type MintDesktopSessionCookieResult =
+type MintDesktopSessionCookieResult =
   | { cookie: DesktopSessionCookie; ok: true }
   | { code: ConnectDesktopSessionFailureCode; detail: string; ok: false };
 
 /** Where a session cookie comes from: the local plugin, or the connect gate. */
-export type DesktopSessionCookieSource =
-  () => Promise<MintDesktopSessionCookieResult>;
+type DesktopSessionCookieSource = () => Promise<MintDesktopSessionCookieResult>;
 
 function failure(
   code: ConnectDesktopSessionFailureCode,

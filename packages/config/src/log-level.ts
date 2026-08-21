@@ -1,11 +1,4 @@
-export const LOG_LEVEL_VALUES = [
-  "trace",
-  "debug",
-  "info",
-  "warn",
-  "error",
-  "fatal",
-];
+const LOG_LEVEL_VALUES = ["trace", "debug", "info", "warn", "error", "fatal"];
 
 export function validateLogLevel(value: string): string {
   if (LOG_LEVEL_VALUES.includes(value)) {

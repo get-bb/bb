@@ -2,51 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   getBrowserUrlHost,
   getBrowserUrlSecurity,
-  looksLikeUrl,
   resolveBrowserAddressInput,
 } from "./browser-url";
-
-describe("looksLikeUrl", () => {
-  it("treats explicit http(s) schemes as URLs", () => {
-    expect(looksLikeUrl("https://example.com")).toBe(true);
-    expect(looksLikeUrl("http://example.com/path?q=1")).toBe(true);
-    expect(looksLikeUrl("HTTPS://EXAMPLE.COM")).toBe(true);
-  });
-
-  it("treats bare public hosts and loopback shapes as URLs", () => {
-    expect(looksLikeUrl("example.com")).toBe(true);
-    expect(looksLikeUrl("news.ycombinator.com")).toBe(true);
-    expect(looksLikeUrl("example.com:8080/path")).toBe(true);
-    expect(looksLikeUrl("8.8.8.8")).toBe(true);
-    expect(looksLikeUrl("8.8.8.8:443/path")).toBe(true);
-    expect(looksLikeUrl("localhost:3000")).toBe(true);
-    expect(looksLikeUrl("localhost:3000?debug=1")).toBe(true);
-    expect(looksLikeUrl("foo.localhost:3000/path")).toBe(true);
-    expect(looksLikeUrl("127.0.0.1:38886")).toBe(true);
-    expect(looksLikeUrl("[::1]:5173/#/route")).toBe(true);
-  });
-
-  it("treats queries, blocked local hosts, and non-http schemes as searches", () => {
-    expect(looksLikeUrl("how to center a div")).toBe(false);
-    expect(looksLikeUrl("electron webcontentsview")).toBe(false);
-    expect(looksLikeUrl("single")).toBe(false);
-    expect(looksLikeUrl("https://example.com\t@evil.com")).toBe(false);
-    expect(looksLikeUrl("https://example.com @evil.com")).toBe(false);
-    expect(looksLikeUrl("0.0.0.0:5173")).toBe(false);
-    expect(looksLikeUrl("192.168.1.12:3000")).toBe(false);
-    expect(looksLikeUrl("127.1:3000")).toBe(false);
-    expect(looksLikeUrl("192.168.1:3000")).toBe(false);
-    expect(looksLikeUrl("0xc0.0xa8.1.12:3000")).toBe(false);
-    expect(looksLikeUrl("192.168.0x1.12:3000")).toBe(false);
-    expect(looksLikeUrl("0127.0.0.1:5173")).toBe(false);
-    expect(looksLikeUrl("0x7f.0.0.1:5173")).toBe(false);
-    expect(looksLikeUrl("printer.local")).toBe(false);
-    expect(looksLikeUrl("javascript:alert(1)")).toBe(false);
-    expect(looksLikeUrl("file:///etc/passwd")).toBe(false);
-    expect(looksLikeUrl("data:text/html,<h1>x</h1>")).toBe(false);
-    expect(looksLikeUrl("")).toBe(false);
-  });
-});
 
 describe("resolveBrowserAddressInput", () => {
   it("returns null for blank input", () => {

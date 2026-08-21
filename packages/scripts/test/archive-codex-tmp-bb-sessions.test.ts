@@ -44,6 +44,18 @@ describe("archive-codex-tmp-bb-sessions", () => {
     });
   });
 
+  it("respects CODEX_HOME when choosing the default Codex state directory", () => {
+    const parsedArgs = parseArchiveTmpBbSessionsArgs(
+      [],
+      { CODEX_HOME: "~/custom-codex" },
+      "/Users/tester",
+    );
+
+    expect(parsedArgs.options.codexHome).toBe(
+      path.join("/Users/tester", "custom-codex"),
+    );
+  });
+
   it("parses explicit cleanup options", () => {
     const parsedArgs = parseArchiveTmpBbSessionsArgs(
       [

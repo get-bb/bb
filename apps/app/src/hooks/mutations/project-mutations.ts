@@ -2,19 +2,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   CreateProjectRequest,
   CreateProjectSourceRequest,
-  ProjectResponse,
-  ReorderProjectRequest,
   UpdateProjectRequest,
   UploadedPromptAttachment,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import { registerLocalAttachmentPreview } from "@/lib/attachment-local-previews";
 import {
   applyProjectCreateResult,
   applyProjectDeleteResult,
-  applyReorderProjectResult,
-  beginReorderProjectTransaction,
-  rollbackReorderProjectTransaction,
-  type ReorderProjectTransaction,
 } from "../cache-owners/project-cache-owner";
 import {
   invalidateProjectListQueries,
@@ -41,10 +36,6 @@ interface DeleteLocalProjectSourceRequest {
 
 interface UpdateProjectMutationRequest extends UpdateProjectRequest {
   id: string;
-}
-
-interface ReorderProjectMutationRequest extends ReorderProjectRequest {
-  projectId: string;
 }
 
 interface UploadPromptAttachmentRequest {
@@ -78,41 +69,6 @@ export function useUpdateProject() {
       sdk.projects.update({ projectId: id, ...request }),
     onSuccess: (_data, variables) => {
       invalidateProjectUpdateQueries({ projectId: variables.id, queryClient });
-    },
-  });
-}
-
-export function useReorderProject() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    meta: {
-      errorMessage: "Failed to reorder project.",
-      showErrorToast: false,
-    },
-    mutationFn: ({
-      projectId,
-      previousProjectId,
-      nextProjectId,
-    }: ReorderProjectMutationRequest): Promise<ProjectResponse[]> =>
-      sdk.projects.reorder({
-        projectId,
-        previousProjectId,
-        nextProjectId,
-      }),
-    onMutate: (variables): ReorderProjectTransaction =>
-      beginReorderProjectTransaction({
-        queryClient,
-        request: variables,
-      }),
-    onError: (_error, _variables, context) => {
-      rollbackReorderProjectTransaction({
-        queryClient,
-        transaction: context,
-      });
-    },
-    onSuccess: (projects) => {
-      applyReorderProjectResult({ projects, queryClient });
     },
   });
 }
@@ -239,11 +195,17 @@ export function useUploadPromptAttachment() {
       errorMessage: "Failed to upload attachment.",
       showErrorToast: false,
     },
-    mutationFn: ({
+    mutationFn: async ({
       projectId,
       file,
-    }: UploadPromptAttachmentRequest): Promise<UploadedPromptAttachment> =>
-      sdk.projects.attachments.upload({ projectId, clientFile: file }),
+    }: UploadPromptAttachmentRequest): Promise<UploadedPromptAttachment> => {
+      const uploaded = await sdk.projects.attachments.upload({
+        projectId,
+        clientFile: file,
+      });
+      registerLocalAttachmentPreview(uploaded.path, file);
+      return uploaded;
+    },
     retry: false,
   });
 }

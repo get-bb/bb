@@ -17,15 +17,13 @@ import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 
 const HOST_DAEMON_REGISTRATION_WAIT_MS = 1_000;
 
-export interface CallHostOnlineRpcArgs<
-  TCommand extends HostDaemonRpcCommand,
-> {
+interface CallHostOnlineRpcArgs<TCommand extends HostDaemonRpcCommand> {
   command: TCommand;
   hostId: string;
   timeoutMs: number;
 }
 
-export interface CallHostRetryableOnlineRpcArgs<
+interface CallHostRetryableOnlineRpcArgs<
   TCommand extends HostDaemonRetryableOnlineRpcCommand,
 > {
   command: TCommand;
@@ -122,7 +120,12 @@ async function waitForRetryableHostRpcTransport(
   await ensureHostSessionReadyForWork(deps, { hostId });
 }
 
-function isHostUnavailableApiError(error: unknown): boolean {
+/**
+ * True when the host never received the command because it is offline or
+ * unenrolled. A caller that only needs host-local state gone can treat this as
+ * a success; any other error means the host answered and failed.
+ */
+export function isHostUnavailableApiError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
     error.status === 502 &&

@@ -23,7 +23,7 @@ interface EnvironmentRenameDialogProps {
   onRename: (environmentId: string, name: string | null) => void;
 }
 
-export interface EnvironmentRenameDialogContentProps {
+interface EnvironmentRenameDialogContentProps {
   target: EnvironmentRenameDialogTarget;
   pending: boolean;
   errorMessage?: string | null;

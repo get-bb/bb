@@ -59,8 +59,10 @@ describe("bundled plugin SDK declarations", () => {
     const fileNames = [
       "bb-plugin-sdk.d.ts",
       "bb-plugin-sdk-app.d.ts",
+      "bb-plugin-sdk-host.d.ts",
       "bb-plugin-sdk-testing.d.ts",
       "bb-plugin-sdk-testing-app.d.ts",
+      "bb-plugin-sdk-testing-host.d.ts",
     ];
     const declarations = await Promise.all(
       fileNames.map((fileName) =>
@@ -70,21 +72,23 @@ describe("bundled plugin SDK declarations", () => {
         ),
       ),
     );
-    for (const content of declarations.slice(0, 2)) {
+    for (const content of declarations.slice(0, 3)) {
       expect(content).not.toMatch(/from ['"]@bb\//u);
       expect(content).not.toMatch(/import\(['"]@bb\//u);
     }
-    for (const content of declarations.slice(2)) {
+    for (const content of declarations.slice(3)) {
       const bbImports = [
-        ...content.matchAll(/from ['"](@bb\/[^'"]+)['"]/gu),
+        ...content.matchAll(/from ['"](@(?:get-)?bb\/[^'"]+)['"]/gu),
       ].map((match) => match[1]);
-      expect(new Set(bbImports)).toEqual(new Set(["@bb/plugin-sdk"]));
+      expect(new Set(bbImports)).toEqual(new Set(["@get-bb/plugin-sdk"]));
       expect(content).not.toContain("@bb/sdk");
       expect(content).not.toContain("@bb/server-contract");
     }
-    expect(declarations[2]).toContain("interface FakePluginBehaviorDrivers");
-    expect(declarations[3]).toContain(
+    expect(declarations[2]).toContain("interface ExperimentalHostEntry");
+    expect(declarations[3]).toContain("interface FakePluginBehaviorDrivers");
+    expect(declarations[4]).toContain(
       "interface RenderedSlotLifecycleControls",
     );
+    expect(declarations[5]).toContain("interface ExperimentalHostEntryHarness");
   });
 });

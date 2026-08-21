@@ -1,14 +1,35 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { createStore, Provider } from "jotai";
 import type { ThreadListEntry } from "@bb/domain";
-import type { PluginComposerThreadRowStatus } from "@bb/plugin-sdk";
+import type { PluginComposerThreadRowStatus } from "@get-bb/plugin-sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
-import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
+import {
+  resetSidebarTitleDoubleClickForTest,
+  ThreadRow,
+  type ThreadRowOptions,
+} from "./ThreadRow";
+
+const mocks = vi.hoisted(() => ({
+  renameThread: vi.fn(),
+}));
+
+vi.mock("@/components/thread/ThreadActionsProvider", () => ({
+  useThreadActions: () => ({
+    renameThread: mocks.renameThread,
+  }),
+}));
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import {
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
@@ -23,17 +44,14 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => true,
-}));
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
   ThreadActionsMenu: () => null,
+  ThreadArchiveQuickAction: () => null,
 }));
 
 function createThread(
@@ -53,7 +71,6 @@ function createThread(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -89,16 +106,14 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
 };
 
 function ThreadRowTestHarness({
-  accessibleTitle,
-  displayTitle,
+  crossProjectId = null,
   hasComposerDraft = false,
   isActive = false,
   options = DEFAULT_OPTIONS,
   shortcutKey,
   thread,
 }: {
-  accessibleTitle?: string;
-  displayTitle?: string;
+  crossProjectId?: string | null;
   hasComposerDraft?: boolean;
   isActive?: boolean;
   options?: ThreadRowOptions;
@@ -116,17 +131,18 @@ function ThreadRowTestHarness({
 
   return (
     <MemoryRouter>
-      <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
-        <ThreadRow
-          projectId={thread.projectId}
-          thread={thread}
-          isActive={isActive}
-          hasComposerDraft={hasComposerDraft}
-          options={options}
-          displayTitle={displayTitle}
-          accessibleTitle={accessibleTitle}
-        />
-      </SidebarThreadShortcutKeysContext.Provider>
+      <TooltipProvider>
+        <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
+          <ThreadRow
+            projectId={thread.projectId}
+            thread={thread}
+            crossProjectId={crossProjectId}
+            isActive={isActive}
+            hasComposerDraft={hasComposerDraft}
+            options={options}
+          />
+        </SidebarThreadShortcutKeysContext.Provider>
+      </TooltipProvider>
     </MemoryRouter>
   );
 }
@@ -173,11 +189,13 @@ function renderSplitThreadRow({
   hasComposerDraft = false,
   options = DEFAULT_OPTIONS,
   pluginStatus,
+  shortcutKey,
   thread = createThread(),
 }: {
   hasComposerDraft?: boolean;
   options?: ThreadRowOptions;
   pluginStatus?: PluginComposerThreadRowStatus;
+  shortcutKey?: string;
   thread?: ThreadListEntry;
 } = {}) {
   if (pluginStatus) {
@@ -214,6 +232,7 @@ function renderSplitThreadRow({
       <ThreadRowTestHarness
         hasComposerDraft={hasComposerDraft}
         options={options}
+        shortcutKey={shortcutKey}
         thread={thread}
       />
     </Provider>,
@@ -222,6 +241,8 @@ function renderSplitThreadRow({
 
 afterEach(() => {
   cleanup();
+  mocks.renameThread.mockReset();
+  resetSidebarTitleDoubleClickForTest();
   resetPluginThreadRowStatusesForTest();
   // The layout is tab-scoped, so it lands in both stores (createTabScopedStorage).
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
@@ -396,10 +417,7 @@ describe("ThreadRow", () => {
   );
 
   it("puts the draft icon in the trailing status slot", () => {
-    const { container } = renderThreadRow({
-      hasComposerDraft: true,
-      shortcutKey: "3",
-    });
+    const { container } = renderThreadRow({ hasComposerDraft: true });
 
     const draftIcon = container.querySelector('[data-icon="Edit"]');
     expect(draftIcon).not.toBeNull();
@@ -411,7 +429,6 @@ describe("ThreadRow", () => {
     ).not.toBeNull();
     expect(screen.queryByLabelText("Thread has unsubmitted draft")).toBeNull();
     expect(screen.queryByLabelText("Unread thread succeeded")).toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it("replaces the draft icon with a plugin status and restores it when cleared", () => {
@@ -433,7 +450,7 @@ describe("ThreadRow", () => {
     expect(container.querySelector('[data-icon="Edit"]')).not.toBeNull();
   });
 
-  it("shows a plugin status instead of a keyboard shortcut when no native status applies", () => {
+  it("shows a keyboard shortcut in place of a plugin status", () => {
     setPluginThreadRowStatus("thr_test", "composer-status-test", {
       icon: "AiContentGenerator01",
       label: "Plugin improving draft",
@@ -441,8 +458,15 @@ describe("ThreadRow", () => {
 
     renderThreadRow({ shortcutKey: "3" });
 
-    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
+    expect(screen.getByText("⌘3")).not.toBeNull();
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+  });
+
+  it("shows a keyboard shortcut in place of a split mini-map", () => {
+    renderSplitThreadRow({ shortcutKey: "3" });
+
+    expect(screen.getByText("⌘3")).not.toBeNull();
+    expect(screen.queryByRole("img", { name: /open in split/ })).toBeNull();
   });
 
   it("renders a plugin status with the semantic success tone", () => {
@@ -594,7 +618,7 @@ describe("ThreadRow", () => {
     });
 
     render(
-      <SidebarThreadTitleMentionResourcesProvider
+      <ThreadTitleMentionResourcesProvider
         sectionNamesById={
           new Map([
             ["sec_mentioned", "Mention section"],
@@ -612,7 +636,7 @@ describe("ThreadRow", () => {
               "Compare @thread:thr_mentioned in @project:proj_mentioned, @section:sec_mentioned, legacy @folder:sec_legacy, and @apps/app/src/ThreadRow.tsx",
           })}
         />
-      </SidebarThreadTitleMentionResourcesProvider>,
+      </ThreadTitleMentionResourcesProvider>,
     );
 
     expect(screen.getByText("Mention target").closest("a")).toBeNull();
@@ -629,61 +653,63 @@ describe("ThreadRow", () => {
     expect(screen.getByTitle(resolvedTitle)).not.toBeNull();
   });
 
-  it("keeps an explicit accessible title while resolving its mentions", () => {
-    const mentionedThread = createThread({
-      id: "thr_visible",
-      title: "Visible target",
-      titleFallback: "Visible target",
-    });
-    const onToggleCollapsed = vi.fn();
-
-    render(
-      <SidebarThreadTitleMentionResourcesProvider
-        sectionNamesById={new Map([["sec_accessible", "Accessible section"]])}
-        projectNamesById={new Map()}
-        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+  it("marks a child from another project with the project name", () => {
+    const { container } = render(
+      <ThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map([["proj_other", "Web App"]])}
+        threadById={new Map()}
       >
         <ThreadRowTestHarness
-          accessibleTitle="Full path in @section:sec_accessible"
-          displayTitle="Leaf @thread:thr_visible"
-          thread={createThread({ title: "Fallback raw title" })}
-          options={{
-            kind: "parent",
-            depth: 1,
-            isCompact: false,
-            isCollapsed: false,
-            childCount: 1,
-            childActivity: {
-              pending: false,
-              working: false,
-              hasUnsubmittedDraft: false,
-              runtimeWorking: false,
-              workflow: false,
-              backgroundAgent: false,
-              backgroundCommand: false,
-              planMode: false,
-              goal: false,
-              unread: false,
-              unreadError: false,
-            },
-            onToggleCollapsed,
-          }}
+          crossProjectId="proj_other"
+          thread={createThread({
+            parentThreadId: "thr_parent",
+            projectId: "proj_other",
+          })}
         />
-      </SidebarThreadTitleMentionResourcesProvider>,
+      </ThreadTitleMentionResourcesProvider>,
     );
 
-    expect(screen.getByText("Visible target")).not.toBeNull();
+    const marker = container.querySelector(
+      "[data-sidebar-thread-cross-project]",
+    );
+    expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
+    expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
+    // The marker hugs the title; it never sits in the trailing status slot.
     expect(
-      screen.getByRole("link", {
-        name: "Open Full path in Accessible section",
-      }),
-    ).not.toBeNull();
-    expect(screen.getByTitle("Full path in Accessible section")).not.toBeNull();
+      marker?.closest("[data-sidebar-thread-trailing-indicator]"),
+    ).toBeNull();
     expect(
-      screen.getByRole("button", {
-        name: "Collapse Full path in Accessible section threads",
-      }),
-    ).not.toBeNull();
+      screen.getByRole("link", { name: "Open Thread" }).getAttribute("href"),
+    ).toBe("/projects/proj_other/threads/thr_test");
+  });
+
+  it("opens the thread when the cross-project marker is clicked", () => {
+    const { container } = render(
+      <ThreadRowTestHarness
+        crossProjectId="proj_other"
+        thread={createThread({
+          parentThreadId: "thr_parent",
+          projectId: "proj_other",
+        })}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const onLinkClick = vi.fn();
+    link.addEventListener("click", onLinkClick);
+
+    fireEvent.click(
+      container.querySelector("[data-sidebar-thread-cross-project]")!,
+    );
+
+    expect(onLinkClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the cross-project marker for same-project rows", () => {
+    const { container } = renderThreadRow({});
+    expect(
+      container.querySelector("[data-sidebar-thread-cross-project]"),
+    ).toBeNull();
   });
 
   it("renders a complete Unicode path mention instead of an ASCII prefix", () => {
@@ -794,16 +820,23 @@ describe("ThreadRow", () => {
     ).toBe("always");
   });
 
-  it("shows its Command shortcut only when no indicator applies", () => {
+  it("shows its Command shortcut in place of an active indicator", () => {
     renderThreadRow({
       shortcutKey: "3",
-      thread: createThread({ lastReadAt: 1, latestAttentionAt: 1 }),
+      thread: createThread({
+        status: "active",
+        runtime: {
+          displayStatus: "active",
+          hostReconnectGraceExpiresAt: null,
+        },
+      }),
     });
 
     const shortcut = screen.getByText("⌘3");
     expect(shortcut.className).toContain("px-1.5");
     expect(shortcut.className).toContain("py-1");
     expect(shortcut.className).toContain("opacity-60");
+    expect(screen.queryByLabelText("Thread working")).toBeNull();
     expect(
       screen
         .getByRole("link", { name: "Open Thread" })
@@ -830,7 +863,6 @@ describe("ThreadRow", () => {
 
   it("shows runtime work before workflow and background work", () => {
     renderThreadRow({
-      shortcutKey: "3",
       thread: createThread({
         activity: {
           activeWorkflowCount: 1,
@@ -854,7 +886,6 @@ describe("ThreadRow", () => {
     expect(screen.queryByLabelText("Background agent running")).toBeNull();
     expect(screen.queryByLabelText("Background command running")).toBeNull();
     expect(document.querySelector('[data-icon="Edit"]')).toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it("shows an animated working-colored workflow glyph for an idle thread with an active workflow", () => {
@@ -1073,7 +1104,6 @@ describe("ThreadRow", () => {
 
   it("shows Plan before a concurrent Goal", () => {
     renderThreadRow({
-      shortcutKey: "3",
       thread: createThread({
         activity: {
           activeWorkflowCount: 0,
@@ -1087,7 +1117,6 @@ describe("ThreadRow", () => {
 
     expect(screen.getByLabelText("Plan mode active")).not.toBeNull();
     expect(screen.queryByLabelText("Goal active")).toBeNull();
-    expect(screen.queryByText("⌘3")).toBeNull();
   });
 
   it.each([
@@ -1225,5 +1254,55 @@ describe("ThreadRow", () => {
 
     expect(container.querySelector('[data-icon="CircleCheck"]')).toBeNull();
     expect(screen.getByLabelText("Unread thread succeeded")).not.toBeNull();
+  });
+
+  it("edits the row title inline after a double click and commits on Enter", () => {
+    renderThreadRow({
+      thread: createThread({ title: "Thread", titleFallback: "Thread" }),
+    });
+
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    const input = screen.getByRole("textbox", { name: "Thread name" });
+    expect(input).toHaveProperty("value", "Thread");
+
+    fireEvent.change(input, { target: { value: "Renamed thread" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(mocks.renameThread).toHaveBeenCalledWith(
+      "thr_test",
+      "Renamed thread",
+    );
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByText("Thread")).not.toBeNull();
+  });
+
+  it("cancels an inline row rename on Escape without saving", () => {
+    renderThreadRow({
+      thread: createThread({ title: "Thread", titleFallback: "Thread" }),
+    });
+
+    fireEvent.doubleClick(screen.getByText("Thread"));
+    const input = screen.getByRole("textbox", { name: "Thread name" });
+    fireEvent.change(input, { target: { value: "Scratch name" } });
+    fireEvent.keyDown(input, { key: "Escape" });
+
+    expect(mocks.renameThread).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Thread name" })).toBeNull();
+    expect(screen.getByText("Thread")).not.toBeNull();
+  });
+
+  it("starts a rename from a second click after the row remounts", () => {
+    const thread = createThread({ title: "Thread", titleFallback: "Thread" });
+    const { rerenderThreadRow } = renderThreadRow({ thread });
+    const link = screen.getByRole("link", { name: "Open Thread" });
+
+    fireEvent.click(link);
+    rerenderThreadRow(thread);
+    fireEvent.click(screen.getByRole("link", { name: "Open Thread" }));
+
+    expect(screen.getByRole("textbox", { name: "Thread name" })).toHaveProperty(
+      "value",
+      "Thread",
+    );
   });
 });

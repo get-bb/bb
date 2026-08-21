@@ -11,7 +11,7 @@ import {
   DEFAULT_BB_FF_TIMELINE_WINDOW_EVENT_BUDGET,
 } from "./env-vars.js";
 
-export type LoadFeatureFlagsArgs = EnvLoaderArgs;
+type LoadFeatureFlagsArgs = EnvLoaderArgs;
 
 export function loadFeatureFlags(
   args: LoadFeatureFlagsArgs = {},

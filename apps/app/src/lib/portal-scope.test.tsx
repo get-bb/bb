@@ -28,7 +28,7 @@ import {
 /**
  * Portaled overlay content renders into document.body — outside every
  * `[data-bb-plugin-root]` slot mount — so plugin-scoped utilities
- * (`@scope ([data-bb-plugin-root])`, see buildPluginApp) would not style it.
+ * (prefixed with `:where([data-bb-plugin-root])`, see buildPluginApp) would not style it.
  * usePortalScopeProps re-attaches the scope iff the component rendered from a
  * plugin slot (PluginContext present). Regression for the Phase-3 bug where a
  * plugin's `className` on DialogContent silently didn't apply.

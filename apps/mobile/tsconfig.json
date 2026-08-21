@@ -1,0 +1,34 @@
+{
+  "extends": [
+    "@bb/tsconfig/base.json",
+    "@bb/tsconfig/typecheck-overrides.json"
+  ],
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "lib": ["DOM", "ESNext"],
+    "customConditions": ["react-native"],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "rootDir": ".",
+    "types": ["react", "react-native"]
+  },
+  "include": [
+    "src/types",
+    "app",
+    "src",
+    "e2e",
+    "index.ts",
+    "App.tsx",
+    "expo-env.d.ts",
+    "nativewind-env.d.ts",
+    "metro.config.js",
+    ".expo/types/**/*.ts"
+  ],
+  "exclude": ["node_modules", "ios", "android", ".expo"]
+}

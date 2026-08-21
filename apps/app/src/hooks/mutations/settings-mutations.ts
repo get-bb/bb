@@ -10,9 +10,11 @@ import { sdk } from "@/lib/sdk";
 import {
   invalidateGeneralSettingsDependencies,
   invalidateSystemConfig,
+  resetModelCatalogsAfterStreamerModeChange,
 } from "../cache-owners/system-cache-effects";
 import {
   beginKeyboardSettingsCacheTransaction,
+  readCachedStreamerMode,
   rollbackKeyboardSettingsCacheTransaction,
 } from "../cache-owners/system-config-cache-owner";
 
@@ -50,8 +52,14 @@ export function useUpdateGeneralSettings() {
     },
     mutationFn: (settings: AppSettings) =>
       sdk.system.updateGeneralSettings(settings),
-    onSuccess: () => {
+    onSuccess: (_settings, written) => {
+      // Read the previous value before the config invalidation replaces it.
+      const previous = readCachedStreamerMode(queryClient);
       invalidateGeneralSettingsDependencies({ queryClient });
+      // An unknown previous value also resets: a stale preload is the risk.
+      if (previous !== written.streamerMode) {
+        void resetModelCatalogsAfterStreamerModeChange({ queryClient });
+      }
     },
   });
 }
@@ -107,8 +115,7 @@ export function useUpdateAppearance() {
     meta: {
       errorMessage: "Failed to update appearance.",
     },
-    mutationFn: (selection: AppThemeSelection) =>
-      sdk.theme.set(selection),
+    mutationFn: (selection: AppThemeSelection) => sdk.theme.set(selection),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

@@ -1,5 +1,4 @@
 import path from "node:path";
-import { createFakeAdapter } from "@bb/agent-runtime/test";
 import { describe, expect, it } from "vitest";
 import {
   getThreadEvents,
@@ -25,76 +24,67 @@ describe.sequential(
   "fake provider provider-isolation multi-thread integration",
   () => {
     it("keeps provider processes isolated for different providers in one environment", async () => {
-      await withHarness(
-        {
-          adapterFactory: (providerId) =>
-            createFakeAdapter({
-              displayName: providerId,
-              id: providerId,
-            }),
-        },
-        async (harness) => {
-          const project = await createProjectFixture(harness, {
-            name: "Shared Environment Different Providers",
-          });
-          const threadA = await createReadyHostThread(harness, {
-            projectId: project.id,
-            providerId: "fake-alpha",
-            timeoutMs: DEFAULT_TIMEOUT_MS,
-            workspace: {
-              type: "unmanaged",
-              path: harness.repoDir,
-            },
-          });
-          const threadB = await createReadyReuseThread(harness, {
-            environmentId: threadA.environment.id,
-            projectId: project.id,
-            providerId: "fake-beta",
-            timeoutMs: DEFAULT_TIMEOUT_MS,
-          });
+      await withHarness(async (harness) => {
+        const project = await createProjectFixture(harness, {
+          name: "Shared Environment Different Providers",
+        });
+        const threadA = await createReadyHostThread(harness, {
+          projectId: project.id,
+          providerId: "fake-alpha",
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+          workspace: {
+            type: "unmanaged",
+            path: harness.repoDir,
+          },
+        });
+        const threadB = await createReadyReuseThread(harness, {
+          environmentId: threadA.environment.id,
+          projectId: project.id,
+          providerId: "fake-beta",
+          timeoutMs: DEFAULT_TIMEOUT_MS,
+        });
 
-          await Promise.all([
-            sendTextMessage(harness.api, threadA.thread.id, {
-              text: `${CONCURRENT_DELAY_TEXT} alpha`,
-            }),
-            sendTextMessage(harness.api, threadB.thread.id, {
-              text: `${CONCURRENT_DELAY_TEXT} beta`,
-            }),
-          ]);
-          await Promise.all([
-            waitForThreadStatus(
-              harness.api,
-              threadA.thread.id,
-              "idle",
-              TURN_TIMEOUT_MS,
-            ),
-            waitForThreadStatus(
-              harness.api,
-              threadB.thread.id,
-              "idle",
-              TURN_TIMEOUT_MS,
-            ),
-          ]);
+        await Promise.all([
+          sendTextMessage(harness.api, threadA.thread.id, {
+            text: `${CONCURRENT_DELAY_TEXT} alpha`,
+          }),
+          sendTextMessage(harness.api, threadB.thread.id, {
+            text: `${CONCURRENT_DELAY_TEXT} beta`,
+          }),
+        ]);
+        await Promise.all([
+          waitForThreadStatus(
+            harness.api,
+            threadA.thread.id,
+            "idle",
+            TURN_TIMEOUT_MS,
+          ),
+          waitForThreadStatus(
+            harness.api,
+            threadB.thread.id,
+            "idle",
+            TURN_TIMEOUT_MS,
+          ),
+        ]);
 
-          const runtimeEntry = harness.daemonApp.runtimeManager.get(
-            threadA.environment.id,
-          );
-          const runningProviders =
-            runtimeEntry?.runtime.listRunningProviders().sort() ?? [];
-          expect(runningProviders).toEqual(["fake-alpha", "fake-beta"]);
+        const runtimeEntry = harness.daemonApp.runtimeManager.get(
+          threadA.environment.id,
+        );
+        const runningProviders =
+          runtimeEntry?.runtime.listRunningProviders().sort() ?? [];
+        expect(runningProviders).toEqual(["fake-alpha", "fake-beta"]);
 
-          const eventsA = await getThreadEvents(harness.api, threadA.thread.id);
-          const eventsB = await getThreadEvents(harness.api, threadB.thread.id);
-          assertEventsBelongToThread(eventsA, threadA.thread.id);
-          assertEventsBelongToThread(eventsB, threadB.thread.id);
-          expect(
-            await getThreadOutput(harness.api, threadA.thread.id),
-          ).toContain("alpha");
-          expect(
-            await getThreadOutput(harness.api, threadB.thread.id),
-          ).toContain("beta");
-        },
-      );
+        const eventsA = await getThreadEvents(harness.api, threadA.thread.id);
+        const eventsB = await getThreadEvents(harness.api, threadB.thread.id);
+        assertEventsBelongToThread(eventsA, threadA.thread.id);
+        assertEventsBelongToThread(eventsB, threadB.thread.id);
+        expect(await getThreadOutput(harness.api, threadA.thread.id)).toContain(
+          "alpha",
+        );
+        expect(await getThreadOutput(harness.api, threadB.thread.id)).toContain(
+          "beta",
+        );
+      });
     });
 
     it("handles three concurrent threads across shared and isolated environments", () =>

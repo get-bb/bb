@@ -2,7 +2,6 @@ import type {
   ApprovalPendingInteractionPayload,
   ApprovalPendingInteractionResolution,
   PendingInteractionApprovalDecision,
-  PendingInteractionCommandAction,
   PendingInteractionGrantedPermissionProfile,
   PendingInteractionGrantablePermissionProfile,
   UserQuestionPendingInteractionPayload,
@@ -16,7 +15,6 @@ type CommandApprovalPayloadOptions = {
   reason?: string | null;
   command?: string;
   cwd?: string | null;
-  actions?: PendingInteractionCommandAction[];
   sessionGrant?: PendingInteractionGrantablePermissionProfile | null;
   availableDecisions?: PendingInteractionApprovalDecision[];
 };
@@ -37,17 +35,21 @@ type PermissionGrantApprovalPayloadOptions = {
   availableDecisions?: PendingInteractionApprovalDecision[];
 };
 
+type ToolUseApprovalPayloadOptions = {
+  itemId?: string;
+  reason?: string | null;
+  tool?: string;
+  availableDecisions?: PendingInteractionApprovalDecision[];
+};
+
 type UserQuestionPayloadOptions = {
   allowFreeText?: boolean;
-  interactionLabel?: string;
   multiSelect?: boolean;
   prompt?: string;
-  questionId?: string;
 };
 
 type UserAnswerResolutionOptions = {
   freeText?: string;
-  questionId?: string;
   selected?: string[];
 };
 
@@ -62,7 +64,7 @@ const defaultBinaryAvailableDecisions: PendingInteractionApprovalDecision[] = [
   "deny",
 ];
 
-export const defaultGrantablePermissions: PendingInteractionGrantablePermissionProfile =
+const defaultGrantablePermissions: PendingInteractionGrantablePermissionProfile =
   {
     network: null,
     fileSystem: null,
@@ -78,7 +80,7 @@ export function createCommandApprovalPayload(
       itemId: options.itemId ?? "item-command-approval",
       command: options.command ?? "git push",
       cwd: options.cwd ?? "/tmp/project",
-      actions: options.actions ?? [],
+      actions: [],
       sessionGrant: options.sessionGrant ?? null,
     },
     reason: options.reason ?? "Needs approval",
@@ -127,6 +129,27 @@ export function createPermissionGrantApprovalPayload(
   };
 }
 
+export function createToolUseApprovalPayload(
+  options: ToolUseApprovalPayloadOptions = {},
+): ApprovalPendingInteractionPayload {
+  return {
+    kind: "approval",
+    subject: {
+      kind: "tool_use",
+      itemId: options.itemId ?? "item-tool-use-approval",
+      tool: options.tool ?? "fetch",
+      presentation: {
+        label: { pending: "Fetching", completed: "Fetched" },
+        icon: { glyph: "Globe" },
+        title: "Fetch docs",
+      },
+    },
+    reason: options.reason ?? null,
+    availableDecisions:
+      options.availableDecisions ?? defaultBinaryAvailableDecisions,
+  };
+}
+
 export function createUserQuestionPayload(
   options: UserQuestionPayloadOptions = {},
 ): UserQuestionPendingInteractionPayload {
@@ -134,9 +157,9 @@ export function createUserQuestionPayload(
     kind: "user_question",
     questions: [
       {
-        id: options.questionId ?? "question-1",
+        id: "question-1",
         prompt: options.prompt ?? "Which deployment target should I use?",
-        shortLabel: options.interactionLabel ?? "Target",
+        shortLabel: "Target",
         multiSelect: options.multiSelect ?? false,
         options: [
           { value: "staging", label: "Staging" },
@@ -154,7 +177,7 @@ export function createUserAnswerResolution(
   return {
     kind: "user_answer",
     answers: {
-      [options.questionId ?? "question-1"]: {
+      "question-1": {
         selected: options.selected ?? ["staging"],
         ...(options.freeText ? { freeText: options.freeText } : {}),
       },

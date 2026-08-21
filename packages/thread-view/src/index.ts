@@ -1,6 +1,5 @@
 export { formatThreadTimelineText } from "./format-timeline-text.js";
 export { parseAgentMessageEnvelope } from "./agent-message-envelope.js";
-export type { AgentMessageEnvelope } from "./agent-message-envelope.js";
 export type { ThreadTimelineTextFormat } from "./format-timeline-text.js";
 export { assertNever } from "./assert-never.js";
 export {
@@ -45,13 +44,8 @@ export {
   buildThreadTimelineFromEvents,
   buildThreadTimelineTurnDetailsFromEvents,
 } from "./build-thread-timeline.js";
-export {
-  extractThreadTimelineActivePlanTurn,
-  extractThreadTimelineActivePromptMode,
-  type ThreadTimelineActivePlanTurn,
-} from "./active-prompt-mode-extraction.js";
+export { extractThreadTimelineActivePlanTurn } from "./active-prompt-mode-extraction.js";
 export { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
-export { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 export type { AcceptedClientRequestContext } from "./accepted-client-request-context.js";
 export {
   buildTimelineViewRows,

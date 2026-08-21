@@ -4,6 +4,7 @@ import type {
   WorkspaceFileStatus,
   WorkspaceStatus,
 } from "@bb/domain";
+import type { PullRequestMergeMethod } from "@bb/server-contract";
 import {
   ThreadPromptContextBanner,
   type ContextBannerMergeBaseConfig,
@@ -89,6 +90,7 @@ const dirtyUncommittedStatus: WorkspaceStatus = {
     files: promptboxBannerFiles,
     insertions: 312,
     deletions: 47,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -226,6 +228,7 @@ const dirtyUncommittedManyStatus: WorkspaceStatus = {
     files: dirtyUncommittedManyFiles,
     insertions: 1284,
     deletions: 312,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -247,18 +250,19 @@ const untrackedOnlyStatus: WorkspaceStatus = {
       {
         path: "apps/app/notes/triage.md",
         status: "??",
-        insertions: 18,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
       {
         path: "apps/app/scripts/dev-bb-worktree.sh",
         status: "??",
-        insertions: 42,
-        deletions: 0,
+        insertions: null,
+        deletions: null,
       },
     ],
-    insertions: 60,
+    insertions: 0,
     deletions: 0,
+    lineStatsComplete: false,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -279,6 +283,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     files: [],
     insertions: 0,
     deletions: 0,
+    lineStatsComplete: true,
   },
   branch: {
     currentBranch: "bb/promptbox-stories",
@@ -299,6 +304,7 @@ const committedUnmergedStatus: WorkspaceStatus = {
     files: promptboxBannerFiles.slice(0, 3),
     insertions: 128,
     deletions: 24,
+    lineStatsComplete: true,
   },
 };
 
@@ -312,6 +318,25 @@ const uncommittedSection = sectionFor(dirtyUncommittedStatus);
 const uncommittedManySection = sectionFor(dirtyUncommittedManyStatus);
 const untrackedSection = sectionFor(untrackedOnlyStatus);
 const committedSection = sectionFor(committedUnmergedStatus);
+const committedManyFiles: WorkspaceFileStatus[] = Array.from(
+  { length: 72 },
+  (_, index) => ({
+    path: `apps/app/src/committed-fixture-${index + 1}.tsx`,
+    status: "M",
+    insertions: 10,
+    deletions: 2,
+  }),
+);
+const committedManySection: WorkspaceChangedFilesSection = {
+  ...committedSection,
+  files: committedManyFiles,
+  stats: {
+    ...committedSection.stats,
+    files: committedManyFiles,
+    insertions: 720,
+    deletions: 144,
+  },
+};
 
 const featureBranchMergeBase: ContextBannerMergeBaseConfig = {
   branch: "main",
@@ -343,23 +368,44 @@ const childThreadsFixture: ThreadPromptChildThreadsSection = {
       id: "thr_a",
       title: "Investigate Safari auth flake on staging",
       href: "/projects/proj-1/threads/thr_a",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_b",
       title: "Review PR #4521 reviewer comments",
       href: "/projects/proj-1/threads/thr_b",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_c",
       title: "Refactor email pipeline retry logic",
       href: "/projects/proj-1/threads/thr_c",
+      hasPendingInteraction: false,
     },
     {
       id: "thr_d",
       title: "Backfill workspace-status invalidation cache",
       href: "/projects/proj-1/threads/thr_d",
+      hasPendingInteraction: false,
     },
   ],
+};
+
+const childThreadsPendingFixture: ThreadPromptChildThreadsSection = {
+  items: [
+    {
+      id: "thr_blocked",
+      title: "Install workspace tools",
+      href: "/projects/proj-1/threads/thr_blocked",
+      hasPendingInteraction: true,
+    },
+  ],
+};
+
+const childThreadsMixedFixture: ThreadPromptChildThreadsSection = {
+  items: childThreadsFixture.items.map((item, index) =>
+    index === 1 ? { ...item, hasPendingInteraction: true } : item,
+  ),
 };
 
 const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
@@ -367,6 +413,7 @@ const childThreadsLargeFixture: ThreadPromptChildThreadsSection = {
     id: `thr_large_${i}`,
     title: `Child work item ${i + 1} that is busy doing thing-${i}`,
     href: `/projects/proj-1/threads/thr_large_${i}`,
+    hasPendingInteraction: i === 1,
   })),
 };
 
@@ -416,6 +463,28 @@ function buildPullRequestFixture(
 }
 
 const pullRequestFixture = buildPullRequestFixture();
+const pendingPullRequestFixture = buildPullRequestFixture({
+  checks: {
+    state: "pending",
+    totalCount: 3,
+    passedCount: 1,
+    failedCount: 0,
+    pendingCount: 2,
+  },
+  attention: "checks_pending",
+});
+const mergedPullRequestFixture = buildPullRequestFixture({
+  number: 134,
+  state: "merged",
+  checks: {
+    state: "passing",
+    totalCount: 3,
+    passedCount: 3,
+    failedCount: 0,
+    pendingCount: 0,
+  },
+  attention: "merged",
+});
 
 const pullRequestStateRows: readonly {
   label: string;
@@ -530,18 +599,7 @@ const pullRequestStateRows: readonly {
   {
     label: "merged",
     hint: "terminal state",
-    pullRequest: buildPullRequestFixture({
-      number: 134,
-      state: "merged",
-      checks: {
-        state: "passing",
-        totalCount: 3,
-        passedCount: 3,
-        failedCount: 0,
-        pendingCount: 0,
-      },
-      attention: "merged",
-    }),
+    pullRequest: mergedPullRequestFixture,
   },
   {
     label: "closed",
@@ -570,6 +628,7 @@ interface RowConfig {
   childThreads?: ThreadPromptChildThreadsSection | null;
   pullRequest?: ThreadPullRequest | null;
   pullRequestActions?: boolean;
+  pullRequestMergeMethod?: PullRequestMergeMethod;
   initiallyExpandedSection?: ThreadPromptContextBannerExpandedSection | null;
 }
 
@@ -582,6 +641,7 @@ function ContextBannerPreview({
   childThreads = null,
   pullRequest = null,
   pullRequestActions = false,
+  pullRequestMergeMethod = "merge",
   initiallyExpandedSection = null,
   size,
 }: RowConfig & { size: PromptStageSize }) {
@@ -615,6 +675,7 @@ function ContextBannerPreview({
                       actions: {
                         onMarkReady: noop,
                         onMerge: noop,
+                        selectedMergeMethod: pullRequestMergeMethod,
                       },
                     }
                   : {}),
@@ -689,14 +750,14 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="environment destroyed"
-        hint="environment-gone row suppresses git/childThreads"
+        label="environment archived"
+        hint="archived-environment row suppresses git/childThreads"
       >
         <Row environmentGone={destroyedEnvironmentFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
-        label="environment destroying + child thread"
-        hint="environment-gone row plus parent context"
+        label="environment archiving + child thread"
+        hint="archiving-environment row plus parent context"
       >
         <Row
           environmentGone={destroyingEnvironmentFixture}
@@ -705,8 +766,8 @@ export function Overview() {
         />
       </StoryRow>
       <StoryRow
-        label="environment gone (with other context, all suppressed)"
-        hint="gone environment takes precedence — git/child work are hidden"
+        label="environment archived (with other context, all suppressed)"
+        hint="archived environment takes precedence — git/child work are hidden"
       >
         <Row
           environmentGone={destroyedEnvironmentFixture}
@@ -731,17 +792,34 @@ export function Overview() {
         <Row parentThread={sideChatFromFixture} mergeBase={null} />
       </StoryRow>
       <StoryRow
+        label="parent thread with a child waiting for approval"
+        hint="the parent banner names the blocked child and drops the active shimmer"
+      >
+        <Row childThreads={childThreadsPendingFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
         label="parent thread with active children (collapsed)"
-        hint="spinning icon signals active work; click to expand the child list"
+        hint="the primary child mirrors other background-work banners without an animated flash; click to expand the child list"
       >
         <Row childThreads={childThreadsFixture} mergeBase={null} />
+      </StoryRow>
+      <StoryRow
+        label="active child + pull request + uncommitted"
+        hint="long child titles stay within the shared stack; pull request actions remain available"
+      >
+        <Row
+          childThreads={childThreadsFixture}
+          pullRequest={pullRequestFixture}
+          pullRequestActions
+          section={uncommittedSection}
+        />
       </StoryRow>
       <StoryRow
         label="parent thread with active children (expanded)"
         hint="list of children with status + pending-approval marker on item 2"
       >
         <Row
-          childThreads={childThreadsFixture}
+          childThreads={childThreadsMixedFixture}
           mergeBase={null}
           initiallyExpandedSection="childThreads"
         />
@@ -790,6 +868,23 @@ export function Overview() {
         <Row pullRequest={pullRequestFixture} section={committedSection} />
       </StoryRow>
       <StoryRow
+        label="merged pull request + committed"
+        hint="terminal pull requests reserve space for only their single status glyph"
+      >
+        <Row pullRequest={mergedPullRequestFixture} section={committedSection} />
+      </StoryRow>
+      <StoryRow
+        label="pull request + many committed + actions"
+        hint="the GitHub status pill stays intact beside a long committed summary and merge action"
+      >
+        <Row
+          pullRequest={pendingPullRequestFixture}
+          pullRequestActions
+          pullRequestMergeMethod="squash"
+          section={committedManySection}
+        />
+      </StoryRow>
+      <StoryRow
         label="uncommitted (collapsed)"
         hint="working tree has 5 modified/added files; chevron toggles WorkspaceChangesList"
       >
@@ -803,7 +898,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="untracked only"
-        hint='workingTree.state = "untracked" with synthesized insertion stats'
+        hint='workingTree.state = "untracked" with intentionally unavailable line stats'
       >
         <Row section={untrackedSection} initiallyExpandedSection="git" />
       </StoryRow>

@@ -1,7 +1,8 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, ComponentType, ReactNode } from "react";
 import type {
   PermissionMode,
   PromptInput,
+  ProviderInfo,
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
@@ -17,10 +18,10 @@ import type {
 } from "./rpc-contract.js";
 
 /**
- * The `@bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
+ * The `@get-bb/plugin-sdk/app` contract (plugin design §5.2) — pure types with no
  * side effects. The BB app imports these to keep its real implementation in
  * sync (`satisfies PluginSdkApp`). Plugin authors import the same shapes through
- * `@bb/plugin-sdk/app`.
+ * `@get-bb/plugin-sdk/app`.
  *
  * Per-slot props are versioned contracts: additive-only within an SDK major.
  */
@@ -55,9 +56,26 @@ export interface PluginNavPanelProps {
   subPath: string;
 }
 
-/** Props passed to a panel tab opened by a `threadPanelAction`. */
+/**
+ * Props passed to a panel tab opened by a `threadPanelAction`.
+ *
+ * This slot is rendered only for an existing thread. Use
+ * `experimental_newThreadPanelAction` for the root New thread screen.
+ */
 export interface PluginThreadPanelProps {
   threadId: string;
+  /**
+   * The JSON value the action's `openPanel` call passed (round-tripped
+   * through persistence, so the tab restores across reloads); null when the
+   * action opened the panel without params.
+   */
+  params: JsonValue | null;
+}
+
+/** Props passed to a panel tab opened by `experimental_newThreadPanelAction`. */
+export interface PluginNewThreadPanelProps {
+  /** Project selected in the root composer; null in projectless compose. */
+  projectId: string | null;
   /**
    * The JSON value the action's `openPanel` call passed (round-tripped
    * through persistence, so the tab restores across reloads); null when the
@@ -110,6 +128,13 @@ export interface PluginThreadListProps {
    * shipping a second search box.
    */
   searchQuery: string;
+  /**
+   * BB's thread list, bound to this sidebar instance. Render it to delegate
+   * conditionally without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
 }
 
 /**
@@ -144,12 +169,158 @@ export interface PluginFileOpenerSource {
   threadId: string | null;
   environmentId: string | null;
   projectId: string | null;
+  /**
+   * Explicit host selected for a project-backed workspace file. Omitted when
+   * the source is resolved by its environment/thread or the primary host.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_hostId?: string;
 }
 
 /** Props passed to a `fileOpener` component (rendered as a panel file tab). */
 export interface PluginFileOpenerProps {
   path: string;
   source: PluginFileOpenerSource;
+  /**
+   * BB's file preview, bound to this file. Render it to delegate conditionally
+   * without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
+}
+
+// ---------------------------------------------------------------------------
+// Host-owned code rendering (SourceCode / Diff) — the public components and
+// the props their replacements receive.
+// ---------------------------------------------------------------------------
+
+/** How a code line longer than the viewport is presented. */
+export type CodeOverflowMode = "scroll" | "wrap";
+
+/** How a diff presents its two sides. */
+export type DiffViewMode = "unified" | "split";
+
+/** A 1-based, inclusive line range. */
+export interface SourceCodeLineRange {
+  start: number;
+  end: number;
+}
+
+/** One complete text side of a diff, resolved by the caller. */
+export interface ExperimentalDiffFileContent {
+  /** File path for this side. May differ between `old` and `new` for a rename. */
+  path: string;
+  /** Complete UTF-8 file contents, including unchanged lines outside the patch. */
+  content: string;
+}
+
+/** Complete text contents for both sides of a diff. */
+export interface ExperimentalDiffFullFileContents {
+  old: ExperimentalDiffFileContent;
+  new: ExperimentalDiffFileContent;
+}
+
+/**
+ * Props of the host-owned `experimental_SourceCode` component — BB's source
+ * viewer. The host owns syntax highlighting, gutters, wrapping, line-selection
+ * presentation, and the live BB code theme; the caller owns loading the text
+ * and any surrounding chrome.
+ */
+export interface SourceCodeProps {
+  /** The complete source text to render. */
+  content: string;
+  /** File path or name. Drives language detection and the a11y label. */
+  path: string;
+  /** Long-line presentation. Defaults to `"scroll"`. */
+  overflow?: CodeOverflowMode;
+  /**
+   * Lines to highlight and scroll into view (1-based, inclusive). Defaults to
+   * `null` — nothing highlighted.
+   */
+  highlightedLines?: SourceCodeLineRange | null;
+  /** Applied to the renderer's root element. */
+  className?: string;
+}
+
+/**
+ * Props of the host-owned `experimental_Diff` component — BB's diff viewer.
+ * The host owns patch normalization (a patch without a `diff --git` header is
+ * completed from `path`), syntax highlighting, unified/split presentation,
+ * gutters, line-selection presentation, optional full-file context expansion,
+ * and the live BB code theme. Content that cannot be parsed as a patch
+ * degrades to plain monospace text.
+ */
+export interface DiffProps {
+  /** Unified patch text for exactly ONE file. */
+  patch: string;
+  /**
+   * The file the patch applies to. Used to complete a patch that arrives
+   * without a `diff --git` header (GitHub's REST patches, single `@@` hunks)
+   * and for language detection.
+   */
+  path: string;
+  /** Side-by-side or inline. Defaults to `"unified"`. */
+  view?: DiffViewMode;
+  /** Long-line presentation. Defaults to `"scroll"`. */
+  overflow?: CodeOverflowMode;
+  /** Whether the gutter shows line numbers. Defaults to `true`. */
+  showLineNumbers?: boolean;
+  /**
+   * Complete text for both file sides. When present and consistent with the
+   * patch, BB enables expand-context controls between hunks. The caller owns
+   * loading these contents; omit the field to render from the patch alone.
+   */
+  experimental_fullFileContents?: ExperimentalDiffFullFileContents;
+  /** Applied to the renderer's root element. */
+  className?: string;
+}
+
+/**
+ * Props passed to an `experimental_sourceCodeRenderer` component. Every value
+ * is already resolved — the replacement never re-applies a host default.
+ */
+export interface PluginSourceCodeRendererProps {
+  content: string;
+  path: string;
+  overflow: CodeOverflowMode;
+  highlightedLines: SourceCodeLineRange | null;
+  /**
+   * BB's source renderer, bound to this request. Render it to delegate
+   * conditionally without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
+}
+
+/**
+ * Props passed to an `experimental_diffRenderer` component. `patch` is always
+ * a complete single-file unified patch, whatever shape the caller supplied,
+ * and optional full-file context is resolved to an object or `null`.
+ */
+export interface PluginDiffRendererProps {
+  patch: string;
+  path: string;
+  view: DiffViewMode;
+  overflow: CodeOverflowMode;
+  showLineNumbers: boolean;
+  /**
+   * Caller-resolved text for both sides, or `null` when the caller supplied
+   * only the patch. A replacement can use this to implement context expansion,
+   * but must verify that the paths and hunk lines agree with `patch` before
+   * treating the contents as complete. BB's original renderer performs that
+   * verification when it mounts.
+   */
+  experimental_fullFileContents: ExperimentalDiffFullFileContents | null;
+  /**
+   * BB's diff renderer, bound to this request. Render it to delegate
+   * conditionally without re-entering plugin replacement resolution.
+   *
+   * @experimental Audit before relying on this as a stable contract.
+   */
+  experimental_Original: ComponentType;
 }
 
 /**
@@ -211,6 +382,50 @@ export interface PluginSettingsSectionRegistration {
   component: ComponentType<PluginSettingsSectionProps>;
 }
 
+/**
+ * Owner-defined validator for a fixed tab's transient target. The host first
+ * verifies that the value is JSON-safe, then calls this validator before
+ * selecting the tab or delivering the target.
+ */
+export interface ExperimentalFixedTabTargetContract<Target extends JsonValue> {
+  validate(value: JsonValue): value is Target;
+}
+
+/** Stable, owner-scoped reference used by the app-panel controller. */
+export type ExperimentalPluginFixedTabReference<
+  Target extends JsonValue = never,
+> = {
+  /** The owning `navPanel` id; validated against the containing registration. */
+  readonly panelId: string;
+  /** Unique within the owning nav panel; letters, digits, `-`, `_`. */
+  readonly id: string;
+} & ([Target] extends [never]
+  ? {
+      /** An untargeted tab cannot be opened with a target. */
+      readonly experimental_target?: never;
+    }
+  : {
+      /** Owner validation required before the host delivers a target. */
+      readonly experimental_target: ExperimentalFixedTabTargetContract<Target>;
+    });
+
+/** A fixed tab declared by a plugin nav panel. */
+export type ExperimentalPluginFixedTabRegistration<
+  Target extends JsonValue = never,
+> = ExperimentalPluginFixedTabReference<Target> & {
+  title: string;
+  /** Icon hint (BB icon name); unknown names fall back to a generic icon. */
+  icon: string;
+  component: ComponentType<PluginNavPanelProps>;
+  /** `flush` lets the component own padding and scrolling. */
+  layout?: "padded" | "flush";
+};
+
+/** A fixed tab with either no target or an owner-validated JSON target. */
+export type ExperimentalPluginFixedTabDeclaration =
+  | ExperimentalPluginFixedTabRegistration
+  | ExperimentalPluginFixedTabRegistration<JsonValue>;
+
 export interface PluginNavPanelRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
@@ -221,6 +436,29 @@ export interface PluginNavPanelRegistration {
   path: string;
   component: ComponentType<PluginNavPanelProps>;
   /**
+   * Ordered, non-closable tabs shown in this page's host-owned right panel.
+   * BB owns selection and persistence and always includes its native Browser
+   * and Terminal tools beside them. One tab is active in each visible split
+   * pane, so multiple fixed-tab components can be mounted concurrently. A
+   * component mounts only while its tab is active in a visible pane and the
+   * panel is open, and receives the same `subPath` as the page component.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_fixedTabs?: readonly ExperimentalPluginFixedTabDeclaration[];
+  /**
+   * Optional presentational component rendered at the trailing edge of this
+   * panel's sidebar row. It receives no props so it can own a narrow live
+   * value through the ordinary SDK hooks without coupling that state to the
+   * host sidebar. The host does not mount it on compact viewports and clips it
+   * to a small, single-line box on wider viewports. It shares the trailing
+   * action column, fading out for the host's options button on hover or focus;
+   * do not render controls or rely on unbounded content here.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sidebarAccessory?: ComponentType;
+  /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
    * throwing headerContent is hidden without breaking the title bar.
@@ -228,7 +466,29 @@ export interface PluginNavPanelRegistration {
   headerContent?: ComponentType<PluginNavPanelProps>;
 }
 
-/** Context handed to a `threadPanelAction`'s `run`. */
+/**
+ * What a plugin action passes when it asks the host to open one of its panel
+ * tabs. Shared by every `openPanel` entry point so a plugin registering more
+ * than one kind of action can write a single open routine;
+ * `PluginTargetedPanelActionOpenOptions` adds the `actionId` a caller
+ * outside a panel action must pass to name the panel it wants.
+ */
+export interface PluginPanelActionOpenOptions {
+  /** Tab label. Default: the action's `title`. */
+  title?: string;
+  /**
+   * Persisted with the tab and handed to the component as its `params` prop.
+   * Must be a JSON value; anything else is a declined open.
+   */
+  params?: JsonValue;
+}
+
+/**
+ * Context handed to a `threadPanelAction`'s `run`.
+ *
+ * The action is thread-only and is never offered on the root New thread
+ * screen, so `threadId` is always present.
+ */
 export interface PluginThreadPanelActionContext {
   /** The thread whose panel launcher invoked the action. */
   threadId: string;
@@ -240,8 +500,15 @@ export interface PluginThreadPanelActionContext {
    * identical to an already-open tab of this action focuses that tab
    * (updating its title) instead of duplicating it. May be called more than
    * once (different params ⇒ multiple tabs) or not at all.
+   *
+   * Returns true when the host accepted the open; false when it declined —
+   * from this launcher, only a `params` that is not a JSON value. The true /
+   * false contract is shared with `messageAction`'s `openPanel` and
+   * `useBbNavigate().openThreadPanel` (which decline for more reasons) so one
+   * open routine can serve every action kind. A decline is never thrown: the
+   * host logs it and reports it here.
    */
-  openPanel(options?: { title?: string; params?: JsonValue }): void;
+  openPanel(options?: PluginPanelActionOpenOptions): boolean;
 }
 
 export interface PluginThreadPanelActionRegistration {
@@ -272,6 +539,37 @@ export interface PluginThreadPanelActionRegistration {
    * contained and logged; they never break the launcher.
    */
   run?(context: PluginThreadPanelActionContext): void | Promise<void>;
+}
+
+/** Context handed to an `experimental_newThreadPanelAction`'s `run`. */
+export interface PluginNewThreadPanelActionContext {
+  /** Project selected in the root composer; null in projectless compose. */
+  projectId: string | null;
+  /**
+   * Open a tab in the root New thread screen's side panel rendering this
+   * action's `component`. The title, params, deduplication, return value, and
+   * error semantics match `threadPanelAction`.
+   */
+  openPanel(options?: PluginPanelActionOpenOptions): boolean;
+}
+
+/** Registration for the root New thread screen's panel Actions list. */
+export interface PluginNewThreadPanelActionRegistration {
+  /** Unique within this slot for the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label of the action row in the panel's new-tab launcher. */
+  title: string;
+  /** Icon hint (BB icon name) used when the plugin ships no logo. */
+  icon?: string;
+  /** Rendered inside every panel tab this action opens. */
+  component: ComponentType<PluginNewThreadPanelProps>;
+  /** Host framing; matches `threadPanelAction`. */
+  layout?: "padded" | "flush";
+  /**
+   * Runs when the user activates the action. Omitted = immediately open a
+   * panel tab with defaults. Errors are contained and logged.
+   */
+  run?(context: PluginNewThreadPanelActionContext): void | Promise<void>;
 }
 
 export interface PluginPendingInteractionRegistration {
@@ -375,10 +673,11 @@ export interface PluginSidebarThread {
   parentThreadId: string | null;
   sectionId: string | null;
   /** How this thread came to exist under its parent; null for root threads. */
-  originKind: "fork" | "side-chat" | null;
+  originKind: "fork" | null;
   /** The plugin that spawned it, or null for non-plugin origins. */
   originPluginId: string | null;
-  /** The agent provider this thread runs on, e.g. "codex", "claude-code". */
+  /** The agent provider this thread runs on; resolve it through
+   * {@link PluginSdkApp.experimental_useProviders} for a name and icon. */
   providerId: string;
 
   /** The agent is blocked on the user: an approval or a question. */
@@ -463,6 +762,18 @@ export interface PluginSidebarThreadsState {
   status: "loading" | "ready" | "error";
   threads: readonly PluginSidebarThread[];
   projects: readonly PluginSidebarProject[];
+}
+
+/**
+ * The provider directory (see {@link PluginSdkApp.experimental_useProviders}):
+ * every registered agent provider in picker order, as the same `ProviderInfo`
+ * the host's own pickers read. `logoUrl` is server-relative
+ * (`/api/v1/system/providers/<id>/logo`) or null when the provider declared a
+ * glyph or no icon; `strings` carries the provider's declared copy.
+ */
+export interface PluginProvidersState {
+  status: "loading" | "ready" | "error";
+  providers: readonly ProviderInfo[];
 }
 
 /**
@@ -565,10 +876,13 @@ export interface PluginSidebarThreadSplit {
  * Replace the sidebar's thread list with a plugin component.
  *
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
- * scroll area. The built-in list stays the default; the user picks a provider
- * in Settings → Appearance, stored per client. A provider that is uninstalled,
- * disabled, or crashing falls back to the built-in list rather than leaving
- * the user with no sidebar.
+ * scroll area. Registering activates the replacement while the plugin is
+ * enabled. If multiple plugins register one, the first in deterministic slot
+ * order is active by default; removing it reveals the next. The user can pin
+ * BB's list or a specific provider under Settings → Appearance. A plugin can
+ * also use its own setting and render `experimental_Original` conditionally.
+ * An absent or crashing replacement falls back to BB's list rather than
+ * leaving the user with no sidebar.
  *
  * The plugin gets the scrolling list and nothing else. The New-thread button,
  * the search field, the plugin nav rows, and the footer stay host-rendered in
@@ -578,21 +892,22 @@ export interface PluginSidebarThreadSplit {
 export interface PluginThreadListRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
   id: string;
-  /** Label in the Settings → Appearance → Sidebar picker. */
+  /** Label shown in Settings → Appearance and capability details. */
   title: string;
-  /** Optional one-line description under the title in that picker. */
+  /** Optional one-line description shown with the provider choice. */
   description?: string;
   component: ComponentType<PluginThreadListProps>;
 }
 
 /**
- * Register this plugin as a viewer/editor for file extensions. The user
- * picks (and can set as default) an opener per extension via the file tab's
- * "Open with" menu; matching files opened in the panel then render
- * `component` in a plugin tab instead of the built-in preview. Applies to
- * working-tree, host, and thread-storage files — never to git-ref snapshots
- * (diff views always use the built-in preview). The built-in preview stays
- * one menu click away, and a missing/disabled opener falls back to it.
+ * Register this plugin as a viewer/editor for file extensions. By default,
+ * matching files render the first applicable opener in deterministic slot
+ * order. The user can pin BB's preview or a specific opener per extension
+ * under Settings → Files. The file tab's "Open with" menu can override that
+ * choice for one open. A plugin can also use its own setting and render
+ * `experimental_Original` conditionally. Applies to working-tree, host, and
+ * thread-storage files — never to git-ref snapshots (diff views always use
+ * BB's preview).
  */
 export interface PluginFileOpenerRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -602,6 +917,43 @@ export interface PluginFileOpenerRegistration {
   /** Lowercase extensions without the dot (e.g. ["md", "mdx"]). */
   extensions: readonly string[];
   component: ComponentType<PluginFileOpenerProps>;
+}
+
+/**
+ * Replace BB's source-code renderer everywhere it renders supplied source
+ * text — the native file preview and every plugin that calls
+ * `experimental_SourceCode`. Like `experimental_threadList` this slot is
+ * **exclusive**: one renderer at a time. Registering activates it while the
+ * plugin is enabled; if several are registered the first in deterministic slot
+ * order wins. A missing, disabled, or crashing replacement falls back to BB's
+ * renderer, and a replacement can render `experimental_Original` to delegate
+ * per call (behind its own setting, by language, by size — whatever it needs).
+ */
+export interface PluginSourceCodeRendererRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<PluginSourceCodeRendererProps>;
+}
+
+/**
+ * Replace BB's diff renderer everywhere it renders supplied diff content — the
+ * timeline file diffs, the environment diff panel's text bodies, and every
+ * plugin that calls `experimental_Diff`. Exclusive, with the same activation,
+ * fallback, and `experimental_Original` delegation rules as
+ * {@link PluginSourceCodeRendererRegistration}.
+ */
+export interface PluginDiffRendererRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in capability details. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<PluginDiffRendererProps>;
 }
 
 /**
@@ -631,11 +983,15 @@ export interface ThreadChatMessageReference {
   sourceSeqEnd: number;
 }
 
-export interface PluginMessageActionThreadPanelOptions {
+/**
+ * What a caller that is *not* itself a panel action passes to open one — a
+ * `messageAction`'s `run`, or any component via `useBbNavigate()`. A panel
+ * action opening its own tab is already the target, so it passes the bare
+ * {@link PluginPanelActionOpenOptions} instead.
+ */
+export interface PluginTargetedPanelActionOpenOptions extends PluginPanelActionOpenOptions {
   /** A `threadPanelAction` id registered by this same plugin. */
   actionId: string;
-  title?: string;
-  params?: JsonValue;
 }
 
 /** Context handed to a `messageAction`'s `run`. */
@@ -651,11 +1007,15 @@ export interface PluginMessageActionContext {
   /**
    * Open one of this plugin's `threadPanelAction` components in the current
    * thread's side panel — the registration-callback equivalent of
-   * `useBbNavigate().openThreadPanel`. Returns true when the host
-   * accepted (the action id exists and the surface has a panel); false
-   * otherwise.
+   * `useBbNavigate().openThreadPanel`.
+   *
+   * Returns true when the host accepted the open; false when it declined —
+   * `params` was not a JSON value, the action id names no `threadPanelAction`
+   * of this plugin, or the surface has no side panel (only the main thread
+   * view does; a `ThreadChat` embedded in a plugin panel does not). A decline
+   * is never thrown: the host logs it and reports it here.
    */
-  openPanel(options: PluginMessageActionThreadPanelOptions): boolean;
+  openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
 }
 
 /**
@@ -678,6 +1038,31 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
+/**
+ * Supply the inline React mark bb draws for one agent provider.
+ *
+ * A manifest `branding.icon` (or a provider's `logoUrl`) is fetched and drawn
+ * through `<img>`, a separate document where `currentColor` resolves to black
+ * — invisible on dark themes and unreachable from app CSS. A component is
+ * rendered inline, so it inherits the app's theme colors and the host's sizing
+ * classes. Register a static color logo as a file and a theme-aware mark here.
+ *
+ * The host passes only `className` (sizing plus the provider's color class);
+ * the component must render an inline SVG (or other inline markup) and must
+ * not fetch. One registration per provider id per plugin; when two plugins
+ * claim the same provider id the host keeps the first by plugin id and warns.
+ */
+export interface PluginProviderIconRegistration {
+  /**
+   * The provider this mark is for — the id bb knows the provider by (the
+   * provider declaration's id, e.g. `codex` or `acp-cursor`), not the plugin
+   * id. Letters, digits, `-`, `_`.
+   */
+  providerId: string;
+  /** Inline, theme-aware mark. Receives the host's sizing/color className. */
+  icon: ComponentType<{ className?: string }>;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -686,7 +1071,19 @@ export interface PluginAppSlots {
   homepageSection(registration: PluginHomepageSectionRegistration): void;
   settingsSection(registration: PluginSettingsSectionRegistration): void;
   navPanel(registration: PluginNavPanelRegistration): void;
+  /**
+   * Add an action to an existing thread's panel launcher. This slot is
+   * thread-only; use `experimental_newThreadPanelAction` for root compose.
+   */
   threadPanelAction(registration: PluginThreadPanelActionRegistration): void;
+  /**
+   * Add an action to the root New thread screen's panel launcher (see
+   * {@link PluginNewThreadPanelActionRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_newThreadPanelAction(
+    registration: PluginNewThreadPanelActionRegistration,
+  ): void;
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
@@ -706,8 +1103,29 @@ export interface PluginAppSlots {
     registration: PluginThreadHeaderActionRegistration,
   ): void;
   fileOpener(registration: PluginFileOpenerRegistration): void;
+  /**
+   * Replace BB's source-code renderer (see
+   * {@link PluginSourceCodeRendererRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_sourceCodeRenderer(
+    registration: PluginSourceCodeRendererRegistration,
+  ): void;
+  /**
+   * Replace BB's diff renderer (see
+   * {@link PluginDiffRendererRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
+  /**
+   * Draw one agent provider's icon with an inline React component instead of
+   * its `<img>`-rendered logo file (see
+   * {@link PluginProviderIconRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_providerIcon(registration: PluginProviderIconRegistration): void;
 }
 
 export interface PluginAppComposer {
@@ -751,7 +1169,10 @@ export interface PluginContentScriptRegistration {
   id: string;
   /**
    * Install behavior into the bb app shell. The host awaits a returned
-   * promise, contains failures, and calls the returned disposer exactly once.
+   * promise, retains the plugin's imported frontend stylesheet for this
+   * generation, contains failures, and calls the returned disposer exactly
+   * once. Styling or decorating existing app-shell DOM belongs here rather
+   * than in an always-on frontend stylesheet.
    */
   mount(
     context: PluginContentScriptContext,
@@ -1076,6 +1497,13 @@ export interface ThreadChatProps {
  * composer props.
  */
 export interface NewThreadRequest {
+  /**
+   * The selected project id. Choosing "Don't work in a project" submits BB's
+   * personal-project id (not `null`) together with a `personal` workspace
+   * environment. Forward those fields unchanged to `threads.spawn`; if the
+   * plugin needs project metadata, request it from the plugin backend with
+   * `bb.sdk.projects.list({ includePersonal: true })`.
+   */
   projectId: string;
   providerId: string;
   model: string;
@@ -1104,7 +1532,11 @@ export interface NewThreadRequest {
  * exception to the no-host-components rule (§5.5), same additive versioning.
  */
 export interface NewThreadComposerProps {
-  /** Seeds the project picker. The user can change it. */
+  /**
+   * Seeds the project picker. The user can change it, including choosing
+   * "Don't work in a project"; see {@link NewThreadRequest.projectId} for the
+   * submitted projectless shape.
+   */
   defaultProjectId?: string;
   /**
    * Seeds the provider picker. Like every `default*` prop this is a SEED, not
@@ -1207,6 +1639,78 @@ export interface MarkdownProps {
   className?: string;
 }
 
+/**
+ * Props for BB's semantic URL link. The host owns ordinary activation while
+ * retaining browser-owned anchor behavior for app routes, modifiers, explicit
+ * targets, copying, and unsupported schemes. New top-level targets preserve
+ * supplied `rel` tokens and receive safe defaults unless `opener` is explicit.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalUrlLinkProps extends Omit<
+  ComponentPropsWithoutRef<"a">,
+  "href"
+> {
+  href: string;
+}
+
+/** A live file whose identity is complete without ambient route context. */
+export type ExperimentalLiveFileTarget =
+  | { kind: "workspace"; environmentId: string; path: string }
+  | { kind: "host"; hostId: string; path: string }
+  | { kind: "thread-storage"; threadId: string; path: string };
+
+/** One-based location to reveal after a live file opens. */
+export type ExperimentalFileLocation =
+  | { kind: "line"; line: number; column: number | null }
+  | { kind: "range"; startLine: number; endLine: number };
+
+/** Options shared by BB's preview and preferred-external file intents. */
+export interface ExperimentalFileOpenOptions {
+  target: ExperimentalLiveFileTarget;
+  location: ExperimentalFileLocation | null;
+}
+
+/**
+ * Props for BB's host-rendered semantic file link. Valid targets receive a
+ * scheme-safe anchor href; traversal paths, ill-formed Unicode, and other
+ * malformed runtime targets remain inert.
+ */
+export interface ExperimentalFileLinkProps extends Omit<
+  ComponentPropsWithoutRef<"a">,
+  "href" | "target"
+> {
+  target: ExperimentalLiveFileTarget;
+  location?: ExperimentalFileLocation | null;
+}
+
+/** The panel surface resolved by the component making the request. */
+export type ExperimentalAppPanelSurface = { kind: "current" };
+
+/**
+ * The owning fixed tab's current memory-only target. It survives tab, panel,
+ * and route remounts during the current app session, but is never persisted
+ * across a refresh. Call `clear` when the owner returns to its untargeted state.
+ */
+export interface ExperimentalFixedTabTargetState<Target extends JsonValue> {
+  readonly sequence: number;
+  readonly target: Target;
+  clear(): void;
+}
+
+export type ExperimentalOpenFixedTabOptions<Target extends JsonValue> = {
+  surface: ExperimentalAppPanelSurface;
+  tab: ExperimentalPluginFixedTabReference<Target>;
+  /** Omit to select the tab without replacing its current session target. */
+  target?: NoInfer<Target>;
+};
+
+/** Surface-aware controller for selecting owner-scoped fixed tabs. */
+export interface ExperimentalAppPanel {
+  openFixedTab<Target extends JsonValue = never>(
+    options: ExperimentalOpenFixedTabOptions<Target>,
+  ): boolean;
+}
+
 /** Current app selection, derived from the route. */
 export interface BbContext {
   projectId: string | null;
@@ -1238,27 +1742,38 @@ export interface BbNavigate {
    * thread surface. Returns false when the surface has no thread side panel or
    * the action is unavailable.
    */
-  openThreadPanel(options: {
-    actionId: string;
-    title?: string;
-    params?: JsonValue;
-  }): boolean;
+  openThreadPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+  /**
+   * Open an HTTP(S) URL using this client's BB browser preference. Returns
+   * false for schemes the host does not own. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_openUrl(url: string): boolean;
+  /** Open a live file in this surface's shared BB preview panel. */
+  experimental_openFilePreview(options: ExperimentalFileOpenOptions): boolean;
+  /** Open a live file in this client's preferred external file target. */
+  experimental_openFileExternally(
+    options: ExperimentalFileOpenOptions,
+  ): boolean;
 }
 
 // ---------------------------------------------------------------------------
 // The whole runtime surface. Declaration-versus-runtime parity is tested
-// against the actual `@bb/plugin-sdk/app` module namespace.
+// against the actual `@get-bb/plugin-sdk/app` module namespace.
 //
 // Components are deliberately NOT part of this surface (removed 2026-07-03,
 // plugin design §5.5): plugins vendor shadcn-style component source from the
 // BB registry (`npx shadcn add @bb/<name>`) and own it. `bb plugin build`
-// shims react + the shared-singleton packages (portal radix families,
-// sonner, vaul); everything else bundles per plugin. Freezing 65 component
-// prop types here made every host component change a plugin-breaking change.
+// shims react, the shared-singleton packages (portal radix families,
+// sonner, vaul, @pierre/diffs) and the host-resident libraries every plugin
+// would otherwise duplicate (clsx, tailwind-merge, class-variance-authority,
+// the shared-ui icon); everything else bundles per plugin. Freezing 65
+// component prop types here made every host component change a
+// plugin-breaking change.
 // ---------------------------------------------------------------------------
 
 /**
- * Everything `@bb/plugin-sdk/app` resolves to at runtime. The BB app builds
+ * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
@@ -1278,11 +1793,24 @@ export interface PluginSdkApp {
   useSettings(): PluginSettingsState;
   useBbContext(): BbContext;
   useBbNavigate(): BbNavigate;
+  /** Select one of this plugin's eligible fixed tabs on the current surface. */
+  experimental_useAppPanel(): ExperimentalAppPanel;
+  /** Read or clear the owning tab's validated, session-scoped target. */
+  experimental_useFixedTabTarget<Target extends JsonValue>(
+    tab: ExperimentalPluginFixedTabReference<Target>,
+  ): ExperimentalFixedTabTargetState<Target> | null;
   useComposer(): PluginComposerApi;
   /**
    * The sidebar's live thread view (see {@link PluginSidebarThreadsState}).
    * Reads the host's own cache and realtime subscriptions, so it costs no
    * extra request and updates exactly when the built-in sidebar does.
+   *
+   * `threads` is one array of every visible thread and is not capped. Thread
+   * objects keep their identity across updates while the underlying entry is
+   * unchanged, so a memoized row re-renders only when its own thread changed;
+   * the array itself is new on every update. Window your rows (render only
+   * what is on screen) as the built-in sidebar does — a list that mounts one
+   * row per thread is slow on phones with many threads.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useSidebarThreads(): PluginSidebarThreadsState;
@@ -1315,6 +1843,13 @@ export interface PluginSdkApp {
     threadId: string,
   ): PluginSidebarThreadSplit;
   /**
+   * The provider directory (see {@link PluginProvidersState}). Reads the
+   * host's own cached provider roster, so a plugin that shows a thread's
+   * provider never re-vendors provider names, icons, or copy. Experimental:
+   * see docs/api_to_audit.md.
+   */
+  experimental_useProviders(): PluginProvidersState;
+  /**
    * The host-owned chat component (see {@link ThreadChatProps}). Together
    * with `Markdown`, the only components the SDK ships — everything else
    * stays vendored per §5.5.
@@ -1326,10 +1861,33 @@ export interface PluginSdkApp {
    */
   Markdown: ComponentType<MarkdownProps>;
   /**
+   * A real anchor whose ordinary HTTP(S) activation uses BB's URL preference.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_UrlLink: ComponentType<ExperimentalUrlLinkProps>;
+  /** Host-rendered live-file link backed by the shared navigation controller. */
+  experimental_FileLink: ComponentType<ExperimentalFileLinkProps>;
+  /**
    * The host-owned new-thread compose surface (see
    * {@link NewThreadComposerProps}). Experimental: see
    * docs/api_to_audit.md for what to audit before the prefix drops.
    */
   experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+  /**
+   * The host-owned source viewer (see {@link SourceCodeProps}). Renders
+   * supplied source text with BB's syntax highlighting, gutters, and live code
+   * theme, and honours an active `experimental_sourceCodeRenderer`
+   * replacement. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_SourceCode: ComponentType<SourceCodeProps>;
+  /**
+   * The host-owned diff viewer (see {@link DiffProps}). Renders supplied patch
+   * content with BB's normalization, optional full-file context expansion,
+   * syntax highlighting, unified/split presentation, and live code theme, and
+   * honours an active
+   * `experimental_diffRenderer` replacement. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_Diff: ComponentType<DiffProps>;
   useComposerView(): ComposerView;
 }

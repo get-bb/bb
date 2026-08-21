@@ -163,7 +163,7 @@ describe("plugin component registry", () => {
     // Utilities scope to this plugin's own mounts (id derived from the
     // package name), with a generic-root fallback for pre-id hosts.
     expect(css).toContain(
-      '@scope ([data-bb-plugin="registry-fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
+      ":where([data-bb-plugin=registry-fixture],[data-bb-plugin-root]:not([data-bb-plugin]))",
     );
     expect(css).toMatch(/var\(--background\)/);
   });

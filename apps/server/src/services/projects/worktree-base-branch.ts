@@ -1,7 +1,7 @@
 import type { ProjectSourceCheckout } from "@bb/domain";
 import type { BaseBranchSpec } from "@bb/server-contract";
 
-export interface ResolveDefaultWorktreeBaseBranchArgs {
+interface ResolveDefaultWorktreeBaseBranchArgs {
   defaultBranch: ProjectSourceCheckout["defaultBranch"];
   defaultBranchRelation: ProjectSourceCheckout["defaultBranchRelation"];
   originDefaultBranch: ProjectSourceCheckout["originDefaultBranch"];

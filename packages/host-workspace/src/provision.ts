@@ -13,19 +13,25 @@ import type {
   DiffFilesResult,
   DiffPatchArgs,
   DiffPatchEntry,
-  FetchOptions,
   PullRequestActionOptions,
   StatusOptions,
   SquashMergeOptions,
   SquashMergeResult,
 } from "./workspace.js";
 import { Workspace } from "./workspace.js";
-import type { GitHostPullRequestLookup } from "./git-host.js";
+import type {
+  GitHostCliOptions,
+  GitHostPullRequestLookup,
+} from "./git-host.js";
 import {
   withCheckoutMutationAdmission,
   withCheckoutMutationLock,
 } from "./checkout-mutation-lock.js";
-import { createWorktree, removeWorktree } from "./provisioning.js";
+import {
+  createWorktree,
+  removeWorktree,
+  throwIfProvisionAborted,
+} from "./provisioning.js";
 import {
   detectGitRepo,
   getAbsoluteGitDir,
@@ -38,6 +44,7 @@ import {
   readDefaultBranch,
   runGit,
   WorkspaceError,
+  type GitProcessOptions,
 } from "./git.js";
 import { resolveAdditionalWorkspaceWriteRoots } from "./workspace-write-roots.js";
 
@@ -50,10 +57,12 @@ type ProvisionProgressCallback = (entry: ProvisioningTranscriptEntry) => void;
 interface ProvisionBase {
   /** Progress callback for provisioning steps/output */
   onProgress?: ProvisionProgressCallback;
+  /** Resolved user login-shell PATH for workspace Git and setup commands. */
+  shellPath?: string;
   signal?: AbortSignal;
 }
 
-export type UnmanagedCheckoutOpts =
+type UnmanagedCheckoutOpts =
   | {
       /**
        * Runs `git switch <name>` (no-op if HEAD is already there).
@@ -71,7 +80,7 @@ export type UnmanagedCheckoutOpts =
       baseBranch: string;
     };
 
-export interface UnmanagedWorkspaceOpts extends ProvisionBase {
+interface UnmanagedWorkspaceOpts extends ProvisionBase {
   workspaceProvisionType: "unmanaged";
   /** Path to validate. Must exist. */
   path: string;
@@ -79,7 +88,7 @@ export interface UnmanagedWorkspaceOpts extends ProvisionBase {
   checkout?: UnmanagedCheckoutOpts;
 }
 
-export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
+interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   /** Source repo path */
   sourcePath: string;
   /** Target path for worktree/clone creation */
@@ -93,21 +102,19 @@ export interface ManagedWorkspaceBaseOpts extends ProvisionBase {
   baseBranch: string | null;
   /** Setup script timeout in ms. Controlled by the server. */
   timeoutMs: number;
-  /** Resolved user-shell PATH for the setup script. */
-  setupPath?: string;
 }
 
-export interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
+interface ManagedWorktreeOpts extends ManagedWorkspaceBaseOpts {
   workspaceProvisionType: "managed-worktree";
 }
 
-export interface ReconnectManagedWorktreeOpts extends ProvisionBase {
+interface ReconnectManagedWorktreeOpts extends ProvisionBase {
   workspaceProvisionType: "reconnect-managed-worktree";
   /** Existing worktree path to reconnect */
   path: string;
 }
 
-export interface PersonalWorkspaceOpts extends ProvisionBase {
+interface PersonalWorkspaceOpts extends ProvisionBase {
   workspaceProvisionType: "personal";
   /** Environment ID that owns the personal scratch workspace. */
   environmentId: string;
@@ -123,7 +130,7 @@ export type ProvisionWorkspaceArgs =
   | PersonalWorkspaceOpts
   | ReconnectManagedWorktreeOpts;
 
-export interface ValidatePersonalWorkspaceTargetPathArgs {
+interface ValidatePersonalWorkspaceTargetPathArgs {
   environmentId: string;
   personalWorkspaceRoot: string;
   targetPath: string;
@@ -156,15 +163,18 @@ export interface HostWorkspace {
   getDiff(options?: DiffOptions): Promise<DiffResult>;
   diffFiles(args: DiffFilesArgs): Promise<DiffFilesResult>;
   diffPatch(args: DiffPatchArgs): Promise<DiffPatchEntry[]>;
-  getPullRequest(): Promise<GitHostPullRequestLookup>;
-  runPullRequestAction(action: PullRequestActionOptions): Promise<void>;
-  listBranches(): Promise<string[]>;
+  getPullRequest(
+    options?: GitHostCliOptions,
+  ): Promise<GitHostPullRequestLookup>;
+  runPullRequestAction(
+    action: PullRequestActionOptions,
+    options?: GitHostCliOptions,
+  ): Promise<void>;
   listFiles(): Promise<string[]>;
 
   // Git mutations
   commit(options: CommitOptions): Promise<CommitResult>;
   reset(): Promise<void>;
-  fetch(options?: FetchOptions): Promise<void>;
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult>;
 
   // Lifecycle
@@ -175,9 +185,13 @@ export interface HostWorkspace {
 // Detect whether a path is a git worktree
 // ---------------------------------------------------------------------------
 
-async function detectWorktree(cwd: string): Promise<boolean> {
+async function detectWorktree(
+  cwd: string,
+  options: GitProcessOptions,
+): Promise<boolean> {
   const gitDirResult = await runGit(["rev-parse", "--git-dir"], {
     cwd,
+    ...options,
     allowFailure: true,
   });
   if (gitDirResult.exitCode !== 0) return false;
@@ -199,6 +213,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
   readonly isWorktree: boolean;
 
   private readonly ws: Workspace;
+  private readonly gitProcessOptions: GitProcessOptions;
   private readonly destroyFn: () => Promise<void>;
 
   constructor(opts: {
@@ -206,13 +221,17 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     managed: boolean;
     isGitRepo: boolean;
     isWorktree: boolean;
+    shellPath?: string;
     destroyFn: () => Promise<void>;
   }) {
     this.path = opts.path;
     this.managed = opts.managed;
     this.isGitRepo = opts.isGitRepo;
     this.isWorktree = opts.isWorktree;
-    this.ws = new Workspace(opts.path);
+    this.gitProcessOptions = {
+      ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
+    };
+    this.ws = new Workspace(opts.path, this.gitProcessOptions);
     this.destroyFn = opts.destroyFn;
   }
 
@@ -227,6 +246,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return (
       (await readDefaultBranch(this.path, {
         timeoutMs: WORKSPACE_BRANCH_GIT_TIMEOUT_MS,
+        ...this.gitProcessOptions,
       })) ?? null
     );
   }
@@ -247,7 +267,10 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     if (!this.isGitRepo || !this.isWorktree) {
       return Promise.resolve([]);
     }
-    return resolveAdditionalWorkspaceWriteRoots(this.path);
+    return resolveAdditionalWorkspaceWriteRoots(
+      this.path,
+      this.gitProcessOptions,
+    );
   }
 
   getStatus(options?: StatusOptions): Promise<WorkspaceStatus> {
@@ -266,16 +289,17 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.diffPatch(args);
   }
 
-  getPullRequest(): Promise<GitHostPullRequestLookup> {
-    return this.ws.getPullRequest();
+  getPullRequest(
+    options?: GitHostCliOptions,
+  ): Promise<GitHostPullRequestLookup> {
+    return this.ws.getPullRequest(options);
   }
 
-  runPullRequestAction(action: PullRequestActionOptions): Promise<void> {
-    return this.ws.runPullRequestAction(action);
-  }
-
-  listBranches(): Promise<string[]> {
-    return this.ws.getBranches();
+  runPullRequestAction(
+    action: PullRequestActionOptions,
+    options?: GitHostCliOptions,
+  ): Promise<void> {
+    return this.ws.runPullRequestAction(action, options);
   }
 
   listFiles(): Promise<string[]> {
@@ -290,10 +314,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     return this.ws.reset();
   }
 
-  fetch(options?: FetchOptions): Promise<void> {
-    return this.ws.fetch(options);
-  }
-
   squashMerge(options: SquashMergeOptions): Promise<SquashMergeResult> {
     return this.ws.squashMergeInto(options);
   }
@@ -306,19 +326,6 @@ class ProvisionedHostWorkspace implements HostWorkspace {
 // ---------------------------------------------------------------------------
 // provisionWorkspace
 // ---------------------------------------------------------------------------
-
-export interface OpenWorkspaceArgs {
-  path: string;
-}
-
-export async function openWorkspace(
-  args: OpenWorkspaceArgs,
-): Promise<HostWorkspace> {
-  return provisionWorkspace({
-    workspaceProvisionType: "unmanaged",
-    path: args.path,
-  });
-}
 
 export async function provisionWorkspace(
   opts: ProvisionWorkspaceArgs,
@@ -355,11 +362,12 @@ function isSamePathOrNestedUnder(
 
 async function hasContainedPersonalGitMetadata(
   targetPath: string,
+  options: GitProcessOptions,
 ): Promise<boolean> {
   const [resolvedTargetPath, gitDir, commonGitDir] = await Promise.all([
     realpath(targetPath),
-    getAbsoluteGitDir(targetPath),
-    getGitCommonDir(targetPath),
+    getAbsoluteGitDir(targetPath, options),
+    getGitCommonDir(targetPath, options),
   ]);
   const [resolvedGitDir, resolvedCommonGitDir] = await Promise.all([
     realpath(gitDir),
@@ -414,12 +422,14 @@ interface ApplyUnmanagedCheckoutArgs {
   cwd: string;
   checkout: UnmanagedCheckoutOpts;
   onProgress: ProvisionProgressCallback | undefined;
+  shellPath: string | undefined;
   signal: AbortSignal | undefined;
 }
 
 interface ValidateUnmanagedCheckoutArgs {
   cwd: string;
   checkout: UnmanagedCheckoutOpts;
+  shellPath: string | undefined;
   signal: AbortSignal | undefined;
 }
 
@@ -452,26 +462,14 @@ function getCheckoutCompletedText(args: CheckoutCompletedTextArgs): string {
   return `Switched to branch ${checkout.name}`;
 }
 
-function createProvisionCancelledError(cause?: unknown): WorkspaceError {
-  return new WorkspaceError(
-    "provision_cancelled",
-    "Workspace provisioning was cancelled",
-    { cause },
-  );
-}
-
-function throwIfProvisionAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) {
-    throw createProvisionCancelledError(signal.reason);
-  }
-}
-
 async function validateUnmanagedCheckout(
   args: ValidateUnmanagedCheckoutArgs,
 ): Promise<UnmanagedCheckoutPreflightResult> {
   const { cwd, checkout } = args;
+  const gitProcessOptions =
+    args.shellPath === undefined ? {} : { shellPath: args.shellPath };
   throwIfProvisionAborted(args.signal);
-  const checkoutRef = await getCheckoutRef(cwd);
+  const checkoutRef = await getCheckoutRef(cwd, gitProcessOptions);
   if (
     checkoutRef.kind === "branch" &&
     checkoutRef.branchName === checkout.name
@@ -506,7 +504,7 @@ async function validateUnmanagedCheckout(
   }
 
   if (checkout.kind === "existing") {
-    const branches = await listBranches(cwd);
+    const branches = await listBranches(cwd, gitProcessOptions);
     if (!branches.includes(checkout.name)) {
       throw new WorkspaceError(
         "checkout_missing_branch",
@@ -515,7 +513,7 @@ async function validateUnmanagedCheckout(
     }
   }
 
-  const operation = await getWorkspaceGitOperation(cwd);
+  const operation = await getWorkspaceGitOperation(cwd, gitProcessOptions);
   if (operation.kind !== "none" && operation.hasConflicts) {
     throw new WorkspaceError(
       "checkout_conflicts",
@@ -533,7 +531,7 @@ async function validateUnmanagedCheckout(
     );
   }
 
-  if (await hasUncommittedChanges(cwd)) {
+  if (await hasUncommittedChanges(cwd, gitProcessOptions)) {
     throw new WorkspaceError(
       "checkout_dirty",
       "Cannot checkout branch while the workspace has uncommitted changes",
@@ -547,6 +545,8 @@ async function applyUnmanagedCheckout(
   args: ApplyUnmanagedCheckoutArgs,
 ): Promise<void> {
   const { cwd, checkout, onProgress, signal } = args;
+  const gitProcessOptions =
+    args.shellPath === undefined ? {} : { shellPath: args.shellPath };
   throwIfProvisionAborted(signal);
   // `switch -C` for new (create-or-reset from base) and `switch` for existing.
   const switchArgs =
@@ -578,7 +578,7 @@ async function applyUnmanagedCheckout(
             `Unmanaged workspace path does not exist: ${cwd}`,
           );
         }
-        if (!(await detectGitRepo(cwd))) {
+        if (!(await detectGitRepo(cwd, gitProcessOptions))) {
           throw new WorkspaceError(
             "not_git_repo",
             `Cannot checkout branch on non-git workspace: ${cwd}`,
@@ -606,6 +606,7 @@ async function applyUnmanagedCheckout(
             const preflightResult = await validateUnmanagedCheckout({
               cwd,
               checkout,
+              shellPath: args.shellPath,
               signal,
             });
             if (preflightResult.kind === "already-current") {
@@ -622,9 +623,10 @@ async function applyUnmanagedCheckout(
               status: "started",
               startedAt,
             });
-            await runGit(switchArgs, { cwd, signal });
+            await runGit(switchArgs, { cwd, signal, ...gitProcessOptions });
           },
           signal,
+          gitProcessOptions,
         );
       },
       signal,
@@ -678,6 +680,7 @@ async function provisionUnmanaged(
       cwd: opts.path,
       checkout: opts.checkout,
       onProgress: opts.onProgress,
+      shellPath: opts.shellPath,
       signal: opts.signal,
     });
     isGitRepo = true;
@@ -689,15 +692,22 @@ async function provisionUnmanaged(
         `Unmanaged workspace path does not exist: ${opts.path}`,
       );
     }
-    isGitRepo = await detectGitRepo(opts.path);
+    isGitRepo = await detectGitRepo(opts.path, {
+      ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
+    });
   }
-  const isWorktree = isGitRepo ? await detectWorktree(opts.path) : false;
+  const gitProcessOptions =
+    opts.shellPath === undefined ? {} : { shellPath: opts.shellPath };
+  const isWorktree = isGitRepo
+    ? await detectWorktree(opts.path, gitProcessOptions)
+    : false;
 
   return new ProvisionedHostWorkspace({
     path: opts.path,
     managed: false,
     isGitRepo,
     isWorktree,
+    shellPath: opts.shellPath,
     destroyFn: async () => {
       // no-op for unmanaged workspaces
     },
@@ -714,7 +724,7 @@ async function provisionWorktree(
     branchName: opts.branchName,
     baseBranch: opts.baseBranch,
     timeoutMs: opts.timeoutMs,
-    setupPath: opts.setupPath,
+    shellPath: opts.shellPath,
     onProgress: opts.onProgress,
     pruneEmptyParent: true,
     signal: opts.signal,
@@ -725,8 +735,14 @@ async function provisionWorktree(
     managed: true,
     isGitRepo: true,
     isWorktree: true,
+    shellPath: opts.shellPath,
     destroyFn: () =>
-      removeWorktree({ path: wsPath, force: true, pruneEmptyParent: true }),
+      removeWorktree({
+        path: wsPath,
+        force: true,
+        pruneEmptyParent: true,
+        shellPath: opts.shellPath,
+      }),
   });
 }
 
@@ -747,18 +763,27 @@ async function provisionPersonalWorkspace(
   }
 
   const detectedGitRepo = targetExisted
-    ? await detectGitRepo(targetPath)
+    ? await detectGitRepo(targetPath, {
+        ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
+      })
     : false;
   const isGitRepo = detectedGitRepo
-    ? await hasContainedPersonalGitMetadata(targetPath)
+    ? await hasContainedPersonalGitMetadata(targetPath, {
+        ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
+      })
     : false;
-  const isWorktree = isGitRepo ? await detectWorktree(targetPath) : false;
+  const isWorktree = isGitRepo
+    ? await detectWorktree(targetPath, {
+        ...(opts.shellPath !== undefined ? { shellPath: opts.shellPath } : {}),
+      })
+    : false;
 
   return new ProvisionedHostWorkspace({
     path: targetPath,
     managed: true,
     isGitRepo,
     isWorktree,
+    shellPath: opts.shellPath,
     destroyFn: () => rm(targetPath, { recursive: true, force: true }),
   });
 }
@@ -766,6 +791,7 @@ async function provisionPersonalWorkspace(
 async function reconnectManaged(
   wsPath: string,
   destroyFn: () => Promise<void>,
+  shellPath: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<HostWorkspace> {
   throwIfProvisionAborted(signal);
@@ -776,14 +802,18 @@ async function reconnectManaged(
     );
   }
 
-  const isGitRepo = await detectGitRepo(wsPath);
-  const isWorktree = isGitRepo ? await detectWorktree(wsPath) : false;
+  const gitProcessOptions = shellPath === undefined ? {} : { shellPath };
+  const isGitRepo = await detectGitRepo(wsPath, gitProcessOptions);
+  const isWorktree = isGitRepo
+    ? await detectWorktree(wsPath, gitProcessOptions)
+    : false;
 
   return new ProvisionedHostWorkspace({
     path: wsPath,
     managed: true,
     isGitRepo,
     isWorktree,
+    shellPath,
     destroyFn,
   });
 }
@@ -794,7 +824,13 @@ async function reconnectManagedWorktree(
   return reconnectManaged(
     opts.path,
     () =>
-      removeWorktree({ path: opts.path, force: true, pruneEmptyParent: true }),
+      removeWorktree({
+        path: opts.path,
+        force: true,
+        pruneEmptyParent: true,
+        shellPath: opts.shellPath,
+      }),
+    opts.shellPath,
     opts.signal,
   );
 }

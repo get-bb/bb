@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
+import clsx from "clsx";
+import { Icon } from "@bb/shared-ui/icon";
 import {
+  createPluginFrontendPageLifecycle,
   installPluginRuntime,
   loadPluginFrontends,
   type PluginFrontendCandidate,
@@ -17,6 +20,7 @@ function candidate(
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=abc123`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=abc123`,
+      jsBytes: 1_000,
       hash: "abc123",
       sdkMajor: 0,
       sdkVersion: "0.1.0",
@@ -151,8 +155,13 @@ describe("installPluginRuntime", () => {
     >;
     // The shim slot names `bb plugin build` emits (react ×5 + SDK + the
     // shared-singleton packages: portal radix families, sonner, vaul,
-    // @pierre/diffs).
+    // @pierre/diffs + the host-resident libraries: clsx, tailwind-merge,
+    // class-variance-authority, the shared-ui icon). zod is deliberately
+    // absent: slotting its namespace would stop the boot chunk from
+    // tree-shaking it.
     expect(Object.keys(runtime).sort()).toEqual([
+      "classVarianceAuthority",
+      "clsx",
       "jsxDevRuntime",
       "jsxRuntime",
       "pierreDiffs",
@@ -171,9 +180,16 @@ describe("installPluginRuntime", () => {
       "react",
       "reactDom",
       "reactDomClient",
+      "sharedUiIcon",
       "sonner",
+      "tailwindMerge",
       "vaul",
     ]);
+    // Library slots carry the host's own module namespaces: `import clsx
+    // from "clsx"` in a plugin must reach the callable default, and the
+    // Icon must be the host's (one hugeicons map, one IconName set).
+    expect((runtime.clsx as { default: unknown }).default).toBe(clsx);
+    expect((runtime.sharedUiIcon as { Icon: unknown }).Icon).toBe(Icon);
     // Identity matters: plugins must get the app's own React, not a copy.
     expect((runtime.react as { useState: unknown }).useState).toBe(
       react.useState,
@@ -186,5 +202,68 @@ describe("installPluginRuntime", () => {
     // A second call never replaces an installed runtime.
     installPluginRuntime();
     expect((globalThis as RuntimeHost).__bbPluginRuntime).toBe(runtime);
+  });
+
+  it("hands plugins every @pierre/diffs/react export, with the diff components gated", async () => {
+    installPluginRuntime();
+    const runtime = (globalThis as RuntimeHost).__bbPluginRuntime as Record<
+      string,
+      unknown
+    >;
+    const pierreDiffsReact = await import("@pierre/diffs/react");
+    const slot = runtime.pierreDiffsReact as Record<string, unknown>;
+    // The shim destructures the manifest's export list from this slot; a
+    // name missing here becomes `undefined` in every plugin bundle.
+    expect(Object.keys(slot).sort()).toEqual(
+      Object.keys(pierreDiffsReact).sort(),
+    );
+    // Non-component exports pass through unchanged...
+    expect(slot.useVirtualizer).toBe(pierreDiffsReact.useVirtualizer);
+    expect(slot.WorkerPoolContext).toBe(pierreDiffsReact.WorkerPoolContext);
+    // ...while the diff components wait for the host's worker pool, so a
+    // plugin diff cannot capture "no pool" before the workspace builds it.
+    expect(slot.FileDiff).not.toBe(pierreDiffsReact.FileDiff);
+    expect(slot.File).not.toBe(pierreDiffsReact.File);
+  });
+});
+
+describe("createPluginFrontendPageLifecycle", () => {
+  function createDeps(tornDown: boolean) {
+    return {
+      isTornDown: vi.fn(() => tornDown),
+      reboot: vi.fn(),
+      reconcile: vi.fn(),
+      teardown: vi.fn(),
+    };
+  }
+
+  it("keeps frontends mounted when the page enters the back/forward cache", () => {
+    const deps = createDeps(false);
+    const lifecycle = createPluginFrontendPageLifecycle(deps);
+    lifecycle.onPageHide({ persisted: true });
+    expect(deps.teardown).not.toHaveBeenCalled();
+
+    // Restored from bfcache with plugins still mounted: only reconcile.
+    lifecycle.onPageShow({ persisted: true });
+    expect(deps.reconcile).toHaveBeenCalledTimes(1);
+    expect(deps.reboot).not.toHaveBeenCalled();
+  });
+
+  it("tears down on a real unload and reboots if a persisted restore follows a teardown", () => {
+    const deps = createDeps(true);
+    const lifecycle = createPluginFrontendPageLifecycle(deps);
+    lifecycle.onPageHide({ persisted: false });
+    expect(deps.teardown).toHaveBeenCalledTimes(1);
+
+    lifecycle.onPageShow({ persisted: true });
+    expect(deps.reboot).toHaveBeenCalledTimes(1);
+    expect(deps.reconcile).not.toHaveBeenCalled();
+  });
+
+  it("ignores the initial (non-persisted) pageshow", () => {
+    const deps = createDeps(false);
+    createPluginFrontendPageLifecycle(deps).onPageShow({ persisted: false });
+    expect(deps.reboot).not.toHaveBeenCalled();
+    expect(deps.reconcile).not.toHaveBeenCalled();
   });
 });

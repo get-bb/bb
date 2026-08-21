@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  GENERATED_ID_ALPHABET,
+  GENERATED_ID_SUFFIX_LENGTH,
+  RAW_THREAD_ID_PATTERN_SOURCE,
   clientTurnRequestIdSchema,
   encodeClientTurnRequestIdAlphabetIndexes,
   encodeClientTurnRequestIdNumber,
   formatClientTurnRequestIdSuffix,
+  isRawThreadId,
+  rawThreadIdSchema,
 } from "../src/index.js";
 
 describe("protocol id schemas", () => {
@@ -44,5 +49,35 @@ describe("protocol id schemas", () => {
         indexes: [0, 1, 2, 3, 4, 5, 6, 7, 8, 99],
       }),
     ).toThrow();
+  });
+
+  it("recognizes exactly the currently generated prefixed thread IDs", () => {
+    expect(GENERATED_ID_ALPHABET).toBe("23456789abcdefghijkmnpqrstuvwxyz");
+    expect(GENERATED_ID_SUFFIX_LENGTH).toBe(10);
+    expect(RAW_THREAD_ID_PATTERN_SOURCE).toBe(
+      "thr_[23456789abcdefghijkmnpqrstuvwxyz]{10}",
+    );
+    expect(isRawThreadId("thr_23456789ab")).toBe(true);
+    expect(rawThreadIdSchema.parse("thr_zyxwvutsrq")).toBe("thr_zyxwvutsrq");
+
+    for (const invalid of [
+      "23456789ab",
+      "thr_23456789a",
+      "thr_23456789abc",
+      "thr_0123456789",
+      "proj_23456789ab",
+      "THR_23456789ab",
+    ]) {
+      expect(isRawThreadId(invalid), invalid).toBe(false);
+      expect(rawThreadIdSchema.safeParse(invalid).success, invalid).toBe(false);
+    }
+  });
+
+  it("does not broaden raw-thread matching to legacy unprefixed NanoIDs", () => {
+    // Historical rows used bare nanoid() values. The raw-text feature is
+    // intentionally limited to the user-visible `thr_` contract so ordinary
+    // ten-character words cannot trigger lookups.
+    expect(isRawThreadId("dcwivn5n8w")).toBe(false);
+    expect(rawThreadIdSchema.safeParse("dcwivn5n8w").success).toBe(false);
   });
 });

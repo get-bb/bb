@@ -12,12 +12,12 @@ import {
   ne,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import type {
   EnvironmentWorkspaceDisplayKind,
   ReasoningLevel,
   ThreadChangeKind,
-  ThreadChildOrigin,
   ThreadLifecycleEvent,
   ThreadLifecycleNoopReason,
   ThreadOriginKind,
@@ -37,6 +37,7 @@ import type { DbNotifier } from "../notifier.js";
 import {
   environments,
   pendingInteractions,
+  projects,
   threadSearchSegments,
   threads,
 } from "../schema.js";
@@ -50,9 +51,42 @@ type ThreadWriteConnection = DbConnection | DbTransaction;
 export const THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT = 20;
 export const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
 
-const THREAD_SEARCH_MATCHES_PER_THREAD = 3;
+// The sidebar shows one message line per result, so each thread carries its
+// matching title segments plus a single best-ranked message match.
+const THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD = 1;
 const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}_]+/gu;
 const THREAD_SEARCH_HIGHLIGHT_RANGE_LIMIT = 8;
+const THREAD_SEARCH_SNIPPET_MAX_CHARS = 160;
+const THREAD_SEARCH_SNIPPET_LEAD_CHARS = 40;
+const THREAD_SEARCH_SNIPPET_ELLIPSIS = "…";
+
+type ThreadWhere = SQL | undefined;
+
+function nonDeletedThreads(...where: ThreadWhere[]): ThreadWhere {
+  return and(...where, isNull(threads.deletedAt));
+}
+
+function liveThreads(...where: ThreadWhere[]): ThreadWhere {
+  return nonDeletedThreads(...where, isNull(threads.archivedAt));
+}
+
+function countThreadsWhere(
+  db: ThreadWriteConnection,
+  where: ThreadWhere,
+): number {
+  return db.select({ count: count() }).from(threads).where(where).get()?.count ?? 0;
+}
+
+function listThreadsWhere(
+  db: ThreadWriteConnection,
+  where: ThreadWhere,
+): ThreadRow[] {
+  return db.select().from(threads).where(where).all();
+}
+
+function hasThreadWhere(db: ThreadWriteConnection, where: ThreadWhere): boolean {
+  return db.select({ id: threads.id }).from(threads).where(where).get() !== undefined;
+}
 
 export interface ThreadSearchHighlightRange {
   start: number;
@@ -114,13 +148,13 @@ interface UpsertThreadSearchSegmentArgs extends UpsertThreadSearchSegmentInput {
 }
 
 interface ListThreadSearchMatchRowsArgs {
-  archived: boolean;
   anyTokenMatchQuery: string;
   limitPerGroup: number;
   tokenMatchQueries: readonly string[];
 }
 
 interface ThreadSearchMatchRow {
+  archived: number;
   segmentOrder: number;
   sourceKind: string;
   sourceSeq: number | null;
@@ -128,30 +162,16 @@ interface ThreadSearchMatchRow {
   threadId: string;
   threadOrder: number;
   total: number;
-}
-
-interface ThreadSearchLimitedThreadRow {
-  threadId: string;
-  threadOrder: number;
-  total: number;
-}
-
-interface ThreadSearchSegmentMatchRow {
-  segmentOrder: number;
-  sourceKind: string;
-  sourceSeq: number | null;
-  text: string;
-  threadId: string;
-}
-
-interface ListThreadSearchSegmentMatchRowsArgs {
-  matchQuery: string;
-  threadIds: readonly string[];
 }
 
 interface HydrateThreadSearchGroupArgs {
   rows: readonly ThreadSearchMatchRow[];
   tokens: readonly string[];
+}
+
+interface ThreadSearchSnippet {
+  highlightRanges: ThreadSearchHighlightRange[];
+  text: string;
 }
 
 function buildThreadSearchSegmentId(args: {
@@ -217,7 +237,7 @@ export function upsertThreadSearchSegments(
   }
 }
 
-export function upsertThreadTitleSearchSegments(
+function upsertThreadTitleSearchSegments(
   db: ThreadWriteConnection,
   args: UpsertThreadTitleSearchSegmentsArgs,
 ): void {
@@ -253,8 +273,6 @@ export interface CreateThreadInput {
   parentThreadId?: string | null;
   sourceThreadId?: string | null;
   originKind?: ThreadOriginKind | null;
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin | null;
   /** Plugin attribution for create origin "plugin". */
   originPluginId?: string | null;
   visibility?: ThreadVisibility;
@@ -268,7 +286,7 @@ export function createThread(
   const visibility = input.visibility ?? "visible";
   const now = Date.now();
   const id = createThreadId();
-  const originKind = input.originKind ?? input.childOrigin ?? null;
+  const originKind = input.originKind ?? null;
   const thread = db.transaction(
     (tx) => {
       const createdThread = tx
@@ -288,7 +306,6 @@ export function createThread(
             input.sourceThreadId ??
             (originKind === null ? null : input.parentThreadId ?? null),
           originKind,
-          childOrigin: null,
           originPluginId: input.originPluginId ?? null,
           visibility,
           lastReadAt: now,
@@ -319,6 +336,43 @@ export function getThread(db: ThreadWriteConnection, id: string) {
   return db.select().from(threads).where(eq(threads.id, id)).get() ?? null;
 }
 
+export interface ThreadMentionRow {
+  id: string;
+  projectId: string;
+  title: string | null;
+  titleFallback: string | null;
+}
+
+/**
+ * Resolves an exact bounded ID set without loading unrelated threads. Deleted
+ * threads and threads whose project was deleted are intentionally absent.
+ */
+export function listThreadMentionRowsByIds(
+  db: DbQueryConnection,
+  threadIds: readonly string[],
+): ThreadMentionRow[] {
+  if (threadIds.length === 0) {
+    return [];
+  }
+  return db
+    .select({
+      id: threads.id,
+      projectId: threads.projectId,
+      title: threads.title,
+      titleFallback: threads.titleFallback,
+    })
+    .from(threads)
+    .innerJoin(projects, eq(projects.id, threads.projectId))
+    .where(
+      and(
+        inArray(threads.id, [...threadIds]),
+        isNull(threads.deletedAt),
+        isNull(projects.deletedAt),
+      ),
+    )
+    .all();
+}
+
 export interface ListThreadsOptions {
   projectId?: string;
   archived?: boolean;
@@ -335,8 +389,6 @@ export interface ListThreadsOptions {
   originKind?: ThreadOriginKind;
   /** Restrict to threads spawned by this plugin. */
   originPluginId?: string;
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin;
   limit?: number;
   offset?: number;
   /** Hidden threads are excluded unless explicitly opted in. */
@@ -424,8 +476,7 @@ export type ReorderPinnedThreadResult =
   | ReorderPinnedThreadInvalidNeighborOrder;
 
 function pinnedThreadWhere() {
-  return and(
-    isNull(threads.deletedAt),
+  return nonDeletedThreads(
     eq(threads.visibility, "visible"),
     isNotNull(threads.pinnedAt),
     isNotNull(threads.pinSortKey),
@@ -463,7 +514,7 @@ export function listActiveVisiblePinnedThreadRoots(
   const pinnedThreads = db
     .select()
     .from(threads)
-    .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
+    .where(liveThreads(pinnedThreadWhere()))
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all();
 
@@ -471,6 +522,12 @@ export function listActiveVisiblePinnedThreadRoots(
 }
 
 function threadWithPendingInteractionBaseQuery(db: DbConnection) {
+  // A correlated EXISTS instead of a pending_interactions join with
+  // GROUP BY threads.id: the grouped form forces SQLite to either sort the
+  // whole joined result into a temp B-tree or walk the threads table in
+  // id-index order, which costs one random page read per thread on a cold
+  // cache (issue #1131). The probe is served by
+  // pending_interactions_thread_status_created_idx.
   return db
     .select({
       ...getTableColumns(threads),
@@ -479,25 +536,17 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
       environmentIsWorktree: environments.isWorktree,
       environmentName: environments.name,
       environmentWorkspaceProvisionType: environments.workspaceProvisionType,
-      pendingInteractionCount: count(pendingInteractions.id),
+      hasPendingInteraction: sql<number>`EXISTS (SELECT 1 FROM ${pendingInteractions} WHERE ${pendingInteractions.threadId} = ${threads.id} AND ${pendingInteractions.status} = 'pending')`,
     })
     .from(threads)
-    .leftJoin(environments, eq(threads.environmentId, environments.id))
-    .leftJoin(
-      pendingInteractions,
-      and(
-        eq(pendingInteractions.threadId, threads.id),
-        eq(pendingInteractions.status, "pending"),
-      ),
-    );
+    .leftJoin(environments, eq(threads.environmentId, environments.id));
 }
 
 export function listActiveVisiblePinnedThreadRootsWithPendingInteractionState(
   db: DbConnection,
 ): ThreadWithPendingInteractionState[] {
   const pinnedThreads = threadWithPendingInteractionBaseQuery(db)
-    .where(and(pinnedThreadWhere(), isNull(threads.archivedAt)))
-    .groupBy(threads.id)
+    .where(liveThreads(pinnedThreadWhere()))
     .orderBy(asc(threads.pinSortKey), asc(threads.id))
     .all()
     .map(toThreadWithPendingInteractionState);
@@ -535,7 +584,7 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
   environmentWorkspaceProvisionType: WorkspaceProvisionType | null;
-  pendingInteractionCount: number;
+  hasPendingInteraction: number;
 }
 
 export interface CountLiveThreadsInEnvironmentArgs {
@@ -544,6 +593,10 @@ export interface CountLiveThreadsInEnvironmentArgs {
 }
 
 export interface ListLiveThreadsInEnvironmentArgs {
+  environmentId: string;
+}
+
+export interface HasRevivableArchivedThreadInEnvironmentArgs {
   environmentId: string;
 }
 
@@ -582,20 +635,12 @@ export interface ListHostThreadIdsArgs {
   hostId: string;
 }
 
-export interface ListTrackedThreadStorageTargetsOnHostArgs {
-  hostId: string;
-}
-
 export interface ThreadEnvironmentAssignmentRow {
   environmentId: string;
   threadId: string;
 }
 
 export interface HasPendingThreadShutdownInEnvironmentArgs {
-  environmentId: string;
-}
-
-export interface HasNonTerminalThreadInEnvironmentArgs {
   environmentId: string;
 }
 
@@ -626,12 +671,11 @@ function statusTransitionNeedsAttention(args: StatusTransition): boolean {
 }
 
 function buildListThreadsFilters(options: ListThreadsOptions) {
-  const originKind = options.originKind ?? options.childOrigin;
   return [
     options.projectId ? eq(threads.projectId, options.projectId) : undefined,
     options.sectionId ? eq(threads.sectionId, options.sectionId) : undefined,
     options.unsectioned ? isNull(threads.sectionId) : undefined,
-    isNull(threads.deletedAt),
+    nonDeletedThreads(),
     options.includeHidden ? undefined : eq(threads.visibility, "visible"),
     options.parentThreadId
       ? eq(threads.parentThreadId, options.parentThreadId)
@@ -639,8 +683,8 @@ function buildListThreadsFilters(options: ListThreadsOptions) {
     options.sourceThreadId
       ? eq(threads.sourceThreadId, options.sourceThreadId)
       : undefined,
-    originKind
-      ? eq(threads.originKind, originKind)
+    options.originKind
+      ? eq(threads.originKind, options.originKind)
       : undefined,
     options.originPluginId
       ? eq(threads.originPluginId, options.originPluginId)
@@ -664,7 +708,7 @@ function buildListThreadsForProjectsFilters(
   return [
     inArray(threads.projectId, [...options.projectIds]),
     eq(threads.visibility, "visible"),
-    isNull(threads.deletedAt),
+    nonDeletedThreads(),
     options.archived === true
       ? isNotNull(threads.archivedAt)
       : options.archived === false
@@ -717,7 +761,7 @@ function toThreadWithPendingInteractionState(
     environmentBranchName,
     environmentHostId,
     environmentName,
-    pendingInteractionCount,
+    hasPendingInteraction,
     ...thread
   } = row;
   return {
@@ -731,7 +775,7 @@ function toThreadWithPendingInteractionState(
         workspaceProvisionType: environmentWorkspaceProvisionType,
       },
     }),
-    hasPendingInteraction: pendingInteractionCount > 0,
+    hasPendingInteraction: hasPendingInteraction > 0,
   };
 }
 
@@ -858,10 +902,102 @@ function normalizeThreadSearchHighlightText(text: string): {
   };
 }
 
-function listThreadSearchLimitedThreadRows(
+function isThreadSearchTitleSourceKind(
+  sourceKind: ThreadSearchSourceKind,
+): boolean {
+  return sourceKind === "title" || sourceKind === "title_fallback";
+}
+
+function isLowSurrogate(text: string, index: number): boolean {
+  const code = text.charCodeAt(index);
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+function isHighSurrogate(text: string, index: number): boolean {
+  const code = text.charCodeAt(index);
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+/**
+ * Bounds a message match to a short window around its first highlight so the
+ * response carries what the sidebar can show on one line instead of the whole
+ * message body. Highlight ranges are rebased onto the snippet, and an ellipsis
+ * marks each side that was cut.
+ */
+function buildThreadSearchSnippet(args: {
+  text: string;
+  tokens: readonly string[];
+}): ThreadSearchSnippet {
+  const highlightRanges = findHighlightRanges(args);
+  const text = args.text;
+  if (text.length <= THREAD_SEARCH_SNIPPET_MAX_CHARS) {
+    return { highlightRanges, text };
+  }
+
+  const firstRange = highlightRanges[0];
+  const anchorStart = firstRange?.start ?? 0;
+  const anchorEnd = firstRange?.end ?? 0;
+  let start = Math.min(
+    Math.max(0, anchorStart - THREAD_SEARCH_SNIPPET_LEAD_CHARS),
+    Math.max(0, text.length - THREAD_SEARCH_SNIPPET_MAX_CHARS),
+  );
+  let end = Math.min(text.length, start + THREAD_SEARCH_SNIPPET_MAX_CHARS);
+
+  // Prefer word boundaries on each cut side when one exists inside the lead or
+  // tail context, without dropping the highlight itself.
+  if (start > 0) {
+    const boundary = text.slice(start, anchorStart).search(/\s/u);
+    if (boundary !== -1) {
+      start += boundary + 1;
+    }
+  }
+  if (end < text.length) {
+    const tailStart = Math.max(anchorEnd, start);
+    const boundary = text.slice(tailStart, end).search(/\s\S*$/u);
+    // Snap back to the last word break unless that would discard more than a
+    // lead's worth of context (long URLs and code paths keep the hard cut).
+    if (
+      boundary > 0 &&
+      end - (tailStart + boundary) <= THREAD_SEARCH_SNIPPET_LEAD_CHARS
+    ) {
+      end = tailStart + boundary;
+    }
+  }
+  if (start > 0 && start < text.length && isLowSurrogate(text, start)) {
+    start += 1;
+  }
+  if (end > start && end < text.length && isHighSurrogate(text, end - 1)) {
+    end -= 1;
+  }
+
+  const prefix = start > 0 ? THREAD_SEARCH_SNIPPET_ELLIPSIS : "";
+  const suffix = end < text.length ? THREAD_SEARCH_SNIPPET_ELLIPSIS : "";
+  const rebasedRanges: ThreadSearchHighlightRange[] = [];
+  for (const range of highlightRanges) {
+    const rangeStart = Math.max(range.start, start) - start + prefix.length;
+    const rangeEnd = Math.min(range.end, end) - start + prefix.length;
+    if (rangeEnd > rangeStart) {
+      rebasedRanges.push({ start: rangeStart, end: rangeEnd });
+    }
+  }
+
+  return {
+    highlightRanges: rebasedRanges,
+    text: `${prefix}${text.slice(start, end)}${suffix}`,
+  };
+}
+
+/**
+ * One FTS pass for both result groups: rank threads that contain every query
+ * token, keep the top `limitPerGroup` per archive partition, then pull the
+ * matching title segments plus the single best message segment for each kept
+ * thread. Rows come back ordered by group, thread rank, then title before
+ * message.
+ */
+function listThreadSearchMatchRows(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
-): ThreadSearchLimitedThreadRow[] {
+): ThreadSearchMatchRow[] {
   const tokenMatchSelects = args.tokenMatchQueries.map(
     (matchQuery, tokenIndex) => sql`
       SELECT
@@ -874,11 +1010,9 @@ function listThreadSearchLimitedThreadRows(
       GROUP BY s.thread_id
     `,
   );
-  const archiveFilter = args.archived
-    ? sql`t.archived_at IS NOT NULL`
-    : sql`t.archived_at IS NULL`;
+  const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
 
-  return db.all<ThreadSearchLimitedThreadRow>(sql`
+  return db.all<ThreadSearchMatchRow>(sql`
     WITH token_matches AS (
       ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
     ),
@@ -886,45 +1020,44 @@ function listThreadSearchLimitedThreadRows(
       SELECT
         token_matches.threadId AS threadId,
         MIN(token_matches.tokenRank) AS bestRank,
-        MAX(t.updated_at) AS threadUpdatedAt
+        MAX(t.updated_at) AS threadUpdatedAt,
+        MAX(t.archived_at IS NOT NULL) AS archived
       FROM token_matches
       JOIN threads AS t ON t.id = token_matches.threadId
       WHERE t.deleted_at IS NULL
         AND t.visibility = 'visible'
-        AND ${archiveFilter}
       GROUP BY threadId
       HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}
-    )
-    SELECT
-      threadId,
-      ROW_NUMBER() OVER (
-        ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
-      ) AS threadOrder,
-      COUNT(*) OVER () AS total
-    FROM ranked_threads
-    ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
-    LIMIT ${args.limitPerGroup}
-  `);
-}
-
-function listThreadSearchSegmentMatchRows(
-  db: DbConnection,
-  args: ListThreadSearchSegmentMatchRowsArgs,
-): ThreadSearchSegmentMatchRow[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
-
-  return db.all<ThreadSearchSegmentMatchRow>(sql`
-    WITH ranked_thread_segments AS (
+    ),
+    ordered_threads AS (
       SELECT
+        threadId,
+        archived,
         ROW_NUMBER() OVER (
-          PARTITION BY thread_search_segments.thread_id
+          PARTITION BY archived
+          ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+        ) AS threadOrder,
+        COUNT(*) OVER (PARTITION BY archived) AS total
+      FROM ranked_threads
+    ),
+    limited_threads AS (
+      SELECT threadId, archived, threadOrder, total
+      FROM ordered_threads
+      WHERE threadOrder <= ${args.limitPerGroup}
+    ),
+    ranked_segments AS (
+      SELECT
+        limited_threads.archived AS archived,
+        limited_threads.threadOrder AS threadOrder,
+        limited_threads.total AS total,
+        ROW_NUMBER() OVER (
+          PARTITION BY thread_search_segments.thread_id, ${isTitleSegment}
           ORDER BY
             thread_search_segments_fts.rank ASC,
             COALESCE(thread_search_segments.source_seq, -1) ASC,
             thread_search_segments.id ASC
         ) AS segmentOrder,
+        ${isTitleSegment} AS isTitle,
         thread_search_segments.source_kind AS sourceKind,
         thread_search_segments.source_seq AS sourceSeq,
         thread_search_segments.text AS text,
@@ -932,56 +1065,24 @@ function listThreadSearchSegmentMatchRows(
       FROM thread_search_segments_fts
       JOIN thread_search_segments
         ON thread_search_segments.rowid = thread_search_segments_fts.rowid
-      WHERE thread_search_segments_fts MATCH ${args.matchQuery}
-        AND ${inArray(threadSearchSegments.threadId, [...args.threadIds])}
+      JOIN limited_threads
+        ON limited_threads.threadId = thread_search_segments.thread_id
+      WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
     )
     SELECT
+      archived,
+      threadOrder,
+      total,
       segmentOrder,
       sourceKind,
       sourceSeq,
       text,
       threadId
-    FROM ranked_thread_segments
-    WHERE segmentOrder <= ${THREAD_SEARCH_MATCHES_PER_THREAD}
+    FROM ranked_segments
+    WHERE isTitle = 1
+      OR segmentOrder <= ${THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD}
+    ORDER BY archived ASC, threadOrder ASC, isTitle DESC, segmentOrder ASC
   `);
-}
-
-function listThreadSearchMatchRows(
-  db: DbConnection,
-  args: ListThreadSearchMatchRowsArgs,
-): ThreadSearchMatchRow[] {
-  const limitedThreadRows = listThreadSearchLimitedThreadRows(db, args);
-  const limitedThreadRowsById = new Map(
-    limitedThreadRows.map((row) => [row.threadId, row]),
-  );
-  const segmentRows = listThreadSearchSegmentMatchRows(db, {
-    matchQuery: args.anyTokenMatchQuery,
-    threadIds: limitedThreadRows.map((row) => row.threadId),
-  });
-
-  return segmentRows
-    .map((segmentRow) => {
-      const limitedThreadRow = limitedThreadRowsById.get(segmentRow.threadId);
-      if (limitedThreadRow === undefined) {
-        throw new Error("Thread search segment row is outside limited threads");
-      }
-      return {
-        segmentOrder: segmentRow.segmentOrder,
-        sourceKind: segmentRow.sourceKind,
-        sourceSeq: segmentRow.sourceSeq,
-        text: segmentRow.text,
-        threadId: segmentRow.threadId,
-        threadOrder: limitedThreadRow.threadOrder,
-        total: limitedThreadRow.total,
-      };
-    })
-    .sort((left, right) => {
-      const threadOrderDifference = left.threadOrder - right.threadOrder;
-      if (threadOrderDifference !== 0) {
-        return threadOrderDifference;
-      }
-      return left.segmentOrder - right.segmentOrder;
-    });
 }
 
 function hydrateThreadSearchGroup(
@@ -1002,13 +1103,22 @@ function hydrateThreadSearchGroup(
       threadIds.push(row.threadId);
     }
     const matches = matchesByThreadId.get(row.threadId) ?? [];
+    const sourceKind = threadSearchSourceKindSchema.parse(row.sourceKind);
+    // Titles stay whole so the sidebar can pair the match with the display
+    // title; message bodies are cut down to a snippet around the first hit.
+    const snippet = isThreadSearchTitleSourceKind(sourceKind)
+      ? {
+          text: row.text,
+          highlightRanges: findHighlightRanges({
+            text: row.text,
+            tokens: args.tokens,
+          }),
+        }
+      : buildThreadSearchSnippet({ text: row.text, tokens: args.tokens });
     matches.push({
-      sourceKind: threadSearchSourceKindSchema.parse(row.sourceKind),
-      text: row.text,
-      highlightRanges: findHighlightRanges({
-        text: row.text,
-        tokens: args.tokens,
-      }),
+      sourceKind,
+      text: snippet.text,
+      highlightRanges: snippet.highlightRanges,
       sourceSeq: row.sourceSeq,
     });
     matchesByThreadId.set(row.threadId, matches);
@@ -1016,8 +1126,7 @@ function hydrateThreadSearchGroup(
 
   const threadsById = new Map(
     threadWithPendingInteractionBaseQuery(db)
-      .where(and(inArray(threads.id, threadIds), isNull(threads.deletedAt)))
-      .groupBy(threads.id)
+      .where(nonDeletedThreads(inArray(threads.id, threadIds)))
       .all()
       .map(toThreadWithPendingInteractionState)
       .map((thread) => [thread.id, thread]),
@@ -1054,24 +1163,20 @@ export function searchThreadsWithPendingInteractionState(
     THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   );
 
+  const rows = listThreadSearchMatchRows(db, {
+    anyTokenMatchQuery,
+    limitPerGroup,
+    tokenMatchQueries,
+  });
+
   return {
     active: hydrateThreadSearchGroup(db, {
       tokens,
-      rows: listThreadSearchMatchRows(db, {
-        archived: false,
-        anyTokenMatchQuery,
-        limitPerGroup,
-        tokenMatchQueries,
-      }),
+      rows: rows.filter((row) => row.archived === 0),
     }),
     archived: hydrateThreadSearchGroup(db, {
       tokens,
-      rows: listThreadSearchMatchRows(db, {
-        archived: true,
-        anyTokenMatchQuery,
-        limitPerGroup,
-        tokenMatchQueries,
-      }),
+      rows: rows.filter((row) => row.archived === 1),
     }),
   };
 }
@@ -1098,7 +1203,6 @@ export function listThreadsWithPendingInteractionState(
 ): ThreadWithPendingInteractionState[] {
   let query = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsFilters(options)))
-    .groupBy(threads.id)
     .orderBy(...buildListThreadsOrderBy(options))
     .$dynamic();
   if (options.limit !== undefined) {
@@ -1135,9 +1239,7 @@ export function hasActiveThreadAttention(db: DbConnection): boolean {
       ),
     )
     .where(
-      and(
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
+      liveThreads(
         eq(threads.visibility, "visible"),
         or(unreadThread, isNotNull(pendingInteractions.id)),
       ),
@@ -1158,7 +1260,6 @@ export function listThreadsWithPendingInteractionStateForProjects(
 
   const rows = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
-    .groupBy(threads.id)
     .orderBy(...buildListThreadsForProjectsOrderBy(options))
     .all();
 
@@ -1169,20 +1270,34 @@ export function countLiveThreadsInEnvironment(
   db: ThreadWriteConnection,
   args: CountLiveThreadsInEnvironmentArgs,
 ): number {
-  const liveThreadCount = db
-    .select({ count: count() })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-        args.excludeThreadId ? ne(threads.id, args.excludeThreadId) : undefined,
-      ),
-    )
-    .get();
+  return countThreadsWhere(
+    db,
+    liveThreads(
+      eq(threads.environmentId, args.environmentId),
+      args.excludeThreadId ? ne(threads.id, args.excludeThreadId) : undefined,
+    ),
+  );
+}
 
-  return liveThreadCount?.count ?? 0;
+/**
+ * Whether the environment has a thread that is archived but not deleted — i.e. a
+ * thread that could still be unarchived. The archive grace window (which delays
+ * destroying a retiring environment's worktree so an accidental archive can be
+ * undone) only applies when such a revivable thread exists; an environment left
+ * retiring solely by deleted/tombstoned threads has nothing to undo and is
+ * cleaned up immediately.
+ */
+export function hasRevivableArchivedThreadInEnvironment(
+  db: ThreadWriteConnection,
+  args: HasRevivableArchivedThreadInEnvironmentArgs,
+): boolean {
+  return hasThreadWhere(
+    db,
+    nonDeletedThreads(
+      eq(threads.environmentId, args.environmentId),
+      isNotNull(threads.archivedAt),
+    ),
+  );
 }
 
 export function listLiveThreadsInEnvironment(
@@ -1192,13 +1307,7 @@ export function listLiveThreadsInEnvironment(
   return db
     .select()
     .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
+    .where(liveThreads(eq(threads.environmentId, args.environmentId)))
     .orderBy(desc(threads.createdAt))
     .all();
 }
@@ -1207,35 +1316,20 @@ export function countNonDeletedAssignedChildThreads(
   db: DbConnection,
   args: CountNonDeletedAssignedChildThreadsArgs,
 ): number {
-  const assignedChildThreadCount = db
-    .select({ count: count() })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .get();
-
-  return assignedChildThreadCount?.count ?? 0;
+  return countThreadsWhere(
+    db,
+    nonDeletedThreads(eq(threads.parentThreadId, args.parentThreadId)),
+  );
 }
 
 export function listUnarchivedAssignedChildThreads(
   db: ThreadWriteConnection,
   args: ListUnarchivedAssignedChildThreadsArgs,
 ): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
+  return listThreadsWhere(
+    db,
+    liveThreads(eq(threads.parentThreadId, args.parentThreadId)),
+  );
 }
 
 
@@ -1248,34 +1342,23 @@ export function listUnarchivedHiddenSourceThreads(
   db: ThreadWriteConnection,
   args: ListUnarchivedHiddenSourceThreadsArgs,
 ): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.sourceThreadId, args.sourceThreadId),
-        eq(threads.visibility, "hidden"),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
+  return listThreadsWhere(
+    db,
+    liveThreads(
+      eq(threads.sourceThreadId, args.sourceThreadId),
+      eq(threads.visibility, "hidden"),
+    ),
+  );
 }
 
 export function listNonDeletedChildThreads(
   db: ThreadWriteConnection,
   args: ListNonDeletedChildThreadsArgs,
 ): ThreadRow[] {
-  return db
-    .select()
-    .from(threads)
-    .where(
-      and(
-        eq(threads.parentThreadId, args.parentThreadId),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
+  return listThreadsWhere(
+    db,
+    nonDeletedThreads(eq(threads.parentThreadId, args.parentThreadId)),
+  );
 }
 
 export function listThreadEnvironmentAssignmentsOnHost(
@@ -1324,8 +1407,9 @@ export function hasLiveThreadAtHostPath(
       and(
         eq(environments.hostId, args.hostId),
         eq(environments.path, args.path),
-        inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
-        isNull(threads.deletedAt),
+        nonDeletedThreads(
+          inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
+        ),
       ),
     )
     .get();
@@ -1346,33 +1430,6 @@ export function listHostThreadIds(
     .map((row) => row.id);
 }
 
-/**
- * Threads whose storage the daemon should track for a host. Archived
- * and deleted thread storage can be reaped, so those rows must not trigger
- * reprime work.
- */
-export function listTrackedThreadStorageTargetsOnHost(
-  db: DbConnection,
-  args: ListTrackedThreadStorageTargetsOnHostArgs,
-): ThreadEnvironmentAssignmentRow[] {
-  return db
-    .select({
-      threadId: threads.id,
-      environmentId: environments.id,
-    })
-    .from(threads)
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        ne(environments.status, "destroyed"),
-        isNull(threads.archivedAt),
-        isNull(threads.deletedAt),
-      ),
-    )
-    .all();
-}
-
 export function hasPendingThreadShutdownInEnvironment(
   db: DbConnection,
   args: HasPendingThreadShutdownInEnvironmentArgs,
@@ -1384,25 +1441,6 @@ export function hasPendingThreadShutdownInEnvironment(
       and(
         eq(threads.environmentId, args.environmentId),
         eq(threads.status, "stopping"),
-      ),
-    )
-    .get();
-
-  return row !== undefined;
-}
-
-export function hasNonTerminalThreadInEnvironment(
-  db: DbConnection,
-  args: HasNonTerminalThreadInEnvironmentArgs,
-): boolean {
-  const row = db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
-        isNull(threads.deletedAt),
       ),
     )
     .get();
@@ -1440,7 +1478,7 @@ export function pinThread(
           pinSortKey,
           updatedAt: now,
         })
-        .where(and(eq(threads.id, args.threadId), isNull(threads.deletedAt)))
+        .where(nonDeletedThreads(eq(threads.id, args.threadId)))
         .returning()
         .get();
       return updated ? { changed: true, thread: updated } : null;
@@ -1480,7 +1518,7 @@ export function unpinThread(
           pinSortKey: null,
           updatedAt: Date.now(),
         })
-        .where(and(eq(threads.id, args.threadId), isNull(threads.deletedAt)))
+        .where(nonDeletedThreads(eq(threads.id, args.threadId)))
         .returning()
         .get();
       return updated ? { changed: true, thread: updated } : null;
@@ -1893,8 +1931,8 @@ export function requireThreadLifecycleEventApplied(
   return outcome.thread;
 }
 
-function applyThreadLifecycleEventRecord(
-  db: ThreadWriteConnection,
+export function applyThreadLifecycleEventInTransaction(
+  db: DbTransaction,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const thread = db
@@ -1972,7 +2010,7 @@ export function applyThreadLifecycleEvent(
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const outcome = db.transaction(
-    (tx) => applyThreadLifecycleEventRecord(tx, args),
+    (tx) => applyThreadLifecycleEventInTransaction(tx, args),
     { behavior: "immediate" },
   );
   if (outcome.applied) {
@@ -1981,11 +2019,4 @@ export function applyThreadLifecycleEvent(
     });
   }
   return outcome;
-}
-
-export function applyThreadLifecycleEventInTransaction(
-  tx: DbTransaction,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  return applyThreadLifecycleEventRecord(tx, args);
 }

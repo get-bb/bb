@@ -1,27 +1,12 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-} from "react";
-import { useAtomValue } from "jotai";
-import {
-  Panel,
-  PanelGroup,
-  type ImperativePanelGroupHandle,
-} from "react-resizable-panels";
-import { ResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
-import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
-import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
-import { PANEL_COLLAPSE_TRANSITION_CLASS } from "@/components/secondary-panel/panelTransitionTokens";
-import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
-import { dispatchBrowserViewBoundsSync } from "@/lib/browser-view-bounds-sync";
+import { useState, type ComponentProps, type ReactNode } from "react";
+import { Skeleton } from "@bb/shared-ui/skeleton";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { cn } from "@bb/shared-ui/lib/utils";
+import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
+import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
+import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import {
   CHROME_ROW_HEIGHT_CLASS,
   getBbDesktopInfo,
@@ -29,17 +14,8 @@ import {
   MACOS_WINDOW_DRAG_CLASS,
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
-import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
-import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
-import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  useOptionalPaneContext,
-  usePaneSecondaryPanelRegistration,
-  type PaneSecondaryPanelViewModel,
-} from "./thread-detail/PaneContext";
+import { useOptionalPaneContext } from "./thread-detail/PaneContext";
 
-const CLOSED_MAIN_PANEL_SIZE_PERCENT = 100;
-const MAIN_PANEL_MIN_SIZE_PERCENT = 30;
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 
 // Where root compose pins its right-panel toggle in the viewport corner (see
@@ -66,14 +42,19 @@ export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
 
 type RootSecondaryPanelProps = Omit<
-  ComponentProps<typeof ThreadSecondaryPanel>,
-  | "browserDeck"
+  ComponentProps<typeof LazyThreadSecondaryPanel>,
+  | "renderBrowserDeck"
+  | "drawerFallback"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "renderAsDrawer"
+  | "showNewTabButton"
 > & {
   renderBrowserDeck?: (args: {
+    activeBrowserTabId: string | null;
+    canHandleBrowserCommands: boolean;
     canShowNativeBrowserView: boolean;
+    onNativeFocus: () => void;
   }) => ReactNode;
 };
 
@@ -82,208 +63,40 @@ interface RootComposeSecondaryContentProps {
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
-  panelTogglePositionClassName: string;
   secondaryPanel: RootSecondaryPanelProps;
 }
 
-function noopToggleConversationCollapse(): void {}
+function DrawerPanelLoadingSkeleton() {
+  return (
+    <div
+      data-testid="drawer-panel-loading-skeleton"
+      className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4"
+    >
+      <Skeleton className="h-8 w-40 rounded-md" />
+      <Skeleton className="h-24 w-full rounded-md" />
+      <Skeleton className="h-24 w-full rounded-md" />
+    </div>
+  );
+}
 
 export function RootComposeSecondaryContent({
   children,
   contentClassName,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
-  panelTogglePositionClassName,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
   const secondaryPanelHost = paneContext?.secondaryPanelHost ?? null;
   const composerHost = usePluginComposerHost();
-  const renderAsDrawer = useIsCompactViewport();
-  const persistedSecondaryWidthPercent = useAtomValue(
-    secondaryPanelWidthPercentAtom,
-  );
-  const horizontalPanelGroupRef = useRef<ImperativePanelGroupHandle | null>(
-    null,
-  );
-  // Read inside the layout sync without making width changes re-trigger it,
-  // which would fight an in-progress resize drag.
-  const persistedSecondaryWidthRef = useRef(persistedSecondaryWidthPercent);
-  useEffect(() => {
-    persistedSecondaryWidthRef.current = persistedSecondaryWidthPercent;
-  }, [persistedSecondaryWidthPercent]);
-  const [isCompactDrawerContentSettled, setIsCompactDrawerContentSettled] =
-    useState(false);
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   // A bounded pane below a horizontal split is not part of the native window
-  // chrome. Marking the top of every RootComposeView as draggable creates an
-  // invisible Electron hit-test strip inside the lower pane: portaled menus
-  // paint over it, but native pointer input is still consumed as window drag.
-  // Standalone/single-pane compose surfaces and every pane touching the
-  // workspace's top edge keep the intended title-bar drag affordance.
+  // chrome. Marking its top as draggable creates an invisible Electron hit-test
+  // strip that consumes pointer input over portaled menus.
   const rendersWindowDragStrip =
     usesDesktopChrome && paneContext?.isTopRow !== false;
-  const compactDrawerContentSettleFrameRef = useRef<number | null>(null);
-  const compactDrawerContentSettleGenerationRef = useRef(0);
-  const compactDrawerContentSettleStateRef = useRef({
-    isSecondaryPanelOpen,
-    renderAsDrawer,
-  });
-
-  useLayoutEffect(() => {
-    compactDrawerContentSettleStateRef.current = {
-      isSecondaryPanelOpen,
-      renderAsDrawer,
-    };
-  }, [isSecondaryPanelOpen, renderAsDrawer]);
-
-  const cancelCompactDrawerContentSettleFrame = useCallback(() => {
-    compactDrawerContentSettleGenerationRef.current += 1;
-    if (compactDrawerContentSettleFrameRef.current === null) {
-      return;
-    }
-    window.cancelAnimationFrame(compactDrawerContentSettleFrameRef.current);
-    compactDrawerContentSettleFrameRef.current = null;
-  }, []);
-
-  useLayoutEffect(() => {
-    cancelCompactDrawerContentSettleFrame();
-    setIsCompactDrawerContentSettled(false);
-  }, [
-    cancelCompactDrawerContentSettleFrame,
-    isSecondaryPanelOpen,
-    renderAsDrawer,
-  ]);
-
-  useLayoutEffect(
-    () => () => {
-      cancelCompactDrawerContentSettleFrame();
-    },
-    [cancelCompactDrawerContentSettleFrame],
-  );
-
-  const handleDrawerContentAnimationEnd = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        return;
-      }
-      const currentState = compactDrawerContentSettleStateRef.current;
-      if (!currentState.isSecondaryPanelOpen || !currentState.renderAsDrawer) {
-        return;
-      }
-
-      cancelCompactDrawerContentSettleFrame();
-      const requestGeneration = compactDrawerContentSettleGenerationRef.current;
-      compactDrawerContentSettleFrameRef.current = window.requestAnimationFrame(
-        () => {
-          compactDrawerContentSettleFrameRef.current = null;
-          const latestState = compactDrawerContentSettleStateRef.current;
-          if (
-            compactDrawerContentSettleGenerationRef.current !==
-              requestGeneration ||
-            !latestState.isSecondaryPanelOpen ||
-            !latestState.renderAsDrawer
-          ) {
-            return;
-          }
-
-          dispatchBrowserViewBoundsSync();
-
-          const stateAfterSync = compactDrawerContentSettleStateRef.current;
-          if (
-            compactDrawerContentSettleGenerationRef.current ===
-              requestGeneration &&
-            stateAfterSync.isSecondaryPanelOpen &&
-            stateAfterSync.renderAsDrawer
-          ) {
-            setIsCompactDrawerContentSettled(true);
-          }
-        },
-      );
-    },
-    [cancelCompactDrawerContentSettleFrame],
-  );
-
-  const canShowNativeBrowserView = renderAsDrawer
-    ? isSecondaryPanelOpen && isCompactDrawerContentSettled
-    : isSecondaryPanelOpen &&
-      (secondaryPanelHost === null || paneContext?.isFocused === true);
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
-  const browserDeck = useMemo(
-    () => renderBrowserDeck?.({ canShowNativeBrowserView }),
-    [canShowNativeBrowserView, renderBrowserDeck],
-  );
-  useLayoutEffect(() => {
-    const group = horizontalPanelGroupRef.current;
-    if (group === null || renderAsDrawer) {
-      return;
-    }
-
-    if (!isSecondaryPanelOpen) {
-      group.setLayout([CLOSED_MAIN_PANEL_SIZE_PERCENT, 0]);
-      return;
-    }
-
-    const secondaryWidth = persistedSecondaryWidthRef.current;
-    group.setLayout([
-      CLOSED_MAIN_PANEL_SIZE_PERCENT - secondaryWidth,
-      secondaryWidth,
-    ]);
-  }, [isSecondaryPanelOpen, renderAsDrawer]);
-  const inlineSecondaryPanelContent = useMemo(
-    () =>
-      !renderAsDrawer ? (
-        <ThreadSecondaryPanel
-          {...threadSecondaryPanelProps}
-          browserDeck={browserDeck}
-          renderAsDrawer={false}
-          isConversationCollapsed={false}
-          onToggleConversationCollapse={noopToggleConversationCollapse}
-          // In the split-workspace host, panes' panels share one PanelGroup,
-          // so each pane's Panel needs its own layout identity (see the prop
-          // doc).
-          resizablePanelId={
-            secondaryPanelHost === null || paneContext === null
-              ? undefined
-              : `thread-detail-secondary-panel-${paneContext.paneId}`
-          }
-        />
-      ) : null,
-    [
-      browserDeck,
-      paneContext,
-      renderAsDrawer,
-      secondaryPanelHost,
-      threadSecondaryPanelProps,
-    ],
-  );
-  const drawerSecondaryPanelContent = renderAsDrawer ? (
-    <ThreadSecondaryPanel
-      {...threadSecondaryPanelProps}
-      browserDeck={browserDeck}
-      renderAsDrawer={true}
-      isConversationCollapsed={false}
-      onToggleConversationCollapse={noopToggleConversationCollapse}
-    />
-  ) : null;
-  const hostedPanelModel = useMemo<PaneSecondaryPanelViewModel>(
-    () => ({
-      composerHost,
-      contentKey: "new-thread",
-      isMainCollapsed: false,
-      isOpen: isSecondaryPanelOpen,
-      panel: inlineSecondaryPanelContent,
-      onToggle: onToggleSecondaryPanel,
-    }),
-    [
-      composerHost,
-      inlineSecondaryPanelContent,
-      isSecondaryPanelOpen,
-      onToggleSecondaryPanel,
-    ],
-  );
-  usePaneSecondaryPanelRegistration(secondaryPanelHost, hostedPanelModel);
 
   const mainContent = (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden">
@@ -302,7 +115,7 @@ export function RootComposeSecondaryContent({
               data-testid="root-compose-drag-strip-toggle-cutout"
               className={cn(
                 "absolute",
-                panelTogglePositionClassName,
+                ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
                 COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
                 MACOS_APP_REGION_NO_DRAG_CLASS,
               )}
@@ -326,66 +139,45 @@ export function RootComposeSecondaryContent({
     </div>
   );
 
-  if (secondaryPanelHost !== null) {
-    return (
-      <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
-        {mainContent}
-      </div>
-    );
-  }
-
   return (
     <div className="-mx-4 -mb-4 -mt-4 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-clip md:-mx-5 md:-mb-5 md:-mt-5">
-      {/* Size container so the secondary panel's content can be pinned to its
-          open width in container-query units (cqw) — a fixed-width layer that
-          translates in (rather than reflowing) while the panel's flex width
-          animates as a spacer to make room. */}
-      <div className="@container flex h-full w-full min-w-0">
-        <PanelGroup
-          ref={horizontalPanelGroupRef}
-          direction="horizontal"
-          className="h-full min-w-0 flex-1"
-          style={{ overflow: "clip" }}
-        >
-          <Panel
-            id="root-compose-main-panel"
-            defaultSize={
-              isSecondaryPanelOpen && !renderAsDrawer
-                ? CLOSED_MAIN_PANEL_SIZE_PERCENT -
-                  persistedSecondaryWidthPercent
-                : CLOSED_MAIN_PANEL_SIZE_PERCENT
+      <SecondaryPanelLayout
+        open={isSecondaryPanelOpen}
+        onToggle={onToggleSecondaryPanel}
+        onClose={threadSecondaryPanelProps.onClose}
+        resetKey="new-thread"
+        contentKey="new-thread"
+        drawerLabel="Right panel"
+        drawerFallback={<DrawerPanelLoadingSkeleton />}
+        mainPanelId="root-compose-main-panel"
+        main={mainContent}
+        composerHost={composerHost}
+        renderPanel={({
+          presentation,
+          canShowNativeBrowserView,
+          onToggleMainCollapse,
+          resizablePanelId,
+        }) => (
+          <LazyThreadSecondaryPanel
+            {...threadSecondaryPanelProps}
+            drawerFallback={<DrawerPanelLoadingSkeleton />}
+            renderBrowserDeck={(activeBrowserTabId, pane) =>
+              renderBrowserDeck?.({
+                activeBrowserTabId,
+                canHandleBrowserCommands:
+                  canShowNativeBrowserView && pane.isFocused,
+                canShowNativeBrowserView,
+                onNativeFocus: pane.onFocusPane,
+              })
             }
-            minSize={MAIN_PANEL_MIN_SIZE_PERCENT}
-            order={1}
-            className={cn(
-              "min-w-0 overflow-clip transition-[flex-grow,flex-basis]",
-              // Match the secondary panel's swipe timing so the shared boundary
-              // moves uniformly as the panel opens/closes.
-              PANEL_COLLAPSE_TRANSITION_CLASS,
-            )}
-          >
-            {mainContent}
-          </Panel>
-          {inlineSecondaryPanelContent}
-        </PanelGroup>
-      </div>
-      {renderAsDrawer ? (
-        <ResponsiveDrawerShell
-          open={isSecondaryPanelOpen}
-          onOpenChange={(open) => {
-            if (!open) threadSecondaryPanelProps.onClose();
-          }}
-          srLabel="Right panel"
-          contentClassName="h-[92dvh] max-h-[92dvh]"
-          onContentAnimationEnd={handleDrawerContentAnimationEnd}
-          handleOnly
-          repositionInputs={false}
-        >
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {drawerSecondaryPanelContent}
-          </div>
-        </ResponsiveDrawerShell>
-      ) : null}
+            renderAsDrawer={presentation === "drawer"}
+            isConversationCollapsed={false}
+            onToggleConversationCollapse={onToggleMainCollapse}
+            showNewTabButton
+            resizablePanelId={resizablePanelId}
+          />
+        )}
+      />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import type { ThreadTimelineLocalFileLink } from "@/components/thread/timeline";
-import type { FilePreviewLineRange } from "./file-preview";
+import type { FilePreviewLineRange } from "@bb/client-core";
 import {
   isAbsoluteFilePathWithinRoot,
   normalizeAbsoluteFilePath,
@@ -11,26 +11,26 @@ const THREAD_LOCAL_FILE_LINK_UNAVAILABLE_DESCRIPTION =
 const THREAD_LOCAL_FILE_LINK_INVALID_PATH_DESCRIPTION =
   "Thread file links must use absolute file paths.";
 
-export interface ResolveThreadLocalFileLinkArgs {
+interface ResolveThreadLocalFileLinkArgs {
   hostFileLinksAvailable: boolean;
   link: ThreadTimelineLocalFileLink;
   threadStorageRootPath: string | null;
   workspaceRootPath: string | null;
 }
 
-export interface ThreadWorkspaceFileLinkOpenRequest {
+interface ThreadWorkspaceFileLinkOpenRequest {
   lineRange: FilePreviewLineRange | null;
   path: string;
   relativePath: string;
   workspaceRootPath: string;
 }
 
-export interface ThreadHostFileLinkOpenRequest {
+interface ThreadHostFileLinkOpenRequest {
   lineRange: FilePreviewLineRange | null;
   path: string;
 }
 
-export interface ThreadStorageFileLinkOpenRequest {
+interface ThreadStorageFileLinkOpenRequest {
   lineRange: FilePreviewLineRange | null;
   path: string;
   relativePath: string;

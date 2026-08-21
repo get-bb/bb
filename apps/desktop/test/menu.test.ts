@@ -10,6 +10,7 @@ import { Menu } from "electron";
 
 import {
   buildApplicationMenuTemplate,
+  CONNECT_SERVERS_SKIPPED_MENU_LABELS,
   SET_SERVER_URL_MENU_LABEL,
   type InstallApplicationMenuArgs,
 } from "../src/menu.js";
@@ -27,7 +28,10 @@ function menuArgs(
       openSettings: undefined,
     },
     closeWindowOrSideTab: () => {},
+    connectServersSkipReason: null,
     createNewWindow: () => {},
+    isMac: true,
+    openAbout: () => {},
     openNewTab: () => {},
     openNewThread: () => {},
     openServerDaemonLogs: () => {},
@@ -130,5 +134,69 @@ describe("application menu", () => {
     expect(selectServer).toHaveBeenCalledWith("custom");
     serverSubmenu[3]?.click?.({} as never, undefined, {} as never);
     expect(setServerUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it("explains an empty Connect list with a disabled row when the sync was skipped", () => {
+    // A saved custom target with no local runtime and no cached credential:
+    // the sync has nothing to ask, and the menu must say so (#1753).
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, {
+        connectServersSkipReason: "no-credential",
+        servers: [
+          { checked: false, id: "builtin", name: "This Mac" },
+          {
+            checked: true,
+            id: "custom",
+            name: "old-host.tailnet.ts.net:38886",
+          },
+        ],
+      }),
+    );
+    const serverSubmenu = findServerSubmenu(template);
+
+    expect(serverSubmenu.map((item) => item.label ?? `<${item.type}>`)).toEqual(
+      [
+        "This Mac",
+        "old-host.tailnet.ts.net:38886",
+        CONNECT_SERVERS_SKIPPED_MENU_LABELS["no-credential"],
+        "<separator>",
+        SET_SERVER_URL_MENU_LABEL,
+      ],
+    );
+    const note = serverSubmenu[2];
+    expect(note?.enabled).toBe(false);
+    expect(note?.type).toBeUndefined();
+    expect(note?.click).toBeUndefined();
+    expect(note?.label).toMatch(/sign in to bb Connect/u);
+  });
+
+  it("builds a native Linux menu with the Linux DevTools accelerator", () => {
+    vi.mocked(Menu.sendActionToFirstResponder).mockClear();
+    const template = buildApplicationMenuTemplate(
+      menuArgs(() => {}, { isMac: false }),
+    );
+    const appMenu = template[0]?.submenu as MenuItemConstructorOptions[];
+    const windowMenu = template.find((item) => item.label === "Window");
+    const windowSubmenu = windowMenu?.submenu as MenuItemConstructorOptions[];
+    const viewMenu = template.find((item) => item.label === "View");
+    const viewSubmenu = viewMenu?.submenu as MenuItemConstructorOptions[];
+    const fileMenu = template.find((item) => item.label === "File");
+    const fileSubmenu = fileMenu?.submenu as MenuItemConstructorOptions[];
+    const closeWindow = fileSubmenu.find(
+      (item) => item.label === "Close Window",
+    );
+
+    expect(appMenu.map((item) => item.role).filter(Boolean)).toEqual(["quit"]);
+    expect(windowSubmenu.map((item) => item.role).filter(Boolean)).toEqual([
+      "minimize",
+    ]);
+    expect(windowSubmenu.some((item) => item.label === "Server")).toBe(true);
+    expect(
+      viewSubmenu.find((item) => item.label === "Toggle Developer Tools")
+        ?.accelerator,
+    ).toBe("Control+Shift+I");
+
+    closeWindow?.click?.({} as never, null as never, {} as never);
+    expect(Menu.sendActionToFirstResponder).not.toHaveBeenCalled();
   });
 });

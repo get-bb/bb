@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { isRawThreadId } from "@bb/domain";
 import { createConnection } from "../../src/connection.js";
 import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
@@ -14,6 +15,7 @@ import {
   hasPendingThreadShutdownInEnvironment,
   listHostThreadIds,
   listActiveVisiblePinnedThreadRoots,
+  listThreadMentionRowsByIds,
   listThreadEnvironmentAssignmentsOnHost,
   listThreads,
   listThreadsWithPendingInteractionStateForProjects,
@@ -37,7 +39,10 @@ import {
   listThreadSections,
   renameThreadSection,
 } from "../../src/data/thread-sections.js";
-import { createProject } from "../../src/data/projects.js";
+import {
+  createProject,
+  markProjectDeleted,
+} from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createEnvironment } from "../../src/data/environments.js";
 
@@ -124,7 +129,7 @@ describe("threads", () => {
       projectId: project.id,
       providerId: "codex",
     });
-    expect(thread.id).toMatch(/^thr_/);
+    expect(isRawThreadId(thread.id)).toBe(true);
     expect(thread.status).toBe("starting");
     expect(thread.projectId).toBe(project.id);
     expect(thread.deletedAt).toBeNull();
@@ -134,6 +139,41 @@ describe("threads", () => {
     const fetched = getThread(db, thread.id);
     expect(fetched?.visibility).toBe("visible");
     expect(fetched).toMatchObject({ id: thread.id });
+  });
+
+  it("resolves only exact non-deleted mention thread rows", () => {
+    const { db, project } = setup();
+    const visible = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      title: "Visible title",
+      titleFallback: "Visible fallback",
+    });
+    const deleted = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      title: "Deleted title",
+    });
+    markThreadDeleted(db, noopNotifier, { threadId: deleted.id });
+
+    expect(
+      listThreadMentionRowsByIds(db, [
+        visible.id,
+        deleted.id,
+        "thr_2222222222",
+      ]),
+    ).toEqual([
+      {
+        id: visible.id,
+        projectId: project.id,
+        title: "Visible title",
+        titleFallback: "Visible fallback",
+      },
+    ]);
+    expect(listThreadMentionRowsByIds(db, [])).toEqual([]);
+
+    markProjectDeleted(db, noopNotifier, { projectId: project.id });
+    expect(listThreadMentionRowsByIds(db, [visible.id])).toEqual([]);
   });
 
   it("supports an explicit visible-only list with a hidden opt-in", () => {
@@ -1561,7 +1601,7 @@ describe("thread lifecycle transitions and read state", () => {
   });
 });
 
-describe("thread originKind compatibility", () => {
+describe("thread originKind", () => {
   it("defaults to null for threads created without an origin", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -1569,11 +1609,11 @@ describe("thread originKind compatibility", () => {
       providerId: "codex",
     });
 
-    expect(thread.childOrigin).toBeNull();
-    expect(getThread(db, thread.id)?.childOrigin).toBeNull();
+    expect(thread.originKind).toBeNull();
+    expect(getThread(db, thread.id)?.originKind).toBeNull();
   });
 
-  it("maps deprecated childOrigin input to originKind", () => {
+  it("persists and filters by originKind", () => {
     const { db, project } = setup();
     const parent = createThread(db, noopNotifier, {
       projectId: project.id,
@@ -1583,29 +1623,14 @@ describe("thread originKind compatibility", () => {
       projectId: project.id,
       providerId: "codex",
       parentThreadId: parent.id,
-      childOrigin: "fork",
+      originKind: "fork",
     });
     expect(getThread(db, fork.id)).toMatchObject({
       originKind: "fork",
-      childOrigin: null,
-    });
-  });
-
-  it("filters listings by deprecated childOrigin", () => {
-    const { db, project } = setup();
-    const parent = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-    });
-    const fork = createThread(db, noopNotifier, {
-      projectId: project.id,
-      providerId: "codex",
-      parentThreadId: parent.id,
-      childOrigin: "fork",
     });
     const forks = listThreads(db, {
       projectId: project.id,
-      childOrigin: "fork",
+      originKind: "fork",
     });
     expect(forks.map((thread) => thread.id)).toEqual([fork.id]);
 

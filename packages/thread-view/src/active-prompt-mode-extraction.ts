@@ -2,21 +2,21 @@ import {
   promptInputHasCommandMention,
   requireThreadEventScopeTurnId,
   removeCommandMentionsFromPromptInput,
+  type ProviderComposerCommand,
   type Thread,
   type ThreadTimelineActivePromptMode,
 } from "@bb/domain";
 import type { ThreadEventWithMeta } from "./build-event-projection.js";
 import { parsePromptInput } from "./user-message-parsing.js";
 
-type PlanModeProviderId = ThreadTimelineActivePromptMode["providerId"];
-
-const PLAN_COMMAND_SELECTOR = { trigger: "/", name: "plan" } as const;
-
-function isPlanModeProviderId(
-  providerId: string | undefined,
-): providerId is PlanModeProviderId {
-  return providerId === "claude-code" || providerId === "codex";
-}
+/**
+ * The provider's declared `plan` composer action, or null when it declares
+ * none. Eligibility and command syntax both come from the declaration — this
+ * used to be a `providerId === "claude-code" || providerId === "codex"` gate
+ * plus a hardcoded `{ trigger: "/", name: "plan" }` selector, which no plugin
+ * provider could ever join.
+ */
+export type PlanCommand = Pick<ProviderComposerCommand, "trigger" | "name">;
 
 interface ActiveTurnInput {
   request: Extract<
@@ -34,10 +34,11 @@ export interface ThreadTimelineActivePlanTurn {
 
 function promptTextWithoutPlanCommand(
   request: ActiveTurnInput["request"],
+  planCommand: PlanCommand,
 ): string {
   const cleanedInput = removeCommandMentionsFromPromptInput(
     request.input,
-    PLAN_COMMAND_SELECTOR,
+    planCommand,
   );
   return parsePromptInput(cleanedInput)?.text.trim() ?? "";
 }
@@ -95,23 +96,28 @@ function extractActiveTurnInputs(
 
 export function extractThreadTimelineActivePlanTurn({
   events,
+  planCommand,
   providerId,
   threadStatus,
 }: {
   events: readonly ThreadEventWithMeta[];
+  planCommand: PlanCommand | null | undefined;
   providerId: string | undefined;
   threadStatus: Thread["status"];
 }): ThreadTimelineActivePlanTurn | null {
-  if (threadStatus !== "active" || !isPlanModeProviderId(providerId)) {
+  if (
+    threadStatus !== "active" ||
+    providerId === undefined ||
+    planCommand === null ||
+    planCommand === undefined
+  ) {
     return null;
   }
 
   let latestPlanTurn: ActiveTurnInput | null = null;
   for (const activeTurn of extractActiveTurnInputs(events)) {
     if (
-      !promptInputHasCommandMention(activeTurn.request.input, {
-        ...PLAN_COMMAND_SELECTOR,
-      })
+      !promptInputHasCommandMention(activeTurn.request.input, planCommand)
     ) {
       continue;
     }
@@ -125,7 +131,10 @@ export function extractThreadTimelineActivePlanTurn({
         promptMode: {
           mode: "plan",
           providerId,
-          prompt: promptTextWithoutPlanCommand(latestPlanTurn.request),
+          prompt: promptTextWithoutPlanCommand(
+            latestPlanTurn.request,
+            planCommand,
+          ),
         },
         turnId: latestPlanTurn.turnId,
       }

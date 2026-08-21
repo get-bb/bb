@@ -1,56 +1,11 @@
 // @vitest-environment jsdom
 
 import { QueryObserver } from "@tanstack/react-query";
-import type { QueryClient, QueryKey } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  threadConversationOutlineQueryKey,
-  threadDefaultExecutionOptionsQueryKey,
-  threadDetailBootstrapQueryKey,
-  threadPendingInteractionsQueryKey,
-  threadPromptHistoryQueryKey,
-  threadQueryKey,
-  threadQueuedMessagesQueryKey,
-  threadSearchQueryKey,
-  threadTimelineQueryKey,
-} from "@/hooks/queries/query-keys";
 import {
   createAppQueryClient,
   installAppQueryClientBrowserEvents,
 } from "./query-client";
-
-interface ObservedQuery {
-  queryFn: ReturnType<typeof vi.fn<() => Promise<string>>>;
-  unsubscribe: () => void;
-}
-
-function observeIdleQuery(
-  queryClient: QueryClient,
-  queryKey: QueryKey,
-): ObservedQuery {
-  const queryFn = vi.fn<() => Promise<string>>().mockResolvedValue("loaded");
-  const observer = new QueryObserver(queryClient, {
-    queryKey,
-    queryFn,
-    refetchOnWindowFocus: false,
-    staleTime: Infinity,
-  });
-  return {
-    queryFn,
-    unsubscribe: observer.subscribe(() => {}),
-  };
-}
-
-async function waitForQueryCalls(
-  queries: readonly ObservedQuery[],
-  expectedCallCount: number,
-): Promise<void> {
-  await vi.waitFor(() => {
-    for (const query of queries) {
-      expect(query.queryFn).toHaveBeenCalledTimes(expectedCallCount);
-    }
-  });
-}
 
 describe("createAppQueryClient", () => {
   afterEach(() => {
@@ -162,7 +117,7 @@ describe("createAppQueryClient", () => {
     queryClient.clear();
   });
 
-  it("refetches the active thread bundle together after a pageshow resume with missed websocket events", async () => {
+  it("resumes a suspend-cancelled fetch that no focus refetch would restart", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: {
         queries: {
@@ -174,85 +129,79 @@ describe("createAppQueryClient", () => {
     const lifecycleEvents = installAppQueryClientBrowserEvents(queryClient);
     queryClient.mount();
 
-    const activeThreadQueries = [
-      observeIdleQuery(queryClient, threadQueryKey("thread-1")),
-      observeIdleQuery(queryClient, threadDetailBootstrapQueryKey("thread-1")),
-      observeIdleQuery(
-        queryClient,
-        threadDefaultExecutionOptionsQueryKey("thread-1"),
-      ),
-      observeIdleQuery(queryClient, threadQueuedMessagesQueryKey("thread-1")),
-      observeIdleQuery(queryClient, threadPromptHistoryQueryKey("thread-1")),
-      observeIdleQuery(
-        queryClient,
-        threadPendingInteractionsQueryKey("thread-1"),
-      ),
-      observeIdleQuery(queryClient, threadTimelineQueryKey("thread-1")),
-      observeIdleQuery(
-        queryClient,
-        threadConversationOutlineQueryKey("thread-1"),
-      ),
-    ];
-    const unrelatedQuery = observeIdleQuery(
-      queryClient,
-      threadSearchQueryKey({ limitPerGroup: 20, query: "needle" }),
+    const resolveFetches: Array<(value: string) => void> = [];
+    const queryFn = vi.fn(
+      ({ signal }: { signal: AbortSignal }) =>
+        new Promise<string>((resolve, reject) => {
+          resolveFetches.push(resolve);
+          signal.addEventListener(
+            "abort",
+            () => {
+              reject(new DOMException("Aborted", "AbortError"));
+            },
+            { once: true },
+          );
+        }),
     );
-
-    await waitForQueryCalls(activeThreadQueries, 1);
-    await waitForQueryCalls([unrelatedQuery], 1);
-
-    // Simulates phone lock/backgrounding while websocket events are missed.
-    // The active thread bundle catches up as one unit on resume even though
-    // each observer has staleTime=Infinity and focus refetch disabled.
-    window.dispatchEvent(new Event("pagehide"));
-    window.dispatchEvent(new Event("pageshow"));
-
-    await waitForQueryCalls(activeThreadQueries, 2);
-    expect(unrelatedQuery.queryFn).toHaveBeenCalledTimes(1);
-
-    for (const query of activeThreadQueries) {
-      query.unsubscribe();
-    }
-    unrelatedQuery.unsubscribe();
-    lifecycleEvents.cleanup();
-    queryClient.unmount();
-    queryClient.clear();
-  });
-
-  it("treats focus after browser suspension as an active thread resume signal", async () => {
-    const queryClient = createAppQueryClient({
-      defaultOptions: {
-        queries: {
-          retry: false,
-        },
-      },
-      showMutationErrorToasts: false,
+    // Realtime-owned policy: nothing but the realtime layer refetches it, and
+    // a healthy socket delivers no change for a first load that never landed.
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["realtime-owned-first-load"],
+      queryFn,
+      refetchOnWindowFocus: false,
+      staleTime: 60_000,
     });
-    const lifecycleEvents = installAppQueryClientBrowserEvents(queryClient);
-    queryClient.mount();
+    const unsubscribe = observer.subscribe(() => {});
+    // A settled query is untouched by the resume.
+    const settledFn = vi.fn(() => Promise.resolve("settled"));
+    const settledObserver = new QueryObserver(queryClient, {
+      queryKey: ["settled"],
+      queryFn: settledFn,
+      refetchOnWindowFocus: false,
+      staleTime: 60_000,
+    });
+    const unsubscribeSettled = settledObserver.subscribe(() => {});
 
-    const queuedMessagesQuery = observeIdleQuery(
-      queryClient,
-      threadQueuedMessagesQueryKey("thread-1"),
-    );
-    const timelineQuery = observeIdleQuery(
-      queryClient,
-      threadTimelineQueryKey("thread-1"),
-    );
-    const activeThreadQueries = [queuedMessagesQuery, timelineQuery];
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().fetchStatus).toBe("fetching");
+      expect(settledObserver.getCurrentResult().data).toBe("settled");
+    });
 
-    await waitForQueryCalls(activeThreadQueries, 1);
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
 
-    window.dispatchEvent(new Event("pagehide"));
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().fetchStatus).toBe("idle");
+      expect(observer.getCurrentResult().data).toBeUndefined();
+    });
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+    resolveFetches[1]?.("loaded");
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().data).toBe("loaded");
+    });
+    // A second resume (focus after visible) has nothing left to replay.
     window.dispatchEvent(new Event("focus"));
-    window.dispatchEvent(new Event("pageshow"));
+    await Promise.resolve();
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    expect(settledFn).toHaveBeenCalledTimes(1);
 
-    await waitForQueryCalls(activeThreadQueries, 2);
-
-    queuedMessagesQuery.unsubscribe();
-    timelineQuery.unsubscribe();
+    unsubscribe();
+    unsubscribeSettled();
     lifecycleEvents.cleanup();
     queryClient.unmount();
     queryClient.clear();
+    Reflect.deleteProperty(document, "visibilityState");
   });
 });

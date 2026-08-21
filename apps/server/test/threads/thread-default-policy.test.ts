@@ -1,4 +1,3 @@
-import { listBuiltInAgentProviderInfos } from "@bb/agent-providers";
 import {
   PERSONAL_PROJECT_ID,
   type ProjectExecutionDefaults,
@@ -10,12 +9,18 @@ import {
   resolveCreateThreadExecutionDefaults,
   resolveThreadDefaultPermissionMode,
   resolveThreadExecutionPermissionMode,
-  resolveWorkflowsEnabledPolicy,
 } from "../../src/services/threads/thread-default-policy.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import {
+  createTestProviderRegistry,
+  registerFirstPartyProviders,
+} from "../helpers/provider-registry.js";
+
+const registry = await createTestProviderRegistry();
 
 type PolicyTestThread = Pick<
   Thread,
-  "childOrigin" | "originKind" | "parentThreadId" | "projectId" | "providerId"
+  "originKind" | "parentThreadId" | "projectId" | "providerId"
 >;
 type PolicyTestParentThread = Pick<
   Thread,
@@ -31,7 +36,6 @@ function makeThread(
   overrides: Partial<PolicyTestThread> = {},
 ): PolicyTestThread {
   return {
-    childOrigin: null,
     originKind: null,
     parentThreadId: null,
     projectId: "proj-1",
@@ -67,33 +71,68 @@ function makeParentThread(
   };
 }
 
-describe("resolveWorkflowsEnabledPolicy", () => {
-  it("enables workflows for claude-code sessions only", () => {
-    expect(resolveWorkflowsEnabledPolicy("claude-code")).toBe(true);
-    expect(resolveWorkflowsEnabledPolicy("codex")).toBe(false);
-    expect(resolveWorkflowsEnabledPolicy("pi")).toBe(false);
-    expect(resolveWorkflowsEnabledPolicy("acp-my-agent")).toBe(false);
-  });
-});
-
 describe("resolveCreateThreadExecutionDefaults", () => {
-  it("uses the model picker's first catalog provider without pinning a model", () => {
-    const productProviderId = listBuiltInAgentProviderInfos()[0]?.id;
-    expect(productProviderId).toBeDefined();
+  it("uses the picker's first provider without pinning a model", () => {
+    // No user default: the picker's first entry (install order) is the
+    // default — codex, because the bundled plugin list installs it first.
+    expect(registry.list()[0]?.info.id).toBe("codex");
 
     expect(
-      resolveCreateThreadExecutionDefaults({
+      resolveCreateThreadExecutionDefaults(registry, {
         storedDefaults: null,
       }),
     ).toEqual({
-      providerId: productProviderId,
+      providerId: "codex",
       executionDefaults: null,
     });
   });
 
+  it("honors the user's default provider and picker order", async () => {
+    const preferences = {
+      providerOrder: ["pi", "claude-code"],
+      defaultProviderId: null as string | null,
+    };
+    const userRegistry = createProviderRegistryService({
+      readUserProviderPreferences: () => preferences,
+    });
+    await registerFirstPartyProviders(userRegistry);
+
+    // Pinned ids lead in the user's order; the rest follow install order.
+    expect(userRegistry.list().map((entry) => entry.info.id)).toEqual([
+      "pi",
+      "claude-code",
+      "codex",
+      "acp-cursor",
+      "acp-opencode",
+      "acp-omp",
+      "acp-grok",
+      "acp-hermes-agent",
+    ]);
+    expect(
+      resolveCreateThreadExecutionDefaults(userRegistry, {
+        storedDefaults: null,
+      }).providerId,
+    ).toBe("pi");
+
+    // An explicit default wins over the order; one that names nothing
+    // registered falls back to the order's head.
+    preferences.defaultProviderId = "codex";
+    expect(
+      resolveCreateThreadExecutionDefaults(userRegistry, {
+        storedDefaults: null,
+      }).providerId,
+    ).toBe("codex");
+    preferences.defaultProviderId = "not-installed";
+    expect(
+      resolveCreateThreadExecutionDefaults(userRegistry, {
+        storedDefaults: null,
+      }).providerId,
+    ).toBe("pi");
+  });
+
   it("discards stored defaults when the resolved provider changes", () => {
     expect(
-      resolveCreateThreadExecutionDefaults({
+      resolveCreateThreadExecutionDefaults(registry, {
         requestedProviderId: "pi",
         storedDefaults: makeDefaults({
           providerId: "codex",
@@ -113,13 +152,40 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     });
 
     expect(
-      resolveCreateThreadExecutionDefaults({
+      resolveCreateThreadExecutionDefaults(registry, {
         storedDefaults,
       }),
     ).toEqual({
       providerId: "codex",
       executionDefaults: storedDefaults,
     });
+  });
+
+  it("skips unavailable providers when choosing the product default", async () => {
+    const degradedRegistry = createProviderRegistryService();
+    await registerFirstPartyProviders(degradedRegistry, {
+      unavailablePluginIds: ["provider-codex"],
+    });
+
+    expect(
+      resolveCreateThreadExecutionDefaults(degradedRegistry, {
+        storedDefaults: null,
+      }),
+    ).toEqual({ providerId: "claude-code", executionDefaults: null });
+  });
+
+  it("rejects an explicitly selected unavailable provider", async () => {
+    const degradedRegistry = createProviderRegistryService();
+    await registerFirstPartyProviders(degradedRegistry, {
+      unavailablePluginIds: ["provider-codex"],
+    });
+
+    expect(() =>
+      resolveCreateThreadExecutionDefaults(degradedRegistry, {
+        requestedProviderId: "codex",
+        storedDefaults: null,
+      }),
+    ).toThrow(/Codex is unavailable because its provider plugin failed/u);
   });
 });
 
@@ -128,6 +194,24 @@ describe("resolveCreateThreadEnvironment", () => {
     expect(
       resolveCreateThreadEnvironment({
         parentThread: makeParentThread(),
+        projectId: "proj-1",
+        requestedEnvironment: {
+          type: "host",
+          hostId: "host-1",
+          workspace: { type: "unmanaged", path: null },
+        },
+      }),
+    ).toEqual({
+      type: "host",
+      hostId: "host-1",
+      workspace: { type: "managed-worktree", baseBranch: { kind: "default" } },
+    });
+  });
+
+  it("defaults a child under a parent from another project to a managed worktree", () => {
+    expect(
+      resolveCreateThreadEnvironment({
+        parentThread: makeParentThread({ projectId: "proj-2" }),
         projectId: "proj-1",
         requestedEnvironment: {
           type: "host",
@@ -156,6 +240,23 @@ describe("resolveCreateThreadEnvironment", () => {
       type: "reuse",
       environmentId: "env-1",
     });
+  });
+
+  it("does not reuse a personal parent environment from another project", () => {
+    const requestedEnvironment = {
+      type: "host",
+      workspace: { type: "personal" },
+    } as const;
+    expect(
+      resolveCreateThreadEnvironment({
+        parentThread: makeParentThread({
+          environmentId: "env-other-project-parent",
+          projectId: "proj-other",
+        }),
+        projectId: PERSONAL_PROJECT_ID,
+        requestedEnvironment,
+      }),
+    ).toEqual(requestedEnvironment);
   });
 
   it("defaults personal child threads to the parent environment", () => {
@@ -206,20 +307,6 @@ describe("resolveCreateThreadEnvironment", () => {
     },
     {
       args: {
-        parentThread: makeParentThread({
-          projectId: "proj-2",
-        }),
-        projectId: "proj-1",
-        requestedEnvironment: {
-          type: "host" as const,
-          hostId: "host-1",
-          workspace: { type: "unmanaged" as const, path: null },
-        },
-      },
-      name: "parents from another project",
-    },
-    {
-      args: {
         parentThread: makeParentThread(),
         projectId: "proj-1",
         requestedEnvironment: {
@@ -240,7 +327,7 @@ describe("resolveCreateThreadEnvironment", () => {
 describe("resolveThreadDefaultPermissionMode", () => {
   it("uses the auto permission default for non-agent providers", () => {
     expect(
-      resolveThreadDefaultPermissionMode({
+      resolveThreadDefaultPermissionMode(registry, {
         thread: makeThread({
           parentThreadId: "thr-parent-1",
           providerId: "custom-provider",
@@ -251,7 +338,7 @@ describe("resolveThreadDefaultPermissionMode", () => {
 
   it("uses full for Pi threads", () => {
     expect(
-      resolveThreadDefaultPermissionMode({
+      resolveThreadDefaultPermissionMode(registry, {
         thread: makeThread({
           parentThreadId: "thr-parent-1",
           providerId: "pi",
@@ -262,7 +349,7 @@ describe("resolveThreadDefaultPermissionMode", () => {
 
   it("uses full for ACP threads when the Auto default is unsupported", () => {
     expect(
-      resolveThreadDefaultPermissionMode({
+      resolveThreadDefaultPermissionMode(registry, {
         thread: makeThread({
           parentThreadId: "thr-parent-1",
           providerId: "acp-my-agent",
@@ -273,7 +360,7 @@ describe("resolveThreadDefaultPermissionMode", () => {
 
   it("uses auto for Codex threads", () => {
     expect(
-      resolveThreadDefaultPermissionMode({
+      resolveThreadDefaultPermissionMode(registry, {
         thread: makeThread({
           parentThreadId: "thr-other-project-parent-1",
           providerId: "codex",
@@ -286,7 +373,7 @@ describe("resolveThreadDefaultPermissionMode", () => {
 describe("resolveThreadExecutionPermissionMode", () => {
   it("honors the permission snapshot requested for a side chat", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         requestedPermissionMode: "full",
         lastExecutionPermissionMode: "full",
         projectExecutionPermissionMode: "full",
@@ -297,7 +384,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("prefers requested permission modes over every fallback", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         requestedPermissionMode: "auto",
         lastExecutionPermissionMode: "workspace-write",
         projectExecutionPermissionMode: "full",
@@ -308,7 +395,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("maps a legacy readonly execution to Accept Edits for future work", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         lastExecutionPermissionMode: "readonly",
         projectExecutionPermissionMode: "full",
         thread: makeThread(),
@@ -318,7 +405,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("maps a legacy readonly parent execution before inheriting it", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         parentThread: makeParentThread(),
         parentThreadExecutionPermissionMode: "readonly",
         projectExecutionPermissionMode: "full",
@@ -332,7 +419,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("uses project permission defaults for child threads without parent execution history", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         parentThread: makeParentThread(),
         projectExecutionPermissionMode: "full",
         thread: makeThread({
@@ -343,9 +430,11 @@ describe("resolveThreadExecutionPermissionMode", () => {
     ).toBe("full");
   });
 
-  it("reconciles inherited parent permission to the child provider's supported modes", () => {
+  it("never upgrades an inherited mode past the parent for provider support", () => {
+    // Pi only supports full; the parent's mode stays the ceiling so provider
+    // validation rejects the pairing instead of silently granting full.
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         parentThread: makeParentThread(),
         parentThreadExecutionPermissionMode: "workspace-write",
         projectExecutionPermissionMode: "accept-edits",
@@ -354,12 +443,83 @@ describe("resolveThreadExecutionPermissionMode", () => {
           providerId: "pi",
         }),
       }),
+    ).toBe("accept-edits");
+  });
+
+  it("clamps an explicitly requested mode to the parent's mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode(registry, {
+        requestedPermissionMode: "full",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "auto",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("auto");
+  });
+
+  it("clamps the child's recorded mode to the parent's current mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode(registry, {
+        lastExecutionPermissionMode: "full",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "auto",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("auto");
+  });
+
+  it("clamps a child in another project to its parent's mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode(registry, {
+        requestedPermissionMode: "full",
+        parentThread: makeParentThread({ projectId: "proj-other" }),
+        parentThreadExecutionPermissionMode: "auto",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          projectId: "proj-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("auto");
+  });
+
+  it("keeps an explicit full request under a full parent", () => {
+    expect(
+      resolveThreadExecutionPermissionMode(registry, {
+        requestedPermissionMode: "full",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "full",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
     ).toBe("full");
+  });
+
+  it("allows a child to run below its parent's mode", () => {
+    expect(
+      resolveThreadExecutionPermissionMode(registry, {
+        requestedPermissionMode: "accept-edits",
+        parentThread: makeParentThread(),
+        parentThreadExecutionPermissionMode: "full",
+        thread: makeThread({
+          parentThreadId: "thr-parent-1",
+          providerId: "codex",
+        }),
+      }),
+    ).toBe("accept-edits");
   });
 
   it("uses root-thread defaults when the parent reference is not live", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         parentThread: makeParentThread({
           deletedAt: Date.now(),
         }),
@@ -374,7 +534,7 @@ describe("resolveThreadExecutionPermissionMode", () => {
 
   it("still uses project permission defaults for root threads", () => {
     expect(
-      resolveThreadExecutionPermissionMode({
+      resolveThreadExecutionPermissionMode(registry, {
         projectExecutionPermissionMode: "accept-edits",
         thread: makeThread(),
       }),

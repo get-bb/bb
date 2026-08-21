@@ -173,6 +173,24 @@ describe("client websocket protocol", () => {
     });
   });
 
+  it("answers a ping with a pong on the same socket only", () => {
+    const hub = new NotificationHub();
+    const deps = createProtocolDeps(hub);
+    const socket = createMockHubSocket();
+    const otherSocket = createMockHubSocket();
+
+    onClientSocketOpen(hub, socket);
+    onClientSocketOpen(hub, otherSocket);
+    onClientSocketMessage(deps, socket, JSON.stringify({ type: "ping" }));
+
+    expect(socket.closed).toHaveLength(0);
+    expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+      { type: "pong" },
+    ]);
+    expect(otherSocket.messages).toHaveLength(0);
+    expect(deps.watchInterests.subscribe).not.toHaveBeenCalled();
+  });
+
   it("rejects direct watch messages", () => {
     const hub = new NotificationHub();
     const deps = createProtocolDeps(hub);

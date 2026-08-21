@@ -14,7 +14,7 @@ interface ThreadUnreadDividerSnapshot {
   threadId: string;
 }
 
-export interface ThreadUnreadDividerState {
+interface ThreadUnreadDividerState {
   autoScroll: boolean;
   placement: ThreadTimelineUnreadDividerPlacement | null;
 }
@@ -29,7 +29,7 @@ interface IsThreadUnreadArgs {
   latestAttentionAt: number | undefined;
 }
 
-export interface UseThreadUnreadDividerStateArgs {
+interface UseThreadUnreadDividerStateArgs {
   routeThreadId: string | undefined;
   thread: ThreadUnreadDividerThreadState | undefined;
 }

@@ -143,6 +143,26 @@ describe("formatEnvironmentDisplay", () => {
       expect(result.mode).toBe("direct");
     });
 
+    it("reports 'Destroying'/'Destroyed' for a gone managed worktree instead of 'Provisioning' (#1789)", () => {
+      for (const [status, label] of [
+        ["destroying", "Destroying"],
+        ["destroyed", "Destroyed"],
+      ] as const) {
+        const result = formatEnvironmentDisplay({
+          environment: makeEnvironment({
+            managed: true,
+            isWorktree: true,
+            workspaceProvisionType: "managed-worktree",
+            path: null,
+            status,
+          }),
+          host: localHostContext,
+        });
+        expect(result.modeLabel).toBe(label);
+        expect(result.compactModeLabel).toBe(label);
+      }
+    });
+
     it("reports 'Provisioning' for a prepared managed worktree before the workspace path exists", () => {
       const result = formatEnvironmentDisplay({
         environment: makeEnvironment({

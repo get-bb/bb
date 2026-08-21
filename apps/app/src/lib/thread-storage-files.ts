@@ -1,4 +1,4 @@
-export const DEFAULT_THREAD_STORAGE_FILE_LIST_LIMIT = 1000;
+const DEFAULT_THREAD_STORAGE_FILE_LIST_LIMIT = 1000;
 
 export interface ThreadStorageFileListOptions {
   limit: number;

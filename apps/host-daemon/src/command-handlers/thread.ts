@@ -5,7 +5,9 @@ import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
 import {
   CommandDispatchError,
+  defaultProviderInstallationStatus,
   ExpectedCommandDispatchError,
+  resolveRuntimeBridgeLaunch,
   type CommandDispatchOptions,
   type CommandOf,
 } from "../command-dispatch-support.js";
@@ -14,16 +16,24 @@ import {
   stagePromptAttachments,
 } from "./prompt-attachments.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
-import { getProviderCliStatusForProvider } from "../provider-cli-health.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
 type ExistingThreadRuntimeCommand =
   | TurnSubmitCommand
   | CommandOf<"thread.goal.clear">;
 
+// The server marks a thread active before the provider's turn/started reaches
+// it. An auto/steer submit created in that gap carries no expected turn id even
+// though the preceding command is already opening one. The daemon serializes
+// turn submissions, so give the runtime-owned turn state a bounded chance to
+// catch up. If it is still pending after that bound, fail closed rather than
+// launch a competing turn.
+const TURN_SUBMIT_ACTIVE_TURN_WAIT_MS = 5_000;
+
 interface ResumeThreadRuntimeIfMissingArgs {
   command: ExistingThreadRuntimeCommand;
   entry: RuntimeEntry;
+  options: CommandDispatchOptions;
 }
 
 interface StageThreadCommandInputArgs {
@@ -43,7 +53,7 @@ interface StagedThreadCommandInput {
 }
 
 interface RequireSupportedProviderCliArgs {
-  command: CommandOf<"thread.start">;
+  command: CommandOf<"thread.start"> | CommandOf<"thread.rewind.prepare">;
   options: CommandDispatchOptions;
 }
 
@@ -91,15 +101,26 @@ async function requireSupportedProviderCliForThreadStart({
   command,
   options,
 }: RequireSupportedProviderCliArgs): Promise<void> {
-  if (command.providerId !== "codex") {
+  if (!command.bridgeLaunch.capabilities.experimental_providerInstallation) {
     return;
   }
 
-  const status =
-    (await options.getProviderCliStatusForProvider?.(command.providerId)) ??
-    (await getProviderCliStatusForProvider("codex", {
-      env: options.runtimeManager.getShellEnv(),
-    }));
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.bridgeLaunch,
+    options,
+  );
+  const status = await (
+    options.providerInstallationStatus ?? defaultProviderInstallationStatus
+  )({
+    providerId: command.providerId,
+    bridgeLaunch,
+    ...(command.acpLaunchSpec === undefined
+      ? {}
+      : { acpLaunchSpec: command.acpLaunchSpec }),
+    ...(command.type === "thread.rewind.prepare"
+      ? { requirement: "thread_rewind" as const }
+      : {}),
+  });
   if (!status.versionUnsupported) {
     return;
   }
@@ -107,10 +128,10 @@ async function requireSupportedProviderCliForThreadStart({
   const currentVersion = status.currentVersion
     ? ` ${status.currentVersion}`
     : "";
-  const minimumVersion = status.minimumSupportedVersion ?? "a newer version";
+  const requiredVersion = status.minimumSupportedVersion ?? "a newer version";
   throw new ExpectedCommandDispatchError(
     "provider_cli_unsupported_version",
-    `Codex${currentVersion} is too old for this bb version. Update Codex to ${minimumVersion} or newer.`,
+    `Provider "${command.providerId}"${currentVersion} is too old for this operation. Update it to ${requiredVersion} or newer.`,
   );
 }
 
@@ -153,7 +174,7 @@ async function stageThreadCommandInput(
 async function resumeThreadRuntimeIfMissing(
   args: ResumeThreadRuntimeIfMissingArgs,
 ): Promise<void> {
-  const { command, entry } = args;
+  const { command, entry, options } = args;
   const { resumeContext } = command;
   if (entry.runtime.hasThread(command.threadId)) {
     return;
@@ -164,12 +185,17 @@ async function resumeThreadRuntimeIfMissing(
       `No provider thread id available for thread ${command.threadId}`,
     );
   }
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.resumeContext.bridgeLaunch ?? command.bridgeLaunch,
+    options,
+  );
   await entry.runtime.resumeThread({
     ...(command.resumeContext.acpLaunchSpec !== undefined
       ? { acpLaunchSpec: command.resumeContext.acpLaunchSpec }
       : command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
+    bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,
     projectId: resumeContext.projectId,
@@ -202,6 +228,10 @@ export async function startThread(
     threadStorageRootPath: options.threadStorageRootPath,
   });
   try {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
     const entry = await requireResolvedWorkspaceForCommand({
       dataDir: options.dataDir,
       environmentId: command.environmentId,
@@ -214,6 +244,7 @@ export async function startThread(
       ...(command.acpLaunchSpec !== undefined
         ? { acpLaunchSpec: command.acpLaunchSpec }
         : {}),
+      bridgeLaunch,
       environmentId: command.environmentId,
       threadId: command.threadId,
       projectId: command.projectId,
@@ -237,6 +268,55 @@ export async function startThread(
   }
 }
 
+export async function prepareThreadRewind(
+  command: CommandOf<"thread.rewind.prepare">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonCommandResult<"thread.rewind.prepare">> {
+  await requireSupportedProviderCliForThreadStart({ command, options });
+  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+    command.bridgeLaunch,
+    options,
+  );
+  const entry = await requireResolvedWorkspaceForCommand({
+    dataDir: options.dataDir,
+    environmentId: command.environmentId,
+    injectedSkillSources: command.injectedSkillSources,
+    runtimeManager: options.runtimeManager,
+    targetThreadId: command.threadId,
+    workspaceContext: command.workspaceContext,
+  });
+  return entry.runtime.prepareThreadRewind({
+    ...(command.acpLaunchSpec !== undefined
+      ? { acpLaunchSpec: command.acpLaunchSpec }
+      : {}),
+    bridgeLaunch,
+    environmentId: command.environmentId,
+    threadId: command.threadId,
+    leaseId: command.leaseId,
+    projectId: command.projectId,
+    providerId: command.providerId,
+    sourceProviderThreadId: command.sourceProviderThreadId,
+    retainThroughProviderCheckpoint: command.retainThroughProviderCheckpoint,
+    options: command.options,
+    instructions: command.instructions,
+    dynamicTools: command.dynamicTools,
+    disallowedTools: command.disallowedTools,
+    instructionMode: command.instructionMode,
+  });
+}
+
+export async function discardThreadRewind(
+  command: CommandOf<"thread.rewind.discard">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonCommandResult<"thread.rewind.discard">> {
+  const entry = await options.runtimeManager.getOrAwait(command.environmentId);
+  if (!entry) {
+    return {};
+  }
+  await entry.runtime.discardThreadRewind({ leaseId: command.leaseId });
+  return {};
+}
+
 export async function ensureThreadRuntime(
   command: ExistingThreadRuntimeCommand,
   options: CommandDispatchOptions,
@@ -251,7 +331,23 @@ export async function ensureThreadRuntime(
     workspaceContext: resumeContext.workspaceContext,
   });
 
-  await resumeThreadRuntimeIfMissing({ command, entry });
+  // A new turn owns the provider session, so it interrupts an old turn that
+  // the thread left behind. A goal clear does not own it, so it waits for
+  // that turn instead of stopping it.
+  const released =
+    await options.runtimeManager.releaseThreadFromOtherEnvironments({
+      activeTurn: command.type === "turn.submit" ? "interrupt" : "keep",
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+    });
+  const [busyEnvironmentId] = released.activeTurnEnvironmentIds;
+  if (busyEnvironmentId !== undefined) {
+    throw new ExpectedCommandDispatchError(
+      "thread_busy_in_other_environment",
+      `Thread ${command.threadId} still runs a turn in environment ${busyEnvironmentId}`,
+    );
+  }
+  await resumeThreadRuntimeIfMissing({ command, entry, options });
   return entry;
 }
 
@@ -304,6 +400,57 @@ async function steerSubmittedTurn(
   );
 }
 
+async function resolveSubmittedTurnTarget(
+  command: TurnSubmitCommand,
+  entry: RuntimeEntry,
+): Promise<string | null> {
+  if (command.target.mode === "start") {
+    return null;
+  }
+  // Explicit steer preserves its vouched target. Auto mode intentionally
+  // rebases onto the daemon's live turn when the server snapshot is stale.
+  if (
+    command.target.mode === "steer" &&
+    command.target.expectedTurnId !== null
+  ) {
+    return command.target.expectedTurnId;
+  }
+  const activeTurnId = entry.runtime.getActiveTurnId(command.threadId);
+  if (activeTurnId !== null) {
+    return activeTurnId;
+  }
+  if (command.target.expectedTurnId !== null) {
+    return command.target.expectedTurnId;
+  }
+  // With no active id, a live thread means the runtime has accepted a start
+  // whose turn/started event is still pending. If that prior turn already
+  // completed, it is no longer live and this input can start immediately.
+  if (!entry.runtime.getLiveThreadIds().includes(command.threadId)) {
+    return null;
+  }
+  const awaitedTurnId = await entry.runtime.waitForActiveTurn(
+    command.threadId,
+    {
+      timeoutMs: TURN_SUBMIT_ACTIVE_TURN_WAIT_MS,
+    },
+  );
+  if (awaitedTurnId !== null) {
+    return awaitedTurnId;
+  }
+  // The timeout and provider event can race. Re-read both facts before
+  // deciding whether the previous start completed or remains unresolved.
+  const refreshedTurnId = entry.runtime.getActiveTurnId(command.threadId);
+  if (refreshedTurnId !== null) {
+    return refreshedTurnId;
+  }
+  if (entry.runtime.getLiveThreadIds().includes(command.threadId)) {
+    throw new Error(
+      `Refusing to start a competing turn while ${command.threadId} is still starting`,
+    );
+  }
+  return null;
+}
+
 export async function submitTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
@@ -323,28 +470,28 @@ export async function submitTurn(
       : {}),
   };
   try {
-    await resumeThreadRuntimeIfMissing({ command: stagedCommand, entry });
+    await resumeThreadRuntimeIfMissing({
+      command: stagedCommand,
+      entry,
+      options,
+    });
+    const resolvedTurnId = await resolveSubmittedTurnTarget(
+      stagedCommand,
+      entry,
+    );
     switch (command.target.mode) {
       case "start":
         return await runSubmittedTurn(stagedCommand, entry);
       case "auto":
-        return command.target.expectedTurnId
-          ? await steerSubmittedTurn(
-              stagedCommand,
-              entry,
-              command.target.expectedTurnId,
-            )
+        return resolvedTurnId
+          ? await steerSubmittedTurn(stagedCommand, entry, resolvedTurnId)
           : await runSubmittedTurn(stagedCommand, entry);
       case "steer":
-        if (!command.target.expectedTurnId) {
+        if (!resolvedTurnId) {
           // The server saw no active turn, but the user's intent is still "send".
           return await runSubmittedTurn(stagedCommand, entry);
         }
-        return await steerSubmittedTurn(
-          stagedCommand,
-          entry,
-          command.target.expectedTurnId,
-        );
+        return await steerSubmittedTurn(stagedCommand, entry, resolvedTurnId);
     }
   } catch (error) {
     await cleanupAfterPostStagingFailure(staged.cleanup);

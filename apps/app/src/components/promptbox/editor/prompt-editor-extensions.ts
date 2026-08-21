@@ -7,7 +7,7 @@ import {
 } from "./prompt-decoration-extension";
 import { PromptMentionExtension } from "./prompt-mention-extension";
 
-export interface PromptEditorExtensionsOptions extends PromptDecorationExtensionOptions {
+interface PromptEditorExtensionsOptions extends PromptDecorationExtensionOptions {
   /**
    * When true, the composer enables Markdown rich-text formatting (headings,
    * lists, bold/italic/inline code) with StarterKit's live input rules. When
@@ -44,7 +44,6 @@ export function promptEditorExtensions({
   getDraftObservers,
   draftObserverDebounceMs,
   onRuleError,
-  onDraftObserverError,
 }: PromptEditorExtensionsOptions): AnyExtension[] {
   return [
     StarterKit.configure({
@@ -75,7 +74,6 @@ export function promptEditorExtensions({
         ? { draftObserverDebounceMs }
         : {}),
       ...(onRuleError !== undefined ? { onRuleError } : {}),
-      ...(onDraftObserverError !== undefined ? { onDraftObserverError } : {}),
     }),
   ];
 }

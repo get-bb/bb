@@ -9,7 +9,7 @@ export interface DatabaseConfig {
   databasePath: string;
 }
 
-export interface LoadDatabaseConfigArgs extends LoadCommonConfigArgs {
+interface LoadDatabaseConfigArgs extends LoadCommonConfigArgs {
   commonConfig?: CommonConfig;
 }
 

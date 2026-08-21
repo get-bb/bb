@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "model-list",
+  "threadId": null,
+  "scope": "process",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "recordedAt": "2026-08-21",
+  "description": "Process-scoped model/list probe.",
+  "note": "model/list at 178727943468515553",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 3,
+    "provider→bridge": 0,
+    "bridge→provider": 0
+  }
+}

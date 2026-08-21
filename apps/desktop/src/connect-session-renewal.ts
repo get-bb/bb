@@ -1,5 +1,5 @@
-export const CONNECT_SESSION_RENEWAL_LEAD_MS = 5 * 60 * 1000;
-export const CONNECT_SESSION_MIN_RENEWAL_DELAY_MS = 30 * 1000;
+const CONNECT_SESSION_RENEWAL_LEAD_MS = 5 * 60 * 1000;
+const CONNECT_SESSION_MIN_RENEWAL_DELAY_MS = 30 * 1000;
 
 export type ConnectSessionAuthenticateResult =
   | { expiresAt: number; ok: true }
@@ -12,17 +12,15 @@ export type ConnectSessionAuthenticateResult =
  * authentication must consult it before any expensive fallback, because the
  * user can switch targets while it runs.
  */
-export type ConnectSessionAuthenticate = (
+type ConnectSessionAuthenticate = (
   remoteServerUrl: string,
   isCurrent: () => boolean,
 ) => Promise<ConnectSessionAuthenticateResult>;
 
-export interface CreateConnectSessionRenewalArgs {
+interface CreateConnectSessionRenewalArgs {
   authenticate: ConnectSessionAuthenticate;
   clearTimeoutFn?: (handle: unknown) => void;
-  leadMs?: number;
   log?: (message: string) => void;
-  minDelayMs?: number;
   now?: () => number;
   setTimeoutFn?: (handler: () => void, timeout: number) => unknown;
 }
@@ -53,8 +51,8 @@ export interface ConnectSessionRenewal {
 export function createConnectSessionRenewal(
   args: CreateConnectSessionRenewalArgs,
 ): ConnectSessionRenewal {
-  const leadMs = args.leadMs ?? CONNECT_SESSION_RENEWAL_LEAD_MS;
-  const minDelayMs = args.minDelayMs ?? CONNECT_SESSION_MIN_RENEWAL_DELAY_MS;
+  const leadMs = CONNECT_SESSION_RENEWAL_LEAD_MS;
+  const minDelayMs = CONNECT_SESSION_MIN_RENEWAL_DELAY_MS;
   const now = args.now ?? Date.now;
   const setTimeoutFn =
     args.setTimeoutFn ??

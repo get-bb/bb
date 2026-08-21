@@ -20,14 +20,6 @@ export const ACTIVE_TURN_TIMEOUT_MS = scaleTimeoutMs(5_000);
 // Fake provider inputs accept `delay:<ms>` prefixes to pause a turn before completion.
 export const STOP_DELAY_TEXT = "delay:5000 stop me";
 
-export interface RuntimeConfigCommand {
-  commandType: string;
-  dynamicToolNames: string[];
-  instructions: string | undefined;
-  skillRootPaths: string[];
-  threadId: string;
-}
-
 export async function createProjectFixture(
   harness: IntegrationHarness,
   name: string,

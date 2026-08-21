@@ -16,7 +16,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { TasksEditor } from "../../editor/tasks-editor.js";
-import { useBbNavigate } from "@bb/plugin-sdk/app";
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 import {
   useMentionItems,
   useTasksQuery,
@@ -75,7 +75,7 @@ function useActivityFeed(taskId: string) {
   );
 }
 
-export type AgentNotificationTarget =
+type AgentNotificationTarget =
   | { kind: "ready"; title: string }
   | { kind: "none" }
   | { kind: "unavailable" };
@@ -277,7 +277,10 @@ function CommentCard({ entry, nowMs }: { entry: FeedEntry; nowMs: number }) {
           onOpenThread={(threadId) => navigate.toThread(threadId)}
         />
         {attachments.length > 0 ? (
-          <AttachmentTracks attachments={attachments} onOpenImage={setLightbox} />
+          <AttachmentTracks
+            attachments={attachments}
+            onOpenImage={setLightbox}
+          />
         ) : null}
         {lightbox ? (
           <Lightbox attachment={lightbox} onClose={() => setLightbox(null)} />
@@ -532,7 +535,7 @@ export function AgentNotificationControl({
   );
 }
 
-export interface TaskActivityProps {
+interface TaskActivityProps {
   taskId: string;
   /** Task key like TSK-4; reserved for deep links from feed entries. */
   taskKey: string;
@@ -584,5 +587,3 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
     </section>
   );
 }
-
-export default TaskActivity;

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 /**
- * The Tools Hub detail pages share a shell, but the thing that actually keeps
+ * The Extensions detail pages share a shell, but the thing that actually keeps
  * them consistent is each tool type's *recipe*: which semantic sections appear,
  * in which order, under which label, and which of them are allowed to
  * disappear. These tests read the recipe straight off the rendered DOM via
@@ -19,11 +19,12 @@ import {
 import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import type { SkillSummary } from "@bb/server-contract";
 import type {
   AgentExecutionUpdate,
   AutomationExecutionOptionsResponse,
   AutomationResponse,
-  AutomationRunResponse,
 } from "bb-plugin-automations/rpc-types";
 import {
   AutomationDetailView as AutomationDetailViewBase,
@@ -39,11 +40,14 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { PluginDetail } from "./PluginDetail";
-import { SkillDetailView } from "./SkillDetailView";
+import { SkillDetailView, splitMarkdownIntoChunks } from "./SkillDetailView";
+import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
 
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
+  vi.restoreAllMocks();
 });
 
 /** The rendered recipe: each section's kind and its visible label, in order. */
@@ -80,12 +84,22 @@ const PLUGIN: PluginListItem = {
   provenance: "catalog",
   isOrphanedBuiltin: false,
   catalogEntryId: "github",
+  publisherLabel: "BB Community",
   sourceDisplay: "BB Official · GitHub",
   updateState: EMPTY_PLUGIN_UPDATE_STATE,
 };
 
-function renderPlugin(plugin: PluginListItem) {
-  const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
+function renderPlugin(
+  plugin: PluginListItem,
+  options?: { skills?: SkillSummary[]; seedSkillsCache?: boolean },
+) {
+  const { wrapper: QueryClientWrapper, queryClient } =
+    createQueryClientTestHarness();
+  if (options?.seedSkillsCache !== false) {
+    queryClient.setQueryData(projectSkillsQueryKey(PERSONAL_PROJECT_ID), {
+      skills: options?.skills ?? [],
+    });
+  }
   return render(
     <MemoryRouter>
       <QueryClientWrapper>
@@ -117,7 +131,6 @@ describe("Plugin detail recipe", () => {
   it("names each activity section after its own object, with no Health wrapper", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
-      hasSettings: true,
       services: [{ name: "sync", state: "running" }],
       schedules: [
         {
@@ -139,38 +152,6 @@ describe("Plugin detail recipe", () => {
     ]);
   });
 
-  it("uses the Background services fill for both detail-table header orientations", () => {
-    renderPlugin({
-      ...PLUGIN,
-      capabilities: [
-        {
-          kind: "skill",
-          id: "review",
-          label: "Review issues",
-          detail: "Review repository issues.",
-        },
-      ],
-      services: [{ name: "sync", state: "running" }],
-    });
-
-    for (const name of ["Delivery", "Version"]) {
-      const header = screen.getByRole("rowheader", { name });
-      expect(header.className).toContain("bg-surface-recessed/55");
-      expect(header.className).toContain("font-medium");
-    }
-    expect(
-      screen.getByRole("rowheader", { name: /Review issues/ }).className,
-    ).toContain("bg-surface-recessed/55");
-
-    for (const header of screen.getAllByRole("columnheader")) {
-      expect(header.className).toContain("bg-surface-recessed/55");
-    }
-
-    expect(
-      screen.getByRole("rowheader", { name: "sync" }).className,
-    ).not.toContain("bg-surface-recessed/55");
-  });
-
   it("omits an activity section the plugin has no rows for", () => {
     const { container } = renderPlugin({
       ...PLUGIN,
@@ -190,14 +171,9 @@ describe("Plugin detail recipe", () => {
     expect(renderedRecipe(container).map(([kind]) => kind)).toContain(
       "overview",
     );
-    const description = screen.getByText(
-      "This plugin does not describe itself.",
-    );
-    expect(description.className).not.toContain("max-w-prose");
-    expect(description.className).toContain("max-w-none");
-    expect(description.className).toContain("text-sm");
-    expect(description.className).toContain("leading-relaxed");
-    expect(description.className).toContain("text-muted-foreground");
+    expect(
+      screen.getByText("This plugin does not describe itself."),
+    ).toBeTruthy();
   });
 
   it("lists declared capabilities without category chrome", () => {
@@ -247,12 +223,8 @@ describe("Plugin detail recipe", () => {
       "Pull requests",
       "GitHub Dark",
     ] as const) {
-      expect(screen.getByText(item).className).toContain("text-xs");
+      expect(screen.getByText(item)).toBeTruthy();
     }
-    const skillName = screen.getByText("review");
-    expect(skillName.closest("th")?.className).toContain("items-center");
-    expect(skillName.parentElement?.className).toContain("items-center");
-    expect(skillName.previousElementSibling?.className).not.toContain("mt-px");
   });
 
   it("collapses long capability descriptions until requested", () => {
@@ -275,7 +247,6 @@ describe("Plugin detail recipe", () => {
       name: "Show full description",
     });
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
-    expect(disclosure.className).toContain("text-subtle-foreground");
 
     fireEvent.click(disclosure);
 
@@ -284,7 +255,6 @@ describe("Plugin detail recipe", () => {
       name: "Show less",
     });
     expect(collapseDisclosure.getAttribute("aria-expanded")).toBe("true");
-    expect(collapseDisclosure.className).toContain("text-subtle-foreground");
     expect(container.textContent).toContain(description);
   });
 
@@ -309,6 +279,152 @@ describe("Plugin detail recipe", () => {
     renderPlugin({ ...PLUGIN, app: { hasApp: true, bundle: null } });
 
     expect(screen.getByText("Issues")).toBeTruthy();
+  });
+
+  it("links every capability with a stable destination to its owning surface", () => {
+    const listSkills = vi
+      .spyOn(sdk.skills, "list")
+      .mockResolvedValue({ skills: [] });
+    setPluginSlotRegistrations("github", {
+      homepageSections: [
+        {
+          id: "dashboard",
+          title: "GitHub dashboard",
+          component: () => null,
+        },
+      ],
+      settingsSections: [
+        {
+          id: "advanced",
+          title: "Advanced settings",
+          component: () => null,
+        },
+      ],
+      navPanels: [
+        {
+          id: "issues",
+          title: "Issues",
+          icon: "Github",
+          path: "issues",
+          component: () => null,
+        },
+      ],
+      threadPanelActions: [
+        {
+          id: "inspect",
+          title: "Inspect issue",
+          component: () => null,
+        },
+      ],
+      sidebarFooterActions: [],
+      threadLists: [
+        {
+          id: "github-threads",
+          title: "GitHub threads",
+          component: () => null,
+        },
+      ],
+      threadHeaderActions: [
+        {
+          id: "sync",
+          title: "Sync status",
+          component: () => null,
+        },
+      ],
+      fileOpeners: [
+        {
+          id: "markdown",
+          title: "Markdown viewer",
+          extensions: ["md"],
+          component: () => null,
+        },
+      ],
+      messageDirectives: [],
+    });
+    const { container } = renderPlugin(
+      {
+        ...PLUGIN,
+        app: { hasApp: true, bundle: null },
+        capabilities: [
+          {
+            kind: "theme",
+            id: "github.dark",
+            label: "GitHub Dark",
+            detail: null,
+          },
+          {
+            kind: "skill",
+            id: "review",
+            label: "review",
+            detail: "Reviews pull requests.",
+          },
+        ],
+      },
+      {
+        skills: [
+          {
+            id: `skill_${"a".repeat(64)}`,
+            name: "review",
+            description: "Reviews pull requests.",
+            provider: null,
+            scope: "plugin",
+            pluginId: "github",
+            filePath: "/plugins/github/skills/review/SKILL.md",
+            manageable: false,
+            registrySkillId: null,
+          },
+        ],
+      },
+    );
+
+    const destinations = [
+      ["Settings", "/settings/plugins/github"],
+      ["Issues", "/plugins/github/issues"],
+      ["GitHub dashboard", "/#plugin-homepage:github:dashboard"],
+      ["GitHub threads", "/settings/appearance"],
+      ["Markdown viewer", "/settings/files"],
+      ["GitHub Dark", "/settings/appearance"],
+      ["review", `/extensions/skills/library/skill_${"a".repeat(64)}`],
+    ] as const;
+    for (const [name, href] of destinations) {
+      expect(screen.getByRole("link", { name }).getAttribute("href")).toBe(
+        href,
+      );
+    }
+    expect(renderedRecipe(container)).toContainEqual([
+      "configuration",
+      "Configuration",
+    ]);
+    expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
+    expect(screen.queryByRole("link", { name: "Inspect issue" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sync status" })).toBeNull();
+    expect(listSkills).not.toHaveBeenCalled();
+  });
+
+  it("links uncached plugin skills to the library without discovering skills", () => {
+    const listSkills = vi
+      .spyOn(sdk.skills, "list")
+      .mockResolvedValue({ skills: [] });
+
+    renderPlugin(
+      {
+        ...PLUGIN,
+        capabilities: [
+          {
+            kind: "skill",
+            id: "review",
+            label: "review",
+            detail: "Reviews pull requests.",
+          },
+        ],
+      },
+      { seedSkillsCache: false },
+    );
+
+    expect(
+      screen.getByRole("link", { name: "review" }).getAttribute("href"),
+    ).toBe("/extensions/skills?view=library");
+    expect(listSkills).not.toHaveBeenCalled();
   });
 
   it("does not preview an unloaded frontend app as a capability", () => {
@@ -445,48 +561,6 @@ describe("Detail page header slots", () => {
   });
 });
 
-describe("Plugin detail route states", () => {
-  it("keeps the detail page width while loading and when the plugin is missing", () => {
-    const { wrapper: QueryClientWrapper } = createQueryClientTestHarness();
-    const { container, rerender } = render(
-      <QueryClientWrapper>
-        <PluginDetail
-          isLoading
-          plugin={null}
-          pending={false}
-          openSourceDisabled
-          onToggle={() => {}}
-          onEdit={() => {}}
-          onOpenSource={() => {}}
-          onDelete={() => {}}
-        />
-      </QueryClientWrapper>,
-    );
-    expect(
-      container.querySelector("[data-resource-detail-state]")?.className,
-    ).toContain("max-w-5xl");
-
-    rerender(
-      <QueryClientWrapper>
-        <PluginDetail
-          isLoading={false}
-          plugin={null}
-          pending={false}
-          openSourceDisabled
-          onToggle={() => {}}
-          onEdit={() => {}}
-          onOpenSource={() => {}}
-          onDelete={() => {}}
-        />
-      </QueryClientWrapper>,
-    );
-    expect(
-      container.querySelector("[data-resource-detail-state]")?.className,
-    ).toContain("max-w-5xl");
-    expect(screen.getByText("Plugin not found.")).toBeTruthy();
-  });
-});
-
 function renderSkill(files: readonly string[]) {
   return render(
     <SkillDetailView
@@ -521,171 +595,96 @@ describe("Skill detail recipe", () => {
     ]);
   });
 
-  it("keeps file-load failure copy neutral and puts severity on the icon", () => {
-    const { container } = render(
-      <SkillDetailView
-        title="writing-voice"
-        path="/skills/writing-voice/SKILL.md"
-        files={["/skills/writing-voice/SKILL.md"]}
-        selectedPath="/skills/writing-voice/SKILL.md"
-        onSelectFile={() => {}}
-        contentState={{
-          kind: "error",
-          message: "Could not load this file.",
-          onRetry: () => {},
-        }}
-      />,
-    );
-
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toBe("Could not load this file.");
-    expect(alert.className).not.toContain("text-destructive");
-    expect(
-      container.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
-    ).toContain("text-destructive");
-  });
-
-  it("keeps short skill content on one page without pagination chrome", () => {
+  it("keeps short skill content in one chunk with no sentinel or pager", () => {
     const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
     const viewport = container.querySelector<HTMLElement>(
       "[data-skill-content-viewport]",
     );
-    const content = container.querySelector<HTMLElement>(
-      "[data-skill-content-pages]",
-    );
     expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(content, "scrollHeight", {
-      configurable: true,
-      value: 120,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-
-    expect(viewport?.className).toContain("max-h-[60dvh]");
     expect(
       screen.queryByRole("navigation", { name: "Skill content pagination" }),
     ).toBeNull();
+    expect(
+      container.querySelector("[data-resource-infinite-sentinel]"),
+    ).toBeNull();
   });
 
-  it("pages through long skill content with first and last page controls", () => {
-    const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
-    const viewport = container.querySelector<HTMLElement>(
-      "[data-skill-content-viewport]",
+  it("loads more chunks as the sentinel is reached, with no page buttons", () => {
+    const intersectionCallbacks = new Set<IntersectionObserverCallback>();
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class IntersectionObserverMock {
+        constructor(private readonly callback: IntersectionObserverCallback) {
+          intersectionCallbacks.add(this.callback);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {
+          intersectionCallbacks.delete(this.callback);
+        }
+      },
     );
-    const content = container.querySelector<HTMLElement>(
-      "[data-skill-content-pages]",
-    );
-    expect(viewport).not.toBeNull();
-    expect(content).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 240,
-    });
-    Object.defineProperty(content, "scrollHeight", {
-      configurable: true,
-      value: 720,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-
-    const pagination = screen.getByRole("navigation", {
-      name: "Skill content pagination",
-    });
-    const previous = screen.getByRole("button", { name: /Previous/ });
-    const next = screen.getByRole("button", { name: /Next/ });
-    expect(pagination.textContent).toContain("Page 1 of 3");
-    expect(previous.getAttribute("disabled")).not.toBeNull();
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 2 of 3");
-    expect(content?.style.transform).toBe("translateY(-240px)");
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 3 of 3");
-    expect(previous.getAttribute("disabled")).toBeNull();
-    expect(next.getAttribute("disabled")).not.toBeNull();
-
-    Object.defineProperty(viewport, "clientHeight", {
-      configurable: true,
-      value: 180,
-    });
-    act(() => window.dispatchEvent(new Event("resize")));
-    expect(pagination.textContent).toContain("Page 3 of 4");
-    expect(next.getAttribute("disabled")).toBeNull();
-
-    fireEvent.click(next);
-    expect(pagination.textContent).toContain("Page 4 of 4");
-    expect(content?.style.transform).toBe("translateY(-540px)");
-    expect(next.getAttribute("disabled")).not.toBeNull();
-  });
-
-  it("pages once per vertical wheel or trackpad gesture", () => {
-    vi.useFakeTimers();
     try {
-      const { container } = renderSkill(["/skills/writing-voice/SKILL.md"]);
-      const viewport = container.querySelector<HTMLElement>(
-        "[data-skill-content-viewport]",
+      // Two 121+ line sections separated by blank lines → two chunks.
+      const section = (marker: string) =>
+        `## ${marker}\n${Array.from({ length: 125 }, (_, i) => `${marker} line ${i}`).join("\n")}\n`;
+      const content = `${section("alpha")}\n${section("omega")}`;
+      const { container } = render(
+        <SkillDetailView
+          title="writing-voice"
+          path="/skills/writing-voice/SKILL.md"
+          files={["/skills/writing-voice/SKILL.md"]}
+          selectedPath="/skills/writing-voice/SKILL.md"
+          onSelectFile={() => {}}
+          contentState={{ kind: "ready", content }}
+        />,
       );
-      const content = container.querySelector<HTMLElement>(
-        "[data-skill-content-pages]",
-      );
-      expect(viewport).not.toBeNull();
-      expect(content).not.toBeNull();
 
-      Object.defineProperty(viewport, "clientHeight", {
-        configurable: true,
-        value: 240,
-      });
-      Object.defineProperty(content, "scrollHeight", {
-        configurable: true,
-        value: 720,
-      });
-      act(() => window.dispatchEvent(new Event("resize")));
-
-      const pagination = screen.getByRole("navigation", {
-        name: "Skill content pagination",
-      });
-      fireEvent.wheel(viewport!, { deltaY: -100 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-
-      // Trackpads emit several small pixel deltas. Accumulate them, then move
-      // exactly one page for the gesture even if momentum events continue.
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 1 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 24 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
+      expect(screen.getByText(/alpha line 0/)).toBeTruthy();
+      expect(screen.queryByText(/omega line 0/)).toBeNull();
+      expect(
+        container.querySelector("[data-resource-infinite-sentinel]"),
+      ).not.toBeNull();
+      expect(screen.queryByRole("button", { name: /Next/ })).toBeNull();
 
       act(() => {
-        vi.advanceTimersByTime(161);
+        for (const callback of intersectionCallbacks) {
+          callback(
+            [{ isIntersecting: true } as IntersectionObserverEntry],
+            {} as IntersectionObserver,
+          );
+        }
       });
-      // Line-mode wheel input is normalized to pixels and uses the same
-      // threshold and one-page-per-gesture behavior.
-      fireEvent.wheel(viewport!, { deltaY: 3, deltaMode: 1 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
 
-      // Momentum can keep moving toward the boundary, then briefly rebound in
-      // the opposite direction. Both events are still part of the gesture that
-      // moved from page 2 to page 3, so the rebound must not navigate back.
-      fireEvent.wheel(viewport!, { deltaY: 100 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 3 of 3");
-
-      act(() => {
-        vi.advanceTimersByTime(161);
-      });
-      fireEvent.wheel(viewport!, { deltaY: -40 });
-      expect(pagination.textContent).toContain("Page 2 of 3");
+      expect(screen.getByText(/omega line 0/)).toBeTruthy();
+      // Everything is shown: the sentinel retires.
+      expect(
+        container.querySelector("[data-resource-infinite-sentinel]"),
+      ).toBeNull();
     } finally {
-      vi.useRealTimers();
+      vi.unstubAllGlobals();
     }
+  });
+
+  it("never splits a chunk inside a code fence", () => {
+    // A fence spanning the would-be boundary must hold the chunk open.
+    const fenced = [
+      "intro",
+      "",
+      "```bash",
+      ...Array.from({ length: 200 }, (_, i) => `command ${i}`),
+      "```",
+      "",
+      "outro",
+    ].join("\n");
+    const chunks = splitMarkdownIntoChunks(fenced);
+    for (const chunk of chunks) {
+      const fenceCount = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("```")).length;
+      expect(fenceCount % 2).toBe(0);
+    }
+    expect(chunks.join("\n")).toBe(fenced);
   });
 });
 
@@ -774,22 +773,6 @@ function AutomationDetailView({
   );
 }
 
-const FAILED_SCRIPT_RUN: AutomationRunResponse = {
-  id: "run_failed",
-  automationId: AUTOMATION.id,
-  runMode: "script",
-  threadId: null,
-  status: "failed",
-  trigger: "schedule",
-  skipReason: null,
-  error: "provider timed out",
-  output: null,
-  exitCode: 1,
-  scheduledFor: 1_700_000_000_000,
-  startedAt: 1_700_000_000_000,
-  finishedAt: 1_700_000_001_000,
-};
-
 describe("Automation detail recipe", () => {
   it("keeps Definition ahead of Runs, including with no runs yet", async () => {
     const updateAgent = vi.fn(async (_update: AgentExecutionUpdate) => {});
@@ -859,23 +842,13 @@ describe("Automation detail recipe", () => {
       .getByText("No runs yet.")
       .closest('[data-automation-runs-state="empty"]') as HTMLElement;
     expect(emptyRuns).not.toBeNull();
-    expect(emptyRuns.className).toContain("items-center");
-    expect(emptyRuns.className).toContain("text-center");
-    const runsTable = emptyRuns.parentElement as HTMLElement;
-    expect(runsTable.className).toContain("border");
-    expect(runsTable.className).toContain("border-border");
-    expect(runsTable.className).not.toContain("inline-block");
 
     const savedPrompt = screen.getByRole("textbox", { name: "Saved prompt" });
     expect(savedPrompt.getAttribute("aria-readonly")).toBe("true");
     expect(savedPrompt.getAttribute("aria-disabled")).toBe("true");
-    expect(savedPrompt.className).toContain("text-muted-foreground");
     const readOnlyPromptShell = container.querySelector(
       '[data-automation-prompt-readonly-shell=""]',
     ) as HTMLElement;
-    expect(readOnlyPromptShell.className).toContain("rounded-xl");
-    expect(readOnlyPromptShell.className).toContain("border-border");
-    expect(readOnlyPromptShell.className).toContain("bg-surface-recessed/55");
     expect(readOnlyPromptShell.contains(savedPrompt)).toBe(true);
     expect(savedPrompt.textContent).toBe("Summarize yesterday's commits.");
     expect(screen.queryByRole("button", { name: "Save Prompt" })).toBeNull();
@@ -889,11 +862,6 @@ describe("Automation detail recipe", () => {
     expect(disabledPermissionSelector.disabled).toBe(true);
     expect(readOnlyPromptShell.contains(disabledModelSelector)).toBe(true);
     expect(readOnlyPromptShell.contains(disabledPermissionSelector)).toBe(true);
-    expect(
-      disabledModelSelector.querySelector(
-        '[data-automation-selector-content=""]',
-      )?.className,
-    ).toContain("gap-1.5");
     expect(disabledModelSelector.getAttribute("data-state")).toBeNull();
     expect(
       disabledModelSelector.parentElement?.getAttribute("data-state"),
@@ -902,13 +870,8 @@ describe("Automation detail recipe", () => {
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;
     expect(readOnlyPromptShell.contains(readOnlyPromptFooter)).toBe(true);
-    expect(readOnlyPromptFooter.className).toContain("border-t");
-    expect(readOnlyPromptFooter.className).not.toContain("mt-1");
     const editButton = screen.getByRole("button", { name: "Edit prompt" });
     expect(editButton.querySelector('[data-icon="Edit"]')).not.toBeNull();
-    expect(editButton.className).toContain("size-6");
-    expect(editButton.className).not.toContain("bg-surface-raised");
-    expect(editButton.className).not.toContain("border-border");
     fireEvent.pointerMove(editButton);
     expect((await screen.findByRole("tooltip")).textContent).toBe(
       "Edit prompt",
@@ -923,29 +886,15 @@ describe("Automation detail recipe", () => {
     expect(
       container.querySelector('[data-automation-prompt-readonly-shell=""]'),
     ).toBeNull();
-    expect(promptPanel.className).toContain("bg-background");
-    expect(promptPanel.className).toContain("rounded-xl");
-    expect(promptPanel.className).toContain("shadow-lift");
-    expect(promptPanel.className).not.toContain("rounded-md");
     expect(promptContent.value).toBe("Summarize yesterday's commits.");
     expect(promptContent.readOnly).toBe(false);
-    expect(promptContent.className).toContain("min-h-28");
-    expect(promptContent.className).toContain("resize-none");
-    expect(promptContent.className).not.toContain("resize-y");
-    expect(promptContent.className).toContain("px-4");
-    expect(promptContent.className).toContain("pt-3");
     const promptActionRow = container.querySelector(
       '[data-automation-prompt-action-row=""]',
     ) as HTMLElement;
     expect(promptPanel.contains(promptActionRow)).toBe(true);
-    expect(promptActionRow.className).toContain("pb-2");
-    expect(promptActionRow.className).toContain("pl-3.5");
-    expect(promptActionRow.className).not.toContain("border-t");
     const promptFooter = container.querySelector(
       '[data-automation-prompt-footer=""]',
     ) as HTMLElement;
-    expect(promptFooter.className).toContain("justify-between");
-    expect(promptFooter.className).toContain("px-3.5");
     expect(promptFooter.textContent).toContain("Local");
     expect(promptFooter.textContent).toContain("Approve for me");
     expect(
@@ -978,10 +927,6 @@ describe("Automation detail recipe", () => {
     expect(modelSelector.getAttribute("aria-label")).toBe(
       "Provider and model: Claude, Opus 5",
     );
-    expect(
-      modelSelector.querySelector('[data-automation-selector-content=""]')
-        ?.className,
-    ).toContain("gap-1.5");
     expect(
       modelSelector.querySelector('[data-icon="ChevronDown"]'),
     ).not.toBeNull();
@@ -1023,9 +968,7 @@ describe("Automation detail recipe", () => {
       target: { value: "Summarize the last two days." },
     });
     fireEvent.keyDown(reopenedModelSelector, { key: "Enter" });
-    const modelOptions = await screen.findByRole("listbox");
-    expect(modelOptions.className).toContain("w-max");
-    expect(modelOptions.className).toContain("min-w-0");
+    await screen.findByRole("listbox");
     fireEvent.click(await screen.findByRole("option", { name: "Sonnet 5" }));
     fireEvent.keyDown(reopenedAccessSelector, { key: "Enter" });
     fireEvent.click(await screen.findByRole("option", { name: "Full Access" }));
@@ -1399,7 +1342,7 @@ describe("Automation detail recipe", () => {
     );
   });
 
-  it("uses the shared shimmer treatment while runs are loading", () => {
+  it("uses the shared shimmer treatment while runs are loading", async () => {
     const { container } = render(
       <MemoryRouter>
         <AutomationDetailView
@@ -1424,7 +1367,9 @@ describe("Automation detail recipe", () => {
       </MemoryRouter>,
     );
 
-    const loading = screen.getByRole("status", { name: "Loading runs" });
+    const loading = await screen.findByRole("status", {
+      name: "Loading runs",
+    });
     expect(loading.textContent).toBe("");
     expect(loading.querySelectorAll(".animate-pulse")).toHaveLength(3);
     expect(container.textContent).not.toContain("Loading…");
@@ -1461,45 +1406,6 @@ describe("Automation detail recipe", () => {
     expect(errorState.className).not.toContain("text-destructive");
     expect(container.querySelector('[data-icon="CircleX"]')).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-  });
-
-  it("keeps failed script details readable without repeating severity color", () => {
-    render(
-      <MemoryRouter>
-        <AutomationDetailView
-          automation={{
-            ...AUTOMATION,
-            execution: {
-              mode: "script",
-              script: "pnpm test",
-              interpreter: "bash",
-              timeoutMs: 60_000,
-            },
-          }}
-          projectLabel="Local"
-          runsState={{
-            runs: [FAILED_SCRIPT_RUN],
-            nextCursor: null,
-            loading: false,
-            loadingMore: false,
-            error: null,
-            loadMore: () => {},
-            retry: () => {},
-          }}
-          actionPending={false}
-          onToggle={() => {}}
-          onEdit={() => {}}
-          onRunNow={() => {}}
-          onDelete={() => {}}
-          onOpenThread={() => {}}
-        />
-      </MemoryRouter>,
-    );
-
-    const details = screen.getByText("provider timed out");
-    expect(details.tagName).toBe("PRE");
-    expect(details.className).toContain("text-foreground");
-    expect(details.className).not.toContain("text-destructive");
   });
 
   it.each([

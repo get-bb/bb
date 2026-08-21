@@ -1,4 +1,4 @@
-export type WorkspaceOpenTargetErrorCode =
+type WorkspaceOpenTargetErrorCode =
   | "path_not_found"
   | "path_not_openable"
   | "remote_mapping_missing"
@@ -6,7 +6,7 @@ export type WorkspaceOpenTargetErrorCode =
   | "target_unavailable"
   | "unsupported_platform";
 
-export interface WorkspaceOpenTargetErrorOptions {
+interface WorkspaceOpenTargetErrorOptions {
   code: WorkspaceOpenTargetErrorCode;
   message: string;
 }

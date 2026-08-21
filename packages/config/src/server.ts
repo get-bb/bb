@@ -7,23 +7,32 @@ import {
 } from "./common.js";
 import { loadDatabaseConfig, type DatabaseConfig } from "./database.js";
 import { loadDevAppConfig } from "./dev-app.js";
-import { readEnvVarWithDefault, resolveEnvLoader } from "./env.js";
+import {
+  readEnvVarWithDefault,
+  readOptionalEnvVar,
+  resolveEnvLoader,
+} from "./env.js";
 import {
   BB_APP_URL_ENV,
   BB_APP_SURFACE_ENV,
   BB_APP_VERSION_ENV,
   BB_EXTERNAL_URL_ENV,
   BB_INHERITED_SKILLS_ROOTS_ENV,
+  BB_INFERENCE_FALLBACK_ENV,
   BB_INFERENCE_ENV,
+  BB_MARKETPLACE_URL_ENV,
   BB_POSTHOG_API_KEY_ENV,
   BB_SERVER_BIND_HOST_ENV,
+  BB_SERVER_LAUNCH_ID_ENV,
   BB_TELEMETRY_ENV,
   BB_TRANSCRIPTION_ENV,
   DEFAULT_BB_APP_URL,
   DEFAULT_BB_APP_SURFACE,
   DEFAULT_BB_APP_VERSION,
   DEFAULT_BB_EXTERNAL_URL,
+  DEFAULT_BB_INFERENCE_FALLBACK,
   DEFAULT_BB_INFERENCE,
+  DEFAULT_BB_MARKETPLACE_URL,
   DEFAULT_BB_POSTHOG_API_KEY,
   DEFAULT_BB_SERVER_BIND_HOST,
   DEFAULT_BB_TELEMETRY,
@@ -48,15 +57,22 @@ export interface ServerConfig
   BB_HOST_DAEMON_PORT: number;
   BB_INHERITED_SKILLS_ROOTS: string[];
   BB_INFERENCE: string;
+  BB_INFERENCE_FALLBACK: string;
   BB_POSTHOG_API_KEY: string;
+  BB_MARKETPLACE_URL: string;
   BB_SERVER_BIND_HOST: ServerBindHost;
+  /**
+   * Present only when the bb-app launcher spawned this server. The launcher's
+   * readiness probe accepts a /health response only when it echoes this value.
+   */
+  BB_SERVER_LAUNCH_ID?: string;
   BB_TELEMETRY: boolean;
   BB_TRANSCRIPTION: string;
   OPENAI_API_KEY: string;
   featureFlags: FeatureFlags;
 }
 
-export type LoadServerConfigArgs = LoadCommonConfigArgs;
+type LoadServerConfigArgs = LoadCommonConfigArgs;
 
 export { parseServerBindHost };
 export type { ServerBindHost };
@@ -135,6 +151,18 @@ export function loadServerConfig(
       definition: BB_INFERENCE_ENV,
       env: loader.env,
     }),
+    BB_INFERENCE_FALLBACK: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_INFERENCE_FALLBACK,
+      definition: BB_INFERENCE_FALLBACK_ENV,
+      env: loader.env,
+    }),
+    BB_MARKETPLACE_URL: readEnvVarWithDefault({
+      context: loader.context,
+      defaultValue: DEFAULT_BB_MARKETPLACE_URL,
+      definition: BB_MARKETPLACE_URL_ENV,
+      env: loader.env,
+    }),
     BB_POSTHOG_API_KEY: readEnvVarWithDefault({
       context: loader.context,
       defaultValue: DEFAULT_BB_POSTHOG_API_KEY,
@@ -176,6 +204,15 @@ export function loadServerConfig(
     key: "BB_DEV_APP_PORT",
     target: config,
     value: devAppConfig.BB_DEV_APP_PORT,
+  });
+  assignIfDefined({
+    key: "BB_SERVER_LAUNCH_ID",
+    target: config,
+    value: readOptionalEnvVar({
+      context: loader.context,
+      definition: BB_SERVER_LAUNCH_ID_ENV,
+      env: loader.env,
+    }),
   });
 
   return config;

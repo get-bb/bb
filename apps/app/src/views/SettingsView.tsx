@@ -1,5 +1,9 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
+// Route views render icons outside the shell's core set. Importing the
+// extended registry here ships it as a static dependency of this route chunk,
+// so those icons never flash blank waiting for an on-demand load.
+import "@bb/shared-ui/icon-extended";
 import {
   builtInThemes,
   defaultAppSettings,
@@ -35,14 +39,14 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "@/hooks/useTheme";
-import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useHostDaemon, useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
 import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSettingsSection";
+import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
+import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
-import {
-  PluginSettingsDetailSection,
-  PluginsSettingsSection,
-} from "@/components/settings/PluginsSettingsSection";
+import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
+import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
 import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
 import { VoiceInputSettingsSection } from "@/components/settings/VoiceInputSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
@@ -51,6 +55,7 @@ import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsS
 import { MachinesSettingsSection } from "@/components/settings/MachinesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CliSkillsSettingsSection } from "@/components/settings/CliSkillsSettingsSection";
+import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import {
   useUpdateGeneralSettings,
   useUpdateAppearance,
@@ -81,6 +86,11 @@ import {
   type WorkspaceOpenTargetCapability,
 } from "@/lib/workspace-open-target-preference";
 import { getWorkspaceOpenTargetFallbackLabel } from "@/components/workspace-open-target/workspace-open-target-display";
+import type { LocalHostDaemonAccessState } from "@/lib/local-host-daemon-access";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+
+const LOCAL_EDITOR_INTEGRATION_DOCS_URL =
+  "https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md#open-bb-from-another-browser";
 
 interface ThemePreferenceOption {
   label: string;
@@ -106,59 +116,23 @@ interface LocalOpenTargetPreferenceControlProps {
 }
 
 export interface LocalOpenTargetSettingsSectionProps {
+  accessState: LocalHostDaemonAccessState;
   directoryTargetId: StoredWorkspaceOpenTargetPreference;
   fileTargetId: StoredWorkspaceOpenTargetPreference;
   hasDaemon: boolean;
   onDirectoryTargetChange: (targetId: WorkspaceOpenTargetId) => void;
   onFileTargetChange: (targetId: WorkspaceOpenTargetId) => void;
+  onRequestAccess: () => Promise<boolean>;
   targets: WorkspaceOpenTarget[];
 }
 
-export interface InAppBrowserLinkSettingsControlProps {
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-export interface RewriteLocalhostLinksSettingsControlProps {
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-export interface RootComposeBehaviorSettingsControlProps {
-  navigateToThreadAfterCreate: boolean;
-  onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
-}
-
-export interface CaffeinateSettingsControlProps {
-  disabled: boolean;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-export interface SteerActiveThreadOnEnterSettingsControlProps {
-  disabled: boolean;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-export interface RichTextEditingSettingsControlProps {
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-export interface UnhandledProviderEventsSettingsControlProps {
-  disabled: boolean;
-  enabled: boolean;
-  onEnabledChange: (enabled: boolean) => void;
-}
-
-export interface FaviconColorSettingsControlProps {
+interface FaviconColorSettingsControlProps {
   disabled: boolean;
   faviconColor: FaviconColorPreference;
   onFaviconColorChange: (faviconColor: FaviconColorPreference) => void;
 }
 
-export interface AppearanceSettingsSectionProps {
+interface AppearanceSettingsSectionProps {
   appearance: AppTheme;
   appearanceDisabled: boolean;
   customThemes: readonly string[];
@@ -171,29 +145,29 @@ export interface AppearanceSettingsSectionProps {
   themePreference: ThemePreference;
 }
 
-export interface GeneralSettingsSectionProps {
-  caffeinateAvailable: boolean;
-  caffeinateDisabled: boolean;
-  caffeinateEnabled: boolean;
-  onReplayOnboarding: () => void;
+interface GeneralSettingsSectionProps {
   desktopBrowserAvailable: boolean;
-  onCaffeinateChange: (enabled: boolean) => void;
   navigateToThreadAfterCreate: boolean;
   onNavigateToThreadAfterCreateChange: (enabled: boolean) => void;
   onOpenLinksInAppBrowserChange: (enabled: boolean) => void;
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
+  onStreamerModeChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
-  replayOnboardingAvailable: boolean;
   steerActiveThreadOnEnter: boolean;
   steerActiveThreadOnEnterDisabled: boolean;
+  streamerMode: boolean;
+  streamerModeDisabled: boolean;
 }
 
-export type DebugSettingsSectionProps =
-  UnhandledProviderEventsSettingsControlProps;
+interface DebugSettingsSectionProps {
+  disabled: boolean;
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}
 
 function appPaletteLabel(
   appearance: AppTheme,
@@ -207,15 +181,19 @@ function appPaletteLabel(
   );
 }
 
-export interface ExperimentsSettingsSectionProps {
+interface ExperimentsSettingsSectionProps {
   /** True while the config query hasn't loaded or a toggle write is in flight. */
   disabled: boolean;
-  claudeCodeMockCliTrafficEnabled: boolean;
-  newOnboardingEnabled: boolean;
-  onClaudeCodeMockCliTrafficEnabledChange: (enabled: boolean) => void;
-  onNewOnboardingEnabledChange: (enabled: boolean) => void;
-  onToolsHubEnabledChange: (enabled: boolean) => void;
-  toolsHubEnabled: boolean;
+  changelogPreviewEnabled: boolean;
+  editMessagesEnabled: boolean;
+  mobileAppEnabled: boolean;
+  providerSessionReapingEnabled: boolean;
+  timelineWindowingEnabled: boolean;
+  onChangelogPreviewEnabledChange: (enabled: boolean) => void;
+  onEditMessagesEnabledChange: (enabled: boolean) => void;
+  onMobileAppEnabledChange: (enabled: boolean) => void;
+  onProviderSessionReapingEnabledChange: (enabled: boolean) => void;
+  onTimelineWindowingEnabledChange: (enabled: boolean) => void;
 }
 
 const THEME_PREFERENCE_OPTIONS: ReadonlyArray<ThemePreferenceOption> = [
@@ -262,7 +240,7 @@ const SETTINGS_DROPDOWN_CONTENT_CLASS =
 const CREATE_CUSTOM_PALETTE_PROMPT =
   "Create a custom bb palette. First run `bb theme dir` to find the custom theme directory. Ask me for the palette name and visual direction, then create `<theme-dir>/<name>/theme.css` with light and dark theme variables compatible with bb's theme tokens.";
 const PALETTE_SETTING_DESCRIPTION =
-  "Palettes change bb's colors across light and dark mode. Choose a built-in palette or create one from a prompt.";
+  "Palettes change bb's colors, including syntax colors in diffs and file previews. Choose a built-in palette or create one from a prompt.";
 
 // Renders the favicon glyph itself in the candidate color by using the
 // favicon image as a CSS mask, so the preview matches the resulting tab icon.
@@ -281,7 +259,7 @@ function FaviconColorPreview({ value }: { value: FaviconColorPreference }) {
   );
 }
 
-export function FaviconColorSettingsControl({
+function FaviconColorSettingsControl({
   disabled,
   faviconColor,
   onFaviconColorChange,
@@ -449,15 +427,87 @@ function LocalOpenTargetPreferenceControl({
 }
 
 export function LocalOpenTargetSettingsSection({
+  accessState,
   directoryTargetId,
   fileTargetId,
   hasDaemon,
   onDirectoryTargetChange,
   onFileTargetChange,
+  onRequestAccess,
   targets,
 }: LocalOpenTargetSettingsSectionProps) {
-  if (!hasDaemon) {
+  const [accessRequestPending, setAccessRequestPending] = useState(false);
+
+  if (accessState === "unavailable") {
     return null;
+  }
+
+  const handleRequestAccess = async () => {
+    setAccessRequestPending(true);
+    try {
+      await onRequestAccess();
+    } finally {
+      setAccessRequestPending(false);
+    }
+  };
+
+  if (!hasDaemon) {
+    const accessDenied = accessState === "denied";
+    const accessAvailable = accessState === "available";
+    const descriptionText = accessDenied
+      ? "Your browser blocked access to bb on this device. Allow local network access for this site in browser settings, then reload bb."
+      : accessAvailable
+        ? "bb couldn’t connect to its local editor helper. Make sure the bb desktop app or CLI is running on this device, then retry. If it is already running, a remote browser origin may need to be configured."
+        : "Connect this browser to bb on this device so it can discover installed editors. bb only contacts the local helper after you choose Enable; your browser may ask for local network access.";
+    const buttonLabel = accessRequestPending
+      ? accessAvailable
+        ? "Retrying…"
+        : "Enabling…"
+      : accessDenied
+        ? "Blocked"
+        : accessAvailable
+          ? "Retry"
+          : "Enable";
+
+    return (
+      <SettingsSection title="File Preferences">
+        <SettingsWithControl
+          label="Local editor integration"
+          description={
+            <>
+              {descriptionText}{" "}
+              <a
+                href={LOCAL_EDITOR_INTEGRATION_DOCS_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-0.5 rounded-sm underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                onClick={(event) => {
+                  event.preventDefault();
+                  openUrlInExternalBrowser(LOCAL_EDITOR_INTEGRATION_DOCS_URL);
+                }}
+              >
+                Setup guide
+                <Icon
+                  name="ExternalLink"
+                  className="size-3 shrink-0"
+                  aria-hidden
+                />
+              </a>
+            </>
+          }
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={accessRequestPending || accessDenied}
+            onClick={handleRequestAccess}
+          >
+            {buttonLabel}
+          </Button>
+        </SettingsWithControl>
+      </SettingsSection>
+    );
   }
 
   return (
@@ -487,135 +537,9 @@ const NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL =
 const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
   "Show unhandled provider events";
-const CAFFEINATE_SETTING_LABEL = "Caffeinate";
 const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
   "Steer running threads on Enter";
-
-export function RootComposeBehaviorSettingsControl({
-  navigateToThreadAfterCreate,
-  onNavigateToThreadAfterCreateChange,
-}: RootComposeBehaviorSettingsControlProps) {
-  return (
-    <SettingsWithControl label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}>
-      <Switch
-        checked={navigateToThreadAfterCreate}
-        onCheckedChange={onNavigateToThreadAfterCreateChange}
-        aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-export function CaffeinateSettingsControl({
-  disabled,
-  enabled,
-  onEnabledChange,
-}: CaffeinateSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={CAFFEINATE_SETTING_LABEL}
-      description="Prevent system idle sleep while bb is running. Closing the lid or choosing Sleep still sleeps the Mac."
-    >
-      <Switch
-        checked={enabled}
-        disabled={disabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={CAFFEINATE_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-export function SteerActiveThreadOnEnterSettingsControl({
-  disabled,
-  enabled,
-  onEnabledChange,
-}: SteerActiveThreadOnEnterSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-      description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
-    >
-      <Switch
-        checked={enabled}
-        disabled={disabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-export function InAppBrowserLinkSettingsControl({
-  enabled,
-  onEnabledChange,
-}: InAppBrowserLinkSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-      description="Open web links inside bb."
-    >
-      <Switch
-        checked={enabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-export function RewriteLocalhostLinksSettingsControl({
-  enabled,
-  onEnabledChange,
-}: RewriteLocalhostLinksSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-      description="Point localhost links at this host."
-    >
-      <Switch
-        checked={enabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-export function RichTextEditingSettingsControl({
-  enabled,
-  onEnabledChange,
-}: RichTextEditingSettingsControlProps) {
-  return (
-    <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
-      <Switch
-        checked={enabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
-
-export function UnhandledProviderEventsSettingsControl({
-  disabled,
-  enabled,
-  onEnabledChange,
-}: UnhandledProviderEventsSettingsControlProps) {
-  return (
-    <SettingsWithControl
-      label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
-      description="Show raw provider events bb does not recognize. Development builds always show these events."
-    >
-      <Switch
-        checked={enabled}
-        disabled={disabled}
-        onCheckedChange={onEnabledChange}
-        aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
-      />
-    </SettingsWithControl>
-  );
-}
+const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 
 export function AppearanceSettingsSection({
   appearance,
@@ -633,6 +557,7 @@ export function AppearanceSettingsSection({
     <SettingsSection title="Appearance">
       <div className="space-y-5">
         <SidebarThreadListSetting />
+        <CodeRendererSettings />
         <SettingsWithControl label="Theme">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -764,101 +689,99 @@ export function AppearanceSettingsSection({
           faviconColor={faviconColor}
           onFaviconColorChange={onFaviconColorChange}
         />
+        <SplitDimmingSetting />
       </div>
     </SettingsSection>
   );
 }
 
 export function GeneralSettingsSection({
-  caffeinateAvailable,
-  caffeinateDisabled,
-  caffeinateEnabled,
   desktopBrowserAvailable,
   navigateToThreadAfterCreate,
-  onCaffeinateChange,
   onNavigateToThreadAfterCreateChange,
   onOpenLinksInAppBrowserChange,
   onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
   onSteerActiveThreadOnEnterChange,
+  onStreamerModeChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   richTextEditing,
-  replayOnboardingAvailable,
   steerActiveThreadOnEnter,
   steerActiveThreadOnEnterDisabled,
-  onReplayOnboarding,
+  streamerMode,
+  streamerModeDisabled,
 }: GeneralSettingsSectionProps) {
   return (
     <SettingsSection title="General">
       <div className="space-y-5">
-        <RootComposeBehaviorSettingsControl
-          navigateToThreadAfterCreate={navigateToThreadAfterCreate}
-          onNavigateToThreadAfterCreateChange={
-            onNavigateToThreadAfterCreateChange
-          }
-        />
-
-        <RichTextEditingSettingsControl
-          enabled={richTextEditing}
-          onEnabledChange={onRichTextEditingChange}
-        />
-
-        <SteerActiveThreadOnEnterSettingsControl
-          disabled={steerActiveThreadOnEnterDisabled}
-          enabled={steerActiveThreadOnEnter}
-          onEnabledChange={onSteerActiveThreadOnEnterChange}
-        />
-
-        {caffeinateAvailable ? (
-          <CaffeinateSettingsControl
-            disabled={caffeinateDisabled}
-            enabled={caffeinateEnabled}
-            onEnabledChange={onCaffeinateChange}
+        <SettingsWithControl
+          label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
+        >
+          <Switch
+            checked={navigateToThreadAfterCreate}
+            onCheckedChange={onNavigateToThreadAfterCreateChange}
+            aria-label={NAVIGATE_TO_THREAD_AFTER_CREATE_SETTING_LABEL}
           />
-        ) : null}
+        </SettingsWithControl>
+
+        <SettingsWithControl label={RICH_TEXT_EDITING_SETTING_LABEL}>
+          <Switch
+            checked={richTextEditing}
+            onCheckedChange={onRichTextEditingChange}
+            aria-label={RICH_TEXT_EDITING_SETTING_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+          description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
+        >
+          <Switch
+            checked={steerActiveThreadOnEnter}
+            disabled={steerActiveThreadOnEnterDisabled}
+            onCheckedChange={onSteerActiveThreadOnEnterChange}
+            aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
+          />
+        </SettingsWithControl>
 
         {desktopBrowserAvailable ? (
-          <InAppBrowserLinkSettingsControl
-            enabled={openLinksInAppBrowser}
-            onEnabledChange={onOpenLinksInAppBrowserChange}
+          <SettingsWithControl
+            label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+            description="Open web links inside bb."
+          >
+            <Switch
+              checked={openLinksInAppBrowser}
+              onCheckedChange={onOpenLinksInAppBrowserChange}
+              aria-label={IN_APP_BROWSER_LINK_SETTING_LABEL}
+            />
+          </SettingsWithControl>
+        ) : null}
+
+        <SettingsWithControl
+          label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
+          description="Point localhost links at this host."
+        >
+          <Switch
+            checked={rewriteLocalhostLinks}
+            onCheckedChange={onRewriteLocalhostLinksChange}
+            aria-label={REWRITE_LOCALHOST_LINKS_SETTING_LABEL}
           />
-        ) : null}
+        </SettingsWithControl>
 
-        <RewriteLocalhostLinksSettingsControl
-          enabled={rewriteLocalhostLinks}
-          onEnabledChange={onRewriteLocalhostLinksChange}
-        />
-
-        {replayOnboardingAvailable ? (
-          <ReplayOnboardingSettingsControl onReplay={onReplayOnboarding} />
-        ) : null}
+        <SettingsWithControl
+          label={STREAMER_MODE_SETTING_LABEL}
+          description="Hide the custom models from config.json in every model picker, so a screen share does not show them."
+        >
+          <Switch
+            checked={streamerMode}
+            disabled={streamerModeDisabled}
+            onCheckedChange={onStreamerModeChange}
+            aria-label={STREAMER_MODE_SETTING_LABEL}
+          />
+        </SettingsWithControl>
       </div>
     </SettingsSection>
-  );
-}
-
-/**
- * The parent only shows this control when the new-onboarding experiment is on.
- * Clearing `onboardingCompletedAt` then reopens the flow on the spot.
- */
-function ReplayOnboardingSettingsControl({
-  onReplay,
-}: {
-  onReplay: () => void;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <div className="text-sm">Setup guide</div>
-        <p className="mt-0.5 text-xs text-subtle-foreground">
-          Walk through agent detection and adding projects again.
-        </p>
-      </div>
-      <Button variant="outline" size="sm" onClick={onReplay}>
-        Show again
-      </Button>
-    </div>
   );
 }
 
@@ -869,100 +792,39 @@ export function DebugSettingsSection({
 }: DebugSettingsSectionProps) {
   return (
     <SettingsSection title="Debug">
-      <UnhandledProviderEventsSettingsControl
-        disabled={disabled}
-        enabled={enabled}
-        onEnabledChange={onEnabledChange}
-      />
+      <SettingsWithControl
+        label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+        description="Show raw provider events bb does not recognize. Development builds always show these events."
+      >
+        <Switch
+          checked={enabled}
+          disabled={disabled}
+          onCheckedChange={onEnabledChange}
+          aria-label={UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL}
+        />
+      </SettingsWithControl>
     </SettingsSection>
   );
 }
 
-interface ProviderSettingsSectionProps {
-  memoryEnabled: boolean;
-  subagentsDisabled: boolean;
-  workflowsDisabled: boolean;
-  disabled: boolean;
-  onMemoryEnabledChange: (enabled: boolean) => void;
-  onSubagentsDisabledChange: (disabled: boolean) => void;
-  onWorkflowsDisabledChange: (disabled: boolean) => void;
-  providerId: "codex" | "claude-code";
-}
-
-export function ProviderSettingsSection({
-  memoryEnabled,
-  subagentsDisabled,
-  workflowsDisabled,
-  disabled,
-  onMemoryEnabledChange,
-  onSubagentsDisabledChange,
-  onWorkflowsDisabledChange,
-  providerId,
-}: ProviderSettingsSectionProps) {
-  const isCodex = providerId === "codex";
-  const label = isCodex ? "Codex memory" : "Claude Code memory";
-  return (
-    <SettingsSection title={isCodex ? "Codex" : "Claude Code"}>
-      <div className="space-y-4">
-        <SettingsWithControl
-          label={label}
-          description={
-            isCodex
-              ? "Allow Codex to recall existing memories and generate new memories from bb threads."
-              : "Allow Claude Code to read and write its native auto-memory for bb threads."
-          }
-        >
-          <Switch
-            aria-label={label}
-            checked={memoryEnabled}
-            disabled={disabled}
-            onCheckedChange={onMemoryEnabledChange}
-          />
-        </SettingsWithControl>
-        <SettingsWithControl
-          label="Disable provider subagents"
-          description={
-            isCodex
-              ? "Prevent Codex from starting native subagents so agents use bb for delegation."
-              : "Hide Claude Code's native Task tool so agents use bb for delegation."
-          }
-        >
-          <Switch
-            aria-label="Disable provider subagents"
-            checked={subagentsDisabled}
-            disabled={disabled}
-            onCheckedChange={onSubagentsDisabledChange}
-          />
-        </SettingsWithControl>
-        {!isCodex ? (
-          <SettingsWithControl
-            label="Disable Workflow tool"
-            description="Hide Claude Code's native Workflow tool for bb threads."
-          >
-            <Switch
-              aria-label="Disable Workflow tool"
-              checked={workflowsDisabled}
-              disabled={disabled}
-              onCheckedChange={onWorkflowsDisabledChange}
-            />
-          </SettingsWithControl>
-        ) : null}
-      </div>
-    </SettingsSection>
-  );
-}
-
-const CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL = "Mock CLI Traffic";
-const NEW_ONBOARDING_EXPERIMENT_LABEL = "New onboarding";
-const EXTENSIONS_EXPERIMENT_LABEL = "Extensions";
+const CHANGELOG_PREVIEW_EXPERIMENT_LABEL = "Changelog preview";
+const EDIT_MESSAGES_EXPERIMENT_LABEL = "Edit messages";
+const MOBILE_APP_EXPERIMENT_LABEL = "Mobile app";
+const PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL =
+  "Idle provider session release";
+const TIMELINE_WINDOWING_EXPERIMENT_LABEL = "Timeline windowing";
 export function ExperimentsSettingsSection({
-  claudeCodeMockCliTrafficEnabled,
+  changelogPreviewEnabled,
   disabled,
-  newOnboardingEnabled,
-  onClaudeCodeMockCliTrafficEnabledChange,
-  onNewOnboardingEnabledChange,
-  onToolsHubEnabledChange,
-  toolsHubEnabled,
+  editMessagesEnabled,
+  mobileAppEnabled,
+  providerSessionReapingEnabled,
+  timelineWindowingEnabled,
+  onChangelogPreviewEnabledChange,
+  onEditMessagesEnabledChange,
+  onMobileAppEnabledChange,
+  onProviderSessionReapingEnabledChange,
+  onTimelineWindowingEnabledChange,
 }: ExperimentsSettingsSectionProps) {
   return (
     <SettingsSection
@@ -971,39 +833,62 @@ export function ExperimentsSettingsSection({
     >
       <div className="space-y-5">
         <SettingsWithControl
-          label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
-          labelBadge="dev-only"
-          description="Route Claude Code through CLI-style traffic."
+          label={CHANGELOG_PREVIEW_EXPERIMENT_LABEL}
+          description="Show the latest release notes as a compact preview on the Updates page."
         >
           <Switch
-            checked={claudeCodeMockCliTrafficEnabled}
+            checked={changelogPreviewEnabled}
             disabled={disabled}
-            onCheckedChange={onClaudeCodeMockCliTrafficEnabledChange}
-            aria-label={CLAUDE_CODE_MOCK_CLI_TRAFFIC_EXPERIMENT_LABEL}
+            onCheckedChange={onChangelogPreviewEnabledChange}
+            aria-label={CHANGELOG_PREVIEW_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={NEW_ONBOARDING_EXPERIMENT_LABEL}
-          description="Enable the new first-run guide for agent setup and project selection."
+          label={EDIT_MESSAGES_EXPERIMENT_LABEL}
+          description="Edit a sent message and replace the conversation from that point. Workspace changes are kept."
         >
           <Switch
-            checked={newOnboardingEnabled}
+            checked={editMessagesEnabled}
             disabled={disabled}
-            onCheckedChange={onNewOnboardingEnabledChange}
-            aria-label={NEW_ONBOARDING_EXPERIMENT_LABEL}
+            onCheckedChange={onEditMessagesEnabledChange}
+            aria-label={EDIT_MESSAGES_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
 
         <SettingsWithControl
-          label={EXTENSIONS_EXPERIMENT_LABEL}
-          description="Enable Extensions for managing skills and plugins. Automations stay in the Plugins section beside threads, and installed skills and plugin runtimes keep working while it is off."
+          label={MOBILE_APP_EXPERIMENT_LABEL}
+          description="Pair the bb mobile app over bb connect: shows Add mobile device under Remote access and enables bb connect machine-code."
         >
           <Switch
-            checked={toolsHubEnabled}
+            checked={mobileAppEnabled}
             disabled={disabled}
-            onCheckedChange={onToolsHubEnabledChange}
-            aria-label={EXTENSIONS_EXPERIMENT_LABEL}
+            onCheckedChange={onMobileAppEnabledChange}
+            aria-label={MOBILE_APP_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL}
+          description="Release restorable provider sessions after 30 idle minutes. A change can take up to five minutes."
+        >
+          <Switch
+            checked={providerSessionReapingEnabled}
+            disabled={disabled}
+            onCheckedChange={onProviderSessionReapingEnabledChange}
+            aria-label={PROVIDER_SESSION_REAPING_EXPERIMENT_LABEL}
+          />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={TIMELINE_WINDOWING_EXPERIMENT_LABEL}
+          description="Mount only nearby rows in long timelines and expanded timeline details."
+        >
+          <Switch
+            checked={timelineWindowingEnabled}
+            disabled={disabled}
+            onCheckedChange={onTimelineWindowingEnabledChange}
+            aria-label={TIMELINE_WINDOWING_EXPERIMENT_LABEL}
           />
         </SettingsWithControl>
       </div>
@@ -1016,12 +901,14 @@ export function SettingsView() {
   const themePreference = useThemePreference();
   const systemConfigQuery = useSystemConfig();
   const { hasDaemon } = useHostDaemon();
+  const { accessState, requestAccess } = useLocalHostDaemonAccess();
   const { workspaceOpenTargets } = useWorkspaceOpenTargets({
     enabled: hasDaemon,
   });
   const [directoryTargetId, setDirectoryTargetId] =
-    useWorkspaceOpenTargetPreference();
-  const [fileTargetId, setFileTargetId] = useFileOpenTargetPreference();
+    useWorkspaceOpenTargetPreference(workspaceOpenTargets);
+  const [fileTargetId, setFileTargetId] =
+    useFileOpenTargetPreference(workspaceOpenTargets);
   const [openLinksInAppBrowser, setOpenLinksInAppBrowser] =
     useOpenLinksInAppBrowserPreference();
   const [rewriteLocalhostLinks, setRewriteLocalhostLinks] =
@@ -1039,7 +926,7 @@ export function SettingsView() {
   const updateGeneralSettingsMutation = useUpdateGeneralSettings();
   const appearance = systemConfigQuery.data?.appearance ?? defaultAppTheme;
   const updateAppearanceMutation = useUpdateAppearance();
-  const { activePluginId, activeProviderId, activeSection, hasUnknownSection } =
+  const { activePluginId, activeSection, hasUnknownSection } =
     useSettingsNavState();
   if (hasUnknownSection) {
     return <Navigate to={SETTINGS_ROUTE_PATH} replace />;
@@ -1047,48 +934,17 @@ export function SettingsView() {
 
   let content: ReactNode = null;
   if (activePluginId !== null) {
-    content = <PluginSettingsDetailSection pluginId={activePluginId} />;
-  } else if (activeProviderId !== null) {
-    const isCodex = activeProviderId === "codex";
+    content = <PluginSettingsPage pluginId={activePluginId} />;
+  } else if (activeSection === "providers") {
     content = (
-      <ProviderSettingsSection
-        providerId={activeProviderId}
-        memoryEnabled={
-          isCodex
-            ? generalSettings.codexMemoryEnabled
-            : generalSettings.claudeCodeMemoryEnabled
-        }
-        subagentsDisabled={
-          isCodex
-            ? generalSettings.codexSubagentsDisabled
-            : generalSettings.claudeCodeSubagentsDisabled
-        }
-        workflowsDisabled={generalSettings.claudeCodeWorkflowsDisabled}
+      <ProvidersSettingsSection
         disabled={
           systemConfigQuery.data === undefined ||
           updateGeneralSettingsMutation.isPending
         }
-        onMemoryEnabledChange={(enabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            ...(isCodex
-              ? { codexMemoryEnabled: enabled }
-              : { claudeCodeMemoryEnabled: enabled }),
-          })
-        }
-        onSubagentsDisabledChange={(disabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            ...(isCodex
-              ? { codexSubagentsDisabled: disabled }
-              : { claudeCodeSubagentsDisabled: disabled }),
-          })
-        }
-        onWorkflowsDisabledChange={(disabled) =>
-          updateGeneralSettingsMutation.mutate({
-            ...generalSettings,
-            claudeCodeWorkflowsDisabled: disabled,
-          })
+        generalSettings={generalSettings}
+        onGeneralSettingsChange={(next) =>
+          updateGeneralSettingsMutation.mutate(next)
         }
       />
     );
@@ -1135,11 +991,13 @@ export function SettingsView() {
     content = (
       <>
         <LocalOpenTargetSettingsSection
+          accessState={accessState}
           directoryTargetId={directoryTargetId}
           fileTargetId={fileTargetId}
           hasDaemon={hasDaemon}
           onDirectoryTargetChange={setDirectoryTargetId}
           onFileTargetChange={setFileTargetId}
+          onRequestAccess={requestAccess}
           targets={workspaceOpenTargets}
         />
         <FileOpenersSettingsSection />
@@ -1148,39 +1006,57 @@ export function SettingsView() {
   } else if (activeSection === "machines") {
     content = <MachinesSettingsSection />;
   } else if (activeSection === "updates") {
-    content = <UpdatesSettingsSection />;
+    content = (
+      <UpdatesSettingsSection
+        showChangelogPreview={experiments.changelogPreview}
+      />
+    );
   } else if (activeSection === "experiments") {
     content = (
       <ExperimentsSettingsSection
-        claudeCodeMockCliTrafficEnabled={experiments.claudeCodeMockCliTraffic}
+        changelogPreviewEnabled={experiments.changelogPreview}
         disabled={
           systemConfigQuery.data === undefined ||
           updateExperimentsMutation.isPending
         }
-        onClaudeCodeMockCliTrafficEnabledChange={(enabled) =>
+        onChangelogPreviewEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
-            claudeCodeMockCliTraffic: enabled,
+            changelogPreview: enabled,
           })
         }
-        newOnboardingEnabled={experiments.newOnboarding}
-        onNewOnboardingEnabledChange={(enabled) =>
+        editMessagesEnabled={experiments.editMessages}
+        onEditMessagesEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
-            newOnboarding: enabled,
+            editMessages: enabled,
           })
         }
-        onToolsHubEnabledChange={(enabled) =>
+        mobileAppEnabled={experiments.mobileApp}
+        onMobileAppEnabledChange={(enabled) =>
           updateExperimentsMutation.mutate({
             ...experiments,
-            toolsHub: enabled,
+            mobileApp: enabled,
           })
         }
-        toolsHubEnabled={experiments.toolsHub}
+        providerSessionReapingEnabled={experiments.providerSessionReaping}
+        onProviderSessionReapingEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            providerSessionReaping: enabled,
+          })
+        }
+        timelineWindowingEnabled={experiments.timelineWindowing}
+        onTimelineWindowingEnabledChange={(enabled) =>
+          updateExperimentsMutation.mutate({
+            ...experiments,
+            timelineWindowing: enabled,
+          })
+        }
       />
     );
-  } else if (activeSection === "plugins") {
-    content = <PluginsSettingsSection />;
+  } else if (activeSection === "marketplaces") {
+    content = <MarketplacesSettingsSection />;
   } else if (activeSection === "community") {
     content = <CommunitySettingsSection />;
   } else if (activeSection === "archived") {
@@ -1189,45 +1065,35 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
-          caffeinateAvailable={
-            systemConfigQuery.data?.primaryHostPlatform === "darwin"
-          }
-          caffeinateDisabled={
-            systemConfigQuery.data === undefined ||
-            updateGeneralSettingsMutation.isPending
-          }
-          caffeinateEnabled={generalSettings.caffeinate}
           desktopBrowserAvailable={desktopBrowserAvailable}
           navigateToThreadAfterCreate={navigateToThreadAfterCreate}
           openLinksInAppBrowser={openLinksInAppBrowser}
           rewriteLocalhostLinks={rewriteLocalhostLinks}
           richTextEditing={richTextEditing}
-          replayOnboardingAvailable={experiments.newOnboarding}
           steerActiveThreadOnEnter={generalSettings.steerActiveThreadOnEnter}
           steerActiveThreadOnEnterDisabled={
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending
           }
-          onCaffeinateChange={(enabled) =>
-            updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
-              caffeinate: enabled,
-            })
-          }
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
-          onReplayOnboarding={() =>
-            updateGeneralSettingsMutation.mutate({
-              ...generalSettings,
-              onboardingCompletedAt: null,
-            })
-          }
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
           onRichTextEditingChange={setRichTextEditing}
           onSteerActiveThreadOnEnterChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
               steerActiveThreadOnEnter: enabled,
+            })
+          }
+          streamerMode={generalSettings.streamerMode}
+          streamerModeDisabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
+          onStreamerModeChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              streamerMode: enabled,
             })
           }
         />

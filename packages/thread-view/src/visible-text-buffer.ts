@@ -17,29 +17,6 @@ function appendVisibleSegment(buffer: VisibleTextBuffer, text: string): void {
   }
 }
 
-function movePendingTextToVisible(buffer: VisibleTextBuffer): boolean {
-  if (buffer.pendingLength === 0) {
-    return false;
-  }
-
-  if (buffer.visibleTextCache !== null) {
-    buffer.visibleTextCache += buffer.pendingChunks.join("");
-  }
-  buffer.visibleChunks.push(...buffer.pendingChunks);
-  buffer.visibleLength += buffer.pendingLength;
-  buffer.pendingChunks = [];
-  buffer.pendingLength = 0;
-  return true;
-}
-
-function buildFullText(buffer: VisibleTextBuffer): string {
-  const visibleText = buffer.visibleTextCache ?? buffer.visibleChunks.join("");
-  if (buffer.pendingLength === 0) {
-    return visibleText;
-  }
-  return `${visibleText}${buffer.pendingChunks.join("")}`;
-}
-
 export function createVisibleTextBuffer(): VisibleTextBuffer {
   return {
     pendingChunks: [],
@@ -65,7 +42,7 @@ export function appendVisibleTextBuffer(
     return true;
   }
 
-  movePendingTextToVisible(buffer);
+  flushVisibleTextBuffer(buffer);
   appendVisibleSegment(buffer, delta.slice(0, lastNewlineIndex + 1));
 
   const trailingPartial = delta.slice(lastNewlineIndex + 1);
@@ -81,7 +58,7 @@ export function setVisibleTextBuffer(
   text: string,
   flushTrailingPartial: boolean,
 ): boolean {
-  const previousFullText = buildFullText(buffer);
+  const previousFullText = getVisibleTextBufferFullText(buffer);
   const previousVisibleText = getVisibleTextBufferText(buffer) ?? "";
 
   buffer.pendingChunks = [];
@@ -122,7 +99,18 @@ export function setVisibleTextBuffer(
 }
 
 export function flushVisibleTextBuffer(buffer: VisibleTextBuffer): boolean {
-  return movePendingTextToVisible(buffer);
+  if (buffer.pendingLength === 0) {
+    return false;
+  }
+
+  if (buffer.visibleTextCache !== null) {
+    buffer.visibleTextCache += buffer.pendingChunks.join("");
+  }
+  buffer.visibleChunks.push(...buffer.pendingChunks);
+  buffer.visibleLength += buffer.pendingLength;
+  buffer.pendingChunks = [];
+  buffer.pendingLength = 0;
+  return true;
 }
 
 export function getVisibleTextBufferFullLength(
@@ -134,7 +122,11 @@ export function getVisibleTextBufferFullLength(
 export function getVisibleTextBufferFullText(
   buffer: VisibleTextBuffer,
 ): string {
-  return buildFullText(buffer);
+  const visibleText = buffer.visibleTextCache ?? buffer.visibleChunks.join("");
+  if (buffer.pendingLength === 0) {
+    return visibleText;
+  }
+  return `${visibleText}${buffer.pendingChunks.join("")}`;
 }
 
 export function getVisibleTextBufferText(

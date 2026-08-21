@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://getbb.app/schemas/marketplace.schema.json",
+  "title": "BB plugin marketplace manifest",
+  "description": "A catalog of plugin listings with store branding. Entries point at npm packages or git repositories; BB's install pipeline stays authoritative for identity and compatibility.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "name", "displayName", "plugins"],
+  "properties": {
+    "$schema": {
+      "const": "https://getbb.app/schemas/marketplace.schema.json"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "$comment": "The handle every bb route and command addresses the marketplace by.",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "plugins": {
+      "type": "array",
+      "$comment": "Entry ids must also be unique within one manifest.",
+      "items": {
+        "$ref": "#/$defs/entry"
+      },
+      "maxItems": 256
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "$comment": "An entry does not declare compatibility. BB reads engines.bb and engines.bbPluginSdk from the plugin's own package.json and refuses the install there.",
+      "required": [
+        "id",
+        "displayName",
+        "description",
+        "icon",
+        "author",
+        "source"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "$comment": "The plugin id this entry installs; BB refuses an install whose manifest declares another id.",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "icon": {
+          "oneOf": [
+            {
+              "type": "string",
+              "$comment": "A host icon name such as ZoomIn.",
+              "pattern": "^[A-Za-z][A-Za-z0-9]*$"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["url"],
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "minLength": 1,
+                  "$comment": "Absolute https URL, or a URL relative to this manifest. The path must end in .svg, .png, or .webp. BB masks an SVG with the surrounding text color, so single-color artwork follows the theme; PNG and WebP keep their own colors.",
+                  "pattern": "^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\\s]*\\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\\s]*)?$"
+                }
+              }
+            }
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "string",
+            "maxLength": 32,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          }
+        },
+        "author": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "$comment": "Never put an email address here: the manifest is public and mirrored.",
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "github": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9](?:-?[A-Za-z0-9]){0,38}$"
+            },
+            "url": {
+              "type": "string",
+              "pattern": "^https://"
+            }
+          }
+        },
+        "source": {
+          "oneOf": [
+            { "$ref": "#/$defs/npmSource" },
+            { "$ref": "#/$defs/gitRefSource" },
+            { "$ref": "#/$defs/gitRangeSource" }
+          ]
+        }
+      }
+    },
+    "npmSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["npm"],
+      "properties": {
+        "npm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["package"],
+          "$comment": "range and tag are mutually exclusive.",
+          "not": {
+            "required": ["range", "tag"]
+          },
+          "properties": {
+            "package": {
+              "type": "string",
+              "pattern": "^(?:@[a-z0-9][a-z0-9._~-]*/)?[a-z0-9][a-z0-9._~-]*$"
+            },
+            "range": {
+              "$ref": "#/$defs/semverRange"
+            },
+            "tag": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9._-]*$"
+            },
+            "registry": {
+              "type": "string",
+              "pattern": "^https://"
+            }
+          }
+        }
+      }
+    },
+    "gitSubdir": {
+      "type": "string",
+      "$comment": "Repository-relative directory; absolute paths, empty segments, .. and .git are rejected.",
+      "pattern": "^(?![A-Za-z]:)(?!/)(?!(?:[^/]+/)*(?:\\.|\\.\\.|\\.git)(?:/|$))[^/\\\\]+(?:/[^/\\\\]+)*$"
+    },
+    "gitRefSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git"],
+      "$comment": "One branch, tag, or commit. Mutually exclusive with the range form.",
+      "properties": {
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "ref"],
+          "properties": {
+            "url": { "type": "string", "pattern": "^https://" },
+            "subdir": { "$ref": "#/$defs/gitSubdir" },
+            "ref": {
+              "type": "string",
+              "$comment": "Must round-trip through BB's git:<url>@<ref> install syntax, so \":\" (which BB reads as a ref:/semver: selector) is rejected.",
+              "pattern": "^(?!-)(?![\\s\\S]*\\.\\.)(?![\\s\\S]*@)(?![\\s\\S]*:)[\\s\\S]+$"
+            }
+          }
+        }
+      }
+    },
+    "gitRangeSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git"],
+      "$comment": "A semver range resolved over the repository's [tagPrefix]vX.Y.Z release tags. BB records the tag and commit it selected and refuses a tag that later points elsewhere.",
+      "properties": {
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "range"],
+          "properties": {
+            "url": { "type": "string", "pattern": "^https://" },
+            "subdir": { "$ref": "#/$defs/gitSubdir" },
+            "range": { "$ref": "#/$defs/semverRange" },
+            "tagPrefix": {
+              "type": "string",
+              "$comment": "Monorepo tagging: \"notes/\" matches notes/vX.Y.Z tags. Omit for repository-wide vX.Y.Z tags.",
+              "maxLength": 128,
+              "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*\\/\\.)(?![^/]*\\.lock(?:/|$))(?!.*\\/[^/]*\\.lock(?:/|$))(?!.*\\.$)[A-Za-z0-9][A-Za-z0-9._/-]*$"
+            }
+          }
+        }
+      }
+    },
+    "semverRange": {
+      "type": "string",
+      "minLength": 1,
+      "$comment": "An npm semver range. Mirrors semver.validRange, which BB's parser applies at refresh time.",
+      "pattern": "^\\s*(?:\\*|v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\s+-\\s+v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?|(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\s+(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?)*|)(?:\\s*\\|\\|\\s*(?:\\*|v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?\\s+-\\s+v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?|(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\s+(?:[<>]=?|=|~>?|\\^)?\\s*v?(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*])(?:\\.(?:0|[1-9]\\d*|[xX*]))?)?(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?)*|))*\\s*$"
+    }
+  }
+}

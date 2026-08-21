@@ -61,7 +61,7 @@ const MIGRATABLE_LEGACY_ENTRY_NAMES = new Set([
   "thread-storage",
 ]);
 
-async function pathExists(pathToCheck: string): Promise<boolean> {
+export async function pathExists(pathToCheck: string): Promise<boolean> {
   try {
     await access(pathToCheck);
     return true;

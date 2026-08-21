@@ -12,7 +12,7 @@ export interface CliConfig {
   BB_SERVER_URL: string;
 }
 
-export interface LoadCliConfigArgs extends EnvLoaderArgs {
+interface LoadCliConfigArgs extends EnvLoaderArgs {
   repoRoot?: string;
 }
 

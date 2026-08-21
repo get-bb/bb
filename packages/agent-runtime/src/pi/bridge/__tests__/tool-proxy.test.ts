@@ -2,6 +2,53 @@ import { describe, expect, it } from "vitest";
 import { buildDynamicTools } from "../tool-proxy.js";
 
 describe("tool-proxy", () => {
+  it("returns ordered image and text content to Pi", async () => {
+    const [tool] = buildDynamicTools(
+      [
+        {
+          name: "browser_screenshot",
+          description: "Capture the browser.",
+          inputSchema: { type: "object" },
+        },
+      ],
+      async () => ({
+        content: "after",
+        contentBlocks: [
+          { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+          { type: "text", text: "after" },
+        ],
+        images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
+      }),
+    );
+
+    const result = await Reflect.apply(tool.execute, tool, [
+      "call-1",
+      {},
+      undefined,
+    ]);
+    expect(result.content).toEqual([
+      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+      { type: "text", text: "after" },
+    ]);
+  });
+
+  it("throws forwarded failures so Pi marks the tool result as an error", async () => {
+    const [tool] = buildDynamicTools(
+      [
+        {
+          name: "broken_tool",
+          description: "Fail.",
+          inputSchema: { type: "object" },
+        },
+      ],
+      async () => ({ content: "permission denied", isError: true }),
+    );
+
+    await expect(
+      Reflect.apply(tool.execute, tool, ["call-1", {}, undefined]),
+    ).rejects.toThrow("permission denied");
+  });
+
   it("preserves required and optional scalar fields", () => {
     const [tool] = buildDynamicTools(
       [

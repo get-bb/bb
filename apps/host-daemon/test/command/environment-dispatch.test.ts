@@ -4,6 +4,7 @@ import {
   WorkspaceError,
   type HostWorkspace,
 } from "@bb/host-workspace";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import type { EventSinkInput } from "../../src/event-sink.js";
 import {
@@ -26,12 +27,6 @@ import {
 import { RuntimeManager } from "../../src/runtime-manager.js";
 
 const DEFAULT_TERMINAL_START = { mode: "shell" } as const;
-
-interface Deferred<TValue> {
-  promise: Promise<TValue>;
-  resolve: (value: TValue | PromiseLike<TValue>) => void;
-  reject: (reason?: Error) => void;
-}
 
 interface ResizeCall {
   cols: number;
@@ -57,16 +52,6 @@ type TerminalDataListener = (data: string) => void;
 type TerminalExitListener = (event: TerminalPtyExit) => void;
 
 afterEach(cleanupTempDirs);
-
-function createDeferred<TValue>(): Deferred<TValue> {
-  let resolve!: Deferred<TValue>["resolve"];
-  let reject!: Deferred<TValue>["reject"];
-  const promise = new Promise<TValue>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
-  });
-  return { promise, reject, resolve };
-}
 
 class FakeTerminalPty implements TerminalPtyProcess {
   readonly killCalls: (string | null)[];
@@ -705,7 +690,7 @@ describe("environment command dispatch", () => {
 
   it("waits for terminal closes before destroying an environment", async () => {
     const harness = createHarness();
-    const terminalClose = createDeferred<void>();
+    const terminalClose = createDeferredPromise<void>();
     const closeEnvironmentTerminals = vi.fn(() => terminalClose.promise);
     await harness.manager.ensureEnvironment({
       environmentId: "env-1",
@@ -750,7 +735,7 @@ describe("environment command dispatch", () => {
 
   it("waits for in-progress terminal opens to close before destroying an environment", async () => {
     const harness = createHarness();
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const terminalFixture = createTerminalManager({
       manager: harness.manager,

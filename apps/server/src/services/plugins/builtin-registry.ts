@@ -73,9 +73,51 @@ export const BUILTIN_PLUGINS = [
     category: "Interface",
   },
   {
+    name: "pdf-preview",
+    pluginId: "pdf-preview",
+    defaultEnabled: true,
+    category: "Interface",
+  },
+  // First-party agent provider plugins: each declares one of the providers
+  // the core catalog used to seed. With the seed deleted these declarations
+  // are the only source, so disabling one removes its provider. Their order
+  // here IS the install order — the provider picker's default order and the
+  // initial default provider come from it (bundled plugins rank first, in
+  // this order; every other plugin ranks by install time).
+  {
+    name: "provider-codex",
+    pluginId: "provider-codex",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-claude-code",
+    pluginId: "provider-claude-code",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-pi",
+    pluginId: "provider-pi",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "provider-acp",
+    pluginId: "provider-acp",
+    defaultEnabled: true,
+    category: "Agent interaction",
+  },
+  {
+    name: "keep-awake",
+    pluginId: "keep-awake",
+    defaultEnabled: true,
+    category: "Host access",
+  },
+  {
     name: "provider-retry",
     pluginId: "provider-retry",
-    defaultEnabled: false,
+    defaultEnabled: true,
     category: "Agent interaction",
   },
   {
@@ -152,12 +194,6 @@ const builtinPluginsModuleDir = path.dirname(fileURLToPath(import.meta.url));
 
 export function builtinPluginSource(name: string): string {
   return `builtin:${name}`;
-}
-
-export function findBundledPlugin(
-  name: string,
-): BundledPluginDefinition | undefined {
-  return BUNDLED_PLUGINS.find((plugin) => plugin.name === name);
 }
 
 /**

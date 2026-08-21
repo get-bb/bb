@@ -41,7 +41,7 @@ export interface TimelineViewDelegationWorkRow extends Omit<
   inClosedStep?: boolean;
 }
 
-export type TimelineViewLeafWorkRow = Exclude<
+type TimelineViewLeafWorkRow = Exclude<
   TimelineWorkRow,
   TimelineDelegationWorkRow
 > & {
@@ -65,7 +65,7 @@ export type TimelineViewWorkflowWorkRow = Extract<
   { workKind: "workflow" }
 >;
 
-export type TimelineViewSourceRow =
+type TimelineViewSourceRow =
   | TimelineConversationRow
   | TimelineViewWorkRow
   | TimelineSystemRow;
@@ -97,9 +97,9 @@ export type ThreadTimelineViewRow =
   | TimelineWorkSummaryRow
   | TimelineViewTurnRow;
 
-export type TimelineExplorationKind = "files" | "searches" | "lists";
+type TimelineExplorationKind = "files" | "searches" | "lists";
 
-export interface TimelineWorkSummaryCounts {
+interface TimelineWorkSummaryCounts {
   commands: number;
   createdFiles: number;
   deletedFiles: number;
@@ -190,7 +190,7 @@ function getFileChangeIdentity(row: TimelineFileChangeWorkRow): string {
   return row.change.movePath ?? row.change.path;
 }
 
-export function summarizeTimelineWork(
+function summarizeTimelineWork(
   rows: readonly TimelineViewWorkRow[],
 ): TimelineWorkSummaryCounts {
   const explorationKindOrder: TimelineExplorationKind[] = [];
@@ -571,7 +571,7 @@ function imageViewSummaryPhrase(
  * Renderers can independently shimmer/em the verb without splitting strings.
  * `rest` is empty when the phrase is a single word like "Working" / "Worked".
  */
-export interface TimelineWorkSummaryLabelParts {
+interface TimelineWorkSummaryLabelParts {
   verb: string;
   rest: string;
 }
@@ -695,7 +695,7 @@ function isSummarizableWorkRow(
  * Assistant messages and accepted user messages count; pending steers are
  * tail rows that sit outside the open step and do NOT close it.
  */
-export function isTimelineStepBoundary(row: ThreadTimelineViewRow): boolean {
+function isTimelineStepBoundary(row: ThreadTimelineViewRow): boolean {
   if (row.kind !== "conversation") return false;
   if (row.role === "user" && row.turnRequest.status === "pending") {
     return false;
@@ -877,7 +877,7 @@ function flushOpenStepAsBundles(
  * top-level call and any recursive child-row builds (delegation `childRows`,
  * lazy turn `children`).
  */
-export type TimelineViewRowsCache = WeakMap<
+type TimelineViewRowsCache = WeakMap<
   readonly TimelineRow[],
   ThreadTimelineViewRow[]
 >;

@@ -1,51 +1,40 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { promptTextInput } from "./test/prompt-input.js";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-import { createCodexProviderAdapter } from "./codex/adapter.js";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
-import { fakeProviderScriptPath } from "./test/index.js";
+import { promptTextInput } from "./test/prompt-input.js";
+import { UNSOLICITED_TURN_THREAD_ID_ENV } from "./test/bridges/unsolicited-turn-bridge.js";
 import {
-  createFakeAdapter,
+  createScriptedEchoLaunch,
+  createScriptedEchoRequestRecord,
+  createScriptedEchoRuntime,
   fullRuntimeOptions,
+  scriptedEchoProcessEnv,
+  wait,
   waitForRuntimeThreadEvent,
+  waitForThreadAgentMessageText,
+  waitForThreadTurnCompleted,
   waitForThreadTurnStarted,
+  type CreateScriptedEchoLaunchOptions,
+  type ScriptedEchoRequestRecord,
 } from "./test/runtime-test-harness.js";
-import type { AgentRuntime, AgentRuntimeExecutionOptions } from "./types.js";
-
-interface RuntimeLinkedWorktreeFixture {
-  expectedWritableRoots: string[];
-  workspacePath: string;
-}
-
-interface CreateRuntimeLinkedWorktreeFixtureArgs {
-  rootPath: string;
-}
-
-type RuntimeEventHandler = (event: ThreadEvent) => void;
+import type { AgentRuntime } from "./types.js";
 
 interface CreateContractRuntimeArgs {
-  onEvent?: RuntimeEventHandler;
-  scriptPath: string;
-  workspacePath: string;
+  additionalWorkspaceWriteRoots?: readonly string[];
+  /** Merged over the request record's env (process-level scripted options). */
+  env?: Record<string, string>;
+  launch?: CreateScriptedEchoLaunchOptions;
+  onEvent?: (event: ThreadEvent) => void;
+  onStderr?: (line: string) => void;
 }
 
-interface WriteArchiveProviderScriptArgs {
-  archiveErrorMessage?: string;
-  expectedProviderThreadId: string;
-  threadId: string;
-  unarchiveErrorMessage?: string;
+interface ContractRuntime {
+  record: ScriptedEchoRequestRecord;
+  runtime: AgentRuntime;
 }
 
 const missingProviderThreadId = "t-missing";
@@ -57,18 +46,11 @@ const acpLaunchSpec: HostDaemonAcpLaunchSpec = {
   args: ["serve"],
   env: { CUSTOM_AGENT_TOKEN: "token" },
 };
-
-function createContractRuntime(args: CreateContractRuntimeArgs): AgentRuntime {
-  return createAgentRuntimeWithAdapters({
-    workspacePath: args.workspacePath,
-    onEvent: args.onEvent ?? (() => {}),
-    onToolCall: async () => ({
-      contentItems: [{ type: "inputText", text: "ok" }],
-      success: true,
-    }),
-    adapterFactory: () => createFakeAdapter(args.scriptPath),
-  });
-}
+const unsolicitedTurnBridgeModulePath = fileURLToPath(
+  new URL("./test/bridges/unsolicited-turn-bridge.ts", import.meta.url),
+);
+const codexEmptyRolloutRenameError =
+  "failed to set thread name: rollout at /tmp/new-rollout.jsonl is empty";
 
 async function registerThreadWithoutProviderThreadId(
   runtime: AgentRuntime,
@@ -84,244 +66,172 @@ async function registerThreadWithoutProviderThreadId(
   ).rejects.toThrow(missingProviderThreadIdError);
 }
 
-function writeArchiveProviderScript(
-  scriptPath: string,
-  args: WriteArchiveProviderScriptArgs,
-): void {
-  writeFileSync(
-    scriptPath,
-    `
-const readline = require("node:readline");
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-function paramsOf(message) {
-  return message && typeof message.params === "object" && message.params !== null
-    ? message.params
-    : {};
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  const params = paramsOf(message);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-  if (message.method === "thread/start") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { providerThreadId: "provider-started" },
-    });
-    send({
-      jsonrpc: "2.0",
-      method: "thread/identity",
-      params: {
-        threadId: ${JSON.stringify(args.threadId)},
-        providerThreadId: "provider-started",
-      },
-    });
-    return;
-  }
-  if (message.method === "thread/archive" || message.method === "thread/unarchive") {
-    if (
-      params.threadId !== ${JSON.stringify(args.threadId)} ||
-      params.providerThreadId !== ${JSON.stringify(args.expectedProviderThreadId)}
-    ) {
-      send({
-        jsonrpc: "2.0",
-        id: message.id,
-        error: {
-          code: -32000,
-          message: "wrong archive params " + JSON.stringify(params),
-        },
-      });
-      return;
-    }
-    const forcedError =
-      message.method === "thread/archive"
-        ? ${JSON.stringify(args.archiveErrorMessage ?? null)}
-        : ${JSON.stringify(args.unarchiveErrorMessage ?? null)};
-    if (forcedError) {
-      send({
-        jsonrpc: "2.0",
-        id: message.id,
-        error: { code: -32000, message: forcedError },
-      });
-      return;
-    }
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-  send({
-    jsonrpc: "2.0",
-    id: message.id,
-    error: { code: -32601, message: "Method not found: " + message.method },
-  });
-});
-`,
-    "utf8",
-  );
-}
-
-function createRuntimeLinkedWorktreeFixture(
-  args: CreateRuntimeLinkedWorktreeFixtureArgs,
-): RuntimeLinkedWorktreeFixture {
-  const rootPath = realpathSync.native(args.rootPath);
-  const workspacePath = join(rootPath, "worktree");
-  const commonDir = join(rootPath, "repo.git");
-  const gitDir = join(commonDir, "worktrees", "bb1");
-  const headRef = "refs/heads/bb/probe";
-  const headRefParent = join(commonDir, "refs", "heads", "bb");
-  const headLogParent = join(commonDir, "logs", "refs", "heads", "bb");
-
-  mkdirSync(workspacePath, { recursive: true });
-  mkdirSync(gitDir, { recursive: true });
-  mkdirSync(join(commonDir, "objects"), { recursive: true });
-  mkdirSync(headRefParent, { recursive: true });
-  mkdirSync(headLogParent, { recursive: true });
-  writeFileSync(join(workspacePath, ".git"), `gitdir: ${gitDir}\n`);
-  writeFileSync(join(gitDir, "gitdir"), `${join(workspacePath, ".git")}\n`);
-  writeFileSync(join(gitDir, "commondir"), "../..\n");
-  writeFileSync(join(gitDir, "HEAD"), `ref: ${headRef}\n`);
-
-  return {
-    expectedWritableRoots: [
-      gitDir,
-      join(commonDir, "objects"),
-      headRefParent,
-      headLogParent,
-    ],
-    workspacePath,
-  };
-}
-
 describe("createAgentRuntime command contracts", () => {
   let tmpDir: string;
-  let scriptPath: string;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-test-"));
-    scriptPath = fakeProviderScriptPath;
   });
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("passes runtime workspace-write roots to adapter construction", async () => {
-    let capturedAdditionalWorkspaceWriteRoots: readonly string[] | undefined;
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      additionalWorkspaceWriteRoots: [
-        "/repo/.git/worktrees/bb13",
-        "/repo/.git/objects",
-      ],
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: (_providerId, options) => {
-        capturedAdditionalWorkspaceWriteRoots =
-          options.additionalWorkspaceWriteRoots;
-        return createFakeAdapter(scriptPath);
+  function createContractRuntime(
+    args: CreateContractRuntimeArgs = {},
+  ): ContractRuntime {
+    const record = createScriptedEchoRequestRecord();
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        env: { ...record.env, ...args.env },
+        ...(args.additionalWorkspaceWriteRoots !== undefined
+          ? {
+              additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
+            }
+          : {}),
+        onEvent: args.onEvent ?? (() => {}),
+        ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
+        onToolCall: async () => ({
+          contentItems: [{ type: "inputText", text: "ok" }],
+          success: true,
+        }),
       },
+      ...(args.launch !== undefined ? { launch: args.launch } : {}),
+    });
+    return { record, runtime };
+  }
+
+  it("passes runtime workspace-write roots to the provider as provider options", async () => {
+    const additionalWorkspaceWriteRoots = [
+      "/repo/.git/worktrees/bb13",
+      "/repo/.git/objects",
+    ];
+    const { record, runtime } = createContractRuntime({
+      additionalWorkspaceWriteRoots,
     });
 
     try {
-      await runtime.ensureProvider({ providerId: "fake" });
-      expect(capturedAdditionalWorkspaceWriteRoots).toEqual([
-        "/repo/.git/worktrees/bb13",
-        "/repo/.git/objects",
-      ]);
+      await runtime.listModels({ providerId: "fake" });
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      // Model listing has no session, so the roots ride the request itself;
+      // session construction carries them in the wire options.
+      expect(record.last("model/list")?.params).toEqual({
+        providerOptions: { additionalWorkspaceWriteRoots },
+      });
+      expect(record.last("thread/start")?.params).toMatchObject({
+        threadId: "t1",
+        cwd: tmpDir,
+        options: { providerOptions: { additionalWorkspaceWriteRoots } },
+      });
     } finally {
       await runtime.shutdown();
     }
   });
 
-  it("passes acp launch specs to adapter construction for model list, start, and resume", async () => {
-    const captured: Array<HostDaemonAcpLaunchSpec | undefined> = [];
-    const createRuntime = () =>
-      createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
-        onEvent: () => {},
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: (_providerId, options) => {
-          captured.push(options.acpLaunchSpec);
-          return createFakeAdapter(scriptPath);
-        },
+  it("passes acp launch specs to the provider for model list, start, and resume", async () => {
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      await runtime.listModels({ providerId: "acp-custom", acpLaunchSpec });
+      await runtime.startThread({
+        acpLaunchSpec,
+        environmentId: "env-1",
+        threadId: "t-start",
+        projectId: "p1",
+        providerId: "acp-custom",
+        options: fullRuntimeOptions,
+      });
+      await runtime.resumeThread({
+        acpLaunchSpec,
+        environmentId: "env-1",
+        threadId: "t-resume",
+        projectId: "p1",
+        providerThreadId: "provider-resume",
+        providerId: "acp-custom",
+        options: fullRuntimeOptions,
       });
 
-    const listRuntime = createRuntime();
-    await listRuntime.listModels({
-      providerId: "acp-custom",
-      acpLaunchSpec,
-    });
-    await listRuntime.shutdown();
+      expect(record.last("model/list")?.params).toEqual({
+        providerOptions: { acpLaunchSpec },
+      });
+      expect(record.last("thread/start")?.params).toMatchObject({
+        threadId: "t-start",
+        options: { providerOptions: { acpLaunchSpec } },
+      });
+      expect(record.last("thread/resume")?.params).toMatchObject({
+        threadId: "t-resume",
+        providerThreadId: "provider-resume",
+        options: { providerOptions: { acpLaunchSpec } },
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
 
-    const startRuntime = createRuntime();
-    await startRuntime.startThread({
-      acpLaunchSpec,
-      environmentId: "env-1",
-      threadId: "t-start",
-      projectId: "p1",
-      providerId: "acp-custom",
-      options: fullRuntimeOptions,
+  // Archive/unarchive spawn the provider themselves (there is no thread in
+  // the runtime to borrow a launch from), so they only resolve if the
+  // caller's bridge launch reaches the spawn.
+  it("launches the caller's bridge for archive and unarchive", async () => {
+    const { record, runtime } = createContractRuntime();
+    const bridgeLaunch = createScriptedEchoLaunch({
+      pluginId: "provider-graduated",
     });
-    await startRuntime.shutdown();
 
-    const resumeRuntime = createRuntime();
-    await resumeRuntime.resumeThread({
-      acpLaunchSpec,
-      environmentId: "env-1",
-      threadId: "t-resume",
-      projectId: "p1",
-      providerThreadId: "provider-resume",
-      providerId: "acp-custom",
-      options: fullRuntimeOptions,
-    });
-    await resumeRuntime.shutdown();
+    try {
+      await expect(
+        runtime.archiveThread({
+          threadId: "t-archive-bridge",
+          providerId: "graduated",
+          providerThreadId: "provider-explicit",
+        }),
+      ).rejects.toThrow(/no provider bridge launch was supplied/);
 
-    expect(captured).toEqual([acpLaunchSpec, acpLaunchSpec, acpLaunchSpec]);
-    // Spawns the fake ACP agent three times (model list now adds a discovery
-    // session), so allow extra headroom over the 5s default on slower CI.
-  }, 30000);
+      await runtime.archiveThread({
+        bridgeLaunch,
+        threadId: "t-archive-bridge",
+        providerId: "graduated",
+        providerThreadId: "provider-explicit",
+      });
+      await runtime.unarchiveThread({
+        bridgeLaunch,
+        threadId: "t-archive-bridge",
+        providerId: "graduated",
+        providerThreadId: "provider-explicit",
+      });
+
+      const requests = record.read();
+      // One bridge process served both commands.
+      expect(
+        requests.filter((entry) => entry.method === "initialize"),
+      ).toHaveLength(1);
+      expect(requests).toContainEqual({
+        method: "thread/archive",
+        params: {
+          threadId: "t-archive-bridge",
+          providerThreadId: "provider-explicit",
+        },
+      });
+      expect(requests).toContainEqual({
+        method: "thread/unarchive",
+        params: {
+          threadId: "t-archive-bridge",
+          providerThreadId: "provider-explicit",
+        },
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
 
   it("uses a new provider process cache entry when the acp launch spec changes", async () => {
-    const seenModelListMarkers: string[] = [];
-    const adapterConstructions: string[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: (_providerId, options) => {
-        const marker = options.acpLaunchSpec?.env.CACHE_MARKER ?? "missing";
-        adapterConstructions.push(marker);
-        const base = createFakeAdapter(scriptPath);
-        return {
-          ...base,
-          buildCommandPlan(
-            command: Parameters<typeof base.buildCommandPlan>[0],
-          ) {
-            if (command.type === "model/list") {
-              seenModelListMarkers.push(marker);
-            }
-            return base.buildCommandPlan(command);
-          },
-        };
-      },
-    });
+    const { record, runtime } = createContractRuntime();
 
     try {
       await runtime.listModels({
@@ -339,80 +249,39 @@ describe("createAgentRuntime command contracts", () => {
         },
       });
 
-      expect(adapterConstructions).toEqual(["first", "second"]);
-      expect(seenModelListMarkers).toEqual(["first", "second"]);
+      const requests = record.read();
+      // Two handshakes: each launch spec got its own bridge process.
+      expect(
+        requests.filter((entry) => entry.method === "initialize"),
+      ).toHaveLength(2);
+      expect(
+        requests
+          .filter((entry) => entry.method === "model/list")
+          .map((entry) => entry.params),
+      ).toEqual([
+        {
+          providerOptions: {
+            acpLaunchSpec: { ...acpLaunchSpec, env: { CACHE_MARKER: "first" } },
+          },
+        },
+        {
+          providerOptions: {
+            acpLaunchSpec: {
+              ...acpLaunchSpec,
+              env: { CACHE_MARKER: "second" },
+            },
+          },
+        },
+      ]);
     } finally {
       await runtime.shutdown();
     }
   }, 30000);
 
   it("prefixes provider rename titles and normalizes provider title events", async () => {
-    const events = new Array<ThreadEvent>();
-    const renameLogPath = join(tmpDir, "rename-title.txt");
-    const renameProviderScriptPath = join(tmpDir, "rename-provider.cjs");
-    writeFileSync(
-      renameProviderScriptPath,
-      `
-const fs = require("node:fs");
-const readline = require("node:readline");
-const renameLogPath = ${JSON.stringify(renameLogPath)};
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-function paramsOf(message) {
-  return message && typeof message.params === "object" && message.params !== null
-    ? message.params
-    : {};
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  const params = paramsOf(message);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-  if (message.method === "thread/start") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { providerThreadId: "provider-thread-1" },
-    });
-    send({
-      jsonrpc: "2.0",
-      method: "thread/identity",
-      params: {
-        threadId: params.threadId,
-        providerThreadId: "provider-thread-1",
-      },
-    });
-    return;
-  }
-  if (message.method === "thread/name/set") {
-    fs.writeFileSync(renameLogPath, params.title, "utf8");
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    send({
-      jsonrpc: "2.0",
-      method: "thread/name/updated",
-      params: {
-        threadId: params.threadId,
-        providerThreadId: params.providerThreadId,
-        threadName: params.title,
-      },
-    });
-    return;
-  }
-});
-`,
-      "utf8",
-    );
-    const runtime = createContractRuntime({
+    const events: ThreadEvent[] = [];
+    const { record, runtime } = createContractRuntime({
       onEvent: (event) => events.push(event),
-      scriptPath: renameProviderScriptPath,
-      workspacePath: tmpDir,
     });
 
     try {
@@ -424,6 +293,7 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
       });
       await runtime.renameThread({ threadId: "t1", title: "New Title" });
+      // The bridge echoes the title it was given as a `thread.name` delta.
       await waitForRuntimeThreadEvent({
         events,
         label: "normalized provider title event",
@@ -435,7 +305,11 @@ rl.on("line", (line) => {
         threadId: "t1",
       });
 
-      expect(readFileSync(renameLogPath, "utf8")).toBe("[bb] New Title");
+      expect(record.last("thread/name/set")?.params).toEqual({
+        threadId: "t1",
+        providerThreadId: "prov-1",
+        title: "[bb] New Title",
+      });
       expect(events).not.toContainEqual(
         expect.objectContaining({
           threadName: "[bb] New Title",
@@ -447,411 +321,134 @@ rl.on("line", (line) => {
     }
   });
 
-  it("preserves Codex captured linked-worktree git roots from start to turn/start", async () => {
-    const fixture = createRuntimeLinkedWorktreeFixture({ rootPath: tmpDir });
-    const providerScriptPath = join(tmpDir, "codex-runtime-provider.cjs");
-    const turnStartLogPath = join(tmpDir, "turn-start.json");
-    const workspaceWriteOptions = {
-      ...fullRuntimeOptions,
-      permissionEscalation: "ask",
-      permissionMode: "accept-edits",
-      permissionScope: "workspace",
-      approvalReviewer: "user",
-    } satisfies AgentRuntimeExecutionOptions;
-
-    writeFileSync(
-      providerScriptPath,
-      `
-const fs = require("node:fs");
-const readline = require("node:readline");
-const turnStartLogPath = ${JSON.stringify(turnStartLogPath)};
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-
-  if (message.method === "account/rateLimits/read") {
-    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { thread: { id: "codex-thread-runtime" } },
-    });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    fs.writeFileSync(turnStartLogPath, JSON.stringify(message.params), "utf8");
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: fixture.workspacePath,
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: (_providerId, options) =>
-        createCodexProviderAdapter({
-          additionalWorkspaceWriteRoots: options.additionalWorkspaceWriteRoots,
-          processArgs: [providerScriptPath],
-          processCommand: "node",
-        }),
-    });
-
-    try {
-      const { providerThreadId } = await runtime.startThread({
-        environmentId: "env-1",
-        options: workspaceWriteOptions,
-        projectId: "p1",
-        providerId: "codex",
-        threadId: "t1",
-      });
-
-      expect(providerThreadId).toBe("codex-thread-runtime");
-
-      await runtime.runTurn({
-        clientRequestId: "creq_222222224p",
-        input: [promptTextInput({ text: "commit" })],
-        options: workspaceWriteOptions,
-        threadId: "t1",
-      });
-
-      expect(JSON.parse(readFileSync(turnStartLogPath, "utf8"))).toMatchObject({
-        sandboxPolicy: {
-          type: "workspaceWrite",
-          writableRoots: fixture.expectedWritableRoots,
+  it("retries a Codex rename while its new rollout file is still empty", async () => {
+    const stderr: string[] = [];
+    const { record, runtime } = createContractRuntime({
+      onStderr: (line) => stderr.push(line),
+      launch: {
+        scripted: {
+          failMethods: [
+            {
+              method: "thread/name/set",
+              message: codexEmptyRolloutRenameError,
+              times: 1,
+            },
+          ],
         },
-        threadId: "codex-thread-runtime",
-      });
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
-  it("keeps Codex automatic review on-request for agent-initiated runtime commands", async () => {
-    const providerScriptPath = join(tmpDir, "codex-auto-review-provider.cjs");
-    const threadStartLogPath = join(tmpDir, "auto-thread-start.json");
-    const turnStartLogPath = join(tmpDir, "auto-turn-start.json");
-    const agentInitiatedOptions = {
-      ...fullRuntimeOptions,
-      approvalReviewer: "automatic",
-      permissionEscalation: "deny",
-      permissionMode: "auto",
-      permissionScope: "workspace",
-    } satisfies AgentRuntimeExecutionOptions;
-
-    writeFileSync(
-      providerScriptPath,
-      `
-const fs = require("node:fs");
-const readline = require("node:readline");
-const threadStartLogPath = ${JSON.stringify(threadStartLogPath)};
-const turnStartLogPath = ${JSON.stringify(turnStartLogPath)};
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-  if (message.method === "account/rateLimits/read") {
-    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
-    return;
-  }
-  if (message.method === "thread/start") {
-    fs.writeFileSync(threadStartLogPath, JSON.stringify(message.params), "utf8");
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { thread: { id: "codex-auto-review-thread" } },
-    });
-    return;
-  }
-  if (message.method === "turn/start") {
-    fs.writeFileSync(turnStartLogPath, JSON.stringify(message.params), "utf8");
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () =>
-        createCodexProviderAdapter({
-          additionalWorkspaceWriteRoots: [],
-          processArgs: [providerScriptPath],
-          processCommand: "node",
-        }),
+      },
     });
 
     try {
       await runtime.startThread({
         environmentId: "env-1",
-        options: agentInitiatedOptions,
+        threadId: "t1",
         projectId: "p1",
         providerId: "codex",
-        threadId: "t1",
+        options: fullRuntimeOptions,
       });
-      expect(
-        JSON.parse(readFileSync(threadStartLogPath, "utf8")),
-      ).toMatchObject({
-        approvalPolicy: "on-request",
-        approvalsReviewer: "auto_review",
-        sandbox: "workspace-write",
-      });
+      await runtime.renameThread({ threadId: "t1", title: "New Title" });
 
-      await runtime.runTurn({
-        clientRequestId: "creq_222222224v",
-        input: [promptTextInput({ text: "inspect and edit" })],
-        options: agentInitiatedOptions,
-        threadId: "t1",
-      });
-      expect(JSON.parse(readFileSync(turnStartLogPath, "utf8"))).toMatchObject({
-        approvalPolicy: "on-request",
-        approvalsReviewer: "auto_review",
-        sandboxPolicy: { type: "workspaceWrite" },
-      });
+      const renameRequests = record
+        .read()
+        .filter((entry) => entry.method === "thread/name/set");
+      expect(renameRequests).toHaveLength(2);
+      expect(renameRequests.map((entry) => entry.params?.title)).toEqual([
+        "[bb] New Title",
+        "[bb] New Title",
+      ]);
+      expect(stderr).toContainEqual(
+        expect.stringContaining('retrying rename for thread "t1"'),
+      );
     } finally {
       await runtime.shutdown();
     }
   });
 
-  it("rejects required adapter commands that return no-op plans", async () => {
-    const baseAdapter = createFakeAdapter(scriptPath);
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => ({
-        ...baseAdapter,
-        buildCommandPlan(command) {
-          if (command.type === "turn/start") {
-            return { kind: "noop", reason: "turn start unsupported" };
-          }
-          return baseAdapter.buildCommandPlan(command);
+  it("stops retrying a Codex rename once its rollout stays empty", async () => {
+    const { record, runtime } = createContractRuntime({
+      launch: {
+        scripted: {
+          failMethods: [
+            {
+              method: "thread/name/set",
+              message: codexEmptyRolloutRenameError,
+            },
+          ],
         },
-      }),
+      },
     });
 
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-    await expect(
-      runtime.runTurn({
-        clientRequestId: "creq_222222224q",
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
         threadId: "t1",
-        input: [promptTextInput({ text: "hello" })],
+        projectId: "p1",
+        providerId: "codex",
         options: fullRuntimeOptions,
-      }),
-    ).rejects.toThrow(/returned no provider request for turn\/start/);
-    await runtime.shutdown();
+      });
+
+      await expect(
+        runtime.renameThread({ threadId: "t1", title: "New Title" }),
+      ).rejects.toThrow(/rollout at .+ is empty/i);
+      expect(
+        record.read().filter((entry) => entry.method === "thread/name/set"),
+      ).toHaveLength(3);
+    } finally {
+      await runtime.shutdown();
+    }
   });
 
-  it("rejects no-op steer commands instead of silently dropping them", async () => {
-    const events: ThreadEvent[] = [];
-    const baseAdapter = createFakeAdapter(scriptPath);
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => ({
-        ...baseAdapter,
-        buildCommandPlan(command) {
-          if (command.type === "turn/steer") {
-            return { kind: "noop", reason: "steer unsupported" };
-          }
-          return baseAdapter.buildCommandPlan(command);
-        },
-      }),
-    });
-
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.runTurn({
-      clientRequestId: "creq_222222224r",
-      threadId: "t1",
-      input: [promptTextInput({ text: "delay:500" })],
-      options: fullRuntimeOptions,
-    });
-    await waitForThreadTurnStarted({
-      events,
-      providerId: "fake",
-      runtime,
-      threadId: "t1",
-      turnId: "turn-1",
-    });
-    await expect(
-      runtime.steerTurn({
-        clientRequestId: "creq_222222224s",
-        threadId: "t1",
-        expectedTurnId: "turn-1",
-        input: [promptTextInput({ text: "steer" })],
-        options: fullRuntimeOptions,
-      }),
-    ).rejects.toThrow(/returned no provider request for turn\/steer/);
-    await runtime.shutdown();
-  });
+  // Two Codex tests lived here: one pinning that git writable roots captured
+  // at thread/start survive into a later turn/start sandbox policy, and one
+  // pinning that automatic review stays on-request for agent-initiated
+  // commands. Both drove the legacy codex adapter as a scriptable double and
+  // asserted on the params it planned. With that adapter graduated, the codex
+  // bridge builds those params in its own process, so the invariants are
+  // module-owned rather than runtime-owned: the roots handoff is pinned in
+  // codex/translator.test.ts and the review mapping in
+  // codex/session-params.test.ts.
 
   it("rejects unsupported thread rename instead of silently succeeding", async () => {
-    const baseAdapter = createFakeAdapter(scriptPath);
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => ({
-        ...baseAdapter,
-        capabilities: {
-          ...baseAdapter.capabilities,
-          supportsRename: false,
-        },
-      }),
+    const { record, runtime } = createContractRuntime({
+      launch: { capabilities: { supportsThreadRename: false } },
     });
 
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "fake",
-      options: fullRuntimeOptions,
-    });
-    await expect(
-      runtime.renameThread({ threadId: "t1", title: "New Title" }),
-    ).rejects.toThrow(/does not support thread rename/);
-    await runtime.shutdown();
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await expect(
+        runtime.renameThread({ threadId: "t1", title: "New Title" }),
+      ).rejects.toThrow(/does not support thread rename/);
+      expect(record.last("thread/name/set")).toBeUndefined();
+    } finally {
+      await runtime.shutdown();
+    }
   });
 
   it.each([
     { reportedCleared: true, label: "confirms success" },
     { reportedCleared: false, label: "reconciles a stale failure" },
   ])(
-    "$label after Codex persists a delayed Goal clear",
+    // The runtime settles `clearThreadGoal` on the provider's
+    // `thread.goalCleared` DELTA, not on the response — a provider can
+    // answer the request before it has persisted the clear. A runtime-ordering
+    // invariant, not a codex one, so it runs on the scripted echo provider.
+    "$label after a provider persists a delayed Goal clear",
     async ({ reportedCleared }) => {
-      const providerScriptPath = join(tmpDir, "codex-goal-clear-provider.cjs");
-      const caseSuffix = reportedCleared ? "success" : "stale-failure";
-      const responseMarkerPath = join(
-        tmpDir,
-        `goal-clear-response-${caseSuffix}`,
-      );
-      const notificationReleasePath = join(
-        tmpDir,
-        `release-goal-clear-${caseSuffix}`,
-      );
-      writeFileSync(
-        providerScriptPath,
-        `
-const fs = require("node:fs");
-const readline = require("node:readline");
-const responseMarkerPath = ${JSON.stringify(responseMarkerPath)};
-const notificationReleasePath = ${JSON.stringify(notificationReleasePath)};
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-  if (message.method === "account/rateLimits/read") {
-    send({ jsonrpc: "2.0", id: message.id, result: { rateLimits: {} } });
-    return;
-  }
-  if (message.method === "thread/start") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { thread: { id: "codex-goal-thread" } },
-    });
-    return;
-  }
-  if (message.method === "thread/goal/clear") {
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { cleared: ${reportedCleared} },
-    });
-    fs.writeFileSync(responseMarkerPath, "responded", "utf8");
-    const releasePoll = setInterval(() => {
-      if (!fs.existsSync(notificationReleasePath)) {
-        return;
-      }
-      clearInterval(releasePoll);
-      send({
-        jsonrpc: "2.0",
-        method: "thread/goal/cleared",
-        params: { threadId: "codex-goal-thread" },
-      });
-    }, 5);
-  }
-});
-`,
-        "utf8",
-      );
       const events: ThreadEvent[] = [];
-      const runtime = createAgentRuntimeWithAdapters({
-        workspacePath: tmpDir,
+      const { record, runtime } = createContractRuntime({
         onEvent: (event) => events.push(event),
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "ok" }],
-          success: true,
-        }),
-        adapterFactory: () =>
-          createCodexProviderAdapter({
-            additionalWorkspaceWriteRoots: [],
-            processArgs: [providerScriptPath],
-            processCommand: "node",
-          }),
+        launch: {
+          scripted: {
+            goalClearNotifyDelayMs: 600,
+            goalClearReportsCleared: reportedCleared,
+          },
+        },
       });
 
       try {
@@ -859,7 +456,7 @@ rl.on("line", (line) => {
           environmentId: "env-1",
           threadId: "t-goal",
           projectId: "p1",
-          providerId: "codex",
+          providerId: "fake",
           options: fullRuntimeOptions,
         });
         let settled = false;
@@ -875,18 +472,21 @@ rl.on("line", (line) => {
           },
         );
 
+        // The bridge answered as soon as it recorded the request; the clear
+        // must stay open until the delayed delta lands.
         await vi.waitFor(() => {
-          expect(existsSync(responseMarkerPath)).toBe(true);
+          expect(record.last("thread/goal/clear")).toBeDefined();
         });
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await wait(100);
         expect(settled).toBe(false);
 
-        writeFileSync(notificationReleasePath, "release", "utf8");
         await expect(clearPromise).resolves.toEqual({ cleared: true });
         expect(events).toContainEqual(
           expect.objectContaining({
             threadId: "t-goal",
-            type: "thread/goal/cleared",
+            type: "thread/extensionState/updated",
+            kind: "provider-codex/goal",
+            payload: null,
           }),
         );
       } finally {
@@ -897,20 +497,15 @@ rl.on("line", (line) => {
   );
 
   it("rejects thread resume when providerThreadId cannot be resolved", async () => {
-    const runtime = createContractRuntime({
-      scriptPath,
-      workspacePath: tmpDir,
-    });
+    const { record, runtime } = createContractRuntime();
 
     await registerThreadWithoutProviderThreadId(runtime);
+    expect(record.last("thread/resume")).toBeUndefined();
     await runtime.shutdown();
   });
 
   it("rejects turn start when providerThreadId cannot be resolved", async () => {
-    const runtime = createContractRuntime({
-      scriptPath,
-      workspacePath: tmpDir,
-    });
+    const { record, runtime } = createContractRuntime();
 
     await registerThreadWithoutProviderThreadId(runtime);
     await expect(
@@ -921,14 +516,12 @@ rl.on("line", (line) => {
         options: fullRuntimeOptions,
       }),
     ).rejects.toThrow(missingProviderThreadIdError);
+    expect(record.last("turn/start")).toBeUndefined();
     await runtime.shutdown();
   });
 
   it("rejects thread rename when providerThreadId cannot be resolved", async () => {
-    const runtime = createContractRuntime({
-      scriptPath,
-      workspacePath: tmpDir,
-    });
+    const { record, runtime } = createContractRuntime();
 
     await registerThreadWithoutProviderThreadId(runtime);
     await expect(
@@ -937,135 +530,293 @@ rl.on("line", (line) => {
         title: "New Title",
       }),
     ).rejects.toThrow(missingProviderThreadIdError);
+    expect(record.last("thread/name/set")).toBeUndefined();
     await runtime.shutdown();
   });
 
   it("archives threads using caller-provided provider ids without runtime registry state", async () => {
-    const archiveScriptPath = join(tmpDir, "archive-provider.cjs");
-    writeArchiveProviderScript(archiveScriptPath, {
-      expectedProviderThreadId: "provider-explicit",
-      threadId: "t-archive",
-    });
-    const runtime = createContractRuntime({
-      scriptPath: archiveScriptPath,
-      workspacePath: tmpDir,
-    });
+    const { record, runtime } = createContractRuntime();
 
     await runtime.archiveThread({
+      bridgeLaunch: createScriptedEchoLaunch(),
       threadId: "t-archive",
       providerId: "fake",
+      providerThreadId: "provider-explicit",
+    });
+    expect(record.last("thread/archive")?.params).toEqual({
+      threadId: "t-archive",
       providerThreadId: "provider-explicit",
     });
     await runtime.shutdown();
   });
 
   it("unarchives threads using caller-provided provider ids without runtime registry state", async () => {
-    const archiveScriptPath = join(tmpDir, "unarchive-provider.cjs");
-    writeArchiveProviderScript(archiveScriptPath, {
-      expectedProviderThreadId: "provider-explicit",
-      threadId: "t-unarchive",
-    });
-    const runtime = createContractRuntime({
-      scriptPath: archiveScriptPath,
-      workspacePath: tmpDir,
-    });
+    const { record, runtime } = createContractRuntime();
 
     await runtime.unarchiveThread({
+      bridgeLaunch: createScriptedEchoLaunch(),
       threadId: "t-unarchive",
       providerId: "fake",
+      providerThreadId: "provider-explicit",
+    });
+    expect(record.last("thread/unarchive")?.params).toEqual({
+      threadId: "t-unarchive",
       providerThreadId: "provider-explicit",
     });
     await runtime.shutdown();
   });
 
   it("accepts Codex duplicate archive and unarchive state errors", async () => {
-    const archiveScriptPath = join(tmpDir, "archive-idempotency-provider.cjs");
-    writeArchiveProviderScript(archiveScriptPath, {
-      archiveErrorMessage: "no rollout found for thread id provider-explicit",
-      expectedProviderThreadId: "provider-explicit",
-      threadId: "t-archive-idempotency",
-      unarchiveErrorMessage:
-        "no archived rollout found for thread id provider-explicit",
+    // Archive/unarchive carry no session options, so the failures are
+    // process-level.
+    const { record, runtime } = createContractRuntime({
+      env: scriptedEchoProcessEnv({
+        failMethods: [
+          {
+            method: "thread/archive",
+            message: "no rollout found for thread id provider-explicit",
+          },
+          {
+            method: "thread/unarchive",
+            message:
+              "no archived rollout found for thread id provider-explicit",
+          },
+        ],
+      }),
     });
-    const runtime = createContractRuntime({
-      scriptPath: archiveScriptPath,
-      workspacePath: tmpDir,
-    });
+    const bridgeLaunch = createScriptedEchoLaunch();
 
     await runtime.archiveThread({
+      bridgeLaunch,
       threadId: "t-archive-idempotency",
       providerId: "fake",
       providerThreadId: "provider-explicit",
     });
     await runtime.unarchiveThread({
+      bridgeLaunch,
       threadId: "t-archive-idempotency",
       providerId: "fake",
       providerThreadId: "provider-explicit",
     });
+    expect(record.last("thread/archive")).toBeDefined();
+    expect(record.last("thread/unarchive")).toBeDefined();
     await runtime.shutdown();
+  });
+
+  function createArchivedSessionRuntime(
+    args: {
+      env?: Record<string, string>;
+      exitAfterArchivedError?: boolean;
+      onEvent?: (event: ThreadEvent) => void;
+    } = {},
+  ): ContractRuntime {
+    return createContractRuntime({
+      ...(args.env !== undefined ? { env: args.env } : {}),
+      ...(args.onEvent !== undefined ? { onEvent: args.onEvent } : {}),
+      launch: {
+        scripted: {
+          archivedSession: true,
+          ...(args.exitAfterArchivedError === true
+            ? { exitAfterArchivedError: true }
+            : {}),
+        },
+      },
+    });
+  }
+
+  it("unarchives Codex sessions before retrying a turn", async () => {
+    const events: ThreadEvent[] = [];
+    const { record, runtime } = createArchivedSessionRuntime({
+      onEvent: (event) => events.push(event),
+    });
+
+    try {
+      const { providerThreadId } = await runtime.startThread({
+        environmentId: "env-1",
+        projectId: "p1",
+        providerId: "codex",
+        threadId: "t-archived",
+        options: fullRuntimeOptions,
+      });
+      await runtime.runTurn({
+        clientRequestId: "creq_222222224u",
+        input: [promptTextInput({ text: "continue" })],
+        options: fullRuntimeOptions,
+        threadId: "t-archived",
+      });
+
+      const requests = record.read();
+      expect(requests).toContainEqual({
+        method: "thread/unarchive",
+        params: { threadId: "t-archived", providerThreadId },
+      });
+      // The rejected dispatch, then the retry after the unarchive.
+      expect(
+        requests.filter((entry) => entry.method === "turn/start"),
+      ).toHaveLength(2);
+      await waitForThreadAgentMessageText({
+        events,
+        providerId: "codex",
+        runtime,
+        text: "Response to: continue",
+        threadId: "t-archived",
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // The bridge keys its archived set on the exact provider thread id it was
+  // asked to unarchive, so a call that succeeds proves bb unarchived the
+  // right session before it retried.
+  it("unarchives Codex sessions before retrying a resume", async () => {
+    const { record, runtime } = createArchivedSessionRuntime();
+
+    try {
+      await expect(
+        runtime.resumeThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "codex",
+          providerThreadId: "prov-archived-resume",
+          threadId: "t-archived-resume",
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({ providerThreadId: "prov-archived-resume" });
+
+      const requests = record.read();
+      expect(requests).toContainEqual({
+        method: "thread/unarchive",
+        params: {
+          threadId: "t-archived-resume",
+          providerThreadId: "prov-archived-resume",
+        },
+      });
+      expect(
+        requests.filter((entry) => entry.method === "thread/resume"),
+      ).toHaveLength(2);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("unarchives an archived Codex source session before retrying a fork", async () => {
+    const { record, runtime } = createArchivedSessionRuntime();
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        fork: { sourceProviderThreadId: "prov-archived-source" },
+        projectId: "p1",
+        providerId: "codex",
+        threadId: "t-archived-fork",
+        options: fullRuntimeOptions,
+      });
+
+      const requests = record.read();
+      expect(requests).toContainEqual({
+        method: "thread/unarchive",
+        params: {
+          threadId: "t-archived-fork",
+          providerThreadId: "prov-archived-source",
+        },
+      });
+      expect(
+        requests.filter((entry) => entry.method === "thread/fork"),
+      ).toHaveLength(2);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("reports the archived-session error when unarchiving fails", async () => {
+    // The recovery unarchive runs before any session exists on the process,
+    // so the failure is scripted process-wide.
+    const { record, runtime } = createArchivedSessionRuntime({
+      env: scriptedEchoProcessEnv({ unarchiveFails: true }),
+    });
+
+    try {
+      await expect(
+        runtime.resumeThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "codex",
+          providerThreadId: "prov-unarchive-fails",
+          threadId: "t-unarchive-fails",
+          options: fullRuntimeOptions,
+        }),
+      ).rejects.toThrow(/session prov-unarchive-fails is archived/);
+      const requests = record.read();
+      expect(requests).toContainEqual({
+        method: "thread/unarchive",
+        params: {
+          threadId: "t-unarchive-fails",
+          providerThreadId: "prov-unarchive-fails",
+        },
+      });
+      // No retry without a successful unarchive.
+      expect(
+        requests.filter((entry) => entry.method === "thread/resume"),
+      ).toHaveLength(1);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  // A provider that dies while bb recovers cannot be unarchived or retried.
+  // The caller must still get the archived-session error, because it names the
+  // session and the CLI command that fixes it. A process-level error such as
+  // `Provider "codex" has exited` tells the user nothing actionable.
+  it("keeps the archived-session error when the provider exits mid-recovery", async () => {
+    const { runtime } = createArchivedSessionRuntime({
+      exitAfterArchivedError: true,
+    });
+
+    try {
+      await expect(
+        runtime.resumeThread({
+          environmentId: "env-1",
+          projectId: "p1",
+          providerId: "codex",
+          providerThreadId: "prov-exit-recovery",
+          threadId: "t-exit-recovery",
+          options: fullRuntimeOptions,
+        }),
+      ).rejects.toThrow(/session prov-exit-recovery is archived/);
+    } finally {
+      await runtime.shutdown();
+    }
   });
 
   it("rejects turn steer when providerThreadId cannot be resolved", async () => {
     const events: ThreadEvent[] = [];
-    const activeTurnScriptPath = join(tmpDir, "active-turn-provider.cjs");
-    writeFileSync(
-      activeTurnScriptPath,
-      `
-const readline = require("node:readline");
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-let turnStartedInterval = null;
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    turnStartedInterval = setInterval(() => {
-      send({
-        jsonrpc: "2.0",
-        method: "turn/started",
-        params: { threadId: "${missingProviderThreadId}", turnId: "turn-1" },
-      });
-    }, 10);
-    return;
-  }
-
-  send({ jsonrpc: "2.0", id: message.id, result: {} });
-});
-process.on("SIGTERM", () => {
-  if (turnStartedInterval) {
-    clearInterval(turnStartedInterval);
-  }
-  process.exit(0);
-});
-`,
-      "utf8",
-    );
-    const runtime = createContractRuntime({
+    // A bridge that reports a turn on a thread it never identified, so the
+    // thread has an active turn and no provider thread id.
+    const { runtime } = createContractRuntime({
       onEvent: (event) => events.push(event),
-      scriptPath: activeTurnScriptPath,
-      workspacePath: tmpDir,
+      env: { [UNSOLICITED_TURN_THREAD_ID_ENV]: missingProviderThreadId },
+      launch: {
+        modulePath: unsolicitedTurnBridgeModulePath,
+        pluginId: "provider-unsolicited-turn",
+      },
     });
 
     await registerThreadWithoutProviderThreadId(runtime);
-    await waitForRuntimeThreadEvent({
+    const { turnId } = await waitForThreadTurnStarted({
       events,
       label: "synthetic active turn without provider identity",
-      predicate: (event) =>
-        event.type === "turn/started" &&
-        event.threadId === missingProviderThreadId,
+      providerId: "fake",
       runtime,
       threadId: missingProviderThreadId,
       timeoutMs: 1000,
     });
+    expect(runtime.getActiveTurnId(missingProviderThreadId)).toBe(turnId);
     await expect(
       runtime.steerTurn({
         clientRequestId: "creq_222222224u",
         threadId: missingProviderThreadId,
-        expectedTurnId: "turn-1",
+        expectedTurnId: turnId,
         input: [promptTextInput({ text: "steer" })],
         options: fullRuntimeOptions,
       }),
@@ -1073,16 +824,8 @@ process.on("SIGTERM", () => {
     await runtime.shutdown();
   });
 
-  it("rejects unsupported execution options before they reach adapters", async () => {
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
-    });
+  it("rejects unsupported execution options before they reach the provider", async () => {
+    const { record, runtime } = createContractRuntime();
 
     await expect(
       runtime.startThread({
@@ -1096,28 +839,14 @@ process.on("SIGTERM", () => {
         },
       }),
     ).rejects.toThrow(/does not support service tiers/);
+    expect(record.last("thread/start")).toBeUndefined();
     await runtime.shutdown();
   });
 
-  it("rejects no-op stop commands for active turns but allows explicit idle no-ops", async () => {
+  it("interrupts an active turn on stop and releases an idle thread", async () => {
     const events: ThreadEvent[] = [];
-    const baseAdapter = createFakeAdapter(scriptPath);
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
+    const { record, runtime } = createContractRuntime({
       onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => ({
-        ...baseAdapter,
-        buildCommandPlan(command) {
-          if (command.type === "thread/stop") {
-            return { kind: "noop", reason: "no active turn to stop" };
-          }
-          return baseAdapter.buildCommandPlan(command);
-        },
-      }),
     });
 
     const startResult = await runtime.startThread({
@@ -1127,9 +856,17 @@ process.on("SIGTERM", () => {
       providerId: "fake",
       options: fullRuntimeOptions,
     });
-    await runtime.stopThread({ threadId: "t1" });
+    await expect(runtime.stopThread({ threadId: "t1" })).resolves.toEqual({
+      providerCheckpointId: null,
+    });
+    expect(record.last("thread/stop")?.params).toEqual({
+      threadId: "t1",
+      providerThreadId: startResult.providerThreadId,
+      intent: "release",
+      activeTurnId: null,
+    });
 
-    // Even a no-op stop removes the thread from the runtime, so the follow-up
+    // An idle stop removes the thread from the runtime, so the follow-up
     // turn resumes the provider session first.
     expect(runtime.hasThread("t1")).toBe(false);
     await runtime.resumeThread({
@@ -1146,15 +883,33 @@ process.on("SIGTERM", () => {
       input: [promptTextInput({ text: "delay:500" })],
       options: fullRuntimeOptions,
     });
-    await waitForThreadTurnStarted({
+    const { turnId } = await waitForThreadTurnStarted({
       events,
       providerId: "fake",
       runtime,
       threadId: "t1",
-      turnId: "turn-1",
     });
-    await expect(runtime.stopThread({ threadId: "t1" })).rejects.toThrow(
-      /returned no provider request for thread\/stop with active turn/,
+    await runtime.stopThread({ threadId: "t1" });
+    // The stop names the provider's own turn id, not the assembler's.
+    expect(record.last("thread/stop")?.params).toEqual({
+      threadId: "t1",
+      providerThreadId: startResult.providerThreadId,
+      intent: "interrupt",
+      activeTurnId: "turn-1",
+    });
+    await waitForThreadTurnCompleted({
+      events,
+      providerId: "fake",
+      runtime,
+      threadId: "t1",
+      turnId,
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        threadId: "t1",
+        status: "interrupted",
+      }),
     );
 
     await runtime.shutdown();

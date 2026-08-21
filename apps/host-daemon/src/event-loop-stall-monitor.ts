@@ -1,8 +1,11 @@
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { HostDaemonLogger } from "./logger.js";
+import { isLikelySystemSuspensionDelay } from "./system-suspension.js";
 
 interface EventLoopStallMonitorOptions {
   logger: Pick<HostDaemonLogger, "warn">;
+  /** Injectable monotonic-enough wall clock for tests. */
+  now?: () => number;
 }
 
 interface EventLoopStallMonitor {
@@ -18,7 +21,7 @@ function nanosecondsToMilliseconds(durationNs: number): number {
   return durationNs / NANOSECONDS_PER_MILLISECOND;
 }
 
-function roundDurationMs(durationMs: number): number {
+export function roundDurationMs(durationMs: number): number {
   return Math.round(durationMs * 10) / 10;
 }
 
@@ -28,12 +31,20 @@ export function startEventLoopStallMonitor(
   const thresholdMs = DEFAULT_EVENT_LOOP_STALL_LOG_THRESHOLD_MS;
   const intervalMs = DEFAULT_EVENT_LOOP_STALL_MONITOR_INTERVAL_MS;
   const resolutionMs = DEFAULT_EVENT_LOOP_STALL_MONITOR_RESOLUTION_MS;
+  const now = options.now ?? (() => Date.now());
   const histogram = monitorEventLoopDelay({ resolution: resolutionMs });
   histogram.enable();
+  let lastSampleAt = now();
 
   const timer = setInterval(() => {
+    const sampledAt = now();
+    const sampleGapMs = sampledAt - lastSampleAt;
+    lastSampleAt = sampledAt;
     const maxDelayMs = nanosecondsToMilliseconds(histogram.max);
-    if (maxDelayMs >= thresholdMs) {
+    if (
+      !isLikelySystemSuspensionDelay({ gapMs: sampleGapMs, intervalMs }) &&
+      maxDelayMs >= thresholdMs
+    ) {
       options.logger.warn(
         {
           intervalMs,

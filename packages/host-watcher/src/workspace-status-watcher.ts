@@ -25,12 +25,31 @@ const WORKSPACE_STATUS_WATCH_DEBOUNCE_MS = 75;
 const WORKSPACE_STATUS_WATCH_MAX_WAIT_MS = 500;
 const WORKSPACE_STATUS_WATCH_RETRY_DELAY_MS = 250;
 const WORKSPACE_STATUS_WATCH_MAX_RETRY_DELAY_MS = 30_000;
-// Setup runs `git` (ignore discovery, metadata resolution). When a worktree is
-// deleted out from under us, that git command fails every time, so without a
-// cap we re-spawn git forever. Give up after a bounded number of attempts; the
-// server recreates this watch (resetting the count) when the watch set changes.
+// Metadata setup runs `git`. When a worktree is deleted out from under us,
+// that command fails every time, so without a cap we re-spawn git forever.
+// Give up after a bounded number of attempts; the server recreates this watch
+// (resetting the count) when the watch set changes.
 const WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS = 10;
+// Plain entries are paths relative to the watch root: `.git` only excludes
+// `<root>/.git`, the workspace's own repository.
 const WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS = [".git"];
+// Glob entries are matched against the root-relative path. On Linux parcel
+// tests every directory during its crawl and a match skips the whole subtree,
+// so no inotify watch is created below it. On macOS and Windows parcel tests
+// each event path instead, so the trailing `/**` is required: picomatch lets
+// it match zero segments, so `**/node_modules/**` matches both the directory
+// and everything inside it. The Git-derived ignore list below only covers the
+// root's own top-level ignored directories; an "umbrella" root with untracked
+// nested checkouts, or a root that is not a repository, otherwise gets one
+// inotify watch per nested directory and can OOM the host (get-bb/bb#1779).
+// `*/**/.git/**` skips nested repositories but keeps `<root>/.git` watchable
+// so a plain directory can still be promoted after `git init`.
+const WORKSPACE_ROOT_ALWAYS_IGNORED_GLOBS = [
+  "*/**/.git/**",
+  "**/node_modules/**",
+  "**/.cache/**",
+  "**/__pycache__/**",
+];
 const WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS = 5_000;
 const WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
@@ -101,10 +120,21 @@ function collectIgnoredDirectoryPaths(statusOutput: string): string[] {
   return Array.from(ignoredDirectoryPaths).sort();
 }
 
+function createGitWorkspaceRootIgnores(): string[] {
+  return [
+    ...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS,
+    ...WORKSPACE_ROOT_ALWAYS_IGNORED_GLOBS,
+  ];
+}
+
+function createPlainWorkspaceRootIgnores(): string[] {
+  return [...WORKSPACE_ROOT_ALWAYS_IGNORED_GLOBS];
+}
+
 function mergeWorkspaceRootIgnores(gitIgnoredPaths: string[]): string[] {
   const ignoredPaths = new Set<string>();
   for (const ignoredPath of [
-    ...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS,
+    ...createGitWorkspaceRootIgnores(),
     ...gitIgnoredPaths,
   ]) {
     ignoredPaths.add(ignoredPath);
@@ -152,7 +182,7 @@ function isPathInsideDotGit(cwd: string, candidatePath: string): boolean {
   return relativePath === ".git" || relativePath.startsWith(`.git${path.sep}`);
 }
 
-export class WorkspaceStatusWatcher {
+class WorkspaceStatusWatcher {
   private readonly changedPaths = new Set<string>();
   private readonly changeKinds = new Set<WorkspaceStatusWatchChangeKind>();
   private disposed = false;
@@ -160,10 +190,6 @@ export class WorkspaceStatusWatcher {
   private metadataRetryAttempt = 0;
   private metadataStartRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private gitWorkspacePromotion: Promise<void> | null = null;
-  private workspaceRootRetryAttempt = 0;
-  private workspaceRootStartRetryTimer: ReturnType<typeof setTimeout> | null =
-    null;
-  private workspaceRootSetupWarned = false;
   private readonly subscriptions = new Map<string, RootSubscription>();
   private readonly changeScheduler;
 
@@ -209,10 +235,6 @@ export class WorkspaceStatusWatcher {
       clearTimeout(this.metadataStartRetryTimer);
       this.metadataStartRetryTimer = null;
     }
-    if (this.workspaceRootStartRetryTimer !== null) {
-      clearTimeout(this.workspaceRootStartRetryTimer);
-      this.workspaceRootStartRetryTimer = null;
-    }
     await Promise.all(
       [...this.subscriptions.values()].map((subscription) =>
         subscription.dispose(),
@@ -228,9 +250,11 @@ export class WorkspaceStatusWatcher {
     }
     if (!(await pathExists(path.join(this.args.cwd, ".git")))) {
       // A plain workspace can become a repository after `git init`. Watch the
-      // root without excluding `.git` until that marker appears.
+      // root without excluding `<root>/.git` until that marker appears, but
+      // still skip nested repositories and heavy directories.
       this.startWatchSubscription({
         kind: "workspace-root",
+        options: { ignore: createPlainWorkspaceRootIgnores() },
         rootPath,
       });
       return;
@@ -244,42 +268,10 @@ export class WorkspaceStatusWatcher {
     rootPath: string,
     error: unknown,
   ): void {
-    if (this.workspaceRootSetupWarned) {
-      return;
-    }
-    this.workspaceRootSetupWarned = true;
     this.args.onWatchError({
       message: `Workspace root ignore discovery failed: ${toWatchErrorMessage(error)}`,
       rootPath,
     });
-  }
-
-  private scheduleWorkspaceRootWatchRetry(rootPath: string): void {
-    if (this.disposed || this.workspaceRootStartRetryTimer !== null) {
-      return;
-    }
-    if (
-      this.workspaceRootRetryAttempt >=
-      WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS
-    ) {
-      this.args.onWatchError({
-        message: `Workspace root watch setup failed ${this.workspaceRootRetryAttempt} times (the worktree may have been deleted); giving up until the watch is reconfigured`,
-        rootPath,
-      });
-      return;
-    }
-    this.workspaceRootRetryAttempt += 1;
-    this.workspaceRootStartRetryTimer = setTimeout(
-      () => {
-        this.workspaceRootStartRetryTimer = null;
-        this.startWorkspaceRootWatchSubscription(rootPath);
-      },
-      calculateExponentialBackoffDelay({
-        attempt: this.workspaceRootRetryAttempt,
-        baseDelayMs: this.args.retryDelayMs,
-        maxDelayMs: this.args.maxRetryDelayMs,
-      }),
-    );
   }
 
   private startWorkspaceRootWatchSubscription(rootPath: string): void {
@@ -300,15 +292,20 @@ export class WorkspaceStatusWatcher {
       if (this.disposed) {
         return;
       }
-      this.workspaceRootRetryAttempt = 0;
-      this.workspaceRootSetupWarned = false;
       this.startWatchSubscription(spec);
     } catch (error) {
       if (this.disposed) {
         return;
       }
       this.reportWorkspaceRootSetupError(rootPath, error);
-      this.scheduleWorkspaceRootWatchRetry(rootPath);
+      // Ignore discovery is an optimization, not a correctness gate. Keep the
+      // workspace live with the mandatory `.git` and nested-tree exclusions
+      // even when Git is too slow or its metadata is temporarily unavailable.
+      this.startWatchSubscription({
+        kind: "workspace-root",
+        options: { ignore: createGitWorkspaceRootIgnores() },
+        rootPath,
+      });
     }
   }
 
@@ -324,6 +321,7 @@ export class WorkspaceStatusWatcher {
       onEvents: (events) => {
         this.handleWorkspaceEvents(spec, events);
       },
+      onReady: spec.kind === "workspace-root" ? this.args.onReady : undefined,
       onDroppedEvents: () => {
         // Dropped events are recoverable for workspace status: conservatively
         // mark the whole spec changed so consumers re-read current state.
@@ -479,6 +477,7 @@ export function createWorkspaceStatusWatcher(
     maxRetryDelayMs: WORKSPACE_STATUS_WATCH_MAX_RETRY_DELAY_MS,
     maxWaitMs: WORKSPACE_STATUS_WATCH_MAX_WAIT_MS,
     onChange: args.onChange,
+    onReady: args.onReady,
     onWatchError: args.onWatchError,
     retryDelayMs: WORKSPACE_STATUS_WATCH_RETRY_DELAY_MS,
   });

@@ -30,17 +30,18 @@ import { Textarea } from "@bb/shared-ui/textarea";
 import { Field } from "./shared.js";
 
 // Enum options mirror the contract's preset create/update inputs.
-export const REASONING_LEVELS = [
+const REASONING_LEVELS = [
   "low",
   "medium",
   "high",
   "xhigh",
   "max",
+  "ultra",
 ] as const;
 export const PERMISSION_MODES = PRESET_PERMISSION_MODES;
-export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
+type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 export type PermissionMode = PresetPermissionMode;
-export type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
+type EnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
 export const PERMISSION_LABELS: Record<PermissionMode, string> = {
   "accept-edits": "Accept Edits",
@@ -48,12 +49,12 @@ export const PERMISSION_LABELS: Record<PermissionMode, string> = {
   full: "Full Access",
 };
 
-export const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
+const ENVIRONMENT_LABELS: Record<EnvironmentKind, string> = {
   "project-default": "Project default",
   "new-worktree": "New worktree",
 };
 
-export interface MachineOption {
+interface MachineOption {
   id: string;
   name: string;
 }
@@ -95,7 +96,7 @@ export function defaultPermissionMode(
   return modes.includes("auto") ? "auto" : "full";
 }
 
-function describeError(error: unknown): string {
+export function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -245,7 +246,7 @@ export function PresetDialog({
     !providerCustom && draft.providerId !== ""
       ? (providers
           ?.find((provider) => provider.id === draft.providerId)
-          ?.supportedPermissionModes.filter(isPermissionMode) ?? [])
+          ?.permissionModes.filter(isPermissionMode) ?? [])
       : [];
   const permissionOptions: readonly PermissionMode[] = providerCustom
     ? PERMISSION_MODES

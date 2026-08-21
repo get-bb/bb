@@ -26,6 +26,8 @@ Context variables set automatically inside a thread environment:
 - BB_CLI — absolute path to the daemon-managed `bb` executable (prefer this if bare `bb` is wrong; official entrypoints also re-exec to it)
 
 Run `bb status` to see your current context (resolved project and thread IDs).
+It also warns when an enabled plugin is not running (incompatible after a bb
+upgrade, failed to load, or missing); run `bb plugin list` for the detail.
 
 All commands support --json for machine-readable output.
 
@@ -43,5 +45,6 @@ Run `bb guide <chapter>` for command details:
   machines             Listing and targeting execution machines
   terminals            Persistent PTY sessions across all supported scopes
   customization        Theming the app palette
-  plugins              Installing plugins and their contributed bb commands
+  plugins              Installing plugins, plugin marketplaces, and their
+                       contributed bb commands
   automations          Scheduling and editing recurring or one-shot work

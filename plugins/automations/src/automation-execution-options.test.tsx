@@ -9,7 +9,7 @@ const { rpc, rpcCall } = vi.hoisted(() => {
   return { rpc: { call }, rpcCall: call };
 });
 
-vi.mock("@bb/plugin-sdk/app", () => ({
+vi.mock("@get-bb/plugin-sdk/app", () => ({
   definePluginApp: vi.fn((setup) => ({ setup })),
   useBbNavigate: vi.fn(),
   useRealtime: vi.fn(),

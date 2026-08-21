@@ -6,6 +6,7 @@ import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type { HostDaemonSkillTree } from "@bb/host-daemon-contract";
+import { isFsErrorWithCode } from "./fs-errors.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 
 const STAGING_ROOT_SEGMENTS = ["runtime", "global-skills"] as const;
@@ -29,25 +30,25 @@ export interface InjectedSkillsLogger {
   warn(context: object, message: string): void;
 }
 
-export interface StageInjectedSkillSourcesArgs {
+interface StageInjectedSkillSourcesArgs {
   dataDir: string;
   fetchSkillTree?: FetchSkillTree;
   injectedSkillSources: readonly HostDaemonInjectedSkillSource[];
   logger?: InjectedSkillsLogger;
 }
 
-export interface CleanupInjectedSkillStagingDirsArgs {
+interface CleanupInjectedSkillStagingDirsArgs {
   dataDir: string;
   keepCatalogHashes: readonly string[];
   logger?: InjectedSkillsLogger;
 }
 
-export interface StagedInjectedSkills {
+interface StagedInjectedSkills {
   catalogHash: string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
-export interface CopyInjectedSkillSourceArgs {
+interface CopyInjectedSkillSourceArgs {
   destinationPath: string;
   name: string;
   sourceRootPath: string;
@@ -200,10 +201,6 @@ function createNoopLogger(): InjectedSkillsLogger {
     debug: () => undefined,
     warn: () => undefined,
   };
-}
-
-function isFsErrorWithCode(error: Error, code: string): boolean {
-  return "code" in error && error.code === code;
 }
 
 function resolveStagingRootPath(dataDir: string): string {
@@ -493,7 +490,7 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
     await fs.access(path.join(stageRootPath, "catalog.json"));
     return stageRootPath;
   } catch (error) {
-    if (!(error instanceof Error) || !isFsErrorWithCode(error, "ENOENT")) {
+    if (!isFsErrorWithCode(error, "ENOENT")) {
       throw error;
     }
   }
@@ -537,9 +534,8 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
     await fs.rename(tempRootPath, stageRootPath);
   } catch (error) {
     if (
-      error instanceof Error &&
-      (isFsErrorWithCode(error, "EEXIST") ||
-        isFsErrorWithCode(error, "ENOTEMPTY"))
+      isFsErrorWithCode(error, "EEXIST") ||
+      isFsErrorWithCode(error, "ENOTEMPTY")
     ) {
       await fs.rm(tempRootPath, { recursive: true, force: true });
       return stageRootPath;
@@ -714,7 +710,7 @@ async function gcSkillStore(dataDir: string): Promise<void> {
   try {
     entries = await fs.readdir(storeRootPath, { withFileTypes: true });
   } catch (error) {
-    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) return;
+    if (isFsErrorWithCode(error, "ENOENT")) return;
     throw error;
   }
   const completeTrees: { name: string; usedAt: number }[] = [];
@@ -730,7 +726,7 @@ async function gcSkillStore(dataDir: string): Promise<void> {
       );
       completeTrees.push({ name: entry.name, usedAt: stat.mtimeMs });
     } catch (error) {
-      if (!(error instanceof Error) || !isFsErrorWithCode(error, "ENOENT")) {
+      if (!isFsErrorWithCode(error, "ENOENT")) {
         throw error;
       }
     }
@@ -801,9 +797,8 @@ async function writeFetchedTreeToStore(args: {
     await fs.rename(tempRootPath, treeRootPath);
   } catch (error) {
     if (
-      error instanceof Error &&
-      (isFsErrorWithCode(error, "EEXIST") ||
-        isFsErrorWithCode(error, "ENOTEMPTY"))
+      isFsErrorWithCode(error, "EEXIST") ||
+      isFsErrorWithCode(error, "ENOTEMPTY")
     ) {
       await fs.rm(tempRootPath, { recursive: true, force: true });
     } else {
@@ -835,7 +830,7 @@ export async function ensureStoredSkillTree(args: {
       await gcSkillStore(args.dataDir);
       return path.join(treeRootPath, STORE_CONTENT_DIR);
     } catch (error) {
-      if (!(error instanceof Error) || !isFsErrorWithCode(error, "ENOENT")) {
+      if (!isFsErrorWithCode(error, "ENOENT")) {
         throw error;
       }
     }
@@ -967,7 +962,7 @@ export async function cleanupInjectedSkillStagingDirs(
   try {
     entries = await fs.readdir(stagingRootPath, { withFileTypes: true });
   } catch (error) {
-    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
       return;
     }
     throw error;
@@ -985,7 +980,7 @@ export async function cleanupInjectedSkillStagingDirs(
         try {
           mtimeMs = (await fs.stat(entryPath)).mtimeMs;
         } catch (error) {
-          if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+          if (isFsErrorWithCode(error, "ENOENT")) {
             return;
           }
           throw error;

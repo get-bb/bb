@@ -3,34 +3,34 @@ import { getThread, updateThread } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { Type } from "@earendil-works/pi-ai";
-import { InferenceTimeoutError, inferenceComplete } from "../ai/inference.js";
-import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import {
+  INFERENCE_POLICY,
+  InferenceTimeoutError,
+  inferenceCompleteWithFallback,
+} from "../ai/inference.js";
 
 const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WORDS = 5;
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
-type ThreadMetadataGenerationDeps = LoggedWorkSessionDeps;
-type ThreadTitleApplyDeps = Pick<AppDeps, "db" | "hub">;
-
-export interface ApplyGeneratedThreadTitleArgs {
+interface ApplyGeneratedThreadTitleArgs {
   threadId: string;
   title: string;
 }
 
-export interface ThreadMetadataGenerationArgs {
+interface ThreadMetadataGenerationArgs {
   input: PromptInput[];
   threadId: string;
   timeoutMaxAttempts?: number;
   timeoutMs?: number;
 }
 
-export interface GeneratedThreadMetadata {
+interface GeneratedThreadMetadata {
   branchSlug?: string;
   title?: string;
 }
 
-export type ThreadMetadataGenerationOutcomeReason =
+type ThreadMetadataGenerationOutcomeReason =
   | "empty-input"
   | "failed"
   | "inference-unavailable"
@@ -97,10 +97,6 @@ export function sanitizeGeneratedBranchSlug(value: string): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-export function deriveBranchSlugFromTitle(title: string): string | null {
-  return sanitizeGeneratedBranchSlug(title);
-}
-
 const threadMetadataSchema = Type.Object({
   title: Type.String(),
 });
@@ -113,7 +109,7 @@ function normalizeGeneratedThreadMetadata(
   }
 
   const title = parsed.title ? sanitizeGeneratedTitle(parsed.title) : null;
-  const branchSlug = title ? deriveBranchSlugFromTitle(title) : null;
+  const branchSlug = title ? sanitizeGeneratedBranchSlug(title) : null;
   if (!title && !branchSlug) {
     return null;
   }
@@ -125,7 +121,7 @@ function normalizeGeneratedThreadMetadata(
 }
 
 export async function generateThreadMetadataWithOutcome(
-  deps: ThreadMetadataGenerationDeps,
+  deps: LoggedWorkSessionDeps,
   args: ThreadMetadataGenerationArgs,
 ): Promise<ThreadMetadataGenerationOutcome> {
   const startedAt = Date.now();
@@ -151,68 +147,28 @@ export async function generateThreadMetadataWithOutcome(
   });
   const maxAttempts = Math.max(1, args.timeoutMaxAttempts ?? 1);
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      const parsed = await inferenceComplete(deps, {
-        prompt,
-        schema: threadMetadataSchema,
-        ...(args.timeoutMs ? { timeoutMs: args.timeoutMs } : {}),
-      });
-
-      const metadata = normalizeGeneratedThreadMetadata(parsed);
-      if (attempt > 1) {
-        deps.logger.info(
-          {
-            attempts: attempt,
-            durationMs: Date.now() - startedAt,
-            threadId: args.threadId,
-          },
-          "Thread metadata inference completed after timeout retry",
-        );
-      }
-      return complete(metadata, metadata ? undefined : "inference-unavailable");
-    } catch (error) {
-      if (error instanceof InferenceTimeoutError) {
-        if (attempt < maxAttempts) {
-          deps.logger.info(
-            {
-              attempt,
-              maxAttempts,
-              threadId: args.threadId,
-              timeoutMs: error.timeoutMs,
-            },
-            "Thread metadata inference timed out; retrying",
-          );
-          continue;
-        }
-
-        deps.logger.info(
-          {
-            attempts: maxAttempts,
-            threadId: args.threadId,
-            timeoutMs: error.timeoutMs,
-          },
-          "Thread metadata inference timed out",
-        );
-        return complete(null, "timeout");
-      }
-
-      deps.logger.warn(
-        {
-          threadId: args.threadId,
-          ...runtimeErrorLogFields(deps.config, error),
-        },
-        "Failed to generate thread metadata",
-      );
-      return complete(null, "failed");
-    }
+  try {
+    const inference = await inferenceCompleteWithFallback(deps, {
+      label: "Thread metadata inference",
+      logContext: { threadId: args.threadId },
+      maxAttempts,
+      prompt,
+      retryDelayMs: INFERENCE_POLICY.threadMetadata.retryDelayMs,
+      schema: threadMetadataSchema,
+      timeoutMs: args.timeoutMs ?? INFERENCE_POLICY.threadMetadata.timeoutMs,
+    });
+    const metadata = normalizeGeneratedThreadMetadata(inference);
+    return complete(metadata, metadata ? undefined : "inference-unavailable");
+  } catch (error) {
+    return complete(
+      null,
+      error instanceof InferenceTimeoutError ? "timeout" : "failed",
+    );
   }
-
-  return complete(null, "failed");
 }
 
 export function applyGeneratedThreadTitle(
-  deps: ThreadTitleApplyDeps,
+  deps: Pick<AppDeps, "db" | "hub">,
   args: ApplyGeneratedThreadTitleArgs,
 ): boolean {
   const title = args.title.trim();

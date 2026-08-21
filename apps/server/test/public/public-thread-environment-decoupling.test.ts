@@ -21,10 +21,10 @@ import { withTestHarness } from "../helpers/test-app.js";
  * of reprovisioning.
  */
 describe("thread environment decoupling (B*)", () => {
-  it("un-archives without touching a retiring environment", async () => {
+  it("revives a retiring environment on un-archive (lossless undo of an accidental archive)", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: "host-unarchive-pure",
+        id: "host-unarchive-revive",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -32,6 +32,7 @@ describe("thread environment decoupling (B*)", () => {
       const environment = seedEnvironment(harness.deps, {
         hostId: host.id,
         managed: true,
+        path: "/tmp/unarchive-revive",
         projectId: project.id,
         status: "retiring",
         workspaceProvisionType: "managed-worktree",
@@ -49,11 +50,12 @@ describe("thread environment decoupling (B*)", () => {
       );
 
       expect(response.status).toBe(200);
-      // The thread is un-archived (pure record op)...
       expect(getThread(harness.db, thread.id)?.archivedAt).toBeNull();
-      // ...and the retiring environment lifecycle is left untouched.
+      // The retiring environment is revived to ready via retire.cancelled: its
+      // worktree was never destroyed during the grace window, so the undo is
+      // lossless.
       expect(getEnvironment(harness.db, environment.id)).toMatchObject({
-        status: "retiring",
+        status: "ready",
       });
     });
   });

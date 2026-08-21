@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   appSettingsSchema,
+  appDefaultKeybindingsSchema,
   appKeybindingOverridesSchema,
   appKeybindingsSchema,
   appThemeSchema,
@@ -11,9 +12,11 @@ import {
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
-import { hostPlatformSchema } from "@bb/host-daemon-contract";
+import { experimental_providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
+import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
+  "provider_unavailable",
   "missing_executable",
   "auth_required",
   "timeout",
@@ -78,10 +81,14 @@ function rejectMultipleProviderHostSelectors(
 
 /**
  * Routes provider discovery through an environment's host or an explicit
- * host. Omitting both preserves the primary-host fallback.
+ * host. Omitting both preserves the primary-host fallback. `capability`
+ * narrows discovery before host probes begin.
  */
 export const systemProvidersQuerySchema = z
-  .object(systemProviderHostQueryFields)
+  .object({
+    ...systemProviderHostQueryFields,
+    capability: z.enum(["usage"]),
+  })
   .partial()
   .superRefine(rejectMultipleProviderHostSelectors);
 export type SystemProvidersQuery = z.infer<typeof systemProvidersQuerySchema>;
@@ -97,9 +104,13 @@ export type SystemExecutionOptionsQuery = z.infer<
   typeof systemExecutionOptionsQuerySchema
 >;
 
-/** Omission preserves the existing behavior of reading the primary machine. */
+/**
+ * Omitting `hostId` reads the primary machine; omitting `providerId` returns
+ * the aggregate used by CLI clients.
+ */
 export const systemUsageLimitsQuerySchema = z.object({
   hostId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
 });
 export type SystemUsageLimitsQuery = z.infer<
   typeof systemUsageLimitsQuerySchema
@@ -121,75 +132,18 @@ export type SystemVoiceTranscriptionResponse = z.infer<
   typeof systemVoiceTranscriptionResponseSchema
 >;
 
-/**
- * One agent row in onboarding. `planLabel` and `accountEmail` are populated
- * only for the three providers `provider.usage` covers; ACP agents report
- * presence and nothing more, and get no badge rather than a fabricated one.
- */
-export const onboardingAgentSchema = z.object({
+/** One provider's live host-local readiness, in registry display order. */
+export const systemProviderStateSchema = providerHealthSchema.extend({
   providerId: z.string().min(1),
   displayName: z.string().min(1),
-  status: z.enum(["connected", "unauthenticated", "expired", "not_installed"]),
-  planLabel: z.string().min(1).nullable(),
-  accountEmail: z.string().nullable(),
-  /** True only where bb has a managed installer, so only these may be offered. */
-  canInstall: z.boolean(),
-  /**
-   * The agent's own sign-in command, when it has one. bb deliberately does not
-   * drive another tool's login: it shows the command and re-checks, so
-   * credentials only ever pass through the agent itself.
-   */
-  loginCommand: z.string().min(1).nullable(),
 });
-export type OnboardingAgent = z.infer<typeof onboardingAgentSchema>;
+export type SystemProviderState = z.infer<typeof systemProviderStateSchema>;
 
-export const onboardingAgentOverviewSchema = z.object({
-  agents: z.array(onboardingAgentSchema),
+export const systemProviderStatesResponseSchema = z.object({
+  providers: z.array(systemProviderStateSchema),
 });
-export type OnboardingAgentOverview = z.infer<
-  typeof onboardingAgentOverviewSchema
->;
-
-/** Omission reads the primary machine, matching the usage-limits route. */
-export const systemOnboardingReposQuerySchema = z.object({
-  hostId: z.string().min(1).optional(),
-});
-export type SystemOnboardingReposQuery = z.infer<
-  typeof systemOnboardingReposQuerySchema
->;
-
-/**
- * Onboarding funnel events, reported by the app and forwarded to the server's
- * anonymous telemetry. Categorical or counts only — never paths, project names,
- * or account emails.
- */
-export const onboardingTelemetryEventSchema = z.discriminatedUnion("name", [
-  z.object({
-    name: z.literal("onboarding_started"),
-    agentState: z.enum(["connected", "signed_out", "none"]),
-    detectedAgentCount: z.number().int().min(0),
-  }),
-  z.object({
-    name: z.literal("onboarding_step_completed"),
-    step: z.enum(["agents", "projects"]),
-  }),
-  z.object({
-    name: z.literal("onboarding_step_skipped"),
-    step: z.enum(["agents", "projects"]),
-  }),
-  z.object({
-    name: z.literal("onboarding_completed"),
-    agentState: z.enum(["connected", "signed_out", "none"]),
-    projectsAdded: z.number().int().min(0),
-    durationMs: z.number().int().min(0),
-  }),
-  z.object({
-    name: z.literal("onboarding_dismissed"),
-    step: z.enum(["agents", "projects"]),
-  }),
-]);
-export type OnboardingTelemetryEvent = z.infer<
-  typeof onboardingTelemetryEventSchema
+export type SystemProviderStatesResponse = z.infer<
+  typeof systemProviderStatesResponseSchema
 >;
 
 export const systemConfigResponseSchema = z.object({
@@ -198,7 +152,7 @@ export const systemConfigResponseSchema = z.object({
   /** Server-resolved keyboard bindings shared by every connected app window. */
   keybindings: appKeybindingsSchema,
   /** Server defaults, before the user's per-command overrides are applied. */
-  defaultKeybindings: appKeybindingsSchema,
+  defaultKeybindings: appDefaultKeybindingsSchema,
   /** Sparse per-command customizations; null shortcuts explicitly disable commands. */
   keybindingOverrides: appKeybindingOverridesSchema,
   /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
@@ -214,6 +168,8 @@ export const systemConfigResponseSchema = z.object({
   pluginThemes: z.array(pluginThemeMetaSchema),
   featureFlags: featureFlagsSchema,
   hostDaemonPort: z.number().nullable(),
+  /** Loopback ports a browser may probe for an editor helper on its own device. */
+  localHelperPorts: z.array(z.number().int().min(1).max(65_535)),
   /** Base URL external host daemons should use to reach this server. */
   serverUrl: z.string().url(),
   /**

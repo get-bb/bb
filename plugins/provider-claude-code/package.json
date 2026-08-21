@@ -1,0 +1,41 @@
+{
+  "name": "bb-plugin-provider-claude-code",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run bb threads with Claude Code.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Claude Code provider",
+    "description": "Run bb threads with Claude Code.",
+    "branding": {
+      "icon": "./icons/claude-code.svg"
+    },
+    "server": "./server.ts",
+    "host": "./src/bridge/bridge.ts"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@bb/agent-runtime": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.197",
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.3.6"
+  }
+}

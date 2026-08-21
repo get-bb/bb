@@ -63,7 +63,7 @@ function userRow(text: string): TimelineConversationRow {
     senderThreadId: null,
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
-    turnRequest: { kind: "message", status: "accepted" },
+    turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
   };
 }
 
@@ -336,7 +336,7 @@ describe("findTimelineFrontierRow", () => {
         senderThreadId: null,
         systemMessageKind: "unlabeled",
         systemMessageSubject: null,
-        turnRequest: { kind: "steer", status: "pending" },
+        turnRequest: { isGrouped: false, kind: "steer", status: "pending" },
       },
     ]);
 

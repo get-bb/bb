@@ -7,22 +7,23 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
     "test:smoke": "vitest run --config vitest.config.ts fake/smoke",
-    "test:integration": "vitest run --config vitest.real-provider.config.ts"
+    "test:integration": "vitest run --config vitest.real-provider.config.ts",
+    "e2e:mobile-backend": "cross-env NODE_ENV=test node --conditions=source --import tsx mobile-e2e/backend.ts",
+    "e2e:mobile-connect-stub": "node --import tsx mobile-e2e/connect-stub.ts"
   },
   "dependencies": {
-    "@bb/agent-runtime": "workspace:*",
     "@bb/config": "workspace:*",
     "@bb/db": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/host-daemon": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
-    "@bb/host-watcher": "workspace:*",
     "@bb/server": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@hono/node-server": "^1.19.11",
     "drizzle-orm": "^0.38.4",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",

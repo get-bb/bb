@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { BbDesktopApi, BbDesktopInfo } from "@bb/desktop-contract";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 
-export interface DesktopUpdateInfo {
+interface DesktopUpdateInfo {
   desktopApi: BbDesktopApi | null;
   desktopInfo: BbDesktopInfo | null;
   /**

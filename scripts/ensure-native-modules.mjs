@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const defaultRepoRoot = resolve(fileURLToPath(import.meta.url), "../..");
 
-export const nativeModules = [
+const nativeModules = [
   { name: "better-sqlite3", resolveFrom: "packages/db/package.json" },
 ];
 
@@ -56,17 +56,6 @@ function shouldRebuildNativeModule(errorMessage) {
       errorMessage,
     )
   );
-}
-
-function getRepairableNativeModuleError(name, requireModule) {
-  try {
-    verifyNativeModule(name, requireModule);
-    return null;
-  } catch (err) {
-    const message = formatThrownValue(err);
-    if (!shouldRebuildNativeModule(message)) throw err;
-    return message;
-  }
 }
 
 function getRepairedNativeModuleError(name, pkgJsonPath) {

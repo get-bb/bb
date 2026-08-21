@@ -1,6 +1,6 @@
 export const BB_DESKTOP_SPELLCHECK_GLOBAL_NAME = "__bbDesktopSpellcheck";
 
-export interface BbDesktopSpellcheckCorrectionContext {
+interface BbDesktopSpellcheckCorrectionContext {
   dictionarySuggestions: string[];
   misspelledWord: string;
 }

@@ -12,7 +12,7 @@ const PLUGIN_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const PLUGIN_LOG_FILE = "plugin.log";
 const PLUGIN_LOG_ROTATED_FILE = "plugin.log.1";
 
-export type PluginLogLevel = "debug" | "info" | "warn" | "error";
+type PluginLogLevel = "debug" | "info" | "warn" | "error";
 
 function pluginLogsDir(dataDir: string, pluginId: string): string {
   return join(dataDir, "plugins", pluginId, "logs");

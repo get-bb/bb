@@ -58,9 +58,7 @@ export function findIsolationRequiringTests(
         TEST_FILE.test(entry.name) &&
         ISOLATION_REQUIRING_API.test(readFileSync(fullPath, "utf8"))
       ) {
-        matches.push(
-          path.relative(pkgDir, fullPath).split(path.sep).join("/"),
-        );
+        matches.push(path.relative(pkgDir, fullPath).split(path.sep).join("/"));
       }
     }
   };
@@ -75,6 +73,33 @@ export function defineWorkspaceTestConfig(
     {
       resolve: {
         conditions: ["source"],
+      },
+      test: {
+        coverage: {
+          provider: "v8",
+          include: ["**/*.{ts,tsx,js,jsx,mjs,cjs}"],
+          exclude: [
+            "**/*.d.ts",
+            "**/*.test.{ts,tsx,js,jsx,mjs,cjs}",
+            "**/*.spec.{ts,tsx,js,jsx,mjs,cjs}",
+            "**/*.stories.{ts,tsx,js,jsx}",
+            "**/*.gen.{ts,tsx,js,jsx}",
+            "**/__fixtures__/**",
+            "**/__tests__/**",
+            "**/generated/**",
+            ".turbo/**",
+            "coverage/**",
+            "dist/**",
+            "node_modules/**",
+            "scripts/**",
+            "test/**",
+            "tests/**",
+            "*.config.{ts,js,mts,mjs}",
+            "vite.{ts,js,mts,mjs}",
+            "vitest.{ts,js,mts,mjs}",
+          ],
+          reporter: ["text-summary", "json-summary"],
+        },
       },
       ssr: {
         resolve: {

@@ -1,22 +1,29 @@
-import { eq } from "drizzle-orm";
-import { defaultExperiments, type Experiments } from "@bb/domain";
+import { inArray } from "drizzle-orm";
+import {
+  defaultExperiments,
+  experimentKeys,
+  experimentKeySchema,
+  type Experiments,
+} from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { systemExperiments } from "../schema.js";
 
-const SYSTEM_EXPERIMENTS_ROW_ID = "current";
-
 export function getExperiments(db: DbConnection): Experiments {
-  const row = db
-    .select({
-      claudeCodeMockCliTraffic: systemExperiments.claudeCodeMockCliTraffic,
-      newOnboarding: systemExperiments.newOnboarding,
-      toolsHub: systemExperiments.toolsHub,
-    })
+  const experiments = { ...defaultExperiments };
+  const rows = db
+    .select()
     .from(systemExperiments)
-    .where(eq(systemExperiments.id, SYSTEM_EXPERIMENTS_ROW_ID))
-    .get();
+    .where(inArray(systemExperiments.key, [...experimentKeys]))
+    .all();
 
-  return row ?? defaultExperiments;
+  for (const row of rows) {
+    const key = experimentKeySchema.safeParse(row.key);
+    if (key.success) {
+      experiments[key.data] = row.value;
+    }
+  }
+
+  return experiments;
 }
 
 export function setExperiments(
@@ -24,22 +31,16 @@ export function setExperiments(
   experiments: Experiments,
 ): void {
   const updatedAt = Date.now();
-  db.insert(systemExperiments)
-    .values({
-      id: SYSTEM_EXPERIMENTS_ROW_ID,
-      claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-      newOnboarding: experiments.newOnboarding,
-      toolsHub: experiments.toolsHub,
-      updatedAt,
-    })
-    .onConflictDoUpdate({
-      target: systemExperiments.id,
-      set: {
-        claudeCodeMockCliTraffic: experiments.claudeCodeMockCliTraffic,
-        newOnboarding: experiments.newOnboarding,
-        toolsHub: experiments.toolsHub,
-        updatedAt,
-      },
-    })
-    .run();
+  db.transaction((transaction) => {
+    for (const key of experimentKeys) {
+      transaction
+        .insert(systemExperiments)
+        .values({ key, value: experiments[key], updatedAt })
+        .onConflictDoUpdate({
+          target: systemExperiments.key,
+          set: { value: experiments[key], updatedAt },
+        })
+        .run();
+    }
+  });
 }

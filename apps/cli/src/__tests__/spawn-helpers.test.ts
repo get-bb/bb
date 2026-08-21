@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS } from "@bb/sdk";
 import {
   buildSpawnEnvironment,
   looksLikePath,
   requireHostId,
 } from "../commands/thread/spawn.js";
 import {
-  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitTimeoutSeconds,
   parseThreadWaitPollIntervalMs,

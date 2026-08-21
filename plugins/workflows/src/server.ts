@@ -1,20 +1,17 @@
-import type { BbPluginApi, PluginAgentToolResult } from "@bb/plugin-sdk";
+import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { registerWorkflowCli } from "./cli.js";
 import { migrations } from "./data.js";
-import { executeWorkflowScript } from "./runtime.js";
+import { toJsonValue } from "./json-value.js";
 import { createWorkflowService } from "./service.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
   registerWorkflowSettings,
 } from "./settings.js";
+import type { JsonValue } from "./types.js";
 import { prepareWorkflowSource } from "./workflow-input.js";
 import { workflowUiRpcContract } from "./ui-contract.js";
 import { buildWorkflowRunView } from "./ui-view.js";
-
-// The named export lets the packaged-artifact smoke test execute the exact
-// runtime BB loads, including its embedded QuickJS WASM.
-export { executeWorkflowScript };
 
 const sourceInputFields = {
   script: z
@@ -44,11 +41,16 @@ const sourceInputFields = {
     )
     .optional(),
 } as const;
+// zod 4's `z.json()` compiles to a self-referential `$defs` entry, and some
+// model providers reject an entire tool list that contains a recursive `$ref`
+// before the turn starts. Declare freeform JSON as `unknown` so the wire schema
+// stays flat, then narrow with `toJsonValue` at each call site.
+const freeformJson = z.unknown();
+
 const runInputSchema = z
   .object({
     ...sourceInputFields,
-    args: z
-      .json()
+    args: freeformJson
       .describe(
         "Optional input value exposed to the script as the global `args`, verbatim. Pass arrays/objects as actual JSON values, NOT as a JSON-encoded string — a stringified list breaks `args.filter`/`args.map` in the script. Use for parameterized named workflows (e.g. a research question).",
       )
@@ -65,9 +67,9 @@ const runInputSchema = z
   .strict();
 const resultInputSchema = z
   .object({
-    value: z
-      .json()
-      .describe("The final value matching the requested JSON Schema."),
+    value: freeformJson.describe(
+      "The final value matching the requested JSON Schema.",
+    ),
   })
   .strict();
 
@@ -137,6 +139,10 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.agents.registerTool({
     name: "bb_workflow_run",
+    experimental_presentation: {
+      label: { pending: "Starting workflow", completed: "Started workflow" },
+      icon: { glyph: "Workflow" },
+    },
     description:
       "Execute a workflow script that orchestrates multiple subagents deterministically. Workflows run in the background — this tool returns immediately with a run ID and a `previewDirective`. After a successful call, emit that directive exactly once on its own line (not in a code fence) so BB renders live progress in chat. A completion notification is sent to the origin thread. Use `bb workflows status <run-id>` for a compact summary. For detailed history, redirect a bounded JSONL page from `bb workflows history <run-id> --cursor <call-index> --limit <1-100>` into `$BB_THREAD_STORAGE`, then inspect the file with normal filesystem tools.",
     parameters: runInputSchema,
@@ -147,7 +153,7 @@ export default async function plugin(bb: BbPluginApi) {
           projectId: ctx.projectId,
           originThreadId: ctx.threadId,
           source: prepared.source,
-          args: input.args,
+          args: toJsonValue(input.args, "args"),
           resumedFromRunId: input.resumeRunId,
         });
         const previewDirective = `::workflow-preview{run="${run.id}"}`;
@@ -167,11 +173,29 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.agents.registerTool({
     name: "bb_workflow_result",
+    // The structured result is the turn's deliverable; its tool row is
+    // bookkeeping beside it, so clients collapse the row by default.
+    experimental_presentation: {
+      label: {
+        pending: "Returning structured result",
+        completed: "Returned structured result",
+      },
+      icon: { glyph: "Workflow" },
+      suppress: true,
+    },
     description:
       'Use this tool to return your final response in the requested structured format. You MUST call this tool exactly once at the end of your response with {"value": ...} to provide the structured output.',
     parameters: resultInputSchema,
     async execute({ value }, ctx) {
-      const result = await service.submitStructuredResult(ctx.threadId, value);
+      let parsed: JsonValue;
+      try {
+        parsed = toJsonValue(value, "value");
+      } catch (error) {
+        return errorResult(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+      const result = await service.submitStructuredResult(ctx.threadId, parsed);
       if (result.ok) return jsonResult({ accepted: true });
       return errorResult(result.error);
     },

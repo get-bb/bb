@@ -370,8 +370,12 @@ export function registerShowCommand(
               console.log(`  Branch:   ${ws.branch.currentBranch}`);
             }
             console.log(`  Changed files: ${ws.workingTree.files.length}`);
-            console.log(`  Insertions:    +${ws.workingTree.insertions}`);
-            console.log(`  Deletions:     -${ws.workingTree.deletions}`);
+            if (ws.workingTree.lineStatsComplete) {
+              console.log(`  Insertions:    +${ws.workingTree.insertions}`);
+              console.log(`  Deletions:     -${ws.workingTree.deletions}`);
+            } else {
+              console.log("  Line stats: unavailable for untracked files");
+            }
             if (ws.mergeBase) {
               console.log(`  Merge base:   ${ws.mergeBase.mergeBaseBranch}`);
               console.log(

@@ -1,21 +1,22 @@
 import { getConnInfo } from "@hono/node-server/conninfo";
 import {
+  APP_SURFACE_API,
   APP_SURFACE_HEADER_NAME,
-  parseAppSurface,
-  type AppSurface,
+  parseRequestAppSurface,
+  type RequestAppSurface,
 } from "@bb/config/app-surface";
 import type { Context } from "hono";
 
 export const TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY = "bbTrustedRemoteAddress";
-export const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
-export const GATE_MACHINE_ID_HEADER_NAME = "x-bb-gate-machine-id";
-export type GateAuthKind = "machine" | "session";
+const GATE_AUTH_HEADER_NAME = "x-bb-gate-auth";
+const GATE_MACHINE_ID_HEADER_NAME = "x-bb-gate-machine-id";
+type GateAuthKind = "machine" | "session";
 
 export interface GateAuthHeaderReader {
   req: { header(name: string): string | undefined };
 }
 
-export interface TrustedRemoteAddressReader {
+interface TrustedRemoteAddressReader {
   get(key: typeof TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY): string | undefined;
 }
 
@@ -54,11 +55,15 @@ export function getGateMachineId(context: GateAuthHeaderReader): string | null {
   return value ? value : null;
 }
 
-export function resolveRequestAppSurface(
-  context: Context,
-  fallback: AppSurface,
-): AppSurface {
+/**
+ * The surface that made this request. A request without the header comes from
+ * the bb CLI, the SDK, an automation, or an agent, so it is `api`. It must not
+ * inherit the server surface: that counted headless traffic as desktop or web
+ * users.
+ */
+export function resolveRequestAppSurface(context: Context): RequestAppSurface {
   return (
-    parseAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ?? fallback
+    parseRequestAppSurface(context.req.header(APP_SURFACE_HEADER_NAME)) ??
+    APP_SURFACE_API
   );
 }

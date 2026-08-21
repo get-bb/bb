@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { ThreadEvent, ThreadEventBackgroundTaskItem } from "@bb/domain";
+import type {
+  ThreadEvent,
+  ThreadEventBackgroundTaskItem,
+  ThreadEventDelegationItem,
+} from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import { RuntimeBackgroundWorkState } from "./runtime-background-work-state.js";
 
@@ -50,7 +54,104 @@ function taskCompleted(
   };
 }
 
+function delegation(
+  id: string,
+  status: ThreadEventDelegationItem["status"] = "pending",
+  background = false,
+): ThreadEventDelegationItem {
+  return {
+    type: "delegation",
+    id,
+    childRef: `agent-${id}`,
+    label: `/root/${id}`,
+    status,
+    background,
+  };
+}
+
 describe("RuntimeBackgroundWorkState", () => {
+  it("counts an open delegation as open work until it settles", () => {
+    const state = new RuntimeBackgroundWorkState();
+    state.observe({
+      type: "item/started",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      item: delegation("d1"),
+    });
+    expect(state.hasOpenThreadWork("t1")).toBe(true);
+
+    // The parent turn settling does not settle the delegation: the child can
+    // still be running (codex multiplexes its turns onto the parent session).
+    state.observe({
+      type: "turn/completed",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      status: "completed",
+    });
+    expect(state.hasOpenThreadWork("t1")).toBe(true);
+
+    state.observe({
+      type: "item/completed",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      item: delegation("d1", "completed"),
+    });
+    expect(state.hasOpenThreadWork("t1")).toBe(false);
+  });
+
+  it("re-opens a settled delegation the provider reopened for a followup", () => {
+    const state = new RuntimeBackgroundWorkState();
+    const started: ThreadEvent = {
+      type: "item/started",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      item: delegation("d1"),
+    };
+    state.observe(started);
+    state.observe({
+      type: "item/completed",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      item: delegation("d1", "completed"),
+    });
+    expect(state.hasOpenThreadWork("t1")).toBe(false);
+
+    state.observe(started);
+    expect(state.hasOpenThreadWork("t1")).toBe(true);
+  });
+
+  it("settles a background delegation through its thread-scoped events", () => {
+    const state = new RuntimeBackgroundWorkState();
+    state.observe({
+      type: "item/started",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: turnScope("turn-1"),
+      item: delegation("d1", "pending", true),
+    });
+    state.observe({
+      type: "item/delegation/progress",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: threadScope(),
+      item: delegation("d1", "pending", true),
+    });
+    expect(state.hasOpenThreadWork("t1")).toBe(true);
+    state.observe({
+      type: "item/delegation/completed",
+      threadId: "t1",
+      providerThreadId: "p1",
+      scope: threadScope(),
+      item: delegation("d1", "failed", true),
+    });
+    expect(state.hasOpenThreadWork("t1")).toBe(false);
+  });
+
   it("reports open work until every task settles", () => {
     const state = new RuntimeBackgroundWorkState();
     expect(state.hasOpenWork()).toBe(false);

@@ -47,26 +47,32 @@ import {
 } from "./build-event-projection.js";
 import {
   buildAcceptedClientRequestById,
+  buildRejectedClientRequestById,
   type AcceptedClientRequestContext,
 } from "./accepted-client-request-context.js";
-import { parsePendingSteersFromClientRequest } from "./user-message-parsing.js";
+import {
+  parsePendingSteersFromClientRequest,
+  parseRejectedUsersFromClientRequest,
+} from "./user-message-parsing.js";
 import { getOrderedThreadEvents } from "./group-event-projection-turns.js";
 import {
   groupCompletedTurnMessages,
   type CompletedTurnSummaryItem,
 } from "./completed-turn-grouping.js";
 import { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
-import { extractThreadTimelineActivePromptMode } from "./active-prompt-mode-extraction.js";
+import {
+  extractThreadTimelineActivePromptMode,
+  type PlanCommand,
+} from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
 import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
 
-export type ThreadTimelineTurnMessageDetail = "summary" | "full";
+type ThreadTimelineTurnMessageDetail = "summary" | "full";
 
 interface ThreadTimelineFromEventsBaseOptions {
   contextOnlyToolCallIds?: ReadonlySet<string>;
-  includeDebugRawEvents: boolean;
   includeProviderUnhandledOperations: boolean;
   /**
    * Tail-only state (`pendingTodos`) is only meaningful on the latest page —
@@ -85,6 +91,12 @@ interface ThreadTimelineFromEventsBaseOptions {
    * providers that are not in thread-view's static provider table.
    */
   providerDisplayName?: string;
+  /**
+   * The provider's declared `plan` composer command, or null/absent when it
+   * declares none. Plan-mode eligibility and the command syntax both come from
+   * the declaration rather than from a provider id list in this package.
+   */
+  planCommand?: PlanCommand | null;
   threadStatus: Thread["status"];
   /**
    * Display name of the thread, used by operation rows that describe a
@@ -99,12 +111,12 @@ interface ThreadTimelineFromEventsBaseOptions {
   workspaceRoot: string | null;
 }
 
-export interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
+interface ThreadTimelineFromEventsOptions extends ThreadTimelineFromEventsBaseOptions {
   includeNestedRows: boolean;
   turnMessageDetail: ThreadTimelineTurnMessageDetail;
 }
 
-export interface BuildThreadTimelineFromEventsArgs {
+interface BuildThreadTimelineFromEventsArgs {
   acceptedClientRequestContext: AcceptedClientRequestContext;
   contextWindowEvents: ThreadEventWithMeta[];
   events: ThreadEventWithMeta[];
@@ -123,12 +135,12 @@ export interface ThreadTimelineFromEventsResult {
   rows: TimelineRow[];
 }
 
-export interface ThreadTimelineSourceSeqRange {
+interface ThreadTimelineSourceSeqRange {
   sourceSeqEnd: number;
   sourceSeqStart: number;
 }
 
-export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
+interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadTimelineSourceSeqRange {
   includeProviderUnhandledOperations: boolean;
   providerDisplayName?: string;
   threadStatus: Thread["status"];
@@ -138,12 +150,12 @@ export interface BuildThreadTimelineTurnDetailsFromEventsOptions extends ThreadT
   workspaceRoot: string | null;
 }
 
-export interface BuildThreadTimelineTurnDetailsFromEventsArgs {
+interface BuildThreadTimelineTurnDetailsFromEventsArgs {
   events: ThreadEventWithMeta[];
   options: BuildThreadTimelineTurnDetailsFromEventsOptions;
 }
 
-export type ThreadTimelineTurnDetailsFromEventsResult =
+type ThreadTimelineTurnDetailsFromEventsResult =
   | {
       kind: "matched";
       rows: TimelineRow[];
@@ -229,6 +241,7 @@ function operationKindForMessage(
 ): TimelineSystemOperationKind {
   switch (message.opType) {
     case "compaction":
+    case "context-clear":
     case "thread-provisioning":
     case "thread-interrupted":
     case "provider-unhandled":
@@ -345,6 +358,7 @@ function buildWorkflowWorkRow(
     taskType: message.taskType,
     workflowName: message.workflowName,
     description: message.description,
+    model: message.model,
     taskStatus: message.taskStatus,
     workflow: message.workflow,
     usage: message.usage,
@@ -597,7 +611,9 @@ function convertMessage(
           callId: message.callId,
           toolName: message.toolName,
           toolArgs: message.toolArgs,
-          ...(message.statusLabels ? { statusLabels: message.statusLabels } : {}),
+          ...(message.statusLabels
+            ? { statusLabels: message.statusLabels }
+            : {}),
           output: message.output,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
@@ -780,28 +796,17 @@ function convertMessage(
         },
       ];
     }
-    case "debug/raw-event":
-      return [
-        {
-          ...buildTimelineRowBase(message, options.rowIdPrefix),
-          kind: "system",
-          systemKind: "debug",
-          title: message.rawType,
-          detail: JSON.stringify(message.rawEvent),
-          status: null,
-        },
-      ];
     default:
       return assertNever(message);
   }
 }
 
-function convertPendingSteerMessage(
+function convertSteerMessage(
   message: EventProjectionMessage,
   rowIdPrefix: string,
 ): TimelineUserConversationRow {
   if (message.kind !== "user" || message.turnRequest.kind !== "steer") {
-    throw new Error(`Expected pending steer message, received ${message.kind}`);
+    throw new Error(`Expected steer message, received ${message.kind}`);
   }
   return {
     ...buildTimelineRowBase(message, rowIdPrefix),
@@ -828,14 +833,115 @@ function buildPendingSteerRowsFromEvents(
     context: acceptedClientRequestContext,
     events: orderedEvents,
   });
+  const rejectedClientRequestById = buildRejectedClientRequestById(
+    acceptedClientRequestContext,
+    orderedEvents,
+  );
+  const inWindowRejectedClientRequestIds = new Set(
+    orderedEvents.flatMap(({ event }) =>
+      event.type === "client/turn/rejected" ? [event.requestId] : [],
+    ),
+  );
+  const legacyRejectedRequestMetaById = new Map<
+    string,
+    ThreadEventWithMeta["meta"]
+  >();
+  const unresolvedSteerRequestIds = new Set<string>();
+  const unresolvedSteerRequestOrder: string[] = [];
+  let explicitRejectionNeedsCompanionError = false;
+  for (const { event, meta } of orderedEvents) {
+    if (
+      event.type === "client/turn/requested" &&
+      (event.target.kind === "auto" || event.target.kind === "steer") &&
+      event.target.expectedTurnId !== null
+    ) {
+      unresolvedSteerRequestIds.add(event.requestId);
+      unresolvedSteerRequestOrder.push(event.requestId);
+      explicitRejectionNeedsCompanionError = false;
+      continue;
+    }
+    if (event.type === "turn/input/accepted") {
+      unresolvedSteerRequestIds.delete(event.clientRequestId);
+      explicitRejectionNeedsCompanionError = false;
+      continue;
+    }
+    if (event.type === "client/turn/rejected") {
+      unresolvedSteerRequestIds.delete(event.requestId);
+      explicitRejectionNeedsCompanionError = true;
+      continue;
+    }
+    if (
+      event.type === "system/error" &&
+      event.code === "thread_command_failed"
+    ) {
+      if (explicitRejectionNeedsCompanionError) {
+        explicitRejectionNeedsCompanionError = false;
+        continue;
+      }
+      let requestId = unresolvedSteerRequestOrder.pop();
+      while (requestId && !unresolvedSteerRequestIds.delete(requestId)) {
+        requestId = unresolvedSteerRequestOrder.pop();
+      }
+      if (requestId) legacyRejectedRequestMetaById.set(requestId, meta);
+      continue;
+    }
+    explicitRejectionNeedsCompanionError = false;
+  }
   const pendingSteerRows: TimelineUserConversationRow[] = [];
 
   for (const { event, meta } of orderedEvents) {
+    if (
+      event.type === "client/turn/requested" &&
+      inWindowRejectedClientRequestIds.has(event.requestId)
+    ) {
+      continue;
+    }
+    const acceptedClientRequest =
+      event.type === "client/turn/requested"
+        ? acceptedClientRequestById.get(event.requestId)
+        : undefined;
+    const legacyRejectedMeta =
+      event.type === "client/turn/requested"
+        ? legacyRejectedRequestMetaById.get(event.requestId)
+        : undefined;
+    const rejectedMeta =
+      event.type === "client/turn/requested"
+        ? rejectedClientRequestById.get(event.requestId)
+        : undefined;
+    if (
+      event.type === "client/turn/requested" &&
+      acceptedClientRequest === undefined &&
+      rejectedMeta
+    ) {
+      pendingSteerRows.push(
+        ...parseRejectedUsersFromClientRequest({
+          decoded: event,
+          meta: rejectedMeta,
+          options,
+        }).map((rejectedSteer) =>
+          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        ),
+      );
+      continue;
+    }
+    if (
+      event.type === "client/turn/requested" &&
+      acceptedClientRequest === undefined &&
+      legacyRejectedMeta
+    ) {
+      pendingSteerRows.push(
+        ...parseRejectedUsersFromClientRequest({
+          decoded: event,
+          meta: legacyRejectedMeta,
+          options,
+        }).map((rejectedSteer) =>
+          convertSteerMessage(rejectedSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        ),
+      );
+      continue;
+    }
     const pendingSteers = parsePendingSteersFromClientRequest({
-      acceptedClientRequest:
-        event.type === "client/turn/requested"
-          ? acceptedClientRequestById.get(event.requestId)
-          : undefined,
+      acceptedClientRequest,
       decoded: event,
       meta,
       options,
@@ -845,7 +951,7 @@ function buildPendingSteerRowsFromEvents(
     }
     pendingSteerRows.push(
       ...pendingSteers.map((pendingSteer) =>
-        convertPendingSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
+        convertSteerMessage(pendingSteer, ROOT_TIMELINE_ROW_ID_PREFIX),
       ),
     );
   }
@@ -1198,7 +1304,6 @@ export function buildThreadTimelineFromEvents(
 ): ThreadTimelineFromEventsResult {
   const projectionOptions = {
     acceptedClientRequestContext: args.acceptedClientRequestContext,
-    includeDebugRawEvents: args.options.includeDebugRawEvents,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     contextOnlyToolCallIds: args.options.contextOnlyToolCallIds,
@@ -1227,6 +1332,7 @@ export function buildThreadTimelineFromEvents(
       ? null
       : extractThreadTimelineActivePromptMode({
           events: args.events,
+          planCommand: args.options.planCommand,
           providerId: args.options.providerId,
           threadStatus: args.options.threadStatus,
         }),
@@ -1264,7 +1370,6 @@ export function buildThreadTimelineTurnDetailsFromEvents(
   args: BuildThreadTimelineTurnDetailsFromEventsArgs,
 ): ThreadTimelineTurnDetailsFromEventsResult {
   const projection = buildEventProjectionEntries(args.events, {
-    includeDebugRawEvents: false,
     includeProviderUnhandledOperations:
       args.options.includeProviderUnhandledOperations,
     providerDisplayName: args.options.providerDisplayName,

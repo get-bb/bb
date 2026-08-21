@@ -6,31 +6,23 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resetPluginSlotStoreForTest } from "@/lib/plugin-slots";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { ToolsHubExperimentProvider } from "@/components/tools/tools-experiment-context";
 import { useSettingsNavState } from "./settings-nav";
 
 const mocks = vi.hoisted(() => ({
-  plugins: [] as Array<Record<string, unknown>>,
-}));
-
-vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
-  usePluginList: () => ({ data: { plugins: mocks.plugins } }),
+  accessState: "unavailable",
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({
   useHostDaemon: () => ({ hasDaemon: false }),
+  useLocalHostDaemonAccess: () => ({ accessState: mocks.accessState }),
 }));
 
-function wrapperFor(path: string, toolsHubEnabled = false) {
+function wrapperFor(path: string) {
   const { wrapper: QueryWrapper } = createQueryClientTestHarness();
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryWrapper>
-        <MemoryRouter initialEntries={[path]}>
-          <ToolsHubExperimentProvider enabled={toolsHubEnabled}>
-            {children}
-          </ToolsHubExperimentProvider>
-        </MemoryRouter>
+        <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>
       </QueryWrapper>
     );
   };
@@ -39,21 +31,17 @@ function wrapperFor(path: string, toolsHubEnabled = false) {
 afterEach(() => {
   cleanup();
   resetPluginSlotStoreForTest();
-  vi.clearAllMocks();
-  mocks.plugins = [];
+  mocks.accessState = "unavailable";
 });
 
 describe("useSettingsNavState", () => {
-  it("resolves Codex and Claude Code as separate provider pages", () => {
+  it("resolves the Providers bucket from its section route", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings/providers/claude-code"),
+      wrapper: wrapperFor("/settings/providers"),
     });
 
-    expect(result.current.activeProviderId).toBe("claude-code");
-    expect(result.current.activeSection).toBeNull();
-    expect(
-      result.current.providerEntries.map((provider) => provider.id),
-    ).toEqual(["codex", "claude-code"]);
+    expect(result.current.activeSection).toBe("providers");
+    expect(result.current.hasUnknownSection).toBe(false);
   });
 
   it("shows the Machines section", () => {
@@ -63,6 +51,17 @@ describe("useSettingsNavState", () => {
 
     expect(result.current.sections.map((section) => section.id)).toContain(
       "machines",
+    );
+  });
+
+  it("shows Files when local helper access can be enabled", () => {
+    mocks.accessState = "permission-required";
+    const { result } = renderHook(() => useSettingsNavState(), {
+      wrapper: wrapperFor("/settings/files"),
+    });
+
+    expect(result.current.sections.map((section) => section.id)).toContain(
+      "files",
     );
   });
 
@@ -77,33 +76,13 @@ describe("useSettingsNavState", () => {
     );
   });
 
-  it("keeps legacy plugin management in Settings while Extensions is disabled", () => {
+  it("keeps plugin management out of Settings", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
       wrapper: wrapperFor("/settings"),
-    });
-
-    expect(result.current.sections.map((section) => section.id)).toContain(
-      "plugins",
-    );
-  });
-
-  it("hides legacy plugin management but preserves registered plugin settings while Extensions is enabled", () => {
-    mocks.plugins = [
-      {
-        id: "workflows",
-        enabled: true,
-        hasSettings: true,
-      },
-    ];
-    const { result } = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings", true),
     });
 
     expect(result.current.sections.map((section) => section.id)).not.toContain(
       "plugins",
     );
-    expect(result.current.pluginEntries.map((plugin) => plugin.id)).toEqual([
-      "workflows",
-    ]);
   });
 });

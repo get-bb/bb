@@ -70,10 +70,10 @@ type ManagedWorktreeEnvironmentProvisionCommand = Extract<
   { type: "environment.provision"; workspaceProvisionType: "managed-worktree" }
 >;
 
-export type ManagedWorktreeEnvironmentProvisionLiveCommand =
+type ManagedWorktreeEnvironmentProvisionLiveCommand =
   QueuedCommand<ManagedWorktreeEnvironmentProvisionCommand>;
 
-export function isManagedWorktreeEnvironmentProvisionLiveCommand(
+function isManagedWorktreeEnvironmentProvisionLiveCommand(
   queued: QueuedCommand,
 ): queued is ManagedWorktreeEnvironmentProvisionLiveCommand {
   return (
@@ -286,7 +286,7 @@ function buildDefaultBranchListResult(
   };
 }
 
-export interface CreateTestDaemonEventEnvelopeArgs {
+interface CreateTestDaemonEventEnvelopeArgs {
   event: ThreadEvent;
   threadId?: string;
 }
@@ -354,6 +354,25 @@ export function registerTestHostRpcCapture(
         return;
       }
       const command = hostDaemonRpcCommandSchema.parse(message.command);
+      if (
+        command.type === "plugin.host.dispose" ||
+        command.type === "plugin.host.cancel"
+      ) {
+        deps.hub.recordHostOnlineRpcResponse({
+          message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+            type: "host-rpc.response",
+            requestId: message.requestId,
+            commandType: command.type,
+            ok: true,
+            result:
+              command.type === "plugin.host.dispose"
+                ? { disposed: true }
+                : { cancelled: true },
+          }),
+          sessionId: args.sessionId,
+        });
+        return;
+      }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
         return;
       }
@@ -437,7 +456,16 @@ export async function waitForQueuedCommand(
     await sleep(10);
   }
 
-  throw new Error("Timed out waiting for queued command");
+  const captured = pendingHostRpcRequests
+    .filter((queued) => isCapturedRpcForHarness(harness, queued))
+    .map((queued) =>
+      queued.command.type === "plugin.host.call"
+        ? `${queued.command.type}:${queued.command.pluginId}/${queued.command.method}`
+        : queued.command.type,
+    );
+  throw new Error(
+    `Timed out waiting for queued command; captured: ${captured.join(", ") || "none"}`,
+  );
 }
 
 export async function waitForQueuedCommandAfter(

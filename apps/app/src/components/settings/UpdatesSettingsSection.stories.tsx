@@ -1,15 +1,30 @@
 import type { ReactNode } from "react";
 import type { Host } from "@bb/domain";
-import { Button } from "@bb/shared-ui/button";
-import { Icon } from "@bb/shared-ui/icon";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  type ProviderCliKey,
+} from "@bb/host-daemon-contract";
 import type { ProviderCliIssue } from "@/components/provider-cli/provider-cli-install";
 import type { UpdateInventoryMachine } from "@/hooks/useUpdateInventory";
+import { SettingsStoryChrome } from "../../../.ladle/story-settings-chrome";
+import {
+  makeHost,
+  makeProviderCliStatus,
+} from "../../../.ladle/story-fixtures";
+import {
+  StoryState as State,
+  StoryStateGroup as Group,
+  StoryStates as Story,
+} from "../../../.ladle/story-states";
 import {
   BbAppUpdateRows,
+  BbDaemonUpdateRow,
+  ChangelogPreviewCard,
   MachineUpdatesRows,
-  UpdatesRowList,
-  UpdatesSection,
+  MachineUpdatesSection,
+  ProviderCliCheckRow,
+  UpdateActionButton,
 } from "./UpdatesSettingsSection";
 
 export default {
@@ -18,541 +33,570 @@ export default {
 
 const noop = () => {};
 const NO_JOBS: ReadonlySet<string> = new Set();
+const STORY_NOW = 1_800_000_000_000;
 
-function Stage({ children }: { children: ReactNode }) {
-  return <div className="w-full max-w-2xl space-y-6 p-4">{children}</div>;
-}
+const NPM_VERSION = {
+  currentVersion: "0.38.0",
+  latestVersion: "0.38.0",
+  source: "npm" as const,
+  updateAvailable: false,
+  isDevelopment: false,
+  upgradeCommand: "npx bb-app@latest",
+};
 
-function makeHost(overrides: Partial<Host> & Pick<Host, "id" | "name">): Host {
-  return {
-    type: "persistent",
-    status: "connected",
-    lastSeenAt: 1_700_000_000_000,
-    maxPermissionMode: "full",
-    lastRejectedProtocolVersion: null,
-    createdAt: 1,
-    updatedAt: 2,
-    ...overrides,
-  };
-}
+const DESKTOP_UPDATE = {
+  lastCheckedAt: "2026-07-19T00:00:00.000Z",
+  latestVersion: "0.39.0",
+  pendingVersion: "0.39.0",
+  platform: "macos" as const,
+  updateAvailable: true,
+  updateDownloaded: true,
+  downloadState: "downloaded" as const,
+  version: "0.38.0",
+};
 
-interface ProviderStatusOverrides {
-  installed?: boolean;
-  currentVersion?: string | null;
-  latestVersion?: string | null;
-  needsUpdate?: boolean;
-  versionUnsupported?: boolean;
-  withAction?: boolean;
-}
-
-function providerStatus(
-  provider: "codex" | "claudeCode",
-  overrides: ProviderStatusOverrides = {},
-) {
-  const displayName = provider === "codex" ? "Codex" : "Claude Code";
-  const executableName = provider === "codex" ? "codex" : "claude";
-  const installed = overrides.installed ?? true;
-  const needsUpdate = overrides.needsUpdate ?? false;
-  const withAction = overrides.withAction ?? (needsUpdate || !installed);
-  return {
-    displayName,
-    executableName,
-    executablePath: installed ? `/usr/local/bin/${executableName}` : null,
-    installed,
-    installSource: installed
-      ? ("npmGlobal" as const)
-      : ("notInstalled" as const),
-    currentVersion:
-      overrides.currentVersion !== undefined
-        ? overrides.currentVersion
-        : installed
-          ? "1.0.0"
-          : null,
-    latestVersion:
-      overrides.latestVersion !== undefined ? overrides.latestVersion : "1.0.1",
-    minimumSupportedVersion: null,
-    npmPackageName: null,
-    npmGlobalPackageVersion: null,
-    installAction: withAction
-      ? {
-          kind: installed ? ("update" as const) : ("install" as const),
-          label: installed ? ("Update" as const) : ("Install" as const),
-          commandKind: "exec" as const,
-          command: installed
-            ? `${executableName} update`
-            : `npm install -g ${executableName}`,
-        }
-      : null,
-    needsUpdate,
-    versionUnsupported: overrides.versionUnsupported ?? false,
-  };
-}
-
-function issueFor(
-  provider: "codex" | "claudeCode",
-  overrides: ProviderStatusOverrides = {},
+function updateIssue(
+  provider: ProviderCliKey,
+  currentVersion: string,
+  latestVersion: string,
 ): ProviderCliIssue {
-  const status = providerStatus(provider, overrides);
+  const base = makeProviderCliStatus(provider);
+  const action = {
+    kind: "update" as const,
+    label: "Update" as const,
+    command: `${base.executableName} update`,
+  };
+  return {
+    provider,
+    status: {
+      ...base,
+      currentVersion,
+      latestVersion,
+      installAction: action,
+      needsUpdate: true,
+    },
+    action,
+    title: `${base.displayName} update available`,
+    description: `${currentVersion} -> ${latestVersion}`,
+    fingerprint: `${provider}:${currentVersion}:${latestVersion}`,
+  };
+}
+
+function machineOf({
+  host,
+  isPrimary = false,
+  issues = [],
+  statusError = false,
+  canRetryDaemonUpdate = false,
+}: {
+  host: Host;
+  isPrimary?: boolean;
+  issues?: ProviderCliIssue[];
+  statusError?: boolean;
+  canRetryDaemonUpdate?: boolean;
+}): UpdateInventoryMachine {
+  const statusFor = (provider: ProviderCliKey) =>
+    issues.find((issue) => issue.provider === provider)?.status ??
+    makeProviderCliStatus(provider);
+  return {
+    host,
+    isPrimary,
+    providerStatus:
+      host.status === "connected"
+        ? {
+            codex: statusFor("codex"),
+            "claude-code": statusFor("claude-code"),
+            "acp-cursor": statusFor("acp-cursor"),
+          }
+        : null,
+    statusPending: false,
+    statusFetching: false,
+    statusError,
+    issues,
+    canRetryDaemonUpdate,
+  };
+}
+
+function StoryPage({ children }: { children: ReactNode }) {
+  return (
+    <SettingsStoryChrome activeSection="updates">
+      <div className="space-y-6">{children}</div>
+    </SettingsStoryChrome>
+  );
+}
+
+/** The default-off changelog preview experiment in its enabled state. */
+export function ChangelogPreviewExperiment() {
+  // A review story must always expose the initial state, even when this
+  // browser already exercised dismissal for the same bundled release.
+  window.localStorage.removeItem(
+    "bb.settings.updates.dismissed-changelog-version",
+  );
+  return (
+    <SettingsStoryChrome activeSection="updates">
+      <ChangelogPreviewCard />
+    </SettingsStoryChrome>
+  );
+}
+
+function StoryMachineSection({
+  machine,
+  app = false,
+  appUpdate = false,
+  action,
+}: {
+  machine: UpdateInventoryMachine;
+  app?: boolean;
+  appUpdate?: boolean;
+  action?: ReactNode;
+}) {
+  const showDaemon =
+    machine.canRetryDaemonUpdate || machine.host.status !== "connected";
+  return (
+    <MachineUpdatesSection
+      machine={machine}
+      isThisMachine={false}
+      action={action}
+    >
+      {app ? (
+        <BbAppUpdateRows
+          systemVersion={appUpdate ? undefined : NPM_VERSION}
+          desktopInfo={appUpdate ? DESKTOP_UPDATE : null}
+          isDesktop={appUpdate}
+          onRelaunchDesktop={noop}
+          onRetryDesktop={noop}
+        />
+      ) : null}
+      {showDaemon ? (
+        <BbDaemonUpdateRow
+          machine={machine}
+          now={STORY_NOW}
+          retryUpdatePending={false}
+          onRetryDaemonUpdate={noop}
+          onOpenMachine={noop}
+        />
+      ) : null}
+      {machine.statusError ? (
+        <ProviderCliCheckRow
+          machine={machine}
+          onRecheckClis={noop}
+          onOpenMachine={noop}
+        />
+      ) : null}
+      <MachineUpdatesRows
+        machine={machine}
+        runningJobKey={null}
+        queuedJobKeys={NO_JOBS}
+        onStartInstall={noop}
+        onOpenProvider={noop}
+      />
+    </MachineUpdatesSection>
+  );
+}
+
+function Why({ items }: { items: readonly string[] }) {
+  return (
+    <ul className="space-y-1">
+      {items.map((item) => (
+        <li key={item} className="flex gap-1.5">
+          <span aria-hidden className="text-subtle-foreground">
+            •
+          </span>
+          <span className="min-w-0">{item}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StoryAppState({ children }: { children: ReactNode }) {
+  const machine = machineOf({
+    host: makeHost({ id: "state-app", name: "workstation" }),
+    isPrimary: true,
+  });
+  return (
+    <MachineUpdatesSection machine={machine} isThisMachine={false}>
+      {children}
+    </MachineUpdatesSection>
+  );
+}
+
+function manualUpdateIssue(
+  provider: ProviderCliKey,
+  currentVersion: string,
+  latestVersion: string,
+): ProviderCliIssue {
+  const status = makeProviderCliStatus(provider, {
+    currentVersion,
+    latestVersion,
+    installAction: null,
+    needsUpdate: true,
+  });
+  return {
+    provider,
+    status,
+    action: null,
+    title: `${status.displayName} update available`,
+    description: `${currentVersion} -> ${latestVersion}`,
+    fingerprint: `${provider}:${currentVersion}:${latestVersion}:manual`,
+  };
+}
+
+function missingProviderIssue(provider: ProviderCliKey): ProviderCliIssue {
+  const status = makeProviderCliStatus(provider, {
+    executablePath: null,
+    installed: false,
+    installSource: "notInstalled",
+    currentVersion: null,
+    latestVersion: "2.1.0",
+    installAction: {
+      kind: "install",
+      label: "Install",
+      command: "npm install -g @anthropic-ai/claude-code",
+    },
+    needsUpdate: false,
+  });
   return {
     provider,
     status,
     action: status.installAction,
-    title: `${status.displayName} update available`,
-    description: "story",
-    fingerprint: `${provider}:story`,
+    title: `${status.displayName} CLI not installed`,
+    description: "Not installed",
+    fingerprint: `${provider}:not-installed`,
   };
 }
 
-function machineOf(args: {
-  host: Host;
-  statuses?: {
-    codex: ReturnType<typeof providerStatus>;
-    claudeCode: ReturnType<typeof providerStatus>;
-  };
-  issues?: ProviderCliIssue[];
-  statusPending?: boolean;
-  statusError?: boolean;
-  canRetryDaemonUpdate?: boolean;
-}): UpdateInventoryMachine {
-  return {
-    host: args.host,
-    isPrimary: args.host.id === "host-primary",
-    providerStatus:
-      args.statuses === undefined
-        ? null
-        : {
-            ...args.statuses,
-            cursor: {
-              ...providerStatus("codex", { installed: false }),
-              displayName: "Cursor",
-              executableName: "agent",
-              latestVersion: null,
-              installAction: null,
-            },
-          },
-    statusPending: args.statusPending ?? false,
-    statusError: args.statusError ?? false,
-    issues: args.issues ?? [],
-    canRetryDaemonUpdate: args.canRetryDaemonUpdate ?? false,
-  };
-}
-
-function MachineSection({ machine }: { machine: UpdateInventoryMachine }) {
-  return (
-    <UpdatesSection title="Machines">
-      <UpdatesRowList>
-        <MachineUpdatesRows
-          machine={machine}
-          runningJobKey={null}
-          queuedJobKeys={NO_JOBS}
-          retryUpdatePending={false}
-          onStartInstall={noop}
-          onRetryDaemonUpdate={noop}
-        />
-      </UpdatesRowList>
-    </UpdatesSection>
-  );
-}
-
-function StoryActionButton({ children }: { children: ReactNode }) {
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="h-6 px-2 text-xs"
-    >
-      {children}
-    </Button>
-  );
-}
-
-export function HealthyFleet() {
-  const statuses = {
-    codex: providerStatus("codex", {
-      currentVersion: "0.146.0",
-      latestVersion: "0.146.0",
-    }),
-    claudeCode: providerStatus("claudeCode", {
-      currentVersion: "2.1.0",
-      latestVersion: "2.1.0",
-    }),
-  };
-  return (
-    <Stage>
-      <UpdatesSection
-        title="bb"
-        footnote="Connected machines follow the server version automatically."
-        action={
-          <>
-            <span className="text-xs text-subtle-foreground">
-              Checked 2m ago
-            </span>
-            <StoryActionButton>What's new</StoryActionButton>
-          </>
-        }
-      >
-        <UpdatesRowList>
-          <BbAppUpdateRows
-            systemVersion={{
-              currentVersion: "0.0.33",
-              latestVersion: "0.0.33",
-              source: "npm",
-              updateAvailable: false,
-              isDevelopment: false,
-              upgradeCommand: "npx bb-app@latest",
-            }}
-            desktopInfo={null}
-            isDesktop={false}
-            onRelaunchDesktop={null}
-            onRetryDesktop={null}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-      <UpdatesSection
-        title="Machines"
-        action={
-          <span className="text-xs text-subtle-foreground">
-            2 machines, all in sync
-          </span>
-        }
-      >
-        <UpdatesRowList>
-          <MachineUpdatesRows
-            machine={machineOf({
-              host: makeHost({ id: "host-primary", name: "workstation" }),
-              statuses,
-            })}
-            runningJobKey={null}
-            queuedJobKeys={NO_JOBS}
-            retryUpdatePending={false}
-            onStartInstall={noop}
-            onRetryDaemonUpdate={noop}
-          />
-          <MachineUpdatesRows
-            machine={machineOf({
-              host: makeHost({ id: "host-remote", name: "studio-mac" }),
-              statuses,
-            })}
-            runningJobKey={null}
-            queuedJobKeys={NO_JOBS}
-            retryUpdatePending={false}
-            onStartInstall={noop}
-            onRetryDaemonUpdate={noop}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-    </Stage>
-  );
-}
-
-export function MixedFleet() {
-  const codex = providerStatus("codex", {
-    currentVersion: "0.145.0",
-    latestVersion: "0.146.0",
-    needsUpdate: true,
+/**
+ * Every state Settings → Updates can reach, once, using the production rows.
+ * Keep this separate from the representative page stories: this is the
+ * reviewed vocabulary catalogue, while those stories exercise page density.
+ */
+export function UpdateStates() {
+  const providerUpdate = machineOf({
+    host: makeHost({ id: "state-provider-update", name: "workstation" }),
+    issues: [updateIssue("codex", "0.145.0", "0.146.0")],
   });
-  const claude = providerStatus("claudeCode", {
-    currentVersion: "2.1.0",
-    latestVersion: "2.1.0",
+  const providerInstalling = machineOf({
+    host: makeHost({ id: "state-provider-installing", name: "studio-mac" }),
+    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
   });
-  return (
-    <Stage>
-      <UpdatesSection
-        title="bb"
-        footnote="Connected machines follow the server version automatically."
-        action={
-          <>
-            <span className="text-xs text-subtle-foreground">
-              Checked just now
-            </span>
-            <StoryActionButton>What's new</StoryActionButton>
-          </>
-        }
-      >
-        <UpdatesRowList>
-          <BbAppUpdateRows
-            systemVersion={{
-              currentVersion: "0.0.32",
-              latestVersion: "0.0.33",
-              source: "npm",
-              updateAvailable: true,
-              isDevelopment: false,
-              upgradeCommand: "npx bb-app@latest",
-            }}
-            desktopInfo={null}
-            isDesktop={false}
-            onRelaunchDesktop={null}
-            onRetryDesktop={null}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-      <UpdatesSection
-        title="Machines"
-        action={
-          <>
-            <span className="text-xs text-subtle-foreground">
-              1 machine can't connect
-            </span>
-            <StoryActionButton>Update all (1)</StoryActionButton>
-          </>
-        }
-      >
-        <UpdatesRowList>
-          <MachineUpdatesRows
-            machine={machineOf({
-              host: makeHost({ id: "host-primary", name: "workstation" }),
-              statuses: { codex, claudeCode: claude },
-              issues: [
-                issueFor("codex", {
-                  currentVersion: "0.145.0",
-                  latestVersion: "0.146.0",
-                  needsUpdate: true,
-                }),
-              ],
-            })}
-            runningJobKey={null}
-            queuedJobKeys={NO_JOBS}
-            retryUpdatePending={false}
-            onStartInstall={noop}
-            onRetryDaemonUpdate={noop}
-          />
-          <MachineUpdatesRows
-            machine={machineOf({
-              host: makeHost({
-                id: "host-remote",
-                name: "homelab",
-                status: "disconnected",
-                lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
-              }),
-              canRetryDaemonUpdate: true,
-            })}
-            runningJobKey={null}
-            queuedJobKeys={NO_JOBS}
-            retryUpdatePending={false}
-            onStartInstall={noop}
-            onRetryDaemonUpdate={noop}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-    </Stage>
-  );
-}
-
-export function WebAppUpdateAvailable() {
-  return (
-    <Stage>
-      <UpdatesSection title="bb">
-        <UpdatesRowList>
-          <BbAppUpdateRows
-            systemVersion={{
-              currentVersion: "0.0.32",
-              latestVersion: "0.0.33",
-              source: "npm",
-              updateAvailable: true,
-              isDevelopment: false,
-              upgradeCommand: "npx bb-app@latest",
-            }}
-            desktopInfo={null}
-            isDesktop={false}
-            onRelaunchDesktop={null}
-            onRetryDesktop={null}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-    </Stage>
-  );
-}
-
-export function DesktopUpdateReady() {
-  return (
-    <Stage>
-      <UpdatesSection title="bb">
-        <UpdatesRowList>
-          <BbAppUpdateRows
-            systemVersion={undefined}
-            desktopInfo={{
-              downloadState: "downloaded",
-              lastCheckedAt: "2026-07-19T00:00:00.000Z",
-              latestVersion: "0.0.33",
-              pendingVersion: "0.0.33",
-              platform: "macos",
-              updateAvailable: true,
-              updateDownloaded: true,
-              version: "0.0.32",
-            }}
-            isDesktop
-            onRelaunchDesktop={noop}
-            onRetryDesktop={noop}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-    </Stage>
-  );
-}
-
-export function DesktopDownloading() {
-  return (
-    <Stage>
-      <UpdatesSection title="bb">
-        <UpdatesRowList>
-          <BbAppUpdateRows
-            systemVersion={undefined}
-            desktopInfo={{
-              downloadState: "downloading",
-              lastCheckedAt: "2026-07-19T00:00:00.000Z",
-              latestVersion: "0.0.33",
-              pendingVersion: null,
-              platform: "macos",
-              updateAvailable: true,
-              updateDownloaded: false,
-              version: "0.0.32",
-            }}
-            isDesktop
-            onRelaunchDesktop={noop}
-            onRetryDesktop={noop}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-    </Stage>
-  );
-}
-
-export function MachineWithUpdateAndInstall() {
-  const codex = providerStatus("codex", {
-    currentVersion: "0.140.0",
-    latestVersion: "0.141.0",
-    needsUpdate: true,
+  const providerManual = machineOf({
+    host: makeHost({ id: "state-provider-manual", name: "homelab" }),
+    issues: [manualUpdateIssue("codex", "0.145.0", "0.146.0")],
   });
-  const claude = providerStatus("claudeCode", { installed: false });
-  return (
-    <Stage>
-      <MachineSection
-        machine={machineOf({
-          host: makeHost({ id: "host-primary", name: "workstation" }),
-          statuses: { codex, claudeCode: claude },
-          issues: [
-            issueFor("codex", {
-              currentVersion: "0.140.0",
-              latestVersion: "0.141.0",
-              needsUpdate: true,
-            }),
-            issueFor("claudeCode", { installed: false }),
-          ],
-        })}
-      />
-    </Stage>
-  );
-}
-
-export function MachineRunningAndQueued() {
-  const codex = providerStatus("codex", {
-    currentVersion: "0.140.0",
-    latestVersion: "0.141.0",
-    needsUpdate: true,
-  });
-  const claude = providerStatus("claudeCode", {
-    currentVersion: "2.0.9",
-    latestVersion: "2.1.0",
-    needsUpdate: true,
-  });
-  const machine = machineOf({
-    host: makeHost({ id: "host-primary", name: "workstation" }),
-    statuses: { codex, claudeCode: claude },
+  const providerMissing = machineOf({
+    host: makeHost({ id: "state-provider-missing", name: "workstation" }),
     issues: [
-      issueFor("codex", { needsUpdate: true }),
-      issueFor("claudeCode", { needsUpdate: true }),
+      updateIssue("codex", "0.145.0", "0.146.0"),
+      missingProviderIssue("claude-code"),
     ],
   });
+  const daemonUpdating = machineOf({
+    host: makeHost({
+      id: "state-daemon-updating",
+      name: "studio-mac",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      updatedAt: STORY_NOW - 30_000,
+    }),
+    canRetryDaemonUpdate: true,
+  });
+  const daemonStalled = machineOf({
+    host: makeHost({
+      id: "state-daemon-stalled",
+      name: "ci-runner-3",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      updatedAt: STORY_NOW - 6 * 60_000,
+    }),
+    canRetryDaemonUpdate: true,
+  });
+  const daemonOffline = machineOf({
+    host: makeHost({
+      id: "state-daemon-offline",
+      name: "old-laptop",
+      status: "disconnected",
+    }),
+  });
+  const providerCheckFailed = machineOf({
+    host: makeHost({ id: "state-provider-check", name: "workstation" }),
+    statusError: true,
+  });
+
   return (
-    <Stage>
-      <UpdatesSection title="Machines">
-        <UpdatesRowList>
-          <MachineUpdatesRows
-            machine={machine}
-            runningJobKey="host-primary:codex"
-            queuedJobKeys={new Set(["host-primary:claudeCode"])}
-            retryUpdatePending={false}
-            onStartInstall={noop}
-            onRetryDaemonUpdate={noop}
-          />
-        </UpdatesRowList>
-      </UpdatesSection>
-    </Stage>
+    <SettingsStoryChrome activeSection="updates" contentOwnsPageShell>
+      <Story
+        title="Updates — every state"
+        description="Each state Settings → Updates can reach, once, rendered by the production component."
+        renderedLabel="Rendered card"
+        renderedNote="The real Updates section"
+      >
+        <Group
+          title="bb"
+          note="The app itself, and the machine daemons it runs."
+        />
+
+        <State
+          name="Up to date"
+          note="Nothing to do. The settled state stays visually quiet."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={NPM_VERSION}
+              desktopInfo={null}
+              isDesktop={false}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Checking"
+          note="The app version check is still in progress."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={null}
+              isDesktop={false}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Update available"
+          note="A web install cannot replace itself, so its action copies the upgrade command."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={{
+                ...NPM_VERSION,
+                latestVersion: "0.39.0",
+                updateAvailable: true,
+              }}
+              desktopInfo={null}
+              isDesktop={false}
+              onRelaunchDesktop={null}
+              onRetryDesktop={null}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Downloading"
+          note="The desktop shell is fetching the update automatically."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={{
+                ...DESKTOP_UPDATE,
+                downloadState: "downloading",
+                pendingVersion: null,
+                updateDownloaded: false,
+              }}
+              isDesktop
+              onRelaunchDesktop={noop}
+              onRetryDesktop={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Downloaded — relaunch"
+          note="The update is ready and needs one explicit relaunch."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={DESKTOP_UPDATE}
+              isDesktop
+              onRelaunchDesktop={noop}
+              onRetryDesktop={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Download failed"
+          note="The red caption states the failure; the neutral Retry button is the recovery."
+        >
+          <StoryAppState>
+            <BbAppUpdateRows
+              systemVersion={undefined}
+              desktopInfo={{
+                ...DESKTOP_UPDATE,
+                downloadState: "failed",
+                pendingVersion: null,
+                updateDownloaded: false,
+              }}
+              isDesktop
+              onRelaunchDesktop={noop}
+              onRetryDesktop={noop}
+            />
+          </StoryAppState>
+        </State>
+
+        <State
+          name="Machine updating bb"
+          note="The enrolled daemon is applying its required update automatically."
+        >
+          <StoryMachineSection machine={daemonUpdating} />
+        </State>
+
+        <State
+          name="Machine offline"
+          note="bb cannot currently reach this machine."
+        >
+          <StoryMachineSection machine={daemonOffline} />
+        </State>
+
+        <State
+          name="Machine update stalled"
+          note="The daemon update did not finish and can be retried."
+        >
+          <StoryMachineSection machine={daemonStalled} />
+        </State>
+
+        <Group
+          title="Provider CLIs"
+          note="Agent CLIs installed on each machine."
+        />
+
+        <State
+          name="Update available"
+          note="bb has an installer it can run for this provider."
+        >
+          <StoryMachineSection machine={providerUpdate} />
+        </State>
+
+        <State
+          name="Installing"
+          note="The provider update is currently running."
+        >
+          <MachineUpdatesSection
+            machine={providerInstalling}
+            isThisMachine={false}
+          >
+            <MachineUpdatesRows
+              machine={providerInstalling}
+              runningJobKey="state-provider-installing:claude-code"
+              queuedJobKeys={NO_JOBS}
+              onStartInstall={noop}
+              onOpenProvider={noop}
+            />
+          </MachineUpdatesSection>
+        </State>
+
+        <State
+          name="Update in terminal"
+          note="The CLI was installed outside bb, so the update must run in its own package manager."
+        >
+          <StoryMachineSection machine={providerManual} />
+        </State>
+
+        <State
+          name="Never installed — no row"
+          note={
+            <Why
+              items={[
+                "A CLI with no installed version has no update, so it stays off this page.",
+                "Claude Code is absent in this fixture; only the stale Codex row renders.",
+              ]}
+            />
+          }
+        >
+          <StoryMachineSection machine={providerMissing} />
+        </State>
+
+        <State
+          name="Status check failed"
+          note="The machine is connected, but bb could not inspect its provider CLIs."
+        >
+          <StoryMachineSection machine={providerCheckFailed} />
+        </State>
+      </Story>
+    </SettingsStoryChrome>
   );
 }
 
-export function MachineOffline() {
+/** Multiple machines, each owning its app, daemon, or provider update rows. */
+export function MultiMachine() {
+  const workstation = machineOf({
+    host: makeHost({ id: "host-primary", name: "workstation" }),
+    isPrimary: true,
+    issues: [
+      updateIssue("codex", "0.145.0", "0.146.0"),
+      updateIssue("acp-cursor", "0.48.0", "0.49.0"),
+    ],
+  });
+  const studioMac = machineOf({
+    host: makeHost({ id: "host-studio", name: "studio-mac" }),
+    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
+  });
+  const ciRunner = machineOf({
+    host: makeHost({
+      id: "host-ci",
+      name: "ci-runner-3",
+      status: "disconnected",
+      lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
+      updatedAt: STORY_NOW - 6 * 60_000,
+    }),
+    canRetryDaemonUpdate: true,
+  });
+
   return (
-    <Stage>
-      <MachineSection
-        machine={machineOf({
-          host: makeHost({
-            id: "host-remote",
-            name: "homelab",
-            status: "disconnected",
-          }),
-        })}
+    <StoryPage>
+      <StoryMachineSection
+        machine={workstation}
+        app
+        appUpdate
+        action={
+          <div role="toolbar" aria-label="Bulk update actions">
+            <UpdateActionButton
+              label="Update all 3 CLI tools"
+              tooltipLabel="Update all"
+              icon={UPDATE_ACTION_ICON}
+              iconPosition="end"
+              visibleLabel="Update all"
+              variant="default"
+              onClick={noop}
+            />
+          </div>
+        }
       />
-    </Stage>
+      <StoryMachineSection machine={studioMac} />
+      <StoryMachineSection machine={ciRunner} />
+    </StoryPage>
   );
 }
 
-export function MachineDaemonNeedsUpdate() {
+/** The same hierarchy without a redundant all-machines wrapper. */
+export function SingleMachine() {
+  const workstation = machineOf({
+    host: makeHost({ id: "host-primary", name: "workstation" }),
+    isPrimary: true,
+    issues: [updateIssue("claude-code", "2.0.1", "2.1.0")],
+  });
   return (
-    <Stage>
-      <MachineSection
-        machine={machineOf({
-          host: makeHost({
-            id: "host-remote",
-            name: "homelab",
-            status: "disconnected",
-            lastRejectedProtocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
-          }),
-          canRetryDaemonUpdate: true,
-        })}
-      />
-    </Stage>
+    <StoryPage>
+      <StoryMachineSection machine={workstation} app />
+    </StoryPage>
   );
 }
 
-export function MachineStatusFailed() {
+/** A settled machine keeps the existing explicit bb app confirmation. */
+export function NoUpdatesAvailable() {
+  const workstation = machineOf({
+    host: makeHost({ id: "host-primary", name: "workstation" }),
+    isPrimary: true,
+  });
   return (
-    <Stage>
-      <MachineSection
-        machine={machineOf({
-          host: makeHost({ id: "host-remote", name: "homelab" }),
-          statusError: true,
-        })}
-      />
-    </Stage>
-  );
-}
-
-export function MachineChecking() {
-  return (
-    <Stage>
-      <MachineSection
-        machine={machineOf({
-          host: makeHost({ id: "host-remote", name: "homelab" }),
-          statusPending: true,
-        })}
-      />
-    </Stage>
-  );
-}
-
-export function SidebarBadge() {
-  return (
-    <Stage>
-      <div className="flex w-72 items-center gap-4 rounded-md bg-sidebar p-2">
-        <Icon name="Settings" className="size-4 text-muted-foreground" />
-        <Icon name="Bug" className="size-4 text-muted-foreground" />
-        <span className="ml-auto flex h-6 items-center gap-1.5 rounded-full bg-primary px-2.5 text-xs font-medium text-primary-foreground">
-          <Icon name="PackageReceive" className="size-3.5" />
-          Updates
-        </span>
-      </div>
-    </Stage>
+    <StoryPage>
+      <StoryMachineSection machine={workstation} app />
+    </StoryPage>
   );
 }

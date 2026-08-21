@@ -296,7 +296,6 @@ describe("environment reprovisioning", () => {
       let thrownError: ApiError | null = null;
       try {
         await createThreadFromRequest(harness.deps, {
-          childOrigin: null,
           startedOnBehalfOf: null,
           environment: {
             type: "host",
@@ -346,7 +345,6 @@ describe("environment reprovisioning", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         startedOnBehalfOf: null,
         environment: {
           type: "host",
@@ -404,7 +402,7 @@ describe("environment reprovisioning", () => {
     });
   });
 
-    it("preserves a stopped pre-start thread when stale provision failure settles", async () => {
+  it("preserves a stopped pre-start thread when stale provision failure settles", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-pre-start-provision-cancel",
@@ -415,7 +413,6 @@ describe("environment reprovisioning", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         startedOnBehalfOf: null,
         environment: {
           type: "host",
@@ -506,7 +503,6 @@ describe("environment reprovisioning", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -574,7 +570,6 @@ describe("environment reprovisioning", () => {
       });
 
       const firstThread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         startedOnBehalfOf: null,
         environment: {
           type: "host",
@@ -608,7 +603,6 @@ describe("environment reprovisioning", () => {
       }
 
       const secondThread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         startedOnBehalfOf: null,
         environment: {
           type: "reuse",

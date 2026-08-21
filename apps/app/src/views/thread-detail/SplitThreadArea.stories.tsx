@@ -16,10 +16,7 @@ import {
 import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import { AppPageHeader } from "@/components/layout/AppPageHeader";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { PaneContext, type PaneContextValue } from "./PaneContext";
-import { PaneMaximizeButton } from "./PaneMaximizeButton";
+import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import { SplitThreadArea } from "./SplitThreadArea";
 
 export default {
@@ -29,6 +26,7 @@ export default {
 const PROJECT_ID = "proj_bb";
 const IDLE_THREAD_ID = "thr_split_idle";
 const ACTIVE_THREAD_ID = "thr_split_active";
+const MENTIONED_THREAD_ID = "thr_dcwivn5n8w";
 
 function storyThread(id: string, title: string): ThreadResponse {
   return {
@@ -43,12 +41,20 @@ function storyThread(id: string, title: string): ThreadResponse {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,
     },
+    activeBackgroundAgentCount: 0,
     canSpawnChild: false,
   };
 }
 
 const idleThread = storyThread(IDLE_THREAD_ID, "Fix Thread Drag Sync");
-const activeThread = storyThread(ACTIVE_THREAD_ID, "Refine split styling");
+const activeThread = storyThread(
+  ACTIVE_THREAD_ID,
+  `Continue from ${MENTIONED_THREAD_ID}`,
+);
+const mentionedThread = storyThread(
+  MENTIONED_THREAD_ID,
+  "Raw thread ID mention target",
+);
 
 function storyTimeline(
   threadId: string,
@@ -122,9 +128,9 @@ const idleTimeline = storyTimeline(
 
 const activeTimeline = storyTimeline(
   ACTIVE_THREAD_ID,
-  "Make the divider thinner, keep the inactive timeline readable, and let the header carry focus.",
+  `Use ${MENTIONED_THREAD_ID} as context, make the divider thinner, and let the header carry focus. Resolve the exact inline-code reference \`${MENTIONED_THREAD_ID}\` too.`,
   [
-    "The split seam is now one pixel with a wider invisible resize target. One uniform pane scrim marks the inactive side without layering extra opacity on its content.",
+    `The split seam now matches ${MENTIONED_THREAD_ID}: one pixel with a wider invisible resize target.`,
     "The same hairline treatment is applied where the secondary panel meets the split workspace, so the seams read as one system.",
     "Inactive panes receive a subtle background scrim while messages and status rows remain readable and interactive.",
     "The inactive scrim trades places as focus moves between panes while both composers remain fully legible.",
@@ -185,6 +191,7 @@ function createStoryQueryClient(): QueryClient {
     queryClient.setQueryData(threadQueryKey(thread.id), thread);
     queryClient.setQueryData(threadTimelineQueryKey(thread.id), timeline);
   }
+  queryClient.setQueryData(threadQueryKey(mentionedThread.id), mentionedThread);
 
   return queryClient;
 }
@@ -201,17 +208,19 @@ function SplitWorkspaceStory({ maximized = false }: { maximized?: boolean }) {
   return (
     <QueryClientProvider client={queryClient}>
       <JotaiProvider store={store}>
-        <SidebarProvider>
-          <div className="flex h-screen min-h-[640px] w-full flex-col bg-background p-4 md:p-5">
-            <SplitThreadArea
-              routeContent={{
-                kind: "thread",
-                projectId: PROJECT_ID,
-                threadId: ACTIVE_THREAD_ID,
-              }}
-            />
-          </div>
-        </SidebarProvider>
+        <ThreadActionsProvider>
+          <SidebarProvider>
+            <div className="flex h-screen min-h-[640px] w-full flex-col bg-background p-4 md:p-5">
+              <SplitThreadArea
+                routeContent={{
+                  kind: "thread",
+                  projectId: PROJECT_ID,
+                  threadId: ACTIVE_THREAD_ID,
+                }}
+              />
+            </div>
+          </SidebarProvider>
+        </ThreadActionsProvider>
       </JotaiProvider>
     </QueryClientProvider>
   );
@@ -223,63 +232,4 @@ export function ActiveAndIdle() {
 
 export function MaximizedWithoutRail() {
   return <SplitWorkspaceStory maximized />;
-}
-
-const CONTROL_CONTEXT: PaneContextValue = {
-  paneId: "pane-control",
-  isFocused: true,
-  isSplitPane: true,
-  secondaryPanelHost: null,
-  reservesWindowPanelToggle: false,
-  onRequestClose: () => {},
-  isMaximized: false,
-  onToggleMaximize: () => {},
-  onMoveToSide: () => {},
-  isBoundedPane: true,
-  isTopRow: true,
-  ownsWindowTopLeft: false,
-  navigateInPane: () => {},
-};
-
-export function FullScreenControlStates() {
-  return (
-    <TooltipProvider delayDuration={0}>
-      <main className="grid min-h-screen gap-32 bg-background p-12 md:grid-cols-2">
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">
-            Normal · hover menu
-          </h2>
-          <div className="overflow-visible rounded-md border border-border">
-            <PaneContext.Provider value={CONTROL_CONTEXT}>
-              <AppPageHeader
-                center={
-                  <span className="text-sm font-semibold">Normal pane</span>
-                }
-                actions={<PaneMaximizeButton defaultMenuOpen />}
-              />
-            </PaneContext.Provider>
-          </div>
-        </section>
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">
-            Full screen · exit tooltip
-          </h2>
-          <div className="overflow-visible rounded-md border border-border">
-            <PaneContext.Provider
-              value={{ ...CONTROL_CONTEXT, isMaximized: true }}
-            >
-              <AppPageHeader
-                center={
-                  <span className="text-sm font-semibold">
-                    Full-screen pane
-                  </span>
-                }
-                actions={<PaneMaximizeButton defaultTooltipOpen />}
-              />
-            </PaneContext.Provider>
-          </div>
-        </section>
-      </main>
-    </TooltipProvider>
-  );
 }

@@ -23,6 +23,7 @@ import { ApiError } from "../../errors.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
+  buildThreadStartCommand,
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
 import {
@@ -35,7 +36,6 @@ import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import {
   ensureThreadCanStartRequest,
   prepareReadyThreadTurnCommand,
-  prepareReadyThreadTurnDispatch,
 } from "./thread-lifecycle.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import {
@@ -62,26 +62,35 @@ import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
-export type SendThreadMessageTrigger = "auto-dispatch" | "user";
+type SendThreadMessageTrigger = "auto-dispatch" | "user";
 
 type SendThreadMessagePayload = SendMessageRequest & {
   inputGroups?: PromptInput[][];
 };
 
-export interface SendThreadMessageArgs {
+interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
   environment: Environment;
+  /**
+   * Internal edit-message path. Presence forces a new provider session;
+   * a string forks from a staged provider session and null starts fresh
+   * (which also makes the request a thread-start rather than a new turn).
+   */
+  historyReplacement?: {
+    forkSourceProviderThreadId: string | null;
+    onCommandSettled?: () => void | Promise<void>;
+  };
   payload: SendThreadMessagePayload;
   thread: Thread;
   trigger: SendThreadMessageTrigger;
 }
 
-export interface ResolveMessageSenderArgs {
+interface ResolveMessageSenderArgs {
   senderThreadId?: string;
   targetThread: Thread;
 }
 
-export interface FormatAgentThreadInputArgs {
+interface FormatAgentThreadInputArgs {
   input: PromptInput[];
   senderThreadId: string;
 }
@@ -91,7 +100,7 @@ interface BuildAgentThreadMessageTextArgs {
   senderThreadId: string;
 }
 
-export interface SendThreadMessageTransactionPreflightArgs {
+interface SendThreadMessageTransactionPreflightArgs {
   tx: DbTransaction;
 }
 
@@ -104,7 +113,7 @@ interface SendThreadMessageQueueRequestResult {
   threadBecameActive: boolean;
 }
 
-export interface SendThreadMessageTransactionPreflight {
+interface SendThreadMessageTransactionPreflight {
   (args: SendThreadMessageTransactionPreflightArgs): void;
 }
 
@@ -290,7 +299,7 @@ export function formatAgentThreadInput(
   });
 }
 
-function groupedInputForRuntime(
+export function groupedInputForRuntime(
   inputGroups: readonly PromptInput[][],
 ): PromptInput[] {
   return inputGroups.flatMap((input, index) =>
@@ -453,16 +462,10 @@ export async function sendThreadMessage(
       thread,
     });
   }
-  const execution = await buildExecutionOptions(
-    deps,
-    payload,
-    {
-      threadId: thread.id,
-    },
-    "client/turn/requested",
-  );
+  const execution = await buildExecutionOptions(deps, payload, {
+    threadId: thread.id,
+  });
   const permissionEscalation = resolvePermissionEscalation({
-    thread,
     initiator,
   });
 
@@ -489,7 +492,13 @@ export async function sendThreadMessage(
   );
   let target: TurnRequestTarget;
   if (mode === "start") {
-    target = { kind: "new-turn" };
+    target = {
+      kind:
+        args.historyReplacement !== undefined &&
+        args.historyReplacement.forkSourceProviderThreadId === null
+          ? "thread-start"
+          : "new-turn",
+    };
   } else {
     target = {
       kind: mode,
@@ -500,10 +509,10 @@ export async function sendThreadMessage(
   const requestId = createClientTurnRequestId();
 
   if (mode === "start") {
-    const command = await prepareReadyThreadTurnCommand(deps, {
+    const commandArgs = {
       thread,
-      // A send/steer always targets an already-started thread; forking only
-      // happens at create time.
+      // Normal sends target the existing provider session. A history
+      // replacement deliberately starts from a staged provider fork instead.
       fork: null,
       input,
       ...(inputGroups !== undefined ? { inputGroups } : {}),
@@ -520,7 +529,22 @@ export async function sendThreadMessage(
       projectId: thread.projectId,
       providerId: thread.providerId,
       syncGeneratedTitle: false,
-    });
+    };
+    const command = args.historyReplacement
+      ? {
+          command: await buildThreadStartCommand(deps, {
+            ...commandArgs,
+            fork:
+              args.historyReplacement.forkSourceProviderThreadId === null
+                ? null
+                : {
+                    sourceProviderThreadId:
+                      args.historyReplacement.forkSourceProviderThreadId,
+                  },
+          }),
+          mode: "thread.start" as const,
+        }
+      : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       beforeAppendInTransaction: ({ tx }) => {
         args.beforeAppendInTransaction?.({ tx });
@@ -533,10 +557,7 @@ export async function sendThreadMessage(
       input,
       inputGroups,
       queueInTransaction: ({ tx }) => {
-        const dispatchKind = prepareReadyThreadTurnDispatch({
-          command,
-          thread,
-        });
+        const dispatchKind = command.mode;
         const currentThread = getThread(tx, thread.id);
         // Dispatching a turn IS the thread becoming active. A warm
         // `turn.submit` and a cold `thread.start` are the same event from the
@@ -574,6 +595,9 @@ export async function sendThreadMessage(
       command: command.command,
       hostId: readyEnvironment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      ...(args.historyReplacement?.onCommandSettled !== undefined
+        ? { onSettled: args.historyReplacement.onCommandSettled }
+        : {}),
       onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },

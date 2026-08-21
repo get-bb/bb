@@ -28,7 +28,6 @@ function testToolchain() {
   return resolvePluginBuildToolchain(join(tmpdir(), "bb-toolchain-unused"));
 }
 
-
 const TEST_BB_VERSION = "0.9.0-test";
 
 /**
@@ -76,7 +75,7 @@ const FIXTURE_PACKAGE_JSON = JSON.stringify(
 const FIXTURE_APP_TSX = `
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { definePluginApp } from "@bb/plugin-sdk/app";
+import { definePluginApp } from "@get-bb/plugin-sdk/app";
 
 void createRoot;
 
@@ -111,7 +110,11 @@ describe("buildPluginApp", () => {
 
   it("builds an ESM bundle with runtime shims, plugin-scoped CSS, and the SDK meta sidecar", async () => {
     await writeFixture();
-    const result = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
 
     const js = await readFile(result.jsPath, "utf8");
     // ESM output.
@@ -146,15 +149,21 @@ describe("buildPluginApp", () => {
     // Host typography scale: the utility reads the token, and the plugin
     // sheet carries the host's override (0.8125rem, not Tailwind's 0.875rem).
     expect(css).toMatch(/\.text-sm\s*\{[^}]*var\(--text-sm/);
-    expect(css).toContain("--text-sm: 0.8125rem");
+    expect(css).toContain("--text-sm:.8125rem");
     // tw-animate-css utilities (host idiom for overlay open/close animation).
     expect(css).toContain(".animate-in");
     expect(css).toContain(".fade-in-0");
     // Utilities stay scoped to this plugin's own mounts, with a generic-root
     // fallback for hosts whose portals predate the per-plugin id attribute.
-    expect(css).toContain(
-      '@scope ([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
-    );
+    // Two arms per selector: the self arm styles portaled overlays, which
+    // carry the scope attribute on the styled element itself. (Minified
+    // selector text: no quotes around an identifier attribute value, no
+    // space after the list comma.)
+    const scope =
+      ":where([data-bb-plugin=fixture],[data-bb-plugin-root]:not([data-bb-plugin]))";
+    expect(css).toContain(`${scope} .animate-in`);
+    expect(css).toContain(`${scope}.animate-in`);
+    expect(css).not.toContain("@scope");
 
     const meta = JSON.parse(await readFile(result.metaPath, "utf8"));
     expect(meta).toEqual({
@@ -182,18 +191,34 @@ describe("buildPluginApp", () => {
       `import "./app.css";\n${FIXTURE_APP_TSX}`,
     );
 
-    const { cssPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { cssPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const css = await readFile(cssPath, "utf8");
 
-    expect(css).toContain(".fixture-highlight");
-    expect(css).toContain("background: hotpink");
+    // Minified by the same lightningcss pass as the utilities.
+    expect(css).toContain(".fixture-highlight{background:#ff69b4}");
     expect(css).toContain("@keyframes fixture-pulse");
-    expect(css.match(/@scope/g)).toHaveLength(1);
+    // Authored CSS is appended after the scoped Tailwind layer and keeps its
+    // own selectors: they may target editor decorations outside the mount.
+    expect(css.indexOf(".fixture-highlight{")).toBeGreaterThan(
+      css.lastIndexOf("@layer utilities{"),
+    );
+    const scope =
+      ":where([data-bb-plugin=fixture],[data-bb-plugin-root]:not([data-bb-plugin]))";
+    expect(css).not.toContain(`${scope} .fixture-highlight`);
+    expect(css).not.toContain(`${scope}.fixture-highlight`);
   });
 
   it("throws at import time without the BB runtime and loads once slots are set", async () => {
     await writeFixture();
-    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { jsPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const url = pathToFileURL(jsPath).href;
 
     await expect(import(/* @vite-ignore */ url)).rejects.toThrow(
@@ -229,7 +254,11 @@ describe("buildPluginApp", () => {
         `export default () => [Dialog, AlertDialog, toast, Drawer, parsePatchFiles, FileDiff];`,
       ].join("\n"),
     );
-    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { jsPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const js = await readFile(jsPath, "utf8");
     for (const slot of [
       "radixDialog",
@@ -255,7 +284,11 @@ describe("buildPluginApp", () => {
       `import { jsxDEV } from "react/jsx-dev-runtime";\n` +
         `export default () => jsxDEV("div", { children: "x" }, undefined, false, undefined, undefined);\n`,
     );
-    const { jsPath } = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const { jsPath } = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const js = await readFile(jsPath, "utf8");
     expect(js).toContain(".jsxDevRuntime");
     expect(js).not.toMatch(/from\s*["']react/);
@@ -263,7 +296,11 @@ describe("buildPluginApp", () => {
 
   it("keeps the previous dist artifacts intact when a rebuild fails after esbuild", async () => {
     await writeFixture();
-    const first = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const first = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const originalJs = await readFile(first.jsPath, "utf8");
     const originalCss = await readFile(first.cssPath, "utf8");
     const originalMeta = await readFile(first.metaPath, "utf8");
@@ -308,16 +345,16 @@ describe("buildPluginApp", () => {
         },
       }),
     );
-    await expect(buildPluginApp(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrow(
-      /no frontend entry/,
-    );
+    await expect(
+      buildPluginApp(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrow(/no frontend entry/);
   });
 
   it("errors when bb.app points at a missing file", async () => {
     await writeFile(join(root, "package.json"), FIXTURE_PACKAGE_JSON);
-    await expect(buildPluginApp(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrow(
-      /missing file/,
-    );
+    await expect(
+      buildPluginApp(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrow(/missing file/);
   });
 
   it("validates a path-shaped branding.icon before building", async () => {
@@ -331,13 +368,17 @@ describe("buildPluginApp", () => {
       JSON.stringify(packageJson, null, 2),
     );
 
-    await expect(buildPluginApp(root, TEST_BB_VERSION, await testToolchain())).rejects.toThrow(
-      /bb\.branding\.icon points at a missing file/,
-    );
+    await expect(
+      buildPluginApp(root, TEST_BB_VERSION, await testToolchain()),
+    ).rejects.toThrow(/bb\.branding\.icon points at a missing file/);
 
     await mkdir(join(root, "assets"));
     await writeFile(join(root, "assets", "icon.svg"), "<svg/>");
-    const result = await buildPluginApp(root, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginApp(
+      root,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     expect(result.jsPath).toBe(join(root, "dist", "app.js"));
   });
 
@@ -351,16 +392,19 @@ describe("buildPluginApp", () => {
     });
     // The vendored starter components bundle real npm deps (`bb plugin new`
     // runs npm install for authors); the offline test links them from the
-    // repo's own install instead.
+    // repo's own install instead. cva/clsx/tailwind-merge are deliberately
+    // absent: the build shims them to host slots, so linking them would
+    // hide a shim regression.
     await linkScaffoldDeps(targetDir, [
-      "class-variance-authority",
-      "clsx",
-      "tailwind-merge",
       "@radix-ui/react-slot",
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
     ]);
-    const result = await buildPluginApp(targetDir, TEST_BB_VERSION, await testToolchain());
+    const result = await buildPluginApp(
+      targetDir,
+      TEST_BB_VERSION,
+      await testToolchain(),
+    );
     const js = await readFile(result.jsPath, "utf8");
     expect(js).toContain("globalThis.__bbPluginRuntime");
     const css = await readFile(result.cssPath, "utf8");
@@ -373,6 +417,11 @@ describe("buildPluginApp", () => {
       // forwardRef at module scope — the stub must provide it.
       react: { forwardRef: (render: unknown) => render },
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
+      // The vendored button calls cva() at module scope, and lib/utils reads
+      // clsx/twMerge; all three come from host slots, never the bundle.
+      classVarianceAuthority: { cva: () => () => "" },
+      clsx: { clsx: () => "" },
+      tailwindMerge: { twMerge: (value: string) => value },
       pluginSdkApp: {
         definePluginApp: (setup: unknown) => ({
           __bbPluginApp: true,

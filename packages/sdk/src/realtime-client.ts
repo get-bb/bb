@@ -96,10 +96,6 @@ type RealtimeListenerRecord =
   | ChangedListenerRecord
   | ConnectionListenerRecord;
 
-function targetKey(target: RealtimeSubscriptionTarget): string {
-  return realtimeSubscriptionTargetKey(target);
-}
-
 function threadRealtimeTarget(
   threadId: string | undefined,
 ): RealtimeSubscriptionTarget {
@@ -327,7 +323,7 @@ export class BbRealtimeClient implements BbRealtime {
   }
 
   private addTarget(target: RealtimeSubscriptionTarget): void {
-    const key = targetKey(target);
+    const key = realtimeSubscriptionTargetKey(target);
     const existing = this.targetSubscriptions.get(key);
     if (existing) {
       existing.count += 1;
@@ -340,7 +336,7 @@ export class BbRealtimeClient implements BbRealtime {
   }
 
   private removeTarget(target: RealtimeSubscriptionTarget): void {
-    const key = targetKey(target);
+    const key = realtimeSubscriptionTargetKey(target);
     const existing = this.targetSubscriptions.get(key);
     if (!existing) {
       return;

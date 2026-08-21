@@ -119,6 +119,14 @@ not already exist. Dispatch requires an existing preset.
    bb tasks attach ABC-12
    ```
 
+   When a thread is done with a task (hand-off, respawned replacement, or a
+   predecessor that died), detach it so `bb tasks threads ABC-12` stays
+   accurate. Omit `--thread` to detach the current thread:
+
+   ```sh
+   bb tasks detach ABC-12 --thread thr_dead_predecessor
+   ```
+
 ## Link tasks in responses
 
 When your answer refers the user to a task — including a task you just

@@ -133,6 +133,43 @@ function contrastRatio(foreground: OklchColor, background: OklchColor): number {
 }
 
 describe("theme.css neutral ramp", () => {
+  it("backs selected sticky sidebar rows with an opaque sidebar layer", () => {
+    const rule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-selected-row\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(rule).toContain(
+      "linear-gradient(var(--state-active), var(--state-active))",
+    );
+    expect(rule).toContain("linear-gradient(var(--sidebar), var(--sidebar))");
+  });
+
+  it("resolves the open-in-split thread tint to an opaque sidebar color", () => {
+    const rule = css.match(
+      /\.bb-sidebar-open-in-split-row\s*\{([^}]*)\}/s,
+    )?.[1];
+
+    expect(rule).toContain("color-mix(");
+    expect(rule).toContain("in oklch");
+    expect(rule).toContain("var(--sidebar-accent) 50%");
+    expect(rule).toContain("var(--sidebar)");
+    expect(rule).not.toContain("transparent");
+
+    const stickyRule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-open-in-split-row\s*\{([^}]*)\}/s,
+    )?.[1];
+    expect(stickyRule).toContain("background-image: linear-gradient(");
+    expect(
+      stickyRule?.match(/var\(--bb-sidebar-open-in-split-background\)/g),
+    ).toHaveLength(2);
+
+    const interactiveRule = css.match(
+      /\[data-sidebar-sticky-tier\]\.bb-sidebar-open-in-split-row:is\([^{]+\)\s*\{([^}]*)\}/s,
+    )?.[1];
+    expect(interactiveRule).toContain("background-image: linear-gradient(");
+    expect(interactiveRule?.match(/var\(--sidebar-accent\)/g)).toHaveLength(2);
+  });
+
   for (const mode of MODES) {
     describe(mode, () => {
       const block = modeBlock(mode);
@@ -281,5 +318,60 @@ describe("theme.css desktop portal hit testing", () => {
     expect(rule).toBeDefined();
     expect(rule).toMatch(/(?:^|\s)app-region:\s*no-drag;/);
     expect(rule).toMatch(/-webkit-app-region:\s*no-drag;/);
+  });
+});
+
+// The sidebar resize drag rewrites --sidebar-width every frame. Registered
+// non-inherited, the change restyles only the elements it is set on; inherited,
+// it restyles their whole subtrees (AppLayout.sidebar-resize.test.tsx covers
+// where it is set).
+describe("theme.css sidebar width registration", () => {
+  it("registers --sidebar-width as a non-inherited length", () => {
+    const rule = css.match(/@property --sidebar-width\s*\{([^}]*)\}/)?.[1];
+
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/syntax:\s*"<length>";/);
+    expect(rule).toMatch(/inherits:\s*false;/);
+    expect(rule).toMatch(/initial-value:\s*\d+px;/);
+  });
+});
+
+// Paint-cost guards for iOS/WebKit: the shimmer sweep and the scroll-anchor
+// exclusion must not restyle or repaint more of the timeline than they need.
+describe("theme.css shimmer and scroll-anchor paint scope", () => {
+  function ruleBody(selector: string, source = css): string {
+    const at = source.indexOf(`${selector} {`);
+    if (at === -1) throw new Error(`no ${selector} rule in theme.css`);
+    return source.slice(at, source.indexOf("}", at));
+  }
+
+  it("promotes shimmering elements to their own layer only while active", () => {
+    // `.animate-shine` is only present on active rows, so the layer exists
+    // only while the sweep runs.
+    expect(ruleBody("  .animate-shine")).toMatch(/will-change:\s*transform;/);
+    expect(ruleBody("  .animate-shine-icon")).toMatch(
+      /will-change:\s*transform;/,
+    );
+  });
+
+  it("pauses the sweep and releases the layer under inert or aria-hidden hosts", () => {
+    const rule = css.match(
+      /\[inert\] \.animate-shine,\s*\[inert\] \.animate-shine-icon,\s*\[aria-hidden="true"\] \.animate-shine,\s*\[aria-hidden="true"\] \.animate-shine-icon \{([^}]*)\}/,
+    )?.[1];
+    expect(rule).toBeDefined();
+    expect(rule).toMatch(/animation-play-state:\s*paused;/);
+    expect(rule).toMatch(/will-change:\s*auto;/);
+  });
+
+  it("excludes the bottom-anchored wrapper without a universal descendant rule", () => {
+    // `.scroll-bottom-anchor-content *` would restyle every timeline node on
+    // each bottom attach/detach; the wrapper alone excludes its subtree.
+    expect(css).not.toMatch(/\.scroll-bottom-anchor-content\s*\*/);
+    expect(ruleBody(".scroll-bottom-anchor-content")).toMatch(
+      /overflow-anchor:\s*none;/,
+    );
+    expect(ruleBody(".scroll-bottom-anchor")).toMatch(
+      /overflow-anchor:\s*auto;/,
+    );
   });
 });

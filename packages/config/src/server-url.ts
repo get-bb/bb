@@ -8,7 +8,7 @@ import { BB_SERVER_URL_ENV } from "./env-vars.js";
 import { validateRequiredUrl } from "./public-url.js";
 import { resolveDevInstanceConfig } from "./runtime.js";
 
-export interface LoadServerUrlValueArgs extends EnvLoaderArgs {
+interface LoadServerUrlValueArgs extends EnvLoaderArgs {
   repoRoot?: string;
   serverUrl?: string;
 }

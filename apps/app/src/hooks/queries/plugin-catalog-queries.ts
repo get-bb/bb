@@ -1,18 +1,28 @@
 import type {
   InstalledPlugin,
   PluginApplyUpdateResult as SdkPluginApplyUpdateResult,
+  PluginCatalogAuthor,
+  PluginCatalogInstallPlan,
+  PluginCatalogResolvedSource,
   PluginCatalogSearchResult as SdkPluginCatalogSearchResult,
-  PluginCatalogStatus as SdkPluginCatalogStatus,
+  PluginMarketplace,
+  PluginMarketplaceRefreshResult,
   PluginSourceDetail as SdkPluginSourceDetail,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
 import { toEpochMs } from "./plugin-settings-queries";
+import {
+  pluginCatalogInstallPlanQueryKey,
+  pluginCatalogSearchQueryKey,
+  pluginMarketplacesQueryKey,
+  pluginSourceQueryKey,
+} from "./query-keys";
 
 type FetchLike = typeof fetch;
 
-export interface PluginSourceDetail {
+interface PluginSourceDetail {
   requested: string;
   resolved: string;
   integrity: string | null;
@@ -43,7 +53,7 @@ function toPluginSourceDetail(
 }
 
 /** Null when the plugin is unknown or the server predates the route. */
-export async function fetchPluginSource(
+async function fetchPluginSource(
   fetchImpl: FetchLike,
   pluginId: string,
 ): Promise<PluginSourceDetail | null> {
@@ -54,14 +64,6 @@ export async function fetchPluginSource(
   } catch {
     return null;
   }
-}
-
-export function pluginSourceQueryKey(pluginId: string): QueryKey {
-  return ["plugin-source", pluginId];
-}
-
-export function allPluginSourceQueryKeyPrefix(): QueryKey {
-  return ["plugin-source"];
 }
 
 export function usePluginSource(
@@ -85,17 +87,88 @@ export async function installPlugin(
 
 export async function installCatalogPlugin(
   fetchImpl: FetchLike,
-  args: { entryId: string },
+  args: {
+    entryId: string;
+    marketplace?: string;
+    confirmedSource?: PluginCatalogResolvedSource;
+  },
 ): Promise<InstalledPlugin> {
   return createPluginsClient(fetchImpl).catalog.install(args);
 }
 
-export interface PluginResolvedVersion {
+/** The true resolved source an install would use, fetched before confirming. */
+async function fetchCatalogInstallPlan(
+  fetchImpl: FetchLike,
+  args: { entryId: string; marketplace?: string },
+): Promise<PluginCatalogInstallPlan> {
+  return createPluginsClient(fetchImpl).catalog.installPlan(args);
+}
+
+/**
+ * Resolve an install before the user confirms it. Third-party entries pay a
+ * network round trip for the resolved tag and commit, so this never runs until
+ * the confirmation is actually open.
+ */
+export function useCatalogInstallPlan(
+  args: { entryId: string; marketplace?: string } | null,
+) {
+  const request = args ?? { entryId: "" };
+  return useQuery({
+    queryKey: pluginCatalogInstallPlanQueryKey(request),
+    queryFn: () => fetchCatalogInstallPlan(fetch, request),
+    enabled: args !== null,
+    // The plan describes one confirmation, and a git range resolves to a
+    // different commit over time: never serve it from cache.
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+async function listPluginMarketplaces(
+  fetchImpl: FetchLike,
+): Promise<PluginMarketplace[]> {
+  return createPluginsClient(fetchImpl).marketplaces.list();
+}
+
+export async function addPluginMarketplace(
+  fetchImpl: FetchLike,
+  source: string,
+): Promise<PluginMarketplace> {
+  return createPluginsClient(fetchImpl).marketplaces.add({ source });
+}
+
+export async function removePluginMarketplace(
+  fetchImpl: FetchLike,
+  name: string,
+): Promise<{ convertedPluginIds: string[] }> {
+  return createPluginsClient(fetchImpl).marketplaces.remove({ name });
+}
+
+export async function refreshPluginMarketplaces(
+  fetchImpl: FetchLike,
+  name?: string,
+): Promise<PluginMarketplaceRefreshResult[]> {
+  return createPluginsClient(fetchImpl).marketplaces.refresh(
+    name === undefined ? {} : { name },
+  );
+}
+
+export function usePluginMarketplaces(options: { enabled: boolean }) {
+  return useQuery({
+    queryKey: pluginMarketplacesQueryKey(),
+    queryFn: () => listPluginMarketplaces(fetch),
+    enabled: options.enabled,
+    staleTime: 30_000,
+  });
+}
+
+interface PluginResolvedVersion {
   version: string;
   display: string;
 }
 
-export type PluginUpdatesOutcome = PluginUpdateCheckEntry["outcome"];
+type PluginUpdatesOutcome = PluginUpdateCheckEntry["outcome"];
 
 export interface PluginUpdatesEntry {
   id: string;
@@ -151,51 +224,28 @@ export async function applyPluginUpdate(
   };
 }
 
-export interface PluginCatalogStatus {
-  pluginCount: number;
-  includedPluginCount: number;
-  optionalPluginCount: number;
-}
-
-function toPluginCatalogStatus(
-  data: SdkPluginCatalogStatus,
-): PluginCatalogStatus {
-  return {
-    pluginCount: data.pluginCount,
-    includedPluginCount: data.includedPluginCount,
-    optionalPluginCount: data.optionalPluginCount,
-  };
-}
-
-export async function fetchPluginCatalogStatus(
-  fetchImpl: FetchLike,
-): Promise<PluginCatalogStatus> {
-  return toPluginCatalogStatus(
-    await createPluginsClient(fetchImpl).catalog.status(),
-  );
-}
-
-export function pluginCatalogStatusQueryKey(): QueryKey {
-  return ["plugin-catalog-status"];
-}
-
-export function usePluginCatalogStatus(options: { enabled: boolean }) {
-  return useQuery({
-    queryKey: pluginCatalogStatusQueryKey(),
-    queryFn: () => fetchPluginCatalogStatus(fetch),
-    enabled: options.enabled,
-    staleTime: 30_000,
-  });
-}
-
 export interface PluginCatalogSearchEntry {
   entryId: string;
   pluginId: string;
   displayName: string;
   description: string;
   icon: string | null;
+  iconUrl: string | null;
+  /** Mask `iconUrl` with the text color instead of showing its own colors. */
+  iconTinted: boolean;
   category: string;
   source: string;
+  /** Public repository or package page of the entry's code; null when none. */
+  repositoryUrl: string | null;
+  marketplace: string;
+  marketplaceDisplayName: string;
+  /** Stable publisher identity, for grouping; never the label, which a
+   * marketplace chooses for itself. */
+  publisherKey: string;
+  /** Publisher badge: the marketplace's name, or `BB Official` when bundled. */
+  publisherLabel: string;
+  official: boolean;
+  author: PluginCatalogAuthor | null;
   installed: boolean;
   compatible: boolean;
   incompatibleReason: string | null;
@@ -210,8 +260,17 @@ function toPluginCatalogSearchEntry(
     displayName: data.displayName,
     description: data.description,
     icon: data.icon,
+    iconUrl: data.iconUrl,
+    iconTinted: data.iconTinted,
     category: data.category,
     source: data.source,
+    repositoryUrl: data.repositoryUrl,
+    marketplace: data.marketplace,
+    marketplaceDisplayName: data.marketplaceDisplayName,
+    publisherKey: data.publisherKey,
+    publisherLabel: data.publisherLabel,
+    official: data.official,
+    author: data.author,
     installed: data.installed,
     compatible: data.compatible,
     incompatibleReason: data.incompatibleReason ?? null,
@@ -226,14 +285,6 @@ export async function searchPluginCatalog(
     query,
   });
   return results.map(toPluginCatalogSearchEntry);
-}
-
-export function pluginCatalogSearchQueryKey(query: string): QueryKey {
-  return ["plugin-catalog-search", query];
-}
-
-export function allPluginCatalogSearchQueryKeyPrefix(): QueryKey {
-  return ["plugin-catalog-search"];
 }
 
 const PLUGIN_CATALOG_STALE_TIME_MS = 30 * 60_000;

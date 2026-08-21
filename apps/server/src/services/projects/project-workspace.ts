@@ -11,7 +11,7 @@ import {
   requireReadyEnvironment,
 } from "../lib/entity-lookup.js";
 
-export interface ProjectWorkspaceTarget {
+interface ProjectWorkspaceTarget {
   hostId: string;
   path: string;
 }

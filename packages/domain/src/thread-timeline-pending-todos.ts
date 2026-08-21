@@ -10,7 +10,7 @@ import { z } from "zod";
  * through the list. The summary count and visibility predicate filter to
  * pending + in_progress only — completed-only snapshots hide the section.
  */
-export const threadTimelinePendingTodoItemStatusSchema = z.enum([
+const threadTimelinePendingTodoItemStatusSchema = z.enum([
   "pending",
   "in_progress",
   "completed",
@@ -19,7 +19,7 @@ export type ThreadTimelinePendingTodoItemStatus = z.infer<
   typeof threadTimelinePendingTodoItemStatusSchema
 >;
 
-export const threadTimelinePendingTodoItemSchema = z.object({
+const threadTimelinePendingTodoItemSchema = z.object({
   id: z.string(),
   text: z.string(),
   status: threadTimelinePendingTodoItemStatusSchema,

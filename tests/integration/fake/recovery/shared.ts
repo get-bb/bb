@@ -1,5 +1,3 @@
-import type { ThreadEventRow } from "@bb/domain";
-import { expect } from "vitest";
 import {
   createProjectFixture,
   createReadyHostThread,
@@ -9,28 +7,26 @@ import type { IntegrationHarness } from "../../helpers/harness.js";
 import { scaleTimeoutMs } from "../../helpers/time.js";
 
 // Setup waits: create the thread and observe the first ready/idle state.
-export const DEFAULT_TIMEOUT_MS = scaleTimeoutMs(10_000);
+const DEFAULT_TIMEOUT_MS = scaleTimeoutMs(10_000);
 // Whole-turn waits: standard provider turns should settle within this budget.
 export const TURN_TIMEOUT_MS = scaleTimeoutMs(15_000);
 // Recovery waits: allow for disconnect detection plus daemon restart and reconciliation.
 export const RECOVERY_TIMEOUT_MS = scaleTimeoutMs(30_000);
+// Recovery scenarios compose setup, multiple turns, disconnect detection, and
+// daemon startup. Keep the outer deadline above those operation-level budgets
+// so a loaded run reports the specific recovery step that stalled.
+export const RECOVERY_TEST_TIMEOUT_MS = scaleTimeoutMs(180_000);
 // Active-turn waits: only long enough to catch a turn in flight before the crash/restart step.
 export const ACTIVE_TIMEOUT_MS = scaleTimeoutMs(5_000);
 // Hold the turn long enough to observe active status before crashing, while
 // still allowing a replayed pre-start command to settle inside RECOVERY_TIMEOUT_MS.
 export const STOP_DELAY_TEXT = "delay:5000 recovery turn";
 
-export type RecoveryWorkspaceType = "unmanaged" | "managed-worktree";
+type RecoveryWorkspaceType = "unmanaged" | "managed-worktree";
 
-export interface RecoveryThreadFixture extends ReadyThreadFixture {
+interface RecoveryThreadFixture extends ReadyThreadFixture {
   projectName: string;
   projectRootPath: string;
-}
-
-export function assertMonotonicSequences(events: ThreadEventRow[]): void {
-  for (let index = 1; index < events.length; index += 1) {
-    expect(events[index]?.seq).toBeGreaterThan(events[index - 1]?.seq ?? -1);
-  }
 }
 
 export function requireSessionId(harness: IntegrationHarness): string {

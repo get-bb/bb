@@ -1,14 +1,16 @@
 import type { ThreadTimelineGoal } from "@bb/domain";
-import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import {
+  PROMPT_STACK_CARD_ROW_HEIGHT,
+  PromptStackCard,
+} from "@/components/promptbox/banner/PromptStackCard";
 import {
   activityIconClass,
   activityRowClass,
   activityTextClass,
-} from "@/components/ui/activity-row-styles";
+} from "@bb/shared-ui/activity-row-styles";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-const GOAL_CARD_ROW_HEIGHT = 32;
 const GOAL_HEADER_GROUP_CLASS = activityRowClass(
   "active",
   "flex w-full items-stretch rounded-none px-0 py-0",
@@ -40,7 +42,7 @@ function formatTokenUsage(goal: ThreadTimelineGoal): string {
   return `${used} / ${goal.tokenBudget.toLocaleString()} tokens`;
 }
 
-export interface ThreadGoalCardProps {
+interface ThreadGoalCardProps {
   goal: ThreadTimelineGoal | null;
   isClearPending?: boolean;
   isExpanded: boolean;
@@ -74,7 +76,7 @@ export function ThreadGoalCard({
     <PromptStackCard
       ariaLabel="Goal"
       className="overflow-hidden"
-      style={{ minHeight: GOAL_CARD_ROW_HEIGHT }}
+      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
       <div
         role="group"
@@ -155,7 +157,7 @@ export function ThreadGoalCard({
                 />
                 {formatTokenUsage(goal)}
               </span>
-              <span className="inline-flex items-center gap-1.5">
+              <span className="inline-flex items-center gap-1.5 tabular-nums">
                 <Icon
                   name="Clock"
                   className="size-3.5 shrink-0"

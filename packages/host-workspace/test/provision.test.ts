@@ -7,27 +7,12 @@ import {
   DEFAULT_ENV_SETUP_SCRIPT_NAME,
   type ProvisioningTranscriptEntry,
 } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { provisionWorkspace } from "../src/index.js";
-import { runGit } from "../src/git.js";
+import { listBranches, runGit } from "../src/git.js";
 import { withCheckoutMutationLock } from "../src/checkout-mutation-lock.js";
 
 const tempDirs: string[] = [];
-
-type Deferred = {
-  promise: Promise<void>;
-  resolve: () => void;
-};
-
-function createDeferred(): Deferred {
-  let resolveDeferred = (): void => undefined;
-  const promise = new Promise<void>((resolve) => {
-    resolveDeferred = resolve;
-  });
-  return {
-    promise,
-    resolve: resolveDeferred,
-  };
-}
 
 async function makeTempDir(prefix: string): Promise<string> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -116,7 +101,7 @@ describe("provisionWorkspace", () => {
 
       expect(ws.isGitRepo).toBe(true);
       expect(await ws.getCurrentBranch()).toBe("feature-new");
-      expect(await ws.listBranches()).toContain("feature-new");
+      expect(await listBranches(ws.path)).toContain("feature-new");
     });
 
     it("creates unmanaged checkout branches from the requested base branch", async () => {
@@ -344,16 +329,16 @@ describe("provisionWorkspace", () => {
       await runGit(["branch", "feature-a"], { cwd: repoPath });
       await runGit(["branch", "feature-b"], { cwd: repoPath });
 
-      const lockEntered = createDeferred();
-      const releaseLock = createDeferred();
+      const lockEntered = createDeferredPromise<void>();
+      const releaseLock = createDeferredPromise<void>();
       const heldLock = withCheckoutMutationLock(repoPath, async () => {
         lockEntered.resolve();
         await releaseLock.promise;
       });
       await lockEntered.promise;
 
-      const firstCheckoutWaiting = createDeferred();
-      const secondCheckoutWaiting = createDeferred();
+      const firstCheckoutWaiting = createDeferredPromise<void>();
+      const secondCheckoutWaiting = createDeferredPromise<void>();
       let firstCompleted = false;
       let secondCompleted = false;
       let lockReleased = false;
@@ -617,8 +602,8 @@ describe("provisionWorkspace", () => {
       const statusAfter = await ws.getStatus();
       expect(statusAfter.workingTree.state).toBe("clean");
 
-      // getBranches
-      const branches = await ws.listBranches();
+      // listBranches
+      const branches = await listBranches(ws.path);
       expect(branches).toContain("main");
 
       // getDiff

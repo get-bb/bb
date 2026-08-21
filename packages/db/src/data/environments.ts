@@ -57,6 +57,7 @@ export function createEnvironment(
       mergeBaseBranch: input.mergeBaseBranch ?? null,
       workspaceProvisionType: input.workspaceProvisionType,
       status: input.status ?? "provisioning",
+      retireRequestedAt: input.status === "retiring" ? now : null,
       createdAt: now,
       updatedAt: now,
     })
@@ -135,21 +136,6 @@ export function listEnvironments(db: DbConnection, projectId?: string) {
       .all();
   }
   return db.select().from(environments).all();
-}
-
-export function listEnvironmentsByIds(
-  db: DbConnection,
-  environmentIds: readonly string[],
-) {
-  if (environmentIds.length === 0) {
-    return [];
-  }
-
-  return db
-    .select()
-    .from(environments)
-    .where(inArray(environments.id, [...environmentIds]))
-    .all();
 }
 
 interface EnvironmentMetadataUpdateColumns {
@@ -409,8 +395,8 @@ export function requireEnvironmentLifecycleEventApplied(
   return outcome.environment;
 }
 
-function applyEnvironmentLifecycleEventRecord(
-  db: EnvironmentWriteConnection,
+export function applyEnvironmentLifecycleEventInTransaction(
+  db: DbTransaction,
   args: ApplyEnvironmentLifecycleEventArgs,
 ): ApplyEnvironmentLifecycleEventOutcome {
   const environment = getEnvironment(db, args.environmentId);
@@ -434,18 +420,35 @@ function applyEnvironmentLifecycleEventRecord(
     };
   }
 
+  const now = Date.now();
   const set: Partial<typeof environments.$inferInsert> = {
     status: evaluation.to,
-    updatedAt: Date.now(),
+    updatedAt: now,
   };
+  if (args.event.type === "retire.requested") {
+    set.retireRequestedAt = now;
+  } else if (
+    evaluation.to === "ready" ||
+    evaluation.to === "provisioning" ||
+    evaluation.to === "destroyed"
+  ) {
+    set.retireRequestedAt = null;
+  }
   if (args.event.type === "destroy.started") {
     set.destroyAttemptId = args.event.destroyAttemptId;
   }
-  if (args.event.type === "destroy.failed" || args.event.type === "destroy.lost") {
+  if (
+    args.event.type === "destroy.failed" ||
+    evaluation.to === "ready" ||
+    evaluation.to === "provisioning"
+  ) {
     set.destroyAttemptId = null;
   }
   if (evaluation.to === "destroyed") {
     set.destroyAttemptId = null;
+    // The workspace no longer exists. Release its path claim and avoid
+    // retaining stale host-local filesystem data on the terminal row.
+    set.path = null;
   }
 
   // Compare-and-set on the loaded status: belt-and-braces under
@@ -505,18 +508,11 @@ export function applyEnvironmentLifecycleEvent(
   args: ApplyEnvironmentLifecycleEventArgs,
 ): ApplyEnvironmentLifecycleEventOutcome {
   const outcome = db.transaction(
-    (tx) => applyEnvironmentLifecycleEventRecord(tx, args),
+    (tx) => applyEnvironmentLifecycleEventInTransaction(tx, args),
     { behavior: "immediate" },
   );
   if (outcome.applied) {
     notifier.notifyEnvironment(args.environmentId, outcome.changes);
   }
   return outcome;
-}
-
-export function applyEnvironmentLifecycleEventInTransaction(
-  tx: DbTransaction,
-  args: ApplyEnvironmentLifecycleEventArgs,
-): ApplyEnvironmentLifecycleEventOutcome {
-  return applyEnvironmentLifecycleEventRecord(tx, args);
 }

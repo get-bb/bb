@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 import { useResizeObserver } from "usehooks-ts";
-import { applyResizeCursor, clearResizeCursor } from "@/lib/resizeCursor";
 import {
   secondaryPanelWidthPercentAtom,
   threadSecondaryPanelResizingAtom,
@@ -70,7 +69,6 @@ export function useSecondaryPanelResize({
     isSecondaryPanelDraggingRef.current = false;
     setIsSecondaryPanelDragging(false);
     setIsResizing(false);
-    clearResizeCursor();
 
     // Drag finished — persist the user's chosen width.
     if (lastSecondaryPanelSizeRef.current > 0) {
@@ -84,8 +82,9 @@ export function useSecondaryPanelResize({
         if (isDragging) {
           isSecondaryPanelDraggingRef.current = true;
           setIsSecondaryPanelDragging(true);
+          // The drag-guard overlay that `isResizing` mounts carries the
+          // resize cursor; nothing is written on body.
           setIsResizing(true);
-          applyResizeCursor("horizontal");
           return;
         }
 
@@ -101,7 +100,6 @@ export function useSecondaryPanelResize({
       }
       isSecondaryPanelDraggingRef.current = false;
       setIsResizing(false);
-      clearResizeCursor();
     },
     [setIsResizing],
   );

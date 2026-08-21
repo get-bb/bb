@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "auth-failure",
+  "threadId": "thr_sadi3kdv5z",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "A turn against an empty provider config home (401 / not logged in).",
+  "note": "daemon started with empty CODEX_HOME / CLAUDE_CONFIG_DIR",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 18,
+    "provider→bridge": 30,
+    "bridge→provider": 5
+  }
+}

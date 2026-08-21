@@ -2,16 +2,19 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ThreadQueuedMessage } from "@bb/domain";
 import type {
   CreateQueuedMessageRequest,
-  CreateThreadRequest,
   SendQueuedMessageMode,
   SendQueuedMessageResponse,
   ThreadQueuedMessageListResponse,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
+import type { AppCreateThreadRequest } from "@bb/client-core";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { wsManager } from "@/lib/ws";
 import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
-import type { SendThreadMessageMutationRequest } from "./mutation-request-types";
+import type {
+  EditMessageMutationRequest,
+  SendThreadMessageMutationRequest,
+} from "./mutation-request-types";
 import {
   applyCreateThreadResult,
   applyQueuedMessageCreateResult,
@@ -46,7 +49,10 @@ import {
   type StopThreadTransaction,
   type UpdateQueuedMessageTransaction,
 } from "../cache-owners/thread-runtime-cache-owner";
-import { invalidateThreadBannerQueries } from "../cache-owners/mutation-cache-effects";
+import {
+  invalidateThreadBannerQueries,
+  invalidateThreadHistoryRewriteQueries,
+} from "../cache-owners/mutation-cache-effects";
 
 interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
   id: string;
@@ -56,17 +62,6 @@ interface UpdateThreadQueuedMessageMutationRequest extends UpdateQueuedMessageRe
   id: string;
   queuedMessageId: string;
 }
-
-type AppCreateThreadRequest = Omit<
-  CreateThreadRequest,
-  "origin" | "startedOnBehalfOf" | "originKind" | "childOrigin"
-> &
-  Partial<
-    Pick<
-      CreateThreadRequest,
-      "startedOnBehalfOf" | "originKind" | "childOrigin"
-    >
-  >;
 
 interface SendThreadQueuedMessageMutationRequest {
   id: string;
@@ -136,9 +131,8 @@ export function useCreateThread() {
     mutationFn: (request: AppCreateThreadRequest) =>
       sdk.threads.spawn({
         ...request,
-        childOrigin: request.childOrigin ?? null,
         origin: "app",
-        originKind: request.originKind ?? request.childOrigin ?? null,
+        originKind: request.originKind ?? null,
         startedOnBehalfOf: request.startedOnBehalfOf ?? null,
       }),
     onMutate: async () => beginCreateThreadTransaction({ queryClient }),
@@ -204,6 +198,28 @@ export function useSendThreadMessage() {
         realtimeConnected: wsManager.getConnectionState() === "connected",
         request: variables,
         transaction: context,
+      });
+    },
+  });
+}
+
+export function useEditThreadMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to edit the message.",
+      lifecycleOperation: "edit_message",
+      showErrorToast: false,
+    },
+    mutationFn: ({ id, ...request }: EditMessageMutationRequest) =>
+      sdk.threads.editMessage({ threadId: id, ...request }),
+    onSuccess: (_result, variables) => {
+      if (wsManager.getConnectionState() === "connected") {
+        return;
+      }
+      invalidateThreadHistoryRewriteQueries({
+        queryClient,
+        threadId: variables.id,
       });
     },
   });

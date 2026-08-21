@@ -6,16 +6,11 @@ import type {
 } from "./event-projection-types.js";
 import {
   findLastTerminalTimelineMessage,
+  isSingletonContextManagementOperation,
   isTimelineSummaryCountedMessage,
   isTimelineTerminalMessage,
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
-
-export function findProjectionTerminalMessage(
-  messages: EventProjectionMessage[],
-): EventProjectionMessage | undefined {
-  return findLastTerminalTimelineMessage(messages);
-}
 
 function getProjectionMessageSummaryCount(
   message: EventProjectionMessage,
@@ -103,12 +98,16 @@ function applyTurnMessageDetail(
   const messages = (turn.messages ?? []).map((message) =>
     withChildProjectionDetail(message),
   );
-  const terminalMessage = findProjectionTerminalMessage(messages);
+  const terminalMessage = findLastTerminalTimelineMessage(messages);
+  const summaryMessages = terminalMessage
+    ? messages.slice(0, messages.indexOf(terminalMessage))
+    : messages;
   const summaryCount = getProjectionSummaryCount(messages, terminalMessage);
   const includeMessages =
     turn.status === "pending" ||
     turnMessageDetail === "full" ||
     (turn.externalUserBoundarySeqs?.length ?? 0) > 0 ||
+    isSingletonContextManagementOperation(summaryMessages) ||
     shouldIncludeSummaryTurnMessages(messages, terminalMessage);
 
   const detailedTurn: EventProjectionTurn = {

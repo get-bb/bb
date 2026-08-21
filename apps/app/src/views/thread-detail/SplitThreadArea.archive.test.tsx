@@ -25,10 +25,6 @@ import type { SplitLayout } from "@/lib/split-layout";
 import { PaneContext } from "./PaneContext";
 import { SplitThreadArea } from "./SplitThreadArea";
 
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => true,
-}));
-
 const ARCHIVED_AT = 1_700_000_000_000;
 
 interface SeedThread {

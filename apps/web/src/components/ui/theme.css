@@ -773,16 +773,6 @@ body.sidebar-resizing [data-sidebar="panel"] {
     animation: shine-mask 2.6s linear infinite;
   }
 
-  /* Empty-state bb mark: a clean foreground-colored silhouette. Its parent
-     applies the specular gloss filter, which derives the moving highlight from
-     this glyph's alpha — so the mark themes itself and carries no baked-in
-     reflection patches. */
-  .bb-mark-fill {
-    -webkit-mask: url(/bb-mark.svg) center / contain no-repeat;
-    mask: url(/bb-mark.svg) center / contain no-repeat;
-    background-color: var(--foreground);
-  }
-
   /* Reduced motion: drop the shimmer sweep and render the active cue as plain
      full-strength foreground text/glyph instead of a frozen gradient/mask. */
   @media (prefers-reduced-motion: reduce) {

@@ -4,7 +4,11 @@ import path from "node:path";
 import type { AgentRuntime } from "@bb/agent-runtime";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import type { HostWorkspace } from "@bb/host-workspace";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  createDeferredPromise,
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -47,11 +51,6 @@ interface WaitForOutputArgs {
   text: string;
 }
 
-interface Deferred<T> {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-}
-
 type TerminalMessageObserver = (message: HostDaemonDaemonWsMessage) => void;
 
 interface CreateHarnessOptions {
@@ -75,19 +74,6 @@ async function makeTempDir(prefix: string): Promise<string> {
 async function writeEmptyFile(filePath: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, "");
-}
-
-function createDeferred<T>(): Deferred<T> {
-  let resolveDeferred: (value: T) => void = () => {
-    throw new Error("Deferred resolver was not set");
-  };
-  const promise = new Promise<T>((resolve) => {
-    resolveDeferred = resolve;
-  });
-  return {
-    promise,
-    resolve: resolveDeferred,
-  };
 }
 
 function createFakeLogger(): HostDaemonLogger {
@@ -212,24 +198,36 @@ function createFakeRuntime(): AgentRuntime {
     startThread: vi.fn(async () => ({
       providerThreadId: "provider-thread",
     })),
+    prepareThreadRewind: vi.fn(async () => ({
+      providerThreadId: "provider-thread-rewind",
+    })),
+    discardThreadRewind: vi.fn(async () => undefined),
     resumeThread: vi.fn(async () => ({
       providerThreadId: "provider-thread",
     })),
     runTurn: vi.fn(async () => undefined),
     steerTurn: vi.fn(async () => steerTurnResult),
-    stopThread: vi.fn(async () => undefined),
+    stopThread: vi.fn(async () => ({ providerCheckpointId: null })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),
+    providerHealth: vi.fn(async () => ({ supported: false as const })),
+    providerUsage: vi.fn(async () => ({ supported: false as const })),
+    providerInstallationStatus: vi.fn(async () => {
+      throw new Error("Unexpected provider installation status call");
+    }),
+    providerInstallationRun: vi.fn(async () => {
+      throw new Error("Unexpected provider installation run call");
+    }),
     listRunningProviders: vi.fn(() => []),
     getActiveTurnId: vi.fn(() => null),
     waitForActiveTurn: vi.fn(async () => null),
     getProviderSession: vi.fn(() => null),
     reapIdleProviderSessions: vi.fn(async () => ({ reapedSessions: [] })),
     hasThread: vi.fn(() => false),
-    getActiveThreadIds: vi.fn(() => []),
+    getLiveThreadIds: vi.fn(() => []),
     hasOpenBackgroundWork: vi.fn(() => false),
     shutdown: vi.fn(async () => undefined),
   };
@@ -263,17 +261,16 @@ function createFakeWorkspace(path: string): HostWorkspace {
       files: [],
       shortstat: "",
       mergeBaseRef: null,
+      truncated: false,
     })),
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
-    listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
     reset: vi.fn(async () => undefined),
-    fetch: vi.fn(async () => undefined),
     squashMerge: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
@@ -535,7 +532,7 @@ describe("TerminalManager", () => {
   });
 
   it("closes a terminal after an in-progress open finishes", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -598,7 +595,7 @@ describe("TerminalManager", () => {
   });
 
   it("closes environment terminals after in-progress opens finish", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -657,7 +654,7 @@ describe("TerminalManager", () => {
   });
 
   it("shuts down terminals after in-progress opens finish", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -707,7 +704,7 @@ describe("TerminalManager", () => {
   });
 
   it("rejects duplicate opens queued behind an in-progress open", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     const harness = createHarnessWithShell({
       resolveShell: () => {
@@ -768,7 +765,7 @@ describe("TerminalManager", () => {
   });
 
   it("serializes PTY exits behind already queued terminal messages", async () => {
-    const shell = createDeferred<string>();
+    const shell = createDeferredPromise<string>();
     let resolveShellCalls = 0;
     let exitOnOpened = false;
     let harness: TerminalManagerHarness | null = null;
@@ -1088,6 +1085,97 @@ describe("TerminalManager", () => {
     });
   });
 
+  it("answers primary device attribute queries without replaying them", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+
+    pty.emitData("before\u001b[0cbetween\u001b[cafter");
+    await harness.manager.handleMessage({
+      type: "terminal.attach",
+      requestId: "attach-da1",
+      terminalId: "term-1",
+      sinceSeq: 0,
+      tailBytes: 4 * 1024 * 1024,
+    });
+
+    expect(pty.writeCalls).toEqual(["\u001b[?1;2c\u001b[?1;2c"]);
+    expect(collectTerminalOutput(harness.messages)).toBe("beforebetweenafter");
+    expect(harness.messages).toContainEqual({
+      type: "terminal.replay",
+      requestId: "attach-da1",
+      terminalId: "term-1",
+      chunks: [
+        {
+          seq: 0,
+          dataBase64: Buffer.from("beforebetweenafter", "utf8").toString(
+            "base64",
+          ),
+        },
+      ],
+      replayStartSeq: 0,
+      nextSeq: 1,
+    });
+  });
+
+  it("answers primary device attribute queries split across output chunks", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+
+    for (const chunk of ["\u001b", "[", "0", "c", "\u001b[", "c"]) {
+      pty.emitData(chunk);
+    }
+    await harness.manager.handleMessage({
+      type: "terminal.attach",
+      requestId: "attach-split-da1",
+      terminalId: "term-1",
+      sinceSeq: 0,
+      tailBytes: 4 * 1024 * 1024,
+    });
+
+    expect(pty.writeCalls).toEqual(["\u001b[?1;2c", "\u001b[?1;2c"]);
+    expect(collectTerminalOutput(harness.messages)).toBe("");
+    expect(harness.messages).toContainEqual({
+      type: "terminal.replay",
+      requestId: "attach-split-da1",
+      terminalId: "term-1",
+      chunks: [],
+      replayStartSeq: 0,
+      nextSeq: 0,
+    });
+  });
+
+  it("bounds device attribute replies for one flooded output chunk", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+
+    pty.emitData("\u001b[c".repeat(5_000));
+
+    expect(pty.writeCalls).toEqual(["\u001b[?1;2c".repeat(8)]);
+    expect(collectTerminalOutput(harness.messages)).toBe("");
+  });
+
+  it("preserves near matches and incomplete device attribute queries on exit", async () => {
+    const harness = createHarness();
+    const pty = await openTerminal(harness);
+
+    pty.emitData("before\u001b[1cafter\u001b[0");
+    pty.emitExit(0);
+
+    expect(pty.writeCalls).toEqual([]);
+    expect(collectTerminalOutput(harness.messages)).toBe(
+      "before\u001b[1cafter\u001b[0",
+    );
+    expect(
+      harness.messages
+        .filter(
+          (message) =>
+            message.type === "terminal.output" ||
+            message.type === "terminal.exited",
+        )
+        .map((message) => message.type),
+    ).toEqual(["terminal.output", "terminal.exited"]);
+  });
+
   it("bounds replay to the requested tail without splitting output chunks", async () => {
     const harness = createHarness();
     const pty = await openTerminal(harness);
@@ -1189,6 +1277,25 @@ describe("TerminalManager", () => {
       harness.runtimeManager.evictIdleEnvironments(),
     ).resolves.toEqual(["env-1"]);
     expect(harness.runtime.shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it("acknowledges closing a terminal that is already gone", async () => {
+    const harness = createHarness();
+
+    await harness.manager.handleMessage({
+      type: "terminal.close",
+      terminalId: "term-missing",
+      reason: "user",
+    });
+
+    expect(harness.messages).toEqual([
+      {
+        type: "terminal.exited",
+        terminalId: "term-missing",
+        exitCode: null,
+        closeReason: "user",
+      },
+    ]);
   });
 
   it("force kills and cleans up a terminal when node-pty never emits exit", async () => {

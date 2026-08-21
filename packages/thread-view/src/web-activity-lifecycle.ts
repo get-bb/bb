@@ -19,7 +19,7 @@ export interface WebFetchLifecycleEvent {
   parentToolCallId?: string;
 }
 
-export interface ImageViewLifecycleEvent {
+interface ImageViewLifecycleEvent {
   kind: "begin" | "end";
   itemKind: "image-view";
   callId: string;

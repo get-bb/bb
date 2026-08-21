@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppCommandId } from "@bb/domain";
 import type {
   BbDesktopApi,
+  BbDesktopBrowserFindResult,
   BbDesktopBrowserOpenTabRequest,
   BbDesktopBrowserScopedOpenTabRequest,
   BbDesktopBrowserSnapshot,
@@ -18,6 +19,10 @@ import {
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
+  BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
+  BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
+  BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_GO_BACK_CHANNEL,
   BB_DESKTOP_BROWSER_GO_FORWARD_CHANNEL,
   BB_DESKTOP_BROWSER_NAVIGATE_CHANNEL,
@@ -26,9 +31,11 @@ import {
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
   BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
+  BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
+  BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
 import {
   BB_DESKTOP_APP_COMMAND_CHANNEL,
@@ -74,6 +81,7 @@ const electronMock = vi.hoisted(() => {
   let exposedSpellcheckApi: {
     getCorrectionContext(word: string): unknown;
   } | null = null;
+  let zoomFactor = 1;
 
   return {
     get exposedApi() {
@@ -97,6 +105,10 @@ const electronMock = vi.hoisted(() => {
       invokeCalls.length = 0;
       listeners.clear();
       sendCalls.length = 0;
+      zoomFactor = 1;
+    },
+    setZoomFactor(nextZoomFactor: number): void {
+      zoomFactor = nextZoomFactor;
     },
     contextBridge: {
       exposeInMainWorld(name: string, api: unknown): void {
@@ -129,6 +141,9 @@ const electronMock = vi.hoisted(() => {
       },
     },
     webFrame: {
+      getZoomFactor(): number {
+        return zoomFactor;
+      },
       getWordSuggestions(word: string): string[] {
         return word === "recieve" ? ["receive", "relieve"] : [];
       },
@@ -215,13 +230,27 @@ describe("desktop preload browser API", () => {
       tabId: "browser:a",
       visible: false,
     };
+    const findRequest = {
+      tabId: "browser:a",
+      text: "needle",
+      forward: true,
+      newSession: true,
+    };
+    const stopFindRequest = {
+      tabId: "browser:a",
+      action: "clearSelection" as const,
+    };
 
     expect(Object.keys(api.browser).sort()).toEqual([
       "attach",
       "detach",
+      "findInPage",
+      "focus",
       "goBack",
       "goForward",
       "navigate",
+      "onFindResult",
+      "onFocus",
       "onOpenTab",
       "onScopedOpenTab",
       "onSnapshot",
@@ -229,7 +258,9 @@ describe("desktop preload browser API", () => {
       "reload",
       "setBounds",
       "setVisible",
+      "setVisibleWithoutFocus",
       "stop",
+      "stopFindInPage",
     ]);
     expect(api.browser).not.toHaveProperty("send");
     expect(api.browser).not.toHaveProperty("invoke");
@@ -241,8 +272,12 @@ describe("desktop preload browser API", () => {
     api.browser.goForward("browser:a");
     api.browser.reload("browser:a");
     api.browser.stop("browser:a");
+    api.browser.focus?.("browser:a");
     api.browser.setBounds(boundsRequest);
     api.browser.setVisible(visibleRequest);
+    api.browser.setVisibleWithoutFocus?.(visibleRequest);
+    api.browser.findInPage?.(findRequest);
+    api.browser.stopFindInPage?.(stopFindRequest);
     api.setTheme("dark");
     await api.checkForUpdates();
     await expect(api.getWindowState?.()).resolves.toEqual({
@@ -277,12 +312,28 @@ describe("desktop preload browser API", () => {
         payload: { tabId: "browser:a" },
       },
       {
+        channel: BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
+        payload: { tabId: "browser:a" },
+      },
+      {
         channel: BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
         payload: boundsRequest,
       },
       {
         channel: BB_DESKTOP_BROWSER_SET_VISIBLE_CHANNEL,
         payload: visibleRequest,
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_SET_VISIBLE_WITHOUT_FOCUS_CHANNEL,
+        payload: visibleRequest,
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_FIND_IN_PAGE_CHANNEL,
+        payload: findRequest,
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
+        payload: stopFindRequest,
       },
       { channel: BB_DESKTOP_SET_THEME_CHANNEL, payload: "dark" },
     ]);
@@ -298,12 +349,49 @@ describe("desktop preload browser API", () => {
     );
   }, 10_000);
 
+  it("converts zoomed renderer bounds to native window coordinates", async () => {
+    const api = await loadPreload();
+    electronMock.setZoomFactor(1.25);
+
+    api.browser.attach({
+      tabId: "browser:zoomed",
+      url: "https://example.com/",
+      bounds: { x: 800, y: 40, width: 400, height: 600 },
+      visible: false,
+    });
+    api.browser.setBounds({
+      tabId: "browser:zoomed",
+      bounds: { x: 801, y: 41, width: 399, height: 599 },
+    });
+
+    expect(electronMock.sendCalls).toEqual([
+      {
+        channel: BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+        payload: {
+          tabId: "browser:zoomed",
+          url: "https://example.com/",
+          bounds: { x: 1000, y: 50, width: 500, height: 750 },
+          visible: false,
+        },
+      },
+      {
+        channel: BB_DESKTOP_BROWSER_SET_BOUNDS_CHANNEL,
+        payload: {
+          tabId: "browser:zoomed",
+          bounds: { x: 1001, y: 51, width: 499, height: 749 },
+        },
+      },
+    ]);
+  });
+
   it("validates browser event payloads before notifying renderer listeners", async () => {
     const api = await loadPreload();
     const states: BbDesktopBrowserState[] = [];
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
     const scopedOpenTabs: BbDesktopBrowserScopedOpenTabRequest[] = [];
+    const focusedTabs: string[] = [];
     const snapshots: BbDesktopBrowserSnapshot[] = [];
+    const findResults: BbDesktopBrowserFindResult[] = [];
     let closeWindowRequestCount = 0;
     let openNewTabCount = 0;
     const appCommands: AppCommandId[] = [];
@@ -328,6 +416,13 @@ describe("desktop preload browser API", () => {
       tabId: "browser:a",
       dataUrl: null,
     };
+    const findResult: BbDesktopBrowserFindResult = {
+      tabId: "browser:a",
+      requestId: 3,
+      activeMatchOrdinal: 1,
+      matches: 4,
+      finalUpdate: true,
+    };
 
     api.browser.onState((nextState) => {
       states.push(nextState);
@@ -338,8 +433,14 @@ describe("desktop preload browser API", () => {
     api.browser.onScopedOpenTab?.((request) => {
       scopedOpenTabs.push(request);
     });
+    api.browser.onFocus?.((tabId) => {
+      focusedTabs.push(tabId);
+    });
     api.browser.onSnapshot?.((nextSnapshot) => {
       snapshots.push(nextSnapshot);
+    });
+    api.browser.onFindResult?.((result) => {
+      findResults.push(result);
     });
     api.onOpenNewTab?.(() => {
       openNewTabCount += 1;
@@ -368,8 +469,20 @@ describe("desktop preload browser API", () => {
       payload: { tabId: "", url: "https://example.com/scoped-popup" },
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
+      payload: { tabId: "", extra: true },
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: { tabId: "browser:a", dataUrl: 42 },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
+      payload: { ...findResult, matches: -1 },
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
+      payload: { ...findResult, selectionArea: {} },
     });
     emitIpcPayload({
       channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
@@ -388,8 +501,16 @@ describe("desktop preload browser API", () => {
       payload: scopedOpenTab,
     });
     emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
+      payload: { tabId: "browser:a" },
+    });
+    emitIpcPayload({
       channel: BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
       payload: snapshot,
+    });
+    emitIpcPayload({
+      channel: BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
+      payload: findResult,
     });
     emitIpcPayload({
       channel: BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
@@ -415,7 +536,9 @@ describe("desktop preload browser API", () => {
     expect(states).toEqual([state]);
     expect(openTabs).toEqual([openTab]);
     expect(scopedOpenTabs).toEqual([scopedOpenTab]);
+    expect(focusedTabs).toEqual(["browser:a"]);
     expect(snapshots).toEqual([snapshot]);
+    expect(findResults).toEqual([findResult]);
     expect(windowStates).toEqual([{ isFullScreen: true }]);
     expect(closeWindowRequestCount).toBe(1);
     expect(openNewTabCount).toBe(1);

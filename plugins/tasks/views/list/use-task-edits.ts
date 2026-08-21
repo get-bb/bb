@@ -11,7 +11,7 @@ import {
   type TaskEntries,
 } from "./optimistic.js";
 
-export interface ListTaskEditController {
+interface ListTaskEditController {
   /** Current optimistic entries, applied via `editedTasks`. */
   entries: TaskEntries;
   /** Task ids with an in-flight mutation (for loading affordances). */

@@ -1,21 +1,30 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { ProviderRetryView } from "./contract.js";
-
-type RecoveryStatus = Awaited<
-  ReturnType<BbPluginApi["sdk"]["threads"]["rateLimitRecovery"]>
->;
-type RecoveryCandidate = NonNullable<RecoveryStatus["candidate"]>;
+import {
+  inspectProviderRetry,
+  type ProviderRetryCandidate as RecoveryCandidate,
+  type ProviderRetryInspection as RecoveryStatus,
+} from "./recovery.js";
 
 export const RESET_BUFFER_MS = 15_000;
-export const RESET_JITTER_MS = 30_000;
+const RESET_JITTER_MS = 30_000;
 export const RELEASE_PACE_MS = 1_000;
 export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
 const REALTIME_CHANNEL = "provider-retry";
 
-export interface ProviderRetrySources {
+interface AttemptedWindow {
+  resetsAtMs: number;
+  scopeKey: string;
+}
+
+interface ProviderRetrySources {
   now(): number;
   random(): number;
+}
+
+interface ManualProviderRetryResult {
+  failedRequestId: string;
 }
 
 interface WaitingEntry {
@@ -48,6 +57,12 @@ function isHostUnavailableError(error: unknown): boolean {
   );
 }
 
+function isAutomaticCandidate(
+  candidate: RecoveryCandidate | null,
+): candidate is RecoveryCandidate & { automatic: true; resetsAtMs: number } {
+  return candidate?.automatic === true && candidate.resetsAtMs !== null;
+}
+
 function toView(entry: WaitingEntry): ProviderRetryView | null {
   if (entry.releasing) return null;
   return {
@@ -58,10 +73,31 @@ function toView(entry: WaitingEntry): ProviderRetryView | null {
 }
 
 export class ProviderRetryService {
+  private readonly attemptedWindows = new Map<string, AttemptedWindow>();
   private readonly entries = new Map<string, WaitingEntry>();
   private readonly scopes = new Map<string, ScopeQueue>();
-  private readonly reconcileLocks = new Map<string, Promise<void>>();
+  private readonly threadLocks = new Map<string, Promise<void>>();
   private disposed = false;
+
+  private async withThreadLock<T>(
+    threadId: string,
+    operation: () => T | Promise<T>,
+  ): Promise<T> {
+    const previous = this.threadLocks.get(threadId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(operation);
+    const lock = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.threadLocks.set(threadId, lock);
+    try {
+      return await next;
+    } finally {
+      if (this.threadLocks.get(threadId) === lock) {
+        this.threadLocks.delete(threadId);
+      }
+    }
+  }
 
   constructor(
     private readonly bb: BbPluginApi,
@@ -132,43 +168,86 @@ export class ProviderRetryService {
     return entry === undefined ? null : toView(entry);
   }
 
-  cancel(threadId: string): boolean {
-    const entry = this.entries.get(threadId);
-    if (entry === undefined || entry.releasing) return false;
-    this.remove(threadId);
-    return true;
+  async cancel(threadId: string): Promise<boolean> {
+    return this.withThreadLock(threadId, () => {
+      const entry = this.entries.get(threadId);
+      if (entry === undefined || entry.releasing) return false;
+      this.remove(threadId);
+      return true;
+    });
+  }
+
+  async retry(threadId: string): Promise<ManualProviderRetryResult> {
+    return this.withThreadLock(threadId, async () => {
+      if (this.disposed) {
+        throw new Error("Provider retry is shutting down");
+      }
+      const status = await inspectProviderRetry(this.bb, threadId);
+      const candidate = status.candidate;
+      if (candidate === null) {
+        throw new Error(
+          `Thread ${threadId} cannot be continued after a provider rate limit (${status.reason}).`,
+        );
+      }
+
+      const existing = this.entries.get(threadId);
+      if (existing !== undefined) {
+        existing.releasing = true;
+        this.publish(threadId);
+      }
+      try {
+        await this.continueCandidate(threadId, candidate);
+        if (candidate.resetsAtMs !== null) {
+          this.attemptedWindows.set(threadId, {
+            resetsAtMs: candidate.resetsAtMs,
+            scopeKey: status.scopeKey,
+          });
+        }
+        this.remove(threadId);
+        return {
+          failedRequestId: candidate.failedRequestId,
+        };
+      } catch (error) {
+        if (existing !== undefined && this.entries.get(threadId) === existing) {
+          existing.releasing = false;
+          this.publish(threadId);
+        }
+        throw error;
+      }
+    });
   }
 
   async reconcile(threadId: string): Promise<ProviderRetryView | null> {
-    const previous = this.reconcileLocks.get(threadId) ?? Promise.resolve();
-    const next = previous
-      .catch(() => undefined)
-      .then(() => this.reconcileDirect(threadId));
-    const lock = next.then(
-      () => undefined,
-      () => undefined,
+    return this.withThreadLock(threadId, () => this.reconcileDirect(threadId));
+  }
+
+  async reconcileTracked(threadId: string): Promise<ProviderRetryView | null> {
+    return this.withThreadLock(threadId, () =>
+      this.entries.has(threadId) ? this.reconcileDirect(threadId) : null,
     );
-    this.reconcileLocks.set(threadId, lock);
-    try {
-      return await next;
-    } finally {
-      if (this.reconcileLocks.get(threadId) === lock) {
-        this.reconcileLocks.delete(threadId);
-      }
-    }
   }
 
   private async reconcileDirect(
     threadId: string,
   ): Promise<ProviderRetryView | null> {
     if (this.disposed) return null;
-    const status = await this.bb.sdk.threads.rateLimitRecovery({ threadId });
+    const status = await inspectProviderRetry(this.bb, threadId);
     if (this.disposed) return null;
     const existing = this.entries.get(threadId);
     if (existing?.releasing) return null;
 
+    if (status.candidate === null || !isAutomaticCandidate(status.candidate)) {
+      this.remove(threadId);
+      return null;
+    }
     const candidate = status.candidate;
-    if (candidate?.automatic !== true || candidate.resetsAtMs === null) {
+    const resetsAtMs = candidate.resetsAtMs;
+
+    const attemptedWindow = this.attemptedWindows.get(threadId);
+    if (
+      attemptedWindow?.scopeKey === status.scopeKey &&
+      attemptedWindow.resetsAtMs === resetsAtMs
+    ) {
       this.remove(threadId);
       return null;
     }
@@ -178,13 +257,13 @@ export class ProviderRetryService {
     const firstObservedAtMs = sameRequest
       ? existing.firstObservedAtMs
       : this.sources.now();
-    if (!this.withinMaximumWait(candidate.resetsAtMs, firstObservedAtMs)) {
+    if (!this.withinMaximumWait(resetsAtMs, firstObservedAtMs)) {
       this.remove(threadId);
       return null;
     }
 
     const sameReset =
-      sameRequest && existing.candidate.resetsAtMs === candidate.resetsAtMs;
+      sameRequest && existing.candidate.resetsAtMs === resetsAtMs;
     let retryAtMs: number | null;
     if (status.rateLimits?.status === "allowed") {
       retryAtMs = this.sources.now();
@@ -193,7 +272,7 @@ export class ProviderRetryService {
     } else if (sameReset) {
       retryAtMs = existing.retryAtMs;
     } else {
-      retryAtMs = this.retryAt(candidate.resetsAtMs);
+      retryAtMs = this.retryAt(resetsAtMs);
     }
 
     this.upsert({
@@ -209,9 +288,17 @@ export class ProviderRetryService {
     return this.status(threadId);
   }
 
-  supersede(threadId: string): void {
-    if (this.entries.get(threadId)?.releasing) return;
-    this.remove(threadId);
+  async supersede(threadId: string): Promise<void> {
+    await this.withThreadLock(threadId, () => {
+      this.remove(threadId);
+    });
+  }
+
+  async deleteThread(threadId: string): Promise<void> {
+    await this.withThreadLock(threadId, () => {
+      this.remove(threadId);
+      this.attemptedWindows.delete(threadId);
+    });
   }
 
   hostChanged(hostId: string): void {
@@ -349,20 +436,32 @@ export class ProviderRetryService {
   }
 
   private async release(threadId: string): Promise<boolean> {
+    return this.withThreadLock(threadId, () => this.releaseDirect(threadId));
+  }
+
+  private async releaseDirect(threadId: string): Promise<boolean> {
     const entry = this.entries.get(threadId);
     if (!entry || this.disposed) return false;
     const failedRequestId = entry.candidate.failedRequestId;
     entry.releasing = true;
     this.publish(threadId);
     try {
-      const status = await this.bb.sdk.threads.rateLimitRecovery({ threadId });
-      if (status.candidate?.failedRequestId !== failedRequestId) {
+      const status = await inspectProviderRetry(this.bb, threadId);
+      if (this.disposed) return false;
+      if (
+        status.candidate === null ||
+        !isAutomaticCandidate(status.candidate) ||
+        status.candidate.failedRequestId !== failedRequestId
+      ) {
         this.remove(threadId);
         return false;
       }
-      await this.bb.sdk.threads.continueAfterRateLimit({
-        threadId,
-        failedRequestId,
+      const candidate = status.candidate;
+      const resetsAtMs = candidate.resetsAtMs;
+      await this.continueCandidate(threadId, candidate);
+      this.attemptedWindows.set(threadId, {
+        resetsAtMs,
+        scopeKey: status.scopeKey,
       });
       this.remove(threadId);
       return true;
@@ -372,7 +471,7 @@ export class ProviderRetryService {
       );
       let status: RecoveryStatus | null = null;
       try {
-        status = await this.bb.sdk.threads.rateLimitRecovery({ threadId });
+        status = await inspectProviderRetry(this.bb, threadId);
       } catch (inspectionError) {
         this.bb.log.warn(
           `Provider retry status refresh for thread ${threadId} failed: ${errorMessage(inspectionError)}`,
@@ -380,7 +479,9 @@ export class ProviderRetryService {
       }
       if (
         status !== null &&
-        status.candidate?.failedRequestId !== failedRequestId
+        (status.candidate?.failedRequestId !== failedRequestId ||
+          status.candidate.automatic !== true ||
+          status.candidate.resetsAtMs === null)
       ) {
         this.remove(threadId);
         return false;
@@ -401,6 +502,31 @@ export class ProviderRetryService {
     }
   }
 
+  private async continueCandidate(
+    threadId: string,
+    candidate: RecoveryCandidate,
+  ): Promise<void> {
+    await this.bb.sdk.threads.send({
+      threadId,
+      mode: "start",
+      input: [
+        {
+          type: "text",
+          text: "Please continue.",
+          mentions: [],
+          visibility: "agent-only",
+        },
+      ],
+      ...candidate.execution,
+      executionInputSources: {
+        model: "explicit",
+        permissionMode: "explicit",
+        reasoningLevel: "explicit",
+        serviceTier: "explicit",
+      },
+    });
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -409,6 +535,7 @@ export class ProviderRetryService {
     }
     this.scopes.clear();
     this.entries.clear();
-    this.reconcileLocks.clear();
+    this.attemptedWindows.clear();
+    this.threadLocks.clear();
   }
 }

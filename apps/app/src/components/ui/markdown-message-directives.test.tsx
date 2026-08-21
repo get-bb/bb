@@ -11,7 +11,7 @@ import {
   vi,
   type Mock,
 } from "vitest";
-import type { PluginMessageDirectiveProps } from "@bb/plugin-sdk";
+import type { PluginMessageDirectiveProps } from "@get-bb/plugin-sdk";
 import { useBbNavigate } from "@/lib/plugin-sdk-hooks";
 import { MarkdownPreview } from "./markdown-preview";
 import {
@@ -435,11 +435,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="a.html"}'}
-              turnRequest={null}
               projectId="proj_a"
             />
           </MessageDirectiveRegistryProvider>
@@ -478,11 +475,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="charts/demo.html"}'}
-              turnRequest={null}
               projectId="proj_a"
               workspaceRootPath="/workspace/project"
               onOpenLocalFileLink={onOpenLocalFileLink}
@@ -520,11 +514,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="plan.md"}'}
-              turnRequest={null}
               projectId="proj_a"
               onOpenPluginPanel={onOpenPluginPanel}
             />
@@ -561,11 +552,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="../secret.html"}'}
-              turnRequest={null}
               workspaceRootPath="/workspace/project"
               onOpenLocalFileLink={onOpenLocalFileLink}
             />
@@ -591,7 +579,7 @@ describe("ConversationMessageContent assistant directives", () => {
             <ConversationMessageContent
               role="user"
               attachments={null}
-              childOrigin={null}
+              originKind={null}
               initiator="user"
               mentions={[]}
               senderThreadId={null}

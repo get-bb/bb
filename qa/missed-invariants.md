@@ -1,12 +1,5 @@
 # Missed QA Invariants
 
-## Cache-owner query-key aliasing
-
-- Bug/hotfix commit: `d652c826b` (`fix: stop thread composer bootstrap from clobbering new-thread provider list`)
-- Invariant missed: a cache owner may perform raw query-client writes, but each owner must only import and write the query-key families declared for that owner. The thread composer bootstrap path touched the shared `systemExecutionOptions` family and could alias the new-thread composer key when `executionOptions` was `null`.
-- Automated guard added: `apps/app/src/hooks/cache-owners/cache-owner-registry.test.ts` declares allowed query-key imports per cache-owner module and fails on undeclared shared-family imports. This is the remaining guard.
-- Later change: `composer-cache-owner.test.ts`, which covered the environmentless archived-thread null-bootstrap case, went away with the composer cache owner in `32197c2e7` ("Decouple composer data queries with bootstrap compatibility", #335). The composer no longer writes the shared `systemExecutionOptions` family, so the aliasing path it guarded no longer exists.
-
 ## Host RPC Response Type Correlation
 
 - Bug/hotfix commit: `e0b3e0c2b` (`fix: validate host RPC response messages by command type`)

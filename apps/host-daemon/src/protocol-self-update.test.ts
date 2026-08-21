@@ -92,12 +92,59 @@ describe("protocol self-update", () => {
     expect(test.runProcess).toHaveBeenCalledOnce();
     expect(test.runProcess).toHaveBeenCalledWith(
       "npm",
-      ["install", "-g", expect.stringContaining("bb-app-update-")],
+      [
+        "install",
+        "-g",
+        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
+        expect.stringContaining("bb-app-update-"),
+      ],
       {
         env: expect.objectContaining({
           PATH: `${dirname(process.execPath)}${delimiter}/usr/bin:/bin`,
         }),
       },
+    );
+  });
+
+  it("updates an installer-managed bb-app inside its machine-specific prefix", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", "/machine-data/npm");
+    const test = await createFixture({ useDefaultInstaller: true });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expect(test.runProcess).toHaveBeenCalledWith(
+      "npm",
+      [
+        "install",
+        "-g",
+        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
+        "--prefix",
+        "/machine-data/npm",
+        expect.stringContaining("bb-app-update-"),
+      ],
+      expect.any(Object),
+    );
+  });
+
+  it("keeps legacy global updates when the installer prefix is blank", async () => {
+    vi.stubEnv("BB_APP_NPM_PREFIX", " ");
+    const test = await createFixture({ useDefaultInstaller: true });
+
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+
+    expect(test.runProcess).toHaveBeenCalledWith(
+      "npm",
+      [
+        "install",
+        "-g",
+        "--allow-scripts=better-sqlite3,node-pty,@parcel/watcher",
+        expect.stringContaining("bb-app-update-"),
+      ],
+      expect.any(Object),
     );
   });
 

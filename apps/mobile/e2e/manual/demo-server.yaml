@@ -1,0 +1,90 @@
+# Demo server end-to-end: first run → add the bb demo server by Direct URL →
+# thread list → open a thread → send a message → "Working…" → the scripted
+# reply arrives and the indicator clears.
+#
+# This is the exact path an App Store reviewer follows from the review notes,
+# so it must pass before the demo server is deployed. Not part of
+# `pnpm e2e:ios` (e2e/flows) because it needs the demo worker, not the
+# harness backend:
+#
+#   pnpm --filter @bb/demo-server dev        # the worker on 8799
+#   EXPO_PUBLIC_BB_E2E=1 pnpm --filter @bb/mobile start --port 8082
+#   cd apps/mobile && maestro test e2e/manual/demo-server.yaml
+#
+# To rehearse against the deployed worker, set SERVER_URL to its https URL.
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:8799"
+---
+# The E2E build wipes profiles on launch, so the shared subflow lands on
+# "Connect to a bb server" and adds SERVER_URL as a Direct URL. The probe
+# (/health + /system/config) must pass against the worker.
+#
+# Launch is inlined rather than `runFlow: ../subflows/launch-to-home.yaml`
+# because this simulator refuses the dev-client deep link
+# (LSApplicationWorkspaceErrorDomain 115), so `openLink` in
+# subflows/launch-app.yaml fails. The launcher's "Recently opened" row for
+# Metro reaches the same place. The add-server steps and the Home wait below
+# are copied from that subflow unchanged; only the launch differs, and a
+# Release/TestFlight build needs none of this.
+- stopApp
+- launchApp
+- runFlow:
+    when:
+      visible: "${METRO_URL}"
+    commands:
+      - tapOn: "${METRO_URL}"
+# Wait for the bundle before touching the screen: a bare `when: visible`
+# evaluates immediately and skips while Metro is still serving. The E2E build
+# wipes profiles on launch, so first run is guaranteed here.
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 60000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+- takeScreenshot: demo-home
+# The seeded threads come from the demo's sidebar-bootstrap.
+- assertVisible: "Add a dark mode toggle"
+- assertVisible: "Fix the flaky checkout test"
+- tapOn: "Add a dark mode toggle"
+# Timeline rows: the seeded user prompt, a command row, and the assistant reply.
+- extendedWaitUntil:
+    visible: "Add a dark mode toggle to the settings screen."
+    timeout: 30000
+- takeScreenshot: demo-thread
+# Sending: the demo records the message, turns the thread active, and
+# announces the change over the socket so the app refetches. The composer is
+# a pill until focused, so tap the input twice: once to expand the card, once
+# to focus the field inside it.
+- tapOn:
+    id: "thread-composer-input"
+- tapOn:
+    id: "thread-composer-input"
+- inputText: "Yes, go ahead."
+- tapOn:
+    id: "thread-composer-submit"
+- extendedWaitUntil:
+    visible: "Yes, go ahead."
+    timeout: 30000
+# The reply lands about two seconds later and the thread returns to idle, so
+# "Working…" must clear. The reply is a markdown paragraph, so match a fragment
+# rather than the whole text node.
+- extendedWaitUntil:
+    visible: ".*replaying a scripted answer.*"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible: "Working…"
+    timeout: 15000
+- takeScreenshot: demo-reply

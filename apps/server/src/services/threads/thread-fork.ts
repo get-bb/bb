@@ -1,6 +1,10 @@
 import { getEnvironment, getThread } from "@bb/db";
-import type { Environment, PromptInput, Thread } from "@bb/domain";
-import { supportsNativeFork } from "@bb/agent-providers";
+import {
+  PERSONAL_PROJECT_ID,
+  type Environment,
+  type PromptInput,
+  type Thread,
+} from "@bb/domain";
 import type { EnvironmentArgs, ForkThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
@@ -28,8 +32,11 @@ function requireForkSourceThread(
   return sourceThread;
 }
 
-function requireForkCapableProvider(sourceThread: Thread): void {
-  if (!supportsNativeFork(sourceThread.providerId)) {
+function requireForkCapableProvider(
+  deps: Pick<ThreadForkDeps, "providerRegistry">,
+  sourceThread: Thread,
+): void {
+  if (!deps.providerRegistry.supportsFork(sourceThread.providerId)) {
     throw new ApiError(
       400,
       "invalid_request",
@@ -58,12 +65,18 @@ function requireSourceEnvironment(
 
 function resolveForkEnvironment(
   sourceEnvironment: Environment,
-  workspace: ForkThreadRequest["workspace"],
+  args: {
+    projectId: string;
+    workspace: ForkThreadRequest["workspace"];
+  },
 ): EnvironmentArgs {
-  if (workspace === "reuse") {
+  if (args.workspace === "reuse") {
     return { type: "reuse", environmentId: sourceEnvironment.id };
   }
-  if (sourceEnvironment.workspaceProvisionType === "personal") {
+  if (
+    args.projectId === PERSONAL_PROJECT_ID ||
+    sourceEnvironment.workspaceProvisionType === "personal"
+  ) {
     return {
       type: "host",
       hostId: sourceEnvironment.hostId,
@@ -88,7 +101,7 @@ export async function createThreadForkFromRequest(
   request: ForkThreadRequest,
 ) {
   const sourceThread = requireForkSourceThread(deps, request.sourceThreadId);
-  requireForkCapableProvider(sourceThread);
+  requireForkCapableProvider(deps, sourceThread);
   const sourceEnvironment = requireSourceEnvironment(deps, sourceThread);
   // A fork continues the source conversation, so it defaults to the source's
   // recorded execution options rather than provider defaults.
@@ -102,7 +115,10 @@ export async function createThreadForkFromRequest(
   return createThreadFromRequest(
     deps,
     {
-      environment: resolveForkEnvironment(sourceEnvironment, request.workspace),
+      environment: resolveForkEnvironment(sourceEnvironment, {
+        projectId: sourceThread.projectId,
+        workspace: request.workspace,
+      }),
       input,
       origin: request.origin,
       ...(request.originPluginId === undefined
@@ -131,6 +147,9 @@ export async function createThreadForkFromRequest(
       ...(request.title === undefined ? {} : { title: request.title }),
       visibility: request.visibility,
     },
-    isSeedOnlyIdleFork ? { providerInput: [] } : {},
+    {
+      forkSourceEnvironmentId: sourceEnvironment.id,
+      ...(isSeedOnlyIdleFork ? { providerInput: [] } : {}),
+    },
   );
 }

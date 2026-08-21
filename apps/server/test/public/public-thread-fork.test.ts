@@ -1,8 +1,11 @@
-import { getThread, listEvents } from "@bb/db";
-import { turnRequestEventDataSchema } from "@bb/domain";
+import { ensurePersonalProject, getThread, listEvents } from "@bb/db";
+import { PERSONAL_PROJECT_ID, turnRequestEventDataSchema } from "@bb/domain";
 import { threadResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { waitForQueuedCommand } from "../helpers/commands.js";
+import {
+  reportQueuedCommandSuccess,
+  waitForQueuedCommand,
+} from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -60,6 +63,35 @@ function seedForkSource(
   return { environment, host, project, sourceThread };
 }
 
+function seedPersonalDirectoryForkSource(harness: TestAppHarness) {
+  const { host } = seedHostSession(harness.deps);
+  ensurePersonalProject(harness.db);
+  const environment = seedEnvironment(harness.deps, {
+    hostId: host.id,
+    path: "/tmp/personal-switched-directory",
+    projectId: PERSONAL_PROJECT_ID,
+    workspaceProvisionType: "unmanaged",
+  });
+  const sourceThread = seedThread(harness.deps, {
+    environmentId: environment.id,
+    projectId: PERSONAL_PROJECT_ID,
+  });
+  seedThreadRuntimeState(harness.deps, {
+    environmentId: environment.id,
+    permissionMode: "full",
+    providerThreadId: "provider-personal-directory-source",
+    threadId: sourceThread.id,
+  });
+  seedTurnStarted(harness.deps, {
+    environmentId: environment.id,
+    providerThreadId: "provider-personal-directory-source",
+    sequence: 3,
+    threadId: sourceThread.id,
+    turnId: "turn-personal-directory-source",
+  });
+  return { environment, sourceThread };
+}
+
 async function postFork(
   harness: TestAppHarness,
   body: Record<string, unknown>,
@@ -72,6 +104,88 @@ async function postFork(
 }
 
 describe("public thread fork route", () => {
+  it("reuses a switched directory from a personal-project source", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, sourceThread } =
+        seedPersonalDirectoryForkSource(harness);
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      expect(getThread(harness.db, fork.id)?.environmentId).toBe(
+        environment.id,
+      );
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (queued.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      expect(queued.command.fork).toEqual({
+        sourceProviderThreadId: "provider-personal-directory-source",
+      });
+    });
+  });
+
+  it("uses a personal workspace for an isolated fork after a directory switch", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, sourceThread } =
+        seedPersonalDirectoryForkSource(harness);
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "isolated",
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      expect(getThread(harness.db, fork.id)?.environmentId).not.toBe(
+        environment.id,
+      );
+      const personalEnvironment = getThread(harness.db, fork.id)?.environmentId;
+      expect(personalEnvironment).not.toBeNull();
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "environment.provision" &&
+          command.environmentId === personalEnvironment,
+      );
+      if (queued.command.type !== "environment.provision") {
+        throw new Error("Expected personal environment.provision");
+      }
+      expect(queued.command.workspaceProvisionType).toBe("personal");
+      if (queued.command.workspaceProvisionType !== "personal") {
+        throw new Error("Expected personal environment.provision");
+      }
+      await reportQueuedCommandSuccess(harness, queued, {
+        path: queued.command.targetPath,
+        branchName: "main",
+        defaultBranch: "main",
+        isGitRepo: false,
+        isWorktree: false,
+        transcript: [],
+      });
+
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (start.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      expect(start.command.fork).toEqual({
+        sourceProviderThreadId: "provider-personal-directory-source",
+      });
+    });
+  });
+
   it("creates an idle fork at the source tip with no first run", async () => {
     await withTestHarness(async (harness) => {
       const { sourceThread } = seedForkSource(harness);
@@ -239,32 +353,103 @@ describe("public thread fork route", () => {
     });
   });
 
-  it("rejects a source provider without native fork capability", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const sourceThread = seedThread(harness.deps, {
-        environmentId: environment.id,
-        projectId: project.id,
-        providerId: "acp-test-agent",
-      });
+  it("forks a custom ACP provider and uses the returned child session", async () => {
+    await withTestHarness(
+      {
+        customAcpAgents: [
+          {
+            id: "test-agent",
+            displayName: "Test Agent",
+            command: "test-agent",
+            args: ["acp"],
+            env: {},
+            supportsManualCompaction: false,
+          },
+        ],
+      },
+      async (harness) => {
+        const { host } = seedHostSession(harness.deps);
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const sourceThread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          providerId: "acp-test-agent",
+        });
+        seedThreadRuntimeState(harness.deps, {
+          environmentId: environment.id,
+          model: "acp-default",
+          providerThreadId: "provider-acp-source",
+          threadId: sourceThread.id,
+        });
+        seedTurnStarted(harness.deps, {
+          environmentId: environment.id,
+          providerThreadId: "provider-acp-source",
+          sequence: 3,
+          threadId: sourceThread.id,
+          turnId: "turn-acp-source",
+        });
 
-      const response = await postFork(harness, {
-        sourceThreadId: sourceThread.id,
-      });
+        const response = await postFork(harness, {
+          sourceThreadId: sourceThread.id,
+          workspace: "reuse",
+        });
 
-      expect(response.status).toBe(400);
-      await expect(readJson(response)).resolves.toMatchObject({
-        code: "invalid_request",
-        message: "Provider acp-test-agent does not support thread forks",
-      });
-      expect(getThread(harness.db, sourceThread.id)).not.toBeNull();
-    });
+        expect(response.status).toBe(201);
+        const fork = threadResponseSchema.parse(await readJson(response));
+        const start = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === fork.id,
+        );
+        if (start.command.type !== "thread.start") {
+          throw new Error("Expected thread.start");
+        }
+        expect(start.command).toMatchObject({
+          providerId: "acp-test-agent",
+          acpLaunchSpec: {
+            command: "test-agent",
+            args: ["acp"],
+          },
+          fork: { sourceProviderThreadId: "provider-acp-source" },
+        });
+
+        await reportQueuedCommandSuccess(harness, start, {
+          providerThreadId: "provider-acp-child",
+        });
+        expect(
+          listEvents(harness.db, { threadId: fork.id }).some(
+            (event) => event.providerThreadId === "provider-acp-child",
+          ),
+        ).toBe(true);
+
+        const sendResponse = await harness.app.request(
+          `/api/v1/threads/${fork.id}/send`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              input: [{ type: "text", text: "Continue the fork" }],
+              mode: "auto",
+              permissionMode: "full",
+            }),
+          },
+        );
+        expect(sendResponse.status).toBe(200);
+        const turn = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "turn.submit" && command.threadId === fork.id,
+        );
+        expect(turn.command).toMatchObject({
+          resumeContext: { providerThreadId: "provider-acp-child" },
+        });
+      },
+    );
   });
 });

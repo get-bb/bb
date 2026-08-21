@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "steer",
+  "threadId": "thr_a8q9986d6r",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "recordedAt": "2026-08-21",
+  "description": "A long turn steered mid-way with a new instruction.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 61,
+    "provider→bridge": 196,
+    "bridge→provider": 3
+  }
+}

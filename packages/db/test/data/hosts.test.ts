@@ -4,7 +4,6 @@ import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   deleteHost,
-  deleteHostRecord,
   getHost,
   getNonDestroyedHost,
   listHosts,
@@ -35,9 +34,10 @@ describe("hosts", () => {
     expect(host.lastSeenAt).toBeNull();
   });
 
-  it("upsert with same ID preserves lastSeenAt", () => {
+  it("upsert with same ID preserves the display name and lastSeenAt", () => {
     const { db } = setup();
     const host1 = upsertHost(db, noopNotifier, {
+      connectMachineId: "machine-1",
       name: "My Machine",
       type: "persistent",
     });
@@ -45,13 +45,15 @@ describe("hosts", () => {
     markHostSeen(db, host1.id, 1_000);
 
     const host2 = upsertHost(db, noopNotifier, {
+      connectMachineId: "machine-2",
       id: host1.id,
-      name: "Updated Name",
+      name: "Updated Reported Name",
       type: "persistent",
     });
 
     expect(host2.id).toBe(host1.id);
-    expect(host2.name).toBe("Updated Name");
+    expect(host2.name).toBe("My Machine");
+    expect(host2.connectMachineId).toBe("machine-2");
     expect(host2.lastSeenAt).toBe(1_000);
   });
 
@@ -72,7 +74,7 @@ describe("hosts", () => {
     expect(updated).toMatchObject({
       destroyedAt: 123,
       id: host.id,
-      name: "Disconnected Host Renamed",
+      name: "Disconnected Host",
       type: "persistent",
     });
   });
@@ -277,27 +279,6 @@ describe("hosts", () => {
     notifyHost.mockClear();
 
     expect(deleteHost(db, notifier, host.id)).toBe(true);
-    expect(getHost(db, host.id)).toBeNull();
-    expect(notifyHost).toHaveBeenCalledWith(host.id, ["host-disconnected"]);
-  });
-
-  it("deletes a host row through the record helper", () => {
-    const { db } = setup();
-    const notifyHost = vi.fn();
-    const notifier = {
-      notifyEnvironment() {},
-      notifyHost,
-      notifyProject() {},
-      notifySystem() {},
-      notifyThread() {},
-    };
-    const host = upsertHost(db, notifier, {
-      name: "Pending Join Host",
-      type: "persistent",
-    });
-    notifyHost.mockClear();
-
-    expect(deleteHostRecord(db, notifier, host.id)).toBe(true);
     expect(getHost(db, host.id)).toBeNull();
     expect(notifyHost).toHaveBeenCalledWith(host.id, ["host-disconnected"]);
   });

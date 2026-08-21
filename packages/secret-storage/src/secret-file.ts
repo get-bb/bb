@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-export interface ReadOrCreateSecretFileArgs {
+interface ReadOrCreateSecretFileArgs {
   bytes: number;
   dataDir: string;
   encoding: BufferEncoding;

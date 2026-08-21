@@ -9,11 +9,8 @@ import type { BuildEventProjectionMessagesOptions } from "../src/event-projectio
 import type { AcceptedClientRequest } from "../src/accepted-client-request-context.js";
 import {
   parsePromptInput,
-  parseAcceptedSteerFromClientRequest,
   parseAcceptedSteersFromClientRequest,
-  parsePendingSteerFromClientRequest,
   parsePendingSteersFromClientRequest,
-  parseUserFromClientRequest,
   parseUsersFromClientRequest,
 } from "../src/user-message-parsing.js";
 
@@ -149,17 +146,18 @@ describe("user message parsing", () => {
   it("populates initiator, senderThreadId, and turnRequest for user-initiated messages", () => {
     const { event, meta } = decodeThreadEventRow(userMessageRequest());
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
       initiator: "user",
       senderThreadId: null,
-      turnRequest: { kind: "message", status: "pending" },
+      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
       text: "Hello",
     });
   });
@@ -194,8 +192,8 @@ describe("user message parsing", () => {
       `${event.threadId}:user-seed:${meta.seq}-1`,
     ]);
     expect(messages.map((message) => message.turnRequest)).toEqual([
-      { kind: "message", status: "pending" },
-      { kind: "message", status: "pending" },
+      { isGrouped: true, kind: "message", status: "pending" },
+      { isGrouped: true, kind: "message", status: "pending" },
     ]);
   });
 
@@ -252,17 +250,18 @@ describe("user message parsing", () => {
     });
     const { event, meta } = decodeThreadEventRow(row);
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
       initiator: "agent",
       senderThreadId: SENDER_THREAD_ID,
-      turnRequest: { kind: "message", status: "pending" },
+      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
       // Text passes through unchanged — the renderer mutes the `[bb …]`
       // prefix at display time; the projection never slices.
       text: agentText,
@@ -279,11 +278,12 @@ describe("user message parsing", () => {
     });
     const { event, meta } = decodeThreadEventRow(row);
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
@@ -296,17 +296,18 @@ describe("user message parsing", () => {
   it("populates initiator for system-initiated messages with a turnRequest", () => {
     const { event, meta } = decodeThreadEventRow(systemMessageRequest());
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
       initiator: "system",
       senderThreadId: null,
-      turnRequest: { kind: "message", status: "pending" },
+      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
     });
   });
 
@@ -334,18 +335,19 @@ describe("user message parsing", () => {
     });
     const { event, meta } = decodeThreadEventRow(row);
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
       initiator: "system",
       senderThreadId: null,
       text,
-      turnRequest: { kind: "message", status: "pending" },
+      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
     });
     expect(message?.mentions).toEqual([mention]);
   });
@@ -367,30 +369,30 @@ describe("user message parsing", () => {
       const accepted = acceptedClientRequest();
 
       expect(
-        parsePendingSteerFromClientRequest({
+        parsePendingSteersFromClientRequest({
           acceptedClientRequest: undefined,
           decoded: event,
           meta,
           options: standardProjectionOptions,
-        }),
+        })[0] ?? null,
       ).toMatchObject({
         kind: "user",
-        turnRequest: { kind: "steer", status: "pending" },
+        turnRequest: { isGrouped: false, kind: "steer", status: "pending" },
         // Pending steers anchor at the request's own meta — there is no
         // accept event yet to route to.
         text: expectedText,
         sourceSeqStart: meta.seq,
       });
       expect(
-        parseAcceptedSteerFromClientRequest({
+        parseAcceptedSteersFromClientRequest({
           acceptedClientRequest: accepted,
           decoded: event,
           meta,
           options: standardProjectionOptions,
-        }),
+        })[0] ?? null,
       ).toMatchObject({
         kind: "user",
-        turnRequest: { kind: "steer", status: "accepted" },
+        turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
         // Accepted steers anchor at the accept event's seq, not the request's,
         // so they land at the right point in the timeline once accepted.
         text: expectedText,
@@ -398,11 +400,11 @@ describe("user message parsing", () => {
       });
       // Steers flow through the steer-specific parsers — parseUser short-circuits.
       expect(
-        parseUserFromClientRequest({
+        parseUsersFromClientRequest({
           decoded: event,
           meta,
           options: standardProjectionOptions,
-        }),
+        })[0] ?? null,
       ).toBeNull();
     }
   });
@@ -444,12 +446,12 @@ describe("user message parsing", () => {
       {
         id: "thread-1:user-seed:1",
         text: "First grouped steer",
-        turnRequest: { kind: "steer", status: "pending" },
+        turnRequest: { isGrouped: true, kind: "steer", status: "pending" },
       },
       {
         id: "thread-1:user-seed:1-1",
         text: "Second grouped steer",
-        turnRequest: { kind: "steer", status: "pending" },
+        turnRequest: { isGrouped: true, kind: "steer", status: "pending" },
       },
     ]);
     expect(
@@ -469,13 +471,13 @@ describe("user message parsing", () => {
         id: "thread-1:user-seed:1",
         sourceSeqStart: accepted.meta.seq,
         text: "First grouped steer",
-        turnRequest: { kind: "steer", status: "accepted" },
+        turnRequest: { isGrouped: true, kind: "steer", status: "accepted" },
       },
       {
         id: "thread-1:user-seed:1-1",
         sourceSeqStart: accepted.meta.seq,
         text: "Second grouped steer",
-        turnRequest: { kind: "steer", status: "accepted" },
+        turnRequest: { isGrouped: true, kind: "steer", status: "accepted" },
       },
     ]);
   });
@@ -545,27 +547,27 @@ describe("user message parsing", () => {
     const accepted = acceptedClientRequest({ turnId: "turn-2" });
 
     expect(
-      parseAcceptedSteerFromClientRequest({
+      parseAcceptedSteersFromClientRequest({
         acceptedClientRequest: accepted,
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toBeNull();
 
     expect(
-      parseUserFromClientRequest({
+      parseUsersFromClientRequest({
         acceptedClientRequest: accepted,
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toMatchObject({
       kind: "user",
       scope: turnScope("turn-2"),
       sourceSeqStart: meta.seq,
       text: "Mid-turn steer",
-      turnRequest: { kind: "message", status: "accepted" },
+      turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
     });
   });
 
@@ -575,24 +577,24 @@ describe("user message parsing", () => {
     );
 
     expect(
-      parsePendingSteerFromClientRequest({
+      parsePendingSteersFromClientRequest({
         acceptedClientRequest: undefined,
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toBeNull();
 
     expect(
-      parseUserFromClientRequest({
+      parseUsersFromClientRequest({
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toMatchObject({
       kind: "user",
       text: "Fallback message",
-      turnRequest: { kind: "message", status: "pending" },
+      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
     });
   });
 
@@ -600,16 +602,16 @@ describe("user message parsing", () => {
     const { event, meta } = decodeThreadEventRow(systemMessageRequest());
 
     expect(
-      parseUserFromClientRequest({
+      parseUsersFromClientRequest({
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toMatchObject({
       initiator: "system",
       kind: "user",
       text: "[bb system] Maintenance notice.",
-      turnRequest: { kind: "message", status: "pending" },
+      turnRequest: { isGrouped: false, kind: "message", status: "pending" },
     });
   });
 });

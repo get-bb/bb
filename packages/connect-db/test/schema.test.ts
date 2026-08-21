@@ -490,9 +490,17 @@ describe("validateHandle", () => {
     // `--` is reserved as the host-label separator for port shares.
     expect(validateHandle("foo--bar")).toBe("invalid-format");
     expect(validateHandle("a--b")).toBe("invalid-format");
-    expect(validateHandle("api")).toBe("reserved");
-    expect(validateHandle("www")).toBe("reserved");
-    expect(validateHandle("admin")).toBe("reserved");
+    for (const h of [
+      "api",
+      "www",
+      "docs",
+      "admin",
+      "oauth",
+      "origin",
+      "production",
+    ]) {
+      expect(validateHandle(h)).toBe("reserved");
+    }
   });
 });
 

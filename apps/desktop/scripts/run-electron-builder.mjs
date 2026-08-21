@@ -158,7 +158,7 @@ function createSigningPlan(env) {
   };
 }
 
-export function resolveElectronBuilderConfig(baseConfig, env) {
+function resolveElectronBuilderConfig(baseConfig, env) {
   const signingPlan = createSigningPlan(env);
   const releaseChannel = resolveDesktopReleaseChannel(env);
   const releaseConfig = createDesktopReleaseConfig(releaseChannel);
@@ -179,6 +179,11 @@ export function resolveElectronBuilderConfig(baseConfig, env) {
   }
 
   config.mac = mac;
+  config.linux = {
+    ...config.linux,
+    executableName: releaseConfig.linuxExecutableName,
+    icon: "assets/" + releaseConfig.iconFileName,
+  };
   config.appId = releaseConfig.appId;
   config.artifactName = releaseConfig.artifactName;
   config.productName = releaseConfig.applicationName;
@@ -264,7 +269,14 @@ async function main() {
     return;
   }
 
-  logSigningPlan(signingPlan);
+  if (
+    electronBuilderArgs.includes("--linux") &&
+    !electronBuilderArgs.includes("--mac")
+  ) {
+    console.log("macOS signing is not applicable for Linux-only builds.");
+  } else {
+    logSigningPlan(signingPlan);
+  }
   await mkdir(dirname(generatedConfigPath), { recursive: true });
   await writeGeneratedConfig(config);
   try {
@@ -285,10 +297,3 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   });
 }
-
-export const electronBuilderSigningEnvironment = {
-  codeSigningKeys,
-  missingEnvironmentKeys,
-  notarizationKeys,
-  requiredSigningEnvironmentKeys,
-};

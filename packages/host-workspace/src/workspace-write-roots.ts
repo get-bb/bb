@@ -1,5 +1,9 @@
 import path from "node:path";
-import { getAbsoluteGitDir, getGitCommonDir } from "./git.js";
+import {
+  getAbsoluteGitDir,
+  getGitCommonDir,
+  type GitProcessOptions,
+} from "./git.js";
 
 function isSamePathOrNestedUnder(childPath: string, parentPath: string): boolean {
   const relativePath = path.relative(parentPath, childPath);
@@ -35,11 +39,12 @@ function buildCommonGitWriteRoots(commonGitDir: string): string[] {
 
 export async function resolveAdditionalWorkspaceWriteRoots(
   workspacePath: string,
+  options: GitProcessOptions = {},
 ): Promise<string[]> {
   const resolvedWorkspacePath = path.resolve(workspacePath);
   const [gitDir, commonGitDir] = await Promise.all([
-    getAbsoluteGitDir(resolvedWorkspacePath),
-    getGitCommonDir(resolvedWorkspacePath),
+    getAbsoluteGitDir(resolvedWorkspacePath, options),
+    getGitCommonDir(resolvedWorkspacePath, options),
   ]);
   const candidateRoots = dedupeResolvedPaths([
     gitDir,

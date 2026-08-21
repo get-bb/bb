@@ -54,22 +54,17 @@ type UserQuestionLifecycleEvent = Extract<
   { type: "system/userQuestion/lifecycle" }
 >;
 
+/**
+ * The server resolves the display name from the provider registry (or the
+ * dynamic ACP tier) and passes it in. A hardcoded four-provider table used to
+ * shadow it, which produced the same strings for those four and the raw id for
+ * everyone else.
+ */
 function providerDisplayName(
   providerId: string,
   projectedDisplayName: string | undefined,
 ): string {
-  switch (providerId) {
-    case "claude-code":
-      return "Claude Code";
-    case "codex":
-      return "Codex";
-    case "pi":
-      return "Pi";
-    case "acp-cursor":
-      return "Cursor";
-    default:
-      return projectedDisplayName?.trim() || providerId;
-  }
+  return projectedDisplayName?.trim() || providerId;
 }
 
 function normalizeThreadOperationKind(
@@ -192,7 +187,7 @@ function ownershipChangeOperationTitle(
   }
 }
 
-export function threadOperationTitle(
+function threadOperationTitle(
   meta: EventProjectionThreadOperationMetadata | null,
   threadName: string,
 ): string {
@@ -210,7 +205,7 @@ export function threadOperationTitle(
   }
 }
 
-export function threadOperationStatus(
+function threadOperationStatus(
   meta: EventProjectionThreadOperationMetadata | null,
 ): EventProjectionOperationMessage["status"] {
   if (!meta) return undefined;
@@ -461,7 +456,7 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "provider/warning") {
-    const category = decoded.category ?? "general";
+    const category = decoded.category;
     const isDeprecation = category === "deprecation";
     const isConfig = category === "config";
     const title = isDeprecation
@@ -531,7 +526,12 @@ export function parseOperationMessage(
     // Plugin interaction lifecycle events drive composer/realtime state, but
     // their generic operation rows duplicate the plugin form and briefly
     // linger as "Plugin interaction pending" after submission.
-    if (decoded.operation === "plugin_interaction") return null;
+    if (
+      decoded.operation === "plugin_interaction" ||
+      decoded.operation === "edit_message"
+    ) {
+      return null;
+    }
 
     const threadOperation = createThreadOperationMetadata(decoded);
     const title = threadOperationTitle(threadOperation, threadName);
@@ -580,6 +580,14 @@ export function parseOperationMessage(
     };
   }
 
+  if (decoded.type === "thread/context/cleared") {
+    return op(decoded, meta, "context-clear", {
+      opType: "context-clear",
+      title: "Context cleared",
+      status: "completed",
+    });
+  }
+
   return null;
 }
 
@@ -599,6 +607,9 @@ export function interruptOperationMessage(
       return;
     case "compaction":
       message.title = "Context compaction interrupted";
+      return;
+    case "context-clear":
+      message.title = "Context clear interrupted";
       return;
     default:
       return;

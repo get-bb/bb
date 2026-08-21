@@ -50,7 +50,7 @@ function userRow(args: {
     text: args.text,
     mentions: [],
     attachments: null,
-    turnRequest: { kind: "message", status: "accepted" },
+    turnRequest: { isGrouped: false, kind: "message", status: "accepted" },
   };
 }
 

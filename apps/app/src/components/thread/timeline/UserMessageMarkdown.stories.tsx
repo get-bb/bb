@@ -44,6 +44,7 @@ function resolveThreadLink(link: TimelineTitleLink): string | null {
 const resolveMentionLink = () => () => {};
 
 const acceptedMessage: TimelineConversationTurnRequest = {
+  isGrouped: false,
   kind: "message",
   status: "accepted",
 };
@@ -74,7 +75,7 @@ function UserMessage({
       <ConversationMessageContent
         role="user"
         initiator="user"
-        childOrigin={null}
+        originKind={null}
         senderThreadId={null}
         senderThreadTitle={null}
         senderIsPluginSideChat={false}

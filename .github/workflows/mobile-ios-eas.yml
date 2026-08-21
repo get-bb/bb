@@ -1,0 +1,213 @@
+# Build the bb mobile app for iOS on EAS and (optionally) submit it to
+# TestFlight. Runs on its own from the Actions tab and as the nightly job in
+# publish-bb-app.yml. EAS builds on its own macOS workers, so this only needs
+# an Ubuntu runner that starts the build and waits for the result.
+name: Mobile iOS (EAS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: EAS build profile from apps/mobile/eas.json.
+        required: true
+        type: choice
+        default: production
+        options:
+          - production
+          - preview
+          - development-device
+      submit:
+        description: Submit the finished build to TestFlight (production profile only).
+        required: true
+        type: boolean
+        default: true
+      version:
+        description: Marketing version for app.json (X.Y.Z; a -prerelease suffix is dropped). Empty keeps the committed value.
+        required: false
+        type: string
+        default: ""
+      external_group:
+        description: TestFlight external group that receives the submitted build. Empty skips this step.
+        required: false
+        type: string
+        default: External testers
+  workflow_call:
+    inputs:
+      profile:
+        required: true
+        type: string
+      submit:
+        required: true
+        type: boolean
+      version:
+        required: true
+        type: string
+      external_group:
+        required: true
+        type: string
+    secrets:
+      EXPO_TOKEN:
+        required: true
+      ASC_API_KEY_P8:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build bb iOS on EAS (${{ inputs.profile }})
+    runs-on: ubuntu-latest
+    # The job waits for the EAS build and the TestFlight upload. On the free
+    # EAS tier the build and submit queues alone can take 30+ minutes each.
+    timeout-minutes: 150
+    # One EAS submission at a time: two runs with --auto-submit would race on
+    # the remote build number and upload two TestFlight builds at once. The
+    # job holds this lock until EAS reports the final result.
+    concurrency:
+      group: mobile-ios-eas
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 9.15.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Require EAS and App Store Connect secrets
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          set -euo pipefail
+
+          missing_secret_names=()
+          for secret_name in EXPO_TOKEN ASC_API_KEY_P8; do
+            if [[ -z "${!secret_name:-}" ]]; then
+              missing_secret_names+=("$secret_name")
+            fi
+          done
+
+          if [[ "${#missing_secret_names[@]}" -gt 0 ]]; then
+            echo "::error::iOS EAS builds need EAS and App Store Connect access. Missing: ${missing_secret_names[*]}."
+            exit 1
+          fi
+
+      - name: Apply the marketing version
+        if: ${{ inputs.version != '' }}
+        env:
+          MOBILE_VERSION: ${{ inputs.version }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+
+          # iOS accepts only numeric dotted versions, so a prerelease version
+          # (0.38.1-nightly.N.M) carries its base 0.38.1; the remote EAS
+          # build number tells builds apart.
+          MOBILE_VERSION="${MOBILE_VERSION%%-*}"
+          if [[ ! "$MOBILE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Marketing version must be numeric (X.Y.Z), got '${MOBILE_VERSION}'."
+            exit 1
+          fi
+
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync } from "node:fs";
+            const config = JSON.parse(readFileSync("app.json", "utf8"));
+            config.expo.version = process.argv[1];
+            writeFileSync("app.json", `${JSON.stringify(config, null, 2)}\n`);
+          ' "$MOBILE_VERSION"
+          echo "Applied mobile version ${MOBILE_VERSION}."
+
+      - name: Write the App Store Connect API key
+        env:
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        working-directory: apps/mobile
+        run: |
+          set -euo pipefail
+          # eas.json submit.production points at this gitignored path.
+          umask 077
+          printf '%s\n' "$ASC_API_KEY_P8" > asc-api-key.p8
+
+      - name: Build on EAS and wait for the result
+        id: eas_build
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          EAS_PROFILE: ${{ inputs.profile }}
+          EAS_SUBMIT: ${{ inputs.submit }}
+        working-directory: apps/mobile
+        # EAS builds on its own workers for ~20 minutes and, with --auto-submit,
+        # then uploads to App Store Connect with the submit profile of the same
+        # name. The command waits for both and exits non-zero when either
+        # fails, so a red EAS build or upload makes this job red. expo.dev
+        # holds the build and submission logs; the run summary links to them.
+        run: |
+          set -euo pipefail
+
+          args=(build --platform ios --profile "$EAS_PROFILE" --non-interactive --json)
+          if [[ "$EAS_SUBMIT" == "true" ]]; then
+            if [[ "$EAS_PROFILE" != "production" ]]; then
+              echo "::error::Only the production profile has a submit profile; got '${EAS_PROFILE}'."
+              exit 1
+            fi
+            args+=(--auto-submit)
+          fi
+
+          # --json puts the finished build records on stdout and the progress
+          # log on stderr. The records carry the marketing version and the
+          # remote build number that the distribute step needs.
+          pnpm exec eas "${args[@]}" 2> >(tee eas-build.log >&2) > eas-build.json
+          {
+            echo "## EAS build"
+            echo
+            grep -Eo 'https://expo\.dev/[^ ]+' eas-build.log | sed 's/^/- /' || true
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          node --input-type=module -e '
+            import { readFileSync, appendFileSync } from "node:fs";
+            const builds = JSON.parse(readFileSync("eas-build.json", "utf8"));
+            const build = Array.isArray(builds) ? builds[0] : builds;
+            const { appVersion, appBuildVersion } = build ?? {};
+            if (typeof appVersion !== "string" || typeof appBuildVersion !== "string") {
+              throw new Error(`eas build --json returned no appVersion/appBuildVersion: ${JSON.stringify(build)}`);
+            }
+            appendFileSync(process.env.GITHUB_OUTPUT, `app_version=${appVersion}\nbuild_number=${appBuildVersion}\n`);
+            console.log(`EAS built ${appVersion} (${appBuildVersion}).`);
+          '
+
+      - name: Add the build to the TestFlight external group
+        if: ${{ inputs.submit && inputs.external_group != '' }}
+        env:
+          APP_VERSION: ${{ steps.eas_build.outputs.app_version }}
+          BUILD_NUMBER: ${{ steps.eas_build.outputs.build_number }}
+          EXTERNAL_GROUP: ${{ inputs.external_group }}
+        working-directory: apps/mobile
+        # Apple offers automatic distribution only for internal groups. This
+        # waits for App Store Connect to finish processing the upload, submits
+        # the build for Beta App Review when the build has none, and adds it to
+        # the external group. A later build of an approved marketing version
+        # usually clears review in minutes with no human step.
+        run: |
+          set -euo pipefail
+          node scripts/testflight-distribute.mjs \
+            --version "$APP_VERSION" \
+            --build "$BUILD_NUMBER" \
+            --group "$EXTERNAL_GROUP" \
+            --key-path ./asc-api-key.p8
+
+      - name: Remove the App Store Connect API key
+        if: ${{ always() }}
+        working-directory: apps/mobile
+        run: rm -f asc-api-key.p8

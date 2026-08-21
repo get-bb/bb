@@ -179,6 +179,23 @@ export function formatPendingInteractionSubjectDetailLines(
         ...permissions.map((permission) => `Permission: ${permission}`),
       ];
     }
+    case "plan": {
+      // The plan body is the subject, not a detail line. Surfaces render it
+      // themselves so they can keep its Markdown; this only names the file.
+      return interaction.payload.subject.planFilePath
+        ? [`Plan file: ${interaction.payload.subject.planFilePath}`]
+        : [];
+    }
+    case "tool_use": {
+      // Raised by the ACP bridge for generic tool permissions; WS5 designs the
+      // tool-use surface.
+      const { tool, presentation } = interaction.payload.subject;
+      return [
+        `Tool: ${tool}`,
+        ...(presentation.title ? [presentation.title] : []),
+        ...(presentation.detail ? [presentation.detail] : []),
+      ];
+    }
     default:
       return assertNever(interaction.payload.subject);
   }
@@ -235,6 +252,7 @@ function resolveGrantedPermissionsForApproval(
     return interaction.payload.subject.sessionGrant;
   }
 
+  // A plan verdict carries no grant.
   return null;
 }
 

@@ -10,36 +10,37 @@ import {
   type ModelReasoningPickerFooterAction,
 } from "@/components/pickers/ModelReasoningPicker";
 import { type PickerOption } from "@/components/pickers/OptionPicker";
+import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
+import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 
-export interface ExecutionProviderConfig {
-  options?: readonly PickerOption<string>[];
+interface ExecutionProviderConfig {
+  options?: readonly ProviderPickerOption[];
   selectedId?: string;
   /** Omit to render the provider as locked (used by FollowUp where the thread is committed). */
   onChange?: (value: string) => void;
   hasMultiple?: boolean;
-  displayName?: string;
 }
 
-export interface ExecutionModelConfig {
+interface ExecutionModelConfig {
   active?: { model: string } | null;
   selected: string;
-  options: readonly PickerOption<string>[];
+  options: readonly ModelPickerOption[];
   /** Models behind the picker's collapsed "More models" section. */
-  moreOptions: readonly PickerOption<string>[];
+  moreOptions: readonly ModelPickerOption[];
   isLoading: boolean;
   loadFailed: boolean;
   loadError?: SystemExecutionOptionsModelLoadError | null;
   onChange: (value: string) => void;
 }
 
-export interface ExecutionServiceTierConfig {
+interface ExecutionServiceTierConfig {
   value?: ServiceTier;
   onChange: (value: ServiceTier | undefined) => void;
   supported: boolean;
   supportByProvider?: Record<string, boolean>;
 }
 
-export interface ExecutionReasoningConfig {
+interface ExecutionReasoningConfig {
   value: ReasoningLevel;
   options: readonly PickerOption<ReasoningLevel>[];
   onChange: (value: ReasoningLevel) => void;

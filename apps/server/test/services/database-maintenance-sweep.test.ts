@@ -26,7 +26,10 @@ import { runDatabaseMaintenanceSweep } from "../../src/services/system/periodic-
 import { testLogger } from "../helpers/test-app.js";
 
 const ONE_HOUR_MS = 60 * 60_000;
-const SWEEP_TIME_START_MS = 1_000_000_000_000;
+// The non-isolated server project shares the production module's last-sweep
+// clock across files. Start beyond wall time so another test that uses
+// Date.now() cannot make these synthetic sweeps look too early.
+const SWEEP_TIME_START_MS = Date.now() + 24 * ONE_HOUR_MS;
 const FREELIST_ROW_COUNT = 1_200;
 const SQLITE_BUSY_HEADROOM_MS = 1_000;
 const TEST_DEFERRED_LEGACY_TABLE_NAMES = [
@@ -48,7 +51,7 @@ interface TempDatabasePath {
 class CapturingSlowQueryLogger implements SlowDbQueryLogger {
   debugLogs: SlowDbQueryLogFields[] = [];
 
-  debug(fields: SlowDbQueryLogFields): void {
+  info(fields: SlowDbQueryLogFields): void {
     this.debugLogs.push(fields);
   }
 

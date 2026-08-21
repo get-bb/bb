@@ -1,0 +1,101 @@
+{
+  "expo": {
+    "name": "bb",
+    "slug": "bb-app",
+    "owner": "bb-team",
+    "version": "0.39.0",
+    "scheme": "bb",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "app.getbb.mobile",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "bb connects to a bb server on your local network or tailnet.",
+        "NSCameraUsageDescription": "bb attaches photos you take to your prompts.",
+        "NSMicrophoneUsageDescription": "bb records voice input and transcribes it into your prompt.",
+        "NSPhotoLibraryUsageDescription": "bb attaches photos you pick to your prompts.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "UIBackgroundModes": ["remote-notification"]
+      },
+      "associatedDomains": ["applinks:getbb.app", "applinks:*.getbb.app"]
+    },
+    "android": {
+      "package": "app.getbb.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "*.getbb.app",
+              "pathPrefix": "/threads/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.getbb.app",
+              "pathPrefix": "/projects/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.getbb.app",
+              "pathPrefix": "/settings/"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-image",
+      "expo-audio",
+      "expo-web-browser",
+      "expo-font",
+      "expo-splash-screen",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#000000",
+          "defaultChannel": "threads"
+        }
+      ],
+      "expo-camera",
+      "expo-image-picker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3dca8cca-f48a-4c3a-ba3d-3af40e58a588"
+      }
+    }
+  }
+}

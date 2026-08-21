@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  assertThreadEventScope,
   requireThreadEventScopeTurnId,
   threadEventScopeSchema,
   threadEventTypeValues,
@@ -46,15 +45,6 @@ describe("thread event scope policy", () => {
       valid: false,
       message: "item/completed requires turn scope but received thread scope",
     });
-  });
-
-  it("throws when asserting invalid scope", () => {
-    expect(() =>
-      assertThreadEventScope({
-        type: "thread/started",
-        scope: turnScope("turn-1"),
-      }),
-    ).toThrow("thread/started requires thread scope but received turn scope");
   });
 
   it("allows thread-or-turn events to use either explicit scope", () => {

@@ -97,7 +97,7 @@ const MarkdownTaskInput = Extension.create({
 
 // Inline atom that renders as a pill and serializes to markdown as a
 // bbtask:// link: [TSK-42](bbtask://TSK-42).
-export const TaskMention = Node.create({
+const TaskMention = Node.create({
   name: "taskMention",
   group: "inline",
   inline: true,
@@ -163,7 +163,7 @@ export const TaskMention = Node.create({
 // Inline atom that renders as a pill (with a small chat glyph to distinguish
 // it from task pills) and serializes to markdown as a bbthread:// link:
 // [Fix login flow](bbthread://thr_abc).
-export const ThreadMention = Node.create({
+const ThreadMention = Node.create({
   name: "threadMention",
   group: "inline",
   inline: true,
@@ -239,7 +239,7 @@ export const ThreadMention = Node.create({
 // the document is serialized back to markdown for an image-terminal document.
 // Runs only on transactions (not initial construction) and only while the
 // editor is editable; the host seeds the initial document separately.
-export const TrailingParagraph = Extension.create({
+const TrailingParagraph = Extension.create({
   name: "trailingParagraph",
   addProseMirrorPlugins() {
     const editor = this.editor;

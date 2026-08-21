@@ -60,20 +60,20 @@ export interface OpenHttpFrame {
 }
 
 /** Either direction: a piece of an HTTP request or response body. */
-export interface BodyChunkFrame {
+interface BodyChunkFrame {
   type: "body-chunk";
   streamId: number;
   data: Uint8Array;
 }
 
 /** Either direction: the body for `streamId` is complete. */
-export interface BodyEndFrame {
+interface BodyEndFrame {
   type: "body-end";
   streamId: number;
 }
 
 /** Client → relay: response status + headers for an open-http stream. */
-export interface RespHeadFrame {
+interface RespHeadFrame {
   type: "resp-head";
   streamId: number;
   status: number;
@@ -95,7 +95,7 @@ export interface OpenWsFrame {
 }
 
 /** Client → relay: the origin accepted the WebSocket. */
-export interface WsOpenAckFrame {
+interface WsOpenAckFrame {
   type: "ws-open-ack";
   streamId: number;
   /** Negotiated subprotocol; null when none was negotiated. */
@@ -103,7 +103,7 @@ export interface WsOpenAckFrame {
 }
 
 /** Either direction: one WebSocket message on an open-ws stream. */
-export interface WsDataFrame {
+interface WsDataFrame {
   type: "ws-data";
   streamId: number;
   isBinary: boolean;
@@ -115,7 +115,7 @@ export interface WsDataFrame {
  * mirror the WebSocket close; for open-http streams they are advisory and a
  * receiver should abort the request/response.
  */
-export interface CloseStreamFrame {
+interface CloseStreamFrame {
   type: "close-stream";
   streamId: number;
   code: number;

@@ -9,7 +9,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   resetPluginSlotStoreForTest,
@@ -21,7 +21,7 @@ import {
   resetPluginComposerActionUsageForTest,
 } from "@/lib/plugin-composer-action-usage";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
-import { PluginComposerActions } from "./PluginComposerActions";
+import { ComposerActionsSlot } from "./PluginComposerActions";
 
 const VIEW: ComposerView = {
   scope: { kind: "new-thread", projectId: null },
@@ -76,7 +76,7 @@ function registerPlugin(
 }
 
 function renderActions() {
-  return render(<PluginComposerActions view={VIEW} />);
+  return render(<ComposerActionsSlot view={VIEW} />);
 }
 
 function inlinePluginIds(): string[] {
@@ -89,7 +89,7 @@ function inlinePluginIds(): string[] {
   );
 }
 
-describe("PluginComposerActions overflow", () => {
+describe("ComposerActionsSlot overflow", () => {
   beforeEach(() => {
     window.localStorage.clear();
     resetPluginComposerActionUsageForTest();
@@ -174,5 +174,21 @@ describe("PluginComposerActions overflow", () => {
 
     expect(() => renderActions()).not.toThrow();
     expect(inlinePluginIds()).toEqual(["alpha", "beta", "delta"]);
+  });
+
+  it("preserves BB-owned actions after plugin contributions", () => {
+    registerPlugin("alpha", ["Plugin action"]);
+
+    const view = render(
+      <ComposerActionsSlot view={VIEW}>
+        <button type="button">BB action</button>
+      </ComposerActionsSlot>,
+    );
+
+    expect(
+      Array.from(view.container.querySelectorAll("button"), (element) =>
+        element.textContent?.trim(),
+      ),
+    ).toEqual(["Plugin action", "BB action"]);
   });
 });

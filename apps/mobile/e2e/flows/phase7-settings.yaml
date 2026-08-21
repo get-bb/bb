@@ -1,0 +1,171 @@
+# Phase 7 settings: Settings home → Experiments (toggle "New onboarding",
+# persisted server-side: re-open shows it on, the API agrees) → Appearance
+# (palette → Nord: the row shows "Nord", the API agrees, the UI re-tints) →
+# Machines (the harness host row → detail → rename → the list shows the new
+# name) → restore. Resets the server settings it touches at start and end, so
+# it is safe on a shared harness backend.
+#
+# Requires Metro with EXPO_PUBLIC_BB_E2E=1 (first run on every launch) and the
+# harness backend on 41999. Run: JAVA_HOME=/opt/homebrew/opt/openjdk@17
+# maestro --device <udid> test e2e/flows/phase7-settings.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runScript: ../scripts/phase7-settings-reset.js
+- runScript: ../scripts/phase7-machine-name.js
+- runFlow: ../subflows/launch-to-home.yaml
+# Workspace menu → Settings.
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-experiments"
+    timeout: 10000
+- takeScreenshot: p7-settings-home
+# Experiments: toggle "New onboarding" on (PUT /settings/experiments).
+- tapOn:
+    id: "settings-experiments"
+- extendedWaitUntil:
+    visible:
+      id: "experiment-newOnboarding"
+    timeout: 15000
+- tapOn:
+    id: "experiment-newOnboarding"
+- extendedWaitUntil:
+    visible:
+      id: "experiment-newOnboarding"
+      checked: true
+    timeout: 10000
+- takeScreenshot: p7-settings-experiments
+# Persisted: leave, come back, still on; and the server says so.
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "settings-experiments"
+    timeout: 10000
+- tapOn:
+    id: "settings-experiments"
+- extendedWaitUntil:
+    visible:
+      id: "experiment-newOnboarding"
+      checked: true
+    timeout: 15000
+- runScript:
+    file: ../scripts/phase7-settings-assert.js
+    env:
+      EXPECT_NEW_ONBOARDING: "true"
+      EXPECT_THEME_ID: "default"
+# Toggle it back off through the UI (the reset at the end covers failures).
+- tapOn:
+    id: "experiment-newOnboarding"
+- extendedWaitUntil:
+    visible:
+      id: "experiment-newOnboarding"
+      checked: false
+    timeout: 10000
+- tapOn:
+    id: "BackButton"
+# Appearance: palette → Nord (PUT /settings/appearance; the app re-tints from
+# the refetched /system/config).
+- extendedWaitUntil:
+    visible:
+      id: "settings-appearance"
+    timeout: 10000
+- tapOn:
+    id: "settings-appearance"
+- extendedWaitUntil:
+    visible:
+      id: "appearance-palette"
+    timeout: 15000
+- assertVisible:
+    id: "appearance-mode-system"
+- tapOn:
+    id: "appearance-palette"
+- extendedWaitUntil:
+    visible:
+      id: "appearance-palette-option-nord"
+    timeout: 10000
+- tapOn:
+    id: "appearance-palette-option-nord"
+- extendedWaitUntil:
+    visible:
+      id: "appearance-palette"
+      text: ".*Nord.*"
+    timeout: 15000
+- runScript:
+    file: ../scripts/phase7-settings-assert.js
+    env:
+      EXPECT_NEW_ONBOARDING: "false"
+      EXPECT_THEME_ID: "nord"
+- takeScreenshot: p7-settings-appearance-nord
+- tapOn:
+    id: "BackButton"
+# Machines (below the fold): the harness host → detail → rename → list shows
+# the new name.
+- extendedWaitUntil:
+    visible:
+      id: "settings-appearance"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "settings-machines"
+    direction: DOWN
+    timeout: 20000
+- tapOn:
+    id: "settings-machines"
+- extendedWaitUntil:
+    visible:
+      id: "machine-row-${output.hostId}"
+    timeout: 15000
+- assertVisible: ".*${output.hostName}.*"
+- takeScreenshot: p7-settings-machines
+- tapOn:
+    id: "machine-row-${output.hostId}"
+- extendedWaitUntil:
+    visible:
+      id: "machine-detail-name"
+      text: "${output.hostName}"
+    timeout: 15000
+- assertVisible:
+    id: "machine-permission-ceiling"
+- assertVisible:
+    id: "machine-rename-row"
+- extendedWaitUntil:
+    visible:
+      id: "machine-provider-cli-codex"
+    timeout: 30000
+- takeScreenshot: p7-settings-machine-detail
+- tapOn:
+    id: "machine-rename-row"
+- extendedWaitUntil:
+    visible:
+      id: "machine-rename-input"
+    timeout: 10000
+- tapOn:
+    id: "machine-rename-input"
+- eraseText: 80
+- inputText: "P7 renamed machine"
+- tapOn:
+    id: "machine-rename-save"
+- extendedWaitUntil:
+    visible:
+      id: "machine-detail-name"
+      text: "P7 renamed machine"
+    timeout: 15000
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible: ".*P7 renamed machine.*"
+    timeout: 15000
+- takeScreenshot: p7-settings-machines-renamed
+# Restore the name and the server settings.
+- runScript:
+    file: ../scripts/phase7-machine-name.js
+    env:
+      RESTORE_NAME: "${output.hostName}"
+- extendedWaitUntil:
+    visible: ".*${output.hostName}.*"
+    timeout: 15000
+- runScript: ../scripts/phase7-settings-reset.js

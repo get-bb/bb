@@ -1,0 +1,159 @@
+# Phase 7 plugins / extensions against the harness backend: Settings →
+# Plugins (the integration harness runs no plugin service, so the installed
+# list is the empty state) → Marketplaces (the harness seeds `bb-community`)
+# → Skills library (the built-in `bb-cli` skill, read-only detail) → skills.sh
+# registry browse (live proxy: a list, or the empty / unavailable state when
+# offline). The dev-server variant with real plugins lives in
+# e2e/manual/phase7-plugins-devserver.yaml.
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+# Workspace menu → Settings.
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+# Plugins: the harness has no plugins → empty state + Browse / Marketplaces rows.
+- scrollUntilVisible:
+    element:
+      id: "settings-plugins"
+    direction: DOWN
+- tapOn:
+    id: "settings-plugins"
+- extendedWaitUntil:
+    visible:
+      id: "plugins-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "plugins-empty"
+    timeout: 20000
+- assertVisible:
+    id: "plugins-browse"
+- assertVisible:
+    id: "plugins-marketplaces"
+- takeScreenshot: p7-plugins-list
+# Marketplaces: the seeded bb-community marketplace renders with its entry count.
+- tapOn:
+    id: "plugins-marketplaces"
+- extendedWaitUntil:
+    visible:
+      id: "marketplaces-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "marketplace-row-bb-community"
+    timeout: 20000
+- assertVisible: ".*BB Community.*"
+- takeScreenshot: p7-plugins-marketplaces
+# The add-marketplace sheet (also behind the header "+", which the dev
+# client's floating gear can cover on larger simulators).
+- tapOn:
+    id: "marketplaces-add-row"
+- extendedWaitUntil:
+    visible:
+      id: "add-marketplace-sheet"
+    timeout: 10000
+- assertVisible:
+    id: "add-marketplace-submit"
+- takeScreenshot: p7-plugins-add-marketplace
+- tapOn: "Cancel"
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "plugins-screen"
+    timeout: 10000
+# Browse catalog: the harness seeds two bb-community entries.
+- tapOn:
+    id: "plugins-browse"
+- extendedWaitUntil:
+    visible:
+      id: "plugin-browse-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "plugin-browse-group-.*|plugin-browse-empty"
+    timeout: 20000
+- takeScreenshot: p7-plugins-browse
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "plugins-screen"
+    timeout: 10000
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+# Skills library: the built-in bb-cli skill, then its read-only detail.
+- scrollUntilVisible:
+    element:
+      id: "settings-skills"
+    direction: DOWN
+- tapOn:
+    id: "settings-skills"
+- extendedWaitUntil:
+    visible:
+      id: "skills-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "skill-row-.*"
+    timeout: 20000
+# The in-process daemon discovers this Mac's real skill folders too, so the
+# library can be long: filter down to the built-in bb-cli skill when the
+# filter field is shown (more than a handful of skills).
+- runFlow:
+    when:
+      visible:
+        id: "skills-filter"
+    commands:
+      - tapOn:
+          id: "skills-filter"
+      - inputText: "bb-cli"
+      - tapOn: ".*My skills.*"
+- extendedWaitUntil:
+    visible:
+      id: "skill-row-bb-cli"
+    timeout: 20000
+- takeScreenshot: p7-plugins-skills
+- tapOn:
+    id: "skill-row-bb-cli"
+- extendedWaitUntil:
+    visible:
+      id: "skill-detail-screen"
+    timeout: 15000
+- assertVisible:
+    id: "skill-detail-name"
+    text: "bb-cli"
+# The rendered SKILL.md (its first heading); the content card itself is
+# taller than the screen, which Maestro does not count as visible.
+- extendedWaitUntil:
+    visible: ".*bb CLI.*"
+    timeout: 20000
+- takeScreenshot: p7-plugins-skill-detail
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "skills-screen"
+    timeout: 10000
+# skills.sh registry: a live list, or the empty / unavailable state offline.
+- tapOn:
+    id: "skills-browse"
+- extendedWaitUntil:
+    visible:
+      id: "registry-skills-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "registry-skill-row-.*|registry-skills-empty|registry-skills-unavailable"
+    timeout: 40000
+- takeScreenshot: p7-plugins-registry

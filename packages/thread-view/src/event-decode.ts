@@ -16,12 +16,15 @@ export function getEventProviderThreadId(
     case "turn/input/accepted":
     case "thread/name/updated":
     case "thread/compacted":
+    case "thread/context/cleared":
     case "thread/goal/updated":
     case "thread/goal/cleared":
     case "item/started":
     case "item/completed":
     case "item/backgroundTask/progress":
     case "item/backgroundTask/completed":
+    case "item/delegation/progress":
+    case "item/delegation/completed":
     case "item/agentMessage/delta":
     case "item/commandExecution/outputDelta":
     case "item/fileChange/outputDelta":
@@ -38,6 +41,7 @@ export function getEventProviderThreadId(
     case "provider/warning":
     case "provider/modelFallback":
     case "provider/rateLimits/updated":
+    case "thread/extensionState/updated":
     case "provider/unhandled":
       return decoded.providerThreadId;
     case "turn/completed":
@@ -45,6 +49,7 @@ export function getEventProviderThreadId(
     case "thread/started":
     case "client/thread/start":
     case "client/turn/requested":
+    case "client/turn/rejected":
     case "client/turn/start":
     case "system/error":
     case "system/manager/user_message":
@@ -68,6 +73,8 @@ export function getEventParentToolCallId(
     case "item/completed":
     case "item/backgroundTask/progress":
     case "item/backgroundTask/completed":
+    case "item/delegation/progress":
+    case "item/delegation/completed":
       return decoded.item.parentToolCallId;
     case "item/agentMessage/delta":
     case "item/commandExecution/outputDelta":
@@ -86,6 +93,7 @@ export function getEventParentToolCallId(
     case "turn/input/accepted":
     case "thread/name/updated":
     case "thread/compacted":
+    case "thread/context/cleared":
     case "thread/goal/updated":
     case "thread/goal/cleared":
     case "thread/tokenUsage/updated":
@@ -96,8 +104,10 @@ export function getEventParentToolCallId(
     case "provider/warning":
     case "provider/modelFallback":
     case "provider/rateLimits/updated":
+    case "thread/extensionState/updated":
     case "client/thread/start":
     case "client/turn/requested":
+    case "client/turn/rejected":
     case "client/turn/start":
     case "system/error":
     case "system/manager/user_message":

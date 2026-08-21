@@ -1,4 +1,4 @@
-export type JsonPrimitive = string | number | boolean | null;
+type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
   | JsonPrimitive
   | JsonValue[]
@@ -7,7 +7,7 @@ export type JsonValue =
 export type JsonObject = { [key: string]: JsonValue };
 export type JsonSchema = boolean | JsonObject;
 
-export interface ExplicitModelSelection {
+interface ExplicitModelSelection {
   provider: string;
   model: string;
   reasoningLevel: string;
@@ -20,12 +20,12 @@ export interface WorkflowAgentOptions {
   phase: string | null;
 }
 
-export interface WorkflowPhase {
+interface WorkflowPhase {
   title: string;
   detail: string | null;
 }
 
-export interface WorkflowMetadata {
+interface WorkflowMetadata {
   name: string;
   description: string;
   inputSchema: JsonSchema | null;
@@ -46,7 +46,7 @@ export interface WorkflowRuntimeLimits {
   maxConcurrentAgents: number;
 }
 
-export type WorkflowDepth = 0 | 1;
+type WorkflowDepth = 0 | 1;
 
 export type WorkflowReference =
   | string

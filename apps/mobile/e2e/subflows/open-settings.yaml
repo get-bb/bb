@@ -1,0 +1,11 @@
+# Home → workspace menu (the header's server avatar) → Settings.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: "home-workspace-menu"
+- extendedWaitUntil:
+    visible:
+      id: "workspace-settings"
+    timeout: 10000
+- tapOn:
+    id: "workspace-settings"

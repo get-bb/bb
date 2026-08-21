@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   resolveWorkflowSource,
   type ResolvedWorkflowSource,
@@ -10,7 +10,7 @@ import {
   type WorkflowValidationSummary,
 } from "./workflow-validation.js";
 
-export interface PreparedWorkflowSource extends ResolvedWorkflowSource {
+interface PreparedWorkflowSource extends ResolvedWorkflowSource {
   validation: WorkflowValidationSummary;
 }
 

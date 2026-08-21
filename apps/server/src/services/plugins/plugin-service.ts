@@ -6,27 +6,52 @@ import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
+  derivePluginId,
   formatPluginThemeId,
+  isPluginOwnedIconPath,
+  type DeclaredCodeTheme,
+  type DynamicTool,
   type JsonValue,
   type PluginThemeMeta,
+  type SystemChangeKind,
+  type ThreadEventItemPresentation,
   type ToolCallResponse,
 } from "@bb/domain";
 import {
-  PLUGIN_CLI_OUTPUT_MAX_BYTES,
   type PluginCliExecutionResult,
-  type PluginCliOutputLimitError,
   type PluginRpcError,
   type PluginRpcValidationIssue,
   type StandardSchemaV1,
   type StandardSchemaV1Issue,
   type StandardSchemaV1Result,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
+import {
+  assertNoRecursiveJsonSchemaReferences,
+  enforcePluginCliOutputLimit,
+  PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+  PLUGIN_AGENT_SELECTION_MAX_IDS,
+  PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES,
+  RESERVED_AGENT_TOOL_NAMES,
+  adoptHttpRouteResponse,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 // The build engine's natives (esbuild, Tailwind oxide) are dynamically
 // imported inside buildPluginApp — importing this loads nothing heavy.
-import { buildPluginApp, createPluginDevLoop } from "@bb/plugin-build";
+import {
+  buildPluginApp,
+  buildPluginHost,
+  createPluginDevLoop,
+} from "@bb/plugin-build";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
+import {
+  marketplacePublisherLabels,
+  pluginPublisherLabel,
+} from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
-import type { PluginCapabilitySummary } from "@bb/server-contract";
+import {
+  ROOT_PLUGIN_SOURCE_SELECTION,
+  type PluginCapabilitySummary,
+  type PluginSourceSelection,
+} from "@bb/server-contract";
 import {
   claimPluginScheduledRun,
   deleteAllPluginSettings,
@@ -35,6 +60,7 @@ import {
   getInstalledPlugin,
   listDuePluginSchedules,
   listInstalledPlugins,
+  listPendingGitPluginArtifacts,
   listPluginSchedules,
   markInstalledPluginRemoved,
   recordPluginScheduleResult,
@@ -46,15 +72,15 @@ import {
   getLastThreadOutput,
 } from "../threads/thread-data.js";
 import type { PluginBrandingAssetVariant } from "./app-bundle.js";
-import { npmInstallPrefix, parsePluginSource } from "./install-sources.js";
+import { readPluginThemeCodeTheme } from "../system/code-themes.js";
 import {
-  derivePluginId,
-  readPluginManifest,
-  type PluginManifest,
-} from "./manifest.js";
+  npmInstallPrefix,
+  parsePluginSource,
+  recoverInterruptedGitPluginPromotion,
+} from "./install-sources.js";
+import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
-  RESERVED_AGENT_TOOL_NAMES,
   type BbPluginApi,
   type PluginAgentConfigurationContext,
   type PluginAgentToolContext,
@@ -81,6 +107,7 @@ import {
 import { createPluginActivation } from "./plugin-activation.js";
 import {
   createManagedPluginArtifacts,
+  type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
 import { createPluginRegistration } from "./plugin-registration.js";
@@ -107,30 +134,27 @@ import type {
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
-  PluginApplyUpdateOutcome,
-  PluginApplyUpdateResult,
-  PluginHandlerStats,
-  PluginInstructionContribution,
-  PluginResolvedAgentConfiguration,
-  PluginListEntry,
-  PluginMentionProviderContribution,
   PluginMentionResolveResult,
-  PluginMentionSearchGroup,
-  PluginMentionSearchItem,
-  PluginRuntimeStatus,
-  PluginScheduleEntry,
   PluginServiceDeps,
-  PluginServiceEntry,
-  PluginServiceState,
-  PluginSourceView,
   PluginThreadEventEmitter,
-  PluginUpdateCheckEntry,
   PluginWireLookup,
 } from "./plugin-service-internal.js";
 
 export interface PluginSkillRootContribution {
   pluginId: string;
   rootPath: string;
+}
+
+/**
+ * `fs.watch` is allowed to omit the changed filename. The dev loop still has
+ * to reload in that case; `.` is a non-ignored synthetic path representing an
+ * unknown change somewhere below the watched plugin root.
+ */
+export function dispatchPluginSourceWatchChange(
+  handleChange: (relativePath: string) => void,
+  filename: string | null,
+): void {
+  handleChange(filename === null || filename.length === 0 ? "." : filename);
 }
 
 export interface PluginService {
@@ -147,11 +171,21 @@ export interface PluginService {
   start(): Promise<void>;
   /** Dispose all loaded plugins (server shutdown). */
   stop(): Promise<void>;
+  /**
+   * Route a process-level uncaught exception raised from a background
+   * service's async context (an unlistened EventEmitter 'error', a timer
+   * throw, a detached rejection) back to that service's supervisor, which
+   * aborts and restarts it with backoff. Returns false when no service owns
+   * the error; the caller then keeps Node's default and exits.
+   */
+  handleUncaughtException(error: unknown): boolean;
   list(): PluginListEntry[];
   /** Palettes declared by currently loaded plugins, ordered by plugin id. */
   listThemes(): PluginThemeMeta[];
   /** Read a loaded plugin palette by its globally namespaced id. */
   readThemeCss(themeId: string): Promise<string | null>;
+  /** Load a plugin theme's declared Pierre / VS Code code theme, if any. */
+  readThemeCodeTheme(themeId: string): DeclaredCodeTheme | null;
   /**
    * Install from a source spec: `path:<dir>` (bare paths accepted),
    * `git:<url-ish>@<ref>` (ref required; cloned into the managed dir under
@@ -159,15 +193,61 @@ export interface PluginService {
    * with npm --ignore-scripts under <dataDir>/plugins/npm). git/npm installs
    * hard-fail on an engines.bb mismatch and refuse already-registered ids;
    * use update for an existing managed plugin.
+   *
+   * `selection` picks one plugin out of a multi-plugin `git:`/`path:`
+   * repository, either by directory or by `.bb/plugins.json` entry name.
    */
-  install(source: string): Promise<PluginListEntry>;
+  install(
+    source: string,
+    selection: PluginSourceSelection,
+  ): Promise<PluginListEntry>;
   /**
    * Install a bundled official plugin by its registry name (store install).
    * Registers with catalog provenance so the opt-in survives reconciliation.
    */
   installOfficialPlugin(name: string): Promise<PluginListEntry>;
+  /**
+   * Install a marketplace catalog entry (store install). Installs from the
+   * entry's listed source through the normal pipeline and stamps catalog
+   * provenance, so the plugin traces back to the marketplace that listed it.
+   */
+  installCatalogPlugin(args: {
+    /** Marketplace that listed the entry, e.g. `bb-community`. */
+    marketplace: string;
+    entryId: string;
+    /** Manifest id the catalog entry promises; the install aborts on mismatch. */
+    pluginId: string;
+    source: string;
+    /** Which plugin of a multi-plugin repository the entry lists. */
+    selection: PluginSourceSelection;
+    /** npm registry the listing pins. */
+    npmRegistry?: string;
+    /** Git commit the user confirmed before a third-party install. */
+    expectedGitCommit?: string;
+    /** npm version the user confirmed before a third-party install. */
+    expectedNpmVersion?: string;
+    /** Integrity confirmed with that version, when the registry published one. */
+    expectedNpmIntegrity?: string;
+  }): Promise<PluginListEntry>;
+  /**
+   * The exact npm version and integrity a listing's spec resolves to now.
+   * The catalog shows this in the install confirmation, and the install then
+   * refuses anything else.
+   */
+  resolveCatalogNpmSource(args: {
+    packageName: string;
+    registry?: string;
+    requestedSpec: string;
+    specKind: "default" | "exact" | "tag" | "range";
+  }): Promise<
+    | { outcome: "resolved"; version: string; integrity: string }
+    | { outcome: "unavailable"; detail: string }
+  >;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
+  /** Check every plugin for updates every 6 hours; see PluginUpdates. */
+  startPeriodicUpdateChecks(): void;
+  stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceView | undefined>;
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
@@ -194,6 +274,25 @@ export interface PluginService {
     id: string,
     variant: PluginBrandingAssetVariant,
   ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
+  /** Active generations a reconnecting daemon uses to retire stale workers. */
+  listHostArtifactGenerations(): Array<{
+    pluginId: string;
+    generation: string;
+  }>;
+  /** Dispatch an unexpected worker exit from an active host generation. */
+  handleHostWorkerExit(args: {
+    authenticatedHostId: string;
+    pluginId: string;
+    generation: string;
+  }): void;
+  /** Dispatch one validated ephemeral signal from an active host generation. */
+  handleHostSignal(args: {
+    authenticatedHostId: string;
+    pluginId: string;
+    generation: string;
+    signal: string;
+    payload: JsonValue;
+  }): void;
   /**
    * Declared settings schema + current values for a loaded plugin
    * (secrets render as `{ set: boolean }`). Undefined when the plugin is not
@@ -366,35 +465,6 @@ const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
-
-function enforcePluginCliOutputLimit(
-  result: Omit<PluginCliExecutionResult, "error">,
-  jsonOutput: boolean,
-): PluginCliExecutionResult {
-  const stdoutBytes = Buffer.byteLength(result.stdout, "utf8");
-  const stderrBytes = Buffer.byteLength(result.stderr, "utf8");
-  const totalBytes = stdoutBytes + stderrBytes;
-  if (totalBytes <= PLUGIN_CLI_OUTPUT_MAX_BYTES) return result;
-
-  const error: PluginCliOutputLimitError = {
-    code: "plugin_cli_output_too_large",
-    message:
-      `Plugin CLI output is ${totalBytes} bytes (${stdoutBytes} stdout + ${stderrBytes} stderr), ` +
-      `exceeding the ${PLUGIN_CLI_OUTPUT_MAX_BYTES}-byte limit. Narrow the query, request a smaller page, or use a file/streaming command.`,
-    maxBytes: PLUGIN_CLI_OUTPUT_MAX_BYTES,
-    stdoutBytes,
-    stderrBytes,
-    totalBytes,
-  };
-  return jsonOutput
-    ? {
-        exitCode: 1,
-        stdout: JSON.stringify({ error }),
-        stderr: "",
-        error,
-      }
-    : { exitCode: 1, stdout: "", stderr: error.message, error };
-}
 
 /** Next cron occurrence strictly after `now` (server-local time). */
 function nextCronRunAt(cron: string, now: number): number {
@@ -669,10 +739,6 @@ function normalizeMentionSearchItems(
   });
 }
 
-const PLUGIN_AGENT_SELECTION_MAX_IDS = 256;
-const PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS = 4096;
-const PLUGIN_AGENT_TOOL_PARAMETERS_MAX_BYTES = 128 * 1024;
-
 interface NormalizedPluginAgentConfiguration {
   toolIds: string[];
   toolParameterOverrides: Map<string, Record<string, unknown>>;
@@ -717,6 +783,10 @@ function normalizePluginAgentToolParameters(args: {
       `configure() output.tools[${index}].parameters must have root type "object"`,
     );
   }
+  assertNoRecursiveJsonSchemaReferences(
+    parameters,
+    `configure() output.tools[${index}].parameters`,
+  );
   return parameters;
 }
 
@@ -792,17 +862,16 @@ function normalizePluginAgentToolSelections(args: {
 }
 
 function normalizePluginAgentSelectionIds(args: {
-  field: "skills";
   knownIds: ReadonlySet<string>;
   pluginId: string;
   value: unknown;
 }): string[] {
   if (!Array.isArray(args.value)) {
-    throw new Error(`configure() output.${args.field} must be an array`);
+    throw new Error("configure() output.skills must be an array");
   }
   if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
     throw new Error(
-      `configure() output.${args.field} exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+      `configure() output.skills exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
     );
   }
   const selected: string[] = [];
@@ -811,12 +880,12 @@ function normalizePluginAgentSelectionIds(args: {
     const id = args.value[index];
     if (typeof id !== "string" || id.length === 0) {
       throw new Error(
-        `configure() output.${args.field}[${index}] must be a non-empty string`,
+        `configure() output.skills[${index}] must be a non-empty string`,
       );
     }
     if (seen.has(id)) {
       throw new Error(
-        `configure() output.${args.field} contains duplicate id ${JSON.stringify(id)}`,
+        `configure() output.skills contains duplicate id ${JSON.stringify(id)}`,
       );
     }
     if (!args.knownIds.has(id)) {
@@ -877,7 +946,6 @@ function normalizePluginAgentConfiguration(args: {
     toolIds: toolSelections.toolIds,
     toolParameterOverrides: toolSelections.parameterOverrides,
     skillIds: normalizePluginAgentSelectionIds({
-      field: "skills",
       knownIds: args.knownSkillIds,
       pluginId: args.pluginId,
       value: output.skills,
@@ -885,6 +953,9 @@ function normalizePluginAgentConfiguration(args: {
     instructions,
   };
 }
+
+/** The glyph a bb-injected tool wears when neither it nor its plugin names one. */
+const GENERIC_AGENT_TOOL_GLYPH = "Toolbox";
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
@@ -899,6 +970,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  let lastNotifiedProviderRegistrationRevision =
+    deps.providerRegistry?.getRegistrationRevision() ?? 0;
   const scheduleStabilizationWindow =
     deps.scheduleStabilizationWindow ??
     ((durationMs: number, onElapsed: () => void) => {
@@ -924,11 +997,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     disposeOne,
     emitThreadEvent,
     handlerStats,
+    handleUncaughtException,
     hungServices,
+    hostArtifacts,
     identities,
     invokeWrapped,
     isBuiltinPluginId,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     loadAll,
     loaded,
     loadOne,
@@ -969,7 +1044,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withLifecycleLock,
     disposeOne,
     loadOne,
+    statuses,
     validateInstallDir: (args) => managedValidateInstallDir(args),
+    checkEngineRange,
+    checkPluginSdkRange,
     syncCliSkill,
     notifyPluginsChanged,
     list,
@@ -1007,7 +1085,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     sourceKind,
     checkEngineRange,
     checkPluginSdkRange,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     registerInstalled,
     assertInstallRegistrationAvailable,
     refuseBuiltinShadow,
@@ -1033,6 +1111,51 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
    * order within a plugin, deduped first-wins (defensive — registration
    * already blocks cross-plugin collisions and reserved names).
    */
+  /**
+   * The one full presentation a bb-injected tool carries to the bridge
+   * (grammar v3): the plugin's declaration first, then its status labels for
+   * the label, then a generic label; the plugin's branding glyph, then
+   * `Toolbox`. Resolved here, once, so the wire never carries a hole a
+   * bridge would have to fill with a tool-name table of its own.
+   */
+  function resolveAgentToolPresentation(
+    pluginId: string,
+    record: PluginAgentToolRecord,
+  ): ThreadEventItemPresentation {
+    const declared = record.experimentalPresentation;
+    const brandingIcon = loaded.get(pluginId)?.manifest.branding.icon;
+    const glyph =
+      declared?.icon?.glyph ??
+      (brandingIcon !== undefined && !isPluginOwnedIconPath(brandingIcon)
+        ? brandingIcon
+        : GENERIC_AGENT_TOOL_GLYPH);
+    return {
+      label: declared?.label ??
+        record.experimentalStatusLabels ?? {
+          pending: `Running ${record.name}`,
+          completed: `Ran ${record.name}`,
+        },
+      icon: { glyph },
+      ...(declared?.suppress === undefined
+        ? {}
+        : { suppress: declared.suppress }),
+      ...(declared?.tint === undefined ? {} : { tint: declared.tint }),
+    };
+  }
+
+  function toAgentDynamicTool(
+    pluginId: string,
+    record: PluginAgentToolRecord,
+    inputSchema: unknown = record.inputSchema,
+  ): DynamicTool {
+    return {
+      name: record.name,
+      description: record.description,
+      inputSchema,
+      presentation: resolveAgentToolPresentation(pluginId, record),
+    };
+  }
+
   function collectAgentTools(): Array<{
     pluginId: string;
     record: PluginAgentToolRecord;
@@ -1084,11 +1207,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   /**
    * Broadcast that the set of running plugins (and therefore host-rendered
    * contributions) changed, so open app pages re-fetch instead of waiting
-   * out their query stale time. Fired on install/remove/enable/disable/
+   * out their query stale time. Provider cache invalidation gets its own
+   * change kind and only rides the broadcast when the registry changed since
+   * the previous lifecycle boundary. Fired on install/remove/enable/disable/
    * reload completion.
    */
   function notifyPluginsChanged(): void {
-    deps.hub.notifySystem(["plugins-changed"]);
+    const changes: SystemChangeKind[] = ["plugins-changed"];
+    const providerRegistrationRevision =
+      deps.providerRegistry?.getRegistrationRevision();
+    if (
+      providerRegistrationRevision !== undefined &&
+      providerRegistrationRevision !== lastNotifiedProviderRegistrationRevision
+    ) {
+      lastNotifiedProviderRegistrationRevision = providerRegistrationRevision;
+      changes.push("provider-registrations-changed");
+    }
+    deps.hub.notifySystem(changes);
   }
 
   function compactPath(path: string): string {
@@ -1102,7 +1237,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function updateTrackingForRow(row: InstalledPluginRow): string {
     return (row.sourceKind === "npm" && row.sourceNpmSpecKind !== "exact") ||
-      (row.sourceKind === "git" && row.sourceGitRefKind === "branch")
+      (row.sourceKind === "git" &&
+        (row.sourceGitRefKind === "branch" || row.sourceGitRange !== null))
       ? "tracks compatible"
       : "pinned";
   }
@@ -1115,7 +1251,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     if (row.sourceKind === "npm") {
       return `npm · ${row.sourceNpmPackage ?? row.id} · ${updateTrackingForRow(row)}`;
     }
-    return `git · ${row.sourceGitUrl ?? row.source} · ${updateTrackingForRow(row)}`;
+    const range = row.sourceGitRange === null ? "" : ` · ${row.sourceGitRange}`;
+    return `git · ${row.sourceGitUrl ?? row.source}${range} · ${updateTrackingForRow(row)}`;
   }
 
   function updateStateForRow(
@@ -1146,6 +1283,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         : undefined;
     return {
       ...(persisted === undefined ? {} : { outcome: persisted.outcome }),
+      ...(persisted?.outcome === "unavailable"
+        ? { detail: persisted.detail }
+        : {}),
       ...(row.availableCompatibleVersion === null
         ? {}
         : { availableVersion: row.availableCompatibleVersion }),
@@ -1213,7 +1353,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
   function list(): PluginListEntry[] {
     const scheduleRows = listPluginSchedules(deps.db);
-    return listInstalledPlugins(deps.db)
+    const rows = listInstalledPlugins(deps.db);
+    // Resolving labels parses every marketplace's stored manifest, so it only
+    // runs when a plugin actually traces back to one. The common case — every
+    // plugin bundled or added from a source — reads no manifest at all.
+    const publisherLabels = rows.some((row) => row.provenance === "catalog")
+      ? marketplacePublisherLabels(deps.db)
+      : new Map<string, string>();
+    return rows
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((row) => {
         const runtime = statuses.get(row.id);
@@ -1234,6 +1381,15 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           ...(row.catalogEntryId === null
             ? {}
             : { catalogEntryId: row.catalogEntryId }),
+          ...(row.catalogMarketplaceName === null
+            ? {}
+            : { catalogMarketplaceName: row.catalogMarketplaceName }),
+          publisherLabel: pluginPublisherLabel({
+            sourceKind: row.sourceKind,
+            provenance: row.provenance,
+            catalogMarketplaceName: row.catalogMarketplaceName,
+            labels: publisherLabels,
+          }),
           isOrphanedBuiltin:
             row.sourceKind === "builtin" &&
             !bundledPlugins.some(
@@ -1337,6 +1493,21 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       return null;
     },
 
+    readThemeCodeTheme(themeId) {
+      for (const [pluginId, plugin] of loaded) {
+        const theme = plugin.manifest.themes.find(
+          (entry) => formatPluginThemeId(pluginId, entry.id) === themeId,
+        );
+        if (!theme) continue;
+        return readPluginThemeCodeTheme(
+          themeId,
+          theme.codeTheme ?? undefined,
+          theme.codeThemePaths,
+        );
+      }
+      return null;
+    },
+
     events: {
       emitThreadCreated(thread) {
         emitThreadEvent("thread.created", () => ({
@@ -1376,10 +1547,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     async start() {
       await backfillNormalizedPluginRegistrations();
-      await withPluginOperationLock(
-        REGISTRATION_MUTATION_KEY,
-        recoverIncompletePluginRollbacks,
-      );
+      await withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        for (const artifact of listPendingGitPluginArtifacts(deps.db)) {
+          await withArtifactLock(artifact.path, () =>
+            recoverInterruptedGitPluginPromotion(artifact.path),
+          );
+        }
+        await recoverIncompletePluginRollbacks();
+      });
       await reconcileBundled();
       await loadAll();
       await withPluginOperationLock(REGISTRATION_MUTATION_KEY, runArtifactGc);
@@ -1395,6 +1570,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           const loop = createPluginDevLoop({
             pluginId: row.id,
             hasApp: manifest.appEntry !== undefined,
+            hasHost: manifest.hostEntry !== undefined,
             buildApp: async () => {
               try {
                 await buildPluginApp(
@@ -1402,11 +1578,31 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
                   deps.appVersion,
                   await getPluginBuildToolchain(deps),
                 );
-                setDevBuildProblem(row.id, null);
+                setDevBuildProblem(row.id, "frontend", null);
                 notifyPluginsChanged();
               } catch (error) {
                 setDevBuildProblem(
                   row.id,
+                  "frontend",
+                  error instanceof Error ? error.message : String(error),
+                );
+                notifyPluginsChanged();
+                throw error;
+              }
+            },
+            buildHost: async () => {
+              try {
+                await buildPluginHost(
+                  bundled.rootDir,
+                  deps.appVersion,
+                  await getPluginBuildToolchain(deps),
+                );
+                setDevBuildProblem(row.id, "host", null);
+                notifyPluginsChanged();
+              } catch (error) {
+                setDevBuildProblem(
+                  row.id,
+                  "host",
                   error instanceof Error ? error.message : String(error),
                 );
                 notifyPluginsChanged();
@@ -1429,9 +1625,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             bundled.rootDir,
             { recursive: true },
             (_event, filename) => {
-              if (typeof filename === "string" && filename.length > 0) {
-                loop.handleChange(filename);
-              }
+              dispatchPluginSourceWatchChange(loop.handleChange, filename);
             },
           );
           watcher.on("close", () => loop.dispose());
@@ -1449,18 +1643,29 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       notifyPluginsChanged();
     },
 
+    handleUncaughtException,
+
     list,
 
-    async install(source) {
+    async install(source, selection) {
       return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
         const parsed = parsePluginSource(source);
-        if (parsed.kind === "builtin") return installBuiltinSource(parsed);
-        if (parsed.kind === "git") return installGitSource(parsed, source);
-        if (parsed.kind === "npm") {
-          refuseBuiltinShadow(derivePluginId(parsed.name));
-          return installNpmSource(parsed, source);
+        if (parsed.kind === "git") {
+          return installGitSource(parsed, source, selection);
         }
-        return installPathSource(parsed.path);
+        if (parsed.kind === "path") {
+          return installPathSource(parsed.path, selection);
+        }
+        // Only a repository holds several plugins; npm and builtin sources
+        // are one package each.
+        if (selection.kind !== "root") {
+          throw new Error(
+            `install refused: ${selection.kind === "entry" ? "--plugin" : "--subdirectory"} applies to git: and path: sources only`,
+          );
+        }
+        if (parsed.kind === "builtin") return installBuiltinSource(parsed);
+        refuseBuiltinShadow(derivePluginId(parsed.name));
+        return installNpmSource(parsed, source);
       });
     },
 
@@ -1476,9 +1681,59 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       });
     },
 
+    async installCatalogPlugin(entry) {
+      return withPluginOperationLock(REGISTRATION_MUTATION_KEY, async () => {
+        const parsed = parsePluginSource(entry.source);
+        const context: InstallContext = {
+          provenance: {
+            kind: "catalog",
+            marketplace: entry.marketplace,
+            entryId: entry.entryId,
+          },
+          expectedPluginId: entry.pluginId,
+          ...(entry.npmRegistry === undefined
+            ? {}
+            : { npmRegistry: entry.npmRegistry }),
+          ...(entry.expectedGitCommit === undefined
+            ? {}
+            : { expectedGitCommit: entry.expectedGitCommit }),
+          ...(entry.expectedNpmVersion === undefined
+            ? {}
+            : { expectedNpmVersion: entry.expectedNpmVersion }),
+          ...(entry.expectedNpmIntegrity === undefined
+            ? {}
+            : { expectedNpmIntegrity: entry.expectedNpmIntegrity }),
+        };
+        if (parsed.kind === "git") {
+          return installGitSource(
+            parsed,
+            entry.source,
+            entry.selection,
+            context,
+          );
+        }
+        if (parsed.kind === "npm") {
+          // Only a repository holds several plugins.
+          if (entry.selection.kind !== "root") {
+            throw new Error(
+              `catalog entry "${entry.entryId}" selects a subdirectory of an npm package`,
+            );
+          }
+          refuseBuiltinShadow(derivePluginId(parsed.name));
+          return installNpmSource(parsed, entry.source, context);
+        }
+        throw new Error(
+          `catalog entry "${entry.entryId}" has an unsupported source "${entry.source}"`,
+        );
+      });
+    },
+
+    resolveCatalogNpmSource: (args) =>
+      managedPluginArtifacts.resolveNpmCandidateForPlan(args),
+
     installPath: (path) =>
       withPluginOperationLock(REGISTRATION_MUTATION_KEY, () =>
-        installPathSource(path),
+        installPathSource(path, ROOT_PLUGIN_SOURCE_SELECTION),
       ),
 
     ...pluginUpdates,
@@ -1512,6 +1767,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             recursive: true,
             force: true,
           });
+          logger.info(
+            `plugin ${id} removed from ${row.source}; its settings, secrets, and schedules were deleted`,
+          );
           // Legacy managed installs still own their mutable pre-cache layout.
           // Immutable artifact directories are retained for future GC policy;
           // path: sources are the user's directory and are never deleted.
@@ -1609,6 +1867,70 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       };
     },
 
+    listHostArtifactGenerations() {
+      return [...hostArtifacts.entries()]
+        .filter(([id]) => loaded.has(id))
+        .map(([pluginId, artifact]) => ({
+          pluginId,
+          generation: artifact.generation,
+        }))
+        .sort((a, b) => a.pluginId.localeCompare(b.pluginId));
+    },
+
+    handleHostWorkerExit(args) {
+      const plugin = loaded.get(args.pluginId);
+      const artifact = hostArtifacts.get(args.pluginId);
+      if (
+        plugin === undefined ||
+        artifact === undefined ||
+        artifact.generation !== args.generation
+      ) {
+        return;
+      }
+      for (const handler of [...plugin.handle.hostWorkerExitHandlers]) {
+        void invokeWrapped(args.pluginId, "host worker exit", async () =>
+          handler({ hostId: args.authenticatedHostId }),
+        );
+      }
+    },
+
+    handleHostSignal(args) {
+      const plugin = loaded.get(args.pluginId);
+      const artifact = hostArtifacts.get(args.pluginId);
+      if (
+        plugin === undefined ||
+        artifact === undefined ||
+        artifact.generation !== args.generation
+      ) {
+        return;
+      }
+      const subscriptions = plugin.handle.hostSignalHandlers.filter(
+        (subscription) => subscription.signal === args.signal,
+      );
+      for (const subscription of subscriptions) {
+        void invokeWrapped(
+          args.pluginId,
+          `host signal ${args.signal}`,
+          async () => {
+            const result = await subscription.payloadSchema[
+              "~standard"
+            ].validate(args.payload);
+            if (result.issues !== undefined) {
+              throw new Error(
+                `host signal payload validation failed: ${result.issues
+                  .map((issue) => issue.message)
+                  .join("; ")}`,
+              );
+            }
+            await subscription.handler({
+              hostId: args.authenticatedHostId,
+              payload: result.value,
+            });
+          },
+        );
+      }
+    },
+
     async getSettings(id) {
       const plugin = loaded.get(id);
       if (!plugin) return undefined;
@@ -1692,10 +2014,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         `http ${route.method} ${route.path}`,
         async () => {
           const response = await route.handler(context);
-          if (!(response instanceof Response)) {
-            throw new Error("http route handler must return a Response");
-          }
-          return response;
+          return adoptHttpRouteResponse(response);
         },
       );
       if (outcome.ok) return outcome.value;
@@ -1807,11 +2126,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     listAgentTools() {
       return collectAgentTools().map(({ pluginId, record }) => ({
         pluginId,
-        tool: {
-          name: record.name,
-          description: record.description,
-          inputSchema: record.inputSchema,
-        },
+        tool: toAgentDynamicTool(pluginId, record),
         instructions: record.instructions,
       }));
     },
@@ -1833,11 +2148,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           tools.push(
             ...pluginTools.map(({ record }) => ({
               pluginId,
-              tool: {
-                name: record.name,
-                description: record.description,
-                inputSchema: record.inputSchema,
-              },
+              tool: toAgentDynamicTool(pluginId, record),
               instructions: record.instructions,
             })),
           );
@@ -1868,12 +2179,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             .filter(({ record }) => selectedTools.has(record.name))
             .map(({ record }) => ({
               pluginId,
-              tool: {
-                name: record.name,
-                description: record.description,
-                inputSchema:
-                  parameterOverrides.get(record.name) ?? record.inputSchema,
-              },
+              tool: toAgentDynamicTool(
+                pluginId,
+                record,
+                parameterOverrides.get(record.name) ?? record.inputSchema,
+              ),
               instructions: record.instructions,
             })),
         );

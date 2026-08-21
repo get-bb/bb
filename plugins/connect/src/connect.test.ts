@@ -5,7 +5,7 @@ import { WebSocket as NodeWebSocket, WebSocketServer } from "ws";
 import {
   createFakePluginHost,
   type FakePluginHost,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 import {
   headersForLoopbackRequest,
@@ -15,6 +15,7 @@ import {
 import { deriveConnectBaseUrl, serverUrlForHandle } from "@bb/connect-client";
 import {
   parseSharePort,
+  machineSharePublicUrl,
   SharePortError,
   ShareRegistry,
   sharePublicUrl,
@@ -24,6 +25,10 @@ import {
 import { CREDENTIAL_KV_KEY } from "./credential.js";
 import plugin from "./server.js";
 import { ConnectTunnel } from "./tunnel.js";
+import {
+  DEFAULT_CONNECT_BASE_URL,
+  resolveDefaultConnectBaseUrl,
+} from "./redeem.js";
 import type { ConnectStatus } from "./types.js";
 import { ShareHostResolver } from "./hosts.js";
 
@@ -34,12 +39,18 @@ const REMOTE_HOST_NAME = "Sawyer Air";
 
 function createConnectFakeHost(options?: {
   remoteIdentity?: { label: string; baseDomain: string };
+  /** The `mobileApp` experiment (defaults on so pairing paths are exercised). */
+  mobileApp?: boolean;
 }): FakePluginHost {
   return createFakePluginHost({
     pluginId: "connect",
     sdk: {
       system: {
-        config: async () => ({ primaryHostId: SERVER_HOST_ID }) as never,
+        config: async () =>
+          ({
+            primaryHostId: SERVER_HOST_ID,
+            experiments: { mobileApp: options?.mobileApp ?? true },
+          }) as never,
       },
       hosts: {
         get: async ({ hostId }: { hostId: string }) => {
@@ -81,6 +92,44 @@ describe("deriveConnectBaseUrl", () => {
     expect(deriveConnectBaseUrl("https://my-box.vibecodethis.site/")).toBe(
       "https://vibecodethis.site",
     );
+  });
+});
+
+describe("resolveDefaultConnectBaseUrl", () => {
+  it("uses the local Cloud origin only in development", () => {
+    expect(
+      resolveDefaultConnectBaseUrl({
+        NODE_ENV: "development",
+        BB_DEV_CONNECT_BASE_URL: "http://bb.localhost:42745/",
+      }),
+    ).toBe("http://bb.localhost:42745");
+    expect(
+      resolveDefaultConnectBaseUrl({
+        NODE_ENV: "production",
+        BB_DEV_CONNECT_BASE_URL: "http://bb.localhost:42745",
+      }),
+    ).toBe(DEFAULT_CONNECT_BASE_URL);
+    expect(resolveDefaultConnectBaseUrl({ NODE_ENV: "development" })).toBe(
+      DEFAULT_CONNECT_BASE_URL,
+    );
+  });
+
+  it("rejects non-local or non-origin development values", () => {
+    for (const value of [
+      "https://bb.localhost:42745",
+      "http://getbb.app:42745",
+      "http://bb.localhost:42745/dashboard",
+      "not a url",
+    ]) {
+      expect(() =>
+        resolveDefaultConnectBaseUrl({
+          NODE_ENV: "development",
+          BB_DEV_CONNECT_BASE_URL: value,
+        }),
+      ).toThrow(
+        "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin",
+      );
+    }
   });
 });
 
@@ -161,6 +210,15 @@ describe("sharePublicUrl", () => {
         8000,
       ),
     ).toBe("https://sawyer-desktop--8000.getbb.app");
+  });
+
+  it("uses HTTP and the local port for machine shares in local Cloud", () => {
+    expect(
+      machineSharePublicUrl(
+        { label: "sawyer-air", baseDomain: "bb.localhost:42745" },
+        8000,
+      ),
+    ).toBe("http://sawyer-air--8000.bb.localhost:42745");
   });
 });
 
@@ -680,6 +738,7 @@ describe("ConnectTunnel share activation", () => {
         clear: async () => {},
       },
       shares,
+      defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       log: pluginBb.log,
     });
@@ -740,6 +799,7 @@ describe("ConnectTunnel share activation", () => {
         clear: async () => {},
       },
       shares,
+      defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
       getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
       log: pluginBb.log,
     });
@@ -1308,6 +1368,7 @@ describe("connect plugin", () => {
       host = undefined;
     }
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("starts unpaired — a healthy state, not needs-configuration", async () => {
@@ -1328,6 +1389,56 @@ describe("connect plugin", () => {
     expect(status.dashboardUrl).toBe("https://getbb.app/dashboard");
     expect(status.nextRetryAt).toBeNull();
     expect(harness.needsConfigurationMessages).toEqual([]);
+  });
+
+  it("uses the worktree-local Cloud for unpaired development", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BB_DEV_CONNECT_BASE_URL", "http://bb.localhost:59329");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ credential: "bbcred_local", handle: "sawyer" }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+
+    const before = (await harness.callRpc("status")) as ConnectStatus;
+    expect(before.dashboardUrl).toBe("http://bb.localhost:59329/dashboard");
+
+    const after = (await harness.callRpc("pair", {
+      code: "ABCD",
+    })) as ConnectStatus;
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59329/api/connect/redeem",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(after.url).toBe("http://sawyer.bb.localhost:59329");
+  });
+
+  it("lets an explicit production server override the development default", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("BB_DEV_CONNECT_BASE_URL", "http://bb.localhost:59329");
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "invalid-code" }), {
+          status: 404,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+
+    await expect(
+      harness.callRpc("pair", {
+        code: "ABCD",
+        server: "https://sawyer.getbb.app",
+      }),
+    ).rejects.toThrow("invalid_code");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://getbb.app/api/connect/redeem",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("registers contributeInstructions", async () => {
@@ -1450,19 +1561,62 @@ describe("connect plugin", () => {
     expect(exposed.url).toBe("http://sawyer-desktop--8000.localhost:59332");
   });
 
-  it("disconnect clears the stored credential", async () => {
+  it("disconnect revokes the Cloud credential and clears it locally", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_x",
+          handle: "sawyer",
+        });
+      }
+      return Response.json({ ok: true });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     const { bb, harness } = await loadPlugin();
-    // Seed a stored credential (as if paired before this load).
-    await bb.storage.kv.set(CREDENTIAL_KV_KEY, {
-      serverUrl: "http://127.0.0.1:59322",
-      handle: "sawyer",
-      credential: "bbcred_x",
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://127.0.0.1:59322",
+      baseUrl: "https://getbb.app",
     });
 
     const after = (await harness.callRpc("disconnect")) as ConnectStatus;
     expect(after.paired).toBe(false);
     expect(after.state).toBe("disconnected");
     expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      new URL("http://127.0.0.1:59322/api/connect/disconnect"),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "x-bb-connect-machine": "bbcred_x" },
+      }),
+    );
+  });
+
+  it("still disconnects locally when Cloud cannot be reached", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_offline",
+          handle: "sawyer",
+        });
+      }
+      throw new Error("network unavailable");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { bb, harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://127.0.0.1:59323",
+      baseUrl: "https://getbb.app",
+    });
+
+    const after = (await harness.callRpc("disconnect")) as ConnectStatus;
+    expect(after.paired).toBe(false);
+    expect(await bb.storage.kv.get(CREDENTIAL_KV_KEY)).toBeUndefined();
+    expect(harness.logEntries).toContainEqual({
+      level: "warn",
+      message: "Cloud disconnect could not be confirmed: network unavailable",
+    });
   });
 
   it("maps a redeem failure to a typed code (no wire text) and does not persist", async () => {
@@ -2156,6 +2310,51 @@ describe("connect plugin", () => {
     );
   });
 
+  it("routes local machine creation and revocation through the unified Cloud origin", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/connect/redeem")) {
+        return Response.json({
+          credential: "bbcred_local",
+          handle: "sawyer",
+        });
+      }
+      if (url === "http://bb.localhost:59330/api/connect/machine-code") {
+        return Response.json({
+          code: "ABCD-EFGH",
+          expiresInMs: 600_000,
+          serverUrl: "http://sawyer.bb.localhost:59330",
+        });
+      }
+      if (url === "http://bb.localhost:59330/api/connect/revoke-machine") {
+        return Response.json({ ok: true });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadPlugin();
+    await harness.callRpc("pair", {
+      code: "ABCD",
+      server: "http://sawyer.bb.localhost:59330",
+    });
+
+    await expect(harness.callRpc("createMachineCode")).resolves.toMatchObject({
+      code: "ABCD-EFGH",
+      serverUrl: "http://sawyer.bb.localhost:59330",
+    });
+    await expect(
+      harness.callRpc("revokeMachine", { machineId: "machine-local" }),
+    ).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59330/api/connect/machine-code",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://bb.localhost:59330/api/connect/revoke-machine",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("listAccountServers surfaces unauthorized cleanly on 401", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -2196,8 +2395,10 @@ describe("connect CLI", () => {
     vi.unstubAllGlobals();
   });
 
-  async function loadCli(): Promise<FakePluginHost> {
-    host = createConnectFakeHost();
+  async function loadCli(options?: {
+    mobileApp?: boolean;
+  }): Promise<FakePluginHost> {
+    host = createConnectFakeHost(options);
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     return host;
   }
@@ -2339,6 +2540,121 @@ describe("connect CLI", () => {
     expect(parsed.servers[1]?.url).toBe(
       "http://sawyer-desktop.localhost:59342",
     );
+  });
+
+  it("machine-code is off until the mobileApp experiment is on", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli({ mobileApp: false });
+    const result = await harness.runCli(["machine-code"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('"Mobile app" experiment');
+    expect(result.stderr).toContain("bb settings experiment mobileApp true");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("machine-code when unpaired errors clearly", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli();
+    const result = await harness.runCli(["machine-code"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("not connected to getbb.app");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("machine-code prints the pairing payload as text or json", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/connect/redeem")) {
+          return new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          );
+        }
+        if (url === "https://getbb.app/api/connect/machine-code") {
+          return new Response(
+            JSON.stringify({
+              code: "K7QP-2M4X",
+              expiresInMs: 600_000,
+              serverUrl: "https://sawyer.getbb.app",
+            }),
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli();
+    await harness.runCli([
+      "--code",
+      "ABCD",
+      "--server",
+      "https://sawyer.getbb.app",
+    ]);
+
+    const before = Date.now();
+    const text = await harness.runCli(["machine-code"]);
+    expect(text.exitCode).toBe(0);
+    expect(text.stdout).toContain("Code:       K7QP-2M4X");
+    expect(text.stdout).toContain("Server:     https://sawyer.getbb.app");
+    expect(text.stdout).toContain("Apex:       https://getbb.app");
+    expect(text.stdout).toContain("in about 10 min");
+    expect(text.stdout).toContain("Add mobile device");
+
+    const json = await harness.runCli(["machine-code", "--json"]);
+    expect(json.exitCode).toBe(0);
+    const parsed = JSON.parse(json.stdout ?? "") as Record<string, unknown>;
+    expect(parsed).toEqual({
+      code: "K7QP-2M4X",
+      serverUrl: "https://sawyer.getbb.app",
+      apex: "https://getbb.app",
+      expiresAt: expect.any(Number),
+    });
+    expect(parsed.expiresAt as number).toBeGreaterThanOrEqual(before + 600_000);
+    // Minted through the apex with the server's own pairing credential.
+    const call = fetchMock.mock.calls.find(
+      ([input]) =>
+        String(input) === "https://getbb.app/api/connect/machine-code",
+    );
+    expect(call?.[1]).toEqual({
+      method: "POST",
+      headers: { "x-bb-connect-machine": "bbcred_live" },
+    });
+  });
+
+  it("machine-code explains the account machine limit and names the dashboard", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/connect/redeem")) {
+          return new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/api/connect/machine-code")) {
+          return new Response(JSON.stringify({ error: "machine-limit" }), {
+            status: 409,
+          });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+    const { harness } = await loadCli();
+    await harness.runCli([
+      "--code",
+      "ABCD",
+      "--server",
+      "https://sawyer.getbb.app",
+    ]);
+    const result = await harness.runCli(["machine-code"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("machine limit");
+    expect(result.stderr).toContain("https://getbb.app/dashboard");
+    expect(result.stderr).not.toContain("machine_limit");
   });
 
   it("expose / shares / unexpose happy path", async () => {

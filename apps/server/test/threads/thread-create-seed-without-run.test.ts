@@ -71,7 +71,6 @@ describe("thread creation telemetry", () => {
       });
 
       await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -265,7 +264,6 @@ describe("thread creation with startedOnBehalfOf (seed-without-run)", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -536,7 +534,6 @@ describe("thread creation child-thread boundary validation", () => {
       async ({ harness, hostId, path, projectId, sourceThreadId }) => {
         const error = await captureCreateError(() =>
           createThreadFromRequest(harness.deps, {
-            childOrigin: null,
             environment: {
               type: "host",
               hostId,
@@ -856,6 +853,112 @@ describe("thread creation child-thread boundary validation", () => {
     });
   });
 
+  it("allows a personal fork to reuse its switched source environment", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-personal-fork-source-environment",
+      });
+      ensurePersonalProject(harness.db);
+      const sourceEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/personal-fork-source",
+        projectId: PERSONAL_PROJECT_ID,
+        workspaceProvisionType: "unmanaged",
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: sourceEnvironment.id,
+        projectId: PERSONAL_PROJECT_ID,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: sourceEnvironment.id,
+        providerThreadId: "provider-personal-fork-source",
+        threadId: sourceThread.id,
+        turnId: "turn-personal-fork-source",
+      });
+
+      const fork = await createThreadFromRequest(harness.deps, {
+        environment: {
+          type: "reuse",
+          environmentId: sourceEnvironment.id,
+        },
+        input: textInput("Reuse the switched source environment"),
+        origin: "app",
+        originKind: "fork",
+        projectId: PERSONAL_PROJECT_ID,
+        providerId: "codex",
+        sourceThreadId: sourceThread.id,
+        startedOnBehalfOf: null,
+      });
+
+      expect(getThread(harness.db, fork.id)?.environmentId).toBe(
+        sourceEnvironment.id,
+      );
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (queued.command.type !== "thread.start") {
+        throw new Error("Expected a thread.start command");
+      }
+      expect(queued.command.fork).toEqual({
+        sourceProviderThreadId: "provider-personal-fork-source",
+      });
+    });
+  });
+
+  it("rejects a personal fork that reuses a different unmanaged environment", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-personal-fork-different-environment",
+      });
+      ensurePersonalProject(harness.db);
+      const sourceEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/personal-fork-source",
+        projectId: PERSONAL_PROJECT_ID,
+        workspaceProvisionType: "unmanaged",
+      });
+      const otherEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/personal-fork-other",
+        projectId: PERSONAL_PROJECT_ID,
+        workspaceProvisionType: "unmanaged",
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: sourceEnvironment.id,
+        projectId: PERSONAL_PROJECT_ID,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: sourceEnvironment.id,
+        providerThreadId: "provider-personal-fork-source",
+        threadId: sourceThread.id,
+        turnId: "turn-personal-fork-source",
+      });
+
+      await expect(
+        createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "reuse",
+            environmentId: otherEnvironment.id,
+          },
+          input: textInput("Reuse only the source environment"),
+          origin: "app",
+          originKind: "fork",
+          projectId: PERSONAL_PROJECT_ID,
+          providerId: "codex",
+          sourceThreadId: sourceThread.id,
+          startedOnBehalfOf: null,
+        }),
+      ).rejects.toMatchObject({
+        body: {
+          message: "Personal project threads must reuse a personal workspace",
+        },
+        status: 409,
+      });
+    });
+  });
+
   it("auto-sends a queued first side-chat message after preload settles idle", async () => {
     await withChildBoundaryHarness(
       "empty-side-chat-preload-queued-message",
@@ -916,6 +1019,56 @@ describe("thread creation child-thread boundary validation", () => {
         expect(turnSubmitText).toContain("Queued first side-chat question");
       },
     );
+  });
+
+  it("rejects a fork whose target provider differs from the source provider", async () => {
+    await withTestHarness(async (harness) => {
+      const path = "/tmp/fork-cross-provider-project";
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-fork-cross-provider",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-amp",
+      });
+      // The source has a live provider session, so only the provider mismatch
+      // can block the fork. A provider session ID means nothing to another
+      // provider, so BB must not hand it to a codex agent.
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "acp-amp-session",
+        threadId: sourceThread.id,
+      });
+
+      const error = await captureCreateError(() =>
+        createThreadFromRequest(harness.deps, {
+          environment: {
+            type: "host",
+            hostId: host.id,
+            workspace: { type: "unmanaged", path },
+          },
+          input: textInput("Fork into another provider"),
+          origin: "app",
+          originKind: "fork",
+          projectId: project.id,
+          providerId: "codex",
+          sourceThreadId: sourceThread.id,
+          startedOnBehalfOf: null,
+        }),
+      );
+      expect(error.status).toBe(400);
+      expect(error.body.code).toBe("fork_source_session_unavailable");
+    });
   });
 
   it("rejects a fork when the source has no active provider session", async () => {

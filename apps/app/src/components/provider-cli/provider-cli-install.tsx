@@ -31,18 +31,27 @@ export interface ProviderCliActionableIssue extends ProviderCliIssue {
   action: ProviderCliInstallAction;
 }
 
-const PROVIDER_CLI_MANAGED_PROVIDERS = [
-  "codex",
-  "claudeCode",
-] as const satisfies readonly ProviderCliKey[];
-
 export function providerCliEntries(
   status: ProviderCliStatusResponse,
 ): ProviderCliStatusEntry[] {
-  return PROVIDER_CLI_MANAGED_PROVIDERS.map((provider) => ({
+  return Object.entries(status).map(([provider, providerStatus]) => ({
     provider,
-    status: status[provider],
+    status: providerStatus,
   }));
+}
+
+/**
+ * Whether an issue is an *update* rather than a first install.
+ *
+ * `buildProviderCliIssue` deliberately reports a missing CLI too so install
+ * surfaces can offer the action. Settings → Updates is not one of those
+ * surfaces: a CLI you never installed has no update, and
+ * listing it there put a permanent install prompt on an update page, counted it
+ * in "Update all", and made a fresh single-agent install look perpetually
+ * behind. The sidebar chips have always drawn this line; this is the same one.
+ */
+export function isProviderCliUpdateIssue(issue: ProviderCliIssue): boolean {
+  return issue.status.installed;
 }
 
 export function buildProviderCliIssue(
@@ -84,10 +93,11 @@ export function buildProviderCliIssue(
   }
 
   if (status.needsUpdate) {
-    if (status.installAction === null) {
-      return null;
-    }
-    const description = `${status.currentVersion ?? "Installed version unknown"} -> ${status.latestVersion ?? "latest"}`;
+    const currentVersion = status.currentVersion ?? "Installed version unknown";
+    const description =
+      status.latestVersion === null
+        ? `${currentVersion}; newer release available`
+        : `${currentVersion} -> ${status.latestVersion}`;
     const fingerprint = [
       provider,
       "outdated",
@@ -134,6 +144,7 @@ export function useProviderCliInstallRunner() {
   );
 
   return {
+    failuresByJobKey: snapshot.failuresByJobKey,
     queuedJobKeys: snapshot.queuedJobKeys,
     runningJobKey: snapshot.runningJobKey,
     startInstall: startProviderCliInstall,

@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
@@ -160,22 +161,27 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 
 // Mocks curl to serve the redeem endpoint and answer the bb-app tarball
 // download with the given status; npm records invocations and fabricates a
-// bb-app that enrolls into whatever BB_DATA_DIR the script hands it.
+// bb-app that enrolls into whatever BB_DATA_DIR the script hands it. Like a
+// real install, the fake npm lays out bb-app's native add-ons as loadable
+// modules under lib/node_modules/bb-app/node_modules; when
+// FAKE_NPM_SKIP_NATIVE_MODULES is set it leaves them empty, which mimics npm
+// >= 12 blocking their install scripts (or ignore-scripts=true).
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: 200 | 404,
 ): void {
+  const curlLog = join(fixture.dataDir, "curl.log");
   const npmLog = join(fixture.dataDir, "npm.log");
-  const bbAppPath = join(fixture.binDir, "bb-app");
   writeExecutable(
     join(fixture.binDir, "curl"),
     `#!/bin/sh
+printf '%s\n' "$*" >>"${curlLog}"
 case "$*" in
   *redeem-machine*) printf '%s' '{"credential":"bbcm_durable","machineId":"machine-1"}' ;;
   *)
     output=
     while [ "$#" -gt 0 ]; do
-      if [ "$1" = -o ]; then output=$2; shift 2; else shift; fi
+      if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
     done
     [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
     printf '%s' '${artifactStatus}'
@@ -192,8 +198,20 @@ esac
     join(fixture.binDir, "npm"),
     `#!/bin/sh
 printf '%s\n' "$*" >>"${npmLog}"
-cp "${bbAppTemplatePath}" "${bbAppPath}"
-chmod +x "${bbAppPath}"
+prefix=
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = --prefix ]; then prefix=$2; shift 2; else shift; fi
+done
+[ -n "$prefix" ] || exit 2
+mkdir -p "$prefix/bin"
+cp "${bbAppTemplatePath}" "$prefix/bin/bb-app"
+chmod +x "$prefix/bin/bb-app"
+for module in better-sqlite3 node-pty; do
+  mkdir -p "$prefix/lib/node_modules/bb-app/node_modules/$module"
+  if [ -z "$FAKE_NPM_SKIP_NATIVE_MODULES" ]; then
+    printf '%s\n' 'module.exports = {};' >"$prefix/lib/node_modules/bb-app/node_modules/$module/index.js"
+  fi
+done
 `,
   );
 }
@@ -219,7 +237,7 @@ function writeCurlArtifactMock(
     `#!/bin/sh
 output=
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = -o ]; then output=$2; shift 2; else shift; fi
+  if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
 done
 [ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
 printf '%s' '${artifactStatus}'
@@ -261,6 +279,27 @@ describe("machine install script", () => {
     expect(result.stderr).toContain(
       "--host-daemon-port must be an integer between 1 and 65535",
     );
+  });
+
+  it("renders an invalid server URL as an installer failure", () => {
+    const fixture = createFixture();
+    const result = runScript(
+      [
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "not-a-url",
+      ],
+      fixture,
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "  ✗  Could not parse the server URL not-a-url.",
+    );
+    expect(result.stderr).not.toContain("TypeError");
   });
 
   it("uses bb-app from PATH and passes the launcher join flags verbatim", () => {
@@ -340,7 +379,9 @@ describe("machine install script", () => {
       join(fixture.dataDir, "npm.log"),
       "utf8",
     );
-    expect(npmInvocation).toMatch(/^install -g \/.*bb-app\..*\.tgz$/mu);
+    expect(npmInvocation).toMatch(
+      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
+    );
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
@@ -359,8 +400,34 @@ describe("machine install script", () => {
       join(fixture.dataDir, "npm.log"),
       "utf8",
     );
-    expect(npmInvocation).toMatch(/^install -g \/.*bb-app\..*\.tgz$/mu);
+    expect(npmInvocation).toMatch(
+      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm \/.*bb-app\..*\.tgz$/mu,
+    );
     expect(npmInvocation).not.toContain("bb-app\n");
+    expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
+      "--silent --show-error --location --connect-timeout 10 --max-time 300",
+    );
+    expect(result.stdout).toContain(
+      "Setting up this machine as host-test for https://machine.getbb.app",
+    );
+    expect(result.stdout).toContain("\n  bb machine setup\n\n");
+    expect(result.stdout).toContain(
+      "  ○  Setting up this machine as host-test for https://machine.getbb.app",
+    );
+    expect(result.stdout).toContain(
+      "Downloading the server's bb-app package (timeout: 5 minutes)",
+    );
+    expect(result.stdout).toContain(
+      "  ✓  Downloaded the server's bb-app package",
+    );
+    expect(result.stdout).toContain(
+      "  ○  Installing the server's bb-app build",
+    );
+    expect(result.stdout).toContain("  ✓  Installed the server's bb-app build");
+    expect(result.stdout).toContain(
+      "Waiting for the temporary host daemon to connect",
+    );
+    expect(result.stdout).toContain("Join progress is logged to");
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
@@ -375,13 +442,32 @@ describe("machine install script", () => {
     });
 
     expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toBe(
-      "install -g bb-app\n",
+    expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toMatch(
+      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm bb-app\n$/u,
     );
     const daemonPid = Number(
       readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
     );
     process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("fails loudly when npm skipped the native add-on install scripts", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+      FAKE_NPM_SKIP_NATIVE_MODULES: "1",
+    });
+
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain(
+      "npm installed bb-app, but its native add-ons (better-sqlite3, node-pty) did not load.",
+    );
+    expect(result.stderr).toContain(
+      "npm_config_allow_scripts=better-sqlite3,node-pty,@parcel/watcher",
+    );
+    // The installer must stop before it starts the temporary host daemon.
+    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
   });
 
   it("defaults the data dir to a per-server directory under ~/.bb-machines", () => {
@@ -535,6 +621,9 @@ describe("machine install script", () => {
     );
 
     expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
+      "--connect-timeout 10 --max-time 30 -X POST",
+    );
     expect(readFileSync(invocationPath, "utf8")).not.toContain("bbcm_durable");
     expect(readFileSync(invocationPath, "utf8")).not.toContain(
       "--machine-credential",
@@ -552,11 +641,35 @@ describe("machine install script", () => {
     process.kill(daemonPid, "SIGTERM");
   });
 
+  it("reports periodic progress while a host daemon is still joining", () => {
+    const fixture = createFixture();
+    writeCurlArtifactMock(fixture, 404);
+    writeExecutable(
+      join(fixture.binDir, "bb-app"),
+      `#!/usr/bin/env node
+setInterval(() => {}, 1000);
+`,
+    );
+    writeExecutable(join(fixture.binDir, "sleep"), "#!/bin/sh\nexit 0\n");
+
+    const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain(
+      "Still waiting for the temporary host daemon (5/60 checks)",
+    );
+    expect(result.stdout).toContain(
+      "Still waiting for the temporary host daemon (60/60 checks)",
+    );
+    expect(result.stderr).toContain("Timed out waiting for host daemon");
+  });
+
   it("installs an idempotent macOS launch agent for joined state", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
-    writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, join(fixture.dataDir, "service-invocation"));
+    writeServerInstallTools(fixture, 200);
     writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Darwin\n");
     writeExecutable(
       join(fixture.binDir, "launchctl"),
@@ -564,7 +677,7 @@ describe("machine install script", () => {
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
 if [ "$1" = kickstart ]; then
   port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
-  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.binDir, "bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
   echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
 fi
 `,
@@ -584,6 +697,19 @@ fi
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("already joined");
+    expect(result.stdout).toContain(
+      "Installing the persistent bb host daemon service",
+    );
+    expect(result.stdout).toContain("Waiting for the launch agent to connect");
+    expect(result.stdout).toContain("  ●  bb machine is ready");
+    expect(result.stdout).toContain("server  https://machine.getbb.app");
+    expect(result.stdout).toContain(
+      "service " +
+        join(
+          fixture.homeDir,
+          "Library/LaunchAgents/app.getbb.host-daemon.machine-getbb-app.plist",
+        ),
+    );
     const plist = readFileSync(
       join(
         fixture.homeDir,
@@ -604,6 +730,9 @@ fi
       `<string>--host-daemon-port</string>\n    <string>${selectedPort}</string>`,
     );
     expect(plist).toContain("<string>https://machine.getbb.app</string>");
+    expect(plist).toContain(
+      `<key>BB_APP_NPM_PREFIX</key><string>${realpathSync(fixture.dataDir)}/npm</string>`,
+    );
     expect(
       readFileSync(join(fixture.dataDir, "launchctl.log"), "utf8"),
     ).toContain("bootstrap");
@@ -612,8 +741,7 @@ fi
   it("restarts an active Linux systemd user unit after replacing it", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
-    writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, join(fixture.dataDir, "service-invocation"));
+    writeServerInstallTools(fixture, 200);
     writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
     writeExecutable(
       join(fixture.binDir, "systemctl"),
@@ -621,7 +749,7 @@ fi
 printf '%s\n' "$*" >>"${join(fixture.dataDir, "systemctl.log")}"
 if [ "$*" = "--user restart bb-host-daemon-machine-getbb-app.service" ]; then
   port=$(sed -n '1p' "${join(fixture.dataDir, "host-daemon-port")}")
-  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.binDir, "bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
+  BB_DATA_DIR="${fixture.dataDir}" "${join(fixture.dataDir, "npm/bin/bb-app")}" host-daemon --host-daemon-port "$port" --server-url https://machine.getbb.app >/dev/null 2>&1 &
   echo $! >"${join(fixture.dataDir, "service-daemon.pid")}"
 fi
 `,
@@ -641,6 +769,9 @@ fi
 
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("already joined");
+    expect(result.stdout).toContain(
+      "Waiting for the systemd service to connect",
+    );
     const unit = readFileSync(
       join(
         fixture.homeDir,
@@ -654,6 +785,9 @@ fi
     ).trim();
     expect(unit).toContain(
       `host-daemon --auto-update --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
+    );
+    expect(unit).toContain(
+      `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
     );
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app.service\n--user restart bb-host-daemon-machine-getbb-app.service\n",

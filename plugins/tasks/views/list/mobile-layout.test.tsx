@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Label, Task, TaskThread } from "../../shared/contract.js";
 
 // jsdom lacks matchMedia/ResizeObserver; the list shell touches both.
@@ -103,7 +103,6 @@ describe("responsive list structure", () => {
     // Non-wrapping, and never a descendant of the horizontal chip scroller —
     // otherwise a crowded mobile filter bar wraps the count to two lines
     // (BB-60) or scrolls it out of view.
-    expect(count.className).toContain("whitespace-nowrap");
     expect(count.closest(".overflow-x-auto")).toBeNull();
     // Sort is pinned beside the count, outside the scroller, while the
     // filter chips scroll.

@@ -1,12 +1,12 @@
-export type EnvironmentHostMode = "local" | "worktree";
+type EnvironmentHostMode = "local" | "worktree";
 
-export interface ParsedHostEnvironmentValue {
+interface ParsedHostEnvironmentValue {
   type: "host";
   hostId: string;
   mode: EnvironmentHostMode;
 }
 
-export interface ParsedReuseEnvironmentValue {
+interface ParsedReuseEnvironmentValue {
   type: "reuse";
   /** Null when the user has picked Reuse mode but hasn't chosen a specific
    * worktree yet. Submit is gated on a non-null id by the resolver. */

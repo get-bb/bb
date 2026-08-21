@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-github",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Browse GitHub issues and pull requests in BB, then send them to agents.",
   "private": true,
   "license": "MIT",
@@ -19,23 +19,17 @@
     "server.ts",
     "app.tsx",
     "components",
-    "logo.svg",
-    "logo-dark.svg",
     "README.md"
   ],
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": "^0.4.1"
+    "bbPluginSdk": ">=0.4.10"
   },
   "bb": {
     "name": "GitHub",
     "description": "Browse GitHub issues and pull requests in BB, then send them to agents.",
     "branding": {
-      "icon": "Github",
-      "logo": {
-        "light": "./logo.svg",
-        "dark": "./logo-dark.svg"
-      }
+      "icon": "Github"
     },
     "server": "./server.ts",
     "app": "./app.tsx"
@@ -49,8 +43,7 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
-    "@bb/plugin-sdk": "workspace:*",
-    "@pierre/diffs": "^1.2.9",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.19",
     "@radix-ui/react-dropdown-menu": "^2.1.20",
     "@types/node": "^22.0.0",

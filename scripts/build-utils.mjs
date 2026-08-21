@@ -2,7 +2,7 @@ import { chmod, cp, rm } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 
-export const NODE_ESM_REQUIRE_BANNER = [
+const NODE_ESM_REQUIRE_BANNER = [
   'import { createRequire as __createRequire } from "node:module";',
   'import { dirname as __pathDirname } from "node:path";',
   'import { fileURLToPath as __fileURLToPath } from "node:url";',
@@ -11,7 +11,7 @@ export const NODE_ESM_REQUIRE_BANNER = [
   "var __dirname = __pathDirname(__filename);",
 ].join("\n");
 
-export const NATIVE_EXTERNAL_PACKAGES = [
+const NATIVE_EXTERNAL_PACKAGES = [
   "@parcel/watcher",
   "better-sqlite3",
   "bufferutil",
@@ -45,7 +45,7 @@ export function createNativeExternalPatterns({ bundledPackages = [] } = {}) {
   );
 }
 
-export async function removeFileAndMap(outfile) {
+async function removeFileAndMap(outfile) {
   await Promise.all([
     rm(outfile, { force: true }),
     rm(`${outfile}.map`, { force: true }),
@@ -92,12 +92,4 @@ export async function buildNodeEsmEntry({
   if (executable) {
     await chmod(outfile, 0o755);
   }
-}
-
-export async function generateTemplatesIfRequested(enabled) {
-  if (!enabled) {
-    return;
-  }
-
-  await import("../packages/templates/scripts/generate-templates.mjs");
 }

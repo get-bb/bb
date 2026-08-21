@@ -5,7 +5,6 @@ import {
   type HostDaemonConnectSharesReplaceMessage,
   type HostDaemonOnlineRpcRequestMessage,
   type HostDaemonServerWsMessage,
-  type HostDaemonSessionCloseReason,
   type HostDaemonSessionOpenRequest,
   type HostDaemonSessionOpenResponse,
   type HostDaemonWatchSetReplaceMessage,
@@ -64,6 +63,7 @@ export interface ServerConnectionOptions {
   hostType: HostDaemonSessionOpenRequest["hostType"];
   dataDir: string;
   instanceId: string;
+  localApiPort: number | null;
   setSession?: (session: HostDaemonSessionOpenResponse | null) => void;
   getActiveThreads?: () =>
     | HostDaemonActiveThread[]
@@ -83,22 +83,11 @@ export interface ServerConnectionOptions {
   onConnectSharesReplace?: (
     message: HostDaemonConnectSharesReplaceMessage,
   ) => void | Promise<void>;
-  onSessionClose?: (
-    reason: HostDaemonSessionCloseReason,
-  ) => void | Promise<void>;
   onSessionOpened?: (
     session: HostDaemonSessionOpenResponse,
   ) => void | Promise<void>;
   createWebSocket?: CreateReconnectingWebSocket;
-  minReconnectionDelay?: number;
-  maxReconnectionDelay?: number;
-  reconnectionDelayGrowFactor?: number;
-  connectionTimeout?: number;
   startupTimeoutMs?: number;
-  setTimeoutFn?: typeof setTimeout;
-  clearTimeoutFn?: typeof clearTimeout;
-  setIntervalFn?: typeof setInterval;
-  clearIntervalFn?: typeof clearInterval;
 }
 
 export const DEFAULT_MIN_RECONNECTION_DELAY = 1_000;

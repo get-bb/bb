@@ -1,13 +1,35 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PluginDiffRendererProps } from "@get-bb/plugin-sdk";
 import type { DiffFileEntry } from "@bb/server-contract";
 import type {
   DiffFileContentsResult,
   RequestDiffFileContents,
 } from "@/components/git-diff/GitDiffCardBody";
 import type { DiffPatchState } from "@/hooks/queries/use-environment-diff-patches";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { DiffFileCard } from "./DiffFileCard";
+
+// The diff body defers its renderer until the card scrolls into view. jsdom
+// has no layout, so report every observed sentinel as visible.
+vi.mock("usehooks-ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("usehooks-ts")>()),
+  useIntersectionObserver: () => ({
+    ref: () => {},
+    isIntersecting: true,
+    entry: undefined,
+  }),
+}));
 
 const IMAGE_DATA_URL =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/Qo3AAAAAElFTkSuQmCC";
@@ -40,7 +62,11 @@ function renderCard({
   render(
     <DiffFileCard
       entry={entry}
-      diffViewOptions={{}}
+      presentation={{
+        view: "unified",
+        overflow: "scroll",
+        showLineNumbers: true,
+      }}
       isCollapsed={false}
       onToggleCollapsed={() => {}}
       patchState={patchState}
@@ -51,8 +77,19 @@ function renderCard({
   );
 }
 
+const TEXT_PATCH = [
+  "diff --git a/src/file.ts b/src/file.ts",
+  "--- a/src/file.ts",
+  "+++ b/src/file.ts",
+  "@@ -1,2 +1,2 @@",
+  "-const b = 2;",
+  "+const b = 3;",
+  "",
+].join("\n");
+
 afterEach(() => {
   cleanup();
+  resetPluginSlotStoreForTest();
 });
 
 describe("DiffFileCard", () => {
@@ -119,6 +156,100 @@ describe("DiffFileCard", () => {
     });
     expect(screen.getByText("Load diff")).toBeTruthy();
     expect(onRequestFileContents).not.toHaveBeenCalled();
+  });
+
+  it("renders its text body through the shared host diff boundary", async () => {
+    // The point of the boundary: one `experimental_diffRenderer` registration
+    // has to reach BB's own diff panel, not just plugin-rendered diffs.
+    const seen: { patch: string; path: string; view: string }[] = [];
+    setPluginSlotRegistrations("demo", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      diffRenderers: [
+        {
+          id: "diffs",
+          title: "Demo diffs",
+          component: ({ patch, path, view }) => {
+            seen.push({ patch, path, view });
+            return <div data-testid="plugin-diff-body">plugin diff</div>;
+          },
+        },
+      ],
+    });
+
+    renderCard({
+      entry: buildEntry(),
+      patchState: { status: "loaded", patch: TEXT_PATCH },
+    });
+
+    expect(await screen.findByTestId("plugin-diff-body")).toBeTruthy();
+    // The caller had the real bytes, so the replacement gets those — not a
+    // reconstruction.
+    expect(seen.at(-1)?.patch).toBe(TEXT_PATCH);
+    expect(seen.at(-1)?.path).toBe("src/file.ts");
+    expect(seen.at(-1)?.view).toBe("unified");
+  });
+
+  it("forwards lazily resolved text sides to a replacement renderer", async () => {
+    const seen: PluginDiffRendererProps["experimental_fullFileContents"][] = [];
+    setPluginSlotRegistrations("demo", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      diffRenderers: [
+        {
+          id: "diffs",
+          title: "Demo diffs",
+          component: ({ experimental_fullFileContents }) => {
+            seen.push(experimental_fullFileContents);
+            return <div data-testid="plugin-diff-body">plugin diff</div>;
+          },
+        },
+      ],
+    });
+    const onRequestFileContents = vi.fn<RequestDiffFileContents>(
+      async (path, side) => ({
+        kind: "text",
+        file: {
+          name: path,
+          contents:
+            side === "old"
+              ? "const b = 2;\nconst tail = true;\n"
+              : "const b = 3;\nconst tail = true;\n",
+        },
+      }),
+    );
+
+    renderCard({
+      entry: buildEntry(),
+      patchState: { status: "loaded", patch: TEXT_PATCH },
+      onRequestFileContents,
+    });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Expand context" }),
+    );
+    await waitFor(() => {
+      expect(seen.at(-1)).toEqual({
+        old: {
+          path: "src/file.ts",
+          content: "const b = 2;\nconst tail = true;\n",
+        },
+        new: {
+          path: "src/file.ts",
+          content: "const b = 3;\nconst tail = true;\n",
+        },
+      });
+    });
   });
 
   it("falls back to the load gate when an image-looking path is not previewable", async () => {

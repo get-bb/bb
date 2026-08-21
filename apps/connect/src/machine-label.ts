@@ -8,9 +8,8 @@ import {
   type ConnectDb,
 } from "@bb/connect-db";
 import { verifyMachineCredentialDetails } from "./session.js";
+import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
 import type { Env } from "./tunnel-do.js";
-
-const MACHINE_CREDENTIAL_HEADER = "x-bb-connect-machine";
 
 function fallbackLabel(machineId: string): string {
   const idPrefix = machineId
@@ -66,7 +65,7 @@ function affectedRows(result: unknown): number {
   throw new Error("machine label update did not report affected rows");
 }
 
-export interface MachineLabelAssignmentHooks {
+interface MachineLabelAssignmentHooks {
   /** Test/control barrier before the one atomic source+claim update. */
   beforeAttach?: (candidate: string) => Promise<void>;
 }

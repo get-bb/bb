@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { NewTabFileSearch } from "./NewTabFileSearch";
@@ -41,39 +41,70 @@ function mockPointerCoarse(matches: boolean) {
   }));
 }
 
-function renderFileSearch() {
+function renderFileSearch({
+  autoFocus,
+  onAutoFocusHandled = () => undefined,
+}: {
+  autoFocus: boolean;
+  onAutoFocusHandled?: () => void;
+}) {
   render(
     <NewTabFileSearch
+      autoFocus={autoFocus}
       projectId="proj_1"
       environmentId="env_1"
       currentThreadId="thr_1"
-      focusRequest={0}
       idleActions={null}
+      onAutoFocusHandled={onAutoFocusHandled}
       onSelect={() => {}}
     />,
   );
 }
 
 describe("NewTabFileSearch", () => {
-  it("does not autofocus the search input on coarse pointers", () => {
-    mockPointerCoarse(true);
-    const focusSpy = vi
-      .spyOn(HTMLInputElement.prototype, "focus")
-      .mockImplementation(() => {});
-
-    renderFileSearch();
-
-    expect(focusSpy).not.toHaveBeenCalled();
-  });
-
-  it("autofocuses the search input on fine pointers", () => {
+  it("does not autofocus when passively remounted", () => {
     mockPointerCoarse(false);
     const focusSpy = vi
       .spyOn(HTMLInputElement.prototype, "focus")
       .mockImplementation(() => {});
 
-    renderFileSearch();
+    renderFileSearch({ autoFocus: false });
+
+    expect(focusSpy).not.toHaveBeenCalled();
+  });
+
+  it("consumes an explicit request without focusing on coarse pointers", () => {
+    mockPointerCoarse(true);
+    const focusSpy = vi
+      .spyOn(HTMLInputElement.prototype, "focus")
+      .mockImplementation(() => {});
+    const onAutoFocusHandled = vi.fn();
+
+    renderFileSearch({ autoFocus: true, onAutoFocusHandled });
+
+    expect(focusSpy).not.toHaveBeenCalled();
+    expect(onAutoFocusHandled).toHaveBeenCalledTimes(1);
+  });
+
+  it("autofocuses for an explicit request and consumes it", () => {
+    mockPointerCoarse(false);
+    const focusSpy = vi
+      .spyOn(HTMLInputElement.prototype, "focus")
+      .mockImplementation(() => {});
+    const onAutoFocusHandled = vi.fn();
+    let nextFrame: FrameRequestCallback | undefined;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      nextFrame = callback;
+      return 1;
+    });
+
+    renderFileSearch({ autoFocus: true, onAutoFocusHandled });
 
     expect(focusSpy).toHaveBeenCalledTimes(1);
+    expect(onAutoFocusHandled).toHaveBeenCalledTimes(1);
+
+    act(() => nextFrame?.(0));
+
+    expect(focusSpy).toHaveBeenCalledTimes(2);
   });
 });

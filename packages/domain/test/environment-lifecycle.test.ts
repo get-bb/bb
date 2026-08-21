@@ -27,6 +27,7 @@ const allEventTypes: readonly EnvironmentLifecycleEventType[] = [
 
 const payloadEventTypes: readonly EnvironmentLifecycleEventType[] = [
   "destroy.started",
+  "destroy.completed",
   "destroy.failed",
 ];
 
@@ -35,6 +36,7 @@ function eventOfType(
 ): EnvironmentLifecycleEvent {
   switch (eventType) {
     case "destroy.started":
+    case "destroy.completed":
     case "destroy.failed":
       return { type: eventType, destroyAttemptId: "rpc_attempt" };
     default:
@@ -130,6 +132,7 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
       error: {
         "provision.requested": "provisioning",
         "destroy.started": "destroying",
+        "destroy.completed": "destroyed",
       },
       destroying: {
         "destroy.completed": "destroyed",
@@ -149,7 +152,7 @@ describe("ENVIRONMENT_LIFECYCLE table", () => {
       "retire.requested": { managed: true },
       "retire.cancelled": {},
       "destroy.started": { managed: true },
-      "destroy.completed": {},
+      "destroy.completed": { matchingDestroyAttempt: true },
       "destroy.failed": { matchingDestroyAttempt: true },
       "destroy.lost": {},
     });

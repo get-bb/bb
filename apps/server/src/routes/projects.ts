@@ -1,8 +1,10 @@
 import path from "node:path";
 import {
   countProjectSources,
-  createProject,
+  findOrCreateProjectByLocalPathSource,
   getPersonalProject,
+  getProjectExecutionDefaults,
+  getPublicProjectByLocalPathSource,
   createProjectSource,
   deleteProjectSource,
   getProjectSourceByHost,
@@ -46,7 +48,6 @@ import {
 } from "../services/lib/entity-lookup.js";
 import { PROMPT_HISTORY_ENTRY_LIMIT } from "@bb/domain";
 import { resolveCreateThreadExecutionDefaults } from "../services/threads/thread-default-policy.js";
-import { resolveProjectCreateDefaultExecutionPlan } from "../services/threads/thread-execution-plan.js";
 import { toThreadListEntryResponses } from "../services/threads/thread-runtime-display.js";
 import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { runLiveHostCommand } from "../services/hosts/live-command.js";
@@ -60,6 +61,7 @@ import {
 import {
   createDaemonFileContentResponse,
   remapDaemonFileRouteError,
+  requestMatchesEntityTag,
 } from "../services/hosts/daemon-file-response.js";
 import { parseBoundedPositiveOptionalInteger } from "../services/lib/validation.js";
 import {
@@ -81,18 +83,22 @@ import { parseFileListLimit } from "./file-list-query.js";
 import { parseSafeRelativeRoutePath } from "./relative-route-path.js";
 import { resolveSkillCatalog } from "../services/skills/skill-catalog.js";
 import { resolveWorkspaceProjectSkills } from "../services/skills/workspace-skills.js";
+import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
+import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
 import {
   resolveProjectCommandWorkspace,
   resolveProjectWorkspaceTarget,
 } from "../services/projects/project-workspace.js";
 
 type ProjectResponseProjectFields = Omit<ProjectResponse, "sources">;
-type ProjectResponseRow = ProjectResponseProjectFields;
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
+// Stored attachment names embed a timestamp and a random suffix, so the bytes
+// behind a name never change: cache for a year but keep it private.
+const ATTACHMENT_CONTENT_CACHE_CONTROL = "private, immutable, max-age=31536000";
 
 function toProjectResponseProjectFields(
-  project: ProjectResponseRow,
+  project: ProjectResponseProjectFields,
 ): ProjectResponseProjectFields {
   return {
     id: project.id,
@@ -106,7 +112,7 @@ function toProjectResponseProjectFields(
 
 function buildProjectResponsesFromRows(
   deps: AppDeps,
-  projects: ProjectResponseRow[],
+  projects: ProjectResponseProjectFields[],
 ): ProjectResponse[] {
   if (projects.length === 0) {
     return [];
@@ -147,7 +153,7 @@ interface ProjectListOptions {
 function listDiscoverableProjects(
   deps: AppDeps,
   options: ProjectListOptions,
-): ProjectResponseRow[] {
+): ProjectResponseProjectFields[] {
   const projects = listPublicProjects(deps.db);
   if (!options.includePersonal) {
     return projects;
@@ -205,7 +211,7 @@ function buildProjectsWithThreadsResponse(
 
 function buildProjectsWithThreadsResponseFromRows(
   deps: AppDeps,
-  projectRows: ProjectResponseRow[],
+  projectRows: ProjectResponseProjectFields[],
 ): ProjectWithThreadsResponse[] {
   const projects = buildProjectResponsesFromRows(deps, projectRows);
   const projectIds = projects.map((project) => project.id);
@@ -236,9 +242,12 @@ function buildProjectsWithThreadsResponseFromRows(
   return projects.map((project) => ({
     ...project,
     threads: threadsByProjectId.get(project.id) ?? [],
-    defaultExecutionOptions: resolveCreateThreadExecutionDefaults({
-      storedDefaults: defaultsByProjectId.get(project.id) ?? null,
-    }).executionDefaults,
+    defaultExecutionOptions: resolveCreateThreadExecutionDefaults(
+      deps.providerRegistry,
+      {
+        storedDefaults: defaultsByProjectId.get(project.id) ?? null,
+      },
+    ).executionDefaults,
   }));
 }
 
@@ -355,11 +364,22 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       requireNonDestroyedHostWithStatus(deps, source.hostId);
       assertUsableHostId(deps, { hostId: source.hostId });
     }
+    const existingProject = getPublicProjectByLocalPathSource(deps.db, source);
+    if (existingProject) {
+      return context.json(
+        buildProjectResponses(deps, existingProject.id)[0],
+        201,
+      );
+    }
     const gitRemoteUrl = await inspectProjectGitRemoteBestEffort(deps, source);
-    const { project } = createProject(deps.db, deps.hub, {
-      name: payload.name,
-      source,
-    });
+    const { project } = findOrCreateProjectByLocalPathSource(
+      deps.db,
+      deps.hub,
+      {
+        name: payload.name,
+        source,
+      },
+    );
     if (gitRemoteUrl !== null) {
       setProjectGitRemoteUrlIfMissing(
         deps.db,
@@ -378,10 +398,12 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
   get(routes.defaultExecutionOptions, (context, query) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
-    const plan = resolveProjectCreateDefaultExecutionPlan(deps, {
-      projectId,
-    });
-    return context.json(plan.defaultView);
+    const storedDefaults = getProjectExecutionDefaults(deps.db, { projectId });
+    return context.json(
+      resolveCreateThreadExecutionDefaults(deps.providerRegistry, {
+        storedDefaults,
+      }).executionDefaults,
+    );
   });
 
   get(routes.promptHistory, (context, query) => {
@@ -628,6 +650,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       });
       return createDaemonFileContentResponse(result, {
         headers: { "x-bb-content-encoding": result.contentEncoding },
+        ifNoneMatch: context.req.header("if-none-match"),
       });
     } catch (error) {
       return remapDaemonFileRouteError(error);
@@ -672,7 +695,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
 
     // Providers without a skills composer action have no typeahead entries,
     // so skip the daemon roundtrip entirely.
-    if (!providerHasCommandSurface(query.provider)) {
+    if (!providerHasCommandSurface(deps.providerRegistry, query.provider)) {
       return context.json({ commands: [] });
     }
 
@@ -683,7 +706,11 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
         : {}),
       ...(query.hostId !== undefined ? { hostId: query.hostId } : {}),
     });
-    const [result, projectSkillSources] = await Promise.all([
+    const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
+      deps,
+      query.provider,
+    );
+    const [result, projectSkillSources, sharedSkills] = await Promise.all([
       callHostRetryableOnlineRpc(deps, {
         hostId: workspace.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -691,6 +718,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           type: "host.list_commands",
           providerId: query.provider,
           cwd: workspace.cwd,
+          ...(acpLaunchSpec?.nativeSkillRoots !== undefined
+            ? { nativeSkillRoots: acpLaunchSpec.nativeSkillRoots }
+            : {}),
         },
       }),
       workspace.cwd === null
@@ -699,11 +729,21 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
             hostId: workspace.hostId,
             workspacePath: workspace.cwd,
           }),
+      resolveSharedSkills(deps, {
+        hostId: workspace.hostId,
+        cwd: workspace.cwd,
+      }),
     ]);
-    const skillCatalog = resolveSkillCatalog(deps, { projectSkillSources });
+    const skillCatalog = resolveSkillCatalog(deps, {
+      projectSkillSources,
+      sharedSkillSources: sharedSkills.runtimeSources,
+    });
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
+        includeBuiltinCompact: deps.providerRegistry.supportsManualCompaction(
+          query.provider,
+        ),
         skillCatalog,
       }),
     );
@@ -874,11 +914,27 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       context.req.param("id"),
       query.path,
     );
+    const headers = new Headers({
+      // Stored attachment names are unique per upload (timestamp + random
+      // suffix) and the bytes never change, so the browser may keep them for
+      // a year: PWA relaunches and timeline scroll-back reuse the cached
+      // image instead of refetching multi-megabyte screenshots.
+      "cache-control": ATTACHMENT_CONTENT_CACHE_CONTROL,
+      "content-type": attachment.mimeType ?? "application/octet-stream",
+      etag: attachment.etag,
+    });
+    if (
+      requestMatchesEntityTag(
+        context.req.header("if-none-match"),
+        attachment.etag,
+      )
+    ) {
+      return new Response(null, { status: 304, headers });
+    }
+    headers.set("content-length", String(attachment.content.byteLength));
     return new Response(new Uint8Array(attachment.content), {
       status: 200,
-      headers: {
-        "content-type": attachment.mimeType ?? "application/octet-stream",
-      } as HeadersInit,
+      headers,
     });
   });
 }

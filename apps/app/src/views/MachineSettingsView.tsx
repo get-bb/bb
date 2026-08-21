@@ -7,11 +7,15 @@ import { DialogFooter, DialogHeader, DialogTitle } from "@bb/shared-ui/dialog";
 import { DialogDescription } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Pill } from "@bb/shared-ui/pill";
+import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsBadge,
+  SettingsRow,
+  SettingsRowList,
   SettingsSection,
 } from "@/components/ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
@@ -22,10 +26,12 @@ import {
   useRetryHostUpdate,
   useUpdateHostPermissionCeiling,
 } from "@/hooks/mutations/host-mutations";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
+import { isProviderCliUpdateIssue } from "@/components/provider-cli/provider-cli-install";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
   formatHostUpdateStatus,
   hostCanRetryUpdate,
@@ -34,15 +40,18 @@ import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
 import {
+  getProviderIconColorClass,
+  getProviderIconInfo,
+} from "@/lib/provider-icon";
+import {
   getProjectSettingsRoutePath,
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 
-const PRIMARY_REMOVE_DISABLED_REASON =
-  "This machine runs bb and can't be removed.";
+const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
 
 const PERMISSION_LIMIT_DESCRIPTION =
-  "Highest permission mode any thread on this machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
+  "Highest permission mode any thread on the selected machine may run with. Threads that ask for more resolve down to it, and a provider that supports nothing this low can't run here.";
 
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
@@ -65,15 +74,11 @@ function headerMeta({
   platformLabel: string | null;
   now: number;
 }): string {
-  const parts: string[] = [];
-  if (host.status === "connected") {
-    parts.push("Online");
-  } else if (host.lastSeenAt !== null) {
+  const parts: string[] = [host.status === "connected" ? "Online" : "Offline"];
+  if (host.status !== "connected" && host.lastSeenAt !== null) {
     parts.push(
-      `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`,
+      `last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`,
     );
-  } else {
-    parts.push("Offline");
   }
   if (platformLabel !== null) parts.push(platformLabel);
   parts.push(
@@ -88,60 +93,57 @@ interface PermissionLimitCardProps {
   value: PermissionMode;
 }
 
-/**
- * Radio cards rather than a picker: this page has room for each mode's
- * description, which is the whole reason the limit lives here.
- */
+/** The page has room to explain each mode, so keep the choices visible. */
 function PermissionLimitCards({
   disabled,
   onSelect,
   value,
 }: PermissionLimitCardProps) {
   return (
-    <div className="space-y-2" role="radiogroup" aria-label="Permission limit">
-      {PERMISSION_MODE_OPTIONS.map((option) => {
-        const selected = option.value === value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={disabled}
-            onClick={() => {
-              if (!selected) onSelect(option.value);
-            }}
-            className={cn(
-              "flex w-full items-start gap-2.5 rounded-lg border px-3.5 py-3 text-left transition-colors",
-              selected
-                ? "border-foreground/40 bg-state-hover"
-                : "border-border hover:bg-state-hover",
-              disabled && "opacity-70",
-            )}
-          >
-            <span
-              className={cn(
-                "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
-                selected ? "border-foreground" : "border-input",
-              )}
-            >
-              {selected ? (
-                <span className="size-2 rounded-full bg-foreground" />
-              ) : null}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm text-foreground">
-                {option.label}
-              </span>
-              {option.description ? (
-                <span className="mt-0.5 block text-xs leading-snug text-subtle-foreground/85">
-                  {option.description}
+    <div role="radiogroup" aria-label="Permission limit">
+      <SettingsRowList>
+        {PERMISSION_MODE_OPTIONS.map((option) => {
+          const selected = option.value === value;
+          return (
+            <SettingsRow key={option.value} className="items-start">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={disabled}
+                onClick={() => {
+                  if (!selected) onSelect(option.value);
+                }}
+                className={cn(
+                  "flex w-full items-start gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  disabled && "opacity-70",
+                )}
+              >
+                <span
+                  className={cn(
+                    "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border",
+                    selected ? "border-foreground" : "border-input",
+                  )}
+                >
+                  {selected ? (
+                    <span className="size-2 rounded-full bg-foreground" />
+                  ) : null}
                 </span>
-              ) : null}
-            </span>
-          </button>
-        );
-      })}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm text-foreground">
+                    {option.label}
+                  </span>
+                  {option.description ? (
+                    <span className="mt-0.5 block text-xs leading-snug text-subtle-foreground/75">
+                      {option.description}
+                    </span>
+                  ) : null}
+                </span>
+              </button>
+            </SettingsRow>
+          );
+        })}
+      </SettingsRowList>
     </div>
   );
 }
@@ -153,12 +155,12 @@ interface DetailRowProps {
 
 function DetailRow({ label, children }: DetailRowProps) {
   return (
-    <div className="flex items-center justify-between gap-4 py-2.5 text-sm first:pt-0 last:pb-0">
-      <span className="text-foreground">{label}</span>
-      <div className="flex min-w-0 items-center gap-2 text-right text-subtle-foreground">
+    <SettingsRow className="flex-col items-stretch gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+      <span className="shrink-0 text-foreground">{label}</span>
+      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 text-left text-subtle-foreground sm:ml-auto sm:justify-end sm:text-right">
         {children}
       </div>
-    </div>
+    </SettingsRow>
   );
 }
 
@@ -167,6 +169,7 @@ export function MachineSettingsView() {
   const navigate = useNavigate();
   const hostsQuery = useHosts();
   const systemConfig = useSystemConfig();
+  const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
   const updateInventory = useUpdateInventory();
   const renameHost = useRenameHost();
@@ -178,10 +181,11 @@ export function MachineSettingsView() {
 
   const hosts = hostsQuery.data;
   const host = hosts?.find((candidate) => candidate.id === hostId) ?? null;
-  const primaryHostId =
-    selectPrimaryHost(hosts, systemConfig.data?.primaryHostId ?? null)?.id ??
-    null;
+  const primaryHostId = systemConfig.data?.primaryHostId ?? null;
   const isPrimary = host !== null && host.id === primaryHostId;
+  const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
+  const isThisMachine =
+    showMachineIdentityBadges && host !== null && host.id === localDaemonHostId;
 
   const projects: MachineProject[] = useMemo(() => {
     const navigation = sidebarNavigationQuery.data?.projects ?? [];
@@ -195,24 +199,36 @@ export function MachineSettingsView() {
   const machine = updateInventory.machines.find(
     (candidate) => candidate.host.id === hostId,
   );
-  const providerSummary = useMemo(() => {
+  // This links to Settings → Updates, so it must count what that page lists —
+  // updates, not install prompts — or it sends the reader to a page that has
+  // nothing matching the number they just clicked.
+  const updateIssueCount = (machine?.issues ?? []).filter(
+    isProviderCliUpdateIssue,
+  ).length;
+  const installedProviders = useMemo(() => {
     const status = machine?.providerStatus;
-    if (!status) return null;
-    return Object.values(status)
-      .filter((entry) => entry.installed)
-      .map((entry) =>
-        entry.currentVersion
-          ? `${entry.displayName} ${entry.currentVersion}`
-          : entry.displayName,
-      )
-      .join(" · ");
+    if (!status) return [];
+    return Object.entries(status).flatMap(([providerId, entry]) => {
+      if (!entry.installed) return [];
+      return [
+        {
+          ...entry,
+          providerId,
+          ProviderIcon: getProviderIconInfo(providerId)?.icon,
+        },
+      ];
+    });
   }, [machine?.providerStatus]);
 
   const now = Date.now();
   const platformLabel =
-    isPrimary && systemConfig.data?.primaryHostPlatform
-      ? PLATFORM_LABELS[systemConfig.data.primaryHostPlatform]
-      : null;
+    host !== null &&
+    host.id === localDaemonHostId &&
+    localDaemonPlatform !== null
+      ? PLATFORM_LABELS[localDaemonPlatform]
+      : isPrimary && systemConfig.data?.primaryHostPlatform
+        ? PLATFORM_LABELS[systemConfig.data.primaryHostPlatform]
+        : null;
 
   if (hosts === undefined) {
     return (
@@ -236,7 +252,7 @@ export function MachineSettingsView() {
             Machines
           </Link>
           <p className="text-sm text-muted-foreground">
-            This machine is no longer paired.
+            Machine is no longer paired.
           </p>
         </div>
       </PageShell>
@@ -256,30 +272,39 @@ export function MachineSettingsView() {
             <Icon name="ChevronLeft" className="size-3.5" />
             Machines
           </Link>
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2">
-                <MachineStatusDot connected={host.status === "connected"} />
-                <h1 className="min-w-0 truncate text-xl font-semibold text-foreground">
+                <h1 className="min-w-0 truncate text-sm font-semibold text-foreground">
                   {host.name}
                 </h1>
-                {isPrimary ? <SettingsBadge>this machine</SettingsBadge> : null}
+                {isThisMachine ? (
+                  <SettingsBadge>This machine</SettingsBadge>
+                ) : null}
+                {showMachineIdentityBadges && isPrimary ? (
+                  <SettingsBadge>Primary</SettingsBadge>
+                ) : null}
               </div>
-              <p className="mt-1 text-xs text-subtle-foreground/75">
-                {headerMeta({ host, platformLabel, now })}
-              </p>
+              <div className="mt-1 flex min-w-0 items-center gap-2">
+                <MachineStatusDot connected={host.status === "connected"} />
+                <p className="min-w-0 text-xs text-subtle-foreground/75">
+                  {headerMeta({ host, platformLabel, now })}
+                </p>
+              </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                renameHost.reset();
-                setRenameOpen(true);
-              }}
-            >
-              Rename
-            </Button>
+            <ResourceOverflowMenu
+              label={`${host.name} actions`}
+              items={[
+                {
+                  label: "Rename",
+                  icon: "Edit",
+                  onSelect: () => {
+                    renameHost.reset();
+                    setRenameOpen(true);
+                  },
+                },
+              ]}
+            />
           </div>
         </div>
 
@@ -308,8 +333,67 @@ export function MachineSettingsView() {
           />
         </SettingsSection>
 
-        <SettingsSection title="This machine">
-          <div className="divide-y divide-border">
+        <SettingsSection title="Provider CLIs">
+          <SettingsRowList>
+            <DetailRow label="Installed">
+              {host.status !== "connected" ? (
+                <span>Unavailable while offline</span>
+              ) : machine?.statusPending ? (
+                <span>Checking…</span>
+              ) : machine?.statusError ? (
+                <span>Status unavailable</span>
+              ) : (
+                <>
+                  {installedProviders.length > 0 ? (
+                    <span className="flex min-w-0 flex-wrap items-center justify-start gap-x-3 gap-y-1 sm:justify-end">
+                      {installedProviders.map((entry) => (
+                        <span
+                          key={entry.providerId}
+                          className="inline-flex min-w-0 items-center gap-1.5"
+                        >
+                          {entry.ProviderIcon ? (
+                            <span
+                              data-provider-icon={entry.providerId}
+                              aria-hidden
+                              className={getProviderIconColorClass(
+                                entry.providerId,
+                              )}
+                            >
+                              <entry.ProviderIcon className="size-3.5" />
+                            </span>
+                          ) : null}
+                          <span>{entry.displayName}</span>
+                          {entry.currentVersion ? (
+                            <span>{entry.currentVersion}</span>
+                          ) : null}
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span>None installed</span>
+                  )}
+                  {updateIssueCount > 0 ? (
+                    <Link
+                      to={getSettingsRoutePath("updates")}
+                      className="shrink-0 rounded outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                      <Pill
+                        variant="outline"
+                        size="sm"
+                        className="border-attention/50 bg-surface-attention text-warning-text transition-colors hover:border-attention hover:text-foreground"
+                      >
+                        {updateIssueCount} to fix
+                      </Pill>
+                    </Link>
+                  ) : null}
+                </>
+              )}
+            </DetailRow>
+          </SettingsRowList>
+        </SettingsSection>
+
+        <SettingsSection title="Machine information">
+          <SettingsRowList>
             <DetailRow label="Projects">
               {projects.length === 0 ? (
                 <span>None</span>
@@ -327,31 +411,6 @@ export function MachineSettingsView() {
                     </span>
                   ))}
                 </span>
-              )}
-            </DetailRow>
-            <DetailRow label="Provider CLIs">
-              {host.status !== "connected" ? (
-                <span>Unavailable while offline</span>
-              ) : machine?.statusPending ? (
-                <span>Checking…</span>
-              ) : machine?.statusError ? (
-                <span>Status unavailable</span>
-              ) : (
-                <>
-                  <span className="min-w-0 truncate">
-                    {providerSummary && providerSummary.length > 0
-                      ? providerSummary
-                      : "None installed"}
-                  </span>
-                  {machine && machine.issues.length > 0 ? (
-                    <Link
-                      to={getSettingsRoutePath("updates")}
-                      className="shrink-0 text-warning-text hover:text-foreground"
-                    >
-                      {machine.issues.length} to fix
-                    </Link>
-                  ) : null}
-                </>
               )}
             </DetailRow>
             <DetailRow label="Updates">
@@ -377,7 +436,7 @@ export function MachineSettingsView() {
                 </Button>
               ) : null}
             </DetailRow>
-          </div>
+          </SettingsRowList>
         </SettingsSection>
 
         <SettingsSection
@@ -388,19 +447,22 @@ export function MachineSettingsView() {
               : `Revokes ${host.name}'s access to this server. Project checkouts stay on its disk.`
           }
         >
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={isPrimary}
-            className="text-destructive-text hover:text-destructive-text"
-            onClick={() => {
-              removeHost.reset();
-              setRemoveOpen(true);
-            }}
-          >
-            Remove machine
-          </Button>
+          <SettingsRowList>
+            <SettingsRow>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                disabled={isPrimary}
+                onClick={() => {
+                  removeHost.reset();
+                  setRemoveOpen(true);
+                }}
+              >
+                Remove machine
+              </Button>
+            </SettingsRow>
+          </SettingsRowList>
         </SettingsSection>
       </div>
 

@@ -86,13 +86,16 @@ async function stopProcess(pid: number): Promise<void> {
   }
 }
 
-async function waitForPidFile(pidPath: string): Promise<number> {
+async function waitForPidFile(
+  pidPath: string,
+  previousPid?: number,
+): Promise<number> {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 2_000) {
     try {
       const rawPid = await fs.readFile(pidPath, "utf8");
       const pid = Number.parseInt(rawPid.trim(), 10);
-      if (Number.isInteger(pid) && pid > 0) {
+      if (Number.isInteger(pid) && pid > 0 && pid !== previousPid) {
         return pid;
       }
     } catch {
@@ -287,7 +290,9 @@ describe("standalone restart command", () => {
   it("reloads the env file without embedding provider secrets", () => {
     const command = buildTestRestartCommand();
 
-    expect(command).toContain("(kill '123' >/dev/null 2>&1 || true)");
+    expect(command).toContain("daemon_pid='123'");
+    expect(command).toContain("daemon_pid=$(cat '/tmp/bb-restart.pid')");
+    expect(command).toContain('(kill "$daemon_pid"');
     expect(command).toContain("/repo/.env");
     expect(command).toContain(RESTART_PROVIDER_ENV_BLOCK);
     expect(command).toContain("BB_DATA_DIR=");
@@ -350,10 +355,10 @@ describe("standalone restart command", () => {
     });
 
     expect(command).toContain("set -a; :; set +a;");
-    expect(command).not.toContain("kill");
+    expect(command).toContain("daemon_pid=''");
   });
 
-  it("starts a replacement daemon that survives caller hangup", async () => {
+  it("starts a detached daemon repeatedly and replaces the current pid", async () => {
     const tempDir = await fs.mkdtemp(
       path.join(tmpdir(), "bb-restart-command-"),
     );
@@ -414,6 +419,15 @@ describe("standalone restart command", () => {
       signalProcessGroup(shellResult.processGroupId);
       await delay(500);
 
+      expect(isProcessRunning(daemonPid)).toBe(true);
+
+      const firstDaemonPid = daemonPid;
+      await runShellCommand(command, {
+        PATH: process.env.PATH ?? "",
+      });
+      daemonPid = await waitForPidFile(pidPath, firstDaemonPid);
+
+      expect(isProcessRunning(firstDaemonPid)).toBe(false);
       expect(isProcessRunning(daemonPid)).toBe(true);
     } finally {
       if (daemonPid) {

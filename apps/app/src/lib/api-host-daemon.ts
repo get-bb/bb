@@ -5,7 +5,7 @@ import {
   type OpenInTargetRequest,
   type StatusResponse,
   type WorkspaceOpenTarget,
-} from "@bb/host-daemon-contract";
+} from "@bb/host-daemon-contract/local";
 import { z } from "zod";
 
 let client: ReturnType<typeof createHostDaemonLocalClient> | null = null;
@@ -21,7 +21,7 @@ const hostDaemonErrorResponseSchema = z.object({
  * Get or create the host daemon client.
  * Recreates the client if the port changes.
  */
-export function getHostDaemonClient(port: number) {
+function getHostDaemonClient(port: number) {
   if (!client || clientPort !== port) {
     client = createHostDaemonLocalClient(
       `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${port}`,
@@ -46,15 +46,6 @@ export async function fetchHostStatus(
   } catch {
     return null;
   }
-}
-
-/** Fetch the local connected server-session host ID from the daemon. */
-export async function fetchHostId(port: number): Promise<string | null> {
-  const status = await fetchHostStatus(port);
-  if (!status?.connected) {
-    return null;
-  }
-  return status.hostId;
 }
 
 export async function fetchWorkspaceOpenTargets(

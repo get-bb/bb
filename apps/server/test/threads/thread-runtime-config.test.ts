@@ -4,16 +4,16 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   markThreadDeleted,
-  setAppSettings,
   setExperiments,
   setThreadExecutionOverride,
 } from "@bb/db";
 import {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-  defaultAppSettings,
   defaultExperiments,
   encodeClientTurnRequestIdNumber,
 } from "@bb/domain";
+import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
+import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { readSkillTreeManifest } from "../../src/services/skills/injected-skills.js";
 import type { PluginAgentToolContribution } from "../../src/services/plugins/plugin-service.js";
@@ -38,6 +38,7 @@ import {
   registerHostRpcResponder,
   type HostRpcResponder,
 } from "../helpers/host-rpc.js";
+import { stubHostArtifact } from "../helpers/provider-registry.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -96,6 +97,7 @@ function registerRemoteRuntimeFileResponder(
     files: ReadonlyMap<string, string>;
     hostId: string;
     sessionId: string;
+    sharedSkills?: DiscoveredSkill[];
   },
 ): HostRpcResponder {
   return registerHostRpcResponder(harness, {
@@ -140,6 +142,12 @@ function registerRemoteRuntimeFileResponder(
           },
         };
       }
+      if (command.type === "host.list_skills") {
+        return {
+          ok: true,
+          result: { skills: args.sharedSkills ?? [] },
+        };
+      }
       throw new Error(`Unexpected remote runtime RPC ${command.type}`);
     },
   });
@@ -156,6 +164,7 @@ describe("thread runtime config", () => {
             command: "custom-agent",
             args: ["serve"],
             env: { CUSTOM_AGENT_TOKEN: "token" },
+            supportsManualCompaction: false,
             cwd: "/agent-home",
             modelCli: {
               listArgs: ["models", "list"],
@@ -311,7 +320,7 @@ describe("thread runtime config", () => {
       requestedModel: "acp-default",
     },
   ])(
-    "attaches known ACP launch specs for $providerId to thread start and turn submit commands",
+    "carries plugin-declared ACP launch specs for $providerId in bridge options",
     async ({ expectedSpec, providerId, requestedModel }) => {
       await withTestHarness(async (harness) => {
         const { host } = seedHostSession(harness.deps, {
@@ -355,7 +364,10 @@ describe("thread runtime config", () => {
           syncGeneratedTitle: false,
           thread,
         });
-        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.acpLaunchSpec).toBeUndefined();
+        expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
+          acpLaunchSpec: expectedSpec,
+        });
         expect(startCommand.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -376,8 +388,14 @@ describe("thread runtime config", () => {
             thread,
           },
         );
-        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.acpLaunchSpec).toBeUndefined();
+        expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
+          acpLaunchSpec: expectedSpec,
+        });
+        expect(submitCommand.resumeContext.acpLaunchSpec).toBeUndefined();
+        expect(
+          submitCommand.resumeContext.bridgeLaunch.providerOptions,
+        ).toMatchObject({ acpLaunchSpec: expectedSpec });
         expect(submitCommand.resumeContext.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -655,37 +673,40 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("accepts max reasoning for Pi sessions", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-pi-max-reasoning",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "pi",
-      });
+  it.each(["none", "max"] as const)(
+    "accepts %s reasoning for Pi sessions",
+    async (reasoningLevel) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-runtime-pi-${reasoningLevel}-reasoning`,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+        });
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId: "pi",
+        });
 
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: thread.id,
-        requestedExecution: {
-          model: "openai-codex/gpt-5.6-luna",
-          permissionMode: "full",
-          reasoningLevel: "max",
-          source: "client/turn/requested",
-        },
-      });
+        const execution = await resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: {
+            model: "openai-codex/gpt-5.6-luna",
+            permissionMode: "full",
+            reasoningLevel,
+            source: "client/turn/requested",
+          },
+        });
 
-      expect(execution.reasoningLevel).toBe("max");
-    });
-  });
+        expect(execution.reasoningLevel).toBe(reasoningLevel);
+      });
+    },
+  );
 
   it("rejects reasoning levels unsupported by the provider", async () => {
     await withTestHarness(async (harness) => {
@@ -804,10 +825,116 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("gates Claude Code mock CLI traffic on its experiment with the fixed endpoint", async () => {
+  it("carries each provider's plugin-derived options and nothing provider-named on the shared contract", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-mock-cli-traffic-experiment",
+        id: "host-provider-options",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+
+      async function build(providerId: "codex" | "claude-code" | "pi") {
+        const thread = seedThread(harness.deps, {
+          projectId: project.id,
+          environmentId: environment.id,
+          providerId,
+        });
+        const execution = await resolveExecutionOptions(harness.deps, {
+          threadId: thread.id,
+          requestedExecution: {
+            model:
+              providerId === "codex"
+                ? "gpt-5"
+                : providerId === "pi"
+                  ? "pi-model"
+                  : "claude-sonnet-4-6",
+            source: "client/turn/requested",
+          },
+        });
+        return buildThreadStartCommand(harness.deps, {
+          environment,
+          execution,
+          fork: null,
+          permissionEscalation: "ask",
+          input: textInput("hello"),
+          projectId: project.id,
+          providerId,
+          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+          syncGeneratedTitle: false,
+          thread,
+        });
+      }
+
+      // The default knobs each bridge receives when the user changed nothing.
+      // A wrong default here silently turns a provider feature off.
+      const codex = await build("codex");
+      expect(codex.options.providerOptions).toEqual({
+        memoryEnabled: true,
+        providerSubagentsEnabled: true,
+      });
+      expect(codex.options.promptMode).toBeUndefined();
+      expect(codex.options).not.toHaveProperty("memoryEnabled");
+      expect(codex.options).not.toHaveProperty("workflowsEnabled");
+
+      const claudeCode = await build("claude-code");
+      expect(claudeCode.options.providerOptions).toEqual({
+        memoryEnabled: true,
+        providerSubagentsEnabled: true,
+        workflowsEnabled: true,
+      });
+
+      // A provider that derives nothing still carries an explicit empty bag.
+      const pi = await build("pi");
+      expect(pi.options.providerOptions).toEqual({});
+    });
+  });
+
+  it("runs the owning plugin's options hook with the command context", async () => {
+    await withTestHarness(async (harness) => {
+      const pluginId = "provider-hooked";
+      const registration = buildPluginProviderRegistration({
+        available: true,
+        pluginId,
+        declaration: validatePluginProviderDeclaration({
+          id: "hooked",
+          displayName: "Hooked",
+          capabilities: {
+            experimental_providerHealth: false,
+            experimental_providerUsage: false,
+            experimental_providerInstallation: false,
+            supportsServiceTier: false,
+            supportsNativeUserQuestion: false,
+            fork: "none",
+            supportsManualCompaction: false,
+            supportsThreadArchive: false,
+            supportsThreadRename: false,
+            permissionModes: ["accept-edits", "auto", "full"],
+            reasoningLevels: ["medium"],
+          },
+          composerActions: ["plan"],
+          experimental_deriveProviderOptions: (context) => ({
+            seen: {
+              threadId: context.threadId,
+              projectId: context.projectId,
+              model: context.model,
+              permissionMode: context.permissionMode,
+              promptMode: context.promptMode ?? null,
+            },
+            verbose: context.settings.verbose === true,
+          }),
+        }),
+        readSettings: () => ({ verbose: true }),
+      });
+      harness.deps.providerRegistry.register({ ...registration, pluginId });
+      harness.deps.pluginHostArtifacts.set(pluginId, stubHostArtifact(pluginId));
+
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-provider-hook",
       });
       const { project } = seedProjectWithSource(harness.deps, {
         hostId: host.id,
@@ -819,155 +946,41 @@ describe("thread runtime config", () => {
       const thread = seedThread(harness.deps, {
         projectId: project.id,
         environmentId: environment.id,
-        providerId: "codex",
+        providerId: "hooked",
       });
-      const execution = await resolveExecutionOptions(harness.deps, {
-        threadId: thread.id,
-        requestedExecution: {
-          model: "gpt-5",
+      const command = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution: {
+          model: "hook-model",
+          permissionMode: "auto",
+          reasoningLevel: "medium",
+          serviceTier: "default",
           source: "client/turn/requested",
         },
-      });
-      const buildCommand = (requestValue: number) =>
-        buildThreadStartCommand(harness.deps, {
-          environment,
-          execution,
-          fork: null,
-          permissionEscalation: "ask",
-          input: textInput("hello"),
-          projectId: project.id,
-          providerId: "codex",
-          requestId: encodeClientTurnRequestIdNumber({ value: requestValue }),
-          syncGeneratedTitle: false,
-          thread,
-        });
-
-      expect((await buildCommand(1)).options.claudeCodeMockCliTraffic).toEqual({
-        enabled: false,
-        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-      });
-
-      setExperiments(harness.db, {
-        claudeCodeMockCliTraffic: true,
-        newOnboarding: false,
-        toolsHub: false,
-      });
-
-      expect((await buildCommand(2)).options.claudeCodeMockCliTraffic).toEqual({
-        enabled: true,
-        endpoint: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
-      });
-    });
-  });
-
-  it("resolves native memory preferences independently for Codex and Claude Code", async () => {
-    await withTestHarness(async (harness) => {
-      setAppSettings(harness.db, {
-        ...defaultAppSettings,
-        codexMemoryEnabled: false,
-        claudeCodeMemoryEnabled: true,
-      });
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-provider-memory-settings",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
+        fork: null,
+        permissionEscalation: "ask",
+        input: textInput("hello"),
         projectId: project.id,
+        providerId: "hooked",
+        requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
+        syncGeneratedTitle: false,
+        thread,
       });
 
-      async function build(providerId: "codex" | "claude-code") {
-        const thread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-          providerId,
-        });
-        const execution = await resolveExecutionOptions(harness.deps, {
+      expect(command.options.providerOptions).toEqual({
+        seen: {
           threadId: thread.id,
-          requestedExecution: {
-            model: providerId === "codex" ? "gpt-5" : "claude-sonnet-4-6",
-            source: "client/turn/requested",
-          },
-        });
-        return buildThreadStartCommand(harness.deps, {
-          environment,
-          execution,
-          fork: null,
-          permissionEscalation: "ask",
-          input: textInput("hello"),
           projectId: project.id,
-          providerId,
-          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-          syncGeneratedTitle: false,
-          thread,
-        });
-      }
-
-      expect((await build("codex")).options.memoryEnabled).toBe(false);
-      expect((await build("claude-code")).options.memoryEnabled).toBe(true);
+          model: "hook-model",
+          permissionMode: "auto",
+          promptMode: null,
+        },
+        verbose: true,
+      });
     });
   });
 
-  it("disables provider-native subagent tools independently", async () => {
-    await withTestHarness(async (harness) => {
-      setAppSettings(harness.db, {
-        ...defaultAppSettings,
-        codexSubagentsDisabled: true,
-        claudeCodeSubagentsDisabled: true,
-        claudeCodeWorkflowsDisabled: true,
-      });
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-provider-subagent-settings",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-
-      async function build(providerId: "codex" | "claude-code") {
-        const thread = seedThread(harness.deps, {
-          projectId: project.id,
-          environmentId: environment.id,
-          providerId,
-        });
-        const execution = await resolveExecutionOptions(harness.deps, {
-          threadId: thread.id,
-          requestedExecution: {
-            model: providerId === "codex" ? "gpt-5" : "claude-sonnet-4-6",
-            source: "client/turn/requested",
-          },
-        });
-        return buildThreadStartCommand(harness.deps, {
-          environment,
-          execution,
-          fork: null,
-          permissionEscalation: "ask",
-          input: textInput("hello"),
-          projectId: project.id,
-          providerId,
-          requestId: encodeClientTurnRequestIdNumber({ value: 1 }),
-          syncGeneratedTitle: false,
-          thread,
-        });
-      }
-
-      const codex = await build("codex");
-      expect(codex.options.providerSubagentsEnabled).toBe(false);
-      expect(codex.disallowedTools).toBeUndefined();
-
-      const claudeCode = await build("claude-code");
-      expect(claudeCode.options.providerSubagentsEnabled).toBe(false);
-      expect(claudeCode.options.workflowsEnabled).toBe(false);
-      expect(claudeCode.disallowedTools).toEqual(["Task", "Workflow"]);
-    });
-  });
-
-  it("sets Claude Code native plan mode when the prompt starts from a plan command pill", async () => {
+  it("enters plan mode when the prompt starts from the provider's declared plan command", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-runtime-claude-plan",
@@ -1026,7 +1039,39 @@ describe("thread runtime config", () => {
       });
 
       expect(command.input).toEqual(input);
-      expect(command.options.claudeCodePermissionMode).toBe("plan");
+      // The shared contract carries the BB prompt mode; the Claude plugin's
+      // hook maps it onto its own native flag inside the opaque bag.
+      expect(command.options.promptMode).toBe("plan");
+      expect(command.options.providerOptions).toMatchObject({
+        claudeCodePermissionMode: "plan",
+      });
+
+      // A provider that declares no plan action never sees the mode: the
+      // `/plan` text stays an ordinary mention.
+      const piThread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "pi",
+      });
+      const piCommand = await buildThreadStartCommand(harness.deps, {
+        environment,
+        execution: {
+          model: "pi-model",
+          permissionMode: "full",
+          reasoningLevel: "medium",
+          serviceTier: "default",
+          source: "client/turn/requested",
+        },
+        fork: null,
+        permissionEscalation: "ask",
+        input,
+        projectId: project.id,
+        providerId: "pi",
+        requestId: encodeClientTurnRequestIdNumber({ value: 2 }),
+        syncGeneratedTitle: false,
+        thread: piThread,
+      });
+      expect(piCommand.options.promptMode).toBeUndefined();
     });
   });
 
@@ -1076,71 +1121,9 @@ describe("thread runtime config", () => {
     });
   });
 
-  it("derives ask escalation only for direct user root-thread work", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-runtime-permission-escalation",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const rootThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      const childThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        parentThreadId: rootThread.id,
-      });
-      const sideChatThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        originKind: "fork",
-        originPluginId: "side-chat",
-        visibility: "hidden",
-        sourceThreadId: rootThread.id,
-      });
-      const parentThread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-
-      expect(
-        resolvePermissionEscalation({
-          thread: rootThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
-      expect(
-        resolvePermissionEscalation({
-          thread: rootThread,
-          initiator: "system",
-        }),
-      ).toBe("deny");
-      expect(
-        resolvePermissionEscalation({
-          thread: childThread,
-          initiator: "user",
-        }),
-      ).toBe("deny");
-      expect(
-        resolvePermissionEscalation({
-          thread: sideChatThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
-      expect(
-        resolvePermissionEscalation({
-          thread: parentThread,
-          initiator: "user",
-        }),
-      ).toBe("ask");
-    });
+  it("derives ask escalation only for user-initiated work", () => {
+    expect(resolvePermissionEscalation({ initiator: "user" })).toBe("ask");
+    expect(resolvePermissionEscalation({ initiator: "system" })).toBe("deny");
   });
 
   it("resolves the workspace, storage path, and environment directory dynamic tool", async () => {
@@ -1451,6 +1434,73 @@ describe("thread runtime config", () => {
         ]),
       );
     });
+  });
+
+  it("injects shared host skills into thread runtime configuration", async () => {
+    await withTestHarness(
+      {
+        sharedSkillRoots: {
+          user: [".agents/skills"],
+          project: [".agents/skills"],
+        },
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-runtime-shared-skills",
+        });
+        const workspacePath = "/remote/runtime-shared-skills";
+        const skillFilePath = path.join(
+          workspacePath,
+          ".agents",
+          "skills",
+          "portable-review",
+          "SKILL.md",
+        );
+        registerRemoteRuntimeFileResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          files: new Map(),
+          sharedSkills: [
+            {
+              id: `skill_${"b".repeat(64)}`,
+              name: "portable-review",
+              description: "Review code from one shared source.",
+              filePath: skillFilePath,
+              rootKind: "shared-project",
+              linked: false,
+            },
+          ],
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: workspacePath,
+        });
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: workspacePath,
+        });
+        const thread = seedThread(harness.deps, {
+          environmentId: environment.id,
+          projectId: project.id,
+          providerId: "claude-code",
+        });
+
+        const runtimeConfig = await resolveThreadRuntimeCommandConfig(
+          harness.deps,
+          { thread, environment, model: "test-model" },
+        );
+
+        expect(runtimeConfig.injectedSkillSources).toContainEqual({
+          kind: "host-path",
+          sourceType: "shared-project",
+          name: "portable-review",
+          description: "Review code from one shared source.",
+          sourceRootPath: path.dirname(skillFilePath),
+          skillFilePath,
+        });
+      },
+    );
   });
 
   it("appends data-dir AGENTS.md instructions before workspace instructions", async () => {

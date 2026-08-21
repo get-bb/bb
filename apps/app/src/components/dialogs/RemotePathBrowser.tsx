@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { normalizeProjectPathInput } from "@bb/domain";
+import type { HostDirectoryListing } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
 import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
@@ -64,6 +66,21 @@ export function getFolderNameValidationMessage(name: string): string | null {
   return null;
 }
 
+/**
+ * Every entry row is one truncated `text-sm` line with `py-1`, so this
+ * estimate is exact; `measureElement` still corrects it for zoom or font
+ * changes.
+ */
+const DIRECTORY_ENTRY_ROW_HEIGHT_PX = 28;
+/**
+ * Also covers the "new folder" form that sits above the list inside the same
+ * scroll box (at most ~3 rows tall), so the virtualizer can treat the list as
+ * starting at scroll offset 0 without a `scrollMargin` measurement.
+ */
+const DIRECTORY_ENTRY_OVERSCAN_ROWS = 10;
+
+const NO_ENTRIES: HostDirectoryListing["entries"] = [];
+
 interface RemotePathBrowserProps {
   hostId: string;
   /** Directory to open at; null starts at the host's home directory. */
@@ -102,6 +119,20 @@ export function RemotePathBrowser({
 
   const directory = data?.directory ?? null;
   const crumbs = directory ? toBreadcrumb(directory) : [];
+
+  // The daemon lists the whole directory, so a build output or home folder
+  // can hold thousands of entries. The list box shows ~8 rows; mounting every
+  // entry made that box cost one DOM row per file (#1615). Mount only the rows
+  // near the viewport instead.
+  const entries = data?.entries ?? NO_ENTRIES;
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const entryVirtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => DIRECTORY_ENTRY_ROW_HEIGHT_PX,
+    getItemKey: (index) => entries[index]?.path ?? index,
+    overscan: DIRECTORY_ENTRY_OVERSCAN_ROWS,
+  });
 
   const startCreatingFolder = () => {
     if (
@@ -234,17 +265,25 @@ export function RemotePathBrowser({
         className="px-2 py-3"
       />
     );
-  } else if (data.entries.length === 0) {
+  } else if (entries.length === 0) {
     body = <EmptyState message="This folder is empty." className="px-2 py-3" />;
   } else {
     body = (
-      <ul className="flex flex-col">
-        {data.entries.map((entry) => {
+      <ul
+        className="relative"
+        style={{ height: entryVirtualizer.getTotalSize() }}
+      >
+        {entryVirtualizer.getVirtualItems().map((virtualItem) => {
+          const entry = entries[virtualItem.index];
+          if (!entry) return null;
           if (entry.kind === "file") {
             return (
               <li
                 key={entry.path}
-                className="flex items-center gap-2 px-2 py-1 text-sm text-muted-foreground"
+                data-index={virtualItem.index}
+                ref={entryVirtualizer.measureElement}
+                className="absolute left-0 flex w-full items-center gap-2 px-2 py-1 text-sm text-muted-foreground"
+                style={{ top: virtualItem.start }}
               >
                 <Icon name="File" className="size-4 shrink-0" />
                 <span className="min-w-0 truncate" title={entry.name}>
@@ -254,7 +293,13 @@ export function RemotePathBrowser({
             );
           }
           return (
-            <li key={entry.path}>
+            <li
+              key={entry.path}
+              data-index={virtualItem.index}
+              ref={entryVirtualizer.measureElement}
+              className="absolute left-0 w-full"
+              style={{ top: virtualItem.start }}
+            >
               <button
                 type="button"
                 disabled={interactionDisabled}
@@ -383,6 +428,7 @@ export function RemotePathBrowser({
       </div>
 
       <div
+        ref={scrollRef}
         className={cn(
           "h-56 min-h-0 overflow-y-auto px-1.5 py-1",
           isPlaceholderData && "opacity-60",

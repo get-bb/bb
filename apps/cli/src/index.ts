@@ -5,6 +5,7 @@ import { registerEnvironmentCommands } from "./commands/environment.js";
 import { registerFileCommands } from "./commands/file.js";
 import { registerGuideCommand } from "./commands/guide.js";
 import { registerManagerCommands } from "./commands/manager.js";
+import { registerMarketplaceCommands } from "./commands/marketplace.js";
 import { registerMachineCommands } from "./commands/machine.js";
 import { registerProjectCommands } from "./commands/project.js";
 import { registerPluginCommands } from "./commands/plugin.js";
@@ -24,6 +25,7 @@ import {
   type CliRuntimeContext,
 } from "./context-env.js";
 import {
+  describeUnreachableServer,
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
   findPluginCliCommand,
@@ -86,7 +88,7 @@ registerStatusCommand(program, getUrl, getContext);
 registerSettingsCommands(program, getUrl);
 registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
-registerManagerCommands(program, getUrl);
+registerManagerCommands(program);
 registerMachineCommands(program, getUrl);
 registerUpdatesCommands(program, getUrl);
 registerTerminalCommands(program, getUrl);
@@ -95,6 +97,7 @@ registerEnvironmentCommands(program, getUrl);
 registerFileCommands(program, getUrl);
 registerThemeCommands(program, getUrl);
 registerPluginCommands(program, getUrl);
+registerMarketplaceCommands(program, getUrl);
 registerSkillCommands(program, getUrl, getContext);
 registerGuideCommand(program);
 registerVoiceCommands(program, getUrl);
@@ -119,9 +122,15 @@ async function tryPluginCommandProxy(): Promise<void> {
   if (result.outcome === "unreachable") {
     // The candidate may be a plugin command (`bb connect` on a fresh
     // machine is the canonical case) — only the running server can say, so
-    // a dead server must not degrade into commander's "unknown command".
+    // an unreachable server must not degrade into commander's "unknown
+    // command".
     console.error(
-      "bb isn't running — open the bb app, then re-run this command.",
+      describeUnreachableServer(
+        getUrl(),
+        result.cause,
+        result.lastTimeoutMs,
+        result.attempts,
+      ),
     );
     process.exit(1);
   }

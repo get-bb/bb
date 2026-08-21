@@ -49,43 +49,4 @@ describe("AppBreadcrumbs", () => {
       "/plugins/automations/automations",
     );
   });
-
-  it("keeps ancestors fixed and truncates only the current crumb in narrow layouts", () => {
-    render(
-      <MemoryRouter>
-        <div className="w-48 overflow-hidden">
-          <AppBreadcrumbs
-            breadcrumbs={[
-              {
-                label: "Automations",
-                to: "/plugins/automations/automations",
-              },
-              {
-                label: "Installed",
-                to: "/plugins/automations/automations",
-              },
-              {
-                label:
-                  "A very long automation name that must fit a narrow header",
-              },
-            ]}
-            usesDesktopChrome
-          />
-        </div>
-      </MemoryRouter>,
-    );
-
-    const navigation = screen.getByRole("navigation", { name: "Breadcrumb" });
-    const current = screen.getByText(
-      "A very long automation name that must fit a narrow header",
-    );
-
-    expect(navigation.className).toContain("min-w-0");
-    expect(navigation.querySelector("ol")?.className).toContain("min-w-0");
-    expect(
-      screen.getByRole("link", { name: "Automations" }).className,
-    ).toContain("shrink-0");
-    expect(current.className).toContain("min-w-0");
-    expect(current.className).toContain("truncate");
-  });
 });

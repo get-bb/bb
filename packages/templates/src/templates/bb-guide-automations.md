@@ -31,9 +31,18 @@ Agent execution:
 
 Script execution:
 
-  --script <inline> | --script-file <path>
+  --script <inline> | --script-file <path> [--host <name-or-id>]
   [--interpreter <bash|sh|node|python3>]
   [--timeout <milliseconds>] [--env-json '{"KEY":"value"}']
+
+`--script-file` reads the file relative to your current directory from the
+thread's environment host, or from the server host outside a thread. Pass
+`--host <name-or-id>` to read from another machine. The plugin stores a private
+copy that runs execute. The copy is a snapshot: edits to the source file do not
+apply until you run `update <automationId> --script-file <path>` again;
+`create` and `update` print that exact command. `create`, `update`, and `show`
+print the stored copy path on the `Script:` line (`execution.storedScriptPath`
+with `--json`).
 
 `update` can combine name, schedule, and execution changes. Execution changes
 replace the previous execution completely: provide all required agent fields or

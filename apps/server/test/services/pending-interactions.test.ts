@@ -21,8 +21,10 @@ import {
   createAllowForSessionResolution,
   createAllowOnceResolution,
   createCommandApprovalPayload,
+  createDenyResolution,
   createFileChangeApprovalPayload,
   createPermissionGrantApprovalPayload,
+  createToolUseApprovalPayload,
   createUserAnswerResolution,
   createUserQuestionPayload,
 } from "../helpers/pending-interactions.js";
@@ -290,6 +292,8 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger,
         machineAuth: harness.deps.machineAuth,
+        providerRegistry: harness.deps.providerRegistry,
+        pluginHostArtifacts: harness.deps.pluginHostArtifacts,
         skillTreeRegistry: harness.deps.skillTreeRegistry,
         telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,
@@ -1042,6 +1046,69 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("accepts tool-use approvals without a timeline item of their own", async () => {
+    // The ACP bridge raises tool_use for every permission that is neither a
+    // command nor a file change. The provider's own tool call is the timeline
+    // record, so the lifecycle appends no item event for the subject, and a
+    // denial settles it like any other approval.
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-tool-use",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-tool-use",
+          providerId: "codex",
+          providerThreadId: "provider-thread-tool-use",
+          providerRequestId: "request-tool-use",
+          payload: createToolUseApprovalPayload({ itemId: "mcp-call-1" }),
+        },
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(
+          `Expected interaction registration to succeed: ${created.reason}`,
+        );
+      }
+      const itemEventsFor = () =>
+        harness.db
+          .select()
+          .from(eventTable)
+          .where(eq(eventTable.threadId, thread.id))
+          .all()
+          .filter((row) => row.type.startsWith("item/"));
+      expect(itemEventsFor()).toEqual([]);
+
+      expect(
+        harness.deps.pendingInteractions.resolvePendingInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          resolution: createDenyResolution(),
+        }),
+      ).toEqual(
+        expect.objectContaining({
+          status: "resolving",
+          resolution: expect.objectContaining({ decision: "deny" }),
+        }),
+      );
+      expect(itemEventsFor()).toEqual([]);
+    });
+  });
+
   it("allows command approvals to grant explicit session permissions for session decisions", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -1515,6 +1582,8 @@ describe("pending interaction lifecycle", () => {
         lifecycleDedupers: harness.deps.lifecycleDedupers,
         logger: harness.deps.logger,
         machineAuth: harness.deps.machineAuth,
+        providerRegistry: harness.deps.providerRegistry,
+        pluginHostArtifacts: harness.deps.pluginHostArtifacts,
         skillTreeRegistry: harness.deps.skillTreeRegistry,
         telemetry: harness.deps.telemetry,
         terminalSessions: harness.deps.terminalSessions,

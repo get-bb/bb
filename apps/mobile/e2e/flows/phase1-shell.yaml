@@ -1,0 +1,88 @@
+# Phase 1 shell: first run → real Add-server screen → home (thread list) →
+# workspace menu → Settings → Server status shows a live realtime connection against
+# the harness backend → Servers list.
+#
+# Requires Metro started with EXPO_PUBLIC_BB_E2E=1 (the app wipes saved
+# profiles/preferences on launch, so every run starts at first run).
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+# First run: no profiles → the home route redirects to Add server.
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+# Tapping static text dismisses the keyboard; Maestro's hideKeyboard swipe is
+# unreliable on this screen since the bb connect row lengthened it.
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+# Probe (/health + /system/config) → save → activate → home (the thread list).
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+- assertVisible: "E2E backend"
+- assertNotVisible:
+    id: "connection-banner"
+- takeScreenshot: phase1-home
+# Workspace menu (the header's server avatar): the active server with its
+# realtime label, the server rows, Add server, Settings.
+- tapOn:
+    id: "home-workspace-menu"
+- extendedWaitUntil:
+    visible:
+      id: "workspace-settings"
+    timeout: 10000
+- assertVisible:
+    id: "workspace-profile-label"
+- assertVisible: "Connected"
+- assertVisible:
+    id: "workspace-add-server"
+- takeScreenshot: phase1-workspace-menu
+- tapOn:
+    id: "workspace-settings"
+- extendedWaitUntil:
+    visible:
+      id: "settings-server-status"
+    timeout: 10000
+# Server status: realtime connected, primary host id from /system/config.
+- tapOn:
+    id: "settings-server-status"
+- extendedWaitUntil:
+    visible:
+      id: "realtime-state"
+      text: "connected"
+    timeout: 20000
+- assertVisible:
+    id: "server-info-host"
+- assertVisible: ".*${SERVER_URL}.*"
+# Dev-only poke proves the SDK mutation path (POST /system/config/reload).
+- tapOn:
+    id: "poke-system"
+- extendedWaitUntil:
+    visible: "Config reload requested"
+    timeout: 15000
+- takeScreenshot: phase1-server-status
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "settings-servers"
+    timeout: 10000
+- tapOn:
+    id: "settings-servers"
+- extendedWaitUntil:
+    visible: ".*E2E backend.*"
+    timeout: 10000
+- takeScreenshot: phase1-servers

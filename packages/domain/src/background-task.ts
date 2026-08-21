@@ -33,7 +33,7 @@ export function isBackgroundAgentTaskType(taskType: string): boolean {
  * task_updated patch statuses (pending/running/completed/failed/killed/paused)
  * and task_notification terminal statuses (completed/failed/stopped).
  */
-export const backgroundTaskStatusValues = [
+const backgroundTaskStatusValues = [
   "pending",
   "running",
   "paused",
@@ -52,14 +52,14 @@ export type BackgroundTaskStatus = z.infer<typeof backgroundTaskStatusSchema>;
  * "interrupted" display state is derived at render time from a terminal task
  * with non-terminal agents — it is intentionally not persisted per agent.
  */
-export const workflowAgentStateValues = [
+const workflowAgentStateValues = [
   "queued",
   "running",
   "done",
   "failed",
   "skipped",
 ] as const;
-export const workflowAgentStateSchema = z.enum(workflowAgentStateValues);
+const workflowAgentStateSchema = z.enum(workflowAgentStateValues);
 export type WorkflowAgentState = z.infer<typeof workflowAgentStateSchema>;
 
 /**
@@ -81,7 +81,7 @@ export function isSettledWorkflowAgentState(
   }
 }
 
-export const workflowAgentSnapshotSchema = z.object({
+const workflowAgentSnapshotSchema = z.object({
   /** 1-based agent counter; the stable identity for fold/replace semantics. */
   index: z.number().int().positive(),
   label: z.string(),
@@ -107,7 +107,7 @@ export const workflowAgentSnapshotSchema = z.object({
 });
 export type WorkflowAgentSnapshot = z.infer<typeof workflowAgentSnapshotSchema>;
 
-export const workflowPhaseSnapshotSchema = z.object({
+const workflowPhaseSnapshotSchema = z.object({
   /** 1-based phase counter; meta.phases are seeded before any agent runs. */
   index: z.number().int().positive(),
   title: z.string(),

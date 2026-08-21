@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, expect, vi } from "vitest";
 import { Command } from "commander";
 import { createApiClient, type ApiClient } from "@bb/server-contract";
-import type { BbSdkContext } from "@bb/sdk";
 
 const readlineState = vi.hoisted(() => ({
   question: vi.fn(),
@@ -29,22 +28,19 @@ vi.mock("../../client.js", async () => {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
-  const createCliBbSdk = vi.fn(
-    (baseUrl: string, options: MockCliBbSdkOptions = {}) => {
-      const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
-      return createBbSdk({
-        context: options.context,
-        transport: {
-          ...realTransport,
-          api: serverClientState.createClient(baseUrl)?.api ?? {},
-          readJson: (responsePromise: MockTransportPromise) =>
-            realTransport.readJson(responsePromise.then(toResponse)),
-          readVoid: (responsePromise: MockTransportPromise) =>
-            realTransport.readVoid(responsePromise.then(toResponse)),
-        },
-      });
-    },
-  );
+  const createCliBbSdk = vi.fn((baseUrl: string) => {
+    const realTransport = createHttpTransport({ baseUrl, runtime: "node" });
+    return createBbSdk({
+      transport: {
+        ...realTransport,
+        api: serverClientState.createClient(baseUrl)?.api ?? {},
+        readJson: (responsePromise: MockTransportPromise) =>
+          realTransport.readJson(responsePromise.then(toResponse)),
+        readVoid: (responsePromise: MockTransportPromise) =>
+          realTransport.readVoid(responsePromise.then(toResponse)),
+      },
+    });
+  });
   return { cliFetch, createCliBbSdk };
 });
 
@@ -76,10 +72,6 @@ export type CommandRegistrar = (program: Command) => void;
 
 interface ServerClientOverride {
   api: object;
-}
-
-interface MockCliBbSdkOptions {
-  context?: BbSdkContext;
 }
 
 export const createClientMock = serverClientState.createClient;

@@ -1,8 +1,9 @@
-import { useMemo } from "react";
-import type { JsonValue } from "@bb/plugin-sdk";
+import { useMemo, type ReactNode } from "react";
+import type { PluginPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   usePluginSlots,
+  type PluginNewThreadPanelActionSlot,
   type PluginThreadPanelActionSlot,
 } from "@/lib/plugin-slots";
 import type { PluginPanelFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
@@ -15,11 +16,13 @@ import {
   parseFileOpenerParams,
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { PluginReplacementSlot } from "./PluginReplacementSlot";
+import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 /**
- * Plugin `threadPanelAction` slots (plugin design §5.2): rows in the
- * secondary panel's new-tab Actions list. Activating one runs the plugin's
- * `run` (contained: a throw/rejection is logged and never breaks the
+ * Plugin panel-action slots (plugin design §5.2): surface-specific rows in
+ * the secondary panel's new-tab Actions list. Activating one runs the
+ * plugin's `run` (contained: a throw/rejection is logged and never breaks the
  * launcher), whose `openPanel` opens closable file-strip tabs rendering the
  * action's component with persisted JSON params.
  */
@@ -32,7 +35,7 @@ export interface OpenPluginPanelArgs {
   paramsJson: string | null;
 }
 
-export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
 
 /** One launcher row for a plugin action, ready to render + invoke. */
 export interface PluginPanelActionEntry {
@@ -43,6 +46,51 @@ export interface PluginPanelActionEntry {
   icon: string | null;
   title: string;
   onSelect: () => void;
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+interface PanelActionOpenPanelArgs {
+  action: { pluginId: string; id: string; title: string };
+  /** Slot name as it appears in log lines. */
+  slot: string;
+  openPluginPanel: OpenPluginPanelHandler;
+}
+
+/**
+ * The `openPanel` handed to a panel action's `run`. A declined open — here
+ * only non-JSON `params`, since the launcher lives in the panel the action
+ * opens into — is logged and reported as `false` rather than thrown: `run`
+ * errors are contained below, so a throw would be invisible to any plugin
+ * that did not wrap the call itself.
+ */
+function createPanelActionOpenPanel({
+  action,
+  slot,
+  openPluginPanel,
+}: PanelActionOpenPanelArgs): (
+  options?: PluginPanelActionOpenOptions,
+) => boolean {
+  return (options) => {
+    let paramsJson: string | null;
+    try {
+      paramsJson = serializePluginPanelParams(options?.params);
+    } catch (error) {
+      console.warn(
+        `[plugin:${action.pluginId}] ${slot} "${action.id}" openPanel declined: ${describeError(error)}`,
+      );
+      return false;
+    }
+    openPluginPanel({
+      pluginId: action.pluginId,
+      actionId: action.id,
+      title: options?.title ?? action.title,
+      paramsJson,
+    });
+    return true;
+  };
 }
 
 interface RunPluginPanelActionArgs {
@@ -56,20 +104,14 @@ function runPluginPanelAction({
   openPluginPanel,
   threadId,
 }: RunPluginPanelActionArgs): void {
-  const openPanel = (options?: { title?: string; params?: JsonValue }) => {
-    const paramsJson = serializePluginPanelParams(options?.params);
-    openPluginPanel({
-      pluginId: action.pluginId,
-      actionId: action.id,
-      title: options?.title ?? action.title,
-      paramsJson,
-    });
-  };
+  const openPanel = createPanelActionOpenPanel({
+    action,
+    slot: "threadPanelAction",
+    openPluginPanel,
+  });
   const warn = (error: unknown) => {
     console.warn(
-      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${describeError(error)}`,
     );
   };
   try {
@@ -78,6 +120,39 @@ function runPluginPanelAction({
       return;
     }
     const result = action.run({ threadId, openPanel });
+    if (result instanceof Promise) result.catch(warn);
+  } catch (error) {
+    warn(error);
+  }
+}
+
+interface RunPluginNewThreadPanelActionArgs {
+  action: PluginNewThreadPanelActionSlot;
+  openPluginPanel: OpenPluginPanelHandler;
+  projectId: string | null;
+}
+
+function runPluginNewThreadPanelAction({
+  action,
+  openPluginPanel,
+  projectId,
+}: RunPluginNewThreadPanelActionArgs): void {
+  const openPanel = createPanelActionOpenPanel({
+    action,
+    slot: "experimental_newThreadPanelAction",
+    openPluginPanel,
+  });
+  const warn = (error: unknown) => {
+    console.warn(
+      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${describeError(error)}`,
+    );
+  };
+  try {
+    if (action.run === undefined) {
+      openPanel();
+      return;
+    }
+    const result = action.run({ projectId, openPanel });
     if (result instanceof Promise) result.catch(warn);
   } catch (error) {
     warn(error);
@@ -111,6 +186,37 @@ export function usePluginPanelActions({
   }, [openPluginPanel, threadId, threadPanelActions]);
 }
 
+/** Every registered root New thread action as a launcher entry. */
+export function usePluginNewThreadPanelActions({
+  openPluginPanel,
+  projectId,
+}: {
+  openPluginPanel: OpenPluginPanelHandler;
+  projectId: string | null;
+}): readonly PluginPanelActionEntry[] {
+  const { newThreadPanelActions } = usePluginSlots();
+  return useMemo(
+    () =>
+      newThreadPanelActions.map((action) => ({
+        id: `plugin-new-thread-action:${action.pluginId}:${action.id}`,
+        pluginId: action.pluginId,
+        icon: action.icon ?? null,
+        title: action.title,
+        onSelect: () =>
+          runPluginNewThreadPanelAction({
+            action,
+            openPluginPanel,
+            projectId,
+          }),
+      })),
+    [newThreadPanelActions, openPluginPanel, projectId],
+  );
+}
+
+type PluginPanelSurfaceContext =
+  | { kind: "thread"; threadId: string }
+  | { kind: "new-thread"; projectId: string | null };
+
 /**
  * The content region of an open plugin panel tab. A persisted tab can
  * outlive its plugin (disabled/removed) or render before plugin frontends
@@ -118,24 +224,48 @@ export function usePluginPanelActions({
  */
 export function PluginPanelTabContent({
   tab,
-  threadId,
+  context,
+  fileOpenerOriginal,
 }: {
   tab: PluginPanelFixedPanelTab;
-  threadId: string | null | undefined;
+  context: PluginPanelSurfaceContext;
+  /** The view's real native file-preview node, with its live actions bound. */
+  fileOpenerOriginal?: ReactNode;
 }) {
   const openerId = fileOpenerIdFromActionId(tab.actionId);
   if (openerId !== null) {
-    return <FileOpenerTabContent openerId={openerId} tab={tab} />;
+    return (
+      <FileOpenerTabContent
+        openerId={openerId}
+        original={fileOpenerOriginal}
+        tab={tab}
+      />
+    );
   }
-  return <ActionTabContent tab={tab} threadId={threadId} />;
+  return context.kind === "thread" ? (
+    <ThreadActionTabContent tab={tab} threadId={context.threadId} />
+  ) : (
+    <NewThreadActionTabContent tab={tab} projectId={context.projectId} />
+  );
 }
 
-function ActionTabContent({
+function UnavailableActionTab() {
+  return (
+    <div className="p-4">
+      <EmptyStatePanel className="rounded-lg p-6 text-sm">
+        This plugin tab is not available. The plugin may still be loading, or it
+        has been disabled or removed.
+      </EmptyStatePanel>
+    </div>
+  );
+}
+
+function ThreadActionTabContent({
   tab,
   threadId,
 }: {
   tab: PluginPanelFixedPanelTab;
-  threadId: string | null | undefined;
+  threadId: string;
 }) {
   const { threadPanelActions } = usePluginSlots();
   const action =
@@ -149,16 +279,7 @@ function ActionTabContent({
     () => parsePersistedPluginPanelParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  if (action === null || !threadId) {
-    return (
-      <div className="p-4">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This plugin tab is not available. The plugin may still be loading, or
-          it has been disabled or removed.
-        </EmptyStatePanel>
-      </div>
-    );
-  }
+  if (action === null) return <UnavailableActionTab />;
   return (
     <div
       className={
@@ -173,12 +294,51 @@ function ActionTabContent({
       <PluginSlotMount
         // Generation in the key: a P3.4 reload remounts the slot (fresh
         // error-boundary state).
-        key={`${action.pluginId}/${action.id}/${action.generation}`}
+        key={`thread/${action.pluginId}/${action.id}/${action.generation}`}
         pluginId={action.pluginId}
         slotKind="threadPanelAction"
         slotId={action.id}
       >
         <action.component threadId={threadId} params={params} />
+      </PluginSlotMount>
+    </div>
+  );
+}
+
+function NewThreadActionTabContent({
+  tab,
+  projectId,
+}: {
+  tab: PluginPanelFixedPanelTab;
+  projectId: string | null;
+}) {
+  const { newThreadPanelActions } = usePluginSlots();
+  const action =
+    newThreadPanelActions.find(
+      (candidate) =>
+        candidate.pluginId === tab.pluginId && candidate.id === tab.actionId,
+    ) ?? null;
+  const params = useMemo(
+    () => parsePersistedPluginPanelParams(tab.paramsJson),
+    [tab.paramsJson],
+  );
+  if (action === null) return <UnavailableActionTab />;
+  return (
+    <div
+      className={
+        action.layout === "flush"
+          ? "h-full min-h-0 flex-1 overflow-hidden"
+          : "h-full min-h-0 flex-1 overflow-y-auto p-4"
+      }
+      data-testid="plugin-new-thread-panel-tab-content"
+    >
+      <PluginSlotMount
+        key={`new-thread/${action.pluginId}/${action.id}/${action.generation}`}
+        pluginId={action.pluginId}
+        slotKind="newThreadPanelAction"
+        slotId={action.id}
+      >
+        <action.component projectId={projectId} params={params} />
       </PluginSlotMount>
     </div>
   );
@@ -191,45 +351,64 @@ function ActionTabContent({
  */
 function FileOpenerTabContent({
   openerId,
+  original,
   tab,
 }: {
   openerId: string;
+  original: ReactNode | undefined;
   tab: PluginPanelFixedPanelTab;
 }) {
   const { fileOpeners } = usePluginSlots();
-  const opener =
-    fileOpeners.find(
-      (candidate) =>
-        candidate.pluginId === tab.pluginId && candidate.id === openerId,
-    ) ?? null;
+  const replacement = resolveReplacement(
+    fileOpeners,
+    (candidate) =>
+      candidate.pluginId === tab.pluginId && candidate.id === openerId,
+  );
   const file = useMemo(
     () => parseFileOpenerParams(tab.paramsJson),
     [tab.paramsJson],
   );
-  if (opener === null || file === null) {
-    return (
-      <div className="p-4">
-        <EmptyStatePanel className="rounded-lg p-6 text-sm">
-          This file opener is not available. The plugin may still be loading, or
-          it has been disabled or removed — reopen the file to use the built-in
-          preview.
-        </EmptyStatePanel>
-      </div>
-    );
+  if (
+    file === null ||
+    tab.fileOpenerOwner === undefined ||
+    original === undefined
+  ) {
+    return <UnavailableFileOpenerTab />;
   }
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      data-testid="plugin-file-opener-tab-content"
+    <PluginReplacementSlot
+      replacement={replacement}
+      original={original}
+      slotKind="fileOpener"
     >
-      <PluginSlotMount
-        key={`${opener.pluginId}/${opener.id}/${opener.generation}`}
-        pluginId={opener.pluginId}
-        slotKind="fileOpener"
-        slotId={opener.id}
-      >
-        <opener.component path={file.path} source={file.source} />
-      </PluginSlotMount>
+      {(opener, BoundOriginal) => (
+        <div
+          // `h-full` matters: the region this mounts into is a block box, so
+          // `flex-1` alone leaves the wrapper at content height and an opener
+          // that sizes itself with `flex-1` collapses to nothing. Same shape
+          // as the action-tab wrapper above.
+          className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
+          data-testid="plugin-file-opener-tab-content"
+        >
+          <opener.component
+            path={file.path}
+            source={file.source}
+            experimental_Original={BoundOriginal}
+          />
+        </div>
+      )}
+    </PluginReplacementSlot>
+  );
+}
+
+function UnavailableFileOpenerTab() {
+  return (
+    <div className="p-4">
+      <EmptyStatePanel className="rounded-lg p-6 text-sm">
+        This file opener is not available. The plugin may still be loading, or
+        it has been disabled or removed — reopen the file to use the built-in
+        preview.
+      </EmptyStatePanel>
     </div>
   );
 }

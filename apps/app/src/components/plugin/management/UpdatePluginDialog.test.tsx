@@ -29,6 +29,7 @@ function plugin(updateState: Partial<PluginUpdateState>): PluginListItem {
     provenance: "catalog",
     isOrphanedBuiltin: false,
     catalogEntryId: "linear",
+    publisherLabel: "BB Community",
     sourceDisplay: "npm · @bb-plugins/linear · tracks compatible",
     updateState: { ...EMPTY_PLUGIN_UPDATE_STATE, ...updateState },
     handlerStats: { count: 0, totalMs: 0, maxMs: 0, errorCount: 0 },
@@ -60,7 +61,6 @@ describe("UpdatePluginDialog", () => {
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
         open
-        failureStateLabel="Update failed"
         onOpenChange={() => {}}
       />,
       { wrapper },
@@ -87,22 +87,14 @@ describe("UpdatePluginDialog", () => {
           blockedReasons: ["needs bb >= 0.15 — you have 0.14.1"],
         })}
         open
-        failureStateLabel="Update failed"
         onOpenChange={() => {}}
       />,
       { wrapper },
     );
 
-    const compatibilityCopy = screen.getByText(
-      "1.9.0 isn’t compatible with this bb",
-    );
-    const compatibilityLine = compatibilityCopy.parentElement as HTMLElement;
-    expect(compatibilityLine.className).not.toContain("text-warning");
     expect(
-      compatibilityLine
-        .querySelector('[data-icon="AlertTriangle"]')
-        ?.getAttribute("class"),
-    ).toContain("text-warning");
+      screen.getByText("1.9.0 isn’t compatible with this bb"),
+    ).toBeTruthy();
     expect(screen.getByText("needs bb >= 0.15 — you have 0.14.1")).toBeTruthy();
     expect(
       screen.getByText(
@@ -140,7 +132,6 @@ describe("UpdatePluginDialog", () => {
           },
         })}
         open
-        failureStateLabel="Update failed"
         onOpenChange={onOpenChange}
       />,
       { wrapper },
@@ -154,9 +145,6 @@ describe("UpdatePluginDialog", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText("factory threw during activation")).toBeTruthy();
-    expect(
-      document.querySelector('[data-icon="CircleX"]')?.getAttribute("class"),
-    ).toContain("text-destructive");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Retry update to 1.8.0" }),
@@ -179,7 +167,6 @@ describe("UpdatePluginDialog", () => {
           },
         })}
         open
-        failureStateLabel="Update failed"
         onOpenChange={() => {}}
       />,
       { wrapper },
@@ -189,47 +176,40 @@ describe("UpdatePluginDialog", () => {
     expect(screen.queryByRole("button", { name: /Retry update/ })).toBeNull();
   });
 
-  it.each([
-    ["Update failed", "Update failed"],
-    ["Needs attention", "Needs attention"],
-  ])(
-    "renders a rolled-back outcome pointing at %s",
-    async (label, failureStateLabel) => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () =>
-          // The exact applyUpdate result shape from plugin-service.
-          jsonResponse({
-            applied: false,
-            from: { version: "1.6.2", display: "1.6.2" },
-            to: { version: "1.7.0", display: "1.7.0" },
-            outcome: "rolled-back",
-            detail: "factory threw during activation",
-          }),
-        ),
-      );
-      const { wrapper } = createQueryClientTestHarness();
-      render(
-        <UpdatePluginDialog
-          plugin={plugin({ availableVersion: "1.7.0" })}
-          open
-          failureStateLabel={failureStateLabel}
-          onOpenChange={() => {}}
-        />,
-        { wrapper },
-      );
+  it("renders a rolled-back outcome pointing at the canonical failure state", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        // The exact applyUpdate result shape from plugin-service.
+        jsonResponse({
+          applied: false,
+          from: { version: "1.6.2", display: "1.6.2" },
+          to: { version: "1.7.0", display: "1.7.0" },
+          outcome: "rolled-back",
+          detail: "factory threw during activation",
+        }),
+      ),
+    );
+    const { wrapper } = createQueryClientTestHarness();
+    render(
+      <UpdatePluginDialog
+        plugin={plugin({ availableVersion: "1.7.0" })}
+        open
+        onOpenChange={() => {}}
+      />,
+      { wrapper },
+    );
 
-      fireEvent.click(screen.getByRole("button", { name: "Update" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update" }));
 
-      expect(await screen.findByText("Update failed")).toBeTruthy();
-      expect(screen.getByText("factory threw during activation")).toBeTruthy();
-      expect(
-        screen.getByText(
-          `The plugin is marked “${label}” in the installed list until an update succeeds.`,
-        ),
-      ).toBeTruthy();
-    },
-  );
+    expect(await screen.findByText("Update failed")).toBeTruthy();
+    expect(screen.getByText("factory threw during activation")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "The plugin is marked “Update failed” in the installed list until an update succeeds.",
+      ),
+    ).toBeTruthy();
+  });
 
   it("treats a malformed 2xx update response as an error, never success", async () => {
     vi.stubGlobal(
@@ -241,7 +221,6 @@ describe("UpdatePluginDialog", () => {
       <UpdatePluginDialog
         plugin={plugin({ availableVersion: "1.7.0" })}
         open
-        failureStateLabel="Update failed"
         onOpenChange={() => {}}
       />,
       { wrapper },

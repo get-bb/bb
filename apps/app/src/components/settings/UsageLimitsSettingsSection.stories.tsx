@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { Host } from "@bb/domain";
+import type { Host, ProviderInfo } from "@bb/domain";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   UsageLimitsSettingsSectionContent,
@@ -7,7 +7,7 @@ import {
 } from "./UsageLimitsSettingsSection";
 
 export default {
-  title: "settings/Settings Page",
+  title: "settings/Usage Limits",
 };
 
 type Usage = UsageLimitsSettingsSectionContentProps["usage"];
@@ -31,7 +31,7 @@ const HEALTHY_USAGE: Usage = {
       },
     ],
   },
-  claudeCode: {
+  "claude-code": {
     status: "ok",
     accountEmail: "sawyer@example.com",
     planLabel: "Max (20x)",
@@ -53,7 +53,7 @@ const HEALTHY_USAGE: Usage = {
       },
     ],
   },
-  cursor: {
+  "acp-cursor": {
     status: "ok",
     accountEmail: "sawyer@example.com",
     planLabel: "Pro",
@@ -75,8 +75,8 @@ const HEALTHY_USAGE: Usage = {
 
 const AUTH_USAGE: Usage = {
   codex: { status: "unauthenticated" },
-  claudeCode: { status: "expired" },
-  cursor: { status: "not_installed" },
+  "claude-code": { status: "expired" },
+  "acp-cursor": { status: "not_installed" },
 };
 
 const EMPTY_AND_ERROR_USAGE: Usage = {
@@ -86,7 +86,7 @@ const EMPTY_AND_ERROR_USAGE: Usage = {
     planLabel: "Team",
     windows: [],
   },
-  claudeCode: {
+  "claude-code": {
     status: "error",
     message: "Claude usage is temporarily unavailable.",
     // Read from local credentials before the usage call, so an outage does not
@@ -94,7 +94,7 @@ const EMPTY_AND_ERROR_USAGE: Usage = {
     planLabel: "Max (5x)",
     accountEmail: null,
   },
-  cursor: { status: "not_installed" },
+  "acp-cursor": { status: "not_installed" },
 };
 
 const HOSTS: Host[] = [
@@ -133,6 +133,34 @@ const HOSTS: Host[] = [
   },
 ];
 
+function provider(id: string, displayName: string): ProviderInfo {
+  return {
+    id,
+    displayName,
+    logoUrl: null,
+    available: true,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
+    experimental_providerInstallation: false,
+    capabilities: {
+      supportsThreadArchive: false,
+      supportsThreadRename: false,
+      supportsServiceTier: false,
+      supportsNativeUserQuestion: false,
+      supportsFork: false,
+      supportsSessionRewind: false,
+      permissionModes: ["full"],
+    },
+    composerActions: [],
+  };
+}
+
+const PROVIDERS = [
+  provider("codex", "Codex"),
+  provider("claude-code", "Claude Code"),
+  provider("acp-cursor", "Cursor"),
+];
+
 function Stage({ children }: { children: ReactNode }) {
   return <div className="w-full min-w-0 max-w-3xl">{children}</div>;
 }
@@ -167,6 +195,7 @@ function UsagePreview({
         isError={isError}
         isFetching={isFetching}
         onRefresh={noop}
+        providers={PROVIDERS}
         hosts={hosts}
         selectedHostId={selectedHostId}
         onSelectHost={onSelectHost}

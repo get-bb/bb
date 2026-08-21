@@ -5,23 +5,29 @@ import {
   type TimelineImageViewViewWorkRow,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
+import { Button } from "@bb/shared-ui/button";
+import { Icon } from "@bb/shared-ui/icon";
 import { EventCodeBlock } from "../../ui/event-code-block.js";
 import { ImageLightbox } from "../../ui/image-lightbox.js";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { TerminalOutputBlock } from "./TerminalOutputBlock.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
-import { TimelineFileDiffBlock } from "./TimelineFileDiffBlock.js";
+import { LazyTimelineFileDiffBlock } from "./LazyTimelineFileDiffBlock.js";
 import { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
 import { QuestionWorkRowBody } from "./QuestionWorkRowBody.js";
 import { WorkflowWorkRowBody } from "./WorkflowWorkRowBody.js";
+import {
+  useTimelineWorkRowFullOutput,
+  type TimelinePreviewableWorkRow,
+  type TimelineWorkRowFullOutput,
+  type TimelineWorkRowFullOutputState,
+} from "./useTimelineWorkRowFullOutput.js";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
-import type { ThreadTimelineTheme } from "./types.js";
 import type { ThreadTimelineImageViewSrcResolver } from "./types.js";
 
-export interface WorkRowBodyProps {
+interface WorkRowBodyProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   row: TimelineViewWorkRow;
-  themeType: ThreadTimelineTheme;
   workspaceRootPath: string | undefined;
 }
 
@@ -30,6 +36,24 @@ type DetailLine = string | null;
 interface ImageViewWorkRowBodyProps {
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   row: TimelineImageViewViewWorkRow;
+}
+
+interface CommandWorkRowBodyProps {
+  row: Extract<TimelineViewWorkRow, { workKind: "command" }>;
+}
+
+interface ToolWorkRowBodyProps {
+  row: Extract<TimelineViewWorkRow, { workKind: "tool" }>;
+}
+
+interface OutputPreviewNoteProps {
+  fullOutput: TimelineWorkRowFullOutput;
+  row: TimelinePreviewableWorkRow;
+}
+
+interface OutputPreviewNoteArgs {
+  state: TimelineWorkRowFullOutputState;
+  totalChars: number;
 }
 
 interface ResolveImageViewSourceArgs {
@@ -107,40 +131,115 @@ function ImageViewWorkRowBody({
   );
 }
 
+function outputPreviewNoteText({
+  state,
+  totalChars,
+}: OutputPreviewNoteArgs): string | null {
+  const total = `${totalChars.toLocaleString()} characters`;
+  switch (state) {
+    case "streaming-preview":
+      return `Preview of ${total}. The full output loads when this finishes.`;
+    case "loading":
+      return `Loading the full output (${total})…`;
+    case "error":
+      return `Failed to load the full output (${total}).`;
+    case "complete":
+    case "loaded":
+      return null;
+    default:
+      return assertNever(state);
+  }
+}
+
+/**
+ * Footer under a previewed command/tool output. Says why the body is short
+ * and offers a retry when the full-output load failed. Nothing renders once
+ * the full output is in place.
+ */
+function OutputPreviewNote({
+  fullOutput,
+  row,
+}: OutputPreviewNoteProps) {
+  if (row.outputPreview === undefined) {
+    return null;
+  }
+  const text = outputPreviewNoteText({
+    state: fullOutput.state,
+    totalChars: row.outputPreview.totalChars,
+  });
+  if (text === null) {
+    return null;
+  }
+  return (
+    <div
+      className="flex items-center gap-2 text-xs text-muted-foreground"
+      data-testid="timeline-output-preview-note"
+    >
+      <span>{text}</span>
+      {fullOutput.state === "error" ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={fullOutput.retry}
+          className="h-6 cursor-pointer px-2"
+        >
+          <Icon name="RotateCcw" />
+          Retry
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+function CommandWorkRowBody({ row }: CommandWorkRowBodyProps) {
+  const fullOutput = useTimelineWorkRowFullOutput(row);
+  return (
+    <div className="space-y-1">
+      <TerminalOutputBlock
+        commandLine={`$ ${row.command}`}
+        metadataLines={compactDetailLines([
+          row.source ? `source: ${row.source}` : null,
+        ])}
+        output={fullOutput.output}
+        exitCode={row.exitCode}
+        streaming={row.status === "pending"}
+      />
+      <OutputPreviewNote fullOutput={fullOutput} row={row} />
+    </div>
+  );
+}
+
+function ToolWorkRowBody({ row }: ToolWorkRowBodyProps) {
+  const fullOutput = useTimelineWorkRowFullOutput(row);
+  return (
+    <div className="space-y-1">
+      <ToolCallDetailBlock
+        toolName={row.toolName}
+        args={row.toolArgs}
+        output={fullOutput.output}
+        streaming={row.status === "pending"}
+      />
+      <OutputPreviewNote fullOutput={fullOutput} row={row} />
+    </div>
+  );
+}
+
 export function WorkRowBody({
   resolveImageViewSrc,
   row,
-  themeType,
   workspaceRootPath,
 }: WorkRowBodyProps) {
   switch (row.workKind) {
     case "command":
-      return (
-        <TerminalOutputBlock
-          commandLine={`$ ${row.command}`}
-          metadataLines={compactDetailLines([
-            row.source ? `source: ${row.source}` : null,
-          ])}
-          output={row.output}
-          exitCode={row.exitCode}
-          streaming={row.status === "pending"}
-        />
-      );
+      return <CommandWorkRowBody row={row} />;
     case "tool":
-      return (
-        <ToolCallDetailBlock
-          toolName={row.toolName}
-          args={row.toolArgs}
-          output={row.output}
-          streaming={row.status === "pending"}
-        />
-      );
+      return <ToolWorkRowBody row={row} />;
     case "file-change":
       return (
         <div className="space-y-2">
-          <TimelineFileDiffBlock
+          <LazyTimelineFileDiffBlock
             change={row.change}
-            themeType={themeType}
             workspaceRootPath={workspaceRootPath}
           />
           {row.stderr ? (

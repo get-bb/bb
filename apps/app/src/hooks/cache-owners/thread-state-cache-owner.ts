@@ -5,7 +5,7 @@ import type {
   ReorderPinnedThreadRequest,
   ThreadArchiveAllResponse,
 } from "@bb/server-contract";
-import { applyNeighborReorder } from "@/lib/neighbor-reorder";
+import { applyNeighborReorder } from "@bb/client-core";
 import {
   projectsQueryKey,
   sidebarNavigationQueryKey,
@@ -27,8 +27,8 @@ import {
   type CachedSidebarNavigationSnapshot,
 } from "./query-cache";
 import {
+  getCachedThreadLists,
   restoreCachedThreadLists,
-  snapshotCachedThreadLists,
   type CachedThreadListSnapshot,
 } from "./thread-list-cache-data";
 import {
@@ -63,11 +63,6 @@ interface BeginUnpinAndMoveThreadTransactionArgs extends ThreadIdCacheArgs {
 
 interface BeginThreadReadStateTransactionArgs extends ThreadIdCacheArgs {
   lastReadAt: number | null;
-}
-
-interface BeginThreadTitleTransactionArgs extends ThreadIdCacheArgs {
-  sectionId?: string | null;
-  title: string | null;
 }
 
 interface BeginThreadMetadataTransactionArgs extends ThreadIdCacheArgs {
@@ -273,7 +268,7 @@ async function runOptimisticThreadFieldTransaction({
   const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
     threadQueryKey(threadId),
   );
-  const previousThreadLists = snapshotCachedThreadLists(queryClient, {
+  const previousThreadLists = getCachedThreadLists(queryClient, {
     queryKey: threadsQueryKey(),
   });
   const previousSidebarNavigation =
@@ -395,20 +390,6 @@ export function beginThreadReadStateTransaction({
   });
 }
 
-export function beginThreadTitleTransaction({
-  sectionId,
-  queryClient,
-  threadId,
-  title,
-}: BeginThreadTitleTransactionArgs): Promise<ThreadListMutationTransaction> {
-  return beginThreadMetadataTransaction({
-    sectionId,
-    queryClient,
-    threadId,
-    title,
-  });
-}
-
 export function beginThreadMetadataTransaction({
   sectionId,
   queryClient,
@@ -477,7 +458,7 @@ export async function beginReorderPinnedThreadTransaction({
 }: ReorderPinnedThreadTransactionArgs): Promise<PinnedThreadOrderTransaction> {
   await queryClient.cancelQueries({ queryKey: threadsQueryKey() });
   await queryClient.cancelQueries({ queryKey: sidebarNavigationQueryKey() });
-  const previousThreadLists = snapshotCachedThreadLists(queryClient, {
+  const previousThreadLists = getCachedThreadLists(queryClient, {
     queryKey: threadsQueryKey(),
   });
   const previousSidebarNavigation =
@@ -536,7 +517,7 @@ export async function beginArchiveThreadAndChildrenTransaction({
     ),
   );
 
-  const previousThreadLists = snapshotCachedThreadLists(queryClient, {
+  const previousThreadLists = getCachedThreadLists(queryClient, {
     queryKey: threadsQueryKey(),
   });
   const previousSidebarNavigation =
@@ -609,7 +590,7 @@ export async function beginDeleteThreadTransaction({
   const previousThread = queryClient.getQueryData<ThreadWithRuntime>(
     threadQueryKey(threadId),
   );
-  const previousThreadLists = snapshotCachedThreadLists(queryClient, {
+  const previousThreadLists = getCachedThreadLists(queryClient, {
     queryKey: threadsQueryKey(),
   });
   const previousSidebarNavigation =

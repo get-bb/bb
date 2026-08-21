@@ -20,7 +20,7 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import { usePortalScopeProps } from "@/lib/portal-scope";
 import { PluginIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
@@ -55,6 +55,7 @@ interface MessageActionBarProps {
     text: string,
     attachments?: readonly PromptDraftAttachment[],
   ) => void;
+  onEdit?: () => void;
   onFork?: () => void;
   /**
    * Hand this message back to the main thread. Supplied only inside a side chat
@@ -68,7 +69,7 @@ interface MessageActionBarProps {
 }
 
 interface MessageOverflowAction {
-  icon: "Copy" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
+  icon: "Copy" | "Edit" | "MessageSquarePlus" | "Fork" | "ArrowTurnBackward";
   /** Set on plugin-contributed actions; renders PluginActionIcon over `icon`. */
   plugin?: { pluginId: string | null; icon: string | null };
   /** Render key when `label` may not be unique (plugin actions). */
@@ -210,6 +211,7 @@ export function MessageActionBar({
   mobileActionDisplay,
   addToChatAttachments = [],
   onAddToChat,
+  onEdit,
   onFork,
   onSendToMain,
   disabled,
@@ -254,6 +256,15 @@ export function MessageActionBar({
           },
         ]
       : []),
+    ...(onEdit
+      ? [
+          {
+            icon: "Edit" as const,
+            label: "Edit message",
+            onSelect: onEdit,
+          },
+        ]
+      : []),
     ...(hasAddToChat
       ? [
           {
@@ -295,12 +306,36 @@ export function MessageActionBar({
 
   if (
     !hasCopy &&
+    !onEdit &&
     !hasAddToChat &&
     !onFork &&
     !onSendToMain &&
     pluginActions.length === 0
   ) {
     return null;
+  }
+
+  if (useMobileOverflowPopover) {
+    // Touch phones: no hover, so no tooltips. Mounting the desktop bar here
+    // would put five-plus hidden Radix tooltip trees per message into the
+    // timeline for nothing; render only the mobile surface.
+    return (
+      <div
+        className={cn(
+          "flex items-center gap-2",
+          alignment === "end" ? "justify-end" : "justify-start",
+        )}
+      >
+        {mobileActionDisplay === "overflow" ? (
+          <MobileMessageOverflowPopover
+            actions={overflowActions}
+            alignment={alignment}
+          />
+        ) : (
+          <MobileInlineActions actions={overflowActions} />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -326,6 +361,30 @@ export function MessageActionBar({
               collisionBoundary={collisionBoundary}
             >
               Copy message
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        {onEdit ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  ACTION_BUTTON_CLASS,
+                  HOVER_REVEAL_CLASS,
+                  mobileDirectActionClass,
+                )}
+                onClick={onEdit}
+                aria-label="Edit message"
+              >
+                <Icon name="Edit" className="size-3" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side={ACTION_TOOLTIP_SIDE}
+              collisionBoundary={collisionBoundary}
+            >
+              Edit message
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -431,51 +490,88 @@ export function MessageActionBar({
           </Tooltip>
         ))}
         {mobileActionDisplay === "overflow" ? (
-          useMobileOverflowPopover ? (
-            <MobileMessageOverflowPopover
-              actions={overflowActions}
-              alignment={alignment}
-            />
-          ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className={MOBILE_OVERFLOW_TRIGGER_CLASS}
-                  aria-label="Message actions"
-                  data-no-sidebar-swipe=""
-                >
-                  <Icon name="MoreHorizontal" className="size-3" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align={alignment === "end" ? "end" : "start"}
-                mobileTitle="Message actions"
-                className="w-48"
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={MOBILE_OVERFLOW_TRIGGER_CLASS}
+                aria-label="Message actions"
+                data-no-sidebar-swipe=""
               >
-                {overflowActions.map((action) => (
-                  <DropdownMenuItem
-                    key={action.key ?? action.label}
-                    disabled={action.disabled}
-                    onSelect={action.onSelect}
-                    textValue={action.label}
-                  >
-                    {action.plugin ? (
-                      <PluginActionIcon
-                        pluginId={action.plugin.pluginId}
-                        icon={action.plugin.icon}
-                      />
-                    ) : (
-                      <Icon name={action.icon} aria-hidden="true" />
-                    )}
-                    {action.label}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )
+                <Icon name="MoreHorizontal" className="size-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align={alignment === "end" ? "end" : "start"}
+              mobileTitle="Message actions"
+              className="w-48"
+            >
+              {overflowActions.map((action) => (
+                <DropdownMenuItem
+                  key={action.key ?? action.label}
+                  disabled={action.disabled}
+                  onSelect={action.onSelect}
+                  textValue={action.label}
+                >
+                  {action.plugin ? (
+                    <PluginActionIcon
+                      pluginId={action.plugin.pluginId}
+                      icon={action.plugin.icon}
+                    />
+                  ) : (
+                    <Icon name={action.icon} aria-hidden="true" />
+                  )}
+                  {action.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : null}
       </div>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Inline (always visible) actions for touch phones: same buttons and classes as
+ * the desktop bar minus the tooltip trees, which have no hover to open on.
+ */
+function MobileInlineActions({
+  actions,
+}: {
+  actions: readonly MessageOverflowAction[];
+}) {
+  return actions.map((action) =>
+    action.kind === "copy" ? (
+      <CopyButton
+        key={action.key ?? action.label}
+        text={action.copyText ?? ""}
+        label={action.label}
+        className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
+      />
+    ) : (
+      <button
+        key={action.key ?? action.label}
+        type="button"
+        className={cn(
+          ACTION_BUTTON_CLASS,
+          HOVER_REVEAL_CLASS,
+          MOBILE_INLINE_ACTION_CLASS,
+        )}
+        onClick={action.onSelect}
+        disabled={action.disabled}
+        aria-label={action.label}
+      >
+        {action.plugin ? (
+          <PluginActionIcon
+            pluginId={action.plugin.pluginId}
+            icon={action.plugin.icon}
+            className="size-3"
+          />
+        ) : (
+          <Icon name={action.icon} className="size-3" />
+        )}
+      </button>
+    ),
   );
 }

@@ -8,10 +8,11 @@ import type {
 import { formatDiffStatsText } from "@bb/thread-view";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 
-export interface ChangeTally {
+interface ChangeTally {
   filesCount: number;
   insertions: number;
   deletions: number;
+  lineStatsComplete: boolean;
 }
 
 export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
@@ -19,10 +20,11 @@ export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
     filesCount: stats.files.length,
     insertions: stats.insertions,
     deletions: stats.deletions,
+    lineStatsComplete: stats.lineStatsComplete,
   };
 }
 
-export function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
+function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
   return `${changedFiles} file${changedFiles === 1 ? "" : "s"}`;
 }
 
@@ -35,7 +37,10 @@ export function formatChangeSummary(tally: ChangeTally): string {
     return "No changes";
   }
   const filesLabel = formatWorkspaceChangedFilesLabel(tally.filesCount);
-  if (tally.insertions === 0 && tally.deletions === 0) {
+  if (
+    !tally.lineStatsComplete ||
+    (tally.insertions === 0 && tally.deletions === 0)
+  ) {
     return filesLabel;
   }
   const diffText = formatDiffStatsText({
@@ -54,7 +59,10 @@ export function renderChangeSummary(tally: ChangeTally): ReactNode {
     return "No changes";
   }
   const filesLabel = formatWorkspaceChangedFilesLabel(tally.filesCount);
-  if (tally.insertions === 0 && tally.deletions === 0) {
+  if (
+    !tally.lineStatsComplete ||
+    (tally.insertions === 0 && tally.deletions === 0)
+  ) {
     return filesLabel;
   }
   return (
@@ -68,7 +76,7 @@ export function renderChangeSummary(tally: ChangeTally): ReactNode {
   );
 }
 
-export type WorkspaceChangedFilesSectionKind =
+type WorkspaceChangedFilesSectionKind =
   | "uncommitted"
   | "untracked"
   | "committed";

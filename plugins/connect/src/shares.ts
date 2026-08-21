@@ -5,13 +5,14 @@ import type {
   PluginHosts,
   PluginKvStorage,
   PluginLogger,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 import {
   ShareHostNotFoundError,
   type ShareHost,
   type ShareHostResolver,
 } from "./hosts.js";
 import {
+  connectPublicProtocol,
   deriveConnectBaseUrl,
   type ConnectCredential,
 } from "@bb/connect-client";
@@ -91,7 +92,7 @@ export function machineSharePublicUrl(
   identity: { label: string; baseDomain: string },
   port: number,
 ): string {
-  return `https://${identity.label}--${port}.${identity.baseDomain}`;
+  return `${connectPublicProtocol(identity.baseDomain)}//${identity.label}--${port}.${identity.baseDomain}`;
 }
 
 export function shareLoopbackOrigin(port: number): string {
@@ -108,7 +109,7 @@ export function serverOwnPort(loopbackBaseUrl: string): number {
   return url.protocol === "https:" ? 443 : 80;
 }
 
-export interface ShareRegistryOptions {
+interface ShareRegistryOptions {
   kv: Pick<PluginKvStorage, "get" | "set" | "delete">;
   hosts: Pick<PluginHosts, "declareSharedPorts" | "ensureSharedPortTunnel">;
   hostResolver: ShareHostResolver;

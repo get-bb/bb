@@ -7,11 +7,16 @@ import type {
   ThreadListEntry,
   WorkspaceStatus,
 } from "@bb/domain";
+import type {
+  ProviderCliKey,
+  ProviderCliStatus,
+} from "@bb/host-daemon-contract";
 import type { ProjectResponse } from "@bb/server-contract";
 import { ClaudeIcon } from "../src/components/icons/ClaudeIcon";
 import { OpenAiIcon } from "../src/components/icons/OpenAiIcon";
 import { PiIcon } from "../src/components/icons/PiIcon";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
+import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "../src/components/pickers/WorktreePicker";
 import type { ExecutionControlsProps } from "../src/components/promptbox/ExecutionControls";
@@ -136,14 +141,52 @@ export const STORY_CLAUDE_CODE_MORE_MODELS: readonly PickerOption<string>[] = [
   { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
 ];
 
-export const STORY_PI_MODELS: readonly PickerOption<string>[] = [
-  { value: "openai-codex/gpt-5.5", label: "GPT-5.5" },
-  { value: "openai-codex/gpt-5.4", label: "GPT-5.4" },
-  { value: "openai-codex/gpt-5.4-mini", label: "GPT-5.4 Mini" },
-  { value: "openai-codex/gpt-5.3-codex", label: "GPT-5.3 Codex" },
-  { value: "anthropic/claude-haiku-4-5", label: "Claude Haiku 4.5" },
-  { value: "anthropic/claude-opus-4-8", label: "Claude Opus 4.8" },
-  { value: "anthropic/claude-opus-4-7", label: "Claude Opus 4.7" },
+export const STORY_PI_MODELS: readonly ModelPickerOption[] = [
+  {
+    value: "openai-codex/gpt-5.5",
+    label: "GPT-5.5",
+    routeProviderId: "openai-codex",
+  },
+  {
+    value: "openai-codex/gpt-5.4",
+    label: "GPT-5.4",
+    routeProviderId: "openai-codex",
+  },
+  {
+    value: "openai-codex/gpt-5.4-mini",
+    label: "GPT-5.4 Mini",
+    routeProviderId: "openai-codex",
+  },
+  {
+    value: "openai-codex/gpt-5.3-codex",
+    label: "GPT-5.3 Codex",
+    routeProviderId: "openai-codex",
+  },
+  {
+    value: "openai/gpt-5.3-codex-spark",
+    label: "GPT-5.3 Codex Spark",
+    routeProviderId: "openai",
+  },
+  {
+    value: "openai-codex/gpt-5.3-codex-spark",
+    label: "GPT-5.3 Codex Spark",
+    routeProviderId: "openai-codex",
+  },
+  {
+    value: "anthropic/claude-haiku-4-5",
+    label: "Claude Haiku 4.5",
+    routeProviderId: "anthropic",
+  },
+  {
+    value: "anthropic/claude-opus-4-8",
+    label: "Claude Opus 4.8",
+    routeProviderId: "anthropic",
+  },
+  {
+    value: "anthropic/claude-opus-4-7",
+    label: "Claude Opus 4.7",
+    routeProviderId: "anthropic",
+  },
 ];
 
 export const STORY_CODEX_REASONING: readonly PickerOption<ReasoningLevel>[] = [
@@ -291,7 +334,6 @@ export function makeThread(overrides: Partial<Thread> = {}): Thread {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -320,7 +362,6 @@ export function makeThreadListEntry(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,
@@ -376,6 +417,34 @@ export function makeHost(overrides: Partial<Host> = {}): Host {
   return { ...base, ...overrides };
 }
 
+export function makeProviderCliStatus(
+  provider: ProviderCliKey,
+  overrides: Partial<ProviderCliStatus> = {},
+): ProviderCliStatus {
+  const identity =
+    provider === "codex"
+      ? { displayName: "Codex", executableName: "codex" }
+      : provider === "claude-code"
+        ? { displayName: "Claude Code", executableName: "claude" }
+        : { displayName: "Cursor", executableName: "agent" };
+  return {
+    displayName: identity.displayName,
+    executableName: identity.executableName,
+    executablePath: `/usr/local/bin/${identity.executableName}`,
+    installed: true,
+    installSource: "npmGlobal",
+    currentVersion: "1.0.0",
+    latestVersion: "1.0.0",
+    minimumSupportedVersion: null,
+    npmPackageName: null,
+    npmGlobalPackageVersion: null,
+    installAction: null,
+    needsUpdate: false,
+    versionUnsupported: false,
+    ...overrides,
+  };
+}
+
 export function makeEnvironment(
   overrides: Partial<Environment> = {},
 ): Environment {
@@ -409,6 +478,7 @@ export function makeWorkspaceStatus(
       state: "clean",
       insertions: 0,
       deletions: 0,
+      lineStatsComplete: true,
       files: [],
     },
     branch: {
@@ -429,6 +499,7 @@ export function makeWorkspaceStatus(
       commits: [],
       insertions: 0,
       deletions: 0,
+      lineStatsComplete: true,
       files: [],
     },
   };

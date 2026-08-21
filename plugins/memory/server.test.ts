@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createFakePluginHost,
   type FakePluginHost,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import memoryPlugin from "./server";
 
 async function loadPlugin(): Promise<FakePluginHost> {
@@ -104,6 +104,9 @@ describe("bb-plugin-memory", () => {
     expect(instructions?.length).toBeLessThanOrEqual(3_900);
   });
 
+  // This intentionally exercises 30 sequential CLI/database writes. The
+  // packages shard runs every workspace suite in parallel, so loaded CI hosts
+  // can exceed Vitest's 5s default without the behavior being stuck.
   it("keeps a large injected catalog within budget and points to the CLI remainder", async () => {
     const host = await loadPlugin();
     for (let index = 0; index < 30; index += 1) {
@@ -124,7 +127,7 @@ describe("bb-plugin-memory", () => {
     expect(instructions).toContain("Showing");
     expect(instructions).toContain("bb memory catalog --scope all --json");
     expect(instructions).not.toContain("Private details");
-  });
+  }, 20_000);
 
   it("searches progressively and returns full details only from get", async () => {
     const host = await loadPlugin();

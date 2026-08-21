@@ -20,18 +20,18 @@ type TimelineReadActivityIntent = Extract<
 const SKILL_FILE_NAME = "SKILL.md";
 const PLUGIN_CACHE_PATH_MARKERS = ["plugins", "cache"];
 
-export interface FormatTimelineActivityIntentDetailArgs {
+interface FormatTimelineActivityIntentDetailArgs {
   intent: TimelineActivityIntent;
   pathMode: TimelinePathDisplayMode;
   pending: boolean;
 }
 
-export interface TimelineActivityIntentTextParts {
+interface TimelineActivityIntentTextParts {
   prefix: string | null;
   content: string;
 }
 
-export interface FormatTimelineActivityIntentDetailPartsArgs {
+interface FormatTimelineActivityIntentDetailPartsArgs {
   intent: TimelineActivityIntent;
   pathMode: TimelinePathDisplayMode;
   pending: boolean;

@@ -7,21 +7,20 @@ import {
   useState,
   type ReactNode,
   type Ref,
+  type RefObject,
 } from "react";
 import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
-import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
+import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
 import {
-  PluginComposerHostProvider,
-  PluginComposerViewProvider,
   type PluginComposerHost,
   usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
-  useAppCommandContext,
-  useAppCommandHandler,
-} from "@/components/commands/AppCommandProvider";
+  ComposerExtensionHost,
+  useComposerExtensionController,
+} from "@/components/plugin/ComposerExtensionHost";
 import {
   ExecutionControls,
   type ExecutionControlsProps,
@@ -66,9 +65,9 @@ import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import {
+  isPlanModePrompt,
   permissionDisplayForPromptMode,
-  shouldDisablePermissionPickerForPromptMode,
-} from "./effective-prompt-mode";
+} from "@bb/client-core";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
 const DEFAULT_NEW_THREAD_COMPOSER_SCOPE = {
@@ -100,7 +99,6 @@ export interface NewThreadBranchConfig {
   hidden?: boolean;
   options: readonly string[];
   remoteOptions?: readonly string[];
-  priorityOptions?: readonly string[];
   loading?: boolean;
   placeholder?: string;
   triggerLabel?: string;
@@ -146,6 +144,11 @@ export interface NewThreadProjectConfig {
   allowNoProject?: boolean;
   createProject?: ProjectSelectorCreateProjectConfig;
   disabled?: boolean;
+  /** The project list is still loading; the picker shows a loading label. */
+  isLoading?: boolean;
+  /** Keep the chevron while `disabled`, for transient locks (submitting,
+   * uploading) that must not change the trigger's width. */
+  showChevronWhenDisabled?: boolean;
 }
 
 export interface NewThreadModeConfig {
@@ -160,7 +163,7 @@ export interface NewThreadModeConfig {
   header?: ReactNode;
 }
 
-export interface NewThreadPromptBoxUIProps {
+interface NewThreadPromptBoxUIProps {
   /** id forwarded to the underlying PromptBoxInternal (used for autofocus targeting). */
   id?: string;
 
@@ -172,11 +175,13 @@ export interface NewThreadPromptBoxUIProps {
   promptBoxRef?: Ref<PromptBoxHandle>;
   isSubmitting: boolean;
   disabled: boolean;
+  /** Explains a disabled submit action on hover and to assistive technology. */
+  disabledReason?: string;
+  /** Whether the editor should take passive focus when it mounts. */
+  autoFocus?: boolean;
   /** Active root-composer binding for plugin composer hooks and customizations. */
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
-  /** zenMode storage key used for the root-compose zen-mode atom. */
-  zenModeStorageKey: string;
   /** Overrides the default new-thread placeholder copy. */
   placeholder?: string;
 
@@ -225,9 +230,10 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   promptBoxRef: externalPromptBoxRef,
   isSubmitting,
   disabled,
+  disabledReason,
+  autoFocus,
   pluginComposerHost,
   textEffects,
-  zenModeStorageKey,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -238,15 +244,11 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   execution,
 }: NewThreadPromptBoxUIProps) {
   const promptBoxRef = useRef<PromptBoxHandle>(null);
-  // Scope Cmd+Shift+C to the focused split pane (see FollowUpPromptBox). The
-  // new-thread composer is always a pane's primary composer.
   const isFocusedPane = useOptionalPaneContext()?.isFocused ?? true;
-  useAppCommandContext("promptAvailable", true);
-  useAppCommandHandler("composer.focus", () => {
-    if (!isFocusedPane) return false;
+  const focusDefault = useCallback(() => {
     promptBoxRef.current?.focusEnd();
     return promptBoxRef.current !== null;
-  });
+  }, []);
   useImperativeHandle(
     externalPromptBoxRef,
     () => ({
@@ -260,32 +262,13 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
         promptBoxRef.current?.insertTextAtCursor(text);
       },
       getTextBeforeCursor: () => promptBoxRef.current?.getTextBeforeCursor(),
+      playVoiceCompletionTransition: () =>
+        promptBoxRef.current?.playVoiceCompletionTransition() ??
+        Promise.resolve(),
     }),
     [],
   );
   const voice = usePromptVoice(promptBoxRef);
-  const isProjectlessPrompt = project?.value === null;
-  const placeholder =
-    placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
-  const promptModeInput = useMemo(
-    () => ({
-      providerId: execution.provider.selectedId,
-      value,
-      mentionRanges,
-    }),
-    [execution.provider.selectedId, mentionRanges, value],
-  );
-  const permissionDisplayOverride = useMemo(
-    () => permissionDisplayForPromptMode(promptModeInput),
-    [promptModeInput],
-  );
-  const permissionPickerDisabledByPlanMode =
-    shouldDisablePermissionPickerForPromptMode(promptModeInput);
-  const submitTitle = isSubmitting
-    ? "Submitting..."
-    : execution.model.isLoading
-      ? "Loading models..."
-      : "Submit (Enter)";
   const attachmentCount = attachments.items?.length ?? 0;
   const [composerLayout, setComposerLayout] =
     useState<ComposerView["layout"]>("expanded");
@@ -297,6 +280,104 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
     isRunning: false,
     isSubmitting,
   });
+  const controller = useComposerExtensionController({
+    host: pluginComposerHost ?? null,
+    view: composerView,
+    isFocused: isFocusedPane,
+    isPrimary: true,
+    focusDefault,
+  });
+
+  return (
+    <ComposerExtensionHost
+      controller={controller}
+      defaultRenderer={
+        <DefaultNewThreadComposer
+          id={id}
+          value={value}
+          mentionRanges={mentionRanges}
+          onChange={onChange}
+          onSubmit={onSubmit}
+          promptBoxRef={promptBoxRef}
+          isSubmitting={isSubmitting}
+          disabled={disabled}
+          disabledReason={disabledReason}
+          autoFocus={autoFocus}
+          textEffects={textEffects}
+          placeholder={placeholderOverride}
+          history={history}
+          typeahead={typeahead}
+          attachments={attachments}
+          promptActions={promptActions}
+          modeConfig={modeConfig}
+          project={project}
+          execution={execution}
+          voice={voice}
+          onComposerLayoutChange={setComposerLayout}
+        />
+      }
+    />
+  );
+});
+
+interface DefaultNewThreadComposerProps extends Omit<
+  NewThreadPromptBoxUIProps,
+  "promptBoxRef" | "pluginComposerHost"
+> {
+  promptBoxRef: RefObject<PromptBoxHandle | null>;
+  voice: ReturnType<typeof usePromptVoice>;
+  onComposerLayoutChange: (layout: ComposerView["layout"]) => void;
+}
+
+/** BB's presentation for a host-owned new-thread Composer controller. */
+const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
+  id,
+  value,
+  mentionRanges,
+  onChange,
+  onSubmit,
+  promptBoxRef,
+  isSubmitting,
+  disabled,
+  disabledReason,
+  autoFocus,
+  textEffects,
+  placeholder: placeholderOverride,
+  history,
+  typeahead,
+  attachments,
+  promptActions,
+  modeConfig,
+  project,
+  execution,
+  voice,
+  onComposerLayoutChange,
+}: DefaultNewThreadComposerProps) {
+  const isProjectlessPrompt = project?.value === null;
+  const placeholder =
+    placeholderOverride ?? getNewThreadPromptPlaceholder(isProjectlessPrompt);
+  const selectedProviderPlanModeCopy = execution.provider.options?.find(
+    (option) => option.value === execution.provider.selectedId,
+  )?.planModeCopy;
+  const promptModeInput = useMemo(
+    () => ({
+      planModeCopy: selectedProviderPlanModeCopy,
+      value,
+      mentionRanges,
+    }),
+    [selectedProviderPlanModeCopy, mentionRanges, value],
+  );
+  const permissionDisplayOverride = useMemo(
+    () => permissionDisplayForPromptMode(promptModeInput),
+    [promptModeInput],
+  );
+  const permissionPickerDisabledByPlanMode = isPlanModePrompt(promptModeInput);
+  const submitTitle = isSubmitting
+    ? "Submitting..."
+    : execution.model.isLoading
+      ? "Loading models..."
+      : "Submit (Enter)";
+
   return (
     <div
       data-app-composer=""
@@ -304,51 +385,45 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
       data-promptbox-shell=""
       className="w-full"
     >
-      <PluginComposerViewProvider value={composerView}>
-        <PluginComposerHostProvider value={pluginComposerHost ?? null}>
-          {modeConfig.banner || pluginComposerHost ? (
-            <div className="mb-2 space-y-2">
-              {modeConfig.banner}
-              {pluginComposerHost ? <PluginComposerBanners /> : null}
-            </div>
-          ) : null}
-          <PromptBoxInternal
-            id={id}
-            promptBoxRef={promptBoxRef}
-            value={value}
-            mentionRanges={mentionRanges}
-            onChange={onChange}
-            onSubmit={onSubmit}
-            textEffects={textEffects}
-            onComposerLayoutChange={setComposerLayout}
-            history={history}
-            typeahead={typeahead}
-            mentionMenuPlacement="bottom"
-            attachments={attachments}
-            promptActions={promptActions}
-            voice={voice}
-            submission={{
-              isSubmitting,
-              disabled,
-              title: submitTitle,
-            }}
-            zenMode={{
-              layout: "root-compose",
-              storageKey: zenModeStorageKey,
-            }}
-            minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
-            placeholder={placeholder}
-            header={modeConfig.header}
-            footerStart={<ExecutionControls {...execution} />}
-          />
-        </PluginComposerHostProvider>
-      </PluginComposerViewProvider>
+      <div className="mb-2 grid gap-2 empty:hidden">
+        <ComposerBannersSlot ownerPlacement="before">
+          {modeConfig.banner}
+        </ComposerBannersSlot>
+      </div>
+      <PromptBoxInternal
+        id={id}
+        promptBoxRef={promptBoxRef}
+        value={value}
+        mentionRanges={mentionRanges}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        textEffects={textEffects}
+        onComposerLayoutChange={onComposerLayoutChange}
+        history={history}
+        typeahead={typeahead}
+        mentionMenuPlacement="bottom"
+        attachments={attachments}
+        promptActions={promptActions}
+        voice={voice}
+        submission={{
+          isSubmitting,
+          disabled,
+          disabledReason,
+          title: submitTitle,
+        }}
+        autoFocus={autoFocus}
+        editorLayout="root-compose"
+        minHeight={NEW_THREAD_PROMPT_BOX_MIN_HEIGHT}
+        placeholder={placeholder}
+        header={modeConfig.header}
+        footerStart={<ExecutionControls {...execution} />}
+      />
       {/* Strip below the prompt-box card: optional project + env + branch (or
           worktree) on the left, permission picker pinned to the right. `mt-1`
           reproduces the 4px gap main got from a
           `space-y-1` wrapper in RootComposeView (now gone since the
           standalone project row was removed). */}
-      <div className="mt-1 flex items-center justify-between gap-2 px-3.5">
+      <div className="mt-1 flex select-none items-center justify-between gap-2 px-3.5">
         <div className="flex min-w-0 flex-1 items-center gap-1">
           {project ? (
             <ProjectSelector
@@ -358,6 +433,8 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
               allowNoProject={project.allowNoProject ?? false}
               createProject={project.createProject}
               disabled={project.disabled}
+              isLoading={project.isLoading}
+              showChevronWhenDisabled={project.showChevronWhenDisabled}
               className="shrink-0"
             />
           ) : null}
@@ -427,11 +504,9 @@ export function ThreadEnvSlot({
           variant="option"
           muted
           value={branch.value}
-          currentBranch={branch.currentBranch}
           isCreatingNew={branch.isNew}
           options={branch.options}
           remoteOptions={branch.remoteOptions}
-          priorityOptions={branch.priorityOptions}
           loading={branch.loading}
           placeholder={branch.placeholder}
           triggerLabel={branch.triggerLabel}
@@ -510,47 +585,19 @@ export function ProjectlessMachineSlot({
   );
 }
 
-export interface NewThreadConnectedEnvironmentConfig {
-  value: string;
-  onChange: (value: string) => void;
-  sources: readonly ProjectSource[];
-  /** Opens the guided machine-setup flow for a machine without a project
-   * source (multi-machine menu only). */
-  onRequestMachineSetup?: (host: Host) => void;
-  /** When true, the "Reuse existing worktree" entry in the env picker is
-   * disabled — caller signals the project has no worktree envs available. */
-  reuseDisabled?: boolean;
-  worktreeDisabledReason?: string | null;
-  disabled?: boolean;
-}
+type NewThreadConnectedEnvironmentConfig = Omit<
+  NewThreadEnvironmentConfig,
+  "host" | "isLocal" | "machines"
+>;
 
-export interface NewThreadConnectedBranchConfig {
-  value: string | null;
-  currentBranch?: string | null;
-  isNew: boolean;
-  hidden?: boolean;
-  options: readonly string[];
-  remoteOptions?: readonly string[];
-  loading?: boolean;
-  placeholder?: string;
-  triggerLabel?: string;
-  triggerTitle?: string;
-  currentOptionLabel?: string | null;
-  currentOptionTitle?: string;
-  optionDisabledReason?: string | null;
-  optionDisabledTitle?: string;
-  createDisabledReason?: string | null;
-  createDisabledTitle?: string;
-  onChange: (value: string) => void;
-  onClear?: () => void;
-  onOpenChange?: (open: boolean) => void;
-  onSearchQueryChange?: (query: string) => void;
-  onCreateBaseChange?: (value: string) => void;
-  disabled?: boolean;
+type NewThreadConnectedBranchConfig = Omit<
+  NewThreadBranchConfig,
+  "onCreate"
+> & {
   onCreate: () => void;
-}
+};
 
-export interface NewThreadConnectedModeConfig {
+interface NewThreadConnectedModeConfig {
   environment: NewThreadConnectedEnvironmentConfig;
   branch: NewThreadConnectedBranchConfig;
   worktree: NewThreadWorktreeConfig;
@@ -566,29 +613,14 @@ export interface NewThreadPromptBoxProps extends Omit<
   modeConfig: NewThreadConnectedModeConfig;
 }
 
-type ConnectedThreadModeConfig = NewThreadConnectedModeConfig;
-
-type NewThreadPromptBoxRest = Omit<NewThreadPromptBoxProps, "modeConfig">;
-
 /**
  * The composed prompt area for creating a new thread in a project — used by
- * RootComposeView. It wires host queries through `ConnectedThreadModeBranch`.
+ * RootComposeView. It wires host queries into the UI mode config.
  */
 export function NewThreadPromptBox({
-  modeConfig,
+  modeConfig: threadConfig,
   ...rest
 }: NewThreadPromptBoxProps) {
-  return <ConnectedThreadModeBranch {...rest} threadConfig={modeConfig} />;
-}
-
-interface ConnectedThreadModeBranchProps extends NewThreadPromptBoxRest {
-  threadConfig: ConnectedThreadModeConfig;
-}
-
-function ConnectedThreadModeBranch({
-  threadConfig,
-  ...rest
-}: ConnectedThreadModeBranchProps) {
   const { data: hosts } = useHosts();
   const systemConfigQuery = useSystemConfig();
   const primaryHostId = systemConfigQuery.data?.primaryHostId ?? null;
@@ -631,29 +663,9 @@ function ConnectedThreadModeBranch({
   const uiBranch = useMemo<NewThreadBranchConfig>(() => {
     const branch = threadConfig.branch;
     return {
-      value: branch.value,
-      currentBranch: branch.currentBranch,
+      ...branch,
       isNew: allowCreate && branch.isNew,
-      hidden: branch.hidden,
-      options: branch.options,
-      remoteOptions: branch.remoteOptions,
-      loading: branch.loading,
-      placeholder: branch.placeholder,
-      triggerLabel: branch.triggerLabel,
-      triggerTitle: branch.triggerTitle,
-      currentOptionLabel: branch.currentOptionLabel,
-      currentOptionTitle: branch.currentOptionTitle,
-      optionDisabledReason: branch.optionDisabledReason,
-      optionDisabledTitle: branch.optionDisabledTitle,
-      createDisabledReason: branch.createDisabledReason,
-      createDisabledTitle: branch.createDisabledTitle,
-      onChange: branch.onChange,
-      onClear: branch.onClear,
-      onOpenChange: branch.onOpenChange,
-      onSearchQueryChange: branch.onSearchQueryChange,
-      onCreateBaseChange: branch.onCreateBaseChange,
-      disabled: branch.disabled,
-      ...(allowCreate ? { onCreate: branch.onCreate } : {}),
+      onCreate: allowCreate ? branch.onCreate : undefined,
     };
   }, [allowCreate, threadConfig.branch]);
 

@@ -1,8 +1,12 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { ThreadPullRequest } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
+  isThreadDisplayStatusBannerActive,
   ThreadPromptContextBanner,
   type ThreadPromptGitSection,
 } from "./ThreadPromptContextBanner";
@@ -56,6 +60,7 @@ function makeGitSection(
       stats: {
         insertions: 2,
         deletions: 0,
+        lineStatsComplete: true,
         files: [changedFile],
       },
     },
@@ -63,6 +68,8 @@ function makeGitSection(
     onPromptBannerFileClick: noop,
   };
 }
+
+afterEach(cleanup);
 
 describe("ThreadPromptContextBanner", () => {
   it("renders the archived read-only status without an action", () => {
@@ -100,8 +107,9 @@ describe("ThreadPromptContextBanner", () => {
       />,
     );
 
-    expect(markup).toContain("Environment is unavailable");
-    expect(markup).toContain("This thread can&#x27;t run any more work.");
+    expect(markup).toContain("Environment archived");
+    expect(markup).toContain("This environment has been archived.");
+    expect(markup).not.toContain("to keep working");
     expect(markup).toContain('role="status"');
     expect(markup).not.toContain("<button");
     expect(markup).not.toContain("Provision");
@@ -115,10 +123,10 @@ describe("ThreadPromptContextBanner", () => {
       expectedLabel: "Thread is archived",
     },
     {
-      label: "environment gone",
+      label: "environment archived",
       archivedSection: null,
       environmentGoneSection: { status: "destroyed" as const },
-      expectedLabel: "Environment is unavailable",
+      expectedLabel: "Environment archived",
     },
   ])(
     "keeps the $label read-only status visible in compact mode",
@@ -149,6 +157,35 @@ describe("ThreadPromptContextBanner", () => {
       );
     },
   );
+
+  it("prioritizes the archived-environment status over unarchiving", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={{
+            archivedAt: 1_731_456_000_000,
+            onUnarchive: noop,
+          }}
+          environmentGoneSection={{ status: "destroyed" }}
+          parentThreadSection={{
+            parentThreadTitle: "Parent thread",
+            href: "/threads/thr_parent",
+            relationship: "parent",
+          }}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain("Environment archived");
+    expect(markup).not.toContain("Thread is archived");
+    expect(markup).not.toContain(">Unarchive<");
+  });
 
   it("labels a standalone pull request without non-actionable attention text", () => {
     const markup = renderToStaticMarkup(
@@ -252,7 +289,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("PR #128 · Closed");
   });
 
-  it("labels active child threads", () => {
+  it("summarizes child work without flashing the banner", () => {
     const markup = renderToStaticMarkup(
       <MemoryRouter>
         <ThreadPromptContextBanner
@@ -267,6 +304,7 @@ describe("ThreadPromptContextBanner", () => {
                 id: "thr_child",
                 title: "Investigate failing checks",
                 href: "/threads/thr_child",
+                hasPendingInteraction: false,
               },
             ],
           }}
@@ -277,8 +315,157 @@ describe("ThreadPromptContextBanner", () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain('aria-label="Active child threads"');
-    expect(markup).toContain("1 active child thread");
+    expect(markup).toContain('aria-label="Child threads"');
+    expect(markup).toContain(
+      "1 active child thread: Investigate failing checks",
+    );
+    expect(markup).toContain("Active child thread:");
+    expect(markup).toContain("Investigate failing checks");
+    expect(markup).toContain('data-icon="UserRound"');
+    expect(markup).toContain("animate-shine-icon");
+    expect(markup).not.toContain("animate-shine font-medium");
+  });
+
+  it("summarizes additional active child threads", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_primary",
+                title: "Investigate failing checks",
+                href: "/threads/thr_primary",
+                hasPendingInteraction: false,
+              },
+              {
+                id: "thr_other",
+                title: "Review the release notes",
+                href: "/threads/thr_other",
+                hasPendingInteraction: false,
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain(
+      "2 active child threads: Investigate failing checks",
+    );
+    expect(markup).toContain("+1 more");
+  });
+
+  it("lets combined child and context cards shrink inside the composer stack", () => {
+    render(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_child",
+                title: "Host-owned SourceCode and Diff renderers",
+                href: "/threads/thr_child",
+                hasPendingInteraction: false,
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    const childCard = screen.getByRole("region", { name: "Child threads" });
+    const contextCard = screen.getByRole("region", {
+      name: "Thread context before sending",
+    });
+
+    expect(childCard.parentElement).toBe(contextCard.parentElement);
+    expect(childCard.parentElement?.classList.contains("min-w-0")).toBe(true);
+  });
+
+  it("uses neutral active copy for a child waiting for a host", () => {
+    expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
+
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_waiting",
+                title: "Waiting for build host",
+                href: "/threads/thr_waiting",
+                hasPendingInteraction: false,
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain("1 active child thread: Waiting for build host");
+    expect(markup).toContain("Active child thread:");
+    expect(markup).not.toContain("Running child thread:");
+  });
+
+  it("labels a child blocked on approval instead of active work", () => {
+    const markup = renderToStaticMarkup(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_blocked",
+                title: "Install workspace tools",
+                href: "/threads/thr_blocked",
+                hasPendingInteraction: true,
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(markup).toContain(
+      "1 child thread needs input: Install workspace tools",
+    );
+    expect(markup).toContain("Needs your input:");
+    expect(markup).toContain("Install workspace tools");
+    expect(markup).toContain('data-icon="CircleQuestion"');
+    expect(markup).not.toContain("Active child thread:");
+    expect(markup).not.toContain("animate-shine-icon");
   });
 
   it("labels standalone actionable pull request attention", () => {
@@ -379,5 +566,96 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("PR #128");
     expect(markup).toContain("Committed");
     expect(markup).toContain("1 file");
+  });
+
+  it.each([
+    {
+      label: "checked open",
+      pullRequest: pullRequestFixture,
+      expectedMinWidthClass: "min-w-13",
+    },
+    {
+      label: "merged",
+      pullRequest: {
+        ...pullRequestFixture,
+        state: "merged" as const,
+        attention: "merged" as const,
+      },
+      expectedMinWidthClass: "min-w-8",
+    },
+    {
+      label: "closed",
+      pullRequest: {
+        ...pullRequestFixture,
+        state: "closed" as const,
+        attention: "closed" as const,
+      },
+      expectedMinWidthClass: "min-w-8",
+    },
+  ])(
+    "reserves only the width needed by a $label pull request status pill",
+    ({ pullRequest, expectedMinWidthClass }) => {
+      render(
+        <MemoryRouter>
+          <ThreadPromptContextBanner
+            gitSection={makeGitSection("committed")}
+            gitSectionPending={false}
+            archivedSection={null}
+            environmentGoneSection={null}
+            parentThreadSection={null}
+            childThreadsSection={null}
+            pullRequestSection={{ pullRequest }}
+            expandedSection={null}
+            onToggleSection={noop}
+          />
+        </MemoryRouter>,
+      );
+
+      const pullRequestLink = screen.getByRole("link", {
+        name: /Pull request 128:/,
+      });
+      expect(
+        ["min-w-8", "min-w-13"].filter((className) =>
+          pullRequestLink.classList.contains(className),
+        ),
+      ).toEqual([expectedMinWidthClass]);
+    },
+  );
+});
+
+describe("ThreadPromptContextBanner git section body", () => {
+  function renderBanner(expandedSection: "git" | null) {
+    return (
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={expandedSection}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>
+    );
+  }
+
+  it("does not mount the changed-files list until the section first expands", () => {
+    // The list can hold thousands of rows. A collapsed body still costs
+    // layout for every node inside it, so it must stay out of the DOM.
+    const { rerender } = render(renderBanner(null));
+    expect(screen.queryByRole("list", { hidden: true })).toBeNull();
+
+    rerender(renderBanner("git"));
+    expect(screen.getByRole("list")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: `Open ${changedFile.path}` }),
+    ).toBeTruthy();
+
+    // Retain the realized body after collapse so re-opening is instant.
+    rerender(renderBanner(null));
+    expect(screen.getByRole("list", { hidden: true })).toBeTruthy();
   });
 });

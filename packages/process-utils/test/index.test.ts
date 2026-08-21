@@ -108,6 +108,127 @@ describe("process utils", () => {
     }
   });
 
+  it("writes nested error causes", () => {
+    const logsDir = join(
+      mkdtempSync(join(tmpdir(), "bb-process-utils-report-")),
+      "logs",
+    );
+    const connectionError = new Error(
+      "connect ECONNREFUSED 127.0.0.1:38886",
+    );
+    Object.defineProperty(connectionError, "code", {
+      value: "ECONNREFUSED",
+    });
+    const reportPath = writeSafeProcessDiagnosticReport({
+      kind: "startupFailure",
+      logsDir,
+      processName: "host-daemon",
+      error: new TypeError("fetch failed", { cause: connectionError }),
+      now: () => new Date("2026-06-01T12:00:00.000Z"),
+      createReportId: () => "report-id",
+    });
+
+    expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
+      error: {
+        name: "TypeError",
+        message: "fetch failed",
+        cause: {
+          name: "Error",
+          message: "connect ECONNREFUSED 127.0.0.1:38886",
+          code: "ECONNREFUSED",
+        },
+      },
+    });
+  });
+
+  it("truncates cyclic error causes", () => {
+    const logsDir = join(
+      mkdtempSync(join(tmpdir(), "bb-process-utils-report-")),
+      "logs",
+    );
+    const firstError = new Error("first");
+    const secondError = new Error("second");
+    firstError.cause = secondError;
+    secondError.cause = firstError;
+
+    const reportPath = writeSafeProcessDiagnosticReport({
+      kind: "startupFailure",
+      logsDir,
+      processName: "host-daemon",
+      error: firstError,
+      now: () => new Date("2026-06-01T12:00:00.000Z"),
+      createReportId: () => "report-id",
+    });
+
+    expect(JSON.parse(readFileSync(reportPath, "utf8"))).toMatchObject({
+      error: {
+        message: "first",
+        cause: {
+          message: "second",
+          cause: {
+            name: "TruncatedErrorCause",
+            truncationReason: "cycle",
+          },
+        },
+      },
+    });
+  });
+
+  it("truncates error causes that exceed the depth limit", () => {
+    const logsDir = join(
+      mkdtempSync(join(tmpdir(), "bb-process-utils-report-")),
+      "logs",
+    );
+    const rootError = new Error("cause-0");
+    let currentError = rootError;
+    for (let index = 1; index < 32; index += 1) {
+      const cause = new Error(`cause-${index}`);
+      currentError.cause = cause;
+      currentError = cause;
+    }
+
+    const reportPath = writeSafeProcessDiagnosticReport({
+      kind: "startupFailure",
+      logsDir,
+      processName: "host-daemon",
+      error: rootError,
+      now: () => new Date("2026-06-01T12:00:00.000Z"),
+      createReportId: () => "report-id",
+    });
+    const reportText = readFileSync(reportPath, "utf8");
+
+    expect(reportText).toContain('"name": "TruncatedErrorCause"');
+    expect(reportText).toContain('"truncationReason": "depth"');
+    expect(reportText).not.toContain("cause-31");
+  });
+
+  it("writes bounded AggregateError details", () => {
+    const logsDir = join(
+      mkdtempSync(join(tmpdir(), "bb-process-utils-report-")),
+      "logs",
+    );
+    const connectionErrors = Array.from({ length: 10 }, (_, index) => {
+      const error = new Error(`connect ECONNREFUSED address-${index}`);
+      Object.defineProperty(error, "code", { value: "ECONNREFUSED" });
+      return error;
+    });
+    const reportPath = writeSafeProcessDiagnosticReport({
+      kind: "startupFailure",
+      logsDir,
+      processName: "host-daemon",
+      error: new AggregateError(connectionErrors, "fetch failed"),
+      now: () => new Date("2026-06-01T12:00:00.000Z"),
+      createReportId: () => "report-id",
+    });
+    const reportText = readFileSync(reportPath, "utf8");
+
+    expect(reportText).toContain('"errors"');
+    expect(reportText).toContain('"code": "ECONNREFUSED"');
+    expect(reportText).toContain("connect ECONNREFUSED address-7");
+    expect(reportText).toContain('"errorsTruncated": 2');
+    expect(reportText).not.toContain("connect ECONNREFUSED address-8");
+  });
+
   it("spawns a process with piped stdio", async () => {
     await expect(readProcessOutput()).resolves.toEqual({
       exitCode: 0,

@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { permissionModeSchema } from "./shared-types.js";
 
-export const hostTypeValues = ["persistent"] as const;
+const hostTypeValues = ["persistent"] as const;
 export const hostTypeSchema = z.enum(hostTypeValues);
 export type HostType = z.infer<typeof hostTypeSchema>;
 
-export const hostStatusValues = ["connected", "disconnected"] as const;
+const hostStatusValues = ["connected", "disconnected"] as const;
 export const hostStatusSchema = z.enum(hostStatusValues);
 
 export const hostSchema = z.object({

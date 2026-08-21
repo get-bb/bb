@@ -1,6 +1,9 @@
 import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import type { ThreadChatMessageAction, ThreadChatProps } from "@bb/plugin-sdk";
+import type {
+  ThreadChatMessageAction,
+  ThreadChatProps,
+} from "@get-bb/plugin-sdk";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -267,6 +270,7 @@ function PluginThreadChatBody({
         executionDefaultsThreadId: threadId,
         executionResetKey: threadId,
         executionEnvironmentId: thread.environmentId ?? undefined,
+        executionEnvironmentHostId: environment?.hostId,
         // "inherit" pins sends to the thread's own resolved defaults, never
         // widened by a plugin surface. "editable" is the opt-in that hands
         // the picker to the user for this thread alone.

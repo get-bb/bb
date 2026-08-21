@@ -36,7 +36,7 @@ import {
   OPTION_INTERACTIVE_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { GitBranchRefClassification } from "@bb/domain";
 
@@ -196,7 +196,6 @@ interface BranchPickerRowButtonProps {
   title?: string;
   selected: boolean;
   disabled?: boolean;
-  emphasizeLabel?: boolean;
   onSelect: () => void;
   onPointerEnter?: PointerEventHandler<HTMLButtonElement>;
   onKeyDown?: KeyboardEventHandler<HTMLButtonElement>;
@@ -233,7 +232,6 @@ interface FilterBranchOptionsArgs {
 
 interface OrderBranchPickerOptionsArgs {
   options: readonly string[];
-  priorityOptions: readonly string[];
   selectedValue: string | null;
 }
 
@@ -471,7 +469,6 @@ function BranchPickerRowButton({
   title,
   selected,
   disabled = false,
-  emphasizeLabel = false,
   onSelect,
   onPointerEnter: callerPointerEnter,
   onKeyDown: callerKeyDown,
@@ -502,12 +499,7 @@ function BranchPickerRowButton({
           COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
         )}
       />
-      <BranchPickerText
-        label={label}
-        emphasizePlainLabel={emphasizeLabel}
-        className="flex-1"
-        wrap
-      />
+      <BranchPickerText label={label} className="flex-1" wrap />
       <Icon
         name="Check"
         className={
@@ -621,7 +613,6 @@ function filterBranchOptions({
 
 export function orderBranchPickerOptions({
   options,
-  priorityOptions,
   selectedValue,
 }: OrderBranchPickerOptionsArgs): string[] {
   const availableOptions = new Set(options);
@@ -637,9 +628,6 @@ export function orderBranchPickerOptions({
   };
 
   append(selectedValue);
-  for (const branch of priorityOptions) {
-    append(branch);
-  }
   for (const branch of options) {
     append(branch);
   }
@@ -664,9 +652,6 @@ export interface BranchPickerProps {
   value: string | null;
   options: readonly string[];
   remoteOptions?: readonly string[];
-  /** Branch refs to keep near the top when they are present. The selected value still wins. */
-  priorityOptions?: readonly string[];
-  currentBranch?: string | null;
   loading?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -714,8 +699,6 @@ export function BranchPicker({
   value,
   options,
   remoteOptions = EMPTY_BRANCH_OPTIONS,
-  priorityOptions = EMPTY_BRANCH_OPTIONS,
-  currentBranch,
   loading = false,
   disabled,
   placeholder,
@@ -807,19 +790,17 @@ export function BranchPicker({
     () =>
       orderBranchPickerOptions({
         options: filteredLocalBranchOptions,
-        priorityOptions,
         selectedValue: value,
       }),
-    [filteredLocalBranchOptions, priorityOptions, value],
+    [filteredLocalBranchOptions, value],
   );
   const filteredBranchOptions = useMemo(
     () =>
       orderBranchPickerOptions({
         options: filteredCombinedBranchOptions,
-        priorityOptions,
         selectedValue: value,
       }),
-    [filteredCombinedBranchOptions, priorityOptions, value],
+    [filteredCombinedBranchOptions, value],
   );
   const activeEnterOptions =
     isCheckoutMenu && activeCheckoutIntent === "checkout"

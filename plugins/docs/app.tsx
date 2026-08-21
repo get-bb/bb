@@ -1,16 +1,14 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type DragEvent as ReactDragEvent,
-  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   definePluginApp,
+  experimental_FileLink as FileLink,
   useBbNavigate,
   useRpc,
   useRealtime,
@@ -18,7 +16,8 @@ import {
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginThreadPanelProps,
-} from "@bb/plugin-sdk/app";
+  type ExperimentalLiveFileTarget,
+} from "@get-bb/plugin-sdk/app";
 import type { docsRpcContract } from "./server.js";
 import { parseMarkdownDocument } from "./markdown-document.js";
 import {
@@ -56,10 +55,10 @@ import {
   HtmlFile01Icon,
   PlusSignIcon,
   Search01Icon,
-  SidebarRightIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import {
   Dialog,
   DialogContent,
@@ -116,93 +115,13 @@ interface NotesData {
   error: string | null;
 }
 
-interface NoteContent {
-  content: string;
-  sha256: string;
-}
-
 interface PreviewLease {
   baseUrl: string;
   expiresAtMs: number;
 }
 
-type SaveResult =
-  | { outcome: "written"; sha256: string }
-  | { outcome: "conflict"; currentSha256: string | null };
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseNotesData(value: unknown): NotesData {
-  if (
-    !isRecord(value) ||
-    !Array.isArray(value.vaults) ||
-    !isRecord(value.vault) ||
-    !Array.isArray(value.entryOrder) ||
-    value.entryOrder.some((entry) => typeof entry !== "string")
-  ) {
-    throw new Error("Docs returned an invalid notebook response");
-  }
-  // RPC is the untyped boundary. The backend owns and validates this exact
-  // JSON contract; keep the cast here rather than spreading unknown values.
-  return value as unknown as NotesData;
-}
-
-function parseNoteContent(value: unknown): NoteContent {
-  if (
-    !isRecord(value) ||
-    typeof value.content !== "string" ||
-    typeof value.sha256 !== "string"
-  ) {
-    throw new Error("Docs returned invalid file content");
-  }
-  return { content: value.content, sha256: value.sha256 };
-}
-
-function parsePreviewLease(value: unknown): PreviewLease {
-  if (
-    !isRecord(value) ||
-    typeof value.baseUrl !== "string" ||
-    typeof value.expiresAtMs !== "number"
-  ) {
-    throw new Error("Docs returned an invalid preview lease");
-  }
-  return { baseUrl: value.baseUrl, expiresAtMs: value.expiresAtMs };
-}
-
-function parseSaveResult(value: unknown): SaveResult {
-  if (
-    !isRecord(value) ||
-    (value.outcome !== "written" && value.outcome !== "conflict")
-  ) {
-    throw new Error("Docs returned an invalid save response");
-  }
-  if (value.outcome === "written" && typeof value.sha256 === "string") {
-    return { outcome: "written", sha256: value.sha256 };
-  }
-  if (
-    value.outcome === "conflict" &&
-    (typeof value.currentSha256 === "string" || value.currentSha256 === null)
-  ) {
-    return { outcome: "conflict", currentSha256: value.currentSha256 };
-  }
-  throw new Error("Docs returned an invalid save response");
-}
-
-function parseOpenedFile(value: unknown): {
-  file: NoteContent;
-  preview: PreviewLease;
-  previewPath: string;
-} {
-  if (!isRecord(value) || typeof value.previewPath !== "string") {
-    throw new Error("Docs returned an invalid opened file");
-  }
-  return {
-    file: parseNoteContent(value.file),
-    preview: parsePreviewLease(value.preview),
-    previewPath: value.previewPath,
-  };
 }
 
 function encodePath(value: string): string {
@@ -592,65 +511,200 @@ function TiptapEditor({
   );
 }
 
+type DocsRpcClient = ReturnType<typeof useRpc<typeof docsRpcContract>>;
+
+interface NotebookStore {
+  consumers: Set<symbol>;
+  data: NotesData | null;
+  error: string | null;
+  inFlight: Promise<void> | null;
+  listeners: Set<() => void>;
+  owner: symbol | null;
+  pendingRefreshRpc: DocsRpcClient | null;
+  requestId: number;
+  vaultId: string | null;
+}
+
+const notebookStores = new Map<string | null, NotebookStore>();
+
+function getNotebookStore(vaultId: string | null): NotebookStore {
+  const existing = notebookStores.get(vaultId);
+  if (existing) return existing;
+  const store: NotebookStore = {
+    consumers: new Set(),
+    data: null,
+    error: null,
+    inFlight: null,
+    listeners: new Set(),
+    owner: null,
+    pendingRefreshRpc: null,
+    requestId: 0,
+    vaultId,
+  };
+  notebookStores.set(vaultId, store);
+  return store;
+}
+
+function notifyNotebookStore(store: NotebookStore): void {
+  for (const listener of store.listeners) listener();
+}
+
+function refreshNotebookStore(
+  store: NotebookStore,
+  rpc: DocsRpcClient,
+  { queueIfInFlight = true }: { queueIfInFlight?: boolean } = {},
+): Promise<void> {
+  if (notebookStores.get(store.vaultId) !== store) return Promise.resolve();
+  if (store.inFlight) {
+    if (queueIfInFlight) store.pendingRefreshRpc = rpc;
+    return store.inFlight;
+  }
+  if (store.error !== null) {
+    store.error = null;
+    notifyNotebookStore(store);
+  }
+  const requestId = ++store.requestId;
+  const request = rpc
+    .call("listNotes", store.vaultId ? { vaultId: store.vaultId } : {})
+    .then((value) => {
+      if (
+        requestId !== store.requestId ||
+        notebookStores.get(store.vaultId) !== store
+      )
+        return;
+      store.data = value;
+      store.error = null;
+      notifyNotebookStore(store);
+    })
+    .catch((error: unknown) => {
+      if (
+        requestId !== store.requestId ||
+        notebookStores.get(store.vaultId) !== store
+      )
+        return;
+      const message = error instanceof Error ? error.message : String(error);
+      if (store.data === null) store.error = message;
+      else store.data = { ...store.data, error: message };
+      notifyNotebookStore(store);
+    })
+    .finally(() => {
+      if (store.inFlight !== request) return;
+      store.inFlight = null;
+      const pendingRefreshRpc = store.pendingRefreshRpc;
+      store.pendingRefreshRpc = null;
+      if (
+        pendingRefreshRpc !== null &&
+        store.consumers.size > 0 &&
+        notebookStores.get(store.vaultId) === store
+      ) {
+        void refreshNotebookStore(store, pendingRefreshRpc, {
+          queueIfInFlight: false,
+        });
+      }
+    });
+  store.inFlight = request;
+  return request;
+}
+
 function useNotebook(vaultId: string | null) {
   const rpc = useRpc<typeof docsRpcContract>();
-  const [data, setData] = useState<NotesData | null>(null);
+  const rpcRef = useRef(rpc);
+  rpcRef.current = rpc;
+  const store = useMemo(() => getNotebookStore(vaultId), [vaultId]);
+  const consumerRef = useRef(Symbol("docs-notebook-consumer"));
+  const [, rerender] = useState(0);
   const refresh = useCallback(() => {
-    void rpc
-      .call("listNotes", vaultId ? { vaultId } : {})
-      .then((value) => setData(parseNotesData(value)))
-      .catch((error: unknown) => {
-        setData((current) =>
-          current
-            ? {
-                ...current,
-                error: error instanceof Error ? error.message : String(error),
-              }
-            : null,
-        );
+    void refreshNotebookStore(store, rpcRef.current);
+  }, [store]);
+
+  useEffect(() => {
+    const consumer = consumerRef.current;
+    const listener = () => rerender((version) => version + 1);
+    store.consumers.add(consumer);
+    store.listeners.add(listener);
+    store.owner ??= consumer;
+    if (store.data === null) {
+      void refreshNotebookStore(store, rpcRef.current, {
+        // A second view mounting against the same empty store is another
+        // consumer of the initial load, not evidence that the result is stale.
+        queueIfInFlight: false,
       });
-  }, [rpc, vaultId]);
-  useEffect(refresh, [refresh]);
-  useRealtime("vault-changed", refresh);
-  return { data, refresh };
+    }
+    return () => {
+      store.consumers.delete(consumer);
+      store.listeners.delete(listener);
+      if (store.owner === consumer)
+        store.owner = store.consumers.values().next().value ?? null;
+      if (store.consumers.size === 0) {
+        // React Strict Mode immediately replays effects in development. Defer
+        // eviction through that replay so the remounted consumer keeps the
+        // same in-flight request instead of holding a detached, empty store.
+        queueMicrotask(() => {
+          if (
+            store.consumers.size !== 0 ||
+            notebookStores.get(store.vaultId) !== store
+          )
+            return;
+          store.requestId += 1;
+          store.pendingRefreshRpc = null;
+          notebookStores.delete(store.vaultId);
+        });
+      }
+    };
+  }, [store]);
+
+  useRealtime(
+    "vault-changed",
+    useCallback(() => {
+      if (store.owner === consumerRef.current) refresh();
+    }, [refresh, store]),
+  );
+
+  const data =
+    store.data && (vaultId === null || store.data.vault.id === vaultId)
+      ? store.data
+      : null;
+  return { data, error: store.error, refresh };
 }
 
 function DocumentSkeleton() {
   return (
-    <div
-      className="min-w-0 flex-1 overflow-hidden"
-      role="status"
-      aria-label="Loading document"
-    >
-      <span className="sr-only">Loading…</span>
-      <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-12">
-        <div className="space-y-4">
-          <Skeleton className="h-8 w-2/5" />
-          <Skeleton className="h-4 w-3/5" />
-        </div>
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-11/12" />
-          <Skeleton className="h-4 w-4/5" />
-        </div>
-        <div className="space-y-3">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-5/6" />
-          <Skeleton className="h-4 w-2/3" />
-        </div>
-        <div className="space-y-4 pt-2">
-          <Skeleton className="h-6 w-1/3" />
+    <DelayedLoading>
+      <div
+        className="min-w-0 flex-1 overflow-hidden"
+        role="status"
+        aria-label="Loading document"
+      >
+        <span className="sr-only">Loading…</span>
+        <div className="mx-auto w-full max-w-3xl space-y-8 px-6 py-12">
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-2/5" />
+            <Skeleton className="h-4 w-3/5" />
+          </div>
           <div className="space-y-3">
-            {["w-11/12", "w-4/5", "w-2/3"].map((width) => (
-              <div className="flex items-center gap-3" key={width}>
-                <Skeleton className="size-4 shrink-0" />
-                <Skeleton className={cn("h-4", width)} />
-              </div>
-            ))}
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-11/12" />
+            <Skeleton className="h-4 w-4/5" />
+          </div>
+          <div className="space-y-3">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-5/6" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+          <div className="space-y-4 pt-2">
+            <Skeleton className="h-6 w-1/3" />
+            <div className="space-y-3">
+              {["w-11/12", "w-4/5", "w-2/3"].map((width) => (
+                <div className="flex items-center gap-3" key={width}>
+                  <Skeleton className="size-4 shrink-0" />
+                  <Skeleton className={cn("h-4", width)} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </DelayedLoading>
   );
 }
 
@@ -757,7 +811,6 @@ function HtmlDocumentPanelBody({ document }: { document: DocumentRef }) {
         vaultId: document.vaultId,
         path: document.path,
       })
-      .then(parsePreviewLease)
       .then((lease) => {
         if (active) setState(lease);
       })
@@ -862,10 +915,8 @@ function NotePane({
     let active = true;
     setState(null);
     Promise.all([
-      rpc.call("readNote", { vaultId, path: notePath }).then(parseNoteContent),
-      rpc
-        .call("preparePreview", { vaultId, path: notePath })
-        .then(parsePreviewLease),
+      rpc.call("readNote", { vaultId, path: notePath }),
+      rpc.call("preparePreview", { vaultId, path: notePath }),
     ])
       .then(([file, lease]) => {
         if (!active) return;
@@ -905,7 +956,7 @@ function NotePane({
             ? { expectedSha256: shaRef.current }
             : {}),
         });
-        const result = parseSaveResult(value);
+        const result = value;
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
@@ -919,11 +970,7 @@ function NotePane({
             vaultId,
             path: pathRef.current,
           });
-          if (
-            isRecord(renamed) &&
-            typeof renamed.path === "string" &&
-            renamed.path !== pathRef.current
-          ) {
+          if (renamed.path !== pathRef.current) {
             pathRef.current = renamed.path;
             renamedRef.current(renamed.path);
           }
@@ -988,8 +1035,6 @@ function NotePane({
             name: file.name,
             content,
           });
-          if (!isRecord(value) || typeof value.markdownPath !== "string")
-            throw new Error("Upload returned an invalid path");
           return { markdownPath: value.markdownPath };
         }}
         onFirstRender={(markdown) => {
@@ -1007,14 +1052,48 @@ function NotePane({
 
 function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
   const rpc = useRpc<typeof docsRpcContract>();
+  const navigate = useBbNavigate();
+  const liveFileTarget = useMemo<ExperimentalLiveFileTarget | null>(() => {
+    switch (source.kind) {
+      case "workspace":
+        return source.environmentId === null
+          ? null
+          : {
+              kind: source.kind,
+              environmentId: source.environmentId,
+              path: filePath,
+            };
+      case "host":
+        return source.experimental_hostId === undefined
+          ? null
+          : {
+              kind: source.kind,
+              hostId: source.experimental_hostId,
+              path: filePath,
+            };
+      case "thread-storage":
+        return source.threadId === null
+          ? null
+          : { kind: source.kind, threadId: source.threadId, path: filePath };
+    }
+  }, [filePath, source]);
   const openerSource = useMemo(
     () => ({
       kind: source.kind,
       threadId: source.threadId,
       environmentId: source.environmentId,
       projectId: source.projectId,
+      ...(source.experimental_hostId === undefined
+        ? {}
+        : { experimental_hostId: source.experimental_hostId }),
     }),
-    [source.environmentId, source.kind, source.projectId, source.threadId],
+    [
+      source.environmentId,
+      source.experimental_hostId,
+      source.kind,
+      source.projectId,
+      source.threadId,
+    ],
   );
   const [state, setState] = useState<
     | { content: string; lease: PreviewLease; previewPath: string }
@@ -1037,7 +1116,6 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
     setSaveError(null);
     void rpc
       .call("openFile", { source: openerSource, path: filePath })
-      .then(parseOpenedFile)
       .then(({ file, preview, previewPath }) => {
         if (!active) return;
         markdownRef.current = file.content;
@@ -1068,16 +1146,14 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
       setSaveError(null);
       const content = markdownRef.current;
       try {
-        const result = parseSaveResult(
-          await rpc.call("saveOpenedFile", {
-            source: openerSource,
-            path: filePath,
-            content,
-            ...(!force && shaRef.current
-              ? { expectedSha256: shaRef.current }
-              : {}),
-          }),
-        );
+        const result = await rpc.call("saveOpenedFile", {
+          source: openerSource,
+          path: filePath,
+          content,
+          ...(!force && shaRef.current
+            ? { expectedSha256: shaRef.current }
+            : {}),
+        });
         if (result.outcome === "conflict") {
           setConflict(true);
           return;
@@ -1118,6 +1194,28 @@ function DocsFileOpener({ path: filePath, source }: PluginFileOpenerProps) {
   }
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {liveFileTarget === null ? null : (
+        <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs">
+          <FileLink className="min-w-0 flex-1 truncate" target={liveFileTarget}>
+            {filePath}
+          </FileLink>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-7 shrink-0"
+            aria-label="Open file externally"
+            onClick={() =>
+              navigate.experimental_openFileExternally({
+                target: liveFileTarget,
+                location: null,
+              })
+            }
+          >
+            <HugeiconsIcon icon={ArrowUpRight01Icon} className="size-4" />
+          </Button>
+        </div>
+      )}
       {conflict ? (
         <div className="flex items-center gap-2 border-b border-border bg-muted px-4 py-2 text-xs">
           Changed on disk.
@@ -1175,7 +1273,7 @@ function HtmlPane({
     setError(null);
     void rpc
       .call("preparePreview", { vaultId, path: filePath })
-      .then((value) => setLease(parsePreviewLease(value)))
+      .then((value) => setLease(value))
       .catch((reason: unknown) =>
         setError(reason instanceof Error ? reason.message : String(reason)),
       );
@@ -1238,159 +1336,6 @@ function orderEntries(
   };
   visit("");
   return ordered;
-}
-
-const SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH = 640;
-
-interface NotesSidebarState {
-  headerMounted: boolean;
-  paneNarrow: boolean;
-  width: number;
-  userCollapsed: boolean | null;
-}
-
-interface NotesSidebarStore {
-  state: NotesSidebarState;
-  headerMounts: number;
-  viewMounts: number;
-  listeners: Set<() => void>;
-}
-
-// The header toggle and the sidebar view live in separate React subtrees and
-// find each other only through this map. Entries stay for the session: a
-// deleted entry lets one subtree keep the old store while the other creates a
-// new one, which silently breaks the header toggle. A reopened pane starts
-// clean anyway, because the view resets the state on its first mount.
-const notesSidebarStores = new Map<string, NotesSidebarStore>();
-const STANDALONE_SIDEBAR_SCOPE = "standalone";
-
-function notesSidebarVaultKey(subPath: string): string {
-  const firstSegment = subPath.split("/", 1)[0];
-  return firstSegment ? decodeURIComponent(firstSegment) : "";
-}
-
-function useNotesSidebarScope(subPath: string): {
-  scopeRef(element: HTMLElement | null): void;
-  storeKey: string;
-} {
-  const [paneScope, setPaneScope] = useState(STANDALONE_SIDEBAR_SCOPE);
-  const scopeRef = useCallback((element: HTMLElement | null) => {
-    if (element === null) return;
-    const nextPaneScope =
-      element
-        .closest<HTMLElement>("[data-split-pane-id]")
-        ?.getAttribute("data-split-pane-id") ?? STANDALONE_SIDEBAR_SCOPE;
-    setPaneScope((current) =>
-      current === nextPaneScope ? current : nextPaneScope,
-    );
-  }, []);
-  return {
-    scopeRef,
-    storeKey: `${paneScope}:${notesSidebarVaultKey(subPath)}`,
-  };
-}
-
-function getNotesSidebarStore(key: string): NotesSidebarStore {
-  const existing = notesSidebarStores.get(key);
-  if (existing) return existing;
-  const store: NotesSidebarStore = {
-    state: {
-      headerMounted: false,
-      paneNarrow: false,
-      width: 288,
-      userCollapsed: null,
-    },
-    headerMounts: 0,
-    viewMounts: 0,
-    listeners: new Set(),
-  };
-  notesSidebarStores.set(key, store);
-  return store;
-}
-
-function updateNotesSidebarState(
-  store: NotesSidebarStore,
-  patch: Partial<NotesSidebarState>,
-): void {
-  const next = { ...store.state, ...patch };
-  if (
-    next.headerMounted === store.state.headerMounted &&
-    next.paneNarrow === store.state.paneNarrow &&
-    next.width === store.state.width &&
-    next.userCollapsed === store.state.userCollapsed
-  ) {
-    return;
-  }
-  store.state = next;
-  for (const listener of store.listeners) listener();
-}
-
-function useNotesSidebarState(key: string): {
-  state: NotesSidebarState;
-  store: NotesSidebarStore;
-} {
-  const store = useMemo(() => getNotesSidebarStore(key), [key]);
-  const subscribe = useCallback(
-    (listener: () => void) => {
-      store.listeners.add(listener);
-      return () => store.listeners.delete(listener);
-    },
-    [store],
-  );
-  const getSnapshot = useCallback(() => store.state, [store]);
-  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  return { state, store };
-}
-
-function NotesSidebarToggle({
-  collapsed,
-  onCollapsedChange,
-}: {
-  collapsed: boolean;
-  onCollapsedChange(collapsed: boolean): void;
-}) {
-  return (
-    <Button
-      className="size-8"
-      size="icon"
-      variant="ghost"
-      aria-label={collapsed ? "Expand notes sidebar" : "Collapse notes sidebar"}
-      aria-expanded={!collapsed}
-      onClick={() => onCollapsedChange(!collapsed)}
-    >
-      <HugeiconsIcon icon={SidebarRightIcon} />
-    </Button>
-  );
-}
-
-function NotesPanelHeader({ subPath }: PluginNavPanelProps) {
-  const { scopeRef, storeKey } = useNotesSidebarScope(subPath);
-  const { state: sidebar, store } = useNotesSidebarState(storeKey);
-  const collapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
-  useLayoutEffect(() => {
-    store.headerMounts += 1;
-    updateNotesSidebarState(store, { headerMounted: true });
-    return () => {
-      store.headerMounts = Math.max(0, store.headerMounts - 1);
-      if (store.headerMounts === 0) {
-        updateNotesSidebarState(store, { headerMounted: false });
-      }
-    };
-  }, [store]);
-  return (
-    <div
-      ref={scopeRef}
-      data-testid="notes-sidebar-header"
-      className="flex w-8 shrink-0 items-center justify-end"
-    >
-      <NotesSidebarToggle
-        collapsed={collapsed}
-        onCollapsedChange={(userCollapsed) =>
-          updateNotesSidebarState(store, { userCollapsed })
-        }
-      />
-    </div>
-  );
 }
 
 interface NotesSidebarNavigationProps {
@@ -1490,7 +1435,6 @@ function Tree({
   onMoveFile,
   onVaultChange,
   onAddVault,
-  sidebarKey,
 }: {
   data: NotesData;
   selectedPath: string | null;
@@ -1506,7 +1450,6 @@ function Tree({
   ): void;
   onVaultChange(vaultId: string): void;
   onAddVault(): void;
-  sidebarKey: string;
 }) {
   const portalScopeProps = usePortalScopeProps();
   const [query, setQuery] = useState("");
@@ -1519,64 +1462,6 @@ function Tree({
     edge: "before" | "after";
   } | null>(null);
   const [folderDropTarget, setFolderDropTarget] = useState<string | null>(null);
-  const { scopeRef, storeKey } = useNotesSidebarScope(sidebarKey);
-  const { state: sidebar, store: sidebarStore } =
-    useNotesSidebarState(storeKey);
-  // null = follow the responsive default (collapsed in narrow panes) until
-  // the user toggles the sidebar explicitly.
-  const sidebarCollapsed = sidebar.userCollapsed ?? sidebar.paneNarrow;
-  const sidebarWidth = sidebar.width;
-  const asideRef = useRef<HTMLElement | null>(null);
-  const setAsideRef = useCallback(
-    (element: HTMLElement | null) => {
-      asideRef.current = element;
-      scopeRef(element);
-    },
-    [scopeRef],
-  );
-  useLayoutEffect(() => {
-    if (sidebarStore.viewMounts === 0) {
-      updateNotesSidebarState(sidebarStore, {
-        paneNarrow: false,
-        width: 288,
-        userCollapsed: null,
-      });
-    }
-    sidebarStore.viewMounts += 1;
-    return () => {
-      sidebarStore.viewMounts = Math.max(0, sidebarStore.viewMounts - 1);
-      if (sidebarStore.viewMounts === 0) {
-        updateNotesSidebarState(sidebarStore, {
-          paneNarrow: false,
-          width: 288,
-          userCollapsed: null,
-        });
-      }
-    };
-  }, [sidebarStore]);
-  useLayoutEffect(() => {
-    const pane = asideRef.current?.parentElement;
-    if (!pane || typeof ResizeObserver === "undefined") return;
-    const update = () => {
-      const width = pane.clientWidth;
-      // Width 0 means the pane is hidden or not yet laid out — keep the
-      // wide-pane default rather than collapsing.
-      updateNotesSidebarState(sidebarStore, {
-        paneNarrow: width > 0 && width < SIDEBAR_AUTO_COLLAPSE_PANE_WIDTH,
-      });
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(pane);
-    return () => observer.disconnect();
-  }, [sidebarStore]);
-  const resizeCleanupRef = useRef<(() => void) | null>(null);
-  useEffect(
-    () => () => {
-      resizeCleanupRef.current?.();
-    },
-    [],
-  );
   const notesByPath = useMemo(
     () => new Map(data.notes.map((note) => [note.path, note])),
     [data.notes],
@@ -1698,83 +1583,9 @@ function Tree({
     setFolderDropTarget(null);
   };
 
-  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    resizeCleanupRef.current?.();
-    const handle = event.currentTarget;
-    const pointerId = event.pointerId;
-    const startX = event.clientX;
-    const startWidth = sidebarWidth;
-    let frame: number | null = null;
-    let pendingWidth = startWidth;
-    const commitPendingWidth = () => {
-      frame = null;
-      updateNotesSidebarState(sidebarStore, { width: pendingWidth });
-    };
-    const move = (moveEvent: PointerEvent) => {
-      pendingWidth = Math.min(
-        480,
-        Math.max(220, startWidth + startX - moveEvent.clientX),
-      );
-      if (frame === null) {
-        frame = window.requestAnimationFrame(commitPendingWidth);
-      }
-    };
-    const cleanup = () => {
-      if (resizeCleanupRef.current !== cleanup) return;
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", cleanup);
-      handle.removeEventListener("pointercancel", cleanup);
-      handle.removeEventListener("lostpointercapture", cleanup);
-      window.removeEventListener("blur", cleanup);
-      if (frame !== null) {
-        window.cancelAnimationFrame(frame);
-        commitPendingWidth();
-      }
-      resizeCleanupRef.current = null;
-      if (handle.hasPointerCapture(pointerId)) {
-        handle.releasePointerCapture(pointerId);
-      }
-    };
-    resizeCleanupRef.current = cleanup;
-    handle.setPointerCapture(pointerId);
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", cleanup);
-    handle.addEventListener("pointercancel", cleanup);
-    handle.addEventListener("lostpointercapture", cleanup);
-    window.addEventListener("blur", cleanup);
-  };
-
-  if (sidebarCollapsed) {
-    return (
-      <aside
-        ref={setAsideRef}
-        className={cn(
-          "order-2 flex shrink-0 flex-col items-center",
-          !sidebar.headerMounted &&
-            "w-10 border-l border-border bg-muted/20 py-2",
-        )}
-        style={{ width: sidebar.headerMounted ? 0 : 40 }}
-      >
-        {!sidebar.headerMounted ? (
-          <NotesSidebarToggle
-            collapsed
-            onCollapsedChange={(userCollapsed) =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed })
-            }
-          />
-        ) : null}
-      </aside>
-    );
-  }
-
   return (
-    <aside
-      ref={setAsideRef}
-      className="relative order-2 flex shrink-0 flex-col border-l border-border bg-muted/20"
-      style={{ width: sidebarWidth }}
-    >
-      <div className="relative flex items-center gap-1 border-b border-border p-2">
+    <div className="flex h-full min-h-0 w-full flex-col bg-sidebar">
+      <div className="relative flex items-center gap-1 p-2">
         <NotesSidebarNavigation
           query={query}
           searchOpen={searchOpen}
@@ -1783,14 +1594,6 @@ function Tree({
           onNewNote={onNewNote}
           onNewFolder={onNewFolder}
         />
-        {!sidebar.headerMounted ? (
-          <NotesSidebarToggle
-            collapsed={false}
-            onCollapsedChange={(userCollapsed) =>
-              updateNotesSidebarState(sidebarStore, { userCollapsed })
-            }
-          />
-        ) : null}
         {draggingPath && dirname(draggingPath) ? (
           <button
             type="button"
@@ -1980,20 +1783,7 @@ function Tree({
           </div>
         ) : null}
       </div>
-      <div
-        className="absolute inset-y-0 -left-0.5 z-10 w-1 cursor-col-resize touch-none transition-colors hover:bg-border"
-        role="separator"
-        aria-label="Resize notes sidebar"
-        aria-orientation="vertical"
-        aria-valuemin={220}
-        aria-valuemax={480}
-        aria-valuenow={sidebarWidth}
-        onPointerDown={startResize}
-        onDoubleClick={() =>
-          updateNotesSidebarState(sidebarStore, { width: 288 })
-        }
-      />
-    </aside>
+    </div>
   );
 }
 
@@ -2012,11 +1802,13 @@ function parseRoute(subPath: string): {
   };
 }
 
-function NotesPanel({ subPath }: PluginNavPanelProps) {
+function NotesWorkspace({
+  subPath,
+  navigationOnly,
+}: PluginNavPanelProps & { navigationOnly: boolean }) {
   const rpc = useRpc<typeof docsRpcContract>();
   const navigate = useBbNavigate();
   const route = parseRoute(subPath);
-  const [vaultId, setVaultId] = useState<string | null>(route.vaultId);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [folderError, setFolderError] = useState<string | null>(null);
@@ -2025,37 +1817,48 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
   const [vaultRootPath, setVaultRootPath] = useState("");
   const [vaultHostId, setVaultHostId] = useState("primary");
   const [vaultError, setVaultError] = useState<string | null>(null);
-  const { data, refresh } = useNotebook(vaultId);
-  const activeVaultId = data?.vault.id ?? vaultId;
-  const filePath =
-    route.vaultId === null || route.vaultId === activeVaultId
-      ? route.filePath
-      : null;
-
-  useEffect(() => {
-    if (!vaultId && data?.vault.id) setVaultId(data.vault.id);
-  }, [data, vaultId]);
+  const { data, error, refresh } = useNotebook(route.vaultId);
+  const activeVaultId = data?.vault.id ?? route.vaultId;
+  const filePath = route.filePath;
+  const currentVaultIdRef = useRef(activeVaultId);
+  currentVaultIdRef.current = activeVaultId;
+  const isCurrentVault = useCallback(
+    (vaultId: string) => currentVaultIdRef.current === vaultId,
+    [],
+  );
 
   const open = useCallback(
     (path: string, replace = false) => {
-      if (!activeVaultId) return;
+      if (!activeVaultId || !isCurrentVault(activeVaultId)) return;
       navigate.toPluginPanel("docs", {
         subPath: `${activeVaultId}/${path}`,
         replace,
       });
     },
-    [activeVaultId, navigate],
+    [activeVaultId, isCurrentVault, navigate],
   );
 
-  if (!data || !activeVaultId)
+  if (!data || !activeVaultId) {
+    if (error)
+      return (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm">
+          <p className="text-destructive">Could not load vaults: {error}</p>
+          <Button size="sm" variant="outline" onClick={refresh}>
+            Retry
+          </Button>
+        </div>
+      );
     return (
-      <div
-        className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-muted-foreground"
-        role="status"
-      >
-        Loading vaults…
-      </div>
+      <DelayedLoading>
+        <div
+          className="flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-muted-foreground"
+          role="status"
+        >
+          Loading vaults…
+        </div>
+      </DelayedLoading>
     );
+  }
 
   const selectedFolder = filePath ? dirname(filePath) : "";
   const newNote = () =>
@@ -2066,7 +1869,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
         name: "Untitled",
       })
       .then((value) => {
-        if (isRecord(value) && typeof value.path === "string") {
+        if (isCurrentVault(activeVaultId)) {
           refresh();
           open(value.path);
         }
@@ -2078,6 +1881,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
     const target = selectedFolder ? `${selectedFolder}/${name}` : name;
     try {
       await rpc.call("createFolder", { vaultId: activeVaultId, path: target });
+      if (!isCurrentVault(activeVaultId)) return;
       setFolderName("");
       setFolderDialogOpen(false);
       refresh();
@@ -2097,13 +1901,11 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
         rootPath,
         ...(vaultHostId === "primary" ? {} : { hostId: vaultHostId }),
       });
-      if (!isRecord(value) || typeof value.id !== "string")
-        throw new Error("Create vault returned an invalid response");
+      if (!isCurrentVault(activeVaultId)) return;
       setVaultName("");
       setVaultRootPath("");
       setVaultHostId("primary");
       setVaultDialogOpen(false);
-      setVaultId(value.id);
       navigate.toPluginPanel("docs", {
         subPath: value.id,
       });
@@ -2118,6 +1920,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
         vaultId: activeVaultId,
         path,
       });
+      if (!isCurrentVault(activeVaultId)) return;
       refresh();
       if (filePath === path) {
         navigate.toPluginPanel("docs", {
@@ -2140,6 +1943,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
         parent,
         paths,
       });
+      if (!isCurrentVault(activeVaultId)) return;
       refresh();
     } catch (error) {
       toast.error(
@@ -2178,6 +1982,7 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           );
         }
       }
+      if (!isCurrentVault(activeVaultId)) return;
       refresh();
       if (filePath === sourcePath) open(destinationPath, true);
       if (orderPreserved) {
@@ -2197,27 +2002,26 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1">
-        <Tree
-          data={data}
-          selectedPath={filePath}
-          onOpen={open}
-          onNewNote={newNote}
-          onNewFolder={() => setFolderDialogOpen(true)}
-          onDeleteFile={(path) => void deleteFile(path)}
-          onReorderFiles={(parent, paths) => void reorderFiles(parent, paths)}
-          onMoveFile={(sourcePath, targetFolder, targetOrder) =>
-            void moveFile(sourcePath, targetFolder, targetOrder)
-          }
-          onVaultChange={(value) => {
-            setVaultId(value);
-            navigate.toPluginPanel("docs", {
-              subPath: value,
-            });
-          }}
-          onAddVault={() => setVaultDialogOpen(true)}
-          sidebarKey={route.vaultId ?? ""}
-        />
-        {filePath && /\.md$/i.test(filePath) ? (
+        {navigationOnly ? (
+          <Tree
+            data={data}
+            selectedPath={filePath}
+            onOpen={open}
+            onNewNote={newNote}
+            onNewFolder={() => setFolderDialogOpen(true)}
+            onDeleteFile={(path) => void deleteFile(path)}
+            onReorderFiles={(parent, paths) => void reorderFiles(parent, paths)}
+            onMoveFile={(sourcePath, targetFolder, targetOrder) =>
+              void moveFile(sourcePath, targetFolder, targetOrder)
+            }
+            onVaultChange={(value) => {
+              navigate.toPluginPanel("docs", {
+                subPath: value,
+              });
+            }}
+            onAddVault={() => setVaultDialogOpen(true)}
+          />
+        ) : filePath && /\.md$/i.test(filePath) ? (
           <NotePane
             key={`${activeVaultId}:${filePath}`}
             vaultId={activeVaultId}
@@ -2243,123 +2047,135 @@ function NotesPanel({ subPath }: PluginNavPanelProps) {
           </div>
         )}
       </div>
-      <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
-        <DialogContent>
-          <form
-            className="grid gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void createFolder();
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>New folder</DialogTitle>
-              <DialogDescription>
-                Create it{" "}
-                {selectedFolder
-                  ? `inside ${selectedFolder}`
-                  : "at the vault root"}
-                .
-              </DialogDescription>
-            </DialogHeader>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Folder name
-              <Input
-                autoFocus
-                value={folderName}
-                onChange={(event) => setFolderName(event.target.value)}
-                placeholder="Projects"
-              />
-            </label>
-            {folderError ? (
-              <p className="text-xs text-destructive">{folderError}</p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setFolderDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!folderName.trim()}>
-                Create folder
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={vaultDialogOpen} onOpenChange={setVaultDialogOpen}>
-        <DialogContent>
-          <form
-            className="grid gap-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void createVault();
-            }}
-          >
-            <DialogHeader>
-              <DialogTitle>Add vault</DialogTitle>
-              <DialogDescription>
-                Open a notes folder from this machine or a connected host.
-              </DialogDescription>
-            </DialogHeader>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Name
-              <Input
-                autoFocus
-                value={vaultName}
-                onChange={(event) => setVaultName(event.target.value)}
-                placeholder="Personal"
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Folder path
-              <Input
-                value={vaultRootPath}
-                onChange={(event) => setVaultRootPath(event.target.value)}
-                placeholder="/Users/me/Notes"
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium">
-              Host
-              <Select value={vaultHostId} onValueChange={setVaultHostId}>
-                <SelectTrigger aria-label="Vault host">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="primary">Primary host</SelectItem>
-                  {data.hosts.map((host) => (
-                    <SelectItem key={host.id} value={host.id}>
-                      {host.name} · {host.status}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            {vaultError ? (
-              <p className="text-xs text-destructive">{vaultError}</p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setVaultDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={!vaultName.trim() || !vaultRootPath.trim()}
-              >
-                Add vault
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {navigationOnly ? (
+        <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
+          <DialogContent>
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createFolder();
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>New folder</DialogTitle>
+                <DialogDescription>
+                  Create it{" "}
+                  {selectedFolder
+                    ? `inside ${selectedFolder}`
+                    : "at the vault root"}
+                  .
+                </DialogDescription>
+              </DialogHeader>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Folder name
+                <Input
+                  autoFocus
+                  value={folderName}
+                  onChange={(event) => setFolderName(event.target.value)}
+                  placeholder="Projects"
+                />
+              </label>
+              {folderError ? (
+                <p className="text-xs text-destructive">{folderError}</p>
+              ) : null}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setFolderDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!folderName.trim()}>
+                  Create folder
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {navigationOnly ? (
+        <Dialog open={vaultDialogOpen} onOpenChange={setVaultDialogOpen}>
+          <DialogContent>
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void createVault();
+              }}
+            >
+              <DialogHeader>
+                <DialogTitle>Add vault</DialogTitle>
+                <DialogDescription>
+                  Open a notes folder from this machine or a connected host.
+                </DialogDescription>
+              </DialogHeader>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Name
+                <Input
+                  autoFocus
+                  value={vaultName}
+                  onChange={(event) => setVaultName(event.target.value)}
+                  placeholder="Personal"
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Folder path
+                <Input
+                  value={vaultRootPath}
+                  onChange={(event) => setVaultRootPath(event.target.value)}
+                  placeholder="/Users/me/Notes"
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium">
+                Host
+                <Select value={vaultHostId} onValueChange={setVaultHostId}>
+                  <SelectTrigger aria-label="Vault host">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="primary">Primary host</SelectItem>
+                    {data.hosts.map((host) => (
+                      <SelectItem key={host.id} value={host.id}>
+                        {host.name} · {host.status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              {vaultError ? (
+                <p className="text-xs text-destructive">{vaultError}</p>
+              ) : null}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setVaultDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!vaultName.trim() || !vaultRootPath.trim()}
+                >
+                  Add vault
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
     </div>
   );
+}
+
+function NotesPanel(props: PluginNavPanelProps) {
+  return <NotesWorkspace {...props} navigationOnly={false} />;
+}
+
+function NotesNavigationPanel(props: PluginNavPanelProps) {
+  return <NotesWorkspace {...props} navigationOnly />;
 }
 
 export default definePluginApp((app) => {
@@ -2369,7 +2185,16 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: "docs",
     component: NotesPanel,
-    headerContent: NotesPanelHeader,
+    experimental_fixedTabs: [
+      {
+        panelId: "docs",
+        id: "navigation",
+        title: "Navigation",
+        icon: "ListView",
+        component: NotesNavigationPanel,
+        layout: "flush",
+      },
+    ],
   });
   app.slots.threadPanelAction({
     id: "document",

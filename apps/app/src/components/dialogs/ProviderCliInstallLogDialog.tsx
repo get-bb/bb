@@ -20,7 +20,7 @@ interface ProviderCliInstallLogDialogProps {
   onClose: () => void;
 }
 
-export interface ProviderCliInstallLogDialogContentProps {
+interface ProviderCliInstallLogDialogContentProps {
   state: ProviderCliInstallLogDialogState;
 }
 

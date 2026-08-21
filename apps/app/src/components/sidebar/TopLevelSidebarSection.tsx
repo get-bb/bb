@@ -2,6 +2,7 @@ import {
   useCallback,
   type CSSProperties,
   type KeyboardEventHandler,
+  type MouseEvent,
   type MouseEventHandler,
   type PointerEventHandler,
   type ReactNode,
@@ -9,7 +10,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import {
   SidebarStickyGroup,
   SidebarStickyTier,
@@ -24,18 +25,22 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
-import type { CollapsedChildActivity } from "@/lib/thread-activity";
+import type { CollapsedChildActivity } from "@bb/client-core";
 import { CollapsedThreadStatusGlyph } from "./ThreadRow";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import {
   useThreadGroupSplitIndicator,
   type ThreadSplitIndicatorTarget,
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
+import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
-export interface TopLevelSidebarSectionCollapseControl {
+function stopActionsClick(event: MouseEvent<HTMLSpanElement>) {
+  event.stopPropagation();
+}
+
+interface TopLevelSidebarSectionCollapseControl {
   isCollapsed: boolean;
   onToggleCollapsed: () => void;
 }
@@ -43,6 +48,8 @@ export interface TopLevelSidebarSectionCollapseControl {
 export interface TopLevelSidebarSectionProps {
   label: string;
   children: ReactNode;
+  /** Stable identity for a persisted thread section. Built-in groups omit it. */
+  sectionId?: string;
   actions?: ReactNode;
   actionsAlwaysVisible?: boolean;
   actionsMobileAlways?: boolean;
@@ -64,6 +71,7 @@ export interface TopLevelSidebarSectionProps {
 export function TopLevelSidebarSection({
   label,
   children,
+  sectionId,
   actions,
   actionsAlwaysVisible = false,
   actionsMobileAlways = false,
@@ -77,10 +85,9 @@ export function TopLevelSidebarSection({
   consumeClickSuppression,
   isDropTargetActive = false,
 }: TopLevelSidebarSectionProps) {
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const collapsedSplitIndicator = useThreadGroupSplitIndicator(
     collapsedThreads,
-    threadSplitsEnabled && collapseControl?.isCollapsed === true,
+    collapseControl?.isCollapsed === true,
   );
   const handleClickCapture = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
@@ -102,12 +109,6 @@ export function TopLevelSidebarSection({
     },
     [collapseControl],
   );
-  const stopActionsClick = useCallback<MouseEventHandler<HTMLSpanElement>>(
-    (event) => {
-      event.stopPropagation();
-    },
-    [],
-  );
   const stopCollapseControlPointerDown = useCallback<
     PointerEventHandler<HTMLButtonElement>
   >((event) => {
@@ -123,6 +124,7 @@ export function TopLevelSidebarSection({
     <SidebarStickyGroup
       ref={sectionRef}
       style={sectionStyle}
+      data-sidebar-section-id={sectionId}
       className={cn(
         "group/sidebar-section min-w-0 rounded-md transition-colors",
         isDropTargetActive && "bg-sidebar-accent/60",
@@ -184,7 +186,8 @@ export function TopLevelSidebarSection({
             data-sidebar-collapsed-activity-edge=""
             data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
             className={cn(
-              "pointer-events-none absolute right-1 top-1/2 z-20 inline-flex -translate-y-1/2 items-center text-subtle-foreground max-md:pointer-coarse:relative max-md:pointer-coarse:right-auto max-md:pointer-coarse:top-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:translate-y-0",
+              "pointer-events-none absolute right-0 top-1/2 z-20 inline-flex -translate-y-1/2 items-center justify-center text-subtle-foreground max-md:pointer-coarse:relative max-md:pointer-coarse:right-auto max-md:pointer-coarse:top-auto max-md:pointer-coarse:shrink-0 max-md:pointer-coarse:translate-y-0",
+              COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
               actions && SIDEBAR_HOVER_ACTIONS_FADE_CLASS,
             )}
           >

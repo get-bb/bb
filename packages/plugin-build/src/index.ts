@@ -16,17 +16,17 @@
  */
 export {
   buildPluginApp,
-  type PluginAppBuildResult,
+  RUNTIME_SLOT_BY_SPECIFIER,
 } from "./build-plugin-app.js";
 export {
   buildPluginServer,
-  type PluginServerBuildResult,
+  PLUGIN_SERVER_EXTERNALS,
 } from "./build-plugin-server.js";
+export { buildPluginHost } from "./build-plugin-host.js";
 export * from "./plugin-dev-loop.js";
 export {
   PLUGIN_TOOLCHAIN_PINS,
   resolvePluginBuildToolchain,
-  toolchainCacheDir,
   type PluginBuildToolchain,
 } from "./toolchain.js";
 export { assertValidPluginCompactIconSvg } from "./svg-asset.js";

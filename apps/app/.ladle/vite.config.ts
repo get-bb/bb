@@ -51,6 +51,8 @@ export default defineConfig({
   // mutations as the app. Proxy them to this checkout's isolated dev server
   // instead of reconstructing server state with Ladle-only fixtures.
   server: {
+    // bb Connect shares use authenticated `<machine>--<port>.getbb.app` hosts.
+    allowedHosts: [".getbb.app"],
     proxy: {
       "/api": {
         target: devInstance.serverUrl,

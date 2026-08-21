@@ -1,4 +1,4 @@
-import type { PluginThreadEventPayloads } from "@bb/plugin-sdk";
+import type { PluginThreadEventPayloads } from "@get-bb/plugin-sdk";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.created"]["thread"];
 
@@ -23,7 +23,6 @@ export function makeThreadResponse(
     parentThreadId: null,
     sourceThreadId: null,
     originKind: null,
-    childOrigin: null,
     originPluginId: null,
     visibility: "visible",
     archivedAt: null,
@@ -34,6 +33,7 @@ export function makeThreadResponse(
     createdAt: 0,
     updatedAt: 0,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    activeBackgroundAgentCount: 0,
     canSpawnChild: true,
     ...overrides,
   };

@@ -37,7 +37,6 @@ interface ThreadSectionDialogContentProps {
   description: string;
   errorMessage?: string | null;
   initialName: string;
-  inputLabel: string;
   pending: boolean;
   submitLabel: string;
   title: string;
@@ -61,7 +60,6 @@ export function ThreadSectionCreateDialog({
             description="Create a section for threads."
             errorMessage={errorMessage}
             initialName=""
-            inputLabel="Section name"
             pending={pending}
             submitLabel="Create section"
             title="New section"
@@ -91,7 +89,6 @@ export function ThreadSectionRenameDialog({
             description="Choose a new name for this section."
             errorMessage={errorMessage}
             initialName={target.name}
-            inputLabel="Section name"
             pending={pending}
             submitLabel="Rename section"
             title="Rename section"
@@ -108,7 +105,6 @@ function ThreadSectionDialogContent({
   description,
   errorMessage,
   initialName,
-  inputLabel,
   pending,
   submitLabel,
   title,
@@ -149,7 +145,7 @@ function ThreadSectionDialogContent({
           <Input
             ref={inputRef}
             id={inputId}
-            aria-label={inputLabel}
+            aria-label="Section name"
             value={name}
             autoCapitalize="sentences"
             autoCorrect="off"

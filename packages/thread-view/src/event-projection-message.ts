@@ -10,31 +10,30 @@ import type {
   SystemMessageKind,
   SystemMessageSubject,
   Thread,
-  ThreadEventRow,
   ThreadEventScope,
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
 import type { EventProjection } from "./event-projection.js";
 
-export const eventProjectionMessageStatusValues = [
+const eventProjectionMessageStatusValues = [
   "streaming",
   "pending",
   "completed",
   "error",
   "interrupted",
 ] as const;
-export type EventProjectionMessageStatus =
+type EventProjectionMessageStatus =
   (typeof eventProjectionMessageStatusValues)[number];
 
-export const eventProjectionApprovalLifecycleStatusValues = [
+const eventProjectionApprovalLifecycleStatusValues = [
   "waiting_for_approval",
   "denied",
 ] as const;
 export type EventProjectionApprovalLifecycleStatus =
   (typeof eventProjectionApprovalLifecycleStatusValues)[number];
 
-export const eventProjectionPermissionGrantLifecycleValues = [
+const eventProjectionPermissionGrantLifecycleValues = [
   "pending",
   "resolving",
   "granted",
@@ -43,7 +42,7 @@ export const eventProjectionPermissionGrantLifecycleValues = [
 ] as const;
 export type EventProjectionPermissionGrantLifecycle =
   (typeof eventProjectionPermissionGrantLifecycleValues)[number];
-export const eventProjectionUserQuestionLifecycleValues = [
+const eventProjectionUserQuestionLifecycleValues = [
   "pending",
   "resolving",
   "answered",
@@ -63,21 +62,20 @@ export interface EventProjectionMessageBase {
   parentToolCallId?: string;
 }
 
-export const eventProjectionTurnRequestKindValues = [
-  "message",
-  "steer",
-] as const;
+const eventProjectionTurnRequestKindValues = ["message", "steer"] as const;
 export type EventProjectionTurnRequestKind =
   (typeof eventProjectionTurnRequestKindValues)[number];
 
-export const eventProjectionTurnRequestStatusValues = [
+const eventProjectionTurnRequestStatusValues = [
   "pending",
   "accepted",
+  "rejected",
 ] as const;
-export type EventProjectionTurnRequestStatus =
+type EventProjectionTurnRequestStatus =
   (typeof eventProjectionTurnRequestStatusValues)[number];
 
 export interface EventProjectionTurnRequest {
+  isGrouped: boolean;
   kind: EventProjectionTurnRequestKind;
   status: EventProjectionTurnRequestStatus;
 }
@@ -134,9 +132,10 @@ export type EventProjectionToolParsedIntent =
       cmd: string;
     };
 
-export interface EventProjectionDelegationMetadata {
+interface EventProjectionDelegationMetadata {
   subagentType?: string;
   description?: string;
+  model?: string;
 }
 
 export interface EventProjectionToolCallMessage extends EventProjectionMessageBase {
@@ -227,7 +226,7 @@ export interface EventProjectionFileEditMessage extends EventProjectionMessageBa
   >;
 }
 
-export const eventProjectionOperationTypeValues = [
+const eventProjectionOperationTypeValues = [
   "provider-unhandled",
   "warning",
   "deprecation",
@@ -235,18 +234,19 @@ export const eventProjectionOperationTypeValues = [
   "thread-provisioning",
   "operation",
   "compaction",
+  "context-clear",
 ] as const;
-export type EventProjectionOperationType =
+type EventProjectionOperationType =
   (typeof eventProjectionOperationTypeValues)[number];
 
-export const eventProjectionThreadOperationKindValues = [
+const eventProjectionThreadOperationKindValues = [
   "ownership_change",
   "other",
 ] as const;
 export type EventProjectionThreadOperationKind =
   (typeof eventProjectionThreadOperationKindValues)[number];
 
-export const eventProjectionThreadOperationStatusValues = [
+const eventProjectionThreadOperationStatusValues = [
   "requested",
   "queued",
   "running",
@@ -268,7 +268,7 @@ export interface EventProjectionOwnershipChangeThreadOperationMetadata {
   metadata: OwnershipChangeOperationMetadata | null;
 }
 
-export interface EventProjectionOtherThreadOperationMetadata {
+interface EventProjectionOtherThreadOperationMetadata {
   operation: "other";
   rawOperation: string;
   status: EventProjectionThreadOperationStatus;
@@ -296,7 +296,7 @@ export interface EventProjectionProvisioningMetadata {
   transcript?: EventProjectionProvisioningTranscriptEntry[];
 }
 
-export interface EventProjectionApprovalTarget {
+interface EventProjectionApprovalTarget {
   itemId: string;
   toolName: string | null;
 }
@@ -366,10 +366,18 @@ export interface EventProjectionDelegationMessage
 export interface EventProjectionWorkflowMessage extends EventProjectionMessageBase {
   kind: "workflow";
   itemId: string;
+  /**
+   * The provider's stable task id shared across restarted generations of the
+   * same task. Null for events persisted before the item carried it — those
+   * encode the family in the item id's legacy `#N` suffix.
+   */
+  familyId: string | null;
   /** Raw SDK task discriminant (e.g. "local_workflow", "local_bash"). */
   taskType: string;
   workflowName: string | null;
   description: string;
+  /** Model requested by the spawning delegation, when the provider exposed it. */
+  model: string | null;
   status: Extract<
     EventProjectionMessageStatus,
     "pending" | "completed" | "error" | "interrupted"
@@ -394,13 +402,6 @@ export interface EventProjectionErrorMessage extends EventProjectionMessageBase 
   willRetry?: boolean;
 }
 
-export interface EventProjectionDebugRawEventMessage extends EventProjectionMessageBase {
-  kind: "debug/raw-event";
-  rawType: string;
-  rawEvent: ThreadEventRow;
-  reason: "ignored-noise" | "duplicate-event" | "unhandled";
-}
-
 export type EventProjectionMessage =
   | EventProjectionUserMessage
   | EventProjectionAssistantTextMessage
@@ -415,11 +416,9 @@ export type EventProjectionMessage =
   | EventProjectionUserQuestionLifecycleMessage
   | EventProjectionDelegationMessage
   | EventProjectionWorkflowMessage
-  | EventProjectionErrorMessage
-  | EventProjectionDebugRawEventMessage;
+  | EventProjectionErrorMessage;
 
 export interface BuildEventProjectionMessagesOptions {
-  includeDebugRawEvents?: boolean;
   includeProviderUnhandledOperations?: boolean;
   threadStatus?: Thread["status"];
   /**

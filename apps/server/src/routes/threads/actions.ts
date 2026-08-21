@@ -1,8 +1,9 @@
 import {
-  createQueuedThreadMessage,
+  createQueuedThreadMessageInTransaction,
   deleteQueuedThreadMessage,
   getEnvironment,
   getQueuedThreadMessage,
+  getThread,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
   pinThread,
   reorderPinnedThread,
@@ -15,6 +16,7 @@ import {
   type ReorderPinnedThreadResult,
   type ReorderQueuedThreadMessageResult,
   type SetQueuedThreadMessageGroupBoundaryResult,
+  type DbQueryConnection,
 } from "@bb/db";
 import {
   publicApiRoutes,
@@ -25,7 +27,11 @@ import {
   type SendMessageRequest,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
-import type { Thread, ThreadQueuedMessage } from "@bb/domain";
+import {
+  createStandaloneBuiltinCompactCommandInput,
+  type Thread,
+  type ThreadQueuedMessage,
+} from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
@@ -34,7 +40,13 @@ import {
   requestEnvironmentCleanupAdvance,
   wouldCleanupEnvironment,
 } from "../../services/environments/environment-cleanup-internal.js";
+import { applyLoggedEnvironmentLifecycleEvent } from "../../services/environments/lifecycle-outcome.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
+import {
+  goneThreadEnvironmentDetails,
+  threadEnvironmentUnavailableDetails,
+  throwThreadEnvironmentUnavailable,
+} from "../../services/lib/lifecycle-api-errors.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 import { validatePromptAttachmentReferences } from "../../services/projects/attachments.js";
 import {
@@ -47,14 +59,17 @@ import {
   resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "../../services/threads/thread-send.js";
+import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
-  buildThreadStopCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
-import { getLastProviderThreadId } from "../../services/threads/thread-events.js";
-import { requestThreadStopForCurrentState } from "../../services/threads/thread-lifecycle.js";
+import {
+  getLastProviderThreadId,
+  isManualCompactionActive,
+} from "../../services/threads/thread-events.js";
+import { stopThreadForCurrentState } from "../../services/threads/thread-lifecycle.js";
 import {
   getThreadPromptBannerActivity,
   toThreadListEntryResponses,
@@ -63,19 +78,17 @@ import {
 import {
   archiveThreadAndChildren,
   archiveThreadAndHiddenSourceForks,
+  resolveArchiveThreadEnvironment,
 } from "../../services/threads/thread-archive.js";
 import {
   requireThreadCommandEnvironment,
   requireThreadHostCommandEnvironment,
+  resolveThreadHostCommandEnvironment,
 } from "../../services/threads/thread-command-environment.js";
 import {
   LIVE_DAEMON_COMMAND_TIMEOUT_MS,
   runLiveHostCommand,
 } from "../../services/hosts/live-command.js";
-import {
-  continueThreadAfterProviderRateLimit,
-  getProviderRateLimitRecoveryStatus,
-} from "../../services/threads/provider-rate-limit-recovery.js";
 
 function toQueuedMessageOrderResponse(
   result: ReorderQueuedThreadMessageResult,
@@ -117,6 +130,38 @@ function toQueuedMessageOrderResponse(
         "Queued messages with different execution options cannot be grouped",
       );
   }
+}
+
+async function compactThreadContext(
+  deps: AppDeps,
+  thread: Thread,
+): Promise<void> {
+  ensureThreadIsWritable(thread);
+  if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `Provider "${thread.providerId}" does not support manual context compaction`,
+    );
+  }
+  if (thread.status !== "idle" && thread.status !== "error") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Context can only be compacted while the thread is idle or errored",
+    );
+  }
+
+  const environment = await requireThreadCommandEnvironment(deps, { thread });
+  await sendThreadMessage(deps, {
+    environment,
+    payload: {
+      input: createStandaloneBuiltinCompactCommandInput(),
+      mode: "start",
+    },
+    thread,
+    trigger: "user",
+  });
 }
 
 function toQueuedMessageGroupBoundaryResponse(
@@ -216,6 +261,46 @@ function queuedMessagePayloadFromSendRequest(
   };
 }
 
+/**
+ * Admits a queued message against the current thread and environment rows.
+ * Returns the provider thread id so the caller can decide on auto-send without
+ * a second event-history read.
+ *
+ * A queued message can only drain into the thread's environment. A gone
+ * environment (`destroying`/`destroyed`) is never reprovisioned, so accepting
+ * the message would park it in the queue forever while the thread keeps
+ * reporting `idle` (#1789). Refuse with the same 409 the direct send path
+ * returns.
+ *
+ * A thread with no environment row is accepted while it has never run: the
+ * queue is how messages wait for provisioning. Once the thread has a provider
+ * thread id, a missing environment means the row was pruned after destroy, and
+ * the direct send path already refuses with `never_attached`.
+ */
+function admitQueuedMessage(
+  db: DbQueryConnection,
+  thread: Thread,
+): { providerThreadId: string | null } {
+  ensureThreadIsWritable(thread);
+  const providerThreadId = getLastProviderThreadId({ db }, thread.id);
+  if (thread.environmentId === null) {
+    if (providerThreadId !== null) {
+      throwThreadEnvironmentUnavailable(
+        threadEnvironmentUnavailableDetails("never_attached", null),
+      );
+    }
+    return { providerThreadId };
+  }
+  const environment = getEnvironment(db, thread.environmentId);
+  const goneDetails = environment
+    ? goneThreadEnvironmentDetails(environment)
+    : null;
+  if (goneDetails) {
+    throwThreadEnvironmentUnavailable(goneDetails);
+  }
+  return { providerThreadId };
+}
+
 async function createQueuedMessageForThread(
   deps: AppDeps,
   args: CreateQueuedMessageForThreadArgs,
@@ -227,27 +312,38 @@ async function createQueuedMessageForThread(
     input: payload.input,
     projectId: thread.projectId,
   });
-  const execution = await buildExecutionOptions(
-    deps,
-    payload,
-    {
-      threadId: thread.id,
-    },
-    "client/turn/requested",
-  );
+  const execution = await buildExecutionOptions(deps, payload, {
+    threadId: thread.id,
+  });
   const senderThreadId = resolveMessageSenderThreadId(deps, {
     senderThreadId: payload.senderThreadId,
     targetThread: thread,
   });
-  const queuedMessage = createQueuedThreadMessage(deps.db, deps.hub, {
-    threadId: thread.id,
-    content: payload.input,
-    senderThreadId,
-    model: execution.model,
-    reasoningLevel: execution.reasoningLevel,
-    permissionMode: execution.permissionMode,
-    serviceTier: execution.serviceTier,
-  });
+  // The awaits above can interleave with an archive or environment destroy, so
+  // admit against the rows as they are at insert time, in the same immediate
+  // transaction as the insert.
+  const { currentThread, providerThreadId, queuedMessage } =
+    deps.db.transaction(
+      (tx) => {
+        const currentThread = getThread(tx, thread.id);
+        if (!currentThread) {
+          throw new ApiError(404, "thread_not_found", "Thread not found");
+        }
+        const { providerThreadId } = admitQueuedMessage(tx, currentThread);
+        const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
+          threadId: thread.id,
+          content: payload.input,
+          senderThreadId,
+          model: execution.model,
+          reasoningLevel: execution.reasoningLevel,
+          permissionMode: execution.permissionMode,
+          serviceTier: execution.serviceTier,
+        });
+        return { currentThread, providerThreadId, queuedMessage };
+      },
+      { behavior: "immediate" },
+    );
+  deps.hub.notifyThread(thread.id, ["queue-changed"]);
   if (senderThreadId === null && payload.input.length > 0) {
     deps.telemetry.capture({
       name: "user_message_sent",
@@ -258,10 +354,7 @@ async function createQueuedMessageForThread(
       },
     });
   }
-  if (
-    thread.status === "idle" &&
-    getLastProviderThreadId(deps, thread.id) !== null
-  ) {
+  if (currentThread.status === "idle" && providerThreadId !== null) {
     requestQueuedMessageAutoSendForThread(deps, {
       queuedMessageId: queuedMessage.id,
       threadId: thread.id,
@@ -271,14 +364,18 @@ async function createQueuedMessageForThread(
 }
 
 export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
-  const { get, post, patch, del } = typedRoutes<PublicApiSchema>(app, {
+  const { post, patch, del } = typedRoutes<PublicApiSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
   });
   const routes = publicApiRoutes.threads;
 
   post(routes.send, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (payload.mode === "queue-if-active" && thread.status === "active") {
+    const shouldQueue =
+      thread.status === "active" &&
+      (payload.mode === "queue-if-active" ||
+        (payload.mode !== "start" && isManualCompactionActive(deps, thread)));
+    if (shouldQueue) {
       ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
       await createQueuedMessageForThread(deps, {
         payload: queuedMessagePayloadFromSendRequest(payload),
@@ -298,28 +395,17 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json({ ok: true });
   });
 
-  get(routes.rateLimitRecovery, async (context) => {
+  post(routes.editMessage, async (context, payload) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const environment = await requireThreadCommandEnvironment(deps, {
       thread,
     });
-    return context.json(
-      getProviderRateLimitRecoveryStatus(deps, { environment, thread }),
-    );
-  });
-
-  post(routes.continueAfterRateLimit, async (context, payload) => {
-    const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const environment = await requireThreadCommandEnvironment(deps, {
+    const result = await editThreadMessage(deps, {
+      environment,
+      payload,
       thread,
     });
-    return context.json(
-      await continueThreadAfterProviderRateLimit(deps, {
-        environment,
-        failedRequestId: payload.failedRequestId,
-        thread,
-      }),
-    );
+    return context.json(result);
   });
 
   post(routes.createQueuedMessage, async (context, payload) => {
@@ -433,14 +519,17 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.stop, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    const environment =
-      thread.environmentId === null
-        ? null
-        : requireThreadHostCommandEnvironment({
-            db: deps.db,
-            thread,
-          });
-    requestThreadStopForCurrentState(deps, thread, environment);
+    const environment = resolveThreadHostCommandEnvironment({
+      db: deps.db,
+      thread,
+    });
+    await stopThreadForCurrentState(deps, thread, environment);
+    return context.json({ ok: true });
+  });
+
+  post(routes.compact, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    await compactThreadContext(deps, thread);
     return context.json({ ok: true });
   });
 
@@ -463,12 +552,9 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     await runLiveHostCommand(deps, {
       command: {
-        ...buildThreadStopCommand({
-          environmentId: environment.id,
-          hostId: environment.hostId,
-          threadId: thread.id,
-        }),
         type: "thread.plan.cancel",
+        environmentId: environment.id,
+        threadId: thread.id,
         expectedTurnId: activity.activePlanTurnId,
       },
       hostId: environment.hostId,
@@ -507,7 +593,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       deps,
       {},
       { threadId: thread.id },
-      "client/turn/requested",
     );
     const preparedRuntimeCommand = await prepareTurnSubmitCommandPayload(deps, {
       environment,
@@ -527,6 +612,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
           ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
           : {}),
+        bridgeLaunch: preparedRuntimeCommand.bridgeLaunch,
       },
       hostId: environment.hostId,
       timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
@@ -619,10 +705,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
       environmentId: thread.environmentId,
       excludeThreadId: thread.id,
     });
-    const environment = requireThreadHostCommandEnvironment({
-      db: deps.db,
-      thread,
-    });
+    const environment = resolveArchiveThreadEnvironment(deps, { thread });
     const archiveResult = archiveThreadAndHiddenSourceForks(deps, {
       environment,
       thread,
@@ -652,10 +735,13 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
   });
 
-  // Un-archive is a pure record op: it clears archivedAt and nothing else. It
-  // deliberately does not touch the environment lifecycle; cleanup is monotonic
-  // and never cancelled, and a thread whose environment is gone surfaces a
-  // read-only "environment is gone" banner instead of resurrecting it.
+  // Un-archive clears archivedAt. When the thread's managed environment is still
+  // inside its archive grace window (`retiring`), un-archiving revives it via the
+  // existing `retire.cancelled` event so the intact worktree is restored — the
+  // lossless undo of an accidental archive. If the grace window already elapsed
+  // and the environment was destroyed, `retire.cancelled` is a no-op (illegal
+  // from destroying/destroyed) and the thread remains read-only. The user can
+  // hand its context and surviving branch off to a new thread instead.
   post(routes.unarchive, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
     const providerThreadId = getLastProviderThreadId(deps, thread.id);
@@ -663,6 +749,12 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     const environment = thread.environmentId
       ? getEnvironment(deps.db, thread.environmentId)
       : null;
+    if (environment?.status === "retiring") {
+      applyLoggedEnvironmentLifecycleEvent(deps, {
+        environmentId: environment.id,
+        event: { type: "retire.cancelled" },
+      });
+    }
     if (providerThreadId && environment) {
       dispatchThreadUnarchiveCommand(deps, {
         environment,

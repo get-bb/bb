@@ -30,42 +30,27 @@ const machineCredentialMetadataSchema = z
   })
   .strict();
 
-export type MachineCredentialMetadata = z.infer<
+type MachineCredentialMetadata = z.infer<
   typeof machineCredentialMetadataSchema
 >;
 
-export interface IssueHostEnrollKeyArgs {
+interface IssueHostEnrollKeyArgs {
   hostId: string;
   hostType: HostType;
   enrollSource: "loopback" | "public-multi-machine";
 }
 
-export interface RevokeHostEnrollKeysArgs {
+interface RevokeHostAuthKeysArgs {
   hostId: string;
   hostType: HostType;
 }
 
-export interface RevokeHostAuthKeysArgs {
+interface IssueDaemonHostKeyArgs {
   hostId: string;
   hostType: HostType;
 }
 
-export interface IssueDaemonHostKeyArgs {
-  hostId: string;
-  hostType: HostType;
-}
-
-export interface RotateDaemonHostKeyArgs {
-  keyId: string;
-  hostId: string;
-  hostType: HostType;
-}
-
-export interface DisableMachineKeyArgs {
-  keyId: string;
-}
-
-export interface IssueHostEnrollKeyResult {
+interface IssueHostEnrollKeyResult {
   expiresAt: number;
   key: string;
 }
@@ -82,7 +67,7 @@ export interface EnrollHostResult {
   metadata: MachineCredentialMetadata;
 }
 
-export interface VerifyMachineKeyResult {
+interface VerifyMachineKeyResult {
   keyId: string;
   metadata: MachineCredentialMetadata;
 }
@@ -92,14 +77,13 @@ interface CreateDaemonHostKeyResult {
   keyId: string;
 }
 
-export interface CreateMachineAuthServiceArgs {
+interface CreateMachineAuthServiceArgs {
   dataDir: string;
   db: DbConnection;
   logger: ServerLogger;
 }
 
 export interface MachineAuthService {
-  disableMachineKey(args: DisableMachineKeyArgs): Promise<void>;
   ensureReady(): Promise<void>;
   enrollHost(args: EnrollHostArgs): Promise<EnrollHostResult | null>;
   issueDaemonHostKey(args: IssueDaemonHostKeyArgs): Promise<string>;
@@ -107,9 +91,7 @@ export interface MachineAuthService {
     args: IssueHostEnrollKeyArgs,
   ): Promise<IssueHostEnrollKeyResult>;
   pruneExpiredKeys(): Promise<void>;
-  revokeHostEnrollKeys(args: RevokeHostEnrollKeysArgs): Promise<void>;
   revokeHostAuthKeys(args: RevokeHostAuthKeysArgs): Promise<void>;
-  rotateDaemonHostKey(args: RotateDaemonHostKeyArgs): Promise<string>;
   verifyDaemonHostKey(token: string): Promise<VerifyMachineKeyResult | null>;
 }
 
@@ -254,20 +236,6 @@ export async function createMachineAuthService(
     };
   }
 
-  async function disableMachineKey(
-    disableArgs: DisableMachineKeyArgs,
-  ): Promise<void> {
-    await ensureReady();
-    await args.db
-      .update(authApiKeys)
-      .set({
-        enabled: false,
-        updatedAt: new Date(),
-      })
-      .where(eq(authApiKeys.id, disableArgs.keyId))
-      .run();
-  }
-
   async function disableActiveEnrollKeysForHost(
     metadata: MachineCredentialMetadata,
   ): Promise<void> {
@@ -351,9 +319,6 @@ export async function createMachineAuthService(
   }
 
   return {
-    async disableMachineKey(disableArgs: DisableMachineKeyArgs): Promise<void> {
-      await disableMachineKey(disableArgs);
-    },
     async ensureReady(): Promise<void> {
       await ensureReady();
     },
@@ -445,15 +410,6 @@ export async function createMachineAuthService(
     async pruneExpiredKeys(): Promise<void> {
       await pruneExpiredKeys();
     },
-    async revokeHostEnrollKeys({
-      hostId,
-      hostType,
-    }: RevokeHostEnrollKeysArgs): Promise<void> {
-      await disableActiveEnrollKeysForHost({
-        hostId,
-        hostType,
-      });
-    },
     async revokeHostAuthKeys({
       hostId,
       hostType,
@@ -461,27 +417,6 @@ export async function createMachineAuthService(
       const metadata = { hostId, hostType };
       await disableActiveEnrollKeysForHost(metadata);
       await disableActiveDaemonHostKeysForHost(metadata);
-    },
-    async rotateDaemonHostKey({
-      keyId,
-      hostId,
-      hostType,
-    }: RotateDaemonHostKeyArgs): Promise<string> {
-      // Create the replacement key before revoking existing daemon-host keys so
-      // host auth remains available if key creation fails mid-rotation.
-      const nextHostKey = await createDaemonHostKey({
-        hostId,
-        hostType,
-      });
-      await disableOtherActiveDaemonHostKeysForHost(
-        {
-          hostId,
-          hostType,
-        },
-        nextHostKey.keyId,
-      );
-      await disableMachineKey({ keyId });
-      return nextHostKey.key;
     },
     async verifyDaemonHostKey(
       token: string,

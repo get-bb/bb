@@ -1,107 +1,51 @@
+/**
+ * The runtime → bridge-adapter command vocabulary: what the runtime asks the
+ * bridge-protocol adapter to build a request for, and the execution context
+ * every session/turn command carries. The adapter contract itself is
+ * `BridgeProtocolAdapter` in bridge-protocol-adapter.ts — every provider
+ * speaks the Provider Bridge Protocol, so there is one adapter and no
+ * provider-specific implementations behind an interface.
+ */
 import type {
-  AvailableModel,
   ClientTurnRequestId,
   DynamicTool,
   InstructionMode,
-  PendingInteractionPayload,
-  PendingInteractionResolution,
+  JsonObject,
   PromptInput,
-  ClaudeCodeMockCliTrafficConfig,
-  ProviderCapabilities,
+  PromptMode,
   ReasoningLevel,
   RuntimePermissionPolicy,
+  RuntimeThreadExecutionOptions,
   ServiceTier,
-  ThreadEvent,
 } from "@bb/domain";
-import type {
-  ProviderInboundRequest,
-  ProviderRuntimeEvent,
-} from "./runtime-json-rpc.js";
-import type { AgentRuntimeSkillRoot } from "./types.js";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-
-export interface ProviderTranslationContext {
-  threadId?: string;
-  parentToolCallId?: string;
-}
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeSkillRoot,
+} from "./types.js";
 
 export interface ProviderAcceptedCommandTranslationArgs {
   command: AdapterCommand;
   providerThreadId?: string;
 }
 
-export interface ProviderAdapterFactoryOptions {
+/**
+ * What the runtime knows when it builds the adapter for a provider process:
+ * the plugin's bridge launch (artifact or daemon-bundled bridge), the ACP
+ * launch spec for the ACP tier, host-local write roots, and the node/bundle
+ * locations a packaged daemon runs bridges from.
+ */
+export interface CreateBridgeAdapterOptions {
   additionalWorkspaceWriteRoots: readonly string[];
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  /**
+   * A plugin-delivered bridge artifact resolved to a verified local path by
+   * the host daemon, or the id of a bridge the daemon bundles (pi).
+   */
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
-  turnIdPrefix?: string;
-}
-
-export type ProviderAdapterFactory = (
-  providerId: string,
-  options: ProviderAdapterFactoryOptions,
-) => ProviderAdapter;
-
-export interface ProviderRequestCommandPlan {
-  kind: "request";
-  method: string;
-  params?: object;
-}
-
-export interface ProviderNoopCommandPlan {
-  kind: "noop";
-  method?: never;
-  params?: never;
-  reason: string;
-}
-
-export type ProviderCommandPlan =
-  | ProviderRequestCommandPlan
-  | ProviderNoopCommandPlan;
-
-export interface ProviderPostInitializeRequest {
-  plan: ProviderRequestCommandPlan;
-  required: boolean;
-  onResult(result: unknown): void;
-}
-
-export type ProviderInteractiveResponse =
-  | boolean
-  | number
-  | string
-  | null
-  | ProviderInteractiveResponse[]
-  | { [key: string]: ProviderInteractiveResponse | undefined };
-
-export interface DecodedToolCallRequest {
-  requestId: string | number;
-  providerThreadId: string;
-  /**
-   * Non-empty BB turn id when known. Use null as the canonical unresolved
-   * value so the runtime can resolve from the active turn; empty strings are
-   * malformed adapter output.
-   */
-  turnId: string | null;
-  callId: string;
-  tool: string;
-  arguments?: unknown;
-  threadId?: string;
-}
-
-export interface DecodedInteractiveRequest {
-  requestId: string | number;
-  method: string;
-  providerThreadId: string;
-  /**
-   * Non-empty BB turn id when known. Use null as the canonical unresolved
-   * value so the runtime can resolve from the active turn; empty strings are
-   * malformed adapter output.
-   */
-  turnId: string | null;
-  payload: PendingInteractionPayload;
-  threadId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,16 +56,13 @@ export type ProviderExecutionContext = {
   model?: string;
   serviceTier?: ServiceTier;
   reasoningLevel?: ReasoningLevel;
-  claudeCodePermissionMode?: "plan";
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
+  /** BB prompt mode, present only when the prompt entered one. */
+  promptMode?: PromptMode;
   /**
-   * Server-owned workflows policy. Filled explicitly at the server boundary
-   * and passed through required end-to-end; providers without the concept
-   * receive (and ignore) an explicit false.
+   * Plugin-derived, provider-scoped options from the server. Opaque here;
+   * merged over the bridge's static options onto the wire `providerOptions`.
    */
-  workflowsEnabled: boolean;
-  memoryEnabled?: boolean;
-  providerSubagentsEnabled?: boolean;
+  providerOptions: JsonObject;
   instructions?: string;
   envVars?: Record<string, string>;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
@@ -134,11 +75,22 @@ export type AdapterCommand =
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
   | { type: "model/list"; cwd?: string }
+  | { type: "provider/health"; cwd?: string }
+  | { type: "provider/usage"; cwd?: string }
+  | {
+      type: "provider/installation/status";
+      cwd?: string;
+      requirement?: "thread_rewind";
+    }
+  | {
+      type: "provider/installation/run";
+      action: "install" | "update";
+      cwd?: string;
+    }
   | {
       type: "thread/start";
       threadId: string;
       cwd: string;
-      input?: PromptInput[];
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];
@@ -159,6 +111,7 @@ export type AdapterCommand =
       threadId: string;
       cwd: string;
       sourceProviderThreadId: string;
+      sourceProviderCheckpointId?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       disallowedTools?: readonly string[];
@@ -195,6 +148,11 @@ export type AdapterCommand =
       activeTurnId: string | null;
     }
   | {
+      type: "thread/discard";
+      threadId: string;
+      providerThreadId: string;
+    }
+  | {
       type: "thread/goal/clear";
       threadId: string;
       providerThreadId: string;
@@ -216,11 +174,6 @@ export type AdapterCommand =
       providerThreadId: string;
     };
 
-export type TurnStartAdapterCommand = Extract<
-  AdapterCommand,
-  { type: "turn/start" }
->;
-
 export function flattenPromptInputGroups(
   input: PromptInput[],
   inputGroups: PromptInput[][] | undefined,
@@ -235,78 +188,9 @@ export function flattenPromptInputGroups(
   );
 }
 
-export interface PreparedProviderCommandDispatch {
-  rollback(): void;
-}
+export type ProviderExecutionSettingsChange = "unchanged" | "live" | "session";
 
-export function noPreparedProviderCommandDispatch(
-  _command: TurnStartAdapterCommand,
-): null {
-  return null;
-}
-
-// ---------------------------------------------------------------------------
-// ProviderAdapter — internal extension contract
-// ---------------------------------------------------------------------------
-
-export interface ProviderAdapter {
-  id: string;
-  displayName: string;
-  capabilities: ProviderCapabilities;
-  process: { command: string; args: string[]; env?: Record<string, string> };
-
-  buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
-  /**
-   * Optional provider-specific reads performed after the protocol initialize
-   * request and before any thread work starts. Best-effort requests let newer
-   * providers hydrate adapter-local state without making older provider
-   * versions unusable when they do not implement the read.
-   */
-  buildPostInitializeRequests?(): readonly ProviderPostInitializeRequest[];
-  /**
-   * Called immediately before a turn/start request is sent. Some providers
-   * emit turn/started before the request promise resolves, so adapters that
-   * need command-to-event correlation must prepare that state before dispatch.
-   */
-  prepareTurnStart(
-    command: TurnStartAdapterCommand,
-  ): PreparedProviderCommandDispatch | null;
-  parseModelListResult(result: unknown): {
-    models: AvailableModel[];
-    selectedOnlyModels: AvailableModel[];
-  };
-  translateEvent(
-    event: ProviderRuntimeEvent,
-    context?: ProviderTranslationContext,
-  ): ThreadEvent[];
-  /**
-   * Returns normalized events implied by a successful provider command.
-   * Use this for provider protocol gaps where accepted commands do not produce
-   * their own notifications, such as accepted user input missing a userMessage.
-   */
-  translateAcceptedCommand(
-    args: ProviderAcceptedCommandTranslationArgs,
-  ): ThreadEvent[];
-  /**
-   * Called when a thread detaches because its provider process exited or the
-   * runtime is shutting down. Returns events reconciling adapter state that
-   * cannot survive the process — e.g. open background tasks settled as
-   * interrupted. Events must carry the real bb threadId; the runtime emits
-   * them before clearing the thread's runtime state.
-   */
-  buildThreadDetachedEvents?(args: { threadId: string }): ThreadEvent[];
-  decodeToolCallRequest(
-    request: ProviderInboundRequest,
-  ): DecodedToolCallRequest | null;
-  decodeInteractiveRequest?(
-    request: ProviderInboundRequest,
-  ): DecodedInteractiveRequest | null;
-  buildInteractiveResponse?(
-    args: BuildInteractiveResponseArgs,
-  ): ProviderInteractiveResponse;
-}
-
-export interface BuildInteractiveResponseArgs {
-  request: DecodedInteractiveRequest;
-  resolution: PendingInteractionResolution;
+export interface ClassifyProviderExecutionSettingsChangeArgs {
+  current: RuntimeThreadExecutionOptions;
+  next: RuntimeThreadExecutionOptions;
 }

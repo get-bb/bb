@@ -1,23 +1,20 @@
 import { z } from "zod";
-import {
-  deriveConnectBaseUrl,
-  serverUrlForHandle,
-  type ConnectCredential,
-} from "./credential.js";
+import type { ConnectCredential } from "./credential.js";
+import { deriveConnectBaseUrl, serverUrlForHandle } from "./urls.js";
 import { ConnectListError } from "./errors.js";
 
 /** One server row from `GET /api/connect/servers` (worker boundary). */
-export const accountServerSchema = z.object({
+const accountServerSchema = z.object({
   handle: z.string().min(1),
   name: z.string().min(1),
   live: z.boolean(),
 });
 
-export const accountServersResponseSchema = z.object({
+const accountServersResponseSchema = z.object({
   servers: z.array(accountServerSchema),
 });
 
-export type AccountServer = z.infer<typeof accountServerSchema>;
+type AccountServer = z.infer<typeof accountServerSchema>;
 
 /** Account server enriched with the connect public URL for that handle. */
 export type AccountServerWithUrl = AccountServer & {
@@ -34,7 +31,7 @@ export type ListAccountServersResult = {
  * Build public URLs for account servers from the pairing credential's base
  * (`https://getbb.app` / self-hosted apex) and each server's handle.
  */
-export function withAccountServerUrls(
+function withAccountServerUrls(
   servers: AccountServer[],
   credential: ConnectCredential,
 ): AccountServerWithUrl[] {
@@ -49,7 +46,7 @@ export function withAccountServerUrls(
  * Call the connect gate `GET /api/connect/servers` with the stored pairing
  * credential. Zod-parses the worker response at the boundary.
  */
-export async function fetchAccountServers(
+async function fetchAccountServers(
   credential: ConnectCredential,
   fetchImpl: typeof fetch = globalThis.fetch,
 ): Promise<AccountServer[]> {

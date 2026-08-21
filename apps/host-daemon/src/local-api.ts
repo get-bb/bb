@@ -24,8 +24,9 @@ import {
   type WorkspaceOpenTargetsQuery,
 } from "@bb/host-daemon-contract";
 import {
-  listWorkspaceOpenTargets,
-  openPathInTarget,
+  createWorkspaceOpenTargetRuntime,
+  listWorkspaceOpenTargetsWithRuntime,
+  openPathInTargetWithRuntime,
   type OpenPathInTargetArgs,
   WorkspaceOpenTargetError,
 } from "@bb/local-open-targets";
@@ -35,13 +36,12 @@ import { HTTPException } from "hono/http-exception";
 import { isFsErrorWithCode } from "./fs-errors.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { resolveHostPlatform } from "./host-platform.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
-export type WorkspaceOpenTargetListHandler = (
+type WorkspaceOpenTargetListHandler = (
   query: WorkspaceOpenTargetsQuery,
 ) => Promise<WorkspaceOpenTarget[]>;
-export type OpenInTargetHandler = (
-  request: OpenPathInTargetArgs,
-) => Promise<void>;
+type OpenInTargetHandler = (request: OpenPathInTargetArgs) => Promise<void>;
 
 /**
  * Browser-reachable local HTTP API for colocated setups.
@@ -52,7 +52,7 @@ export type OpenInTargetHandler = (
  * through the server and connected work host daemon instead of adding them to a
  * client.
  */
-export interface StartLocalApiServerOptions {
+interface StartLocalApiServerOptions {
   dataDir?: string;
   hostId: string;
   localApiConfig: HostDaemonLocalApiConfig;
@@ -69,6 +69,7 @@ export interface StartLocalApiServerOptions {
   getConnected: () => boolean;
   listWorkspaceOpenTargets?: WorkspaceOpenTargetListHandler;
   openInTarget?: OpenInTargetHandler;
+  shellEnv?: () => NodeJS.ProcessEnv;
 }
 
 export interface LocalApiServer {
@@ -89,8 +90,20 @@ interface ResolveOpenPathInTargetArgs {
 const CLIENT_CONFIG_CACHE_TTL_MS = 1_000;
 const EMPTY_CLIENT_CONFIG: ClientConfig = { servers: {} };
 
-function isNoEntryError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
+/**
+ * Whether an origin hostname is one a DNS-rebound page cannot mint: a loopback
+ * name, or a bare IP literal. Mirrors the server's check in
+ * `browser-request-guard.ts`; see #1531 for folding both into one module.
+ */
+function isSelfEvidentLocalHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+    return true;
+  }
+  // `URL.hostname` keeps the brackets on an IPv6 literal.
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return true;
+  }
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(hostname);
 }
 
 function createClientConfigLoader(
@@ -126,7 +139,7 @@ async function readClientConfig(dataDir: string): Promise<ClientConfig> {
       JSON.parse(await fs.readFile(formatClientConfigPath(dataDir), "utf8")),
     );
   } catch (error) {
-    if (!isNoEntryError(error)) {
+    if (!isFsErrorWithCode(error, "ENOENT")) {
       throw error;
     }
     return EMPTY_CLIENT_CONFIG;
@@ -171,7 +184,7 @@ async function resolveOpenPathInTargetArgs({
   if (sshAuthority === null) {
     throw new WorkspaceOpenTargetError({
       code: "remote_mapping_missing",
-      message: `No SSH target configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-target set ${serverOrigin} <ssh-target>`,
+      message: `No SSH target configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-target set ${serverOrigin} <ssh-target> --host-id ${request.context.hostId}`,
     });
   }
 
@@ -179,14 +192,18 @@ async function resolveOpenPathInTargetArgs({
     columnNumber: request.columnNumber,
     context: {
       kind: "remote-ssh",
-      serverOrigin,
-      hostId: request.context.hostId,
       sshAuthority,
     },
     lineNumber: request.lineNumber,
     path: request.path,
     targetId: request.targetId,
   };
+}
+
+function workspaceOpenTargetRuntime(options: StartLocalApiServerOptions) {
+  return createWorkspaceOpenTargetRuntime({
+    ...userExecutableProcessOptions(options.shellEnv?.() ?? {}),
+  });
 }
 
 export async function startLocalApiServer(
@@ -208,29 +225,69 @@ export async function startLocalApiServer(
     value: options.devAppPort,
   });
   const allowedCorsOrigins = new Set<string>(buildLocalAppOrigins(originArgs));
+  // A daemon enrolled with a remote bb already trusts that server for command
+  // traffic. Trust its exact web origin for loopback editor-helper calls too,
+  // so an enrolled browser machine needs no duplicate BB_APP_URL setting.
+  try {
+    allowedCorsOrigins.add(new URL(options.serverUrl).origin);
+  } catch {
+    // startHostDaemon validates ordinary server URLs. Keep this boundary
+    // defensive for injected test/custom callers instead of failing startup.
+  }
+  const isAllowedAppOrigin = async (
+    origin: string,
+    requestUrl: string,
+  ): Promise<boolean> => {
+    if (
+      allowedCorsOrigins.has(origin) ||
+      (await isConfiguredClientOrigin(origin, clientConfigLoader))
+    ) {
+      return true;
+    }
+    // Matching the addressed authority proves nothing by itself: a page on a
+    // public name that resolves to this machine controls both `Origin` and
+    // `Host`, so it can make them agree. This API binds loopback, so a genuine
+    // caller always addresses it by a loopback name or a bare address.
+    let originUrl: URL;
+    try {
+      originUrl = new URL(origin);
+    } catch {
+      return false;
+    }
+    return (
+      isSelfEvidentLocalHostname(originUrl.hostname) &&
+      origin === new URL(requestUrl).origin
+    );
+  };
+
   app.use(
     "*",
     cors({
-      origin: async (origin, context) => {
-        const requestOrigin = new URL(context.req.url).origin;
-        if (
-          origin === requestOrigin ||
-          allowedCorsOrigins.has(origin) ||
-          (await isConfiguredClientOrigin(origin, clientConfigLoader))
-        ) {
-          return origin;
-        }
-        return null;
-      },
+      origin: async (origin, context) =>
+        (await isAllowedAppOrigin(origin, context.req.url)) ? origin : null,
     }),
   );
 
   app.get(options.localApiConfig.healthPath, (c) =>
     c.text(healthResponseSchema.parse(options.localApiConfig.healthValue)),
   );
+  // CORS hides a response; it does not stop the request being acted on. A
+  // `no-cors` POST with a simple content type skips the preflight, reaches
+  // `/open-in-target`, and runs it, while the page never reads the reply. The
+  // in-app browser can now reach any loopback port it is not told to avoid, and
+  // a second bb daemon on this machine sits on a port the desktop cannot name,
+  // so reject a foreign browser origin outright instead of only withholding the
+  // response header. Non-browser callers send no `Origin` and are unaffected.
   app.use("*", async (c, next) => {
-    if (options.localApiConfig.mode === "health-only") {
-      return c.notFound();
+    const origin = c.req.header("origin");
+    if (
+      origin !== undefined &&
+      !(await isAllowedAppOrigin(origin, c.req.url))
+    ) {
+      return c.json(
+        { error: `origin "${origin}" is not a local BB app origin` },
+        403,
+      );
     }
     await next();
   });
@@ -255,14 +312,26 @@ export async function startLocalApiServer(
     async (c, query) =>
       c.json({
         targets: await (
-          options.listWorkspaceOpenTargets ?? listWorkspaceOpenTargets
+          options.listWorkspaceOpenTargets ??
+          ((query) =>
+            listWorkspaceOpenTargetsWithRuntime(
+              workspaceOpenTargetRuntime(options),
+              query,
+            ))
         )(query),
       }),
   );
 
   post("/open-in-target", openInTargetRequestSchema, async (c, payload) => {
     try {
-      await (options.openInTarget ?? openPathInTarget)(
+      await (
+        options.openInTarget ??
+        ((args) =>
+          openPathInTargetWithRuntime(
+            args,
+            workspaceOpenTargetRuntime(options),
+          ))
+      )(
         await resolveOpenPathInTargetArgs({
           configLoader: clientConfigLoader,
           request: payload,

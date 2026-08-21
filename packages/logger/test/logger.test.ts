@@ -60,9 +60,12 @@ async function runLoggerInSubprocess(args: {
   dataDir: string;
   component: string;
   message: string;
+  timestampMs: number;
+  timezone: string;
 }): Promise<SubprocessLoggerResult> {
   const script = `
     (async () => {
+      Date.now = () => ${JSON.stringify(args.timestampMs)};
       const { createLogger } = await import(${JSON.stringify(LOGGER_IMPORT_SPECIFIER)});
       const logger = createLogger({ component: ${JSON.stringify(args.component)} });
       logger.info({ marker: ${JSON.stringify(args.message)} }, ${JSON.stringify(args.message)});
@@ -79,6 +82,7 @@ async function runLoggerInSubprocess(args: {
   const childEnv: NodeJS.ProcessEnv = {
     ...process.env,
     BB_DATA_DIR: args.dataDir,
+    TZ: args.timezone,
   };
   // The logger skips pino-pretty under VITEST; clear it so the spawned
   // process exercises the real stdout transport like production does.
@@ -247,17 +251,21 @@ describe("createLogger", () => {
     const dataDir = createTempDir();
     const logDir = path.join(dataDir, "logs");
     const message = `stdout-behavior-${Date.now()}`;
+    const timestampMs = Date.parse("2026-08-08T02:53:23.000Z");
 
     const result = await runLoggerInSubprocess({
       component: "behavior-check",
       dataDir,
       message,
+      timestampMs,
+      timezone: "America/Los_Angeles",
     });
 
     expect(result.exitCode).toBe(0);
     // Pretty output to stdout is the load-bearing half of the contract —
     // the previous regression was silent dropping of this target.
     expect(result.stdout).toContain(message);
+    expect(result.stdout).toContain("[19:53:23]");
     // Structured JSON to the rolling file is the other half.
     const entries = readComponentLogLines(logDir, "behavior-check");
     expect(entries).toHaveLength(1);
@@ -266,6 +274,7 @@ describe("createLogger", () => {
       level: 30,
       marker: message,
       msg: message,
+      time: timestampMs,
     });
   });
 

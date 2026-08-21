@@ -68,12 +68,11 @@ function providerStatus(args: {
         ? {
             kind: "update" as const,
             label: "Update" as const,
-            commandKind: "exec" as const,
             command: "codex update",
           }
         : null,
     },
-    claudeCode: {
+    "claude-code": {
       ...base,
       displayName: "Claude Code",
       executableName: "claude",
@@ -82,7 +81,7 @@ function providerStatus(args: {
       needsUpdate: false,
       installAction: null,
     },
-    cursor: {
+    "acp-cursor": {
       ...base,
       displayName: "Cursor",
       executableName: "agent",
@@ -115,11 +114,11 @@ describe("bb updates command output", () => {
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("bb-app");
     expect(output).toContain("0.0.32 -> 0.0.33");
-    expect(output).toContain("update available (run: npx bb-app@latest)");
+    expect(output).toContain("Update available (run: npx bb-app@latest)");
     expect(output).toContain("workstation · Codex");
     expect(output).toContain("0.140.0 -> 0.141.0");
     expect(output).toContain("workstation · Claude Code");
-    expect(output).toContain("up to date");
+    expect(output).toContain("Up to date");
     expect(output).toContain("laptop");
     expect(output).toContain("offline");
   });
@@ -194,6 +193,27 @@ describe("bb updates command output", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "Everything is up to date.",
+    ]);
+  });
+
+  it("bb updates reports but does not apply manual provider updates", async () => {
+    const status = providerStatus({ codexNeedsUpdate: true });
+    status.codex.installAction = null;
+    stubServerApi({
+      "v1.system.version.$get": vi.fn(async () => version),
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.provider-clis.status.$get": vi.fn(async () => status),
+    });
+
+    await runCommand(["updates"], register);
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
+      "Update in terminal",
+    );
+
+    vi.mocked(console.log).mockClear();
+    await runCommand(["updates", "apply"], register);
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "No updates bb can apply. Run bb updates status for manual updates.",
     ]);
   });
 });

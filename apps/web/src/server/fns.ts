@@ -3,7 +3,6 @@ import {
   checkAvailability,
   claimHandle,
   createConnectCode,
-  createMachineCode,
   createServer,
   depsFromEnv,
   disconnectServer,
@@ -14,22 +13,29 @@ import {
 } from "./api.js";
 import { getEnv } from "./env.js";
 import { getSessionUserId } from "./current-user.server.js";
+import { resolveDevEmailPasswordEnabled } from "./local-auth.js";
 
 // The ONLY server module the client route imports. Everything here is a
 // createServerFn, so the client receives RPC stubs and none of the server-only
 // imports (D1, better-auth, cloudflare:workers) land in the client bundle.
 
-export type DashboardState =
-  | { authed: false }
+type DashboardState =
+  | { authed: false; emailPasswordEnabled: boolean }
   | ({ authed: true } & AccountState);
 
 export const getDashboard = createServerFn({ method: "GET" }).handler(
   async (): Promise<DashboardState> => {
+    const env = getEnv();
     const userId = await getSessionUserId();
-    if (!userId) return { authed: false };
+    if (!userId) {
+      return {
+        authed: false,
+        emailPasswordEnabled: resolveDevEmailPasswordEnabled(env),
+      };
+    }
     return {
       authed: true,
-      ...(await getAccountState(depsFromEnv(getEnv()), userId)),
+      ...(await getAccountState(depsFromEnv(env), userId)),
     };
   },
 );
@@ -68,16 +74,6 @@ export const createCodeFn = createServerFn({ method: "POST" })
     const userId = await getSessionUserId();
     if (!userId) return { error: "unauthenticated" as const };
     return createConnectCode(depsFromEnv(getEnv()), userId, data);
-  });
-
-export const createMachineCodeFn = createServerFn({ method: "POST" })
-  .validator((input: { serverId?: string } | undefined) => ({
-    serverId: typeof input?.serverId === "string" ? input.serverId : undefined,
-  }))
-  .handler(async ({ data }) => {
-    const userId = await getSessionUserId();
-    if (!userId) return { error: "unauthenticated" as const };
-    return createMachineCode(depsFromEnv(getEnv()), userId, data.serverId);
   });
 
 export const disconnectFn = createServerFn({ method: "POST" })

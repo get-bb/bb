@@ -1,10 +1,10 @@
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export type OverflowFadePlacement = "above" | "below" | "left" | "right";
+type OverflowFadePlacement = "above" | "below" | "left" | "right";
 export type OverflowFadeTone = "background" | "sidebar" | "surface-raised";
-export type OverflowFadeSize = "default" | "sm";
+type OverflowFadeSize = "default" | "sm";
 
-export interface OverflowFadeProps {
+interface OverflowFadeProps {
   className?: string;
   placement: OverflowFadePlacement;
   tone?: OverflowFadeTone;

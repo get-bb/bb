@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createTasksStore, TasksPageCursorError } from "./db";
 
@@ -167,6 +167,55 @@ describe("tasks storage", () => {
 
       expect(store.getAttachment(svg.id)?.isImage).toBe(false);
       expect(store.getAttachment(png.id)?.isImage).toBe(true);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("reports what a folder delete unfiled and nothing for a missing folder", async () => {
+    const { harness, store } = setup();
+    try {
+      const parent = store.createFolder({ name: "Parent" });
+      const child = store.createFolder({
+        name: "Child",
+        parentFolderId: parent.id,
+      });
+      const other = store.createFolder({ name: "Other" });
+      const filed = store.createProject({
+        name: "Filed",
+        prefix: "FIL",
+        color: "blue",
+        folderId: parent.id,
+      });
+      const elsewhere = store.createProject({
+        name: "Elsewhere",
+        prefix: "ELS",
+        color: "blue",
+        folderId: other.id,
+      });
+      const task = store.createTask({
+        projectId: filed.id,
+        title: "Survives",
+      });
+
+      expect(store.deleteFolder(parent.id)).toEqual({
+        deleted: true,
+        movedProjectIds: [filed.id],
+        movedFolderIds: [child.id],
+      });
+      // ON DELETE SET NULL re-parents rather than cascades.
+      expect(store.getFolder(child.id)?.parentFolderId).toBeNull();
+      expect(store.getProject(filed.id)?.folderId).toBeNull();
+      expect(store.getProject(elsewhere.id)?.folderId).toBe(other.id);
+      expect(store.getTask(task.id)?.projectId).toBe(filed.id);
+
+      // A second delete finds no row and must not claim to have moved the
+      // children the first delete already unfiled.
+      expect(store.deleteFolder(parent.id)).toEqual({
+        deleted: false,
+        movedProjectIds: [],
+        movedFolderIds: [],
+      });
     } finally {
       await harness.dispose();
     }
@@ -594,6 +643,55 @@ describe("tasks storage", () => {
       expect(
         store.listComments(task.id).map((comment) => comment.body),
       ).toEqual(["Earlier", "Later"]);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it("lists live task threads before terminal ones, newest first", async () => {
+    const { db, harness, store } = setup();
+    try {
+      const project = createProject(store, "THR");
+      const task = store.createTask({ projectId: project.id, title: "Work" });
+      const setAttachedAt = db.prepare<[string, string]>(
+        "UPDATE task_threads SET attached_at = ? WHERE id = ?",
+      );
+      const attach = (
+        threadId: string,
+        liveStatus: "idle" | "working" | "failed" | "completed",
+        attachedAt: string,
+      ) => {
+        const row = store.upsertTaskThread({
+          taskId: task.id,
+          threadId,
+          presetName: "Attached",
+          title: threadId,
+          liveStatus,
+        });
+        setAttachedAt.run(attachedAt, row.id);
+      };
+      // An orchestrator respawns workers: the dead predecessors are the
+      // oldest rows, the live replacement is the newest.
+      attach("thr_dead_first", "failed", "2026-07-15T09:00:00.000Z");
+      attach("thr_live_old", "idle", "2026-07-15T10:00:00.000Z");
+      attach("thr_dead_later", "completed", "2026-07-15T11:00:00.000Z");
+      attach("thr_live_new", "working", "2026-07-15T12:00:00.000Z");
+
+      expect(
+        store.listTaskThreads(task.id).map((thread) => thread.threadId),
+      ).toEqual([
+        "thr_live_new",
+        "thr_live_old",
+        "thr_dead_later",
+        "thr_dead_first",
+      ]);
+
+      // Detaching removes exactly that (task, thread) row.
+      const detached = store.getTaskThreadByThreadId(task.id, "thr_dead_first");
+      expect(store.deleteTaskThread(detached!.id)).toBe(true);
+      expect(
+        store.listTaskThreads(task.id).map((thread) => thread.threadId),
+      ).toEqual(["thr_live_new", "thr_live_old", "thr_dead_later"]);
     } finally {
       await harness.dispose();
     }

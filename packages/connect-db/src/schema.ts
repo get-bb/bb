@@ -104,8 +104,7 @@ export const profile = sqliteTable("profile", {
   createdAt: timestampMs("created_at").notNull(),
 });
 
-export const labelClaimKinds = ["handle", "server", "machine"] as const;
-export type LabelClaimKind = (typeof labelClaimKinds)[number];
+const labelClaimKinds = ["handle", "server", "machine"] as const;
 
 /**
  * The authoritative global routing-label namespace. Product rows retain their
@@ -132,7 +131,7 @@ export const labelClaim = sqliteTable(
 
 /**
  * A connected bb server (the machine running the tunnel client). An account may
- * own up to `MAX_SERVERS_PER_ACCOUNT` servers; each owns a globally-unique
+ * own up to `MAX_PER_ACCOUNT` servers; each owns a globally-unique
  * `subdomain` label in the SAME public namespace as `profile.handle`
  * (`<subdomain>.getbb.app`). The account's `profile.handle` names the
  * primary/first server (its subdomain is backfilled to the handle); additional
@@ -236,13 +235,6 @@ export const auditLog = sqliteTable(
   },
   (table) => [index("audit_log_user_id_idx").on(table.userId)],
 );
-
-export const connectCodePurposes = [
-  "server-pair",
-  "manual-pair",
-  "machine-pair",
-] as const;
-export type ConnectCodePurpose = (typeof connectCodePurposes)[number];
 
 export const schema = {
   user,

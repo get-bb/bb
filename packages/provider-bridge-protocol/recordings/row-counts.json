@@ -1,0 +1,314 @@
+{
+  "acp-cursor/approval-allow": {
+    "events": 31,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/approval-deny": {
+    "events": 29,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/fork": {
+    "events": 0,
+    "rows": 0,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/model-list": {
+    "events": 0,
+    "rows": 0,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/resume": {
+    "events": 21,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/steer": {
+    "events": 68,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/stop-interrupt": {
+    "events": 39,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/subagent": {
+    "events": 50,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/turn-tools": {
+    "events": 98,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 1
+  },
+  "acp-cursor/user-question": {
+    "events": 26,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-cursor/web-search": {
+    "events": 51,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/approval-allow": {
+    "events": 11,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/approval-deny": {
+    "events": 12,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/auth-failure": {
+    "events": 7,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/compaction": {
+    "events": 59,
+    "rows": 3,
+    "unhandled": 2,
+    "grammarDrops": 0
+  },
+  "claude-code/fork": {
+    "events": 9,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/model-list": {
+    "events": 0,
+    "rows": 0,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/plan-mode": {
+    "events": 41,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/resume": {
+    "events": 18,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/steer": {
+    "events": 59,
+    "rows": 3,
+    "unhandled": 2,
+    "grammarDrops": 0
+  },
+  "claude-code/stop-interrupt": {
+    "events": 53,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/subagent": {
+    "events": 21,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/turn-tools": {
+    "events": 13,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/user-question": {
+    "events": 12,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "claude-code/web-search": {
+    "events": 14,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/approval-allow": {
+    "events": 27,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/approval-deny": {
+    "events": 31,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/archived-resume": {
+    "events": 22,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/auth-failure": {
+    "events": 16,
+    "rows": 3,
+    "unhandled": 1,
+    "grammarDrops": 0
+  },
+  "codex/compaction": {
+    "events": 87,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/empty-rollout": {
+    "events": 11,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/fork": {
+    "events": 13,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/missing-rollout": {
+    "events": 22,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/model-list": {
+    "events": 0,
+    "rows": 0,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/plan-mode": {
+    "events": 46,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/resume": {
+    "events": 22,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/steer": {
+    "events": 87,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/stop-interrupt": {
+    "events": 28,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/subagent": {
+    "events": 42,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/turn-tools": {
+    "events": 48,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/user-question": {
+    "events": 18,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "codex/web-search": {
+    "events": 17,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/compaction": {
+    "events": 66,
+    "rows": 3,
+    "unhandled": 2,
+    "grammarDrops": 0
+  },
+  "pi/fork": {
+    "events": 8,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/model-list": {
+    "events": 0,
+    "rows": 0,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/resume": {
+    "events": 16,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/steer": {
+    "events": 66,
+    "rows": 3,
+    "unhandled": 2,
+    "grammarDrops": 0
+  },
+  "pi/stop-interrupt": {
+    "events": 13,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/subagent": {
+    "events": 41,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/turn-tools": {
+    "events": 38,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/user-question": {
+    "events": 11,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "pi/web-search": {
+    "events": 16,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  }
+}

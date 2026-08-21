@@ -10,6 +10,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
+import { TRANSPORT_TEST_BRIDGE_LAUNCH } from "../helpers/provider-registry.js";
 
 /**
  * Smuggles an out-of-contract change kind into a typed changes array without a
@@ -297,7 +298,11 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     });
 
@@ -305,7 +310,11 @@ describe("NotificationHub", () => {
       {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     ]);
     const disposition = hub.recordHostOnlineRpcResponse({
@@ -341,7 +350,11 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-session-scoped",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     });
     let resolved = false;
@@ -399,7 +412,11 @@ describe("NotificationHub", () => {
       message: {
         type: "host-rpc.request",
         requestId: "rpc-1",
-        command: { type: "provider.list_models", providerId: "codex" },
+        command: {
+          type: "provider.list_models",
+          providerId: "codex",
+          bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+        },
       },
     });
     hub.unregisterDaemon("session-1");
@@ -571,5 +588,155 @@ describe("NotificationHub", () => {
     expect(JSON.parse(systemSocket.messages[0]).changes).toEqual([
       ...SYSTEM_CHANGE_KINDS,
     ]);
+  });
+});
+
+describe("NotificationHub events-appended thread-list coalescing", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function messagesOf(socket: { messages: string[] }): Array<{
+    changes: string[];
+    id?: string;
+    metadata?: { eventTypes?: string[] };
+  }> {
+    return socket.messages.map((message) => JSON.parse(message));
+  }
+
+  it("delivers every events-appended frame to detail subscribers but coalesces list-only subscribers to one per window", () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub();
+    const detailSocket = createMockHubSocket();
+    const listSocket = createMockHubSocket();
+    const listAndDetailSocket = createMockHubSocket();
+    hub.subscribe(detailSocket, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(listSocket, { kind: "thread-list" });
+    hub.subscribe(listAndDetailSocket, { kind: "thread-list" });
+    hub.subscribe(listAndDetailSocket, {
+      kind: "thread-detail",
+      threadId: "thread-1",
+    });
+
+    for (const eventType of ["item/agentMessage/delta", "item/agentMessage/delta", "item/started"] as const) {
+      hub.notifyThread("thread-1", ["events-appended"], {
+        eventTypes: [eventType],
+      });
+    }
+
+    expect(detailSocket.messages).toHaveLength(3);
+    // The socket holding both subscriptions is a detail subscriber: no copy.
+    expect(listAndDetailSocket.messages).toHaveLength(3);
+    // Leading edge only until the window closes.
+    expect(listSocket.messages).toHaveLength(1);
+    expect(messagesOf(listSocket)[0]).toMatchObject({
+      id: "thread-1",
+      changes: ["events-appended"],
+      metadata: { eventTypes: ["item/agentMessage/delta"] },
+    });
+
+    vi.advanceTimersByTime(999);
+    expect(listSocket.messages).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(listSocket.messages).toHaveLength(2);
+    // The trailing frame carries the union of the merged event types.
+    expect(messagesOf(listSocket)[1]).toMatchObject({
+      id: "thread-1",
+      changes: ["events-appended"],
+      metadata: { eventTypes: ["item/agentMessage/delta", "item/started"] },
+    });
+    expect(detailSocket.messages).toHaveLength(3);
+    expect(listAndDetailSocket.messages).toHaveLength(3);
+
+    // A quiet window sends nothing extra; the next frame is a fresh leading edge.
+    vi.advanceTimersByTime(5_000);
+    expect(listSocket.messages).toHaveLength(2);
+    hub.notifyThread("thread-1", ["events-appended"], {
+      eventTypes: ["item/agentMessage/delta"],
+    });
+    expect(listSocket.messages).toHaveLength(3);
+    vi.advanceTimersByTime(1_000);
+    expect(listSocket.messages).toHaveLength(3);
+  });
+
+  it("bypasses coalescing when metadata carries a list-relevant signal or another change kind", () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub();
+    const listSocket = createMockHubSocket();
+    hub.subscribe(listSocket, { kind: "thread-list" });
+
+    hub.notifyThread("thread-1", ["events-appended"], {
+      eventTypes: ["item/agentMessage/delta"],
+    });
+    expect(listSocket.messages).toHaveLength(1);
+
+    // Inside the window: each of these must still arrive immediately.
+    hub.notifyThread("thread-1", ["events-appended"], {
+      backgroundActivityChanged: true,
+      eventTypes: ["item/agentMessage/delta"],
+    });
+    hub.notifyThread("thread-1", ["events-appended"], {
+      eventTypes: ["turn/completed"],
+    });
+    hub.notifyThread("thread-1", ["events-appended"], {
+      eventTypes: ["client/turn/requested"],
+    });
+    hub.notifyThread("thread-1", ["events-appended"], {
+      hasPendingInteraction: true,
+    });
+    hub.notifyThread("thread-1", ["events-appended", "read-state-changed"], {
+      eventTypes: ["item/agentMessage/delta"],
+      projectId: "project-1",
+    });
+    hub.notifyThread("thread-1", ["status-changed"]);
+    expect(listSocket.messages).toHaveLength(7);
+    expect(messagesOf(listSocket).map((message) => message.changes)).toEqual([
+      ["events-appended"],
+      ["events-appended"],
+      ["events-appended"],
+      ["events-appended"],
+      ["events-appended"],
+      ["events-appended", "read-state-changed"],
+      ["status-changed"],
+    ]);
+  });
+
+  it("coalesces per thread and resolves thread event waiters for every frame", async () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub();
+    const listSocket = createMockHubSocket();
+    hub.subscribe(listSocket, { kind: "thread-list" });
+
+    hub.notifyThread("thread-1", ["events-appended"]);
+    hub.notifyThread("thread-2", ["events-appended"]);
+    expect(messagesOf(listSocket).map((message) => message.id)).toEqual([
+      "thread-1",
+      "thread-2",
+    ]);
+
+    const waiter = hub.registerThreadEventWaiter("thread-1", 10_000).promise;
+    hub.notifyThread("thread-1", ["events-appended"]);
+    await expect(waiter).resolves.toBe(true);
+    // Merged frame without event types omits metadata entirely.
+    vi.advanceTimersByTime(1_000);
+    expect(listSocket.messages).toHaveLength(3);
+    expect(messagesOf(listSocket)[2]).toEqual({
+      type: "changed",
+      entity: "thread",
+      id: "thread-1",
+      changes: ["events-appended"],
+    });
+  });
+
+  it("still tells changed-message listeners about coalesced frames", () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub();
+    const seen: string[][] = [];
+    hub.onChangedMessage((message) => {
+      seen.push([...message.changes]);
+    });
+    hub.notifyThread("thread-1", ["events-appended"]);
+    hub.notifyThread("thread-1", ["events-appended"]);
+    expect(seen).toEqual([["events-appended"], ["events-appended"]]);
   });
 });

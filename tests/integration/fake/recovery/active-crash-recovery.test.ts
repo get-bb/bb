@@ -14,6 +14,7 @@ import { withHarness } from "../../helpers/harness.js";
 import {
   ACTIVE_TIMEOUT_MS,
   createRecoveryThread,
+  RECOVERY_TEST_TIMEOUT_MS,
   RECOVERY_TIMEOUT_MS,
   STOP_DELAY_TEXT,
 } from "./shared.js";
@@ -88,5 +89,5 @@ describe.sequential("fake provider active crash recovery integration", () => {
             event.data.code === "thread_command_failed",
         ),
       ).toBe(true);
-    }));
+    }), RECOVERY_TEST_TIMEOUT_MS);
 });

@@ -33,6 +33,11 @@ import {
   toThreadListEntryResponses,
 } from "../../../src/services/threads/thread-runtime-display.js";
 import { NotificationHub } from "../../../src/ws/hub.js";
+import { createTestProviderRegistry } from "../../helpers/provider-registry.js";
+
+// Plan-mode eligibility is the provider's declared `plan` composer action, so
+// the banner path needs the real first-party declarations.
+const providerRegistry = await createTestProviderRegistry();
 
 interface SetupResult {
   db: DbConnection;
@@ -139,7 +144,7 @@ function registerTestDaemon(
 }
 
 function openTestSession(args: OpenTestSessionArgs) {
-  const session = openSession(args.db, noopNotifier, {
+  const session = openSession(args.db, {
     hostId: args.hostId,
     instanceId: `instance-${randomUUID()}`,
     hostName: "Runtime Display Host",
@@ -350,7 +355,7 @@ describe("thread runtime display", () => {
     });
 
     const entries = toThreadListEntryResponses(
-      { db, hub },
+      { db, hub, providerRegistry },
       {
         now,
         threads: [
@@ -384,6 +389,29 @@ describe("thread runtime display", () => {
         hostReconnectGraceExpiresAt: null,
       },
     ] satisfies ThreadRuntimeState[]);
+  });
+
+  it("builds active list entries above the SQLite variable limit", () => {
+    const { db, hostId, hub } = setup();
+    const { thread } = createThreadWithEnvironment({ db, hostId });
+    const template = createThreadListEntry({
+      environmentHostId: null,
+      thread,
+    });
+    const threads = Array.from({ length: 32_767 }, (_, index) => ({
+      ...template,
+      id: `thr_variable_limit_${index}`,
+    }));
+
+    expect(
+      toThreadListEntryResponses(
+        { db, hub, providerRegistry },
+        {
+          now: 1_000,
+          threads,
+        },
+      ),
+    ).toHaveLength(32_767);
   });
 
   it("marks list entries active when the prompt banner would show plan or goal state", () => {
@@ -540,7 +568,7 @@ describe("thread runtime display", () => {
     });
 
     const entries = toThreadListEntryResponses(
-      { db, hub },
+      { db, hub, providerRegistry },
       {
         threads: [
           createThreadListEntry({

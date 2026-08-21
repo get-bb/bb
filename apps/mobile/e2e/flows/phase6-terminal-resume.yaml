@@ -1,0 +1,76 @@
+# Phase 6 terminal, suspend / resume: start a terminal, run a slow producer,
+# send the app to the background for 20 s (React Native owns the attach
+# socket and suspends it there), come back, and the output printed while the
+# app was away is replayed from the last sequence number seen — no gap, no
+# reset. Read back through the dev-only text mirror (`terminal-text-mirror`).
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+#      maestro test -e THREAD_TITLE="Idle thread" e2e/flows/phase6-terminal-resume.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "Idle thread"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- extendedWaitUntil:
+    visible: "${THREAD_TITLE}"
+    timeout: 30000
+- tapOn: "${THREAD_TITLE}"
+- tapOn:
+    id: "thread-panel-button"
+- extendedWaitUntil:
+    visible:
+      id: "panel-tab-terminal"
+    timeout: 20000
+- tapOn:
+    id: "panel-tab-terminal"
+- extendedWaitUntil:
+    visible:
+      id: "terminal-sessions-start"
+    timeout: 20000
+- tapOn:
+    id: "terminal-sessions-start"
+- extendedWaitUntil:
+    visible:
+      id: "panel-terminal-tab"
+    timeout: 30000
+- tapOn:
+    id: "panel-terminal-title"
+- extendedWaitUntil:
+    visible:
+      id: "terminal-text-mirror"
+      text: ".*test-project.*"
+    timeout: 30000
+# A slow producer that keeps printing while the app is in the background.
+- inputText: "for i in $(seq 1 60); do echo tick-$i; sleep 0.5; done"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: "terminal-text-mirror"
+      text: ".*tick-3.*"
+    timeout: 20000
+- pressKey: Home
+- extendedWaitUntil:
+    notVisible:
+      id: "terminal-accessory-bar"
+    timeout: 10000
+# 20 s in the background (a no-op swipe is Maestro's wait).
+- swipe:
+    start: "50%, 50%"
+    end: "50%, 50%"
+    duration: 20000
+- launchApp:
+    appId: "app.getbb.mobile"
+    stopApp: false
+- extendedWaitUntil:
+    visible:
+      id: "terminal-accessory-bar"
+    timeout: 30000
+# Everything printed while suspended is replayed from `sinceSeq`.
+- extendedWaitUntil:
+    visible:
+      id: "terminal-text-mirror"
+      text: ".*tick-60.*"
+    timeout: 60000
+- takeScreenshot: phase6-terminal-resume

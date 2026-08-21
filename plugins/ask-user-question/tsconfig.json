@@ -11,10 +11,10 @@
     "skipLibCheck": true,
     "types": ["node", "vitest/globals"],
     "paths": {
-      "@bb/plugin-sdk": [
+      "@get-bb/plugin-sdk": [
         "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts"
       ],
-      "@bb/plugin-sdk/app": [
+      "@get-bb/plugin-sdk/app": [
         "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk-app.d.ts"
       ],
       "@/*": ["./*"]

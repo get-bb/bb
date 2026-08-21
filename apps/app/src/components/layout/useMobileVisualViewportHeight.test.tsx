@@ -3,7 +3,10 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useMobileVisualViewportHeight } from "./useMobileVisualViewportHeight";
+import {
+  shouldRestoreIOSViewportOnKeyboardDismissal,
+  useMobileVisualViewportHeight,
+} from "./useMobileVisualViewportHeight";
 
 class FakeVisualViewport extends EventTarget implements VisualViewport {
   height = 500;
@@ -17,13 +20,27 @@ class FakeVisualViewport extends EventTarget implements VisualViewport {
   width = 390;
 }
 
-function VisualViewportShell({ enabled }: { enabled: boolean }) {
+function VisualViewportShell({
+  enabled,
+  restoreImmediatelyOnKeyboardDismissal = true,
+}: {
+  enabled: boolean;
+  restoreImmediatelyOnKeyboardDismissal?: boolean;
+}) {
   const shellRef = useRef<HTMLDivElement>(null);
-  useMobileVisualViewportHeight(shellRef, enabled);
+  const shellHeightRootRef = useRef<HTMLDivElement>(null);
+  useMobileVisualViewportHeight(
+    shellRef,
+    shellHeightRootRef,
+    enabled,
+    restoreImmediatelyOnKeyboardDismissal,
+  );
   return (
-    <div ref={shellRef} data-testid="shell">
-      <textarea data-testid="editor" />
-      <textarea data-testid="other-editor" />
+    <div ref={shellHeightRootRef} data-testid="shell-height-root">
+      <div ref={shellRef} data-testid="shell">
+        <textarea data-testid="editor" />
+        <textarea data-testid="other-editor" />
+      </div>
     </div>
   );
 }
@@ -59,6 +76,38 @@ function withFakeVisualViewport(
   }
 }
 
+function withElementClientHeight(
+  element: HTMLElement,
+  getHeight: () => number,
+  run: () => Promise<void> | void,
+) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    element,
+    "clientHeight",
+  );
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    get: getHeight,
+  });
+  const restore = () => {
+    if (originalDescriptor) {
+      Object.defineProperty(element, "clientHeight", originalDescriptor);
+    } else {
+      Reflect.deleteProperty(element, "clientHeight");
+    }
+  };
+  try {
+    const result = run();
+    if (result instanceof Promise) {
+      return result.finally(restore);
+    }
+    restore();
+  } catch (error) {
+    restore();
+    throw error;
+  }
+}
+
 beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
@@ -74,19 +123,106 @@ describe("useMobileVisualViewportHeight", () => {
     await withFakeVisualViewport(visualViewport, async () => {
       const { rerender } = render(<VisualViewportShell enabled />);
       const shell = screen.getByTestId("shell");
+      const shellHeightRoot = screen.getByTestId("shell-height-root");
       expect(shell.style.top).toBe("20px");
       expect(shell.style.height).toBe("500px");
+      expect(shellHeightRoot.style.getPropertyValue("--bb-shell-height")).toBe(
+        "500px",
+      );
 
       act(() => {
         visualViewport.height = 300;
         visualViewport.dispatchEvent(new Event("resize"));
       });
       await waitFor(() => expect(shell.style.height).toBe("300px"));
+      expect(shellHeightRoot.style.getPropertyValue("--bb-shell-height")).toBe(
+        "300px",
+      );
 
       rerender(<VisualViewportShell enabled={false} />);
       expect(shell.style.top).toBe("");
       expect(shell.style.height).toBe("");
+      expect(shellHeightRoot.style.getPropertyValue("--bb-shell-height")).toBe(
+        "",
+      );
     });
+  });
+
+  it("corrects an embedded browser only when its layout fails to resize", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    let shellContainingBlockHeight = 500;
+    await withElementClientHeight(
+      document.documentElement,
+      () => visualViewport.height,
+      async () =>
+        withElementClientHeight(
+          document.body,
+          () => shellContainingBlockHeight,
+          async () =>
+            withFakeVisualViewport(visualViewport, async () => {
+              render(
+                <VisualViewportShell
+                  enabled
+                  restoreImmediatelyOnKeyboardDismissal={false}
+                />,
+              );
+              const shell = screen.getByTestId("shell");
+              const shellHeightRoot = screen.getByTestId("shell-height-root");
+              const editor = screen.getByTestId("editor");
+              expect(shell.style.top).toBe("");
+              expect(shell.style.height).toBe("");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("");
+
+              act(() => {
+                // Android's root clientHeight can equal the visible viewport
+                // while its actual body containing block remains taller.
+                shellContainingBlockHeight = 560;
+                window.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe("500px"));
+              expect(shell.style.top).toBe("0px");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("500px");
+
+              act(() => {
+                shellContainingBlockHeight = 500;
+                window.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe(""));
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("");
+
+              act(() => {
+                visualViewport.height = 300;
+                visualViewport.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe("300px"));
+              expect(shell.style.top).toBe("0px");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("300px");
+
+              act(() => editor.focus());
+              act(() => editor.blur());
+              expect(shell.style.height).toBe("300px");
+
+              act(() => {
+                shellContainingBlockHeight = 300;
+                window.dispatchEvent(new Event("resize"));
+              });
+              await waitFor(() => expect(shell.style.height).toBe(""));
+              expect(shell.style.top).toBe("");
+              expect(
+                shellHeightRoot.style.getPropertyValue("--bb-shell-height"),
+              ).toBe("");
+            }),
+        ),
+    );
   });
 
   it("compensates when Safari leaves the visual viewport panned", async () => {
@@ -106,7 +242,35 @@ describe("useMobileVisualViewportHeight", () => {
     });
   });
 
-  it("restores the shell height as soon as focus leaves keyboard targets", async () => {
+  it("restores the shell immediately when keyboard focus leaves", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const shell = screen.getByTestId("shell");
+      const editor = screen.getByTestId("editor");
+
+      act(() => {
+        visualViewport.height = 300;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() => expect(shell.style.height).toBe("300px"));
+
+      act(() => editor.focus());
+      act(() => editor.blur());
+      expect(shell.style.height).toBe("");
+      expect(shell.style.top).toBe("");
+
+      act(() => {
+        visualViewport.height = 500;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() => expect(shell.style.height).toBe("500px"));
+      expect(shell.style.top).toBe("0px");
+    });
+  });
+
+  it("keeps the shortened shell when focus moves between keyboard targets", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withFakeVisualViewport(visualViewport, async () => {
@@ -121,23 +285,11 @@ describe("useMobileVisualViewportHeight", () => {
       });
       await waitFor(() => expect(shell.style.height).toBe("300px"));
 
-      // Focus moving between keyboard targets keeps the keyboard open, so
-      // the shell must stay aligned with the shortened viewport.
-      act(() => {
-        editor.dispatchEvent(
-          new FocusEvent("focusout", {
-            bubbles: true,
-            relatedTarget: otherEditor,
-          }),
-        );
-      });
-      expect(shell.style.height).toBe("300px");
+      act(() => editor.focus());
+      act(() => otherEditor.focus());
 
-      act(() => {
-        editor.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-      });
-      expect(shell.style.top).toBe("");
-      expect(shell.style.height).toBe("");
+      expect(shell.style.height).toBe("300px");
+      expect(shell.style.transition).toBe("");
     });
   });
 
@@ -153,9 +305,49 @@ describe("useMobileVisualViewportHeight", () => {
         visualViewport.offsetTop = 340;
         visualViewport.dispatchEvent(new Event("scroll"));
       });
-      await waitFor(() => expect(shell.style.height).toBe("840px"));
+      await waitFor(() => expect(shell.style.height).toBe(""));
       expect(shell.style.top).toBe("");
       expect(window.scrollTo).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("shouldRestoreIOSViewportOnKeyboardDismissal", () => {
+  it("recognizes iPhones and iPads using desktop-class browsing", () => {
+    expect(
+      shouldRestoreIOSViewportOnKeyboardDismissal({
+        userAgent:
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+        platform: "iPhone",
+        maxTouchPoints: 5,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRestoreIOSViewportOnKeyboardDismissal({
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+        platform: "MacIntel",
+        maxTouchPoints: 5,
+      }),
+    ).toBe(true);
+  });
+
+  it("skips the Safari dismissal workaround on Android and desktop", () => {
+    expect(
+      shouldRestoreIOSViewportOnKeyboardDismissal({
+        userAgent:
+          "Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36",
+        platform: "Linux armv8l",
+        maxTouchPoints: 5,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRestoreIOSViewportOnKeyboardDismissal({
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15",
+        platform: "MacIntel",
+        maxTouchPoints: 0,
+      }),
+    ).toBe(false);
   });
 });

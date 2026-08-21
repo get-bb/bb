@@ -9,7 +9,7 @@ import {
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
-import { PluginComposerBanners } from "./PluginComposerBanners";
+import { ComposerBannersSlot } from "./PluginComposerBanners";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { useComposerView } from "@/lib/plugin-sdk-hooks";
 
@@ -49,7 +49,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("PluginComposerBanners", () => {
+describe("ComposerBannersSlot", () => {
   it("uses card chrome by default and leaves bare banners unwrapped", () => {
     setPluginSlotRegistrations(
       "example-plugin",
@@ -68,7 +68,7 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    render(<PluginComposerBanners view={composerView("t1")} />);
+    render(<ComposerBannersSlot view={composerView("t1")} />);
 
     expect(
       screen
@@ -76,24 +76,6 @@ describe("PluginComposerBanners", () => {
         .contains(screen.getByText("card body")),
     ).toBe(true);
     expect(screen.getByText("bare body").closest("section")).toBeNull();
-  });
-
-  it("collapses an empty card row when its component renders null", () => {
-    setPluginSlotRegistrations(
-      "empty-plugin",
-      registrations([
-        {
-          id: "empty",
-          banners: [{ id: "nothing", component: () => null }],
-        },
-      ]),
-    );
-
-    render(<PluginComposerBanners view={composerView("t1")} />);
-
-    expect(
-      screen.getByRole("region", { name: "empty-plugin" }).className,
-    ).toContain("empty:hidden");
   });
 
   it("collapses only the crashing banner", () => {
@@ -115,7 +97,7 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    render(<PluginComposerBanners view={composerView("t1")} />);
+    render(<ComposerBannersSlot view={composerView("t1")} />);
 
     expect(screen.queryByText("plugin isolated-plugin crashed")).toBeNull();
     expect(screen.getByText("healthy banner")).toBeDefined();
@@ -141,8 +123,8 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    const view = render(<PluginComposerBanners view={composerView("t1")} />);
-    view.rerender(<PluginComposerBanners view={composerView("t2")} />);
+    const view = render(<ComposerBannersSlot view={composerView("t1")} />);
+    view.rerender(<ComposerBannersSlot view={composerView("t2")} />);
 
     expect(mounted).toHaveBeenCalledTimes(2);
     expect(unmounted).toHaveBeenCalledTimes(1);
@@ -175,7 +157,7 @@ describe("PluginComposerBanners", () => {
       ]),
     );
 
-    render(<PluginComposerBanners view={composerView("t1")} />);
+    render(<ComposerBannersSlot view={composerView("t1")} />);
 
     expect(
       screen
@@ -204,7 +186,7 @@ describe("PluginComposerBanners", () => {
     const first = composerView("t1", "draft one");
     const rendered = render(
       <MemoryRouter>
-        <PluginComposerBanners view={first} />
+        <ComposerBannersSlot view={first} />
       </MemoryRouter>,
     );
     expect(
@@ -213,7 +195,7 @@ describe("PluginComposerBanners", () => {
 
     rendered.rerender(
       <MemoryRouter>
-        <PluginComposerBanners
+        <ComposerBannersSlot
           view={{
             ...composerView("t1", "draft two"),
             layout: "zen",
@@ -223,5 +205,31 @@ describe("PluginComposerBanners", () => {
       </MemoryRouter>,
     );
     expect(screen.getByText("thread:draft two:zen:true:true")).toBeDefined();
+  });
+
+  it("preserves BB-owned rows on either side of plugin banners", () => {
+    setPluginSlotRegistrations(
+      "ordered-plugin",
+      registrations([
+        {
+          id: "ordered",
+          banners: [{ id: "plugin", component: () => <div>Plugin row</div> }],
+        },
+      ]),
+    );
+
+    const view = render(
+      <ComposerBannersSlot view={composerView("t1")} ownerPlacement="before">
+        <div>BB row</div>
+      </ComposerBannersSlot>,
+    );
+    expect(view.container.textContent).toBe("BB rowPlugin row");
+
+    view.rerender(
+      <ComposerBannersSlot view={composerView("t1")} ownerPlacement="after">
+        <div>BB row</div>
+      </ComposerBannersSlot>,
+    );
+    expect(view.container.textContent).toBe("Plugin rowBB row");
   });
 });

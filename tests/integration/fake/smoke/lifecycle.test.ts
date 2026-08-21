@@ -1,6 +1,4 @@
 import fs from "node:fs/promises";
-import path from "node:path";
-import { createFakeAdapter } from "@bb/agent-runtime/test";
 import { describe, expect, it } from "vitest";
 import {
   createReuseThread,
@@ -17,6 +15,10 @@ import {
   waitForThreadStatus,
 } from "../../helpers/assertions.js";
 import { withHarness } from "../../helpers/harness.js";
+import {
+  findSessionConstruction,
+  recordScriptedEchoRequests,
+} from "../../helpers/scripted-echo.js";
 import { runGit } from "../../helpers/seed.js";
 import { readStoredTurnEvents } from "../../helpers/queries.js";
 import {
@@ -25,7 +27,6 @@ import {
   createProjectFixture,
   createReadyThread,
   DEFAULT_TIMEOUT_MS,
-  type RuntimeConfigCommand,
   STOP_DELAY_TEXT,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
@@ -86,46 +87,9 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
     }));
 
   it("starts parent and child threads with the shared runtime config", async () => {
-    const runtimeConfigCommands: RuntimeConfigCommand[] = [];
-    await withHarness(
-      {
-        adapterFactory: (providerId) => {
-          const baseAdapter = createFakeAdapter({
-            displayName: providerId,
-            id: providerId,
-          });
-          const buildCommandPlan: typeof baseAdapter.buildCommandPlan = (
-            command,
-          ) => {
-            if (
-              command.type === "thread/start" ||
-              command.type === "thread/resume"
-            ) {
-              runtimeConfigCommands.push({
-                commandType: command.type,
-                dynamicToolNames: (command.dynamicTools ?? [])
-                  .map((tool) => tool.name)
-                  .sort(),
-                instructions: command.options?.instructions,
-                skillRootPaths: (command.options?.skillRoots ?? [])
-                  .map((skillRoot) =>
-                    "skillDirectoryRootPath" in skillRoot
-                      ? skillRoot.skillDirectoryRootPath
-                      : skillRoot.localPluginPath,
-                  )
-                  .sort(),
-                threadId: command.threadId,
-              });
-            }
-            return baseAdapter.buildCommandPlan(command);
-          };
-          return {
-            ...baseAdapter,
-            buildCommandPlan,
-          };
-        },
-      },
-      async (harness) => {
+    const record = await recordScriptedEchoRequests();
+    try {
+      await withHarness(async (harness) => {
         const project = await createProjectFixture(
           harness,
           "Parent Thread Smoke",
@@ -137,7 +101,7 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
               reasoningLevel: "medium",
             },
             projectId: project.id,
-            providerId: "codex",
+            providerId: "fake",
             title: "Parent thread",
             workspace: {
               type: "unmanaged",
@@ -153,7 +117,7 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
           },
           parentThreadId: parentThread.id,
           projectId: project.id,
-          providerId: "codex",
+          providerId: "fake",
           title: "Child thread",
         });
         expect(childThread.parentThreadId).toBe(parentThread.id);
@@ -166,18 +130,25 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
           TURN_TIMEOUT_MS,
         );
 
-        const parentRuntimeCommand = runtimeConfigCommands.find(
-          (command) => command.threadId === parentThread.id,
+        // What the provider really received: the bridge records every
+        // request it handles.
+        const requests = await record.read();
+        const parentRuntimeCommand = findSessionConstruction(
+          requests,
+          parentThread.id,
         );
-        const childRuntimeCommand = runtimeConfigCommands.find(
-          (command) => command.threadId === childThread.id,
+        const childRuntimeCommand = findSessionConstruction(
+          requests,
+          childThread.id,
         );
         if (!parentRuntimeCommand || !childRuntimeCommand) {
-          throw new Error("Expected runtime commands for parent and child");
+          throw new Error(
+            "Expected session constructions for parent and child",
+          );
         }
 
-        expect(parentRuntimeCommand.commandType).toBe("thread/start");
-        expect(childRuntimeCommand.commandType).toBe("thread/start");
+        expect(parentRuntimeCommand.method).toBe("thread/start");
+        expect(childRuntimeCommand.method).toBe("thread/start");
         expect(parentRuntimeCommand.dynamicToolNames).toEqual([
           "update_environment_directory",
         ]);
@@ -193,30 +164,16 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
         expect(parentRuntimeCommand.instructions).not.toContain("manager");
         expect(childRuntimeCommand.instructions).not.toContain("manager");
 
-        const parentHasBbCliSkill = await Promise.all(
-          parentRuntimeCommand.skillRootPaths.map(async (rootPath) => {
-            try {
-              await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
-              return true;
-            } catch {
-              return false;
-            }
-          }),
-        );
-        const childHasBbCliSkill = await Promise.all(
-          childRuntimeCommand.skillRootPaths.map(async (rootPath) => {
-            try {
-              await fs.access(path.join(rootPath, "bb-cli", "SKILL.md"));
-              return true;
-            } catch {
-              return false;
-            }
-          }),
-        );
-        expect(parentHasBbCliSkill).toContain(true);
-        expect(childHasBbCliSkill).toContain(true);
-      },
-    );
+        // Skill roots are not asserted here: the runtime types them by
+        // first-party provider id (`AgentRuntimeSkillRoot.providerId`), so a
+        // provider outside that set — the scripted echo provider, or any
+        // third-party plugin — is configured with none. The skill-root
+        // contract moves to the provider declaration with the registry
+        // workstream; until then `runtime-skill-roots.test.ts` pins it.
+      });
+    } finally {
+      await record.dispose();
+    }
   });
 
   it("sends a message, runs the provider, and records timeline/output data", () =>

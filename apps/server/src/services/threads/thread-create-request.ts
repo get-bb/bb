@@ -1,6 +1,5 @@
 import type {
   PromptInput,
-  ThreadChildOrigin,
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
@@ -13,8 +12,6 @@ import type {
 } from "@bb/server-contract";
 
 export interface ThreadCreateServiceRequestInput {
-  /** @deprecated Use originKind. */
-  childOrigin?: ThreadChildOrigin | null;
   /**
    * May be the server-resolved "project-default" marker; thread creation
    * resolves it into a concrete environment before any provisioning logic.

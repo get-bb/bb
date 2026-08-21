@@ -1,0 +1,324 @@
+{
+  "protocolVersion": 2,
+  "deltaKinds": {
+    "command.outputSnapshot": {
+      "kind": "required",
+      "key": "required",
+      "text": "required",
+      "noTurnFallback": "optional"
+    },
+    "context.cleared": {
+      "kind": "required"
+    },
+    "context.compacted": {
+      "kind": "required",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "contextWindow": {
+      "kind": "required",
+      "used": "required",
+      "size": "optional",
+      "estimated": "required",
+      "attach": "required",
+      "providerTurnId": "optional"
+    },
+    "extension.state": {
+      "kind": "required",
+      "extensionKind": "required",
+      "payload": "required"
+    },
+    "input.accepted": {
+      "kind": "required",
+      "clientRequestId": "required",
+      "providerTurnId": "optional"
+    },
+    "item.close": {
+      "kind": "required",
+      "key": "required",
+      "status": "required",
+      "resultText": "optional",
+      "exitCode": "optional",
+      "aggregatedOutput": "optional",
+      "approvalStatus": "optional",
+      "item": "required",
+      "presentation": "optional",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "item.open": {
+      "kind": "required",
+      "key": "required",
+      "item": "required",
+      "presentation": "optional",
+      "attach": "optional",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "item.outputDelta": {
+      "kind": "required",
+      "key": "required",
+      "channel": "required",
+      "text": "required",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "item.progress": {
+      "kind": "required",
+      "key": "required",
+      "message": "optional",
+      "snapshot": "optional",
+      "flush": "optional",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "item.textClose": {
+      "kind": "required",
+      "key": "required",
+      "channel": "required",
+      "text": "optional",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "item.textDelta": {
+      "kind": "required",
+      "key": "required",
+      "channel": "required",
+      "text": "required",
+      "providerTurnId": "optional",
+      "noTurnFallback": "optional"
+    },
+    "provider.error": {
+      "kind": "required",
+      "message": "required",
+      "detail": "optional",
+      "willRetry": "optional",
+      "category": "optional",
+      "errorInfo": "optional",
+      "settlesTurn": "optional",
+      "providerTurnId": "optional",
+      "threadScoped": "optional"
+    },
+    "provider.modelFallback": {
+      "kind": "required",
+      "originalModel": "required",
+      "fallbackModel": "required",
+      "reason": "required",
+      "message": "required"
+    },
+    "provider.rateLimits": {
+      "kind": "required",
+      "rateLimits": "required"
+    },
+    "provider.warning": {
+      "kind": "required",
+      "summary": "optional",
+      "details": "optional",
+      "category": "optional",
+      "vouchedTurn": "optional"
+    },
+    "session.ended": {
+      "kind": "required"
+    },
+    "session.reset": {
+      "kind": "required"
+    },
+    "thread.identity": {
+      "kind": "required",
+      "providerThreadId": "required"
+    },
+    "thread.name": {
+      "kind": "required",
+      "name": "required"
+    },
+    "thread.started": {
+      "kind": "required"
+    },
+    "turn.boundary": {
+      "kind": "required",
+      "status": "required",
+      "error": "optional",
+      "providerCheckpointId": "optional",
+      "claimIfIdle": "optional",
+      "providerTurnId": "optional"
+    },
+    "turn.diff": {
+      "kind": "required",
+      "diff": "required",
+      "providerTurnId": "optional"
+    },
+    "turn.open": {
+      "kind": "required",
+      "providerTurnId": "optional",
+      "parentRef": "optional"
+    },
+    "unhandled": {
+      "kind": "required",
+      "raw": "required",
+      "rawType": "required",
+      "vouchedTurn": "required",
+      "onlyIfNoTurn": "optional",
+      "parentRef": "optional",
+      "providerTurnId": "optional"
+    },
+    "usage": {
+      "kind": "required",
+      "total": "required",
+      "last": "required",
+      "modelContextWindow": "required",
+      "providerTurnId": "optional"
+    }
+  },
+  "itemShapes": {
+    "agentMessage": {
+      "type": "required",
+      "text": "required"
+    },
+    "backgroundTask": {
+      "type": "required",
+      "familyId": "required",
+      "taskType": "required",
+      "description": "required",
+      "status": "required",
+      "taskStatus": "required",
+      "skipTranscript": "required",
+      "workflowName": "optional",
+      "workflow": "optional",
+      "usage": "optional",
+      "summary": "optional",
+      "error": "optional",
+      "outputFile": "optional"
+    },
+    "command": {
+      "type": "required",
+      "command": "required",
+      "cwd": "required",
+      "aggregatedOutput": "optional",
+      "exitCode": "optional",
+      "durationMs": "optional"
+    },
+    "compaction": {
+      "type": "required"
+    },
+    "delegation": {
+      "type": "required",
+      "childRef": "required",
+      "label": "required",
+      "background": "required",
+      "summary": "optional"
+    },
+    "extension": {
+      "type": "required",
+      "kind": "required",
+      "payload": "required"
+    },
+    "fileChange": {
+      "type": "required",
+      "changes": "required"
+    },
+    "fileRead": {
+      "type": "required",
+      "path": "required",
+      "cmd": "optional"
+    },
+    "imageView": {
+      "type": "required",
+      "path": "required"
+    },
+    "plan": {
+      "type": "required",
+      "text": "required"
+    },
+    "planSteps": {
+      "type": "required",
+      "steps": "required",
+      "explanation": "optional"
+    },
+    "reasoning": {
+      "type": "required",
+      "summary": "required",
+      "content": "required"
+    },
+    "search": {
+      "type": "required",
+      "mode": "required",
+      "query": "required",
+      "path": "optional",
+      "cmd": "optional"
+    },
+    "tool": {
+      "type": "required",
+      "tool": "required",
+      "server": "optional",
+      "args": "optional",
+      "result": "optional",
+      "error": "optional",
+      "durationMs": "optional"
+    },
+    "webFetch": {
+      "type": "required",
+      "url": "required",
+      "prompt": "optional",
+      "pattern": "required"
+    },
+    "webSearch": {
+      "type": "required",
+      "queries": "required"
+    }
+  },
+  "presentation": {
+    "label": "required",
+    "icon": "required",
+    "title": "optional",
+    "detail": "optional",
+    "suppress": "optional",
+    "tint": "optional"
+  },
+  "capabilities": {
+    "sessionRestore": "default",
+    "threadArchive": "default",
+    "threadRename": "default",
+    "threadGoalClear": "default",
+    "fork": "default",
+    "approvalEnforcedBy": "default",
+    "grammarVersions": "default",
+    "steerMode": "default"
+  },
+  "recoveryNotification": {
+    "threadId": "optional",
+    "kind": "required",
+    "message": "required",
+    "retryable": "required"
+  },
+  "requestMethods": [
+    "initialize",
+    "model/list",
+    "provider/health",
+    "provider/installation/run",
+    "provider/installation/status",
+    "provider/usage",
+    "skills/configure",
+    "thread/archive",
+    "thread/discard",
+    "thread/fork",
+    "thread/goal/clear",
+    "thread/name/set",
+    "thread/resume",
+    "thread/start",
+    "thread/stop",
+    "thread/unarchive",
+    "turn/start",
+    "turn/steer"
+  ],
+  "notificationMethods": [
+    "error",
+    "provider/raw",
+    "provider/recovery",
+    "session/replaced",
+    "thread/identity"
+  ],
+  "inboundRequestMethods": [
+    "interaction/request",
+    "item/tool/call"
+  ]
+}

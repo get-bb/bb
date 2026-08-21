@@ -32,6 +32,7 @@ import {
   withTestHarness,
   type TestAppHarness,
 } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -68,6 +69,7 @@ describe("bb.agents.registerTool", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-tools-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -269,6 +271,59 @@ describe("bb.agents.registerTool", () => {
     ).toBe(1);
   });
 
+  it("rejects recursive tool schemas before they reach a provider", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-schema-refs",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("schema-refs")!;
+
+    expect(() =>
+      api.agents.registerTool({
+        name: "zod_recursive",
+        description: "Recursive zod schema",
+        parameters: z.object({ value: z.json() }),
+        execute: () => "unused",
+      }),
+    ).toThrow(/recursive JSON Schema \$ref/);
+
+    expect(() =>
+      api.agents.registerTool({
+        name: "raw_recursive",
+        description: "Recursive raw schema",
+        parameters: {
+          type: "object",
+          properties: { node: { $ref: "#node" } },
+          $defs: {
+            node: {
+              $anchor: "node",
+              type: "object",
+              properties: { next: { $ref: "#node" } },
+            },
+          },
+        },
+        execute: () => "unused",
+      }),
+    ).toThrow(
+      'tool "raw_recursive" parameters contains recursive JSON Schema $ref "#node"',
+    );
+
+    api.agents.registerTool({
+      name: "acyclic_ref",
+      description: "Acyclic local reference",
+      parameters: {
+        type: "object",
+        properties: { label: { $ref: "#/$defs/label" } },
+        $defs: { label: { type: "string" } },
+      },
+      execute: () => "ok",
+    });
+    expect(service.listAgentTools().map((tool) => tool.tool.name)).toEqual([
+      "acyclic_ref",
+    ]);
+  });
+
   it("keeps experimental status labels with a registered native tool", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-readable-tool",
@@ -321,6 +376,73 @@ describe("bb.agents.registerTool", () => {
       }),
     ).toThrow(
       'tool "oversized_status_labels" experimental_statusLabels exceed the 80-character limit',
+    );
+  });
+
+  it("resolves one full row presentation per injected tool", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-presented-tools",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("presented-tools")!;
+
+    api.agents.registerTool({
+      name: "declared_tool",
+      description: "Declares its whole presentation",
+      experimental_presentation: {
+        label: { pending: "Looking things up", completed: "Looked things up" },
+        icon: { glyph: "Search" },
+        suppress: true,
+        tint: { light: "#123456", dark: "#654321" },
+      },
+      parameters: { type: "object" },
+      execute: () => "ok",
+    });
+    api.agents.registerTool({
+      name: "labelled_tool",
+      description: "Only status labels",
+      experimental_statusLabels: { pending: "Working", completed: "Worked" },
+      parameters: { type: "object" },
+      execute: () => "ok",
+    });
+    api.agents.registerTool({
+      name: "plain_tool",
+      description: "Declares nothing",
+      parameters: { type: "object" },
+      execute: () => "ok",
+    });
+
+    const byName = new Map(
+      service.listAgentTools().map((entry) => [entry.tool.name, entry.tool]),
+    );
+    expect(byName.get("declared_tool")?.presentation).toEqual({
+      label: { pending: "Looking things up", completed: "Looked things up" },
+      icon: { glyph: "Search" },
+      suppress: true,
+      tint: { light: "#123456", dark: "#654321" },
+    });
+    // Status labels still supply the label; the plugin's branding glyph
+    // ("Zap" in the fixture manifest) is the icon when the tool names none.
+    expect(byName.get("labelled_tool")?.presentation).toEqual({
+      label: { pending: "Working", completed: "Worked" },
+      icon: { glyph: "Zap" },
+    });
+    expect(byName.get("plain_tool")?.presentation).toEqual({
+      label: { pending: "Running plain_tool", completed: "Ran plain_tool" },
+      icon: { glyph: "Zap" },
+    });
+
+    expect(() =>
+      (api.agents.registerTool as (tool: unknown) => void)({
+        name: "bad_presentation",
+        description: "Invalid presentation fixture",
+        experimental_presentation: { icon: { glyph: "" } },
+        parameters: { type: "object" },
+        execute: () => "unused",
+      }),
+    ).toThrow(
+      'tool "bad_presentation" experimental_presentation.icon must be { glyph: string }',
     );
   });
 
@@ -409,6 +531,7 @@ describe("bb.agents.contributeInstructions", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-instr-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -661,7 +784,16 @@ describe("plugin tools reach thread runtime config", () => {
             if (context.provider.id === "claude-code") {
               throw new Error("conditional failure");
             }
-            return { tools: ["unknown_tool"], skills: [] };
+            return {
+              tools: [{
+                name: "broken_tool",
+                parameters: {
+                  type: "object",
+                  properties: { nested: { $ref: "#" } },
+                },
+              }],
+              skills: [],
+            };
           });
         }
       `,

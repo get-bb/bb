@@ -7,7 +7,12 @@ import {
   resolveInheritedDevSkillsRootPaths,
   toDevProcessEnv,
 } from "@bb/config/runtime";
-import { createDevTurboCommand } from "../src/commands/run-dev.js";
+import {
+  createDevTurboCommand,
+  createStartWorktreeCommand,
+  resolveDevLaunchMode,
+  toDevLaunchProcessEnv,
+} from "../src/commands/run-dev.js";
 import { migrateLegacyDevData } from "../src/lib/legacy-dev-data-migration.js";
 import {
   expectedDevDataDir,
@@ -57,12 +62,43 @@ describe("run-dev", () => {
     expect(config.dataDir).toBe(expectedDevDataDir({ homeDir, repoRoot }));
     expect(config.ports).toEqual(expectedDevPorts(repoRoot));
     expect(config.serverUrl).toBe(expectedDevServerUrl(repoRoot));
-    expect(new Set(Object.values(config.ports))).toHaveLength(3);
+    expect(new Set(Object.values(config.ports))).toHaveLength(5);
     expect(Object.values(config.ports)).not.toContain(5173);
     expect(Object.values(config.ports)).not.toContain(3334);
     expect(Object.values(config.ports)).not.toContain(3002);
     expect(Object.values(config.ports)).not.toContain(38886);
     expect(Object.values(config.ports)).not.toContain(38887);
+  });
+
+  it("keeps Cloud gateway ports out of the worker band and packaged ports", () => {
+    const rootsByOffset = new Map([
+      [0, "/repo/port-13604"],
+      [1, "/repo/port-3079"],
+      [3886, "/repo/port-3186"],
+      [3887, "/repo/port-6427"],
+      [7998, "/repo/port-57923"],
+      [7999, "/repo/port-7517"],
+    ]);
+    const portsByOffset = new Map(
+      [...rootsByOffset].map(([offset, repoRoot]) => [
+        offset,
+        resolveDevInstanceConfig({ homeDir: "/Users/tester", repoRoot }).ports,
+      ]),
+    );
+
+    expect(portsByOffset.get(3886)?.cloudPort).toBe(59000);
+    expect(portsByOffset.get(3887)?.cloudPort).toBe(59001);
+    expect(portsByOffset.get(7998)?.cloudPort).toBe(42998);
+    expect(portsByOffset.get(7999)?.cloudPort).toBe(42999);
+    expect(portsByOffset.get(0)?.cloudWorkerPort).toBe(43000);
+    expect(portsByOffset.get(1)?.cloudWorkerPort).toBe(43001);
+    expect(
+      new Set(
+        [...portsByOffset.values()].flatMap(
+          ({ cloudPort, cloudWorkerPort }) => [cloudPort, cloudWorkerPort],
+        ),
+      ),
+    ).toHaveLength(rootsByOffset.size * 2);
   });
 
   it("uses the home-relative checkout path for non-managed checkout paths", () => {
@@ -97,6 +133,9 @@ describe("run-dev", () => {
     expect(env.BB_SERVER_URL).toBe(config.serverUrl);
     expect(env.BB_HOST_DAEMON_PORT).toBe(String(config.ports.hostDaemonPort));
     expect(env.BB_DEV_APP_PORT).toBe(String(config.ports.appPort));
+    expect(env.BB_DEV_CONNECT_BASE_URL).toBe(
+      `http://bb.localhost:${config.ports.cloudPort}`,
+    );
   });
 
   it("inherits parent bb skills for managed worktree dev apps", () => {
@@ -190,6 +229,57 @@ describe("run-dev", () => {
       ],
       command: "pnpm",
     });
+  });
+
+  it("runs the production-style source launcher for worktree start", () => {
+    const command = createStartWorktreeCommand();
+
+    expect(command.command).toBe(process.execPath);
+    expect(command.args).toEqual([
+      "--conditions=source",
+      "--import",
+      "tsx",
+      path.resolve(import.meta.dirname, "../../..", "scripts/start-bb.mjs"),
+      "--worktree-runtime-policy",
+    ]);
+  });
+
+  it("accepts only the supported dev launch mode", () => {
+    expect(resolveDevLaunchMode([])).toBe("vite");
+    expect(resolveDevLaunchMode(["--worktree"])).toBe("worktree");
+    expect(() => resolveDevLaunchMode(["--watch"])).toThrow(
+      "Expected no arguments or --worktree",
+    );
+  });
+
+  it("uses production serving with checkout-specific dev selectors", () => {
+    const config = resolveDevInstanceConfig({
+      homeDir: "/Users/tester",
+      repoRoot: "/Users/tester/src/bb",
+    });
+
+    const env = toDevLaunchProcessEnv({
+      baseEnv: {
+        BB_DATA_DIR: "/Users/tester/.bb",
+        BB_DEV_APP_PORT: "5173",
+        BB_TELEMETRY: "true",
+        NODE_ENV: "development",
+        OPENAI_API_KEY: "test-key",
+      },
+      config,
+      mode: "worktree",
+    });
+
+    expect(env).toMatchObject({
+      BB_DATA_DIR: config.dataDir,
+      BB_HOST_DAEMON_PORT: String(config.ports.hostDaemonPort),
+      BB_SERVER_PORT: String(config.ports.serverPort),
+      BB_SERVER_URL: config.serverUrl,
+      BB_TELEMETRY: "false",
+      NODE_ENV: "production",
+      OPENAI_API_KEY: "test-key",
+    });
+    expect(env.BB_DEV_APP_PORT).toBeUndefined();
   });
 
   it("migrates legacy flat dev data into the checkout instance", async () => {

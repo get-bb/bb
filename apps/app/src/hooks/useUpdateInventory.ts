@@ -7,10 +7,13 @@ import type { BbDesktopInfo } from "@bb/desktop-contract";
 import {
   buildProviderCliIssue,
   isProviderCliIssue,
+  isProviderCliUpdateIssue,
   providerCliEntries,
   type ProviderCliIssue,
 } from "@/components/provider-cli/provider-cli-install";
 import { useDesktopUpdateInfo } from "@/hooks/useDesktopUpdateInfo";
+import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
+import { pluginsNeedingAttention } from "@/hooks/usePluginAttention";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
 import { hostProviderCliStatusQueryKey } from "@/hooks/queries/query-keys";
 import { SESSION_STATIC_QUERY_POLICY } from "@/hooks/queries/query-policies";
@@ -28,6 +31,12 @@ export interface UpdateInventoryMachine {
   providerStatus: ProviderCliStatusResponse | null;
   statusPending: boolean;
   statusError: boolean;
+  /**
+   * A re-check is in flight. Distinct from `statusPending`: a query that has
+   * already errored stays in the error status while it refetches, so the row's
+   * Retry needs this to show it is working.
+   */
+  statusFetching: boolean;
   issues: ProviderCliIssue[];
   /** Daemon stuck on an old protocol version; the server can force a retry. */
   canRetryDaemonUpdate: boolean;
@@ -42,6 +51,8 @@ export interface UpdateInventory {
   /** Desktop shell downloaded an update; a relaunch applies it. */
   desktopUpdateReady: boolean;
   machines: UpdateInventoryMachine[];
+  /** Enabled plugins that are not running (incompatible, error, missing). */
+  pluginAttentionCount: number;
   /** Count of things a user can act on right now. */
   actionableCount: number;
   hasAttention: boolean;
@@ -58,12 +69,21 @@ interface UseUpdateInventoryOptions {
   enabled?: boolean;
 }
 
+/** Build the per-machine provider inventory once at the query boundary. */
+export function buildUpdateInventoryProviderIssues(
+  providerStatus: ProviderCliStatusResponse,
+): ProviderCliIssue[] {
+  return providerCliEntries(providerStatus)
+    .map(buildProviderCliIssue)
+    .filter(isProviderCliIssue);
+}
+
 /**
  * One consolidated view of every update bb knows about: the bb app itself
  * (npm registry / desktop feed) plus provider CLIs on every connected
  * machine. Remote daemons follow the server version automatically via
- * protocol self-update, so per-machine bb rows only surface when a daemon is
- * stuck and needs a manual retry.
+ * protocol self-update. Per-machine bb rows show that automatic handoff while
+ * it is running, then offer manual recovery only if the update stalls.
  */
 export function useUpdateInventory(
   options?: UseUpdateInventoryOptions,
@@ -73,6 +93,9 @@ export function useUpdateInventory(
   const systemConfigQuery = useSystemConfig({ enabled });
   const hostsQuery = useHosts({ enabled });
   const { desktopInfo, isDesktop } = useDesktopUpdateInfo();
+  const pluginAttentionCount = pluginsNeedingAttention(
+    usePluginList({ enabled }).data?.plugins ?? [],
+  ).length;
 
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
   const connectedHosts = useMemo(
@@ -109,15 +132,14 @@ export function useUpdateInventory(
     const issues =
       providerStatus === null
         ? []
-        : providerCliEntries(providerStatus)
-            .map(buildProviderCliIssue)
-            .filter(isProviderCliIssue);
+        : buildUpdateInventoryProviderIssues(providerStatus);
     return {
       host,
       isPrimary: host.id === primaryHostId,
       providerStatus,
       statusPending: statusQuery?.isPending ?? false,
       statusError: statusQuery?.isError ?? false,
+      statusFetching: statusQuery?.isFetching ?? false,
       issues,
       canRetryDaemonUpdate: hostCanRetryUpdate(host),
     };
@@ -133,14 +155,20 @@ export function useUpdateInventory(
     !systemVersion.isDevelopment &&
     systemVersion.updateAvailable;
   const desktopUpdateReady = desktopInfo?.updateDownloaded === true;
+  // Counts what Settings → Updates actually lists. A never-installed CLI is an
+  // install prompt, not an update, and inflating this made a fresh single-agent
+  // setup read as permanently behind.
   const actionableCount =
     machines.reduce(
       (count, machine) =>
-        count + machine.issues.length + (machine.canRetryDaemonUpdate ? 1 : 0),
+        count +
+        machine.issues.filter(isProviderCliUpdateIssue).length +
+        (machine.canRetryDaemonUpdate ? 1 : 0),
       0,
     ) +
     (appUpdateAvailable ? 1 : 0) +
-    (desktopUpdateReady ? 1 : 0);
+    (desktopUpdateReady ? 1 : 0) +
+    pluginAttentionCount;
 
   const desktopLastCheckedAt =
     desktopInfo?.lastCheckedAt === null ||
@@ -165,6 +193,7 @@ export function useUpdateInventory(
     appUpdateAvailable,
     desktopUpdateReady,
     machines,
+    pluginAttentionCount,
     actionableCount,
     hasAttention: actionableCount > 0,
     lastCheckedAt,

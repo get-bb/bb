@@ -19,9 +19,11 @@ export function PromptMentionIcon({
       />
     );
   }
-  const iconName = promptMentionIconName(resource);
-  if (iconName === null) {
-    return null;
-  }
-  return <Icon name={iconName} className={className} aria-hidden />;
+  return (
+    <Icon
+      name={promptMentionIconName(resource)}
+      className={className}
+      aria-hidden
+    />
+  );
 }

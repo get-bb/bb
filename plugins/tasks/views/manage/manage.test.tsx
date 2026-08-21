@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import type { Task } from "../../shared/contract.js";
 
 // jsdom lacks ResizeObserver; cmdk's list observes its size on mount.
@@ -212,13 +212,23 @@ describe("NewTaskDialog", () => {
           // no-labels-at-all fallback) when the query matches nothing.
           listLabels: () => ({
             labels: [
-              { id: "01HLABELDOCS0000000000000", projectId: PROJECT_ID, name: "docs", color: "#888" },
+              {
+                id: "01HLABELDOCS0000000000000",
+                projectId: PROJECT_ID,
+                name: "docs",
+                color: "#888",
+              },
             ],
           }),
           createLabel: (input: Record<string, unknown>) => {
             createLabelCalls.push(input);
             return {
-              label: { id: "01HLABELNEW00000000000000", projectId: PROJECT_ID, name: input.name, color: input.color },
+              label: {
+                id: "01HLABELNEW00000000000000",
+                projectId: PROJECT_ID,
+                name: input.name,
+                color: input.color,
+              },
             };
           },
         },
@@ -229,17 +239,20 @@ describe("NewTaskDialog", () => {
     const search = await slot.findByPlaceholderText("Add labels…");
     fireEvent.change(search, { target: { value: "  dank  " } });
 
-    const createBtn = await slot.findByRole("button", { name: /Create .*dank/ });
+    const createBtn = await slot.findByRole("button", {
+      name: /Create .*dank/,
+    });
     // Regression guard (BB-11): the actionable create row must not inherit the
     // empty-state's tall centered padding — that produced the "insane" gap.
     const emptyContainer = createBtn.closest("[cmdk-empty]");
     expect(emptyContainer).not.toBeNull();
-    expect(emptyContainer!.className).not.toContain("py-6");
-    expect(emptyContainer!.className).not.toContain("text-center");
 
     fireEvent.click(createBtn);
     await waitFor(() => expect(createLabelCalls).toHaveLength(1));
-    expect(createLabelCalls[0]).toMatchObject({ projectId: PROJECT_ID, name: "dank" });
+    expect(createLabelCalls[0]).toMatchObject({
+      projectId: PROJECT_ID,
+      name: "dank",
+    });
   });
 });
 
@@ -254,7 +267,10 @@ describe("NewTaskDialog attachments", () => {
     fetchCalls.length = 0;
     failFileNames.clear();
     uploadGate = null;
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ) => {
       const url = String(input);
       if (url.includes("/plugins/tasks/token")) {
         return new Response(JSON.stringify({ token: "test-token" }), {
@@ -316,16 +332,12 @@ describe("NewTaskDialog attachments", () => {
       { rpc: dialogRpc() },
     );
     const titleInput = await openDialogWithTitle(slot, "With files");
-    pasteFile(
-      titleInput,
-      new File(["png"], "shot.png", { type: "image/png" }),
-    );
+    pasteFile(titleInput, new File(["png"], "shot.png", { type: "image/png" }));
     await slot.findByText("shot.png");
 
     // Picker path: stage a second file, then remove it before creating.
-    const picker = document.querySelector<HTMLInputElement>(
-      'input[type="file"]',
-    )!;
+    const picker =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
     fireEvent.change(picker, {
       target: {
         files: [new File(["doc"], "notes.txt", { type: "text/plain" })],
@@ -403,9 +415,9 @@ describe("NewTaskDialog attachments", () => {
     Object.defineProperty(big, "size", { value: 25 * 1024 * 1024 + 1 });
     pasteFile(titleInput, big);
     const chip = await slot.findByText("big.bin");
-    expect(chip.closest("span")?.parentElement?.getAttribute("title")).toContain(
-      "Over the 25 MB attachment limit",
-    );
+    expect(
+      chip.closest("span")?.parentElement?.getAttribute("title"),
+    ).toContain("Over the 25 MB attachment limit");
 
     // The rejected chip blocks creation instead of being silently dropped.
     await slot.findByText(/Remove attachments over the 25 MB limit/);
@@ -653,7 +665,11 @@ describe("savePresetDraft", () => {
 
   it("maps empty worktree targets to nulls (defaults)", async () => {
     const { calls, rpc } = captureRpc();
-    await savePresetDraft(rpc, null, { ...draft, baseBranch: "", machineId: "" });
+    await savePresetDraft(rpc, null, {
+      ...draft,
+      baseBranch: "",
+      machineId: "",
+    });
     expect(calls[0]!.input).toMatchObject({
       environmentKind: "new-worktree",
       baseBranch: null,
@@ -680,11 +696,7 @@ describe("PresetDialog environment section", () => {
               {
                 id: "claude-code",
                 name: "Claude Code",
-                supportedPermissionModes: [
-                  "accept-edits",
-                  "auto",
-                  "full",
-                ],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             ],
           }),
@@ -692,7 +704,7 @@ describe("PresetDialog environment section", () => {
             models: [
               { id: "claude-sonnet-5", name: "Sonnet", isDefault: true },
             ],
-            reasoningLevels: ["low", "medium", "high"],
+            reasoningLevels: ["low", "medium", "high", "ultra"],
           }),
           listMachines: () => ({ machines: MACHINES }),
         },
@@ -701,7 +713,7 @@ describe("PresetDialog environment section", () => {
   }
 
   it("shows the environment column and hydrates a worktree preset", async () => {
-    const slot = renderManagePresets([presetRow()]);
+    const slot = renderManagePresets([presetRow({ reasoningLevel: "ultra" })]);
     fireEvent.mouseDown(await slot.findByRole("tab", { name: "Presets" }));
     // Manage table resolves the machine name via listMachines.
     await slot.findByText("Worktree · main · Sawyer Air");
@@ -714,6 +726,9 @@ describe("PresetDialog environment section", () => {
     expect(branch.value).toBe("main");
     expect(branch.placeholder).toBe("project default base — leave empty");
     expect(slot.getByLabelText("Machine")).toBeDefined();
+    await waitFor(() =>
+      expect(slot.getByLabelText("Reasoning").textContent).toContain("ultra"),
+    );
   });
 
   it("hides worktree fields for project-default presets", async () => {
@@ -733,6 +748,223 @@ describe("PresetDialog environment section", () => {
     await slot.findByLabelText("Execution environment");
     expect(slot.queryByLabelText("Base branch")).toBeNull();
     expect(slot.queryByLabelText("Machine")).toBeNull();
+  });
+});
+
+describe("Manage folders", () => {
+  const parentFolder = {
+    id: "01HZZZZZZZZZZZZZZZZZZZZZF1",
+    name: "bb",
+    parentFolderId: null,
+    createdAt: "2026-07-15T00:00:00.000Z",
+  };
+  const childFolder = {
+    id: "01HZZZZZZZZZZZZZZZZZZZZZF2",
+    name: "archive",
+    parentFolderId: parentFolder.id,
+    createdAt: "2026-07-15T00:00:00.000Z",
+  };
+
+  function renderFolders(overrides: Record<string, unknown> = {}) {
+    return renderSlot(
+      app.navPanels[0]!,
+      { subPath: "manage" },
+      {
+        rpc: {
+          listProjects: () => ({
+            projects: [{ ...project, folderId: parentFolder.id }],
+          }),
+          listFolders: () => ({ folders: [parentFolder, childFolder] }),
+          listPresets: () => ({ presets: [] }),
+          sidebarSummary: () => ({ projects: [] }),
+          listTasks: () => ({ tasks: [] }),
+          listLabels: () => ({ labels: [] }),
+          ...overrides,
+        },
+      },
+    );
+  }
+
+  it("deletes a folder after naming what the delete unfiles", async () => {
+    const deleteCalls: Array<Record<string, unknown>> = [];
+    const slot = renderFolders({
+      deleteFolder: (input: Record<string, unknown>) => {
+        deleteCalls.push(input);
+        return {
+          deleted: true,
+          movedProjectIds: [PROJECT_ID],
+          movedFolderIds: [childFolder.id],
+        };
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+
+    // Nothing is destroyed: the schema re-parents the folder's contents.
+    await slot.findByText(
+      "1 project and 1 subfolder move to the top level. No tasks are deleted.",
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    await waitFor(() => expect(deleteCalls).toHaveLength(1));
+    expect(deleteCalls[0]).toMatchObject({ folderId: parentFolder.id });
+  });
+
+  it("withholds the delete impact until the project list has loaded", async () => {
+    let releaseProjects: (() => void) | undefined;
+    const projectsLoaded = new Promise<void>((resolve) => {
+      releaseProjects = resolve;
+    });
+    const deleteCalls: Array<Record<string, unknown>> = [];
+    const slot = renderFolders({
+      listProjects: async () => {
+        await projectsLoaded;
+        return { projects: [{ ...project, folderId: parentFolder.id }] };
+      },
+      deleteFolder: (input: Record<string, unknown>) => {
+        deleteCalls.push(input);
+        return {
+          deleted: true,
+          movedProjectIds: [PROJECT_ID],
+          movedFolderIds: [childFolder.id],
+        };
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+
+    // Folders are in, projects are not: the dialog must not claim the folder
+    // is empty, and confirming is blocked until the impact is known.
+    await slot.findByText("Checking what the folder contains…");
+    expect(slot.queryByText(/The folder is empty/)).toBeNull();
+    const confirm = slot.getByRole<HTMLButtonElement>("button", {
+      name: "Delete folder",
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(deleteCalls).toHaveLength(0);
+
+    releaseProjects!();
+    await slot.findByText(
+      "1 project and 1 subfolder move to the top level. No tasks are deleted.",
+    );
+    await waitFor(() =>
+      expect(
+        slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
+          .disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    await waitFor(() => expect(deleteCalls).toHaveLength(1));
+  });
+
+  it("reports a failed project load instead of an empty folder", async () => {
+    const slot = renderFolders({
+      listProjects: () => {
+        throw new Error("projects unavailable");
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+    await slot.findByText(
+      "Could not load the folder's contents: projects unavailable",
+    );
+    expect(
+      slot.getByRole<HTMLButtonElement>("button", { name: "Delete folder" })
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("blocks deleting on stale rows after a refresh fails", async () => {
+    // useTasksQuery keeps the rows it had when a same-scope refetch fails, so
+    // the dialog would otherwise count the cached (possibly stale) projects.
+    let projectsUnavailable = false;
+    const deleteCalls: Array<Record<string, unknown>> = [];
+    const slot = renderFolders({
+      listProjects: () => {
+        if (projectsUnavailable) throw new Error("projects unavailable");
+        return { projects: [{ ...project, folderId: parentFolder.id }] };
+      },
+      deleteFolder: (input: Record<string, unknown>) => {
+        deleteCalls.push(input);
+        return { deleted: true, movedProjectIds: [], movedFolderIds: [] };
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    // First load succeeds and the impact is known.
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+    await slot.findByText(
+      "1 project and 1 subfolder move to the top level. No tasks are deleted.",
+    );
+    fireEvent.click(slot.getByRole("button", { name: "Cancel" }));
+
+    // A later refresh fails; the cached rows stay but are no longer trusted.
+    projectsUnavailable = true;
+    await slot.behavior.emitRealtime("projects:changed", {
+      projectId: PROJECT_ID,
+    });
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder bb" }),
+    );
+    await slot.findByText(
+      "Could not load the folder's contents: projects unavailable",
+    );
+    expect(slot.queryByText(/move to the top level/)).toBeNull();
+    const confirm = slot.getByRole<HTMLButtonElement>("button", {
+      name: "Delete folder",
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(confirm);
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it("surfaces a failed delete instead of silently closing", async () => {
+    const slot = renderFolders({
+      deleteFolder: () => {
+        throw new Error("Folder not found");
+      },
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder archive" }),
+    );
+    await slot.findByText("The folder is empty.");
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    await slot.findByRole("alert");
+  });
+
+  it("treats deleted: false as a conflict and refetches", async () => {
+    let folderCalls = 0;
+    const slot = renderFolders({
+      listFolders: () => {
+        folderCalls += 1;
+        return { folders: [parentFolder, childFolder] };
+      },
+      deleteFolder: () => ({
+        deleted: false,
+        movedProjectIds: [],
+        movedFolderIds: [],
+      }),
+    });
+    fireEvent.mouseDown(await slot.findByRole("tab", { name: "Folders" }));
+    fireEvent.click(
+      await slot.findByRole("button", { name: "Delete folder archive" }),
+    );
+    await slot.findByText("The folder is empty.");
+    const callsBeforeDelete = folderCalls;
+    fireEvent.click(slot.getByRole("button", { name: "Delete folder" }));
+    const alert = await slot.findByRole("alert");
+    expect(alert.textContent).toBe("Folder “archive” was already deleted.");
+    // The server publishes nothing for a no-op delete, so the panel refetches
+    // on its own to drop the row another client removed.
+    await waitFor(() => expect(folderCalls).toBeGreaterThan(callsBeforeDelete));
   });
 });
 

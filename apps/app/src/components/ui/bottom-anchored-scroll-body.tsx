@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { useStore } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
+import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import {
   threadTimelineScrollAnchorAtomFamily,
   type ScrollAnchor,
@@ -21,9 +22,11 @@ import {
 // surfaces. It combines two mechanisms because neither is sufficient alone:
 //
 // - At the bottom, CSS scroll anchoring is redirected to the trailing 1px
-//   `.scroll-bottom-anchor` sentinel. That lets Chromium/Firefox keep the
-//   bottom pinned through width-driven markdown reflow without anchoring to a
-//   random message row.
+//   `.scroll-bottom-anchor` sentinel by excluding the content wrapper
+//   (`overflow-anchor: none` on the wrapper alone; the sentinel sits outside
+//   it). That lets Chromium/Firefox keep the bottom pinned through
+//   width-driven markdown reflow without anchoring to a random message row.
+//   WebKit has no scroll anchoring, so the class is never applied there.
 // - ResizeObserver plus a short rAF restore loop covers layout changes that
 //   browser anchoring does not reliably handle, such as sidebar collapse,
 //   prompt/footer height changes, and async content settling.
@@ -51,7 +54,7 @@ export interface BottomAnchorContextValue {
   captureScrollAnchor: () => void;
 }
 
-export interface BottomAnchoredScrollBodyProps {
+interface BottomAnchoredScrollBodyProps {
   children: ReactNode;
   footer: ReactNode;
   scrollOverlay?: ReactNode;
@@ -65,12 +68,12 @@ export interface BottomAnchoredScrollBodyProps {
   scrollAnchorThreadId?: string;
 }
 
-export interface ScrollElementIntoViewArgs {
+interface ScrollElementIntoViewArgs {
   element: HTMLElement;
   options?: ScrollIntoViewOptions;
 }
 
-export interface ScrollElementIntoViewClampedToMaxScrollArgs {
+interface ScrollElementIntoViewClampedToMaxScrollArgs {
   element: HTMLElement;
 }
 
@@ -95,7 +98,10 @@ const SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS = 8;
 const TIMELINE_ROW_ID_SELECTOR = "[data-timeline-row-id]";
 const TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR =
   '[data-timeline-row-list="top-level"]';
-const DIRECT_TIMELINE_ROW_SELECTOR = `:scope > ${TIMELINE_ROW_ID_SELECTOR}`;
+const DIRECT_TIMELINE_ROW_SELECTOR = [
+  `:scope > ${TIMELINE_ROW_ID_SELECTOR}`,
+  `:scope > [data-timeline-virtual-spacer] > ${TIMELINE_ROW_ID_SELECTOR}`,
+].join(", ");
 const SCROLL_INTENT_KEYS = new Set([
   "ArrowDown",
   "ArrowUp",
@@ -108,6 +114,16 @@ const SCROLL_INTENT_KEYS = new Set([
 
 export const BottomAnchorContext =
   createContext<BottomAnchorContextValue | null>(null);
+
+/**
+ * A virtualized timeline pins this one row during initial navigation restore;
+ * otherwise the saved row would not exist in the DOM for the scroll body to
+ * measure. It remains separate from BottomAnchorContext so embedded/test
+ * consumers do not need to implement virtualizer policy.
+ */
+export const TimelineScrollRestoreRowIdContext = createContext<string | null>(
+  null,
+);
 
 export function useBottomAnchoredScroll(): BottomAnchorContextValue | null {
   return useContext(BottomAnchorContext);
@@ -300,6 +316,15 @@ export function BottomAnchoredScrollBody({
   }>({ lastWriteAt: 0, trailingTimeout: null });
   const userDetachedFromBottomRef = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const initialScrollRestoreRowId = useMemo(() => {
+    if (scrollAnchorThreadId === undefined) return null;
+    const anchor = store.get(
+      threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId),
+    );
+    return anchor !== null && anchor !== undefined && !anchor.atBottom
+      ? anchor.rowId
+      : null;
+  }, [scrollAnchorThreadId, store]);
 
   const getScrollElement = useCallback(() => scrollAreaRef.current, []);
 
@@ -824,46 +849,69 @@ export function BottomAnchoredScrollBody({
 
   return (
     <BottomAnchorContext.Provider value={bottomAnchorContextValue}>
-      <div className="grid min-h-0 flex-1 overflow-hidden">
-        <div
-          ref={scrollAreaRef}
-          className={cn(
-            "thread-scrollbar @container/page col-start-1 row-start-1 min-h-0 overflow-x-hidden overflow-y-auto",
-            scrollAreaClassName,
-          )}
-        >
+      <TimelineScrollRestoreRowIdContext.Provider
+        value={initialScrollRestoreRowId}
+      >
+        <div className="grid min-h-0 flex-1 overflow-hidden">
           <div
-            ref={scrollContentRef}
+            ref={scrollAreaRef}
             className={cn(
-              "flex min-h-full min-w-0 flex-col",
-              isAtBottom && "scroll-bottom-anchor-content",
+              "thread-scrollbar @container/page col-start-1 row-start-1 min-h-0 overflow-x-hidden overflow-y-auto",
+              scrollAreaClassName,
             )}
           >
             <div
-              className={cn(
-                "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 pb-4 pt-2",
-                maxWidthClassName,
-                contentClassName,
-              )}
-              style={PAGE_SHELL_CONTENT_STYLE}
+              ref={scrollContentRef}
+              className="flex min-h-full min-w-0 flex-col"
             >
-              {children}
+              {/* `.scroll-bottom-anchor-content` sets `overflow-anchor: none` on
+                this wrapper only. Scroll anchoring skips an excluded element's
+                whole subtree, so one class on one element redirects anchoring
+                to the trailing sentinel without a descendant rule that would
+                restyle every timeline node each time the bottom attaches or
+                detaches. Browsers without scroll anchoring (WebKit) never get
+                the class: the toggle would be a pure invalidation cost. */}
+              <div
+                className={cn(
+                  "mx-auto flex w-full min-w-0 flex-1 flex-col px-4 pb-4 pt-2",
+                  maxWidthClassName,
+                  contentClassName,
+                  isAtBottom &&
+                    supportsScrollAnchoring() &&
+                    "scroll-bottom-anchor-content",
+                )}
+                style={PAGE_SHELL_CONTENT_STYLE}
+              >
+                {children}
+              </div>
               <div className="scroll-bottom-anchor" aria-hidden />
+              {footer ? (
+                // The sticky footer is excluded from anchor selection outright:
+                // it moves with the scrollport, so anchoring to it (or to a
+                // control inside it) would turn its own height changes into
+                // scroll jumps. Static exclusion keeps the previous
+                // `.scroll-bottom-anchor-content *` coverage of this subtree
+                // without a toggling class; while the wrapper is not excluded
+                // it always wins selection anyway, so nothing else changes.
+                <div
+                  data-scroll-footer=""
+                  className="sticky bottom-0 z-20 shrink-0 [overflow-anchor:none]"
+                >
+                  {footer}
+                </div>
+              ) : null}
             </div>
-            {footer ? (
-              <div className="sticky bottom-0 z-20 shrink-0">{footer}</div>
-            ) : null}
           </div>
+          {scrollOverlay ? (
+            <div
+              data-scroll-overlay=""
+              className="pointer-events-none z-30 col-start-1 row-start-1 flex min-h-0 min-w-0 items-center justify-end px-3 py-3"
+            >
+              <div className="pointer-events-auto">{scrollOverlay}</div>
+            </div>
+          ) : null}
         </div>
-        {scrollOverlay ? (
-          <div
-            data-scroll-overlay=""
-            className="pointer-events-none z-30 col-start-1 row-start-1 flex min-h-0 min-w-0 items-center justify-end px-3 py-3"
-          >
-            <div className="pointer-events-auto">{scrollOverlay}</div>
-          </div>
-        ) : null}
-      </div>
+      </TimelineScrollRestoreRowIdContext.Provider>
     </BottomAnchorContext.Provider>
   );
 }

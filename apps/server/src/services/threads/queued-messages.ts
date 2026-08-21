@@ -42,12 +42,18 @@ import {
 } from "./thread-commands.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
-import { getLastProviderThreadId } from "./thread-events.js";
+import {
+  getLastProviderThreadId,
+  isManualCompactionActive,
+} from "./thread-events.js";
 import { recoverThreadModelOverride } from "./thread-execution-override.js";
-import { ensureThreadCanStartRequest } from "./thread-lifecycle.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
-import { formatAgentThreadInput, sendThreadMessage } from "./thread-send.js";
+import {
+  formatAgentThreadInput,
+  groupedInputForRuntime,
+  sendThreadMessage,
+} from "./thread-send.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
@@ -73,10 +79,8 @@ interface SendClaimedQueuedMessageArgs {
 interface SendClaimedQueuedMessageForThreadArgs {
   mode: SendQueuedMessageMode;
   queuedMessages: ClaimedQueuedMessage[];
-  thread: QueuedMessageThread;
+  thread: Thread;
 }
-
-interface QueuedMessageThread extends Thread {}
 
 interface QueuedMessageAutoSendArgs {
   threadId: string;
@@ -101,6 +105,17 @@ async function requireReadyQueuedMessageEnvironment(
 interface QueuedMessageAutoSendRequestArgs {
   queuedMessageId: string;
   threadId: string;
+}
+
+function isQueuedMessageAutoSendCandidate(
+  thread: Thread | null,
+): thread is Thread {
+  return (
+    thread !== null &&
+    thread.archivedAt === null &&
+    thread.deletedAt === null &&
+    thread.status !== "stopping"
+  );
 }
 
 interface FormatQueuedMessageInputForSenderArgs {
@@ -138,22 +153,6 @@ function formatQueuedMessageInputForSender(
     input: args.input,
     senderThreadId: args.senderThreadId,
   });
-}
-
-function queuedMessagesToThreadQueuedMessages(
-  queuedMessages: readonly ClaimedQueuedMessage[],
-): ThreadQueuedMessage[] {
-  return queuedMessages.map(toThreadQueuedMessage);
-}
-
-function groupedInputForRuntime(
-  inputGroups: readonly PromptInput[][],
-): PromptInput[] {
-  return inputGroups.flatMap((input, index) =>
-    index === 0
-      ? input
-      : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...input],
-  );
 }
 
 function releaseQueuedMessageClaims(
@@ -270,11 +269,8 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   }
 
   const environment = await requireReadyQueuedMessageEnvironment(deps, thread);
-  const queuedMessages = queuedMessagesToThreadQueuedMessages(
-    args.queuedMessages,
-  );
+  const queuedMessages = args.queuedMessages.map(toThreadQueuedMessage);
   const queuedMessage = queuedMessages[0]!;
-  ensureThreadCanStartRequest(thread);
 
   const senderThreadId = args.queuedMessages[0]!.senderThreadId;
   let inputGroups = args.queuedMessages.map((claimedQueuedMessage) =>
@@ -310,22 +306,15 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
   if (initiator === "user") {
     await recoverThreadModelOverride(deps, {
       model: payload.model,
-      modelSource:
-        payload.executionInputSources === undefined
-          ? "explicit"
-          : payload.executionInputSources.model,
+      modelSource: "explicit",
       thread,
     });
   }
-  const execution = await buildExecutionOptions(
-    deps,
-    payload,
-    { threadId: thread.id },
-    "client/turn/requested",
-  );
+  const execution = await buildExecutionOptions(deps, payload, {
+    threadId: thread.id,
+  });
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
-    thread,
   });
   await ensureHostSessionReadyForWork(deps, {
     hostId: environment.hostId,
@@ -395,9 +384,6 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
     },
     { behavior: "immediate" },
   );
-  if (!command) {
-    throw createQueuedMessageClaimLostError();
-  }
 
   deps.hub.notifyThread(
     thread.id,
@@ -429,9 +415,7 @@ async function sendClaimedQueuedMessageForThread(
     return sent;
   }
 
-  const queuedMessages = queuedMessagesToThreadQueuedMessages(
-    args.queuedMessages,
-  );
+  const queuedMessages = args.queuedMessages.map(toThreadQueuedMessage);
   const queuedMessage = queuedMessages[0]!;
   const inputGroups = queuedMessages.map(
     (queuedMessage) => queuedMessage.content,
@@ -469,6 +453,11 @@ export async function sendQueuedMessage(
   args: SendQueuedMessageArgs,
 ): Promise<ThreadQueuedMessage> {
   const queuedMessages = claimQueuedThreadMessageForSend(deps, args);
+  const thread = getThread(deps.db, args.threadId);
+  if (thread && isManualCompactionActive(deps, thread)) {
+    releaseQueuedMessageClaims(deps, queuedMessages);
+    return toThreadQueuedMessage(queuedMessages[0]!);
+  }
   try {
     return await withActiveQueuedMessageClaims(queuedMessages, () =>
       sendClaimedQueuedMessage(deps, {
@@ -487,13 +476,7 @@ export async function sendNextQueuedMessageIfPresent(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: { threadId: string },
 ): Promise<boolean> {
-  const thread = getThread(deps.db, args.threadId);
-  if (
-    !thread ||
-    thread.archivedAt !== null ||
-    thread.deletedAt !== null ||
-    thread.status === "stopping"
-  ) {
+  if (!isQueuedMessageAutoSendCandidate(getThread(deps.db, args.threadId))) {
     return false;
   }
 
@@ -503,6 +486,15 @@ export async function sendNextQueuedMessageIfPresent(
     args.threadId,
   );
   if (!nextQueuedMessages) {
+    return false;
+  }
+
+  const thread = getThread(deps.db, args.threadId);
+  if (
+    !isQueuedMessageAutoSendCandidate(thread) ||
+    isManualCompactionActive(deps, thread)
+  ) {
+    releaseQueuedMessageClaims(deps, nextQueuedMessages);
     return false;
   }
 

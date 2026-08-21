@@ -62,6 +62,10 @@ describe("reconcileReasoningLevel", () => {
     expect(reconcileReasoningLevel("max", ["low"])).toBe("low");
   });
 
+  it("reconciles a stored low preference to none for a non-reasoning model", () => {
+    expect(reconcileReasoningLevel("low", ["none"])).toBe("none");
+  });
+
   it("throws when supported is empty", () => {
     expect(() => reconcileReasoningLevel("medium", [])).toThrow();
   });

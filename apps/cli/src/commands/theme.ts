@@ -42,6 +42,11 @@ function describeActive(theme: AppTheme): string {
   return meta ? `${meta.name} (${meta.id})` : theme.themeId;
 }
 
+function describeCodeTheme(theme: AppTheme): string {
+  const { dark, light } = theme.resolvedCodeTheme;
+  return dark === light ? dark : `${dark} / ${light}`;
+}
+
 export function registerThemeCommands(
   program: Command,
   getUrl: () => string,
@@ -98,6 +103,7 @@ export function registerThemeCommands(
         console.log("");
         console.log(`Active: ${describeActive(catalog.active)}`);
         console.log(`Favicon color: ${catalog.active.faviconColor}`);
+        console.log(`Code theme: ${describeCodeTheme(catalog.active)}`);
       }),
     );
 
@@ -201,6 +207,7 @@ export function registerThemeCommands(
         }
         console.log(`Active: ${describeActive(active)}`);
         console.log(`Favicon color: ${active.faviconColor}`);
+        console.log(`Code theme: ${describeCodeTheme(active)}`);
       }),
     );
 

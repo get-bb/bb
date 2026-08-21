@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "compaction",
+  "threadId": "thr_7avz7jm9zv",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "A thread compacted after a turn (/compact).",
+  "note": "compact on steer thread",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 51,
+    "provider→bridge": 178,
+    "bridge→provider": 24
+  }
+}

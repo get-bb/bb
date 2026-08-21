@@ -1,12 +1,17 @@
-import { useMemo } from "react";
-import type { MarkdownProps, PluginSdkApp } from "@bb/plugin-sdk";
+import { useCallback, useMemo } from "react";
+import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
+import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
+import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
+import { ExperimentalUrlLink } from "@/components/plugin/ExperimentalUrlLink";
+import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import type {
   MarkdownLinkRouting,
   MarkdownLocalFileLinkRouting,
 } from "@/components/ui/markdown-link-routing";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { definePluginApp } from "./plugin-app-definition";
 import {
@@ -14,10 +19,13 @@ import {
   useBbNavigate,
   useComposer,
   useComposerView,
+  useProviders,
   useRealtime,
   useRealtimeConnectionState,
   useRpc,
   useSettings,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
 } from "./plugin-sdk-hooks";
 import {
   useSidebarThreadActions,
@@ -25,9 +33,10 @@ import {
   useSidebarThreads,
 } from "./plugin-sidebar-hooks";
 import { useSidebarThreadSplit } from "./plugin-sidebar-split";
+import { useAppNavigationHost } from "./app-navigation-host";
 
 /**
- * The real `@bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
+ * The real `@get-bb/plugin-sdk/app` surface (plugin design §5.2), assigned to
  * `globalThis.__bbPluginRuntime.pluginSdkApp` by installPluginRuntime() so
  * `bb plugin build` shims resolve it inside plugin bundles. `satisfies
  * PluginSdkApp` keeps it in type-sync with the facade package; the plugin SDK
@@ -45,6 +54,8 @@ export const pluginSdkAppImplementation = {
   definePluginApp,
   useBbContext,
   useBbNavigate,
+  experimental_useAppPanel,
+  experimental_useFixedTabTarget,
   useComposer,
   useComposerView,
   useRealtime,
@@ -55,15 +66,25 @@ export const pluginSdkAppImplementation = {
   // exception to §5.5) — stable product capabilities, not a UI kit.
   ThreadChat: PluginThreadChat,
   Markdown: PluginMarkdown,
+  experimental_FileLink: ExperimentalFileLink,
+  experimental_UrlLink: ExperimentalUrlLink,
   // Experimental (see docs/api_to_audit.md): the create-side counterpart to
   // ThreadChat.
   experimental_NewThreadComposer: PluginNewThreadComposer,
+  // Experimental (see docs/api_to_audit.md): the host-owned code renderers.
+  // Both resolve any active plugin replacement, so first-party surfaces and
+  // plugins share one boundary.
+  experimental_SourceCode: PluginSourceCode,
+  experimental_Diff: PluginDiff,
   // Experimental (see docs/api_to_audit.md): the sidebar thread-list data
   // plane, for plugins that replace the list itself.
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
   experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+  // Experimental (see docs/api_to_audit.md): the provider directory, so no
+  // plugin re-vendors provider names or icons.
+  experimental_useProviders: useProviders,
 } satisfies PluginSdkApp;
 
 /**
@@ -73,12 +94,16 @@ export const pluginSdkAppImplementation = {
  */
 function PluginMarkdown({ content, className }: MarkdownProps) {
   const timelineNavigation = useThreadTimelineNavigation();
-  const onOpenLink = timelineNavigation?.onOpenLink;
   const onOpenLocalFileLink = timelineNavigation?.onOpenLocalFileLink;
   const workspaceRootPath = timelineNavigation?.workspaceRootPath;
-  const linkRouting = useMemo<MarkdownLinkRouting | undefined>(() => {
-    if (onOpenLink === undefined || onOpenLocalFileLink === undefined) {
-      return undefined;
+  const navigation = useAppNavigationHost();
+  const onOpenLink = useCallback<MarkdownPreviewLinkHandler>(
+    ({ href }) => navigation.openUrl({ url: href }),
+    [navigation],
+  );
+  const linkRouting = useMemo<MarkdownLinkRouting>(() => {
+    if (onOpenLocalFileLink === undefined) {
+      return { onOpenLink };
     }
     const localFile: MarkdownLocalFileLinkRouting = {
       absoluteLinks: { kind: "trusted-host" },

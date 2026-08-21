@@ -13,6 +13,7 @@ import {
   EnvironmentLifecycleEventNotAppliedError,
   getEnvironment,
   requireEnvironmentLifecycleEventApplied,
+  updateEnvironmentMetadata,
   type CreateEnvironmentInput,
 } from "../../src/data/environments.js";
 import {
@@ -97,6 +98,50 @@ describe("applyEnvironmentLifecycleEvent", () => {
     expect(getEnvironment(db, environment.id)?.status).toBe("ready");
   });
 
+  it("keeps the retirement clock stable across metadata writes and clears it on revival", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      const { db, seedEnvironment } = setup();
+      const environment = seedEnvironment({ managed: true, status: "ready" });
+
+      vi.setSystemTime(2_000);
+      const retiring = applyEnvironmentLifecycleEvent(db, noopNotifier, {
+        environmentId: environment.id,
+        event: { type: "retire.requested" },
+      });
+      expect(retiring.applied).toBe(true);
+      expect(getEnvironment(db, environment.id)).toMatchObject({
+        retireRequestedAt: 2_000,
+        status: "retiring",
+        updatedAt: 2_000,
+      });
+
+      vi.setSystemTime(3_000);
+      updateEnvironmentMetadata(db, noopNotifier, environment.id, {
+        name: "renamed while retiring",
+      });
+      expect(getEnvironment(db, environment.id)).toMatchObject({
+        retireRequestedAt: 2_000,
+        updatedAt: 3_000,
+      });
+
+      vi.setSystemTime(4_000);
+      const revived = applyEnvironmentLifecycleEvent(db, noopNotifier, {
+        environmentId: environment.id,
+        event: { type: "retire.cancelled" },
+      });
+      expect(revived.applied).toBe(true);
+      expect(getEnvironment(db, environment.id)).toMatchObject({
+        retireRequestedAt: null,
+        status: "ready",
+        updatedAt: 4_000,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("no-ops as illegal-transition and leaves the row untouched", () => {
     vi.useFakeTimers();
     try {
@@ -173,11 +218,11 @@ describe("applyEnvironmentLifecycleEvent", () => {
 
     const first = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,
-      event: { type: "destroy.completed" },
+      event: { type: "destroy.completed", destroyAttemptId: null },
     });
     const second = applyEnvironmentLifecycleEvent(db, noopNotifier, {
       environmentId: environment.id,
-      event: { type: "destroy.completed" },
+      event: { type: "destroy.completed", destroyAttemptId: null },
     });
 
     expect(first.applied).toBe(true);
@@ -281,18 +326,72 @@ describe("applyEnvironmentLifecycleEvent", () => {
 
     const outcome = applyEnvironmentLifecycleEvent(db, spy, {
       environmentId: environment.id,
-      event: { type: "destroy.completed" },
+      event: {
+        type: "destroy.completed",
+        destroyAttemptId: "rpc_claim",
+      },
     });
 
     expect(outcome.applied).toBe(true);
     expect(getEnvironment(db, environment.id)).toMatchObject({
       destroyAttemptId: null,
+      path: null,
       status: "destroyed",
     });
     expect(spy.notifyEnvironment).toHaveBeenCalledExactlyOnceWith(
       environment.id,
       ["status-changed"],
     );
+  });
+
+  it("accepts a matching late destroy success after the attempt was marked lost", () => {
+    const { db, seedEnvironment } = setup();
+    const environment = seedEnvironment({
+      managed: true,
+      path: "/tmp/destroy-late-success",
+      status: "destroying",
+    });
+    db.update(environments)
+      .set({ destroyAttemptId: "rpc_late" })
+      .where(eq(environments.id, environment.id))
+      .run();
+
+    const lost = applyEnvironmentLifecycleEvent(db, noopNotifier, {
+      environmentId: environment.id,
+      event: { type: "destroy.lost" },
+    });
+    expect(lost.applied).toBe(true);
+    expect(getEnvironment(db, environment.id)).toMatchObject({
+      destroyAttemptId: "rpc_late",
+      status: "error",
+    });
+
+    const stale = applyEnvironmentLifecycleEvent(db, noopNotifier, {
+      environmentId: environment.id,
+      event: {
+        type: "destroy.completed",
+        destroyAttemptId: "rpc_older",
+      },
+    });
+    expect(stale).toEqual({
+      applied: false,
+      detail: "destroyAttemptId mismatch",
+      reason: "superseded",
+    });
+
+    const completed = applyEnvironmentLifecycleEvent(db, noopNotifier, {
+      environmentId: environment.id,
+      event: {
+        type: "destroy.completed",
+        destroyAttemptId: "rpc_late",
+      },
+    });
+    expect(completed.applied).toBe(true);
+    expect(getEnvironment(db, environment.id)).toMatchObject({
+      destroyAttemptId: null,
+      path: null,
+      status: "destroyed",
+    });
   });
 
   it("restores the settled state and clears the attempt on a matching destroy failure", () => {
@@ -324,6 +423,10 @@ describe("requireEnvironmentLifecycleEventApplied", () => {
   it("returns the updated environment when applied", () => {
     const { db, seedEnvironment } = setup();
     const environment = seedEnvironment({ status: "error" });
+    db.update(environments)
+      .set({ destroyAttemptId: "rpc_lost" })
+      .where(eq(environments.id, environment.id))
+      .run();
 
     const updated = requireEnvironmentLifecycleEventApplied(
       applyEnvironmentLifecycleEvent(db, noopNotifier, {
@@ -332,6 +435,7 @@ describe("requireEnvironmentLifecycleEventApplied", () => {
       }),
     );
     expect(updated.status).toBe("provisioning");
+    expect(updated.destroyAttemptId).toBeNull();
   });
 
   it("throws a typed error carrying reason and detail on a no-op", () => {

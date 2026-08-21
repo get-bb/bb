@@ -17,7 +17,6 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
       activeGoalCount: 0,
     },
     archivedAt: null,
-    childOrigin: null,
     createdAt: 1,
     deletedAt: null,
     environmentBranchName: null,

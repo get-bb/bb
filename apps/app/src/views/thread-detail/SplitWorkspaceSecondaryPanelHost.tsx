@@ -27,12 +27,13 @@ import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/thr
 import {
   THREAD_SECONDARY_PANEL_MAX_SIZE_PERCENT,
   THREAD_SECONDARY_PANEL_MIN_SIZE_PERCENT,
-} from "@/components/secondary-panel/ThreadSecondaryPanel";
+} from "@/components/secondary-panel/secondaryPanelSizing";
 import {
   SecondaryPanelHostLayoutContext,
   type SecondaryPanelHostLayout,
 } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
 import {
+  getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HIT_AREA_MARGINS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
@@ -80,9 +81,9 @@ export function SplitWorkspaceSecondaryPanelHost({
 
   useLayoutEffect(() => {
     if (model === null) {
-      // A pane with no secondary panel (plugin pane) suppresses the panel while
-      // retaining the window-level visibility preference. Focusing back to a
-      // publishing pane restores that remembered state below.
+      // A pane whose secondary-panel model is not available yet suppresses the
+      // panel while retaining the window-level visibility preference.
+      // Focusing a publishing pane restores that remembered state below.
       lastTargetRef.current = null;
       return;
     }
@@ -150,9 +151,9 @@ export function SplitWorkspaceSecondaryPanelHost({
     panelWidthPercent,
   ]);
 
-  // A pane without a panel keeps the control working: the toggle drives the
-  // window visibility directly, so the empty state opens and closes like any
-  // panel. Refocusing a publishing pane re-aligns through the effect above.
+  // While no panel model is available, the toggle drives window visibility
+  // directly so the empty state still opens and closes. A publishing pane
+  // re-aligns through the effect above.
   const toggleWindowPanel = () => {
     if (model !== null) {
       model.onToggle();
@@ -207,7 +208,10 @@ export function SplitWorkspaceSecondaryPanelHost({
     // close), and the right-edge pane headers drop their reserved corner slot
     // while the open panel's chrome hosts the window toggle instead.
     <SecondaryPanelHostLayoutContext.Provider value={hostLayout}>
-      <div className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
+        style={getPanelCollapseTransitionStyle(model?.transitionsReady ?? true)}
+      >
         <div
           data-testid="split-workspace-panel-toggle"
           className={cn(

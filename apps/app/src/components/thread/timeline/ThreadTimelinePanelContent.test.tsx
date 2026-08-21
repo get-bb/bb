@@ -9,6 +9,7 @@ import { ThreadTimelinePanelContent } from "./ThreadTimelinePanelContent.js";
 import type { UseThreadTimelineControllerResult } from "./useThreadTimelineController.js";
 
 const mocks = vi.hoisted(() => ({
+  activeBackgroundAgentCount: 0,
   displayStatus: "idle" as ThreadRuntimeDisplayStatus,
   threadStatus: "idle",
 }));
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/hooks/queries/thread-queries", () => ({
   useThread: () => ({
     data: {
+      activeBackgroundAgentCount: mocks.activeBackgroundAgentCount,
       runtime: { displayStatus: mocks.displayStatus },
       status: mocks.threadStatus,
     },
@@ -80,6 +82,7 @@ function workflowRow(): TimelineWorkflowWorkRow {
     taskType: "local_workflow",
     workflowName: "fixture-mini",
     description: "fixture workflow",
+    model: null,
     taskStatus: "running",
     workflow: null,
     usage: null,
@@ -113,6 +116,7 @@ function baseTimeline(
 
 afterEach(() => {
   cleanup();
+  mocks.activeBackgroundAgentCount = 0;
   mocks.displayStatus = "idle";
   mocks.threadStatus = "idle";
 });
@@ -141,5 +145,43 @@ describe("ThreadTimelinePanelContent", () => {
 
     expect(screen.queryByText("Background work running")).toBeNull();
     expect(screen.getByText("Working...")).not.toBeNull();
+  });
+
+  it("shows a background indicator for an idle Claude thread with only a nested agent active", () => {
+    mocks.activeBackgroundAgentCount = 1;
+
+    render(
+      <ThreadTimelinePanelContent
+        threadId="thr-claude-nested-agent"
+        timeline={baseTimeline()}
+      />,
+    );
+
+    expect(screen.getByText("Background work running")).not.toBeNull();
+    expect(screen.queryByText("Working...")).toBeNull();
+  });
+
+  it("hides the background indicator when the nested agent count returns to zero", () => {
+    mocks.activeBackgroundAgentCount = 1;
+
+    const { rerender } = render(
+      <ThreadTimelinePanelContent
+        threadId="thr-claude-nested-agent"
+        timeline={baseTimeline()}
+      />,
+    );
+
+    expect(screen.getByText("Background work running")).not.toBeNull();
+
+    mocks.activeBackgroundAgentCount = 0;
+    rerender(
+      <ThreadTimelinePanelContent
+        threadId="thr-claude-nested-agent"
+        timeline={baseTimeline()}
+      />,
+    );
+
+    expect(screen.queryByText("Background work running")).toBeNull();
+    expect(screen.queryByText("Working...")).toBeNull();
   });
 });

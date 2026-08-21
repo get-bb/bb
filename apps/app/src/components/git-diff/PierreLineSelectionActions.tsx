@@ -18,15 +18,14 @@ import {
   type SelectionAnchorSide,
 } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
+import { getDiffShadowRoots } from "./git-diff-patch-text";
 
 const LINE_SELECTION_MENU_INLINE_OFFSET_PX = 72;
 
 let documentPointerStartPoint: SelectionAnchorPoint | null = null;
 let documentPointerReleaseAnchor: SelectionAnchor | null = null;
 
-export type PierreLineSelectionAnchorPoint = SelectionAnchorPoint;
-
-export interface UsePierreLineSelectionActionsArgs {
+interface UsePierreLineSelectionActionsArgs {
   buildFallbackSelectionText?: (args: {
     containerElement: HTMLElement | null;
     range: SelectedLineRange;
@@ -35,12 +34,6 @@ export interface UsePierreLineSelectionActionsArgs {
   containerRef: RefObject<HTMLElement | null>;
   enabled: boolean;
   onSelectionAddToChat?: (text: string) => void;
-  resolveAnchorPoint?: (args: {
-    anchorSide: SelectionAnchorSide;
-    containerElement: HTMLElement | null;
-    pointerAnchorPoint: PierreLineSelectionAnchorPoint | null;
-    range: SelectedLineRange;
-  }) => PierreLineSelectionAnchorPoint | null;
 }
 
 export interface PierreLineSelectionActions {
@@ -111,15 +104,6 @@ function isGutterUtilityPath(
   );
 }
 
-function getPierreShadowRoots(containerElement: HTMLElement | null) {
-  if (containerElement === null) {
-    return [];
-  }
-  return Array.from(containerElement.querySelectorAll("diffs-container"))
-    .map((container) => container.shadowRoot)
-    .filter((root) => root !== null);
-}
-
 function selectedLineAttributeMatchesSide(
   element: HTMLElement,
   anchorSide: SelectionAnchorSide,
@@ -171,7 +155,7 @@ function resolveSelectedLineAnchorPoint({
   anchorSide: SelectionAnchorSide;
   containerElement: HTMLElement | null;
 }): SelectionAnchorPoint | null {
-  for (const root of getPierreShadowRoots(containerElement)) {
+  for (const root of getDiffShadowRoots(containerElement)) {
     const selectedLine = getBoundarySelectedLine(
       Array.from(
         root.querySelectorAll<HTMLElement>("[data-selected-line][data-line]"),
@@ -183,7 +167,7 @@ function resolveSelectedLineAnchorPoint({
     }
   }
 
-  for (const root of getPierreShadowRoots(containerElement)) {
+  for (const root of getDiffShadowRoots(containerElement)) {
     const selectedNumber = getBoundarySelectedLine(
       Array.from(
         root.querySelectorAll<HTMLElement>(
@@ -211,7 +195,7 @@ function resolveUtilityButtonAnchorPoint({
   anchorSide: SelectionAnchorSide;
   containerElement: HTMLElement | null;
 }): SelectionAnchorPoint | null {
-  for (const root of getPierreShadowRoots(containerElement)) {
+  for (const root of getDiffShadowRoots(containerElement)) {
     const utilityButton = root.querySelector("[data-utility-button]");
     if (utilityButton === null) {
       continue;
@@ -286,7 +270,6 @@ export function usePierreLineSelectionActions({
   containerRef,
   enabled,
   onSelectionAddToChat,
-  resolveAnchorPoint,
 }: UsePierreLineSelectionActionsArgs): PierreLineSelectionActions {
   const [activeRange, setActiveRange] = useState<SelectedLineRange | null>(
     null,
@@ -492,12 +475,6 @@ export function usePierreLineSelectionActions({
         lastUtilityAnchorRef.current?.side ??
         "top";
       const resolvedAnchorPoint =
-        resolveAnchorPoint?.({
-          anchorSide,
-          containerElement,
-          pointerAnchorPoint: interactionAnchor?.point ?? null,
-          range,
-        }) ??
         resolveSelectedLineAnchorPoint({
           anchorSide,
           containerElement,
@@ -531,13 +508,7 @@ export function usePierreLineSelectionActions({
       setPreviewRange(range);
       setActiveSelection(selection);
     },
-    [
-      buildFallbackSelectionText,
-      buildSelectionText,
-      containerRef,
-      enabled,
-      resolveAnchorPoint,
-    ],
+    [buildFallbackSelectionText, buildSelectionText, containerRef, enabled],
   );
 
   const handleLineSelectionStart = useCallback(

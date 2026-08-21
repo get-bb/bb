@@ -5,14 +5,156 @@ import {
   buildTerminalThemeFromCssColors,
   decodeTerminalOutputBytes,
   encodeTerminalInputChunks,
+  focusTerminalFromTouchRelease,
   forwardTerminalData,
   loadOptionalTerminalWebglAddon,
   loadTerminalWebglRenderer,
+  shouldFocusTerminalAfterAsyncMount,
+  startTerminalTouchFocusGesture,
   TERMINAL_ALLOW_PROPOSED_API,
   TERMINAL_FONT_FAMILY,
   TERMINAL_UNICODE_VERSION,
   writeTerminalOutput,
+  updateTerminalTouchFocusGesture,
 } from "./ThreadTerminalView";
+
+function startTouchFocusGesture() {
+  const gesture = startTerminalTouchFocusGesture(
+    [{ identifier: 1, x: 40, y: 80 }],
+    100,
+  );
+  if (gesture === null) {
+    throw new Error("Expected one touch to start a focus gesture");
+  }
+  return gesture;
+}
+
+describe("terminal async mount focus", () => {
+  it("preserves focus that moved to the composer while xterm loaded", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: false,
+        focusMovedDuringMount: true,
+        isPanelOpen: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not let an explicit request override a newer focus target", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: true,
+        focusMovedDuringMount: true,
+        isPanelOpen: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("focuses an opened terminal when focus stayed on its trigger", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: true,
+        focusMovedDuringMount: false,
+        isPanelOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves a composer that was focused before xterm started mounting", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: true,
+        hasExplicitFocusRequest: false,
+        focusMovedDuringMount: false,
+        isPanelOpen: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("focuses the terminal when its initiating trigger unmounted", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: false,
+        hasExplicitFocusRequest: false,
+        focusMovedDuringMount: true,
+        isPanelOpen: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not focus a terminal after its panel closes", () => {
+    expect(
+      shouldFocusTerminalAfterAsyncMount({
+        currentFocusIsAvailable: false,
+        hasExplicitFocusRequest: true,
+        focusMovedDuringMount: false,
+        isPanelOpen: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("terminal touch focus", () => {
+  it("focuses the terminal after a tap", () => {
+    const focus = vi.fn();
+
+    expect(
+      focusTerminalFromTouchRelease({
+        changedTouches: [{ identifier: 1, x: 43, y: 84 }],
+        focus,
+        gesture: startTouchFocusGesture(),
+        releasedAt: 200,
+        remainingTouchCount: 0,
+      }),
+    ).toBe(true);
+    expect(focus).toHaveBeenCalledOnce();
+  });
+
+  it("does not focus after a drag returns near its start", () => {
+    const focus = vi.fn();
+    const gesture = updateTerminalTouchFocusGesture(startTouchFocusGesture(), [
+      { identifier: 1, x: 40, y: 120 },
+    ]);
+
+    expect(
+      focusTerminalFromTouchRelease({
+        changedTouches: [{ identifier: 1, x: 40, y: 81 }],
+        focus,
+        gesture,
+        releasedAt: 200,
+        remainingTouchCount: 0,
+      }),
+    ).toBe(false);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("does not focus after a long press", () => {
+    const focus = vi.fn();
+
+    expect(
+      focusTerminalFromTouchRelease({
+        changedTouches: [{ identifier: 1, x: 40, y: 80 }],
+        focus,
+        gesture: startTouchFocusGesture(),
+        releasedAt: 800,
+        remainingTouchCount: 0,
+      }),
+    ).toBe(false);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it("invalidates the gesture when another touch starts", () => {
+    expect(
+      updateTerminalTouchFocusGesture(startTouchFocusGesture(), [
+        { identifier: 1, x: 40, y: 80 },
+        { identifier: 2, x: 80, y: 80 },
+      ]),
+    ).toBeNull();
+  });
+});
 
 describe("terminal output encoding", () => {
   it("splits large paste input at the wire limit without losing UTF-8 bytes", () => {

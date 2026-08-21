@@ -2,23 +2,15 @@ import { type CSSProperties, type ReactNode, type Ref } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 export const PROMPT_STACK_CARD_ROW_HEIGHT = 32;
-export const PROMPT_STACK_CARD_RADIUS_CLASS = "rounded-lg";
+const PROMPT_STACK_CARD_RADIUS_CLASS = "rounded-lg";
 // Outer cards are rounded-lg (8px). A 4px inset means inner hover/focus
 // targets use rounded (4px) so the corner arcs stay visually aligned.
-export const PROMPT_STACK_INLAY_RADIUS_CLASS = "rounded";
+const PROMPT_STACK_INLAY_RADIUS_CLASS = "rounded";
 export const PROMPT_STACK_INLAY_INSET_CLASS = "p-1";
 export const PROMPT_STACK_INLAY_SEGMENT_CLASS = cn(
   "min-h-6 px-2 py-1",
   PROMPT_STACK_INLAY_RADIUS_CLASS,
 );
-// Compact inlays use a 2px inset. With an 8px parent radius, rounded-md keeps
-// the inner corner arc aligned at 6px without adding extra header height.
-export const PROMPT_STACK_COMPACT_INLAY_INSET_CLASS = "p-0.5";
-export const PROMPT_STACK_COMPACT_INLAY_SEGMENT_CLASS = cn(
-  "min-h-6 px-2 py-0.5",
-  "rounded-md",
-);
-
 const BASE_CHROME = cn(
   PROMPT_STACK_CARD_RADIUS_CLASS,
   "border border-border bg-surface-raised-solid",
@@ -34,11 +26,6 @@ export interface PromptStackCardProps {
   className?: string;
   rootRef?: Ref<HTMLElement>;
   style?: CSSProperties;
-  /**
-   * Makes the card keyboard-focusable — set to 0 when the card is itself a
-   * scroll region (e.g. a height-capped list) so keyboard users can scroll it.
-   */
-  tabIndex?: number;
 }
 
 /**
@@ -54,7 +41,6 @@ export function PromptStackCard({
   className,
   rootRef,
   style,
-  tabIndex,
 }: PromptStackCardProps) {
   if (ariaLabel) {
     return (
@@ -63,7 +49,6 @@ export function PromptStackCard({
         aria-label={ariaLabel}
         className={cn(BASE_CHROME, className)}
         style={style}
-        tabIndex={tabIndex}
       >
         {children}
       </section>
@@ -74,7 +59,6 @@ export function PromptStackCard({
       ref={rootRef as Ref<HTMLDivElement>}
       className={cn(BASE_CHROME, className)}
       style={style}
-      tabIndex={tabIndex}
     >
       {children}
     </div>

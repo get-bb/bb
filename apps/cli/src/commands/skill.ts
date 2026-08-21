@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { RegistrySkill } from "@bb/server-contract";
+import type { RegistryRanking, RegistrySkill } from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -132,20 +132,43 @@ async function enrichRegistryStars(
 }
 
 /**
+ * A registry row as the CLI reports it. `installs` keeps exactly the meaning
+ * the page's `ranking` declares — a 24h window count on `trending`, a lifetime
+ * total on `all-time` — and `lifetimeInstalls` always means the lifetime
+ * total, `null` when it could not be resolved. Neither field ever changes
+ * meaning based on what data was available.
+ */
+interface EnrichedRegistrySkill extends RegistrySkill {
+  lifetimeInstalls: number | null;
+}
+
+/**
  * The registry list deliberately no longer resolves summaries server-side —
  * that preflight was removed because it made browsing O(N) slow. The CLI has
- * no per-card lazy loading to compensate with, so it resolves the missing
- * summaries here instead, under the same caps as stars.
+ * no per-card lazy loading to compensate with, so it resolves them here
+ * instead, under the same caps as stars.
+ *
+ * The per-skill entry is also the only source of a lifetime install count on
+ * the trending ranking — where the list's `installs` covers just a 24h
+ * window — so this is what makes the CLI report the same number the Skills
+ * browse page does, carried in `lifetimeInstalls` so the window count in
+ * `installs` is never overwritten. `REGISTRY_ENRICH_LIMIT` bounds the
+ * fan-out, so a page larger than the cap can leave rows unresolved; those get
+ * `lifetimeInstalls: null` rather than a guess.
  */
-async function enrichRegistrySummaries(
+async function enrichRegistryEntries(
   registry: SkillsRegistryArea,
   skills: readonly RegistrySkill[],
-): Promise<RegistrySkill[]> {
+  ranking: RegistryRanking,
+): Promise<EnrichedRegistrySkill[]> {
+  // A search already returns lifetime counts in `installs`, so only trending
+  // needs the per-skill entry for the lifetime figure; summaries are still
+  // fetched wherever they are missing.
+  const needsLifetimeInstalls = ranking === "trending";
   const missing = skills
-    .filter((skill) => skill.summary === null)
+    .filter((skill) => skill.summary === null || needsLifetimeInstalls)
     .slice(0, REGISTRY_ENRICH_LIMIT);
-  if (missing.length === 0) return [...skills];
-  const summaryById = new Map(
+  const entryById = new Map(
     await mapWithConcurrency(
       missing,
       REGISTRY_ENRICH_CONCURRENCY,
@@ -153,13 +176,19 @@ async function enrichRegistrySummaries(
         const entry = await registry
           .get({ registrySkillId: skill.id })
           .catch(() => null);
-        return [skill.id, entry?.summary ?? null] as const;
+        return [skill.id, entry] as const;
       },
     ),
   );
   return skills.map((skill) => {
-    const summary = summaryById.get(skill.id);
-    return summary == null ? skill : { ...skill, summary };
+    const entry = entryById.get(skill.id) ?? null;
+    return {
+      ...skill,
+      summary: entry?.summary ?? skill.summary,
+      lifetimeInstalls: needsLifetimeInstalls
+        ? (entry?.installs ?? null)
+        : skill.installs,
+    };
   });
 }
 
@@ -285,9 +314,15 @@ export function registerSkillCommands(
 
   skill
     .command("search [query]")
-    .description("Search the skills.sh registry")
+    .description(
+      "Search the skills.sh registry, or list what is trending with no query",
+    )
     .option("--page <number>", "Zero-based result page", "0")
-    .option("--per-page <number>", "Results per page", "24")
+    .option(
+      "--per-page <number>",
+      `Results per page; above ${REGISTRY_ENRICH_LIMIT} leaves lifetime install counts unresolved`,
+      "24",
+    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (query: string | undefined, options: SkillSearchOptions) => {
@@ -297,13 +332,24 @@ export function registerSkillCommands(
           page: parseNonnegativeInteger(options.page, 0),
           perPage: parseNonnegativeInteger(options.perPage, 24),
         });
-        const enrichedResult = {
-          ...result,
-          skills: await enrichRegistrySummaries(
-            registry,
-            await enrichRegistryStars(registry, result.skills),
-          ),
-        };
+        const enrichedSkills = await enrichRegistryEntries(
+          registry,
+          await enrichRegistryStars(registry, result.skills),
+          result.ranking,
+        );
+        const enrichedResult = { ...result, skills: enrichedSkills };
+        const unresolvedCount = enrichedSkills.filter(
+          (entry) => entry.lifetimeInstalls === null,
+        ).length;
+        if (unresolvedCount > 0) {
+          console.error(
+            `Lifetime install counts unresolved for ${unresolvedCount} of ` +
+              `${enrichedSkills.length} skills — a detail page could not be ` +
+              `fetched, or the page exceeds the ${REGISTRY_ENRICH_LIMIT}-row ` +
+              `enrichment cap. Those rows carry lifetimeInstalls: null and ` +
+              `print as "—"; installs still counts the ranking's window.`,
+          );
+        }
         if (outputJson(options, enrichedResult)) return;
         console.log(
           renderBorderlessTable(
@@ -314,7 +360,13 @@ export function registerSkillCommands(
             },
             enrichedResult.skills.map((entry) => [
               entry.id,
-              String(entry.installs),
+              // Lifetime installs, matching the browse page. A row whose
+              // lifetime figure could not be resolved prints as unknown
+              // rather than showing the ranking window's count under a
+              // heading that means something else.
+              entry.lifetimeInstalls === null
+                ? "—"
+                : String(entry.lifetimeInstalls),
               entry.stars === null ? "—" : String(entry.stars),
               entry.summary ?? "",
             ]),

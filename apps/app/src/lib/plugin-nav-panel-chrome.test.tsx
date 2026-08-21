@@ -1,0 +1,201 @@
+// @vitest-environment jsdom
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  markPluginFrontendBootStarted,
+  markPluginFrontendSettleFloorReached,
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "./plugin-frontend-boot-state";
+import {
+  readLastKnownPluginNavPanelChrome,
+  usePluginNavPanelChrome,
+  useRememberPluginNavPanelChrome,
+  writeLastKnownPluginNavPanelChrome,
+} from "./plugin-nav-panel-chrome";
+import {
+  resetPluginSlotStoreForTest,
+  setPluginSlotRegistrations,
+  type PluginRegistrationSet,
+} from "./plugin-slots";
+
+function Body() {
+  return null;
+}
+
+function registrations(
+  navPanels: PluginRegistrationSet["navPanels"],
+): PluginRegistrationSet {
+  return {
+    homepageSections: [],
+    settingsSections: [],
+    navPanels,
+    threadPanelActions: [],
+    sidebarFooterActions: [],
+    fileOpeners: [],
+    messageDirectives: [],
+  };
+}
+
+const TASKS = {
+  pluginId: "tasks",
+  id: "tasks",
+  path: "tasks",
+  title: "Tasks",
+  icon: "ListTodo",
+};
+const DOCS = {
+  pluginId: "docs",
+  id: "docs",
+  path: "docs",
+  title: "Docs",
+  icon: "Book",
+};
+
+afterEach(() => {
+  cleanup();
+  resetPluginSlotStoreForTest();
+  resetPluginFrontendBootStateForTest();
+  window.localStorage.clear();
+});
+
+describe("usePluginNavPanelChrome", () => {
+  it("draws remembered chrome before boot and swaps to the live registration in place", () => {
+    writeLastKnownPluginNavPanelChrome([TASKS, DOCS]);
+    const { result } = renderHook(() => usePluginNavPanelChrome());
+    expect(result.current.map((entry) => entry.chrome.title)).toEqual([
+      "Tasks",
+      "Docs",
+    ]);
+    expect(result.current.every((entry) => entry.panel === null)).toBe(true);
+
+    // Tasks registers first: it takes over its own slot; Docs stays remembered.
+    act(() =>
+      setPluginSlotRegistrations(
+        "tasks",
+        registrations([
+          {
+            id: "tasks",
+            path: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            component: Body,
+          },
+        ]),
+      ),
+    );
+    expect(result.current.map((entry) => entry.chrome.title)).toEqual([
+      "Tasks",
+      "Docs",
+    ]);
+    expect(result.current[0]!.panel).not.toBeNull();
+    expect(result.current[1]!.panel).toBeNull();
+  });
+
+  it("forgets remembered panels that never registered once frontends settle", () => {
+    writeLastKnownPluginNavPanelChrome([TASKS, DOCS]);
+    act(() =>
+      setPluginSlotRegistrations(
+        "tasks",
+        registrations([
+          {
+            id: "tasks",
+            path: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            component: Body,
+          },
+        ]),
+      ),
+    );
+    const { result } = renderHook(() => usePluginNavPanelChrome());
+    expect(result.current).toHaveLength(2);
+    act(() => markPluginFrontendsSettled());
+    expect(result.current.map((entry) => entry.chrome.title)).toEqual([
+      "Tasks",
+    ]);
+  });
+
+  it("appends live panels the profile had not seen before", () => {
+    writeLastKnownPluginNavPanelChrome([TASKS]);
+    act(() =>
+      setPluginSlotRegistrations(
+        "docs",
+        registrations([
+          {
+            id: "docs",
+            path: "docs",
+            title: "Docs",
+            icon: "Book",
+            component: Body,
+          },
+        ]),
+      ),
+    );
+    const { result } = renderHook(() => usePluginNavPanelChrome());
+    expect(result.current.map((entry) => entry.chrome.title)).toEqual([
+      "Tasks",
+      "Docs",
+    ]);
+  });
+});
+
+describe("useRememberPluginNavPanelChrome", () => {
+  it("writes the live panels only after frontends have settled, and follows later changes", () => {
+    act(() =>
+      setPluginSlotRegistrations(
+        "tasks",
+        registrations([
+          {
+            id: "tasks",
+            path: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            component: Body,
+          },
+        ]),
+      ),
+    );
+    renderHook(() => useRememberPluginNavPanelChrome());
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([]);
+
+    act(() => markPluginFrontendsSettled());
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS]);
+
+    // An uninstall after settle is remembered too, so it does not come back
+    // as a ghost row on the next load.
+    act(() => setPluginSlotRegistrations("tasks", registrations([])));
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([]);
+  });
+
+  it("does not overwrite remembered chrome on the settle floor or during a boot", () => {
+    writeLastKnownPluginNavPanelChrome([TASKS, DOCS]);
+    renderHook(() => useRememberPluginNavPanelChrome());
+
+    // Floor reached with no boot: nothing to remember, keep what we have.
+    act(() => markPluginFrontendSettleFloorReached());
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS, DOCS]);
+
+    // Boot in flight with only Tasks mounted so far: the partial list must
+    // not replace the remembered one.
+    act(() => markPluginFrontendBootStarted());
+    act(() =>
+      setPluginSlotRegistrations(
+        "tasks",
+        registrations([
+          {
+            id: "tasks",
+            path: "tasks",
+            title: "Tasks",
+            icon: "ListTodo",
+            component: Body,
+          },
+        ]),
+      ),
+    );
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS, DOCS]);
+
+    act(() => markPluginFrontendsSettled());
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([TASKS]);
+  });
+});

@@ -37,7 +37,8 @@ import {
 export interface OperationProjectionState {
   messages: EventProjectionMessage[];
   fileEditsByCallId: Map<string, EventProjectionFileEditMessage[]>;
-  fileEditStdoutBuffersByCallId: Map<string, VisibleTextBuffer>;
+  /** Keyed by {@link scopedFileEditCallKey}, never by the bare call id. */
+  fileEditStdoutBuffersByScopedCallKey: Map<string, VisibleTextBuffer>;
   openCompactionsByKey: Map<string, EventProjectionOperationMessage>;
   finalizedCompactionKeys: Set<string>;
   provisioningOperationsByKey: Map<string, EventProjectionOperationMessage>;
@@ -64,13 +65,13 @@ export function createOperationProjectionState(
     userQuestionsByInteractionId: new Map(),
     threadOperationsById: new Map(),
     fileEditsByCallId: new Map(),
-    fileEditStdoutBuffersByCallId: new Map(),
+    fileEditStdoutBuffersByScopedCallKey: new Map(),
   };
 }
 
 export type CompactionTurnFinalizationStatus = Extract<
   EventProjectionOperationMessage["status"],
-  "error" | "interrupted"
+  "completed" | "error" | "interrupted"
 >;
 
 interface FinalizeOpenCompactionsForTurnArgs {
@@ -80,6 +81,12 @@ interface FinalizeOpenCompactionsForTurnArgs {
   turnId: string | undefined;
   status: CompactionTurnFinalizationStatus;
   detail: string | undefined;
+}
+
+interface InterruptOpenCompactionsArgs {
+  state: OperationProjectionState;
+  meta: EventMeta;
+  threadId: string;
 }
 
 type LifecycleStatus = Extract<
@@ -364,13 +371,27 @@ function isTerminalFileEditStatus(
 export function flushPendingFileEditOutput(
   state: OperationProjectionState,
 ): void {
+  // Rows for one call id can sit in different scopes, and each scope owns its
+  // own output buffer, so resolve the buffer from the row's own scope. Each
+  // buffer flushes once, and every row of that scope then takes its text.
+  const flushedBufferByScopedCallKey = new Map<
+    string,
+    VisibleTextBuffer | null
+  >();
   for (const [callId, fileEdits] of state.fileEditsByCallId.entries()) {
-    const buffer = state.fileEditStdoutBuffersByCallId.get(callId);
-    if (!buffer || !flushVisibleTextBuffer(buffer)) {
-      continue;
-    }
     for (const fileEdit of fileEdits) {
-      fileEdit.stdout = getVisibleTextBufferText(buffer);
+      const scopedCallKey = scopedFileEditCallKey(callId, fileEdit);
+      let flushedBuffer = flushedBufferByScopedCallKey.get(scopedCallKey);
+      if (flushedBuffer === undefined) {
+        const buffer =
+          state.fileEditStdoutBuffersByScopedCallKey.get(scopedCallKey);
+        flushedBuffer =
+          buffer && flushVisibleTextBuffer(buffer) ? buffer : null;
+        flushedBufferByScopedCallKey.set(scopedCallKey, flushedBuffer);
+      }
+      if (flushedBuffer !== null) {
+        fileEdit.stdout = getVisibleTextBufferText(flushedBuffer);
+      }
     }
   }
 }
@@ -445,6 +466,52 @@ function fileEditMessageKey(
     return `${callId}:${changeIndex}`;
   }
   return `${callId}:${fileEditChangeIdentity(change)}`;
+}
+
+function fileEditScopeDiscriminator(
+  scopeFields: EventProjectionMessageScopeFields,
+): string {
+  const scope = scopeFields.scope;
+  return scope.kind === "turn" ? scope.turnId : "thread";
+}
+
+/**
+ * The identity a file-edit call really has. A provider can reuse one call id
+ * across scopes (a resumed ACP session restarts its synthetic id counter), so
+ * per-call projection state must be keyed by scope as well, or two unrelated
+ * calls share it.
+ */
+function scopedFileEditCallKey(
+  callId: string,
+  scopeFields: EventProjectionMessageScopeFields,
+): string {
+  return `${fileEditScopeDiscriminator(scopeFields)}:${callId}`;
+}
+
+interface ResolveScopedFileEditMessageKeyArgs {
+  baseKey: string;
+  foreignMessageIds: ReadonlySet<string>;
+  scopeFields: EventProjectionMessageScopeFields;
+  threadId: string;
+}
+
+/**
+ * A call id reused across scopes must still mint distinct message ids, so fall
+ * back to a scope-qualified key when the plain key is already taken by a
+ * foreign-scope row.
+ */
+function resolveScopedFileEditMessageKey(
+  args: ResolveScopedFileEditMessageKeyArgs,
+): string {
+  if (
+    args.foreignMessageIds.size === 0 ||
+    !args.foreignMessageIds.has(
+      messageId(args.threadId, "file-edit", args.baseKey),
+    )
+  ) {
+    return args.baseKey;
+  }
+  return `${fileEditScopeDiscriminator(args.scopeFields)}:${args.baseKey}`;
 }
 
 function buildFileEditChangeEntries(
@@ -615,12 +682,28 @@ export function upsertFileEdit(
     ? eventProjectionMessageTurnScopeFields(turnId)
     : eventProjectionMessageThreadScopeFields();
   const existingRows = state.fileEditsByCallId.get(partial.callId) ?? [];
+  // Providers can reuse call ids across scopes (e.g. resumed ACP sessions
+  // restart their synthetic id counters). Merge only rows from a compatible
+  // scope and leave foreign-scope rows untouched, so each scope keeps its own
+  // file-edit message instead of failing the whole projection.
+  const compatibleRows: EventProjectionFileEditMessage[] = [];
+  const foreignRows: EventProjectionFileEditMessage[] = [];
+  for (const row of existingRows) {
+    if (haveCompatibleEventProjectionMessageScope(row, scopeFields)) {
+      compatibleRows.push(row);
+    } else {
+      foreignRows.push(row);
+    }
+  }
+  const foreignMessageIds = new Set(foreignRows.map((row) => row.id));
+  const scopedCallKey = scopedFileEditCallKey(partial.callId, scopeFields);
   const stdoutBuffer =
-    state.fileEditStdoutBuffersByCallId.get(partial.callId) ??
+    state.fileEditStdoutBuffersByScopedCallKey.get(scopedCallKey) ??
     createVisibleTextBuffer();
   // Provider stdout is per call, so split file-edit rows for the same call
-  // intentionally share one buffer.
-  state.fileEditStdoutBuffersByCallId.set(partial.callId, stdoutBuffer);
+  // intentionally share one buffer — but only within one scope, so a reused
+  // call id cannot leak an earlier turn's output into a later turn's rows.
+  state.fileEditStdoutBuffersByScopedCallKey.set(scopedCallKey, stdoutBuffer);
 
   const partialStdout = fileEditPartialStdout(partial);
   if (partialStdout) {
@@ -643,7 +726,7 @@ export function upsertFileEdit(
     // A later change list is authoritative for the call: rows absent from the
     // new list are dropped so stale split file-edit rows do not linger.
     const existingRowsByMatchKey =
-      groupFileEditRowsByChangeMatchKey(existingRows);
+      groupFileEditRowsByChangeMatchKey(compatibleRows);
     const usedRowIds = new Set<string>();
     const nextRows: EventProjectionFileEditMessage[] = [];
     for (const entry of buildFileEditChangeEntries(
@@ -672,7 +755,12 @@ export function upsertFileEdit(
         createFileEditMessage({
           callId: partial.callId,
           change: entry.change,
-          messageKey: entry.messageKey,
+          messageKey: resolveScopedFileEditMessageKey({
+            baseKey: entry.messageKey,
+            foreignMessageIds,
+            scopeFields,
+            threadId,
+          }),
           meta,
           partial,
           scopeFields,
@@ -682,18 +770,17 @@ export function upsertFileEdit(
       );
     }
 
-    replaceFileEditMessagesForCall(state, partial.callId, nextRows);
-    state.fileEditsByCallId.set(partial.callId, nextRows);
+    const allRows = [...foreignRows, ...nextRows];
+    replaceFileEditMessagesForCall(state, partial.callId, allRows);
+    state.fileEditsByCallId.set(partial.callId, allRows);
     return;
   }
 
   const changes =
-    existingRows.length > 0
-        ? existingRows.map(() => null)
-        : [null];
+    compatibleRows.length > 0 ? compatibleRows.map(() => null) : [null];
 
   for (const [changeIndex, change] of changes.entries()) {
-    const existing = existingRows[changeIndex];
+    const existing = compatibleRows[changeIndex];
     if (existing) {
       updateFileEditMessage(
         existing,
@@ -709,18 +796,26 @@ export function upsertFileEdit(
     const message = createFileEditMessage({
       callId: partial.callId,
       change,
-      messageKey: fileEditMessageKey(partial.callId, change, changeIndex),
+      messageKey: resolveScopedFileEditMessageKey({
+        baseKey: fileEditMessageKey(partial.callId, change, changeIndex),
+        foreignMessageIds,
+        scopeFields,
+        threadId,
+      }),
       meta,
       partial,
       scopeFields,
       stdout,
       threadId,
     });
-    existingRows.push(message);
+    compatibleRows.push(message);
     state.messages.push(message);
   }
 
-  state.fileEditsByCallId.set(partial.callId, existingRows);
+  state.fileEditsByCallId.set(partial.callId, [
+    ...foreignRows,
+    ...compatibleRows,
+  ]);
 }
 
 export function onCompactionBegin(
@@ -813,11 +908,35 @@ export function onCompactionEnd(
  * Turn-end finalization is provisional: keep the compaction open so a later
  * explicit compaction completion can override the inferred error/interruption.
  */
+function finalizeOpenCompaction(
+  message: EventProjectionOperationMessage,
+  meta: EventMeta,
+  status: CompactionTurnFinalizationStatus,
+  detail: string | undefined,
+): void {
+  message.sourceSeqEnd = Math.max(message.sourceSeqEnd, meta.seq);
+  message.createdAt = Math.max(message.createdAt, meta.createdAt);
+  message.completedAt = meta.createdAt;
+  message.status = status;
+  message.title =
+    status === "error"
+      ? "Context compaction failed"
+      : status === "completed"
+        ? "Context compaction skipped"
+        : "Context compaction interrupted";
+  message.detail = detail ?? message.detail;
+}
+
+/**
+ * Returns true when at least one still-pending compaction row was settled, so
+ * the caller knows the finalizing event now belongs to that row.
+ */
 export function finalizeOpenCompactionsForTurn(
   args: FinalizeOpenCompactionsForTurnArgs,
-): void {
-  if (!args.turnId) return;
+): boolean {
+  if (!args.turnId) return false;
 
+  let settledPending = false;
   for (const message of args.state.openCompactionsByKey.values()) {
     if (
       message.threadId !== args.threadId ||
@@ -827,14 +946,27 @@ export function finalizeOpenCompactionsForTurn(
       continue;
     }
 
-    message.sourceSeqEnd = Math.max(message.sourceSeqEnd, args.meta.seq);
-    message.createdAt = Math.max(message.createdAt, args.meta.createdAt);
-    message.completedAt = args.meta.createdAt;
-    message.status = args.status;
-    message.title =
-      args.status === "error"
-        ? "Context compaction failed"
-        : "Context compaction interrupted";
-    message.detail = args.detail ?? message.detail;
+    if (message.status === "pending") {
+      settledPending = true;
+    }
+    finalizeOpenCompaction(message, args.meta, args.status, args.detail);
+  }
+  return settledPending;
+}
+
+/** Settle only compactions that are pending when this interruption is seen. */
+export function interruptOpenCompactions(
+  args: InterruptOpenCompactionsArgs,
+): void {
+  for (const message of args.state.openCompactionsByKey.values()) {
+    if (
+      message.threadId !== args.threadId ||
+      message.status !== "pending" ||
+      message.sourceSeqStart > args.meta.seq
+    ) {
+      continue;
+    }
+
+    finalizeOpenCompaction(message, args.meta, "interrupted", undefined);
   }
 }

@@ -1,0 +1,3 @@
+{"ts":1787279433972,"run":1787279433134,"seq":1,"dir":"runtime→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"params\":{\"protocolVersion\":2,\"client\":{\"name\":\"bb\",\"version\":\"1.0.0\"}},\"id\":21}"}
+{"ts":1787279433975,"run":1787279433134,"seq":3,"dir":"runtime→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"model/list\",\"params\":{},\"id\":26}"}
+{"ts":1787279445651,"run":1787279433134,"seq":5,"dir":"runtime→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"model/list\",\"params\":{\"cwd\":\"/tmp/bb-recording-ws\"},\"id\":31}"}

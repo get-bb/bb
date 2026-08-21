@@ -1,3 +1,4 @@
+import type { EnvironmentDiffFileQuery } from "@bb/server-contract";
 import { apiClient, toRelativeUrl } from "./api-server";
 
 /**
@@ -88,6 +89,24 @@ export function buildThreadWorktreeRawContentUrl(
   return toRelativeUrl(
     apiClient.threads[":id"].worktree.files[":filePath{.+}"].$url({
       param: { id: threadId, filePath: encodePathSegments(path) },
+    }),
+  );
+}
+
+/**
+ * The `/environments/:id/diff/file` JSON route a workspace file preview was
+ * read from. Text previews use it as their `url` identity; it is not a raw
+ * byte stream (the route wraps content in JSON), so callers that need an
+ * `<img>`/`<video>` source must build a `data:` URL from the response instead.
+ */
+export function buildEnvironmentDiffFileContentUrl(
+  environmentId: string,
+  query: EnvironmentDiffFileQuery,
+): string {
+  return toRelativeUrl(
+    apiClient.environments[":id"].diff.file.$url({
+      param: { id: environmentId },
+      query,
     }),
   );
 }

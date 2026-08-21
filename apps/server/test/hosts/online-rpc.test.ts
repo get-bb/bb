@@ -17,6 +17,7 @@ import {
   feedRawDaemonWebSocketMessage,
   type TestDaemonWebSocket,
 } from "../helpers/daemon-ws.js";
+import { TRANSPORT_TEST_BRIDGE_LAUNCH } from "../helpers/provider-registry.js";
 import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -109,7 +110,11 @@ describe("host online RPC retry semantics", () => {
         callHostRetryableOnlineRpc(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
-          command: { type: "provider.list_models", providerId: "codex" },
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
         }),
       ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
 
@@ -158,7 +163,11 @@ describe("host online RPC retry semantics", () => {
         callHostRetryableOnlineRpc(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
-          command: { type: "provider.list_models", providerId: "codex" },
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
         }),
       ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
       expect(requests.map((request) => request.command.type)).toEqual([
@@ -185,7 +194,11 @@ describe("host online RPC retry semantics", () => {
         callHostRetryableOnlineRpc(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
-          command: { type: "provider.list_models", providerId: "codex" },
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
         }),
       ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
       expect(requests.map((request) => request.command.type)).toEqual([
@@ -213,7 +226,11 @@ describe("host online RPC retry semantics", () => {
         await callHostOnlineRpc(harness.deps, {
           hostId: host.id,
           timeoutMs: 1_000,
-          command: { type: "provider.list_models", providerId: "codex" },
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
         });
         throw new Error("Expected host RPC to fail");
       } catch (error) {

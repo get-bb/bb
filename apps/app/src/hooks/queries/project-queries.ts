@@ -10,7 +10,8 @@ import {
   buildFilePreview,
   normalizeFilePreviewMimeType,
   type FilePreview,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
+import { decodeBase64Bytes } from "@/lib/base64-bytes";
 import { buildProjectFileContentUrl } from "@/lib/file-content-urls";
 import { sdk } from "@/lib/sdk";
 import { useProjectDetailRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
@@ -25,16 +26,15 @@ import { resolveProjectSourceBranchesPlaceholder } from "./query-placeholders";
 import {
   PROMPT_HISTORY_STALE_TIME_MS,
   requireEnabledQueryArg,
+  requireProjectId,
+  type QueryOptions,
 } from "./query-helpers";
 import {
   EXPENSIVE_MANUAL_QUERY_POLICY,
-  FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+  HEAVY_PAYLOAD_QUERY_POLICY,
+  REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
   TYPEAHEAD_QUERY_POLICY,
 } from "./query-policies";
-
-interface QueryOptions {
-  enabled?: boolean;
-}
 
 interface BranchQueryOptions extends QueryOptions {
   limit?: number;
@@ -60,26 +60,13 @@ interface UseProjectCommandsArgs {
 }
 
 const PROJECT_SOURCE_BRANCHES_LIMIT = 50;
-
-function decodeBase64Bytes(content: string): Uint8Array {
-  const binaryContent = atob(content);
-  const bytes = new Uint8Array(binaryContent.length);
-  for (let index = 0; index < binaryContent.length; index += 1) {
-    bytes[index] = binaryContent.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function requireProjectId(
-  projectId: string | undefined,
-  hookName: string,
-): string {
-  return requireEnabledQueryArg({
-    value: projectId,
-    hookName,
-    argName: "projectId",
-  });
-}
+/**
+ * The branch list is a daemon git RPC (throttled fetch + several git
+ * commands). Realtime `project-sources-changed` refreshes it and the branch
+ * picker refetches on open, so a foreground/focus refetch only re-runs that
+ * RPC without new information.
+ */
+const PROJECT_SOURCE_BRANCHES_STALE_MS = 30_000;
 
 function requireProviderId(
   providerId: string | undefined,
@@ -130,7 +117,8 @@ export function useProjectSourceBranches(
         signal,
       }),
     enabled,
-    ...FAST_FOCUS_OWNED_LIVE_QUERY_POLICY,
+    ...REALTIME_OWNED_NO_FOCUS_QUERY_POLICY,
+    staleTime: PROJECT_SOURCE_BRANCHES_STALE_MS,
     placeholderData: (previousData, previousQuery) =>
       projectId && hostId
         ? resolveProjectSourceBranchesPlaceholder({
@@ -263,6 +251,7 @@ export function useProjectFilePreview(
     },
     enabled,
     ...EXPENSIVE_MANUAL_QUERY_POLICY,
+    ...HEAVY_PAYLOAD_QUERY_POLICY,
   });
 }
 
@@ -274,6 +263,28 @@ export function useProjectFilePreview(
  * mentions, the command list is enabled even with an empty query (commands show
  * the full list on `/`); the caller gates fetching via `options.enabled`.
  */
+export function projectCommandsQueryOptions(args: UseProjectCommandsArgs) {
+  return {
+    queryKey: projectCommandsQueryKey(
+      args.projectId,
+      args.providerId,
+      args.environmentId,
+      args.hostId,
+    ),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      sdk.projects.commands({
+        projectId: requireProjectId(args.projectId, "useProjectCommands"),
+        provider: requireProviderId(args.providerId, "useProjectCommands"),
+        signal,
+        ...(args.environmentId !== null
+          ? { environmentId: args.environmentId }
+          : args.hostId !== null
+            ? { hostId: args.hostId }
+            : {}),
+      }),
+  };
+}
+
 export function useProjectCommands(
   args: UseProjectCommandsArgs,
   options?: QueryOptions,
@@ -285,23 +296,7 @@ export function useProjectCommands(
   useProjectDetailRealtimeSubscription(args.projectId, { enabled });
 
   return useQuery<CommandListResponse>({
-    queryKey: projectCommandsQueryKey(
-      args.projectId,
-      args.providerId,
-      args.environmentId,
-      args.hostId,
-    ),
-    queryFn: ({ signal }) =>
-      sdk.projects.commands({
-        projectId: requireProjectId(args.projectId, "useProjectCommands"),
-        provider: requireProviderId(args.providerId, "useProjectCommands"),
-        signal,
-        ...(args.environmentId !== null
-          ? { environmentId: args.environmentId }
-          : args.hostId !== null
-            ? { hostId: args.hostId }
-            : {}),
-      }),
+    ...projectCommandsQueryOptions(args),
     enabled,
     ...TYPEAHEAD_QUERY_POLICY,
     // Reopening the slash menu refreshes provider-native files that may have

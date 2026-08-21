@@ -97,6 +97,22 @@ describe("server skeleton", () => {
     }
   });
 
+  it("echoes the launcher's launch id on /health only when one was given", async () => {
+    await withTestHarness({ launchId: "launch-123" }, async (harness) => {
+      const response = await harness.app.request("/health");
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        ok: true,
+        launchId: "launch-123",
+      });
+    });
+    await withTestHarness(async (harness) => {
+      await expect(
+        readJson(await harness.app.request("/health")),
+      ).resolves.toEqual({ ok: true });
+    });
+  });
+
   it("serves public routes without auth", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/hosts");
@@ -120,6 +136,7 @@ describe("server skeleton", () => {
           hasMachineCredential: false,
           platform: "darwin",
           dataDir: "/tmp/host-data",
+          localApiPort: null,
           protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           activeThreads: [],
         }),

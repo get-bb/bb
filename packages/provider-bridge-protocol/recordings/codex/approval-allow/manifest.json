@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "approval-allow",
+  "threadId": "thr_adx74f9u2b",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "accept-edits mode; an out-of-sandbox command approved once.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 29,
+    "provider→bridge": 52,
+    "bridge→provider": 6
+  }
+}

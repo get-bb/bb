@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface ConversationTimelineProps {
+interface ConversationTimelineProps {
   children: ReactNode;
   className?: string;
 }

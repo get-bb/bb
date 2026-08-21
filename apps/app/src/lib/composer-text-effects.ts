@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { PluginComposerTextEffect } from "@bb/plugin-sdk";
+import type { PluginComposerTextEffect } from "@get-bb/plugin-sdk";
 
 type ComposerTextEffectListener = () => void;
 type ComposerTextEffectOwner = string | symbol;
@@ -84,7 +84,7 @@ export function setComposerTextEffect(
   notify(storageKey);
 }
 
-export function subscribeComposerTextEffect(
+function subscribeComposerTextEffect(
   storageKey: string | null,
   listener: ComposerTextEffectListener,
 ): () => void {

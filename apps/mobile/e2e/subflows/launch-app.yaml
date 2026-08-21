@@ -1,0 +1,55 @@
+# Subflow: cold-start the app. Two launch modes, decided by the caller's env:
+#
+# - Dev client (default, local runs): `openLink` the Expo dev-client URL so
+#   Metro (`METRO_URL`) serves the bundle, then dismiss the dev client's
+#   "Open" confirmation and its first-launch onboarding sheet.
+# - Embedded bundle (`-e BB_E2E_EMBEDDED_BUNDLE=1`, the CI Release build):
+#   plain `launchApp`. A Release build embeds the JS bundle and skips the dev
+#   launcher entirely, so there is no Metro and no dev-client chrome; the
+#   bundle must have been built with `EXPO_PUBLIC_BB_E2E=1` (state wipe on
+#   launch, e2e-only affordances).
+#
+# Called with `runFlow: ../subflows/launch-app.yaml` (flows) or
+# `runFlow: ./launch-app.yaml` (sibling subflows). Flow-file `env:` values
+# beat `-e`, so the switch is a variable no flow defines in its header.
+appId: app.getbb.mobile
+---
+- stopApp
+- runFlow:
+    when:
+      true: ${typeof BB_E2E_EMBEDDED_BUNDLE !== "undefined" && BB_E2E_EMBEDDED_BUNDLE === "1"}
+    commands:
+      - launchApp
+      # `launchApp` returns when the process starts, before the embedded JS
+      # bundle and Expo Router necessarily mount. Wait for the first React
+      # screen so callers can safely deliver a live custom-scheme link.
+      - extendedWaitUntil:
+          visible:
+            id: "add-server-screen"
+          timeout: 30000
+- runFlow:
+    when:
+      true: ${typeof BB_E2E_EMBEDDED_BUNDLE === "undefined" || BB_E2E_EMBEDDED_BUNDLE !== "1"}
+    commands:
+      - openLink: "exp+bb-app://expo-development-client/?url=${METRO_URL}"
+      # A fresh simulator confirms the first custom-scheme link.
+      - runFlow:
+          when:
+            visible: "Open"
+          commands:
+            - tapOn: "Open"
+      # First launch of a dev client shows the developer-menu onboarding
+      # sheet once the bundle is loaded; dismiss it if it appears.
+      - extendedWaitUntil:
+          visible: ".*(Continue|Close|Connect to a bb server|Threads).*"
+          timeout: 120000
+      - runFlow:
+          when:
+            visible: "Continue"
+          commands:
+            - tapOn: "Continue"
+      - runFlow:
+          when:
+            visible: "Close"
+          commands:
+            - tapOn: "Close"

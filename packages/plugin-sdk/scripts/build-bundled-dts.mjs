@@ -1,23 +1,35 @@
 // Generates the self-contained `.d.ts` bundles that `bb plugin new` ships into
 // a scaffolded plugin's `types/` directory, so authors get real BbPluginApi /
-// @bb/plugin-sdk/app types WITHOUT the (unpublished) @bb/* workspace packages
+// @get-bb/plugin-sdk/app types WITHOUT the (unpublished) @bb/* workspace packages
 // on disk.
 //
-// rollup-plugin-dts flattens @bb/plugin-sdk's own contracts plus every @bb/*
+// rollup-plugin-dts flattens @get-bb/plugin-sdk's own contracts plus every @bb/*
 // type it references (BbSdk, PromptInput, ThreadResponse, …) into the root
 // file. Testing subpaths reuse that already-portable root declaration through
 // the package's own public name instead of flattening the same contracts a
 // second time. Genuine npm packages remain external imports and resolve from
 // the consumer's own dependencies.
 //
-// The output is committed as bundled-types/*.d.ts (read at scaffold time by
-// @bb/templates via file path — no package edge, to avoid a dependency cycle).
-// Run with --check to fail (in CI/typecheck) when the committed copy is stale.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+// The output, bundled-types/*.d.ts, is NOT committed. It is the package's
+// published `types` surface and a build output of the turbo task
+// `@get-bb/plugin-sdk#build:types`; @bb/templates reads it at scaffold-embed
+// time by file path (no package edge, to avoid a dependency cycle), and the
+// in-repo plugins typecheck against it. Unchanged files are not rewritten so
+// mtimes stay stable for watchers.
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { rollup } from "rollup";
 import { dts } from "rollup-plugin-dts";
+
+import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
@@ -28,6 +40,15 @@ const outDir = path.join(pkgRoot, "bundled-types");
 const outputs = {
   "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
   "bb-plugin-sdk-app.d.ts": path.join(pkgRoot, "src/app.ts"),
+  "bb-plugin-sdk-provider-bridge.d.ts": path.join(
+    pkgRoot,
+    "src/provider-bridge.ts",
+  ),
+  "bb-plugin-sdk-provider-bridge-testing.d.ts": path.join(
+    pkgRoot,
+    "src/provider-bridge-testing.ts",
+  ),
+  "bb-plugin-sdk-host.d.ts": path.join(pkgRoot, "src/host.ts"),
   "bb-plugin-sdk-internal-composer-customization-validation.d.ts": path.join(
     pkgRoot,
     "src/internal/composer-customization-validation.ts",
@@ -36,14 +57,28 @@ const outputs = {
     pkgRoot,
     "src/internal/composer-view.ts",
   ),
+  "bb-plugin-sdk-internal-file-navigation-validation.d.ts": path.join(
+    pkgRoot,
+    "src/internal/file-navigation-validation.ts",
+  ),
+  "bb-plugin-sdk-internal-host-policy.d.ts": path.join(
+    pkgRoot,
+    "src/internal/host-policy.ts",
+  ),
+  "bb-plugin-sdk-internal-plugin-app-collector.d.ts": path.join(
+    pkgRoot,
+    "src/internal/plugin-app-collector.ts",
+  ),
   "bb-plugin-sdk-testing.d.ts": path.join(pkgRoot, "src/testing/index.ts"),
   "bb-plugin-sdk-testing-app.d.ts": path.join(pkgRoot, "src/testing/app.tsx"),
+  "bb-plugin-sdk-testing-host.d.ts": path.join(pkgRoot, "src/testing/host.ts"),
 };
 
 // Real npm packages the bundle imports from — kept external so they resolve
 // from the scaffold's devDependencies rather than being inlined.
 const EXTERNAL = [
-  /^@bb\/plugin-sdk$/,
+  /^@get-bb\/plugin-sdk$/,
+  /^node:/,
   /^@testing-library\/react($|\/)/,
   /^better-sqlite3/,
   /^hono($|\/)/,
@@ -104,7 +139,7 @@ async function bundle(input) {
 }
 
 const HEADER = [
-  "// Portable type declarations for `@bb/plugin-sdk`. Unpublished BB",
+  "// Portable type declarations for `@get-bb/plugin-sdk`. Unpublished BB",
   "// workspace contracts are flattened; public subpaths may reuse the",
   "// package root without requiring any other @bb/* package.",
   "//",
@@ -114,53 +149,34 @@ const HEADER = [
 
 const generated = {};
 for (const [fileName, entry] of Object.entries(outputs)) {
-  generated[fileName] = `${HEADER}\n\n${await bundle(entry)}`;
-}
-
-/**
- * rollup-plugin-dts loads modules concurrently, so the emission order of
- * inferred type members (zod enum maps especially) varies run to run while
- * the content stays semantically identical. Compare (and skip rewrites) on
- * the sorted line multiset: real drift adds/removes/changes lines and is
- * still caught, but a pure reordering neither fails --check nor churns the
- * committed bytes.
- */
-function canonicalize(content) {
-  // Union member order can vary on a single emitted line as well as across
-  // object-member lines. Normalize quoted literal unions before sorting lines
-  // so semantically identical output does not rewrite committed declarations.
-  const normalizedLiteralUnions = content.replace(
-    /"(?:[^"\\]|\\.)+"(?: \| "(?:[^"\\]|\\.)+")+/gu,
-    (union) => union.split(" | ").sort().join(" | "),
+  generated[fileName] = normalizeBundledDts(
+    `${HEADER}\n\n${await bundle(entry)}`,
   );
-  return normalizedLiteralUnions.split("\n").sort().join("\n");
 }
 
-const check = process.argv.includes("--check");
-let stale = false;
-if (!check) mkdirSync(outDir, { recursive: true });
+mkdirSync(outDir, { recursive: true });
 
 for (const [fileName, content] of Object.entries(generated)) {
   const target = path.join(outDir, fileName);
   const current = existsSync(target) ? readFileSync(target, "utf8") : null;
-  const unchanged =
-    current !== null && canonicalize(current) === canonicalize(content);
-  if (check) {
-    if (!unchanged) {
-      console.error(
-        `bundled-types/${fileName} is stale. Run \`pnpm --filter @bb/plugin-sdk build\`.`,
-      );
-      stale = true;
-    }
-  } else if (unchanged) {
+  if (current === content) {
     console.log(`Unchanged ${path.relative(pkgRoot, target)}`);
   } else {
-    writeFileSync(target, content);
+    writeAtomically(target, content);
     console.log(`Wrote ${path.relative(pkgRoot, target)}`);
   }
 }
 
-if (check) {
-  if (stale) process.exit(1);
-  console.log("bundled-types/*.d.ts are up to date.");
+/**
+ * Temp sibling + rename, so a concurrent reader (another turbo process, tsc
+ * in an editor) never sees a truncated declaration file.
+ */
+function writeAtomically(target, content) {
+  const temporary = `${target}.${process.pid}.tmp`;
+  try {
+    writeFileSync(temporary, content);
+    renameSync(temporary, target);
+  } finally {
+    rmSync(temporary, { force: true });
+  }
 }

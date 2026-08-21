@@ -13,7 +13,7 @@ const DEFAULT_PATH_SUGGESTION_LIMIT = 8;
 const SOURCE_OVERSAMPLE_MULTIPLIER = 2;
 
 export type PathSuggestionSource = "workspace" | "thread-storage";
-export type PathSuggestionEntryKind = "file" | "directory";
+type PathSuggestionEntryKind = "file" | "directory";
 
 type WorkspaceSource = "environment" | "project" | "none";
 
@@ -26,7 +26,7 @@ export interface PathSuggestion {
   positions: number[];
 }
 
-export interface UsePathSuggestionsArgs {
+interface UsePathSuggestionsArgs {
   projectId: string | undefined;
   query: string | null;
   limit?: number;
@@ -36,7 +36,7 @@ export interface UsePathSuggestionsArgs {
   includeDirectories: boolean;
 }
 
-export interface UsePathSuggestionsResult {
+interface UsePathSuggestionsResult {
   suggestions: PathSuggestion[];
   isLoading: boolean;
   isError: boolean;

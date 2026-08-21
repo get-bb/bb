@@ -10,10 +10,7 @@ import {
   hostDirectoryQueryKey,
   hostsQueryKey,
 } from "./query-keys";
-
-interface QueryOptions {
-  enabled?: boolean;
-}
+import type { QueryOptions } from "./query-helpers";
 
 /**
  * Hosts known to the server, with live connection status. Server-derived, so it

@@ -1,21 +1,15 @@
 export {
   connectCredentialSchema,
-  deriveConnectBaseUrl,
-  serverUrlForHandle,
   type ConnectCredential,
 } from "./credential.js";
 export {
-  ConnectListError,
-  isRevokedCredentialError,
-  type ConnectListErrorCode,
-} from "./errors.js";
+  connectPublicProtocol,
+  deriveConnectBaseUrl,
+  serverUrlForHandle,
+} from "./urls.js";
+export { ConnectListError } from "./errors.js";
 export {
-  accountServerSchema,
-  accountServersResponseSchema,
-  fetchAccountServers,
   listAccountServers,
-  withAccountServerUrls,
-  type AccountServer,
   type AccountServerWithUrl,
   type ListAccountServersResult,
 } from "./list-servers.js";
@@ -23,5 +17,10 @@ export { fetchDesktopSession, type DesktopSession } from "./desktop-session.js";
 export {
   ConnectMachineRedeemError,
   redeemMachineCredential,
-  type ConnectMachineRedeemErrorCode,
 } from "./redeem-machine.js";
+export {
+  encodeMobilePairingPayload,
+  mobilePairingPayload,
+  parseMobilePairingPayload,
+  type MobilePairingPayload,
+} from "./mobile-pairing.js";

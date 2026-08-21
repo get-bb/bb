@@ -3,17 +3,13 @@
 Server-backed preferences in Settings. They are persisted on the server, so
 every window and client sees the same value.
 
-## Caffeinate (macOS only)
+## Setting values
 
-- Keeps the Mac awake while bb is running: when enabled, the server asks the
-  primary host daemon to run `/usr/bin/caffeinate -i -w <daemon-pid>`. Turning
-  it off stops that process.
-- It only blocks idle sleep: closing a laptop lid or choosing Sleep manually
-  still sleeps the Mac.
-- The toggle is only shown when the connected primary host daemon reports
-  macOS.
-- The setting is re-applied automatically whenever the host daemon reconnects,
-  and the caffeinate process exits on its own if the daemon dies.
+- `bb settings general <key> <value>` accepts any key listed under
+  `generalSettings` in `bb settings show`. Boolean preferences take `true`,
+  `false`, `on`, or `off`; `null` clears a preference that can be unset.
+- Unknown keys and values of the wrong shape are rejected; the error names the
+  keys bb knows.
 
 ## Keyboard shortcuts
 
@@ -46,12 +42,45 @@ every window and client sees the same value.
 
 - `steerActiveThreadOnEnter` defaults to false. Set it with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
-- When disabled, Enter queues a follow-up and Command+Enter steers the
-  active turn. When enabled, those actions are reversed.
+- Outside an open composer typeahead menu, disabling it makes Enter queue a
+  follow-up and Command+Enter steer the active turn. When enabled, those
+  actions are reversed.
+- Shift+Enter inserts a newline. On coarse-pointer touch devices, the
+  software-keyboard Return path stays a newline; iPadOS WebKit preserves the
+  Enter shortcuts for a connected Magic Keyboard.
 
-## New onboarding
+## Streamer mode
 
-- The `newOnboarding` experiment defaults to false.
-- Enable it with `bb settings experiment newOnboarding true`.
-- Use `bb settings replay-onboarding` to enable the experiment and show the
-  agent and project setup guide again.
+- `streamerMode` defaults to false. Set it with
+  `bb settings general streamerMode <true|false>`.
+- When enabled, every `customModels` entry from `~/.bb/config.json` is hidden
+  in all model lists: the pickers, `bb provider models`, and
+  `sdk.providers.models`. Use it during a screen share so a private or
+  early-access model id does not appear.
+- The entries stay in `config.json`. A thread request that names a hidden model
+  explicitly still runs with it, and default model resolution for a new thread
+  keeps the full list.
+- A composer whose stored selection is a hidden model falls back to the
+  provider default, and the next send records that default. Select the custom
+  model again after you turn streamer mode off.
+
+## Mobile app
+
+- The `mobileApp` experiment defaults to false while the bb mobile app is in
+  early access.
+- Enable it with `bb settings experiment mobileApp true`. It shows the
+  **Add mobile device** card under Settings → Remote access and enables
+  `bb connect machine-code`.
+
+## Changelog preview
+
+- The `changelogPreview` experiment defaults to false.
+- Enable it with `bb settings experiment changelogPreview true` to show the
+  latest release notes on Settings → Updates.
+
+## Timeline windowing
+
+- The `timelineWindowing` experiment defaults to false.
+- Enable it with `bb settings experiment timelineWindowing true`.
+- It keeps stable timeline wrappers while mounting only rows near the active
+  main or nested detail scrollport.

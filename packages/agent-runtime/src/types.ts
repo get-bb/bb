@@ -1,4 +1,5 @@
 import type {
+  PermissionMode,
   AvailableModel,
   ClientTurnRequestId,
   DynamicTool,
@@ -7,12 +8,20 @@ import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
+  ProviderFork,
+  ProviderRecoveryKind,
   RuntimeThreadExecutionOptions,
   ThreadEvent,
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
 import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import type {
+  ExperimentalProviderHealthResult,
+  ExperimentalProviderInstallationRunResult,
+  ExperimentalProviderInstallationStatus,
+  ExperimentalProviderUsageResult,
+} from "@bb/provider-bridge-protocol";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
@@ -56,11 +65,13 @@ export type AgentRuntimeSkillRoot =
 
 /**
  * Final per-thread state snapshot taken when a provider process exits,
- * captured before the runtime clears the thread's state. This is the only
- * way consumers can see which turn a crashed thread was running.
+ * captured before the runtime clears the thread's state. This is the only way
+ * consumers can distinguish an idle session from a crashed active turn or a
+ * turn request awaiting its first provider lifecycle event.
  */
 export interface AgentRuntimeProcessExitThreadState {
   activeTurnId: string | null;
+  pendingTurnStart: boolean;
   providerThreadId: string | null;
   threadId: string;
 }
@@ -96,12 +107,11 @@ export interface AgentRuntimeOptions {
 
   /** Optional directory containing bundled provider bridges. */
   bridgeBundleDir?: string;
-
-  /** Optional executable used to run Node-based provider bridges. */
-  bridgeNodeExecutablePath?: string;
-
-  /** Optional env values needed by the executable used for Node-based bridges. */
-  bridgeNodeEnv?: Record<string, string>;
+  /**
+   * Bounds for the turn-start watchdog (visible system/error when an
+   * accepted turn never starts). Defaults: 120s threshold, 15s sweep.
+   */
+  turnStartWatchdog?: { thresholdMs?: number; intervalMs?: number };
 
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
@@ -125,14 +135,80 @@ export interface AgentRuntimeOptions {
 
   /** Called when a provider process exits unexpectedly. */
   onProcessExit?: (info: AgentRuntimeProcessExitInfo) => void;
+
+  /**
+   * Called when a bridge raises a typed `provider/recovery` hint. The runtime
+   * parses and forwards; it does not act on the kind yet (the recovery
+   * actions — unarchive-and-retry, bridge restart, stale-steer drop, retry
+   * scheduling — land with the runtime cleanup workstream). A runtime signal,
+   * never a timeline event.
+   */
+  onProviderRecovery?: (hint: AgentRuntimeProviderRecoveryHint) => void;
+}
+
+/**
+ * A bridge's `provider/recovery` notification, stamped with the provider it
+ * came from. `threadId` is the bb thread for session-scoped hints
+ * (`sessionArchived`, `staleTurn`) and absent for provider-wide ones
+ * (`authRequired`, account-level `rateLimited`).
+ */
+export interface AgentRuntimeProviderRecoveryHint {
+  providerId: string;
+  threadId?: string;
+  kind: ProviderRecoveryKind;
+  message: string;
+  retryable: boolean;
 }
 
 // ---------------------------------------------------------------------------
 // Runtime interface
 // ---------------------------------------------------------------------------
 
+/**
+ * A plugin-delivered provider bridge, resolved by the host daemon: the bridge
+ * artifact has been downloaded, hash-verified, and cached at `artifactPath`.
+ * Rides per-call like the ACP launch spec; `sha256` keys process identity so
+ * a plugin update (new artifact hash) gets a fresh bridge process.
+ */
+export interface AgentRuntimeBridgeLaunch {
+  /** The plugin that ships this bridge. Scopes the process's directories. */
+  pluginId: string;
+  /**
+   * This plugin's persistent bridge directory on this host, already created by
+   * the daemon. The bootstrap hands it to the bridge; the matching temp dir is
+   * this process's own and is created and removed by the bootstrap.
+   */
+  dataDir: string;
+  /**
+   * Which bridge binary to run, as the server decided it: a hash-verified
+   * plugin artifact already cached on this host, or a bridge inside the
+   * daemon's own bundle (Pi).
+   */
+  source:
+    | { kind: "artifact"; digest: string; artifactPath: string }
+    | { kind: "daemon-bundled"; id: string };
+  /** Server-validated capabilities from the provider declaration. */
+  capabilities: {
+    experimental_providerInstallation: boolean;
+    supportsServiceTier: boolean;
+    permissionModes: PermissionMode[];
+    supportsThreadArchive: boolean;
+    supportsThreadRename: boolean;
+    fork: ProviderFork;
+  };
+  /** Provider-owned statics; interpreted only by the provider bridge. */
+  providerOptions: JsonObject;
+  /**
+   * Daemon environment variable names the bridge may read. Provider
+   * processes are spawned with every inherited `BB_*` variable stripped;
+   * exactly these are forwarded from the daemon's own environment.
+   */
+  envPassthrough: readonly string[];
+}
+
 export interface EnsureProviderArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   /**
    * Providers with thread-scoped processes use this to start the process for a
    * specific bb thread. Omit it for provider-scoped maintenance work such as
@@ -144,6 +220,7 @@ export interface EnsureProviderArgs {
 
 export interface StartThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   projectId: string;
@@ -156,11 +233,6 @@ export interface StartThreadArgs {
   dynamicTools?: DynamicTool[];
   disallowedTools?: readonly string[];
   instructionMode?: InstructionMode;
-  /** JSON Schema constraining the session's structured output. Session-level
-   *  structured output is claude-code only (SDK `outputFormat` is fixed at
-   *  query creation); other adapters reject it. Absent means no structured
-   *  output. */
-  outputSchema?: JsonObject;
   /**
    * Present means fork the new thread from this source provider session
    * instead of starting fresh; absent means a normal start.
@@ -172,8 +244,34 @@ export interface StartThreadResult {
   providerThreadId: string;
 }
 
+interface PrepareThreadRewindArgs {
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  environmentId: string;
+  threadId: string;
+  leaseId: string;
+  projectId: string;
+  providerId: string;
+  sourceProviderThreadId: string;
+  retainThroughProviderCheckpoint: string;
+  options: AgentRuntimeExecutionOptions;
+  instructions?: string;
+  dynamicTools?: DynamicTool[];
+  disallowedTools?: readonly string[];
+  instructionMode?: InstructionMode;
+}
+
+interface PrepareThreadRewindResult {
+  providerThreadId: string;
+}
+
+interface DiscardThreadRewindArgs {
+  leaseId: string;
+}
+
 export interface ResumeThreadArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   projectId?: string;
@@ -209,11 +307,11 @@ export interface SteerTurnArgs {
   instructions?: string;
 }
 
-export interface SteerTurnAppliedResult {
+interface SteerTurnAppliedResult {
   status: "steered";
 }
 
-export interface SteerTurnStaleResult {
+interface SteerTurnStaleResult {
   status: "stale";
   activeTurnId: string | null;
 }
@@ -222,6 +320,10 @@ export type SteerTurnResult = SteerTurnAppliedResult | SteerTurnStaleResult;
 
 export interface StopThreadArgs {
   threadId: string;
+}
+
+export interface StopThreadResult {
+  providerCheckpointId: string | null;
 }
 
 export interface AgentRuntimeProviderSession {
@@ -236,6 +338,11 @@ export interface WaitForActiveTurnArgs {
 export interface ReapIdleProviderSessionsArgs {
   idleForMs: number;
   nowMs: number;
+  providerSessionReapingEnabled: boolean;
+  runThreadExclusive?: (
+    threadId: string,
+    work: () => Promise<ReapedIdleProviderSession | null>,
+  ) => Promise<ReapedIdleProviderSession | null>;
 }
 
 export interface ReapedIdleProviderSession {
@@ -254,17 +361,19 @@ export interface RenameThreadArgs {
   title: string;
 }
 
-export interface ClearThreadGoalArgs {
+interface ClearThreadGoalArgs {
   threadId: string;
 }
 
-export interface ArchiveThreadArgs {
+interface ArchiveThreadArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
-export interface UnarchiveThreadArgs {
+interface UnarchiveThreadArgs {
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
@@ -273,13 +382,31 @@ export interface UnarchiveThreadArgs {
 export interface ListModelsArgs {
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
   cwd?: string;
+}
+
+interface ProviderMaintenanceArgs {
+  providerId: string;
+  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
+  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  cwd?: string;
+}
+
+interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
+  requirement?: "thread_rewind";
 }
 
 export interface AgentRuntime {
   ensureProvider(args: EnsureProviderArgs): Promise<void>;
 
   startThread(args: StartThreadArgs): Promise<StartThreadResult>;
+
+  prepareThreadRewind(
+    args: PrepareThreadRewindArgs,
+  ): Promise<PrepareThreadRewindResult>;
+
+  discardThreadRewind(args: DiscardThreadRewindArgs): Promise<void>;
 
   resumeThread(args: ResumeThreadArgs): Promise<ResumeThreadResult>;
 
@@ -293,7 +420,7 @@ export interface AgentRuntime {
    * reports `false` afterwards and the next turn must go through
    * `resumeThread`. The provider process keeps running for other threads.
    */
-  stopThread(args: StopThreadArgs): Promise<void>;
+  stopThread(args: StopThreadArgs): Promise<StopThreadResult>;
 
   clearThreadGoal(args: ClearThreadGoalArgs): Promise<{ cleared: boolean }>;
 
@@ -307,6 +434,22 @@ export interface AgentRuntime {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+
+  providerHealth(
+    args: ProviderMaintenanceArgs,
+  ): Promise<ExperimentalProviderHealthResult>;
+
+  providerUsage(
+    args: ProviderMaintenanceArgs,
+  ): Promise<ExperimentalProviderUsageResult>;
+
+  providerInstallationStatus(
+    args: ProviderInstallationStatusArgs,
+  ): Promise<ExperimentalProviderInstallationStatus>;
+
+  providerInstallationRun(
+    args: ProviderMaintenanceArgs & { action: "install" | "update" },
+  ): Promise<ExperimentalProviderInstallationRunResult>;
 
   listRunningProviders(): string[];
 
@@ -339,8 +482,8 @@ export interface AgentRuntime {
   /** Whether the runtime currently hosts the thread (turns can run on it). */
   hasThread(threadId: string): boolean;
 
-  /** Thread ids with an active turn. */
-  getActiveThreadIds(): string[];
+  /** Thread ids with an active turn or an accepted turn awaiting its first event. */
+  getLiveThreadIds(): string[];
 
   /**
    * Whether any hosted thread still has an open background task (a workflow or

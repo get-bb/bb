@@ -3,9 +3,9 @@ import type { Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
 
-export type ChildThreadsDestructiveAction = "archive" | "delete";
+type ChildThreadsDestructiveAction = "archive" | "delete";
 
-export interface RequireChildThreadsConfirmationRequest {
+interface RequireChildThreadsConfirmationRequest {
   action: ChildThreadsDestructiveAction;
   confirmed: boolean;
   deps: AppDeps;

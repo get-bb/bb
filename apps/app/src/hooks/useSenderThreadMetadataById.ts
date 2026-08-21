@@ -6,7 +6,6 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type {
-  ThreadChildOrigin,
   ThreadOriginKind,
   ThreadVisibility,
   ThreadWithRuntime,
@@ -25,8 +24,8 @@ import {
 } from "@/hooks/cache-owners/thread-list-cache-data";
 
 export interface SenderThreadMetadata {
+  projectId: string;
   title: string | null;
-  childOrigin: ThreadChildOrigin | null;
   originKind: ThreadOriginKind | null;
   originPluginId: string | null;
   visibility: ThreadVisibility | null;
@@ -39,7 +38,7 @@ interface SenderThreadTitleSource {
 
 interface SenderThreadMetadataSource extends SenderThreadTitleSource {
   id: string;
-  childOrigin: ThreadChildOrigin | null;
+  projectId: string;
   originKind: ThreadOriginKind | null;
   originPluginId: string | null;
   visibility: ThreadVisibility;
@@ -64,8 +63,8 @@ function addSenderThreadMetadata(
     return;
   }
   metadataById.set(thread.id, {
+    projectId: thread.projectId,
     title,
-    childOrigin: thread.childOrigin,
     originKind: thread.originKind,
     originPluginId: thread.originPluginId,
     visibility: thread.visibility,
@@ -107,12 +106,51 @@ function buildSenderThreadMetadataById(
 }
 
 function shouldSyncSenderThreadMetadata(event: QueryCacheNotifyEvent): boolean {
+  // The map is built from `query.state.data`, which only changes through
+  // "updated" dispatches. "observerResultsUpdated" fires on observer churn
+  // (subscription changes, tracked-prop recomputes) without a data change, so
+  // reacting to it would only rebuild identical maps.
   return (
-    (event.type === "updated" || event.type === "observerResultsUpdated") &&
+    event.type === "updated" &&
     (event.query.queryKey[0] === SIDEBAR_NAVIGATION_QUERY_KEY ||
       event.query.queryKey[0] === THREADS_QUERY_KEY ||
       event.query.queryKey[0] === THREAD_QUERY_KEY)
   );
+}
+
+function areSenderThreadMetadataEntriesEqual(
+  left: SenderThreadMetadata,
+  right: SenderThreadMetadata,
+): boolean {
+  return (
+    left.projectId === right.projectId &&
+    left.title === right.title &&
+    left.originKind === right.originKind &&
+    left.originPluginId === right.originPluginId &&
+    left.visibility === right.visibility
+  );
+}
+
+function areSenderThreadMetadataMapsEqual(
+  left: ReadonlyMap<string, SenderThreadMetadata>,
+  right: ReadonlyMap<string, SenderThreadMetadata>,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const [threadId, entry] of left) {
+    const other = right.get(threadId);
+    if (other === undefined) {
+      return false;
+    }
+    if (!areSenderThreadMetadataEntriesEqual(entry, other)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -140,7 +178,15 @@ export function useSenderThreadMetadataById(): ReadonlyMap<
         // QueryClient has stable identity while the data inside its cache is
         // mutable. Store the rebuilt map itself so consumers receive a new
         // state value instead of relying on render-time reads of that object.
-        setMetadataById(buildSenderThreadMetadataById(queryClient));
+        // Keep the previous map when the rebuild is value-equal: the timeline
+        // feeds this map into context, so a fresh-but-equal reference would
+        // re-render every row on every matching cache event.
+        setMetadataById((current) => {
+          const next = buildSenderThreadMetadataById(queryClient);
+          return areSenderThreadMetadataMapsEqual(current, next)
+            ? current
+            : next;
+        });
       }
     };
     const unsubscribe = queryClient.getQueryCache().subscribe((event) => {

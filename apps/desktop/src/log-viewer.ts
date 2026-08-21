@@ -16,16 +16,16 @@ const LOG_VIEWER_INITIAL_TAIL_LINES = 400;
 const LOG_VIEWER_ROTATION_POLL_INTERVAL_MS = 2_000;
 const LOG_VIEWER_COMPONENTS: LogViewerComponent[] = ["server", "host-daemon"];
 
-export interface CreateLogViewerViewUrlArgs {
+interface CreateLogViewerViewUrlArgs {
   logDir: string;
 }
 
-export interface ResolveCurrentLogFileArgs {
+interface ResolveCurrentLogFileArgs {
   component: LogViewerComponent;
   logDir: string;
 }
 
-export interface CreateLogTailerArgs {
+interface CreateLogTailerArgs {
   logDir: string;
   onLines(lines: LogViewerLine[]): void;
 }
@@ -36,7 +36,7 @@ export interface LogTailer {
   stop(): void;
 }
 
-export interface CreateLogLineBufferArgs {
+interface CreateLogLineBufferArgs {
   flushIntervalMs: number;
   flushLineCount: number;
   maxLines: number;

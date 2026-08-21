@@ -13,10 +13,10 @@ import {
   type ProjectThreadListState,
 } from "./ProjectRow";
 import {
+  buildSidebarEntitySectionId,
   compareStandardThreads,
   type SidebarSectionDefinition,
-} from "./projectThreadGroups";
-import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
+} from "@bb/client-core";
 
 export default {
   title: "sidebar/Section grouping",

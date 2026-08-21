@@ -1,12 +1,12 @@
 import type { PathListIncludeQueryValue } from "@bb/server-contract";
 import { ApiError } from "../errors.js";
 
-export interface PathKindInclusion {
+interface PathKindInclusion {
   includeFiles: boolean;
   includeDirectories: boolean;
 }
 
-export interface ParsePathKindInclusionArgs {
+interface ParsePathKindInclusionArgs {
   includeFiles: PathListIncludeQueryValue;
   includeDirectories: PathListIncludeQueryValue;
 }

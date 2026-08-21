@@ -6,14 +6,16 @@ import type {
 } from "@bb/host-daemon-contract";
 import { normalizeCaughtError, runtimeErrorLogFields } from "./error-utils.js";
 import type { HostDaemonLogger } from "./logger.js";
+import { ServerResponseError } from "./server-client.js";
 
 const DEFAULT_DEBOUNCE_MS = 100;
 
 // Tripwires for noticing that delivery has stalled and the in-memory queue is
-// growing. These only emit a debug log — they never drop, fault, or bound the
-// queue. If they fire in practice, that is the signal to add real backpressure.
-const QUEUE_DEPTH_DEBUG_THRESHOLD = 512;
-const QUEUE_AGE_DEBUG_THRESHOLD_MS = 30_000;
+// growing. These only warn — they never drop, fault, or bound the queue. If
+// they fire in practice, that is the signal to add real backpressure.
+const QUEUE_DEPTH_WARN_THRESHOLD = 512;
+const QUEUE_DEPTH_WARN_MIN_AGE_MS = 5_000;
+const QUEUE_AGE_WARN_THRESHOLD_MS = 30_000;
 
 export interface EventSinkInput {
   event: ThreadEvent;
@@ -23,19 +25,19 @@ export interface EventSinkInput {
 export interface EventPostResult {
   acceptedEvents: HostDaemonEventBatchResponse["acceptedEvents"];
   rejectedEvents: HostDaemonEventBatchResponse["rejectedEvents"];
-  kind: "accepted";
 }
 
 export interface CreateEventSinkOptions {
   isSessionOpen: () => boolean;
   logger: Pick<HostDaemonLogger, "debug" | "error" | "warn">;
+  /** Injectable wall clock for queue-age tests. */
+  now?: () => number;
   postEvents: (events: HostDaemonEventEnvelope[]) => Promise<EventPostResult>;
 }
 
 export interface EventSink {
   emit(event: EventSinkInput): void;
   flush(): Promise<void>;
-  flushRequired(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -67,7 +69,7 @@ function isWaitingForApprovalItemEvent(event: ThreadEvent): boolean {
   return event.item.approvalStatus === "waiting_for_approval";
 }
 
-export function shouldFlushThreadEventImmediately(event: ThreadEvent): boolean {
+function shouldFlushThreadEventImmediately(event: ThreadEvent): boolean {
   if (event.type === "turn/started" || event.type === "item/completed") {
     return true;
   }
@@ -87,6 +89,23 @@ export function shouldFlushThreadEventImmediately(event: ThreadEvent): boolean {
   return isWaitingForApprovalItemEvent(event);
 }
 
+// True when the server refused these events for what they *are*, so reposting
+// them unchanged can only produce the same refusal: a malformed batch (400) or
+// one carrying an event the store will never accept (409). Both answer with
+// `invalid_request`.
+//
+// The code check is what keeps this narrow. `/session/events` also fails
+// non-retryably with `unauthorized` and `inactive_session` (401), and those say
+// nothing about the events themselves — the daemon must keep them queued for
+// the session it is about to reopen, not discard them.
+function isPermanentPostRejection(error: Error): boolean {
+  return (
+    error instanceof ServerResponseError &&
+    !error.retryable &&
+    error.code === "invalid_request"
+  );
+}
+
 function summarizeRejectedEvents(
   events: readonly HostDaemonRejectedEvent[],
 ): RejectedEventSummary[] {
@@ -98,6 +117,7 @@ function summarizeRejectedEvents(
 }
 
 export function createEventSink(options: CreateEventSinkOptions): EventSink {
+  const now = options.now ?? (() => Date.now());
   const queue: HostDaemonEventEnvelope[] = [];
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushPromise: Promise<void> | null = null;
@@ -112,15 +132,18 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       return;
     }
     const queueDepth = queue.length;
-    const queueAgeMs = Date.now() - backedUpSinceMs;
+    const queueAgeMs = now() - backedUpSinceMs;
     if (
-      queueDepth < QUEUE_DEPTH_DEBUG_THRESHOLD &&
-      queueAgeMs < QUEUE_AGE_DEBUG_THRESHOLD_MS
+      queueAgeMs < QUEUE_AGE_WARN_THRESHOLD_MS &&
+      (queueDepth < QUEUE_DEPTH_WARN_THRESHOLD ||
+        queueAgeMs < QUEUE_DEPTH_WARN_MIN_AGE_MS)
     ) {
       return;
     }
     backpressureLogged = true;
-    options.logger.debug(
+    // A stalled queue means every thread on this host is silently falling
+    // behind in the UI, so this needs to be visible at the default log level.
+    options.logger.warn(
       { queueDepth, queueAgeMs },
       "Daemon event queue is backing up; delivery may be stalled",
     );
@@ -155,6 +178,71 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
     }, delayMs);
   }
 
+  // Delivers `batch` and reports how many of its leading events no longer need
+  // sending — either the server took them or they were undeliverable by
+  // construction and were dropped. A count below `batch.length` means delivery
+  // stopped early and the remainder must be retried by a later flush.
+  //
+  // The server marks a rejection non-retryable when reposting the identical
+  // payload can only produce the identical rejection (a turn-scoped event whose
+  // turn/started it never saw, for instance, which it answers with 409). Such a
+  // batch must never be retried as-is: the queue is host-wide, so one
+  // undeliverable event at its head would stall every thread on the machine
+  // until the daemon restarted. Bisect instead — the server appends a batch in
+  // a single transaction and rolls the whole thing back when it refuses one
+  // event, so nothing was committed and re-posting the halves cannot duplicate.
+  // That isolates the offending events in O(log n) posts and lets the healthy
+  // ones through.
+  async function deliverBatch(
+    batch: readonly HostDaemonEventEnvelope[],
+  ): Promise<number> {
+    let response: EventPostResult;
+    try {
+      response = await options.postEvents([...batch]);
+    } catch (error) {
+      const normalized = normalizeCaughtError(error);
+      if (!isPermanentPostRejection(normalized)) {
+        options.logger.error(
+          runtimeErrorLogFields(normalized),
+          "Failed to post daemon events; will retry on the next flush",
+        );
+        return 0;
+      }
+
+      const [offending] = batch;
+      if (batch.length === 1 && offending !== undefined) {
+        options.logger.error(
+          {
+            ...runtimeErrorLogFields(normalized),
+            eventType: offending.event.type,
+            threadId: offending.threadId,
+          },
+          "Dropped a daemon event the server will never accept",
+        );
+        return 1;
+      }
+
+      const midpoint = Math.floor(batch.length / 2);
+      const deliveredFromFirstHalf = await deliverBatch(
+        batch.slice(0, midpoint),
+      );
+      if (deliveredFromFirstHalf < midpoint) {
+        return deliveredFromFirstHalf;
+      }
+      return midpoint + (await deliverBatch(batch.slice(midpoint)));
+    }
+
+    if (response.rejectedEvents.length > 0) {
+      options.logger.warn(
+        {
+          rejectedEvents: summarizeRejectedEvents(response.rejectedEvents),
+        },
+        "Server rejected daemon events",
+      );
+    }
+    return batch.length;
+  }
+
   // Posts queued events while the session is open. Events that cannot be
   // delivered right now — because the session is closed or the post failed —
   // stay queued and are retried by the next flush (the next emit, or the
@@ -163,29 +251,14 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
   async function drainQueue(): Promise<void> {
     while (queue.length > 0 && !disposed && options.isSessionOpen()) {
       const batch = queue.slice();
-      let response: EventPostResult;
-      try {
-        response = await options.postEvents(batch);
-      } catch (error) {
-        options.logger.error(
-          runtimeErrorLogFields(normalizeCaughtError(error)),
-          "Failed to post daemon events; will retry on the next flush",
-        );
-        return;
-      }
-
-      if (response.rejectedEvents.length > 0) {
-        options.logger.warn(
-          {
-            rejectedEvents: summarizeRejectedEvents(response.rejectedEvents),
-          },
-          "Server rejected daemon events",
-        );
-      }
-      queue.splice(0, batch.length);
+      const delivered = await deliverBatch(batch);
+      queue.splice(0, delivered);
       if (queue.length === 0) {
         backedUpSinceMs = null;
         backpressureLogged = false;
+      }
+      if (delivered < batch.length) {
+        return;
       }
     }
   }
@@ -211,7 +284,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
         throw new EventSinkDisposedError();
       }
       if (backedUpSinceMs === null) {
-        backedUpSinceMs = Date.now();
+        backedUpSinceMs = now();
       }
       queue.push({
         threadId: input.threadId,
@@ -223,7 +296,6 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       );
     },
     flush,
-    flushRequired: flush,
     async dispose(): Promise<void> {
       disposed = true;
       clearScheduledFlush();

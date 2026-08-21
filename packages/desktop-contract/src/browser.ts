@@ -10,16 +10,17 @@ export const BB_DESKTOP_BROWSER_MAX_URL_LENGTH = 4096;
 export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
 
 /**
- * Pixel rect (CSS px, which equal device-independent points on macOS) of the
- * panel region the native browser view must overlay, measured by the renderer
- * against its own layout viewport. This rect is the single placement
- * authority: the renderer re-measures and pushes it whenever its layout moves
- * the panel, and the desktop main process only intersects it with the live
- * window content bounds — it never extrapolates placement from native window
- * resizes, whose size the renderer's (possibly lagging) chrome paint does not
- * yet reflect.
+ * Pixel rect of the panel region the native browser view must overlay,
+ * measured by the renderer against its own layout viewport. The preload
+ * converts these CSS pixels to native window points at the current page zoom
+ * before it sends the rect to the desktop main process. This rect is the
+ * single placement authority: the renderer re-measures and pushes it whenever
+ * its layout moves the panel, and the desktop main process only intersects it
+ * with the live window content bounds — it never extrapolates placement from
+ * native window resizes, whose size the renderer's (possibly lagging) chrome
+ * paint does not yet reflect.
  */
-export const bbDesktopBrowserViewBoundsSchema = z
+const bbDesktopBrowserViewBoundsSchema = z
   .object({
     x: z.number().int(),
     y: z.number().int(),
@@ -42,7 +43,7 @@ interface ClampIntegerToRangeArgs {
   value: number;
 }
 
-export interface ClampBbDesktopBrowserViewBoundsArgs {
+interface ClampBbDesktopBrowserViewBoundsArgs {
   bounds: BbDesktopBrowserViewBounds;
   viewport: BbDesktopBrowserViewportBounds;
 }
@@ -147,6 +148,9 @@ export const bbDesktopBrowserTabRefSchema = z
     tabId: z.string().min(1),
   })
   .strict();
+export type BbDesktopBrowserTabRef = z.infer<
+  typeof bbDesktopBrowserTabRefSchema
+>;
 
 /**
  * Current navigation state of a browser view, pushed main → renderer on every
@@ -198,7 +202,7 @@ export type BbDesktopBrowserScopedOpenTabRequest = z.infer<
  * display lands well under this; the cap exists so a misbehaving push can
  * never balloon renderer memory.
  */
-export const BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH = 8_388_608;
+const BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH = 8_388_608;
 
 /**
  * A transient bitmap of a browser view, pushed main → renderer at the start
@@ -221,6 +225,60 @@ export type BbDesktopBrowserSnapshot = z.infer<
   typeof bbDesktopBrowserSnapshotSchema
 >;
 
+/**
+ * Upper bound for find-in-page query text. Keeps a renderer bug from pushing an
+ * unbounded string into the page's find machinery.
+ */
+export const BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH = 1024;
+
+/**
+ * Renderer → main request to find `text` in a tab's page. `newSession` starts
+ * a new find session (the query changed); `false` steps through the matches of
+ * the current session in the `forward` direction. The main process maps this
+ * onto Electron's `webContents.findInPage`, whose `findNext` option carries
+ * the same start-a-new-session meaning under a confusing name.
+ */
+export const bbDesktopBrowserFindInPageRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    text: z.string().min(1).max(BB_DESKTOP_BROWSER_MAX_FIND_TEXT_LENGTH),
+    forward: z.boolean(),
+    newSession: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserFindInPageRequest = z.infer<
+  typeof bbDesktopBrowserFindInPageRequestSchema
+>;
+
+/** Renderer → main request to end a tab's find session (`webContents.stopFindInPage`). */
+export const bbDesktopBrowserStopFindInPageRequestSchema = z
+  .object({
+    tabId: z.string().min(1),
+    action: z.enum(["clearSelection", "keepSelection", "activateSelection"]),
+  })
+  .strict();
+export type BbDesktopBrowserStopFindInPageRequest = z.infer<
+  typeof bbDesktopBrowserStopFindInPageRequestSchema
+>;
+
+/**
+ * Main → renderer relay of a `found-in-page` result. Chromium reports interim
+ * counts (`finalUpdate: false`) while it scans a long page and a last one with
+ * `finalUpdate: true`; the renderer shows the latest result for its tab.
+ */
+export const bbDesktopBrowserFindResultSchema = z
+  .object({
+    tabId: z.string().min(1),
+    requestId: z.number().int(),
+    activeMatchOrdinal: z.number().int().nonnegative(),
+    matches: z.number().int().nonnegative(),
+    finalUpdate: z.boolean(),
+  })
+  .strict();
+export type BbDesktopBrowserFindResult = z.infer<
+  typeof bbDesktopBrowserFindResultSchema
+>;
+
 export type BbDesktopBrowserStateHandler = (
   state: BbDesktopBrowserState,
 ) => void;
@@ -232,6 +290,10 @@ export type BbDesktopBrowserScopedOpenTabHandler = (
 ) => void;
 export type BbDesktopBrowserSnapshotHandler = (
   snapshot: BbDesktopBrowserSnapshot,
+) => void;
+export type BbDesktopBrowserFocusHandler = (tabId: string) => void;
+export type BbDesktopBrowserFindResultHandler = (
+  result: BbDesktopBrowserFindResult,
 ) => void;
 export type BbDesktopBrowserUnsubscribe = () => void;
 
@@ -245,8 +307,15 @@ export interface BbDesktopBrowserApi {
   goForward(tabId: string): void;
   reload(tabId: string): void;
   stop(tabId: string): void;
+  /** Focus a visible view without treating that programmatic focus as a page click. */
+  focus?(tabId: string): void;
   setBounds(request: BbDesktopBrowserSetBoundsRequest): void;
   setVisible(request: BbDesktopBrowserSetVisibleRequest): void;
+  /**
+   * Set visibility without moving native keyboard focus. Optional for version
+   * skew; split panes use it for visible browser siblings that do not own focus.
+   */
+  setVisibleWithoutFocus?(request: BbDesktopBrowserSetVisibleRequest): void;
   /** Subscribe to navigation-state pushes for every view in this window. */
   onState(listener: BbDesktopBrowserStateHandler): BbDesktopBrowserUnsubscribe;
   /** Subscribe to popup requests that should open as a new in-panel browser tab. */
@@ -261,6 +330,11 @@ export interface BbDesktopBrowserApi {
     listener: BbDesktopBrowserScopedOpenTabHandler,
   ): BbDesktopBrowserUnsubscribe;
   /**
+   * Subscribe to user-driven focus entering a native browser page. Optional
+   * for version skew with desktop shells that predate split browser panes.
+   */
+  onFocus?(listener: BbDesktopBrowserFocusHandler): BbDesktopBrowserUnsubscribe;
+  /**
    * Subscribe to resize-burst snapshot pushes. Optional purely for version
    * skew: the SPA routinely attaches to an older desktop shell whose preload
    * predates snapshots (see the wire-freeze note on
@@ -269,5 +343,17 @@ export interface BbDesktopBrowserApi {
    */
   onSnapshot?(
     listener: BbDesktopBrowserSnapshotHandler,
+  ): BbDesktopBrowserUnsubscribe;
+  /**
+   * Find-in-page. All three are optional purely for version skew: the SPA
+   * routinely attaches to an older desktop shell whose preload predates
+   * find-in-page (see the wire-freeze note on
+   * {@link bbDesktopBrowserAttachRequestSchema}); the renderer feature-detects
+   * and leaves the find command unhandled when they are absent.
+   */
+  findInPage?(request: BbDesktopBrowserFindInPageRequest): void;
+  stopFindInPage?(request: BbDesktopBrowserStopFindInPageRequest): void;
+  onFindResult?(
+    listener: BbDesktopBrowserFindResultHandler,
   ): BbDesktopBrowserUnsubscribe;
 }

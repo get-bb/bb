@@ -1,17 +1,24 @@
 import { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
+import {
+  ensurePersonalProject,
+  listPublicProjects,
+  setExperiments,
+} from "@bb/db";
+import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
+  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
+  seedEnvironment,
   seedHost,
   seedHostSession,
   seedPrimaryHost,
   seedProjectWithSource,
+  seedThread,
 } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -27,6 +34,91 @@ const projectResponseSchema = z.object({
 });
 
 describe("public project local host routes", () => {
+  it("creates a project when a personal thread already uses its folder", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-personal-folder-project",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+      // Threads created without a selected project belong to Personal. After
+      // changing directories, their target path is stored as an environment.
+      ensurePersonalProject(harness.db);
+      const personalEnvironment = seedEnvironment(harness.deps, {
+        hostId: offlinePrimary.id,
+        projectId: PERSONAL_PROJECT_ID,
+        path: "/tmp/personal-thread-folder",
+      });
+      seedThread(harness.deps, {
+        projectId: PERSONAL_PROJECT_ID,
+        environmentId: personalEnvironment.id,
+        status: "idle",
+      });
+
+      const response = await harness.app.request("/api/v1/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Personal Thread Folder",
+          source: {
+            type: "local_path",
+            hostId: offlinePrimary.id,
+            path: "/tmp/personal-thread-folder",
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const project = projectResponseSchema.parse(await readJson(response));
+      expect(project.id).not.toBe(PERSONAL_PROJECT_ID);
+      expect(listPublicProjects(harness.db)).toEqual([
+        expect.objectContaining({ id: project.id }),
+      ]);
+    });
+  });
+
+  it("returns the existing project when its local folder is added again", async () => {
+    await withTestHarness(async (harness) => {
+      const offlinePrimary = seedHost(harness.deps, {
+        id: "host-duplicate-project",
+      });
+      seedPrimaryHost(harness.deps, offlinePrimary.id);
+
+      const create = (name: string, path: string) =>
+        harness.app.request("/api/v1/projects", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name,
+            source: {
+              type: "local_path",
+              hostId: offlinePrimary.id,
+              path,
+            },
+          }),
+        });
+
+      const firstResponse = await create(
+        "Original Project",
+        "/tmp/duplicate-project",
+      );
+      const repeatedResponse = await create(
+        "Duplicate Project",
+        "/tmp/duplicate-project/",
+      );
+
+      expect(firstResponse.status).toBe(201);
+      expect(repeatedResponse.status).toBe(201);
+      const firstProject = projectResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+      const repeatedProject = projectResponseSchema.parse(
+        await readJson(repeatedResponse),
+      );
+      expect(repeatedProject.id).toBe(firstProject.id);
+      expect(listPublicProjects(harness.db)).toHaveLength(1);
+    });
+  });
+
   it("creates projects and local sources when inspection is unavailable", async () => {
     await withTestHarness(async (harness) => {
       const offlinePrimary = seedHost(harness.deps, {
@@ -229,7 +321,39 @@ describe("public project local host routes", () => {
       expect(fileResponse.headers.get("content-type")).toContain(
         "application/typescript",
       );
+      expect(fileResponse.headers.get("cache-control")).toBe(
+        "private, no-cache",
+      );
+      expect(fileResponse.headers.get("etag")).toBe(`"${"0".repeat(64)}"`);
+      expect(fileResponse.headers.get("x-bb-content-encoding")).toBe("utf8");
       await expect(fileResponse.text()).resolves.toBe("console.log('ok');");
+
+      // A revalidation with the current tag still reads the file (the daemon
+      // hashes the bytes it returns) but answers 304 without a body.
+      const revalidatePromise = harness.app.request(
+        `/api/v1/projects/${project.id}/files/content?path=${encodeURIComponent("src/app.ts")}`,
+        { headers: { "if-none-match": `"${"0".repeat(64)}"` } },
+      );
+      const revalidateCommand = await waitForQueuedCommandAfter(
+        harness,
+        fileCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === "/tmp/project-file-content/src/app.ts",
+      );
+      await reportQueuedCommandSuccess(harness, revalidateCommand, {
+        path: "/tmp/project-file-content/src/app.ts",
+        content: "console.log('ok');",
+        contentEncoding: "utf8",
+        mimeType: "application/typescript",
+        sizeBytes: 18,
+        sha256: "0".repeat(64),
+      });
+      const revalidated = await revalidatePromise;
+      expect(revalidated.status).toBe(304);
+      expect(revalidated.headers.get("etag")).toBe(`"${"0".repeat(64)}"`);
+      expect(revalidated.headers.get("x-bb-content-encoding")).toBe("utf8");
+      expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
     });
   });
 });

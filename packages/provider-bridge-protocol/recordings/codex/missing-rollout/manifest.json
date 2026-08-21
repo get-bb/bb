@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "missing-rollout",
+  "threadId": "thr_8f3zprb65y",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "codex: resume after the rollout file was moved away.",
+  "note": "rollout file moved away before resume: \"failed to resolve rollout path\"",
+  "bridgeRuns": 3,
+  "lines": {
+    "runtime→bridge": 7,
+    "bridge→runtime": 30,
+    "provider→bridge": 57,
+    "bridge→provider": 14
+  }
+}

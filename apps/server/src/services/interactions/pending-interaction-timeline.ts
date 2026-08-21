@@ -34,6 +34,15 @@ type ApprovalTimelineItem = Extract<
   ThreadEventItem,
   { type: "commandExecution" | "fileChange" }
 >;
+/**
+ * Subjects that own a timeline item of their own. Permission grants get a
+ * lifecycle event instead, and plan reviews reuse the provider's ExitPlanMode
+ * tool-call item, so neither belongs here.
+ */
+type ApprovalTimelineItemSubject = Exclude<
+  PendingInteractionApprovalSubject,
+  { kind: "permission_grant" } | { kind: "plan" } | { kind: "tool_use" }
+>;
 type ApprovalTimelineItemStatus = Extract<
   ApprovalTimelineItem["status"],
   "pending" | "interrupted"
@@ -211,10 +220,7 @@ function appendApprovalItemEventInTransaction(
 function appendApprovalSubjectItemEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   interaction: ProviderPendingInteraction,
-  subject: Exclude<
-    PendingInteractionApprovalSubject,
-    { kind: "permission_grant" }
-  >,
+  subject: ApprovalTimelineItemSubject,
   status: ApprovalTimelineItemStatus,
   approvalStatus: ThreadEventItemApprovalStatus,
 ): void {
@@ -249,10 +255,7 @@ function appendApprovalSubjectItemEvent(
 function appendApprovalSubjectItemEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
   interaction: ProviderPendingInteraction,
-  subject: Exclude<
-    PendingInteractionApprovalSubject,
-    { kind: "permission_grant" }
-  >,
+  subject: ApprovalTimelineItemSubject,
   status: ApprovalTimelineItemStatus,
   approvalStatus: ThreadEventItemApprovalStatus,
 ): void {
@@ -321,10 +324,7 @@ function appendPermissionGrantLifecycleTimelineEventInTransaction(
 function appendItemLifecycleTimelineEvent(
   deps: Pick<AppDeps, "db" | "hub">,
   interaction: ProviderPendingInteraction,
-  subject: Exclude<
-    PendingInteractionApprovalSubject,
-    { kind: "permission_grant" }
-  >,
+  subject: ApprovalTimelineItemSubject,
 ): void {
   switch (interaction.status) {
     case "pending":
@@ -364,10 +364,7 @@ function appendItemLifecycleTimelineEvent(
 function appendItemLifecycleTimelineEventInTransaction(
   deps: PendingInteractionTimelineTransactionDeps,
   interaction: ProviderPendingInteraction,
-  subject: Exclude<
-    PendingInteractionApprovalSubject,
-    { kind: "permission_grant" }
-  >,
+  subject: ApprovalTimelineItemSubject,
 ): void {
   switch (interaction.status) {
     case "pending":
@@ -442,6 +439,17 @@ export function appendPendingInteractionTimelineEvent(
     case "file_change":
       appendItemLifecycleTimelineEvent(deps, interaction, subject);
       return;
+    // The provider already streams the ExitPlanMode tool call as a timeline
+    // item, and it carries the plan and the verdict. A second event would
+    // duplicate it.
+    case "plan":
+      return;
+    // A tool-use approval has no timeline item of its own: the provider's own
+    // tool call (the ACP agent's tool_call with the same id) is the timeline
+    // record, and the banner renders the subject's presentation. The single
+    // interaction-lifecycle event it will ride is WS5's (interactions).
+    case "tool_use":
+      return;
     default:
       return assertNever(subject, "Unsupported approval subject for timeline");
   }
@@ -491,6 +499,14 @@ export function appendPendingInteractionTimelineEventInTransaction(
     case "command":
     case "file_change":
       appendItemLifecycleTimelineEventInTransaction(deps, interaction, subject);
+      return;
+    // See appendPendingInteractionTimelineEvent: the ExitPlanMode tool call is
+    // already the timeline record.
+    case "plan":
+      return;
+    // See appendPendingInteractionTimelineEvent: the provider's own tool call
+    // is the timeline record.
+    case "tool_use":
       return;
     default:
       return assertNever(subject, "Unsupported approval subject for timeline");

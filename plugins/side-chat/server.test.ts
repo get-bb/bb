@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import plugin, {
   EMPTY_FORK_MAX_AGE_MS,
   EMPTY_FORK_SWEEP_PAGE_SIZE,
@@ -92,6 +92,26 @@ describe("resolveReplySeedText", () => {
 });
 
 describe("createSideChat rpc", () => {
+  it("limits the reply-seed lookup to the latest timeline segment", async () => {
+    const timeline = vi.fn(async () =>
+      timelineResult([conversationRow("latest answer")]),
+    );
+    const fork = vi.fn(async () => makeThreadResponse({ id: "thr_fork" }));
+    const { harness } = await loadPlugin({ timeline, fork });
+
+    await harness.callRpc("createSideChat", {
+      sourceThreadId: "thr_src",
+      sourceSeqEnd: 7,
+      anchorText: "latest answer",
+    });
+
+    expect(timeline).toHaveBeenCalledWith({
+      threadId: "thr_src",
+      includeNestedRows: "true",
+      segmentLimit: "1",
+    });
+  });
+
   it("forks hidden+isolated with a seed when the anchor is an earlier message", async () => {
     const fork = vi.fn(async () => makeThreadResponse({ id: "thr_fork" }));
     const { harness } = await loadPlugin({

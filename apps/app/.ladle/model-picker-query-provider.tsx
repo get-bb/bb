@@ -9,6 +9,7 @@ import type {
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { systemExecutionOptionsQueryKey } from "../src/hooks/queries/query-keys";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
+import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import {
   STORY_CLAUDE_CODE_MORE_MODELS,
   STORY_CLAUDE_CODE_MODELS,
@@ -20,7 +21,7 @@ import {
   STORY_SERVICE_TIER_SUPPORT,
 } from "./story-fixtures";
 
-const supportedPermissionModes = ["accept-edits", "auto", "full"] as const;
+const permissionModes = ["accept-edits", "auto", "full"] as const;
 
 const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
   string,
@@ -53,16 +54,20 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
     displayName: provider.label,
     logoUrl: null,
     available: true,
+    experimental_providerHealth: true,
+    experimental_providerUsage: true,
+    experimental_providerInstallation: true,
     composerActions: [
       ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
     ],
     capabilities: {
-      supportsArchive: true,
-      supportsRename: true,
+      supportsThreadArchive: true,
+      supportsThreadRename: true,
       supportsServiceTier: STORY_SERVICE_TIER_SUPPORT[provider.value] ?? false,
-      supportsUserQuestion: true,
+      supportsNativeUserQuestion: true,
       supportsFork: true,
-      supportedPermissionModes: [...supportedPermissionModes],
+      supportsSessionRewind: true,
+      permissionModes: [...permissionModes],
     },
   }),
 );
@@ -81,7 +86,7 @@ function makeAvailableModels({
   reasoningOptions,
   markFirstDefault = true,
 }: {
-  models: readonly PickerOption<string>[];
+  models: readonly ModelPickerOption[];
   reasoningOptions: readonly PickerOption<ReasoningLevel>[];
   markFirstDefault?: boolean;
 }): AvailableModel[] {
@@ -96,6 +101,9 @@ function makeAvailableModels({
     id: model.value,
     model: model.value,
     displayName: model.label,
+    ...(model.routeProviderId
+      ? { routeProviderId: model.routeProviderId }
+      : {}),
     description: "",
     supportedReasoningEfforts,
     defaultReasoningEffort,

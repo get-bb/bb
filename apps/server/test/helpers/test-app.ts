@@ -9,7 +9,11 @@ import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
+import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { resolveAcpAgentCapabilitiesForProviderId } from "../../src/services/system/acp-launch-spec.js";
+import { registerFirstPartyProviders } from "./provider-registry.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
+import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -17,13 +21,14 @@ import {
 import { createBbAppManagedConfigReloader } from "../../src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
-import { resolveThreadStorageRootPath } from "../../src/services/threads/thread-storage.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
+import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "../../src/constants.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
 import { HostSharedPortCoordinator } from "../../src/ws/host-shared-ports.js";
+import { WorkspaceReadCaches } from "../../src/services/environments/workspace-read-cache.js";
 
 const TEST_MACHINE_KEY_PREFIX = "test-daemon-key";
 const TEST_SERVER_HOST = "127.0.0.1";
@@ -44,8 +49,31 @@ export interface RunningTestServer extends TestAppHarness {
   close(): Promise<void>;
 }
 
+export async function installTestBuiltinPlugin(
+  harness: Pick<TestAppHarness, "pluginService">,
+  name: "keep-awake",
+): Promise<void> {
+  const entry = await harness.pluginService.install(`builtin:${name}`, {
+    kind: "root",
+  });
+  if (entry.status !== "running") {
+    throw new Error(
+      `test builtin ${name} did not start: ${entry.statusDetail ?? entry.status}`,
+    );
+  }
+}
+
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
+  terminalCloseTimeoutMs?: number;
+  /**
+   * Start with an EMPTY provider registry. Providers come only from plugin
+   * declarations now, so the harness pre-registers the four first-party ones
+   * for the majority of tests that need providers but not a plugin runtime.
+   * Tests that install those plugins for real must opt out, or the plugin's
+   * registration collides with the pre-registered copy.
+   */
+  seedFirstPartyProviders?: boolean;
 };
 
 export const testLogger = {
@@ -94,12 +122,28 @@ export function createTestDaemonHostKey(
 export async function createTestAppHarness(
   overrides: TestAppHarnessConfigOverrides = {},
 ): Promise<TestAppHarness> {
-  const { appVersionService, ...configOverrides } = overrides;
+  const {
+    appVersionService,
+    terminalCloseTimeoutMs,
+    seedFirstPartyProviders = true,
+    ...configOverrides
+  } = overrides;
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
   const db = initDb(":memory:");
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
+  const workspaceReadCaches = new WorkspaceReadCaches({ hub });
+  const providerRegistry = createProviderRegistryService({
+    resolveAcpAgentCapabilities: (providerId) =>
+      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
+  });
+  const pluginHostArtifacts = new PluginHostArtifactRegistry();
+  if (seedFirstPartyProviders) {
+    await registerFirstPartyProviders(providerRegistry, {
+      artifacts: pluginHostArtifacts,
+    });
+  }
   const lifecycleDedupers = createLifecycleDedupers();
   const machineAuth = await createMachineAuthService({
     dataDir,
@@ -121,7 +165,6 @@ export async function createTestAppHarness(
     },
   };
   const config: ServerRuntimeConfig = {
-    appSurface: "web",
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
     customAcpAgents: [],
@@ -129,21 +172,24 @@ export async function createTestAppHarness(
     dataDir,
     featureFlags: defaultFeatureFlags,
     hostDaemonPort: 3001,
+    marketplaceUrl: "https://marketplace.invalid/marketplace.json",
     inheritedSkillsRootPaths: [],
+    inferenceFallbackModel: "test/mock-fallback-model",
     inferenceModel: "test/mock-model",
     isDevelopment: true,
+    managedEnvironmentRetireGraceMs: MANAGED_ENVIRONMENT_RETIRE_GRACE_MS,
     openAiApiKey: "test-openai-key",
     serverPort: 3334,
-    threadStorageRootPath: resolveThreadStorageRootPath({
-      dataDir,
-      env: {},
-    }),
+    sharedSkillRoots: { user: [], project: [] },
     transcriptionModel: "test/mock-transcription",
     appUrl: "https://bb.example.test",
     ...configOverrides,
   };
   const terminalSessions = new TerminalSessionLifecycle({
     attachTimeoutMs: 50,
+    ...(terminalCloseTimeoutMs === undefined
+      ? {}
+      : { closeTimeoutMs: terminalCloseTimeoutMs }),
     config,
     db,
     hub,
@@ -164,6 +210,8 @@ export async function createTestAppHarness(
     lifecycleDedupers,
     logger: testLogger,
     machineAuth: testMachineAuth,
+    providerRegistry,
+    pluginHostArtifacts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -185,11 +233,14 @@ export async function createTestAppHarness(
     logger: testLogger,
     machineAuth: testMachineAuth,
     pendingInteractions,
+    providerRegistry,
+    pluginHostArtifacts,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
     watchInterests,
     sharedPorts,
+    workspaceReadCaches,
   };
   const { app, pluginCatalogService, pluginService } = createApp(deps);
 
@@ -202,6 +253,7 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     async cleanup(): Promise<void> {
+      await pluginService.stop();
       await rm(dataDir, { recursive: true, force: true });
     },
   };

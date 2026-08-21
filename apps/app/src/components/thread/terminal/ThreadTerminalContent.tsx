@@ -6,14 +6,15 @@ import { ThreadTerminalView } from "./ThreadTerminalView";
 import type { ThreadTerminalController } from "./useThreadTerminalController";
 
 interface ThreadTerminalContentProps {
+  autoFocus?: boolean;
   controller: ThreadTerminalController;
+  onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
 }
 
 interface InactiveTerminalContent {
   canStartReplacement: boolean;
-  description: string | null;
   title: string;
 }
 
@@ -30,38 +31,38 @@ function getInactiveTerminalContent({
     case "disconnected":
       return {
         canStartReplacement: canCreateTerminal,
-        description: null,
         title: "Terminal disconnected",
       };
     case "exited":
       return {
         canStartReplacement: false,
-        description: null,
         title: "Terminal exited",
       };
     case "starting":
       return {
         canStartReplacement: false,
-        description: null,
         title: "Terminal starting",
       };
     case "running":
       return {
         canStartReplacement: false,
-        description: null,
         title: "Terminal running",
       };
   }
 }
 
 export function ThreadTerminalContent({
+  autoFocus = false,
   controller,
+  onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
 }: ThreadTerminalContentProps) {
-  // Keep the terminal UI entirely unmounted while its panel is hidden. In
-  // particular, mounting ThreadTerminalView initializes xterm and its socket.
-  if (!controller.isPanelOpen) {
+  // Keep the terminal UI entirely unmounted until its panel is shown: mounting
+  // ThreadTerminalView initializes xterm and its socket. Once mounted, a
+  // hidden-but-persisted panel (compact drawer closed) keeps it alive so the
+  // next open does not re-create xterm and replay the scrollback.
+  if (!controller.shouldMountTerminalView) {
     return null;
   }
 
@@ -98,11 +99,6 @@ export function ThreadTerminalContent({
             <p className="font-medium text-foreground">
               {inactiveContent.title}
             </p>
-            {inactiveContent.description !== null ? (
-              <p className="mt-1 text-muted-foreground">
-                {inactiveContent.description}
-              </p>
-            ) : null}
           </div>
           {inactiveContent.canStartReplacement ? (
             <Button
@@ -126,7 +122,9 @@ export function ThreadTerminalContent({
 
   return (
     <ThreadTerminalView
+      autoFocus={autoFocus}
       isPanelOpen={controller.isPanelOpen}
+      onAutoFocusHandled={onAutoFocusHandled}
       onOpenLink={onOpenLink}
       onSelectionAddToChat={onSelectionAddToChat}
       onSessionChange={controller.handleActiveTerminalSessionChange}

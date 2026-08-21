@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
-import { TopLevelSidebarSection } from "./ProjectList";
+import {
+  ProjectListSectionIconButton,
+  TopLevelSidebarSection,
+} from "./ProjectList";
 
 afterEach(() => {
   cleanup();
@@ -15,7 +19,83 @@ afterEach(() => {
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
 
+describe("ProjectListSectionIconButton", () => {
+  it("drops pointer focus before a section action opens a picker", () => {
+    let triggerWasFocused = true;
+    render(
+      <TooltipProvider>
+        <ProjectListSectionIconButton
+          ariaLabel="New project"
+          icon={<span aria-hidden>+</span>}
+          title="New project"
+          onClick={() => {
+            triggerWasFocused =
+              document.activeElement ===
+              screen.getByRole("button", { name: "New project" });
+          }}
+        />
+      </TooltipProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "New project" });
+    trigger.focus();
+
+    fireEvent.click(trigger, { detail: 1 });
+
+    expect(triggerWasFocused).toBe(false);
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
+  it("retains section-action focus for keyboard activation", () => {
+    render(
+      <TooltipProvider>
+        <ProjectListSectionIconButton
+          ariaLabel="New project"
+          icon={<span aria-hidden>+</span>}
+          title="New project"
+          onClick={vi.fn()}
+        />
+      </TooltipProvider>,
+    );
+    const trigger = screen.getByRole("button", { name: "New project" });
+    trigger.focus();
+
+    fireEvent.click(trigger, { detail: 0 });
+
+    expect(document.activeElement).toBe(trigger);
+  });
+});
+
 describe("TopLevelSidebarSection", () => {
+  it("exposes stable identity only for persisted sections", () => {
+    const result = render(
+      <>
+        <TopLevelSidebarSection
+          label="Design"
+          sectionId="sec_design"
+          collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
+        >
+          <div>Design thread</div>
+        </TopLevelSidebarSection>
+        <TopLevelSidebarSection
+          label="Pinned"
+          collapseControl={{ isCollapsed: false, onToggleCollapsed: vi.fn() }}
+        >
+          <div>Pinned thread</div>
+        </TopLevelSidebarSection>
+      </>,
+    );
+
+    expect(
+      result.container.querySelector('[data-sidebar-section-id="sec_design"]'),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByTitle("Pinned")
+        .closest("[data-sidebar-sticky-group]")
+        ?.hasAttribute("data-sidebar-section-id"),
+    ).toBe(false);
+  });
+
   it("hides the section body and exposes an expand action when collapsed", () => {
     render(
       <TopLevelSidebarSection
@@ -53,70 +133,6 @@ describe("TopLevelSidebarSection", () => {
       label.compareDocumentPosition(disclosure) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
-  });
-
-  it("reserves only the rendered action width beside a long section label", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Sawyer's MacBook Pro"
-        actions={<button type="button">Display options</button>}
-      >
-        <div>Machine thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    const label = screen.getByTitle("Sawyer's MacBook Pro");
-    const action = screen.getByRole("button", { name: "Display options" });
-
-    expect(label.parentElement?.className).not.toContain("pr-[7.5rem]");
-    expect(action.parentElement?.className).toContain("shrink-0");
-    expect(action.parentElement?.className).not.toContain("absolute");
-  });
-
-  it("aligns section actions with the trailing edge used by thread statuses", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Extensions"
-        actions={<button type="button">New thread</button>}
-      >
-        <div>Plugin thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    const header = screen
-      .getByTitle("Extensions")
-      .closest('[data-sidebar-sticky-tier="label"]');
-
-    expect(header?.className).toContain("pr-0");
-    expect(header?.className).not.toContain("pr-1");
-  });
-
-  it("pins collapsed child activity to the sidebar edge independently of row actions", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Build"
-        actions={<button type="button">New thread</button>}
-        collapsedActivity={{
-          ...NO_COLLAPSED_CHILD_ACTIVITY,
-          working: true,
-          runtimeWorking: true,
-        }}
-        collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
-      >
-        <div>Working thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    const edgeSlot = screen
-      .getAllByLabelText("Thread working")
-      .map((indicator) =>
-        indicator.closest("[data-sidebar-collapsed-activity-edge]"),
-      )
-      .find((slot) => slot !== null);
-
-    expect(edgeSlot).toBeInstanceOf(HTMLElement);
-    expect((edgeSlot as HTMLElement).className).toContain("absolute");
-    expect((edgeSlot as HTMLElement).className).toContain("right-1");
   });
 
   it("rolls a hidden split thread up to a collapsed top-level section", () => {

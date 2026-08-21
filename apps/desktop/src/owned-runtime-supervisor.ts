@@ -18,36 +18,36 @@ const ownedRuntimePidFileSchema = z.object({
   startedAt: z.string().min(1),
 });
 
-export type ReapStaleOwnedRuntimeResult =
+type ReapStaleOwnedRuntimeResult =
   | ClearedStaleOwnedRuntimePidFileResult
   | FailedToStopOwnedRuntimeResult
   | NoStaleOwnedRuntimePidFileResult
   | ReapedStaleOwnedRuntimeResult
   | SkippedStaleOwnedRuntimeResult;
 
-export interface OwnedRuntimePidFile {
+interface OwnedRuntimePidFile {
   bridgePath: string;
   pid: number;
   serverUrl: string;
   startedAt: string;
 }
 
-export interface WriteOwnedRuntimePidFileArgs {
+interface WriteOwnedRuntimePidFileArgs {
   bridgePath: string;
   pid: number;
   serverUrl: string;
   userDataPath: string;
 }
 
-export interface ClearOwnedRuntimePidFileArgs {
+interface ClearOwnedRuntimePidFileArgs {
   userDataPath: string;
 }
 
-export interface ReadOwnedRuntimePidFileArgs {
+interface ReadOwnedRuntimePidFileArgs {
   userDataPath: string;
 }
 
-export interface ReapStaleOwnedRuntimeArgs {
+interface ReapStaleOwnedRuntimeArgs {
   processOps?: OwnedRuntimeProcessOps;
   signal: NodeJS.Signals;
   timeoutMs: number;
@@ -57,26 +57,26 @@ export interface ReapStaleOwnedRuntimeArgs {
 export type OwnedRuntimeProcessOps = VerifiedProcessOps;
 export type { WaitForProcessExitArgs };
 
-export interface NoStaleOwnedRuntimePidFileResult {
+interface NoStaleOwnedRuntimePidFileResult {
   kind: "no-pid-file";
 }
 
-export interface ClearedStaleOwnedRuntimePidFileResult {
+interface ClearedStaleOwnedRuntimePidFileResult {
   kind: "cleared-stale-pid-file";
   pid: number;
 }
 
-export interface ReapedStaleOwnedRuntimeResult {
+interface ReapedStaleOwnedRuntimeResult {
   kind: "reaped";
   pid: number;
 }
 
-export interface FailedToStopOwnedRuntimeResult {
+interface FailedToStopOwnedRuntimeResult {
   kind: "failed-to-stop";
   pid: number;
 }
 
-export interface SkippedStaleOwnedRuntimeResult {
+interface SkippedStaleOwnedRuntimeResult {
   command: string | null;
   kind: "skipped-unverified-process";
   pid: number;
@@ -86,7 +86,7 @@ function ownedRuntimePidFilePath(userDataPath: string): string {
   return join(userDataPath, OWNED_RUNTIME_PID_FILE_NAME);
 }
 
-export function createNodeOwnedRuntimeProcessOps(): OwnedRuntimeProcessOps {
+function createNodeOwnedRuntimeProcessOps(): OwnedRuntimeProcessOps {
   return createNodeVerifiedProcessOps();
 }
 

@@ -4,8 +4,8 @@ import {
   usePromptDraftStorage,
   type PromptDraftScope,
 } from "@/hooks/usePromptDraftStorage";
-import { promptDraftToInput } from "@/lib/prompt-draft";
-import type { PromptDraftState } from "@/lib/prompt-draft";
+import { promptDraftToInput } from "@bb/client-core";
+import type { PromptDraftState } from "@bb/client-core";
 import type { PromptInput } from "@bb/domain";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
@@ -18,7 +18,7 @@ interface UseActiveComposerDraftArgs {
   ) => void;
 }
 
-export interface UseActiveComposerDraftResult {
+interface UseActiveComposerDraftResult {
   promptDraft: ReturnType<typeof usePromptDraftStorage>;
   /** The persisted bottom-composer draft, independent of any inline edit. */
   currentPromptDraft: PromptDraftState;

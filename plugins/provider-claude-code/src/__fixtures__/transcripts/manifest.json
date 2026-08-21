@@ -1,0 +1,328 @@
+{
+  "background-agents": {
+    "sessionId": "066f194c-e2fb-49d3-aedf-3521a8b2bcb5",
+    "turns": {
+      "from": 1,
+      "to": 1,
+      "of": 1
+    },
+    "records": {
+      "main": 20,
+      "sidechain": 284,
+      "skippedSidechain": 0
+    },
+    "tools": ["Agent", "Bash"],
+    "messages": {
+      "assistant": 178,
+      "result/success": 4,
+      "system/init": 1,
+      "system/task_notification": 3,
+      "system/task_started": 3,
+      "system/task_updated": 3,
+      "user": 125
+    },
+    "synthesized": {
+      "result/success": 4,
+      "system/init": 1,
+      "system/task_notification": 3,
+      "system/task_started": 3,
+      "system/task_updated": 3
+    }
+  },
+  "bb-workflow-run": {
+    "sessionId": "2999e5c8-91ce-4f2e-b072-a1c50e090837",
+    "turns": {
+      "from": 1,
+      "to": 2,
+      "of": 2
+    },
+    "records": {
+      "main": 40,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": [
+      "Bash",
+      "Skill",
+      "ToolSearch",
+      "Write",
+      "mcp__bb-bridge__bb_workflow_run"
+    ],
+    "messages": {
+      "assistant": 25,
+      "result/success": 2,
+      "system/init": 1,
+      "user": 13
+    },
+    "synthesized": {
+      "result/success": 2,
+      "system/init": 1
+    }
+  },
+  "compaction-workflow": {
+    "sessionId": "d4e90804-c43a-4cce-ac69-867234e18ca9",
+    "turns": {
+      "from": 45,
+      "to": 46,
+      "of": 67
+    },
+    "records": {
+      "main": 34,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": ["Bash", "TaskStop", "Workflow", "Write"],
+    "messages": {
+      "assistant": 20,
+      "result/success": 2,
+      "system/compact_boundary": 1,
+      "system/init": 1,
+      "user": 11
+    },
+    "synthesized": {
+      "result/success": 2,
+      "system/init": 1
+    }
+  },
+  "foreground-agent-api-retry": {
+    "sessionId": "84dab3b1-7106-42a9-b51f-3cb94441afa7",
+    "turns": {
+      "from": 1,
+      "to": 2,
+      "of": 8
+    },
+    "records": {
+      "main": 93,
+      "sidechain": 47,
+      "skippedSidechain": 0
+    },
+    "tools": ["Agent", "Bash", "Edit", "Read", "Write"],
+    "messages": {
+      "assistant": 79,
+      "result/error_during_execution": 1,
+      "result/success": 1,
+      "system/api_retry": 10,
+      "system/init": 1,
+      "system/task_notification": 1,
+      "system/task_started": 1,
+      "system/task_updated": 1,
+      "user": 49
+    },
+    "synthesized": {
+      "result/error_during_execution": 1,
+      "result/success": 1,
+      "system/init": 1,
+      "system/task_notification": 1,
+      "system/task_started": 1,
+      "system/task_updated": 1
+    }
+  },
+  "plan-mode-question": {
+    "sessionId": "7a71324d-fcce-40f3-aca1-74b7ffc76696",
+    "turns": {
+      "from": 1,
+      "to": 3,
+      "of": 3
+    },
+    "records": {
+      "main": 19,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": ["AskUserQuestion", "Bash", "ExitPlanMode", "ToolSearch", "Write"],
+    "messages": {
+      "assistant": 11,
+      "result/success": 3,
+      "system/init": 1,
+      "user": 5
+    },
+    "synthesized": {
+      "result/success": 3,
+      "system/init": 1
+    }
+  },
+  "schedule-wakeup-workflow": {
+    "sessionId": "189cb3f9-8985-4b7b-93a8-dc5a0f807839",
+    "turns": {
+      "from": 30,
+      "to": 31,
+      "of": 97
+    },
+    "records": {
+      "main": 36,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": ["Bash", "ScheduleWakeup", "Workflow"],
+    "messages": {
+      "assistant": 23,
+      "result/success": 3,
+      "system/init": 1,
+      "system/task_notification": 1,
+      "system/task_updated": 1,
+      "user": 11
+    },
+    "synthesized": {
+      "result/success": 3,
+      "system/init": 1,
+      "system/task_notification": 1,
+      "system/task_updated": 1
+    }
+  },
+  "send-message-edits": {
+    "sessionId": "b6b918c7-a0f7-4b31-a905-ad1631c21bea",
+    "turns": {
+      "from": 4,
+      "to": 4,
+      "of": 25
+    },
+    "records": {
+      "main": 33,
+      "sidechain": 0,
+      "skippedSidechain": 2936
+    },
+    "tools": ["Bash", "Edit", "Read", "SendMessage"],
+    "messages": {
+      "assistant": 20,
+      "result/success": 1,
+      "system/init": 1,
+      "user": 12
+    },
+    "synthesized": {
+      "result/success": 1,
+      "system/init": 1
+    }
+  },
+  "task-output": {
+    "sessionId": "91157b32-7bc2-416d-9db0-ce14b510018e",
+    "turns": {
+      "from": 10,
+      "to": 10,
+      "of": 16
+    },
+    "records": {
+      "main": 51,
+      "sidechain": 0,
+      "skippedSidechain": 105
+    },
+    "tools": ["Bash", "TaskOutput"],
+    "messages": {
+      "assistant": 33,
+      "result/success": 1,
+      "system/init": 1,
+      "user": 17
+    },
+    "synthesized": {
+      "result/success": 1,
+      "system/init": 1
+    }
+  },
+  "task-plan-model-fallback": {
+    "sessionId": "323f2806-8588-459c-90fc-25dda27402dd",
+    "turns": {
+      "from": 6,
+      "to": 6,
+      "of": 35
+    },
+    "records": {
+      "main": 149,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": ["Bash", "TaskCreate", "TaskUpdate", "ToolSearch"],
+    "messages": {
+      "assistant": 86,
+      "result/success": 1,
+      "system/init": 1,
+      "system/model_refusal_fallback": 1,
+      "user": 61
+    },
+    "synthesized": {
+      "result/success": 1,
+      "system/init": 1
+    }
+  },
+  "web-fetch-reads": {
+    "sessionId": "6ed336e0-598c-4a80-a80b-6871eab34d92",
+    "turns": {
+      "from": 1,
+      "to": 1,
+      "of": 1
+    },
+    "records": {
+      "main": 81,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": ["Bash", "Read", "ToolSearch", "WebFetch"],
+    "messages": {
+      "assistant": 50,
+      "result/success": 1,
+      "system/init": 1,
+      "user": 30
+    },
+    "synthesized": {
+      "result/success": 1,
+      "system/init": 1
+    }
+  },
+  "web-search": {
+    "sessionId": "b06abf67-b557-4cbc-bedf-cc6ae3ab2a01",
+    "turns": {
+      "from": 1,
+      "to": 2,
+      "of": 2
+    },
+    "records": {
+      "main": 16,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": ["ToolSearch", "WebSearch"],
+    "messages": {
+      "assistant": 10,
+      "result/success": 2,
+      "system/init": 1,
+      "user": 4
+    },
+    "synthesized": {
+      "result/success": 2,
+      "system/init": 1
+    }
+  },
+  "workflow-task-stop": {
+    "sessionId": "1db951dc-f0c6-4468-a3a8-6b172b81440f",
+    "turns": {
+      "from": 4,
+      "to": 4,
+      "of": 14
+    },
+    "records": {
+      "main": 124,
+      "sidechain": 0,
+      "skippedSidechain": 0
+    },
+    "tools": [
+      "AskUserQuestion",
+      "Bash",
+      "Monitor",
+      "TaskStop",
+      "ToolSearch",
+      "Workflow"
+    ],
+    "messages": {
+      "assistant": 72,
+      "result/success": 16,
+      "system/init": 1,
+      "system/task_notification": 2,
+      "system/task_updated": 2,
+      "user": 51
+    },
+    "synthesized": {
+      "result/success": 16,
+      "system/init": 1,
+      "system/task_notification": 2,
+      "system/task_updated": 2
+    }
+  }
+}

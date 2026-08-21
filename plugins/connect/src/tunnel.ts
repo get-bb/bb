@@ -17,7 +17,7 @@ import {
   TunnelSession,
   type StreamOriginResult,
 } from "@bb/tunnel-client";
-import type { PluginLogger } from "@bb/plugin-sdk";
+import type { PluginLogger } from "@get-bb/plugin-sdk";
 import {
   ConnectListError,
   deriveConnectBaseUrl,
@@ -30,11 +30,7 @@ import {
 } from "@bb/connect-client";
 import type { CredentialStore } from "./credential.js";
 import { fetchMachineCode, MachineCodeError } from "./machine-code.js";
-import {
-  asConnectPairError,
-  DEFAULT_CONNECT_BASE_URL,
-  redeemConnectCode,
-} from "./redeem.js";
+import { asConnectPairError, redeemConnectCode } from "./redeem.js";
 import { revokeMachine } from "./revoke-machine.js";
 import {
   ShareRegistry,
@@ -47,9 +43,30 @@ import {
 import type { ShareHost } from "./hosts.js";
 import type { ConnectStateName, ConnectStatus } from "./types.js";
 
-export interface ConnectTunnelOptions {
+const DISCONNECT_TIMEOUT_MS = 5_000;
+const TUNNEL_HANDSHAKE_TIMEOUT_MS = 15_000;
+
+async function notifyCloudOfDisconnect(
+  credential: ConnectCredential,
+): Promise<void> {
+  const response = await fetch(
+    new URL("/api/connect/disconnect", credential.serverUrl),
+    {
+      method: "POST",
+      headers: { "x-bb-connect-machine": credential.credential },
+      signal: AbortSignal.timeout(DISCONNECT_TIMEOUT_MS),
+    },
+  );
+  if (!response.ok && response.status !== 401 && response.status !== 403) {
+    throw new Error(`Cloud returned HTTP ${response.status}`);
+  }
+}
+
+interface ConnectTunnelOptions {
   store: CredentialStore;
   shares: ShareRegistry;
+  /** Connect apex used only while unpaired and when pair has no target. */
+  defaultBaseUrl: string;
   /**
    * The server's own loopback base URL, read lazily (bb.server is
    * bind-gated; the tunnel only needs it once a socket opens).
@@ -117,7 +134,7 @@ export class ConnectTunnel {
       args.baseUrl ??
       (args.serverUrl !== undefined
         ? deriveConnectBaseUrl(args.serverUrl)
-        : DEFAULT_CONNECT_BASE_URL);
+        : this.options.defaultBaseUrl);
     this.pairing = true;
     this.publish();
     try {
@@ -154,13 +171,24 @@ export class ConnectTunnel {
   }
 
   async disconnect(): Promise<ConnectStatus> {
-    this.shareActivationEpoch += 1;
+    const credential = this.credential;
+    this.teardown();
     await this.options.store.clear();
     this.options.shares.clearMachineDeclarations();
     this.credential = null;
-    this.teardown();
     this.lastError = null;
     this.publish();
+    if (credential !== null) {
+      try {
+        await notifyCloudOfDisconnect(credential);
+      } catch (error) {
+        this.options.log.warn(
+          `Cloud disconnect could not be confirmed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
     return this.status();
   }
 
@@ -245,12 +273,12 @@ export class ConnectTunnel {
     };
   }
 
-  /** getbb.app dashboard URL, derived from the paired base (or the apex). */
+  /** Dashboard URL, derived from the paired base (or the unpaired default). */
   private dashboardUrl(): string {
     const base =
       this.credential !== null
         ? deriveConnectBaseUrl(this.credential.serverUrl)
-        : DEFAULT_CONNECT_BASE_URL;
+        : this.options.defaultBaseUrl;
     return `${base.replace(/\/$/, "")}/dashboard`;
   }
 
@@ -418,6 +446,7 @@ export class ConnectTunnel {
     try {
       tunnel = new NodeWebSocket(tunnelUrl, {
         headers: { authorization: `Bearer ${credential.credential}` },
+        handshakeTimeout: TUNNEL_HANDSHAKE_TIMEOUT_MS,
       });
     } catch (error) {
       // A malformed stored serverUrl throws synchronously. Retrying cannot
@@ -431,9 +460,52 @@ export class ConnectTunnel {
     }
     this.tunnel = tunnel;
     let connectedAt = 0;
+    let retryScheduled = false;
+    let handshakeDeadline: ReturnType<typeof setTimeout> | undefined;
+
+    const scheduleReconnect = (detail: string): void => {
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
+      retryScheduled = true;
+      clearTimeout(handshakeDeadline);
+      this.connected = false;
+      this.session?.dispose();
+      this.session = undefined;
+      this.remoteClients = 0;
+      const stable = connectedAt ? Date.now() - connectedAt : 0;
+      const delay = this.backoff.nextDelayAfterClose(stable);
+      if (this.lastError === null) {
+        this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
+      }
+      this.nextRetryAt = Date.now() + delay;
+      this.options.log.warn(`${detail}; reconnecting in ${delay}ms`);
+      this.reconnectTimer = setTimeout(() => {
+        if (this.stopped || this.tunnel !== tunnel) return;
+        this.reconnectTimer = undefined;
+        this.nextRetryAt = null;
+        this.publish();
+        this.openTunnel();
+      }, delay);
+      this.publish();
+    };
+
+    // `ws`'s handshakeTimeout is a socket idle timeout: a peer that drips
+    // header bytes resets it and can hold this dial in CONNECTING forever.
+    // Enforce an absolute per-dial deadline as well.
+    handshakeDeadline = setTimeout(() => {
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) return;
+      this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — handshake timed out`;
+      scheduleReconnect(this.lastError);
+      tunnel.terminate();
+    }, TUNNEL_HANDSHAKE_TIMEOUT_MS);
+    handshakeDeadline.unref?.();
 
     tunnel.on("open", () => {
-      if (this.stopped || this.tunnel !== tunnel) return;
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
+      clearTimeout(handshakeDeadline);
       connectedAt = Date.now();
       this.connected = true;
       this.lastError = null;
@@ -456,16 +528,20 @@ export class ConnectTunnel {
     });
     tunnel.on("unexpected-response", (_req, res) => {
       if (this.stopped || this.tunnel !== tunnel) return;
+      res.resume();
       const statusCode = res.statusCode ?? 0;
       if (statusCode === 401 || statusCode === 403) {
         this.credentialRejected(statusCode);
         return;
       }
       this.lastError = `tunnel rejected: HTTP ${statusCode}`;
-      this.options.log.warn(this.lastError);
+      scheduleReconnect(this.lastError);
+      tunnel.terminate();
     });
     tunnel.on("error", (e: Error) => {
-      if (this.stopped || this.tunnel !== tunnel) return;
+      if (retryScheduled || this.stopped || this.tunnel !== tunnel) {
+        return;
+      }
       // Humanize transport failures for the reconnecting card; the raw
       // message still rides the log via the close handler below.
       this.lastError = humanizeTransportError(
@@ -474,24 +550,9 @@ export class ConnectTunnel {
       );
     });
     tunnel.on("close", (code: number, reason: Buffer) => {
-      if (this.stopped || this.tunnel !== tunnel) return;
-      this.connected = false;
-      this.session?.dispose();
-      this.session = undefined;
-      this.remoteClients = 0;
-      const stable = connectedAt ? Date.now() - connectedAt : 0;
-      const delay = this.backoff.nextDelayAfterClose(stable);
-      // A clean close with no prior socket error still leaves the card empty;
-      // give it an honest line so the reconnecting state is never blank.
-      if (this.lastError === null) {
-        this.lastError = `can't reach ${connectApexHost(credential.serverUrl)} — connection closed`;
-      }
-      this.nextRetryAt = Date.now() + delay;
-      this.options.log.warn(
-        `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""}); reconnecting in ${delay}ms`,
+      scheduleReconnect(
+        `tunnel closed (code ${code}${reason.length > 0 ? `, ${reason.toString()}` : ""})`,
       );
-      this.reconnectTimer = setTimeout(() => this.openTunnel(), delay);
-      this.publish();
     });
   }
 }

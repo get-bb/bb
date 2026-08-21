@@ -1,16 +1,17 @@
 import { spawn } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
-import { basename, delimiter, dirname, resolve } from "node:path";
+import { basename, delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AgentRuntimeOptions } from "@bb/agent-runtime";
 import { assignIfDefined } from "@bb/config/objects";
 
-interface ResolveLocalBbExecutableDirectoryOptions {
+interface ResolveLocalBbExecutablePathOptions {
   cliExecutablePath?: string;
+  cliRuntimePath?: string;
 }
 
-export interface PrepareRuntimeShellEnvOptions {
+interface PrepareRuntimeShellEnvOptions {
   bbExecutableDirectory: string;
   /**
    * Absolute path to the daemon-managed `bb` executable. Defaults to
@@ -23,7 +24,7 @@ export interface PrepareRuntimeShellEnvOptions {
   inheritedPath?: string;
 }
 
-export interface ResolveUserShellPathOptions {
+interface ResolveUserShellPathOptions {
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   spawnUserShellEnv?: SpawnUserShellEnv;
@@ -61,6 +62,10 @@ const USER_SHELL_ENV_FORCE_KILL_AFTER_MS = 1_000;
 
 function getDefaultCliExecutablePath(): string {
   return fileURLToPath(new URL("../../cli/bin/bb", import.meta.url));
+}
+
+function getDefaultCliRuntimePath(): string {
+  return fileURLToPath(new URL("../../cli/dist/index.js", import.meta.url));
 }
 
 function getErrorCode(error: unknown): string | undefined {
@@ -105,6 +110,26 @@ async function resolveCliEntryPath(cliExecutablePath: string): Promise<string> {
   }
 
   return cliEntryPath;
+}
+
+async function requireCliRuntimePath(cliRuntimePath: string): Promise<void> {
+  const resolvedCliRuntimePath = resolve(cliRuntimePath);
+
+  try {
+    const stats = await fs.stat(resolvedCliRuntimePath);
+    if (!stats.isFile()) {
+      throw new Error(
+        `Resolved bb CLI runtime is not a file: ${resolvedCliRuntimePath}`,
+      );
+    }
+  } catch (error) {
+    if (getErrorCode(error) === "ENOENT") {
+      throw new Error(
+        `Missing built bb CLI runtime at ${resolvedCliRuntimePath}. Build @bb/cli before starting the host daemon.`,
+      );
+    }
+    throw error;
+  }
 }
 
 function prependPath(
@@ -336,27 +361,28 @@ export async function resolveUserShellPath(
   return null;
 }
 
-export async function resolveLocalBbExecutableDirectory(
-  options: ResolveLocalBbExecutableDirectoryOptions = {},
-): Promise<string> {
-  const cliEntryPath = await resolveLocalBbExecutablePath(options);
-  return dirname(cliEntryPath);
-}
-
 /**
  * Absolute path to the local bb CLI entry used for agent shell injection.
- * Prefer this over directory-only resolution when setting `BB_CLI`.
  */
 export async function resolveLocalBbExecutablePath(
-  options: ResolveLocalBbExecutableDirectoryOptions = {},
+  options: ResolveLocalBbExecutablePathOptions = {},
 ): Promise<string> {
   const resolvedCliExecutablePath =
     options.cliExecutablePath ?? getDefaultCliExecutablePath();
-  return resolveCliEntryPath(resolvedCliExecutablePath);
+  const cliEntryPath = await resolveCliEntryPath(resolvedCliExecutablePath);
+  const cliRuntimePath =
+    options.cliRuntimePath ??
+    (options.cliExecutablePath === undefined
+      ? getDefaultCliRuntimePath()
+      : undefined);
+  if (cliRuntimePath !== undefined) {
+    await requireCliRuntimePath(cliRuntimePath);
+  }
+  return cliEntryPath;
 }
 
 /** Platform-stable name of the bb CLI file inside `BB_CLI_DIR` / daemon dist. */
-export function bbExecutableFileName(): string {
+function bbExecutableFileName(): string {
   return "bb";
 }
 
@@ -391,14 +417,5 @@ export function prepareRuntimeShellEnv(
         ? undefined
         : String(options.hostDaemonPort),
   });
-  // Provider process spawning strips inherited BB_* variables, so the
-  // documented Claude CLI override must be forwarded explicitly for the
-  // bridge to see it.
-  assignIfDefined({
-    key: "BB_CLAUDE_CODE_EXECUTABLE",
-    target: shellEnv,
-    value: process.env.BB_CLAUDE_CODE_EXECUTABLE,
-  });
-
   return shellEnv;
 }

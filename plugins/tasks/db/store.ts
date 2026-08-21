@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { initializeTasksSchema } from "./schema";
 import {
@@ -18,6 +18,7 @@ import type {
   CreatePresetInput,
   CreateProjectInput,
   CreateTaskInput,
+  DeleteFolderResult,
   Folder,
   Label,
   ListTasksFilters,
@@ -38,7 +39,6 @@ import type {
   UpdateProjectInput,
   UpdateTaskInput,
   UpdateTaskPositionInput,
-  UpdateTaskThreadInput,
   UpsertTaskThreadInput,
 } from "./types";
 
@@ -475,7 +475,7 @@ function validatePresetEnvironment(input: {
   return { environmentKind: input.environmentKind, baseBranch, machineId };
 }
 
-function escapeLike(value: string): string {
+export function escapeLike(value: string): string {
   return value
     .replaceAll("\\", "\\\\")
     .replaceAll("%", "\\%")
@@ -590,11 +590,35 @@ export function createTasksStore(db: PluginDatabase) {
     return requireFolder(id);
   }
 
-  function deleteFolder(id: string): boolean {
-    return (
-      db.prepare<[string]>("DELETE FROM folders WHERE id = ?").run(id).changes >
-      0
-    );
+  const selectFolderProjectIds = db.prepare<[string], { id: string }>(
+    "SELECT id FROM projects WHERE folder_id = ? ORDER BY name COLLATE NOCASE, id",
+  );
+  const selectChildFolderIds = db.prepare<[string], { id: string }>(
+    "SELECT id FROM folders WHERE parent_folder_id = ? ORDER BY name COLLATE NOCASE, id",
+  );
+  const deleteFolderRow = db.prepare<[string]>(
+    "DELETE FROM folders WHERE id = ?",
+  );
+
+  // The schema's ON DELETE SET NULL moves the folder's projects and subfolders
+  // to the top level. Read what will move inside the same transaction as the
+  // delete so callers report exactly what this delete unfiled, not a snapshot
+  // another client may have changed in between.
+  const deleteFolderTransaction = db.transaction(
+    (id: string): DeleteFolderResult => {
+      const movedProjectIds = selectFolderProjectIds
+        .all(id)
+        .map((row) => row.id);
+      const movedFolderIds = selectChildFolderIds.all(id).map((row) => row.id);
+      const deleted = deleteFolderRow.run(id).changes > 0;
+      return deleted
+        ? { deleted, movedProjectIds, movedFolderIds }
+        : { deleted, movedProjectIds: [], movedFolderIds: [] };
+    },
+  );
+
+  function deleteFolder(id: string): DeleteFolderResult {
+    return deleteFolderTransaction(id);
   }
 
   function getProject(id: string): Project | undefined {
@@ -1628,20 +1652,28 @@ export function createTasksStore(db: PluginDatabase) {
     return thread;
   }
 
+  // Live threads first, newest first within each group: after an
+  // orchestrator respawns a worker, the thread holding the work leads the
+  // list and the dead predecessors trail it.
   function listTaskThreads(taskId: string): TaskThread[] {
     return db
       .prepare<[string], TaskThreadRow>(
         `
-        SELECT * FROM task_threads WHERE task_id = ? ORDER BY attached_at, id
+        SELECT * FROM task_threads
+        WHERE task_id = ?
+        ORDER BY
+          CASE WHEN live_status IN ('completed', 'failed') THEN 1 ELSE 0 END,
+          attached_at DESC,
+          id DESC
       `,
       )
       .all(taskId)
       .map(taskThreadFromRow);
   }
 
-  function updateTaskThread(
+  function updateTaskThreadStatus(
     id: string,
-    input: UpdateTaskThreadInput,
+    liveStatus: TaskThreadLiveStatus,
   ): TaskThread {
     const current = requireTaskThread(id);
     db.prepare<[string, string, TaskThreadLiveStatus, string, string]>(
@@ -1650,25 +1682,8 @@ export function createTasksStore(db: PluginDatabase) {
       SET preset_name = ?, title = ?, live_status = ?, updated_at = ?
       WHERE id = ?
     `,
-    ).run(
-      input.presetName === undefined
-        ? current.presetName
-        : requireNonEmpty(input.presetName, "Task thread presetName"),
-      input.title === undefined
-        ? current.title
-        : requireNonEmpty(input.title, "Task thread title"),
-      input.liveStatus ?? current.liveStatus,
-      nowIso(),
-      id,
-    );
+    ).run(current.presetName, current.title, liveStatus, nowIso(), id);
     return requireTaskThread(id);
-  }
-
-  function updateTaskThreadStatus(
-    id: string,
-    liveStatus: TaskThreadLiveStatus,
-  ): TaskThread {
-    return updateTaskThread(id, { liveStatus });
   }
 
   function deleteTaskThread(id: string): boolean {
@@ -1852,7 +1867,6 @@ export function createTasksStore(db: PluginDatabase) {
     getTaskThread,
     getTaskThreadByThreadId,
     listTaskThreads,
-    updateTaskThread,
     updateTaskThreadStatus,
     deleteTaskThread,
     createPreset,

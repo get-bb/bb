@@ -1,0 +1,17 @@
+{
+  "provider": "acp-cursor",
+  "cell": "turn-tools",
+  "threadId": "thr_qmfe7i44bn",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.08.11-e8db854",
+  "recordedAt": "2026-08-21",
+  "description": "One turn: read a file, edit it, run a shell command.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 91,
+    "provider→bridge": 90,
+    "bridge→provider": 4
+  }
+}

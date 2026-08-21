@@ -5,18 +5,16 @@ import type {
   WorkspaceOpenTargetKind,
 } from "@bb/host-daemon-contract";
 
-export interface LocalOpenTargetContext {
+interface LocalOpenTargetContext {
   kind: "local";
 }
 
-export interface RemoteSshOpenTargetContext {
+interface RemoteSshOpenTargetContext {
   kind: "remote-ssh";
-  serverOrigin: string;
-  hostId: string;
   sshAuthority: string;
 }
 
-export type OpenPathInTargetContext =
+type OpenPathInTargetContext =
   | LocalOpenTargetContext
   | RemoteSshOpenTargetContext;
 
@@ -54,11 +52,11 @@ export interface WorkspaceOpenTargetRuntime {
   platform: NodeJS.Platform;
 }
 
-export interface MacDefaultLaunchAdapter {
+interface MacDefaultLaunchAdapter {
   openMode: "default-app";
 }
 
-export interface MacApplicationLaunchAdapter {
+interface MacApplicationLaunchAdapter {
   additionalAppNames?: string[];
   appName: string;
   bundleIds: string[];
@@ -72,9 +70,7 @@ export interface MacApplicationLaunchAdapter {
   remoteSshOpenCommand?: MacRemoteSshOpenCommandAdapter;
 }
 
-export type MacLaunchAdapter =
-  | MacApplicationLaunchAdapter
-  | MacDefaultLaunchAdapter;
+type MacLaunchAdapter = MacApplicationLaunchAdapter | MacDefaultLaunchAdapter;
 
 export interface LaunchAdapter {
   capabilities: WorkspaceOpenTargetCapabilities;
@@ -122,33 +118,35 @@ export interface BuildMacRemoteSshOpenArgs {
   sshAuthority: string;
 }
 
-export interface MacLineOpenCommandAdapter {
+export interface MacCommandExecutableAdapter {
   bundledExecutable?: MacBundledExecutableAdapter;
   executable: string;
+}
+
+interface MacLineOpenCommandAdapter extends MacCommandExecutableAdapter {
+  fallbackExecutables?: MacCommandExecutableAdapter[];
   supportsColumn: boolean;
   toArgs: (args: BuildMacLineOpenArgs) => string[];
 }
 
-export interface MacPathOpenCommandAdapter {
-  bundledExecutable?: MacBundledExecutableAdapter;
+interface MacPathOpenCommandAdapter extends MacCommandExecutableAdapter {
+  fallbackExecutables?: MacCommandExecutableAdapter[];
+  toArgs: (path: string) => string[];
+}
+
+interface MacFileOpenCommandAdapter {
   executable: string;
   toArgs: (path: string) => string[];
 }
 
-export interface MacFileOpenCommandAdapter {
-  executable: string;
-  toArgs: (path: string) => string[];
-}
-
-export interface MacLocalTerminalOpenCommandAdapter {
+interface MacLocalTerminalOpenCommandAdapter {
   executable: string;
   toArgs: (args: BuildMacLocalTerminalOpenArgs) => string[];
 }
 
-export interface MacRemoteSshOpenCommandAdapter {
-  bundledExecutable?: MacBundledExecutableAdapter;
+export interface MacRemoteSshOpenCommandAdapter extends MacCommandExecutableAdapter {
   capabilities: WorkspaceOpenTargetCapabilities;
-  executable: string;
+  fallbackExecutables?: MacCommandExecutableAdapter[];
   requiredExecutables?: string[];
   toArgs: (args: BuildMacRemoteSshOpenArgs) => string[];
 }
@@ -160,7 +158,7 @@ export interface MacBundledExecutableAdapter {
   toEnv?: (env: NodeJS.ProcessEnv | undefined) => NodeJS.ProcessEnv;
 }
 
-export interface MacJetBrainsToolboxAdapter {
+interface MacJetBrainsToolboxAdapter {
   bundlePrefixes: string[];
   executable: string;
 }

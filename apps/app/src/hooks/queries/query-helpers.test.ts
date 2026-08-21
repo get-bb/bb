@@ -164,7 +164,6 @@ function makeThreadWithRuntime(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -246,6 +245,7 @@ describe("resolveThreadPlaceholder", () => {
   it("reuses previous thread data only for the same thread query", () => {
     const previousThread: ThreadResponse = {
       ...makeThreadWithRuntime({ id: "thread-1" }),
+      activeBackgroundAgentCount: 0,
       canSpawnChild: false,
     };
 

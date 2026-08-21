@@ -22,7 +22,7 @@ interface UseLocalPathPickerOptions {
   submit: (params: LocalPathSubmitParams) => void;
 }
 
-export interface LocalPathPickerController {
+interface LocalPathPickerController {
   isAvailable: boolean;
   hostId: string | null;
   hostName: string | null;
@@ -39,7 +39,7 @@ export interface LocalPathPickerController {
   submitProjectPath: ProjectPathDialogSubmitHandler;
 }
 
-export interface PathPickerHost {
+interface PathPickerHost {
   canUseNativeFolderPicker: boolean;
   clientHostId: string | null;
   hostId: string | null;

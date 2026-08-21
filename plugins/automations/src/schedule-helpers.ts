@@ -2,7 +2,7 @@ import { CronExpressionParser } from "cron-parser";
 
 const CRON_FIELD_COUNT = 5;
 
-export class ScheduleValidationError extends Error {}
+class ScheduleValidationError extends Error {}
 
 function parseExpression(args: {
   cron: string;

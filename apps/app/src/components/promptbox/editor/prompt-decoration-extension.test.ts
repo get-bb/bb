@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
-import type { ComposerView } from "@bb/plugin-sdk";
+import type { ComposerView } from "@get-bb/plugin-sdk";
 import { Editor } from "@tiptap/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS,
+  PROMPT_DECORATION_LARGE_DOC_SIZE,
   ULTRACODE_HIGHLIGHT_CLASS,
   findUltracodeRanges,
   getPromptDecorationSet,
@@ -355,6 +357,107 @@ describe("PromptDecorationExtension", () => {
     vi.advanceTimersByTime(25);
     expect(onDraftChange).toHaveBeenCalledTimes(1);
     expect(onDraftChange.mock.calls[0]?.[0].text).toBe("second");
+    editor.destroy();
+  });
+
+  it("defers rebuilds on large docs while mapping existing decorations", () => {
+    vi.useFakeTimers();
+    const bulk = "x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100);
+    const editor = createEditor(false, paragraphContent(`ultracode ${bulk}`));
+    const ultracodeDecorations = () =>
+      (getPromptDecorationSet(editor.state)?.find() ?? []).filter(
+        (decoration) => decoration.spec.className === ULTRACODE_HIGHLIGHT_CLASS,
+      );
+
+    // Initial build is synchronous regardless of size.
+    expect(ultracodeDecorations()).toHaveLength(1);
+    const initialFrom = ultracodeDecorations()[0]!.from;
+
+    // An edit in a large doc maps the existing decoration instead of
+    // rebuilding: the new match is not highlighted yet, the old one tracks
+    // its shifted position.
+    editor.commands.insertContentAt(1, "pre ");
+    editor.commands.insertContentAt(
+      editor.state.doc.content.size - 1,
+      " ultracode",
+    );
+    expect(ultracodeDecorations()).toHaveLength(1);
+    expect(ultracodeDecorations()[0]!.from).toBe(initialFrom + "pre ".length);
+
+    // The deferred rebuild picks up the new match.
+    vi.advanceTimersByTime(PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS);
+    expect(ultracodeDecorations()).toHaveLength(2);
+
+    // Editing inside an existing match can leave the mapped decoration stale
+    // until the deferred rule pass. That bounded lag is intentional.
+    editor.commands.insertContentAt({ from: 10, to: 11 }, "x");
+    expect(ultracodeDecorations()).toHaveLength(2);
+    vi.advanceTimersByTime(PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS);
+    expect(ultracodeDecorations()).toHaveLength(1);
+    editor.destroy();
+  });
+
+  it("does not re-run draft observers for a deferred large-doc rebuild", () => {
+    vi.useFakeTimers();
+    const onDraftChange = vi.fn();
+    const composerView: ComposerView = {
+      scope: { kind: "thread", threadId: "thr_1" },
+      layout: "expanded",
+      draft: { text: "", isEmpty: true, attachmentCount: 0 },
+      run: { isRunning: false, isSubmitting: false },
+    };
+    const editor = createEditor(
+      false,
+      paragraphContent("x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100)),
+      {
+        draftObserverDebounceMs: 25,
+        getDraftObservers: () => [
+          { id: "sample:observer", getView: () => composerView, onDraftChange },
+        ],
+      },
+    );
+    vi.advanceTimersByTime(25);
+    onDraftChange.mockClear();
+
+    editor.commands.insertContent("y");
+    vi.advanceTimersByTime(25);
+    expect(onDraftChange).toHaveBeenCalledTimes(1);
+
+    // The throttled rebuild fires at 200 ms; it changes no text and no
+    // sources, so observers stay quiet. An explicit refresh still notifies.
+    vi.advanceTimersByTime(PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS + 25);
+    expect(onDraftChange).toHaveBeenCalledTimes(1);
+    refreshPromptDecorations(editor);
+    vi.advanceTimersByTime(25);
+    expect(onDraftChange).toHaveBeenCalledTimes(2);
+    editor.destroy();
+  });
+
+  it("cancels a pending large-doc rebuild after an explicit refresh", () => {
+    vi.useFakeTimers();
+    const match = vi.fn(() => []);
+    const editor = createEditor(
+      false,
+      paragraphContent("x".repeat(PROMPT_DECORATION_LARGE_DOC_SIZE + 100)),
+      {
+        getDecorationSources: () => [
+          {
+            id: "plugin:test",
+            generation: 1,
+            effects: [{ id: "test", className: "test", match }],
+          },
+        ],
+      },
+    );
+    expect(match).toHaveBeenCalledTimes(1);
+
+    editor.commands.insertContent("y");
+    expect(match).toHaveBeenCalledTimes(1);
+    refreshPromptDecorations(editor);
+    expect(match).toHaveBeenCalledTimes(2);
+
+    vi.advanceTimersByTime(PROMPT_DECORATION_LARGE_DOC_REBUILD_DELAY_MS);
+    expect(match).toHaveBeenCalledTimes(2);
     editor.destroy();
   });
 });

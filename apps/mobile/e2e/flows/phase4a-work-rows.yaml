@@ -1,0 +1,221 @@
+# Phase 4a work-row renderers: the dev showcase (/dev/work-rows, Settings →
+# Developer) renders synthetic command / tool / file-change / web / image /
+# approval / question / delegation / workflow rows through the real list model
+# (grouping, compact intents, auto-expand). Checks a few expand/collapse paths
+# and the bodies they reveal, then opens the seeded "Rich thread" and expands
+# its real tool row.
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+# First run: add the Direct server (the showcase renders under the thread
+# host provider, which needs an active profile).
+- runFlow:
+    when:
+      visible: "Connect to a bb server"
+    commands:
+      - tapOn:
+          id: "server-url-input"
+      - inputText: "${SERVER_URL}"
+      - tapOn:
+          id: "server-label-input"
+      - inputText: "E2E backend"
+      # Tapping static text dismisses the keyboard; Maestro's hideKeyboard
+      # swipe is unreliable on this screen since the bb connect row lengthened it.
+      - tapOn: "Server URL"
+      - tapOn:
+          id: "add-server-submit"
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+# Workspace menu → Settings → Developer → Work rows showcase (a deep link would
+# reload the dev client and, under EXPO_PUBLIC_BB_E2E=1, wipe the profile).
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "settings-dev-work-rows"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "settings-dev-work-rows"
+- extendedWaitUntil:
+    visible:
+      id: "dev-work-rows-screen"
+    timeout: 30000
+# Commands: completed (dimmed) title, failed title with exit status, pending
+# with a live shimmer; expand the completed one → terminal card.
+- assertVisible: "(?s).*Ran.*pnpm exec vitest run src/diff.*"
+- tapOn:
+    text: "(?s).*Ran.*pnpm exec vitest run src/diff.*"
+- extendedWaitUntil:
+    visible:
+      id: "timeline-command-output"
+    timeout: 10000
+- assertVisible: "(?s).*2 passed.*"
+- assertVisible: "(?s).*exit code 0.*"
+- takeScreenshot: phase4a-work-rows-command
+# Closed step: the step summary collapses the exploration; expanding it
+# shows one flat line per intent (compact intents), never a chevron.
+- scrollUntilVisible:
+    element:
+      id: "timeline-row-step-summary"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    id: "timeline-row-step-summary"
+- extendedWaitUntil:
+    visible:
+      id: "timeline-activity-intent"
+    timeout: 10000
+- assertVisible: "(?s).*Read src/a.ts.*"
+- assertVisible: "(?s).*deploy/SKILL.md.*"
+- takeScreenshot: phase4a-work-rows-compact-intents
+# Tool with arguments + output.
+- scrollUntilVisible:
+    element:
+      text: "(?s).*mcp__github__list_pull_requests.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    text: "(?s).*mcp__github__list_pull_requests.*"
+- extendedWaitUntil:
+    visible:
+      id: "timeline-tool-detail"
+    timeout: 10000
+- assertVisible: "(?s).*owner: get-bb.*"
+- assertVisible:
+    id: "timeline-tool-args-toggle"
+- tapOn:
+    id: "timeline-tool-args-toggle"
+- assertVisible: "(?s).*perPage: 50.*"
+- scrollUntilVisible:
+    element:
+      text: "Show 6 more lines"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- takeScreenshot: phase4a-work-rows-tool
+# File change: diff card with the workspace-relative path and +4/-1.
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Edited.*index.ts.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    text: "(?s).*Edited.*index.ts.*"
+- extendedWaitUntil:
+    visible:
+      id: "timeline-file-change-diff"
+    timeout: 10000
+- assertVisible: "(?s).*installTelemetry.*"
+- takeScreenshot: phase4a-work-rows-file-change
+# Approvals and questions: granted/denied glyphs are read-only; the answered
+# question expands to its recorded answer.
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Permission granted for this session.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*Permission denied.*Bash.*"
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Answered 2 questions.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    text: "(?s).*Answered 2 questions.*"
+- scrollUntilVisible:
+    element:
+      id: "timeline-question-answers"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*Keep the web key names.*"
+- assertVisible: "No answer"
+- takeScreenshot: phase4a-work-rows-approval-question
+# Delegations sit in a bundle summary; expanding the delegation reveals the
+# result markdown and its children one depth down. Then the workflow rows:
+# the running one carries a phase strip and its phase tree when expanded.
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Ran 2 subagents.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    text: "(?s).*Ran 2 subagents.*"
+- extendedWaitUntil:
+    visible: "(?s).*Ran subagent.*Find where the timeline rows.*"
+    timeout: 10000
+- tapOn:
+    text: "(?s).*Ran subagent.*Find where the timeline rows.*"
+- scrollUntilVisible:
+    element:
+      id: "timeline-delegation-output"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+# The completed subagent's children close into a step summary one depth down.
+- tapOn:
+    text: "(?s).*Explored 1 search, 1 file.*"
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Searched for registerTimelineRowRenderer.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- takeScreenshot: phase4a-work-rows-delegation
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Running workflow.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    text: "(?s).*Running workflow.*"
+- scrollUntilVisible:
+    element:
+      id: "timeline-workflow-progress"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*Implement the screens.*"
+- assertVisible: "(?s).*Review for regressions.*"
+- takeScreenshot: phase4a-work-rows-workflow
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Failed workflow.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+# The tap occasionally lands while the list is still settling from the scroll
+# and the row stays collapsed; retry the tap if the status pill does not show.
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          text: "(?s).*Failed workflow.*"
+      - scrollUntilVisible:
+          element:
+            id: "timeline-workflow-status-failed"
+          direction: DOWN
+          timeout: 15000
+          speed: 40
+- assertVisible: "(?s).*tsc exited with code 2.*"
+- assertVisible:
+    id: "timeline-workflow-usage"
+- takeScreenshot: phase4a-work-rows-workflow-failed

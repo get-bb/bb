@@ -7,17 +7,19 @@ export function isIgnoredPluginDevPath(relativePath: string): boolean {
     .some((segment) => IGNORED_SEGMENTS.has(segment));
 }
 
-export interface PluginDevLoopDeps {
+interface PluginDevLoopDeps {
   pluginId: string;
   hasApp: boolean;
+  hasHost: boolean;
   buildApp: () => Promise<void>;
+  buildHost: () => Promise<void>;
   reloadPlugin: () => Promise<void>;
   log: (line: string) => void;
   debounceMs?: number;
   now?: () => number;
 }
 
-export interface PluginDevLoop {
+interface PluginDevLoop {
   handleChange: (relativePath: string) => void;
   settled: () => Promise<void>;
   dispose: () => void;
@@ -48,6 +50,19 @@ export function createPluginDevLoop(deps: PluginDevLoopDeps): PluginDevLoop {
         );
       } catch (error) {
         parts.push(`build failed: ${errorMessage(error)}`);
+        deps.log(`${parts.join(" · ")} — fix and save to retry`);
+        return;
+      }
+    }
+    if (deps.hasHost) {
+      const startedAt = now();
+      try {
+        await deps.buildHost();
+        parts.push(
+          `rebuilt host in ${Math.max(0, Math.round(now() - startedAt))}ms`,
+        );
+      } catch (error) {
+        parts.push(`host build failed: ${errorMessage(error)}`);
         deps.log(`${parts.join(" · ")} — fix and save to retry`);
         return;
       }

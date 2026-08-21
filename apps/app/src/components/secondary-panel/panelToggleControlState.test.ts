@@ -1,24 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  resolveConversationCollapseControl,
-  resolveShowPanelControl,
-} from "./panelToggleControlState";
-
-describe("resolveShowPanelControl", () => {
-  it("opens the panel and reads as a closed disclosure", () => {
-    const onToggleSecondaryPanel = vi.fn();
-    const state = resolveShowPanelControl({ onToggleSecondaryPanel });
-
-    expect(state.action).toBe("show-panel");
-    expect(state.label).toBe("Show right panel");
-    expect(state.isFullScreen).toBe(false);
-    // The recognizable panel icon reads as "open the right side panel".
-    expect(state.iconName).toBe("PanelRight");
-
-    state.onClick();
-    expect(onToggleSecondaryPanel).toHaveBeenCalledTimes(1);
-  });
-});
+import { resolveConversationCollapseControl } from "./panelToggleControlState";
 
 describe("resolveConversationCollapseControl", () => {
   it("collapses the conversation when it is shown", () => {

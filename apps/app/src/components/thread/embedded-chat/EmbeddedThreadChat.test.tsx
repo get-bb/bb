@@ -274,11 +274,9 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
 
 function renderEmbeddedChat({
   threadId = "thr_child",
-  isActive = true,
   surfaceTone = "background",
 }: {
-  threadId?: string | null;
-  isActive?: boolean;
+  threadId?: string;
   surfaceTone?: "background" | "sidebar";
 } = {}) {
   return render(
@@ -286,11 +284,9 @@ function renderEmbeddedChat({
       variant="compact"
       surfaceTone={surfaceTone}
       threadId={threadId}
-      surfaceFallbackKey="tab-1"
       projectId="proj-1"
       providerId="provider-1"
       promptContextEnvironmentId={null}
-      isActive={isActive}
       onOpenLink={mocks.onOpenLink}
       onOpenLocalFileLink={mocks.onOpenLocalFileLink}
       resolveMentionLink={mocks.resolveMentionLink}
@@ -299,9 +295,9 @@ function renderEmbeddedChat({
         draftScope: {
           kind: "thread",
           projectId: "proj-1",
-          threadId: threadId ?? "thr_parent",
+          threadId,
         },
-        executionDefaultsThreadId: threadId ?? "thr_parent",
+        executionDefaultsThreadId: threadId,
         executionResetKey: "thr_parent",
         permissionPolicy: "snapshot",
         environmentSummary: null,
@@ -337,9 +333,6 @@ describe("EmbeddedThreadChat", () => {
         '[data-thread-window][data-surface-tone="sidebar"]',
       ),
     ).not.toBeNull();
-    expect(screen.getByTestId("embedded-chat-scroll-area").classList).toContain(
-      "bg-sidebar",
-    );
     expect(screen.getByTestId("embedded-chat-overflow-fade").dataset.tone).toBe(
       "sidebar",
     );
@@ -367,6 +360,25 @@ describe("EmbeddedThreadChat", () => {
         onOpenLocalFileLink: mocks.onOpenLocalFileLink,
         resolveMentionLink: mocks.resolveMentionLink,
         workspaceRootPath: "/workspace",
+      }),
+    );
+  });
+
+  it("keeps add-to-chat callbacks stable while the composer draft changes", () => {
+    renderEmbeddedChat();
+    const initialTimelineProps = mocks.timelinePanelProps.at(-1);
+
+    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+      target: { value: "Typing must not invalidate timeline rows" },
+    });
+
+    // ThreadTimelineRows memoizes its static renderer context around these
+    // callbacks. Replacing either one on every draft write re-renders every
+    // visible timeline row for each keystroke.
+    expect(mocks.timelinePanelProps.at(-1)).toEqual(
+      expect.objectContaining({
+        onMessageAddToChat: initialTimelineProps?.onMessageAddToChat,
+        onSelectionAddToChat: initialTimelineProps?.onSelectionAddToChat,
       }),
     );
   });
@@ -440,20 +452,6 @@ describe("EmbeddedThreadChat", () => {
     );
   });
 
-  it("tracks read state only while active", () => {
-    renderEmbeddedChat({ isActive: false });
-    expect(mocks.readTrackingThreads.every((t) => t === undefined)).toBe(true);
-    cleanup();
-
-    mocks.readTrackingThreads = [];
-    renderEmbeddedChat({ isActive: true });
-    expect(
-      mocks.readTrackingThreads.some(
-        (t) => (t as { id?: string } | undefined)?.id === "thr_child",
-      ),
-    ).toBe(true);
-  });
-
   it("keeps queued messages adjacent to the composer", () => {
     mocks.queuedMessages = [{ id: "q1" }, { id: "q2" }];
     renderEmbeddedChat();
@@ -462,13 +460,6 @@ describe("EmbeddedThreadChat", () => {
     const composer = screen.getByTestId("embedded-chat-composer");
     expect(queue.nextElementSibling).toBe(composer);
     expect(screen.getByTestId("queued-count").textContent).toBe("2");
-  });
-
-  it("keeps queued messages visible while a retained embedded chat is inactive", () => {
-    mocks.queuedMessages = [{ id: "q1" }];
-    renderEmbeddedChat({ isActive: false });
-
-    expect(screen.getByTestId("queued-count").textContent).toBe("1");
   });
 
   // Only the main thread view used to render approvals, so a side chat in a

@@ -377,25 +377,32 @@ export const skillScopeSchema = z.enum([
   "bb-builtin",
   "bb-user",
   "bb-project",
-  "claude-user",
-  "claude-project",
-  "codex-user",
-  "codex-project",
+  /**
+   * A provider-owned root. Which provider is the sibling `provider` field —
+   * these used to be six per-provider members (`claude-user`, `codex-project`,
+   * …), which made the scope a closed vocabulary that no plugin provider could
+   * ever join even though the daemon only ever distinguished user vs project.
+   */
+  "provider-user",
+  "provider-project",
+  "shared-user",
+  "shared-project",
   "plugin",
 ]);
 export type SkillScope = z.infer<typeof skillScopeSchema>;
 
-/** Command-surface provider a skill is discovered under. */
-export const skillProviderSchema = z.enum(["claude-code", "codex"]);
+/**
+ * Command-surface provider a skill is discovered under: any provider id, so a
+ * plugin provider's skill surface is expressible.
+ */
+export const skillProviderSchema = z.string().min(1);
 export type SkillProvider = z.infer<typeof skillProviderSchema>;
 
 /** Opaque, deterministic identity issued by authoritative host discovery. */
 export const installedSkillIdSchema = z.string().regex(/^skill_[a-f0-9]{64}$/u);
-export type InstalledSkillId = z.infer<typeof installedSkillIdSchema>;
 
 /** SHA-256 of the exact bytes read from SKILL.md. */
 export const skillRevisionSchema = z.string().regex(/^[a-f0-9]{64}$/u);
-export type SkillRevision = z.infer<typeof skillRevisionSchema>;
 
 export const skillSummarySchema = z.object({
   id: installedSkillIdSchema,
@@ -442,10 +449,8 @@ export type ProjectSkillsQuery = z.infer<typeof projectSkillsQuerySchema>;
 export const editableSkillScopeSchema = z.enum([
   "bb-user",
   "bb-project",
-  "claude-user",
-  "claude-project",
-  "codex-user",
-  "codex-project",
+  "provider-user",
+  "provider-project",
 ]);
 export type EditableSkillScope = z.infer<typeof editableSkillScopeSchema>;
 

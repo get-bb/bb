@@ -4,14 +4,15 @@ import type {
   PluginSettingsResponse,
 } from "@bb/server-contract";
 import { pluginSettingsUpdateRequestSchema } from "@bb/server-contract";
-import { useQuery, type QueryKey } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { createPluginsClient } from "./plugin-client";
+import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
 
 type FetchLike = typeof fetch;
 
-export type PluginProvenance = InstalledPlugin["provenance"];
+type PluginProvenance = InstalledPlugin["provenance"];
 
-export interface PluginUpdateFailure {
+interface PluginUpdateFailure {
   version: string;
   at: number | null;
   detail: string;
@@ -19,6 +20,7 @@ export interface PluginUpdateFailure {
 
 export interface PluginUpdateState {
   outcome: InstalledPlugin["updateState"]["outcome"] | null;
+  detail: string | null;
   availableVersion: string | null;
   blockedVersion: string | null;
   blockedReasons: string[];
@@ -50,6 +52,8 @@ export interface PluginListItem {
   source: string;
   isOrphanedBuiltin: boolean;
   catalogEntryId: string | null;
+  /** Publisher badge, or null for a plugin the user installed from a source. */
+  publisherLabel: string | null;
   sourceDisplay: string;
   updateState: PluginUpdateState;
 }
@@ -71,6 +75,7 @@ export function toEpochMs(
 
 export const EMPTY_PLUGIN_UPDATE_STATE: PluginUpdateState = {
   outcome: null,
+  detail: null,
   availableVersion: null,
   blockedVersion: null,
   blockedReasons: [],
@@ -104,9 +109,11 @@ export function toPluginListItem(plugin: InstalledPlugin): PluginListItem {
     source: plugin.source,
     isOrphanedBuiltin: plugin.isOrphanedBuiltin,
     catalogEntryId: plugin.catalogEntryId ?? null,
+    publisherLabel: plugin.publisherLabel,
     sourceDisplay: plugin.sourceDisplay,
     updateState: {
       outcome: state.outcome ?? null,
+      detail: state.detail ?? null,
       availableVersion: state.availableVersion ?? null,
       blockedVersion: state.blockedVersion ?? null,
       blockedReasons: state.blockedReasons ?? [],
@@ -137,7 +144,7 @@ export interface PluginSettingsView {
   values: PluginSettingsResponse["values"];
 }
 
-export async function fetchPluginSettingsView(
+async function fetchPluginSettingsView(
   fetchImpl: FetchLike,
   pluginId: string,
 ): Promise<PluginSettingsView | null> {
@@ -186,22 +193,6 @@ export async function removePlugin(
   pluginId: string,
 ): Promise<void> {
   await createPluginsClient(fetchImpl).remove({ pluginId });
-}
-
-export function pluginListQueryKey(enabled: boolean): QueryKey {
-  return ["plugin-list", enabled];
-}
-
-export function allPluginListQueryKeyPrefix(): QueryKey {
-  return ["plugin-list"];
-}
-
-export function pluginSettingsViewQueryKey(pluginId: string): QueryKey {
-  return ["plugin-settings-view", pluginId];
-}
-
-export function allPluginSettingsViewQueryKeyPrefix(): QueryKey {
-  return ["plugin-settings-view"];
 }
 
 export function usePluginList(args: { enabled: boolean }) {

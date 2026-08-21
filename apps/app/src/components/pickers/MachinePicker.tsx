@@ -25,12 +25,12 @@ import {
   OPTION_MENU_CONTENT_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
 
 const MACHINE_BADGE_CLASS_NAME =
   "shrink-0 rounded-sm border border-border bg-muted/40 px-1.5 py-0.5 text-2xs leading-none text-subtle-foreground";
 
-export interface MachinePickerUIProps {
+interface MachinePickerUIProps {
   /** All hosts known to the server, in server order. */
   hosts: readonly Host[];
   /** Host id of the daemon running on this browser's machine, if reachable —

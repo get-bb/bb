@@ -1,11 +1,17 @@
 import { getThread } from "@bb/db";
-import { PERSONAL_PROJECT_ID, threadSchema } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  threadSchema,
+  type ProjectSourceCheckout,
+} from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import { resolveProjectDefaultThreadEnvironment } from "../../src/services/threads/thread-default-policy.js";
+import { getActiveThreadProvisionContext } from "../../src/services/threads/thread-provisioning-active-context.js";
 import {
   requireManagedWorktreeEnvironmentProvisionLiveCommand,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -106,13 +112,10 @@ describe("project-default thread environment", () => {
         hostId: host.id,
         path: sourcePath,
       });
-      const { provision, threadId } = await createAndCaptureProvision(
-        harness,
-        {
-          projectId: project.id,
-          environment: { type: "project-default" },
-        },
-      );
+      const { provision, threadId } = await createAndCaptureProvision(harness, {
+        projectId: project.id,
+        environment: { type: "project-default" },
+      });
       expect(provision).toEqual(explicit);
       // Non-plugin origins surface a null plugin attribution.
       expect(getThread(harness.db, threadId)?.originPluginId).toBeNull();
@@ -121,13 +124,98 @@ describe("project-default thread environment", () => {
 
   it("resolves the personal project to a personal workspace on the primary host", async () => {
     await withTestHarness(async (harness) => {
-      expect(
+      await expect(
         resolveProjectDefaultThreadEnvironment(harness.deps, {
           projectId: PERSONAL_PROJECT_ID,
         }),
-      ).toEqual({ type: "host", workspace: { type: "personal" } });
+      ).resolves.toEqual({
+        type: "host",
+        workspace: { type: "personal" },
+      });
     });
   });
+
+  it.each([
+    {
+      name: "a repository with no commits",
+      checkout: {
+        branches: [],
+        branchesTruncated: false,
+        checkout: { kind: "unborn" as const, branchName: "main" },
+        defaultBranch: null,
+        defaultBranchRelation: null,
+        hasUncommittedChanges: false,
+        operation: { kind: "none" as const },
+        originDefaultBranch: null,
+        remoteBranches: [],
+        remoteBranchesTruncated: false,
+        selectedBranch: null,
+      } satisfies ProjectSourceCheckout,
+    },
+    {
+      name: "a non-Git directory",
+      checkout: {
+        branches: [],
+        branchesTruncated: false,
+        checkout: {
+          kind: "unknown" as const,
+          reason: "Path is not a git repository",
+        },
+        defaultBranch: null,
+        defaultBranchRelation: null,
+        hasUncommittedChanges: false,
+        operation: { kind: "none" as const },
+        originDefaultBranch: null,
+        remoteBranches: [],
+        remoteBranchesTruncated: false,
+        selectedBranch: null,
+      } satisfies ProjectSourceCheckout,
+    },
+  ])(
+    "dispatches a plugin thread in the project source for $name",
+    async ({ checkout }) => {
+      await withTestHarness(async (harness) => {
+        const { host, session } = seedHostSession(harness.deps);
+        seedPrimaryHost(harness.deps, host.id);
+        const sourcePath = "/tmp/project-default-unmanaged-source";
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: sourcePath,
+        });
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          restoreCommandCaptureAfterResponse: true,
+          handle(request) {
+            expect(request.command).toEqual({
+              type: "host.list_branches",
+              path: sourcePath,
+              limit: 1,
+            });
+            return { ok: true, result: checkout };
+          },
+        });
+
+        const response = await postCreateThread(harness, project.id, {
+          origin: "plugin",
+          originPluginId: "tasks",
+          environment: { type: "project-default" },
+        });
+
+        expect(response.status).toBe(201);
+        const thread = threadSchema.parse(await readJson(response));
+        expect(responder.requests).toHaveLength(1);
+        expect(getThread(harness.db, thread.id)?.originPluginId).toBe("tasks");
+        expect(
+          getActiveThreadProvisionContext(thread.id)?.request.environmentIntent,
+        ).toEqual({
+          type: "direct-unmanaged",
+          hostId: host.id,
+          path: sourcePath,
+        });
+      });
+    },
+  );
 
   it("fails with a clear ApiError when the primary host is not connected", async () => {
     await withTestHarness(async (harness) => {

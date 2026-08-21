@@ -40,7 +40,6 @@ function makeThreadWithRuntime(
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -61,6 +60,7 @@ function makeThreadResponse(
 ): ThreadResponse {
   return {
     ...makeThreadWithRuntime(thread),
+    activeBackgroundAgentCount: 0,
     canSpawnChild: true,
     ...thread,
   };

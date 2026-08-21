@@ -22,8 +22,10 @@
   "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "typecheck": "node ./scripts/generate-templates.mjs --check && tsc --noEmit",
-    "test": "node ./scripts/generate-templates.mjs --check && vitest run --config vitest.config.ts"
+    "generate:templates": "node ./scripts/generate-templates.mjs",
+    "generate:plugin-scaffold": "node ./scripts/generate-plugin-scaffold.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",

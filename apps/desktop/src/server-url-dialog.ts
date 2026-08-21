@@ -8,12 +8,12 @@ import {
 } from "./server-url-dialog-ipc.js";
 import { normalizeCustomServerUrl } from "./server-target.js";
 
-export type ServerUrlDialogResult =
+type ServerUrlDialogResult =
   | { kind: "cancelled" }
   | { kind: "clear" }
   | { kind: "set"; url: string };
 
-export interface OpenServerUrlDialogArgs {
+interface OpenServerUrlDialogArgs {
   initialUrl: string | null;
   parentWindow: BrowserWindow | null;
   preloadPath: string;

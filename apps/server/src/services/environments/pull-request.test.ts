@@ -91,12 +91,14 @@ describe("assembleThreadPullRequest", () => {
               status: "completed",
               conclusion: "success",
               url: null,
+              startedAt: "2026-06-16T12:20:00Z",
             },
             {
               name: "typecheck",
               status: "completed",
               conclusion: "failure",
               url: "https://github.com/acme/bb/actions/runs/1",
+              startedAt: "2026-06-16T12:21:00Z",
             },
           ],
         }),
@@ -125,6 +127,7 @@ describe("assembleThreadPullRequest", () => {
               status: "in_progress",
               conclusion: null,
               url: "https://github.com/acme/bb/actions/runs/1",
+              startedAt: "2026-06-16T12:22:00Z",
             },
           ],
         }),
@@ -170,6 +173,42 @@ describe("assembleThreadPullRequest", () => {
     });
   });
 
+  it("uses the latest run for each check name", () => {
+    expect(
+      assembleThreadPullRequest(
+        rawPullRequest({
+          mergeStateStatus: "BLOCKED",
+          mergeable: "UNKNOWN",
+          checks: [
+            {
+              name: "conventional title",
+              status: "completed",
+              conclusion: "success",
+              url: "https://github.com/acme/bb/actions/runs/2",
+              startedAt: "2026-06-16T12:25:00Z",
+            },
+            {
+              name: "conventional title",
+              status: "completed",
+              conclusion: "cancelled",
+              url: "https://github.com/acme/bb/actions/runs/1",
+              startedAt: "2026-06-16T12:20:00Z",
+            },
+          ],
+        }),
+      ),
+    ).toMatchObject({
+      checks: {
+        state: "passing",
+        totalCount: 1,
+        passedCount: 1,
+        failedCount: 0,
+        pendingCount: 0,
+      },
+      attention: "blocked",
+    });
+  });
+
   it("marks passing mergeable PRs as ready to merge", () => {
     expect(
       assembleThreadPullRequest(
@@ -180,6 +219,7 @@ describe("assembleThreadPullRequest", () => {
               status: "completed",
               conclusion: "success",
               url: null,
+              startedAt: "2026-06-16T12:20:00Z",
             },
           ],
           reviewDecision: "APPROVED",

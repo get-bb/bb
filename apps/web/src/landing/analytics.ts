@@ -15,9 +15,17 @@ import type { CtaPlacement } from "./site";
  * build time, so local dev and forks ship with analytics disabled by default.
  */
 
-export type LandingEvent =
+type LandingEvent =
   | {
       name: "landing_github_clicked";
+      properties: { placement: CtaPlacement };
+    }
+  | {
+      name: "landing_discord_clicked";
+      properties: { placement: CtaPlacement };
+    }
+  | {
+      name: "landing_x_clicked";
       properties: { placement: CtaPlacement };
     }
   | {

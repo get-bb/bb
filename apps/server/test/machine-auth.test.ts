@@ -66,37 +66,6 @@ describe("machine auth service", () => {
     expect(storedKey?.key).not.toContain("bbdh_");
   });
 
-  it("rotates daemon host keys and invalidates the previous key", async () => {
-    const harness = await createMachineAuthHarness();
-    const hostId = "host_rotate";
-    const issuedKey = await harness.machineAuth.issueDaemonHostKey({
-      hostId,
-      hostType: "persistent",
-    });
-    const verifiedBeforeRotate =
-      await harness.machineAuth.verifyDaemonHostKey(issuedKey);
-
-    expect(verifiedBeforeRotate).not.toBeNull();
-
-    const rotatedKey = await harness.machineAuth.rotateDaemonHostKey({
-      keyId: verifiedBeforeRotate?.keyId ?? "",
-      hostId,
-      hostType: "persistent",
-    });
-
-    await expect(
-      harness.machineAuth.verifyDaemonHostKey(issuedKey),
-    ).resolves.toBeNull();
-    await expect(
-      harness.machineAuth.verifyDaemonHostKey(rotatedKey),
-    ).resolves.toMatchObject({
-      metadata: {
-        hostId,
-        hostType: "persistent",
-      },
-    });
-  });
-
   it("revokes older daemon host keys when a host reenrolls", async () => {
     const harness = await createMachineAuthHarness();
     const hostId = "host_reenroll";

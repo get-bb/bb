@@ -171,6 +171,77 @@ describe("GET /threads/:id/timeline?afterSequence (row-patch delta)", () => {
     });
   });
 
+  it("two interleaved clients both receive deltas (snapshot ring per params key)", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const turn = {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "p1",
+        scope: turnScope("turn-1"),
+      } as const;
+      let sequence = 0;
+      const appendMessage = (text: string): void => {
+        sequence += 1;
+        seedEvent(harness.deps, {
+          ...turn,
+          sequence,
+          type: "item/completed",
+          data: {
+            item: { type: "agentMessage", id: `assistant-${sequence}`, text },
+          },
+        });
+      };
+      sequence += 1;
+      seedEvent(harness.deps, {
+        ...turn,
+        sequence,
+        type: "turn/started",
+        data: {},
+      });
+      appendMessage("one");
+
+      // Desktop and phone both hold revision 2.
+      const desktop = await getTimeline(harness, thread.id);
+      const phone = desktop;
+
+      // The desktop polls fast: it sees revisions 3 and 4 before the phone
+      // gets its next poll in. Each desktop poll advances the server's newest
+      // snapshot past the revision the phone still holds.
+      appendMessage("two");
+      const desktopAt3 = await getTimeline(harness, thread.id, desktop.maxSeq);
+      expect(desktopAt3.delta).toBeDefined();
+      appendMessage("three");
+      const desktopAt4 = await getTimeline(
+        harness,
+        thread.id,
+        desktopAt3.maxSeq,
+      );
+      expect(desktopAt4.delta).toBeDefined();
+
+      // The phone still asks from revision 2 and must get a delta, not a full
+      // window, and merging it must reproduce the current window exactly.
+      const phoneAt4 = await getTimeline(harness, thread.id, phone.maxSeq);
+      expect(phoneAt4.maxSeq).toBe(4);
+      expect(phoneAt4.rows).toHaveLength(0);
+      expect(phoneAt4.delta).toBeDefined();
+      const merged = applyTimelineDelta(phone.rows, phoneAt4.delta!);
+      const fresh = await getTimeline(harness, thread.id);
+      expect(merged).toEqual(fresh.rows);
+
+      // A revision that fell out of the ring falls back to a full window:
+      // four more polled revisions (5..8) push revision 2 out.
+      for (const text of ["four", "five", "six", "seven"]) {
+        appendMessage(text);
+        const polled = await getTimeline(harness, thread.id, sequence - 1);
+        expect(polled.delta).toBeDefined();
+      }
+      const evicted = await getTimeline(harness, thread.id, 2);
+      expect(evicted.delta).toBeUndefined();
+      expect(evicted.rows.length).toBeGreaterThan(0);
+    });
+  });
+
   it("a no-op delta (no new events) returns an empty patch and merges to the same rows", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);

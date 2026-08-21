@@ -7,15 +7,27 @@
 // dynamic-import edges, and prints the shortest eager chain to each target.
 //
 // Usage: node scripts/why-eager.mjs <substring> [<substring> ...]
+//        node scripts/why-eager.mjs --from=<module substring> <substring> [...]
+//
+// `--from` starts the walk at a lazy route module instead of the entry (for
+// example `--from=views/SplitWorkspaceRoute.tsx`) and skips modules the entry
+// already reaches, so it explains the route closure that bundle-budget.json
+// ratchets under `routeClosures`.
 import { build, loadConfigFromFile } from "vite";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const appDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const targets = process.argv.slice(2);
-if (targets.length === 0) {
-  console.error("usage: node scripts/why-eager.mjs <substring> [...]");
+const args = process.argv.slice(2);
+const fromArg = args.find((arg) => arg.startsWith("--from="));
+const fromSubstring =
+  fromArg === undefined ? null : fromArg.slice("--from=".length);
+const targets = args.filter((arg) => !arg.startsWith("--from="));
+if (targets.length === 0 || fromSubstring === "") {
+  console.error(
+    "usage: node scripts/why-eager.mjs [--from=<module substring>] <substring> [...]",
+  );
   process.exit(1);
 }
 
@@ -64,19 +76,43 @@ await build({
   },
 });
 
-const rel = (id) => path.relative(path.resolve(appDir, "../.."), id).replace(/^\.\.\//, "");
+const rel = (id) =>
+  path.relative(path.resolve(appDir, "../.."), id).replace(/^\.\.\//, "");
 
 // Breadth-first over static edges only: the first time we reach a module is the
 // shortest eager chain to it.
-const parent = new Map([[entryId, null]]);
-const queue = [entryId];
-while (queue.length > 0) {
-  const id = queue.shift();
-  for (const next of graph.get(id)?.static ?? []) {
-    if (parent.has(next)) continue;
-    parent.set(next, id);
-    queue.push(next);
+const walkStatic = (startId, skip) => {
+  const reached = new Map([[startId, null]]);
+  const queue = [startId];
+  while (queue.length > 0) {
+    const id = queue.shift();
+    for (const next of graph.get(id)?.static ?? []) {
+      if (reached.has(next) || skip.has(next)) continue;
+      reached.set(next, id);
+      queue.push(next);
+    }
   }
+  return reached;
+};
+
+const bootReachable = walkStatic(entryId, new Set());
+let startId = entryId;
+let parent = bootReachable;
+if (fromSubstring !== null) {
+  const candidates = [...graph.keys()].filter((id) =>
+    id.includes(fromSubstring),
+  );
+  if (candidates.length !== 1) {
+    console.error(
+      candidates.length === 0
+        ? `--from: no module contains "${fromSubstring}"`
+        : `--from: "${fromSubstring}" matches ${candidates.length} modules:\n  ${candidates.map(rel).join("\n  ")}`,
+    );
+    process.exit(1);
+  }
+  startId = candidates[0];
+  // Modules the entry already reaches are boot chunks, not route closure.
+  parent = walkStatic(startId, new Set(bootReachable.keys()));
 }
 
 const chainTo = (id) => {
@@ -86,7 +122,14 @@ const chainTo = (id) => {
 };
 
 console.log(`entry: ${rel(entryId)}`);
-console.log(`modules in graph: ${graph.size}, statically reachable: ${parent.size}\n`);
+if (startId !== entryId) {
+  console.log(
+    `walking from: ${rel(startId)} (skipping ${bootReachable.size} boot modules)`,
+  );
+}
+console.log(
+  `modules in graph: ${graph.size}, statically reachable: ${parent.size}\n`,
+);
 
 for (const target of targets) {
   const hits = [...parent.keys()].filter((id) => id.includes(target));
@@ -104,8 +147,13 @@ for (const target of targets) {
   hits.sort((a, b) => chainTo(a).length - chainTo(b).length);
   const chain = chainTo(hits[0]);
   console.log(`  shortest chain (${chain.length} hops):`);
-  for (const [i, step] of chain.entries()) console.log(`    ${String(i).padStart(2)}. ${step}`);
+  for (const [i, step] of chain.entries())
+    console.log(`    ${String(i).padStart(2)}. ${step}`);
   // The last app-owned file before the dependency is where the cut goes.
-  const cutIndex = chain.findLastIndex((step) => !step.includes("node_modules"));
-  console.log(`  cut point: ${chain[cutIndex]} -> ${chain[cutIndex + 1] ?? "(self)"}\n`);
+  const cutIndex = chain.findLastIndex(
+    (step) => !step.includes("node_modules"),
+  );
+  console.log(
+    `  cut point: ${chain[cutIndex]} -> ${chain[cutIndex + 1] ?? "(self)"}\n`,
+  );
 }

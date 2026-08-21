@@ -13,11 +13,14 @@ import {
   type PluginComposerPlusMenuContribution,
   type PluginComposerPlusMenuSelection,
 } from "@/components/plugin/PluginComposerActions";
+import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-slot-hooks";
+import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
+import type { ProviderPromptActionCommand } from "@bb/client-core";
 
-export type PromptBoxActionKind = "skills" | "plan" | "goal" | "automation";
+type PromptBoxActionKind = "skills" | "plan" | "goal" | "automation" | "plugin";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
@@ -35,10 +38,33 @@ interface PromptBoxActionsMenuProps {
   pluginItems?: readonly PluginComposerPlusMenuContribution[];
 }
 
+export function ComposerPlusMenuSlot({
+  includePluginContributions = true,
+  ...props
+}: Omit<PromptBoxActionsMenuProps, "pluginItems"> & {
+  includePluginContributions?: boolean;
+}) {
+  const view = useOptionalPluginComposerView();
+  const pluginItems = useResolvedComposerPlusMenuItems(
+    includePluginContributions ? (view?.scope.kind ?? null) : null,
+  );
+  return <PromptBoxActionsMenu {...props} pluginItems={pluginItems} />;
+}
+
 export const AUTOMATION_PROMPT_ACTION: PromptBoxAction = {
   kind: "automation",
   command: { trigger: "/", name: "automation", trailingText: " " },
   text: "/automation ",
+};
+
+/**
+ * Seeds the composer with the plugin prompt prefix the plugin library uses, so
+ * the user finishes one sentence and the agent reaches the plugin-authoring
+ * skill. There is no provider command for it, so the text is inserted as is.
+ */
+export const CREATE_PLUGIN_PROMPT_ACTION: PromptBoxAction = {
+  kind: "plugin",
+  text: CREATE_PLUGIN_PROMPT,
 };
 
 const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
@@ -46,6 +72,7 @@ const PROMPT_ACTION_ORDER: readonly PromptBoxActionKind[] = [
   "plan",
   "goal",
   "automation",
+  "plugin",
 ];
 
 const PROMPT_ACTION_PRESENTATION = {
@@ -65,18 +92,32 @@ const PROMPT_ACTION_PRESENTATION = {
     label: "Automation",
     icon: "Repeat",
   },
+  // The icons follow the Tools navigation sections, so "Skills" and "Plugin"
+  // read the same here as they do in the sidebar. See tools-navigation.ts.
+  plugin: {
+    label: "Plugin",
+    icon: "ElectricPlugs",
+  },
 } as const satisfies Record<
   PromptBoxActionKind,
   { label: string; icon: IconName }
 >;
 
-export function withAutomationPromptAction(
+/**
+ * Adds the app-owned prompt actions to the provider-owned ones. Providers
+ * describe only their own composer commands, so bb appends the actions it owns
+ * itself and keeps a provider entry when the provider already supplies one.
+ */
+export function withAppPromptActions(
   actions: readonly PromptBoxAction[],
 ): PromptBoxAction[] {
-  if (actions.some((action) => action.kind === "automation")) {
-    return [...actions];
-  }
-  return [...actions, AUTOMATION_PROMPT_ACTION];
+  const appActions = [AUTOMATION_PROMPT_ACTION, CREATE_PLUGIN_PROMPT_ACTION];
+  return [
+    ...actions,
+    ...appActions.filter(
+      (appAction) => !actions.some((action) => action.kind === appAction.kind),
+    ),
+  ];
 }
 
 function orderedPromptActions(
@@ -233,7 +274,7 @@ export function PromptBoxActionsMenu({
             previous?.pluginId !== contribution.pluginId;
           return (
             <PluginComposerPlusMenuEntry
-              key={`${contribution.pluginId}/${contribution.customizationId}/${contribution.item.id}/${contribution.generation}`}
+              key={contribution.key}
               contribution={contribution}
               showPluginLabel={startsPluginGroup}
               onSelected={(selection) => {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { ReasoningLevel } from "@bb/domain";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import { ModelReasoningPicker } from "./ModelReasoningPicker";
+import type { ModelPickerOption } from "./model-picker-option";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
   STORY_CLAUDE_CODE_MODELS,
@@ -62,7 +63,7 @@ const claudeBase = {
 
 const MODEL_OPTIONS_BY_PROVIDER_ID: Record<
   string,
-  readonly (typeof STORY_CODEX_MODELS)[number][]
+  readonly ModelPickerOption[]
 > = {
   codex: STORY_CODEX_MODELS,
   "claude-code": STORY_CLAUDE_CODE_MODELS,
@@ -71,7 +72,7 @@ const MODEL_OPTIONS_BY_PROVIDER_ID: Record<
 
 const MORE_MODEL_OPTIONS_BY_PROVIDER_ID: Record<
   string,
-  readonly (typeof STORY_CODEX_MODELS)[number][]
+  readonly ModelPickerOption[]
 > = {
   codex: [],
   "claude-code": STORY_CLAUDE_CODE_MORE_MODELS,

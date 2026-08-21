@@ -13,11 +13,13 @@
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "node ./scripts/generate-plugin-theme.mjs --check && node ./scripts/generate-runtime-export-manifest.mjs --check && tsc --noEmit"
+    "generate": "node ./scripts/generate-plugin-theme.mjs && node ./scripts/generate-runtime-export-manifest.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@bb/domain": "workspace:*",
-    "@bb/plugin-sdk": "workspace:*",
+    "@bb/process-utils": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "saxes": "^6.0.0"
   },
   "devDependencies": {

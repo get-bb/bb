@@ -4,20 +4,13 @@ import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import type { CommandOf } from "../command-dispatch-support.js";
 import { resolveNonSymlinkDirectoryPath } from "./root-path.js";
-import { isPathWithinRoot, resolveWriteTarget } from "./file-write.js";
+import { isPathWithinRoot } from "./file-read.js";
+import { resolveWriteTarget } from "./file-write.js";
 
 function assertAbsolute(value: string, field: string): void {
   if (!path.isAbsolute(value)) {
     throw new CommandDispatchError("invalid_path", `${field} must be absolute`);
   }
-}
-
-function isWithin(candidate: string, root: string): boolean {
-  const relative = path.relative(root, candidate);
-  return (
-    relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
-  );
 }
 
 async function requireRoot(
@@ -47,7 +40,7 @@ async function requireExistingWithin(
     fs.realpath(targetPath),
     requireRoot(rootPath),
   ]);
-  if (root !== null && !isWithin(target, root)) {
+  if (root !== null && !isPathWithinRoot(target, root)) {
     throw new CommandDispatchError(
       "invalid_path",
       `Path "${targetPath}" escapes root`,
@@ -66,7 +59,7 @@ async function requireDestinationWithin(
     requireRoot(rootPath),
   ]);
   const target = path.join(parent, path.basename(destinationPath));
-  if (root !== null && !isWithin(target, root)) {
+  if (root !== null && !isPathWithinRoot(target, root)) {
     throw new CommandDispatchError(
       "invalid_path",
       `Path "${destinationPath}" escapes root`,

@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  defaultResolvedCodeTheme,
+  resolvedCodeThemeSchema,
+} from "./code-theme.js";
 
 /**
  * App color palette ("theme"), distinct from light/dark *mode* (which stays a
@@ -11,7 +15,7 @@ import { z } from "zod";
  * a custom palette `themeId` is the theme's directory name and the resolved CSS
  * is read from that file by the server.
  */
-export const builtInThemeIdSchema = z.enum([
+const builtInThemeIdSchema = z.enum([
   "default",
   "nord",
   "dracula",
@@ -21,7 +25,7 @@ export const builtInThemeIdSchema = z.enum([
 ]);
 export type BuiltInThemeId = z.infer<typeof builtInThemeIdSchema>;
 
-export interface BuiltInThemeMeta {
+interface BuiltInThemeMeta {
   id: BuiltInThemeId;
   name: string;
   description: string;
@@ -121,6 +125,11 @@ export const appThemeSchema = z.object({
   customCss: z.string().max(CUSTOM_THEME_CSS_MAX_LENGTH).nullable(),
   /** Browser tab icon tint; "default" leaves the glyph untinted. */
   faviconColor: faviconColorPreferenceSchema,
+  /**
+   * Pierre / Shiki names (and any custom JSON) derived from the active
+   * palette. Always filled at the server boundary.
+   */
+  resolvedCodeTheme: resolvedCodeThemeSchema.default(defaultResolvedCodeTheme),
 });
 export type AppTheme = z.infer<typeof appThemeSchema>;
 
@@ -156,4 +165,5 @@ export const defaultAppTheme: AppTheme = {
   themeId: "default",
   customCss: null,
   faviconColor: defaultFaviconColor,
+  resolvedCodeTheme: defaultResolvedCodeTheme,
 };

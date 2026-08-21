@@ -5,6 +5,13 @@ import type { HostDaemonStatusSnapshot } from "./api-host-daemon";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { apiClient } from "./api-server";
 import { fetchHostStatus, fetchWorkspaceOpenTargets } from "./api-host-daemon";
+import { getBbDesktopInfo } from "./bb-desktop";
+import {
+  getBrowserLocalNetworkPermissionQuery,
+  resolveLocalHostDaemonAccess,
+  resolveLocalHostDaemonProbePorts,
+  type LocalHostDaemonAccessState,
+} from "./local-host-daemon-access";
 import { wsManager } from "./ws";
 
 // Offline/unavailable app behavior should fail closed independently of server defaults.
@@ -14,15 +21,18 @@ const unavailableSystemConfig: SystemConfigResponse = {
   defaultKeybindings: [],
   keybindingOverrides: [],
   experiments: {
-    claudeCodeMockCliTraffic: false,
-    newOnboarding: false,
-    toolsHub: false,
+    changelogPreview: false,
+    editMessages: false,
+    mobileApp: false,
+    providerSessionReaping: false,
+    timelineWindowing: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],
   pluginThemes: [],
   featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
   hostDaemonPort: null,
+  localHelperPorts: [],
   serverUrl: "",
   primaryHostId: null,
   primaryHostPlatform: null,
@@ -33,13 +43,19 @@ const unavailableSystemConfig: SystemConfigResponse = {
 type SystemConfigLoadStatus = "failed" | "succeeded" | null;
 type Milliseconds = number;
 
-interface FetchHostStatusWithRetryArgs {
+interface LocalHostDaemonConnection {
   port: number;
+  status: HostDaemonStatusSnapshot;
+}
+
+interface FetchLocalHostConnectionWithRetryArgs {
+  browserOrigin: string | null;
+  ports: readonly number[];
   retryDelaysMs: readonly Milliseconds[];
 }
 
 const LOCAL_HOST_STATUS_RETRY_DELAYS_MS: readonly Milliseconds[] = [
-  100, 250, 500, 1_000,
+  1_000, 1_000,
 ];
 
 let lastSystemConfigLoadStatus: SystemConfigLoadStatus = null;
@@ -77,20 +93,61 @@ function sleep(milliseconds: Milliseconds): Promise<void> {
   });
 }
 
-async function fetchHostStatusWithRetry({
-  port,
+function parseOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
+function selectPreferredLocalHostConnection(
+  connections: readonly LocalHostDaemonConnection[],
+  browserOrigin: string | null,
+): LocalHostDaemonConnection | null {
+  if (browserOrigin !== null) {
+    const currentServerConnection = connections.find(
+      ({ status }) => parseOrigin(status.serverUrl) === browserOrigin,
+    );
+    if (currentServerConnection !== undefined) {
+      return currentServerConnection;
+    }
+  }
+  return connections[0] ?? null;
+}
+
+async function fetchLocalHostConnection(
+  ports: readonly number[],
+  browserOrigin: string | null,
+): Promise<LocalHostDaemonConnection | null> {
+  const results = await Promise.all(
+    ports.map(async (port): Promise<LocalHostDaemonConnection | null> => {
+      const status = await fetchHostStatus(port);
+      return status === null ? null : { port, status };
+    }),
+  );
+  const connections = results.filter(
+    (connection): connection is LocalHostDaemonConnection =>
+      connection !== null,
+  );
+  return selectPreferredLocalHostConnection(connections, browserOrigin);
+}
+
+async function fetchLocalHostConnectionWithRetry({
+  browserOrigin,
+  ports,
   retryDelaysMs,
-}: FetchHostStatusWithRetryArgs): Promise<HostDaemonStatusSnapshot | null> {
-  const firstStatus = await fetchHostStatus(port);
-  if (firstStatus) {
-    return firstStatus;
+}: FetchLocalHostConnectionWithRetryArgs): Promise<LocalHostDaemonConnection | null> {
+  const firstConnection = await fetchLocalHostConnection(ports, browserOrigin);
+  if (firstConnection !== null) {
+    return firstConnection;
   }
 
   for (const delayMs of retryDelaysMs) {
     await sleep(delayMs);
-    const status = await fetchHostStatus(port);
-    if (status) {
-      return status;
+    const connection = await fetchLocalHostConnection(ports, browserOrigin);
+    if (connection !== null) {
+      return connection;
     }
   }
 
@@ -113,8 +170,9 @@ systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
   });
   const unsubscribeChanged = wsManager.onChanged((message) => {
     if (
-      message.entity === "system" &&
-      message.changes.includes("config-changed")
+      message.entity === "host" ||
+      (message.entity === "system" &&
+        message.changes.includes("config-changed"))
     ) {
       setRefreshTick((count) => count + 1);
     }
@@ -125,7 +183,7 @@ systemConfigRefreshTickAtom.onMount = (setRefreshTick) => {
   };
 };
 
-export const systemConfigAtom = atom(async (get) => {
+const systemConfigAtom = atom(async (get) => {
   get(systemConfigRefreshTickAtom);
   return loadSystemConfig();
 });
@@ -157,18 +215,68 @@ localHostStatusRefreshTickAtom.onMount = (setRefreshTick) => {
   };
 };
 
+const localHostDaemonAccessRefreshTickAtom = atom(0);
+const localHostDaemonSessionAccessGrantedAtom = atom(false);
+
+export const localHostDaemonAccessStateAtom = atom<
+  Promise<LocalHostDaemonAccessState>
+>(async (get) => {
+  get(localHostDaemonAccessRefreshTickAtom);
+  const sessionAccessGranted = get(localHostDaemonSessionAccessGrantedAtom);
+  const config = await get(systemConfigAtom);
+  return resolveLocalHostDaemonAccess({
+    configuredPorts: config.localHelperPorts,
+    hostname: typeof window === "undefined" ? null : window.location.hostname,
+    isDesktop: getBbDesktopInfo() !== null,
+    permissions: getBrowserLocalNetworkPermissionQuery(),
+    sessionAccessGranted,
+  });
+});
+
+/**
+ * Deliberately request browser-local helper access from a user interaction.
+ * The status request is what causes browsers to offer the loopback permission;
+ * no permission API exists that can request it directly.
+ */
+export const requestLocalHostDaemonAccessAtom = atom(
+  null,
+  async (get, set): Promise<boolean> => {
+    const config = await get(systemConfigAtom);
+    if (config.localHelperPorts.length === 0) {
+      return false;
+    }
+
+    const connection = await fetchLocalHostConnection(
+      config.localHelperPorts,
+      typeof window === "undefined" ? null : window.location.origin,
+    );
+    if (connection !== null) {
+      set(localHostDaemonSessionAccessGrantedAtom, true);
+    }
+    set(localHostDaemonAccessRefreshTickAtom, (count) => count + 1);
+    set(localHostStatusRefreshTickAtom, (count) => count + 1);
+    return connection !== null;
+  },
+);
+
+const localHostConnectionAtom = atom<Promise<LocalHostDaemonConnection | null>>(
+  async (get) => {
+    get(localHostStatusRefreshTickAtom);
+    const ports = await get(localHostDaemonProbePortsAtom);
+    if (ports.length === 0) return null;
+    return fetchLocalHostConnectionWithRetry({
+      browserOrigin:
+        typeof window === "undefined" ? null : window.location.origin,
+      ports,
+      retryDelaysMs: LOCAL_HOST_STATUS_RETRY_DELAYS_MS,
+    });
+  },
+);
+
 /** The local daemon status, or null if no daemon is reachable. */
 export const localHostStatusAtom = atom<
   Promise<HostDaemonStatusSnapshot | null>
->(async (get) => {
-  get(localHostStatusRefreshTickAtom);
-  const port = await get(hostDaemonPortAtom);
-  if (!port) return null;
-  return fetchHostStatusWithRetry({
-    port,
-    retryDelaysMs: LOCAL_HOST_STATUS_RETRY_DELAYS_MS,
-  });
-});
+>(async (get) => (await get(localHostConnectionAtom))?.status ?? null);
 
 /** Whether the local host daemon API is reachable. */
 export const localHostDaemonReachableAtom = atom<Promise<boolean>>(
@@ -199,17 +307,12 @@ export const localHostIdAtom = atom<Promise<string | null>>(async (get) => {
 export const localWorkspaceOpenTargetsAtom = atom<
   Promise<WorkspaceOpenTarget[]>
 >(async (get) => {
-  const localHostStatus = await get(localHostStatusAtom);
-  if (!localHostStatus) {
+  const connection = await get(localHostConnectionAtom);
+  if (connection === null) {
     return [];
   }
 
-  const port = await get(hostDaemonPortAtom);
-  if (!port) {
-    return [];
-  }
-
-  return fetchWorkspaceOpenTargets(port);
+  return fetchWorkspaceOpenTargets(connection.port);
 });
 
 // ---------------------------------------------------------------------------
@@ -217,11 +320,22 @@ export const localWorkspaceOpenTargetsAtom = atom<
 // ---------------------------------------------------------------------------
 
 /**
- * The local helper port to probe from this browser, or null when the server
- * does not expose one. The helper is reached through browser-local loopback,
- * so a remote app origin still probes this client's `127.0.0.1`.
+ * The candidate local helper ports this browser may probe. A remote web origin
+ * only probes them after loopback access was already granted or explicitly
+ * requested by the user.
  */
+const localHostDaemonProbePortsAtom = atom<Promise<readonly number[]>>(
+  async (get) => {
+    const config = await get(systemConfigAtom);
+    const accessState = await get(localHostDaemonAccessStateAtom);
+    return resolveLocalHostDaemonProbePorts(
+      config.localHelperPorts,
+      accessState,
+    );
+  },
+);
+
+/** The selected browser-local helper port, or null when none is reachable. */
 export const hostDaemonPortAtom = atom<Promise<number | null>>(async (get) => {
-  const config = await get(systemConfigAtom);
-  return config.hostDaemonPort;
+  return (await get(localHostConnectionAtom))?.port ?? null;
 });

@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "subagent",
+  "threadId": "thr_nh59pq86mu",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "recordedAt": "2026-08-21",
+  "description": "The agent delegates one task to a subagent (where the provider has one).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 41,
+    "provider→bridge": 67,
+    "bridge→provider": 1
+  }
+}

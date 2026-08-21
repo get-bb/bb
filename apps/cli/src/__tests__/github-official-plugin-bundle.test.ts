@@ -63,7 +63,8 @@ describe("GitHub official plugin frontend bundle", () => {
     // The temp copy has no node_modules; link @bb/shared-ui (the plugin's UI
     // components — its own deps resolve through the workspace realpath) so
     // buildPluginApp can bundle it. Shimmed packages — react, radix portal
-    // families, sonner, vaul, pierre — never resolve from disk.
+    // families, sonner, vaul, pierre, clsx, tailwind-merge, cva, the
+    // shared-ui icon — never resolve from disk.
     const sharedUiLink = join(pluginDir, "node_modules", "@bb", "shared-ui");
     await mkdir(dirname(sharedUiLink), { recursive: true });
     await symlink(
@@ -109,6 +110,12 @@ describe("GitHub official plugin frontend bundle", () => {
       radixSelect: componentStub,
       pierreDiffs: componentStub,
       pierreDiffsReact: componentStub,
+      // Host-resident libraries: cva() runs at module scope in vendored
+      // components, and cn() reads clsx/twMerge.
+      clsx: componentStub,
+      tailwindMerge: componentStub,
+      classVarianceAuthority: componentStub,
+      sharedUiIcon: componentStub,
     };
     const mod = (await import(
       /* @vite-ignore */ pathToFileURL(jsPath).href

@@ -20,7 +20,11 @@ export interface BrowserViewVisibilityCoordinator {
    * appears at stale/zero bounds). `BrowserTabContent` calls this only after the
    * hidden attach has been issued, making this the first-show path too.
    */
-  show(tabId: string, syncBounds: () => void): void;
+  show(
+    tabId: string,
+    syncBounds: () => void,
+    options?: { focus?: boolean },
+  ): void;
   /** Hide `tabId`'s view (no-op overlay-wise if it was already hidden). */
   hide(tabId: string): void;
   /**
@@ -66,13 +70,21 @@ export function createBrowserViewVisibilityCoordinator(
   // The browser tab whose native view is currently shown, or null when none is.
   let visibleTabId: string | null = null;
   return {
-    show(tabId, syncBounds) {
+    show(tabId, syncBounds, options) {
       if (visibleTabId !== null && visibleTabId !== tabId) {
         desktopBrowser.setVisible({ tabId: visibleTabId, visible: false });
       }
       visibleTabId = tabId;
       syncBounds();
-      desktopBrowser.setVisible({ tabId, visible: true });
+      const request = { tabId, visible: true };
+      if (
+        options?.focus === false &&
+        desktopBrowser.setVisibleWithoutFocus !== undefined
+      ) {
+        desktopBrowser.setVisibleWithoutFocus(request);
+      } else {
+        desktopBrowser.setVisible(request);
+      }
     },
     hide(tabId) {
       if (visibleTabId === tabId) {

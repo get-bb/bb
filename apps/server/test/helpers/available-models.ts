@@ -1,6 +1,6 @@
 import type { AvailableModel, ReasoningLevel } from "@bb/domain";
 
-export interface AvailableModelFixtureArgs {
+interface AvailableModelFixtureArgs {
   model: string;
   reasoningLevels?: readonly ReasoningLevel[];
   defaultReasoningLevel?: ReasoningLevel;

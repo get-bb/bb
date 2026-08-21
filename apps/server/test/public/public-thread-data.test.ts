@@ -1,8 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import {
-  archiveThread,
   claimQueuedThreadMessage,
-  createPromptHistoryEntry,
   createQueuedThreadMessageId,
   createThreadSection,
   deleteQueuedThreadMessage,
@@ -10,13 +8,13 @@ import {
   environments,
   events,
   getQueuedThreadMessage,
+  insertEvents,
   listQueuedThreadMessages,
   getThread,
   queuedThreadMessages,
   reorderQueuedThreadMessage,
   setQueuedThreadMessageGroupBoundary,
   setThreadExecutionOverride,
-  upsertProjectExecutionDefaults,
 } from "@bb/db";
 import {
   encodeClientTurnRequestIdNumber,
@@ -30,9 +28,9 @@ import {
   sidebarBootstrapResponseSchema,
   threadSectionMutationResponseSchema,
   threadSectionSchema,
-  threadComposerBootstrapResponseSchema,
   threadConversationOutlineResponseSchema,
   threadQueuedMessageListResponseSchema,
+  threadStorageLocationResponseSchema,
   threadTimelineResponseSchema,
   threadWithIncludesResponseSchema,
   timelineTurnSummaryDetailsResponseSchema,
@@ -49,19 +47,14 @@ import {
   waitForQueuedCommand,
   waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
-import {
-  registerHostRpcResponder,
-  registerProviderHostRpcResponder,
-} from "../helpers/host-rpc.js";
+import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
-  seedHost,
   seedQueuedMessage,
   seedEnvironment,
   seedEvent,
   seedHostSession,
-  seedPrimaryHost,
   seedProjectWithSource,
   seedStoredEvent,
   seedThread,
@@ -452,6 +445,63 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("returns a timeline when a stored history holds a duplicate turn/started from a daemon replay", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      const eventBase = {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-retried",
+        scope: turnScope("turn-retried"),
+      };
+
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 1,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 2,
+        type: "turn/started",
+        data: {},
+      });
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 3,
+        type: "item/completed",
+        data: {
+          item: {
+            type: "toolCall",
+            id: "tool-call-retried",
+            tool: "read",
+            status: "completed",
+            result: "ok",
+          },
+        },
+      });
+      seedEvent(harness.deps, {
+        ...eventBase,
+        sequence: 4,
+        type: "turn/completed",
+        data: { status: "completed" },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+
+      expect(response.status).toBe(200);
+      const timeline = threadTimelineResponseSchema.parse(
+        await readJson(response),
+      );
+      expect(timeline.rows.filter((row) => row.kind === "turn")).toHaveLength(
+        1,
+      );
+    });
+  });
+
   it("returns the full conversation outline beyond the paginated timeline window", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
@@ -608,6 +658,94 @@ describe("public thread data routes", () => {
         items: [],
         maxSeq: 0,
       });
+    });
+  });
+
+  it("reuses the conversation outline across timeline-only events", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "Visible response" },
+      });
+      const prepareSpy = vi.spyOn(harness.db.$client, "prepare");
+      const countFullOutlineQueries = () =>
+        prepareSpy.mock.calls.filter(([source]) => {
+          return (
+            typeof source === "string" &&
+            source.includes('"created_at"') &&
+            source.includes('"data"') &&
+            source.includes("union all")
+          );
+        }).length;
+
+      const firstResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(firstResponse.status).toBe(200);
+      const first = threadConversationOutlineResponseSchema.parse(
+        await readJson(firstResponse),
+      );
+      expect(first.maxSeq).toBe(1);
+      expect(countFullOutlineQueries()).toBe(1);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        sequence: 2,
+        type: "item/completed",
+        scope: turnScope("turn-1"),
+        data: {
+          item: {
+            id: "command-1",
+            type: "commandExecution",
+            command: "pwd",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            aggregatedOutput: "/tmp/test",
+            exitCode: 0,
+          },
+        },
+      });
+
+      const cachedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(cachedResponse.status).toBe(200);
+      const cached = threadConversationOutlineResponseSchema.parse(
+        await readJson(cachedResponse),
+      );
+      expect(cached).toEqual({ items: first.items, maxSeq: 2 });
+      expect(countFullOutlineQueries()).toBe(1);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "New visible response" },
+      });
+
+      const changedResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/conversation-outline`,
+      );
+      expect(changedResponse.status).toBe(200);
+      const changed = threadConversationOutlineResponseSchema.parse(
+        await readJson(changedResponse),
+      );
+      expect(changed.maxSeq).toBe(3);
+      expect(changed.items.map((item) => item.preview)).toEqual([
+        "Visible response",
+        "New visible response",
+      ]);
+      expect(countFullOutlineQueries()).toBe(2);
     });
   });
 
@@ -1515,6 +1653,153 @@ describe("public thread data routes", () => {
       );
     });
   });
+
+  it(
+    "expands the newest slice when a large delegation parent completes last",
+    async () => {
+      await withTestHarness(async (harness) => {
+        const { environment, thread } = seedThreadFixture(harness);
+        const providerThreadId = "provider-thread-1";
+        const turnId = "parent-turn";
+        const parentToolCallId = "agent-call";
+        type EventInput = Parameters<typeof insertEvents>[2][number];
+        const eventInputs: EventInput[] = [];
+        let sequence = 0;
+        const push = (
+          event: Omit<EventInput, "environmentId" | "sequence" | "threadId">,
+        ): void => {
+          sequence += 1;
+          eventInputs.push({
+            ...event,
+            environmentId: environment.id,
+            sequence,
+            threadId: thread.id,
+          });
+        };
+
+        push({
+          providerThreadId,
+          scope: turnScope(turnId),
+          type: "turn/started",
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({}),
+        });
+        push({
+          providerThreadId,
+          scope: turnScope(turnId),
+          type: "item/started",
+          itemId: parentToolCallId,
+          itemKind: "toolCall",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "toolCall",
+              id: parentToolCallId,
+              tool: "Agent",
+              arguments: { prompt: "Do the long task." },
+              status: "pending",
+            },
+          }),
+        });
+        for (let item = 0; item < 650; item += 1) {
+          const itemId = `command-${item}`;
+          const command = "x".repeat(25_000);
+          push({
+            providerThreadId,
+            scope: turnScope(turnId),
+            type: "item/started",
+            itemId,
+            itemKind: "commandExecution",
+            parentToolCallId,
+            data: JSON.stringify({
+              item: {
+                type: "commandExecution",
+                id: itemId,
+                command,
+                cwd: "/tmp/test",
+                parentToolCallId,
+                status: "pending",
+                approvalStatus: null,
+              },
+            }),
+          });
+          push({
+            providerThreadId,
+            scope: turnScope(turnId),
+            type: "item/completed",
+            itemId,
+            itemKind: "commandExecution",
+            parentToolCallId,
+            data: JSON.stringify({
+              item: {
+                type: "commandExecution",
+                id: itemId,
+                command,
+                cwd: "/tmp/test",
+                parentToolCallId,
+                status: "completed",
+                approvalStatus: null,
+                exitCode: 0,
+                aggregatedOutput: `output ${item}`,
+              },
+            }),
+          });
+        }
+        push({
+          providerThreadId,
+          scope: turnScope(turnId),
+          type: "item/completed",
+          itemId: parentToolCallId,
+          itemKind: "toolCall",
+          parentToolCallId: null,
+          data: JSON.stringify({
+            item: {
+              type: "toolCall",
+              id: parentToolCallId,
+              tool: "Agent",
+              arguments: { prompt: "Do the long task." },
+              result: "",
+              status: "completed",
+            },
+          }),
+        });
+        push({
+          providerThreadId,
+          scope: turnScope(turnId),
+          type: "turn/completed",
+          itemId: null,
+          itemKind: null,
+          parentToolCallId: null,
+          data: JSON.stringify({ status: "completed", providerThreadId }),
+        });
+        insertEvents(harness.deps.db, harness.deps.hub, eventInputs);
+
+        const timelineResponse = await harness.app.request(
+          `/api/v1/threads/${thread.id}/timeline`,
+        );
+        expect(timelineResponse.status).toBe(200);
+        const timeline = threadTimelineResponseSchema.parse(
+          await readJson(timelineResponse),
+        );
+        const turnRow = timeline.rows.find(
+          (row): row is TimelineTurnRow => row.kind === "turn",
+        );
+        expect(turnRow).toBeDefined();
+        if (!turnRow) {
+          throw new Error("Expected a turn row");
+        }
+        expect(turnRow.sourceSeqStart).toBeGreaterThan(2);
+
+        const detailsResponse = await harness.app.request(
+          `/api/v1/threads/${thread.id}/timeline/turn-summary-details?turnId=${turnRow.turnId}&sourceSeqStart=${turnRow.sourceSeqStart}&sourceSeqEnd=${turnRow.sourceSeqEnd}`,
+        );
+        expect(detailsResponse.status).toBe(200);
+      });
+    },
+    10_000,
+  );
 
   it("hydrates turn-summary details with future accepted input context", async () => {
     await withTestHarness(async (harness) => {
@@ -3081,308 +3366,6 @@ describe("public thread data routes", () => {
     });
   });
 
-  it("loads legacy thread composer bootstrap state", async () => {
-    await withTestHarness(async (harness) => {
-      seedHostSession(harness.deps, {
-        id: "host-composer-default",
-      });
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-composer-thread",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const providerResponder = registerProviderHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        modelsByProviderId: {
-          codex: {
-            models: [
-              {
-                id: "gpt-5.5",
-                model: "gpt-5.5",
-                displayName: "GPT-5.5",
-                description: "Frontier model",
-                supportedReasoningEfforts: [
-                  {
-                    reasoningEffort: "xhigh",
-                    description: "Extra high",
-                  },
-                ],
-                defaultReasoningEffort: "xhigh",
-                isDefault: true,
-              },
-            ],
-            selectedOnlyModels: [],
-          },
-        },
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      seedEvent(harness.deps, {
-        threadId: thread.id,
-        environmentId: environment.id,
-        sequence: 1,
-        type: "client/turn/requested",
-        scope: threadScope(),
-        data: {
-          direction: "outbound",
-          requestId: encodeClientTurnRequestIdNumber({ value: 601 }),
-          input: [{ type: "text", text: "Accepted prompt" }],
-          target: { kind: "new-turn" },
-          execution: {
-            model: "gpt-5.5",
-            serviceTier: "default",
-            reasoningLevel: "xhigh",
-            permissionMode: "workspace-write",
-            source: "client/turn/requested",
-          },
-          initiator: "user",
-          senderThreadId: null,
-          request: {
-            method: "turn/start",
-            params: {},
-          },
-          source: "tell",
-        },
-      });
-      createPromptHistoryEntry(harness.deps.db, {
-        projectId: project.id,
-        threadId: thread.id,
-        scope: "thread",
-        requestSequence: 1,
-        input: textInput("Accepted prompt"),
-      });
-      seedQueuedMessage(harness.deps, {
-        threadId: thread.id,
-        content: textInput("Queued message"),
-        model: "gpt-5.5",
-        reasoningLevel: "xhigh",
-        permissionMode: "accept-edits",
-        serviceTier: "default",
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/composer-bootstrap`,
-      );
-
-      expect(response.status).toBe(200);
-      const bootstrap = threadComposerBootstrapResponseSchema.parse(
-        await readJson(response),
-      );
-      expect(bootstrap.defaultExecutionOptions).toMatchObject({
-        model: "gpt-5.5",
-        reasoningLevel: "xhigh",
-        permissionMode: "accept-edits",
-      });
-      expect(bootstrap.queuedMessages).toHaveLength(1);
-      expect(bootstrap.queuedMessages[0]?.content).toEqual(
-        textInput("Queued message"),
-      );
-      expect(bootstrap.pendingInteractions).toEqual([]);
-      expect(bootstrap.promptHistory.map((entry) => entry.input)).toEqual(
-        expect.arrayContaining([
-          textInput("Accepted prompt"),
-          textInput("Queued message"),
-        ]),
-      );
-      const { executionOptions } = bootstrap;
-      if (executionOptions === null) {
-        throw new Error(
-          "expected resolved executionOptions for an environment-backed thread",
-        );
-      }
-      const codexProvider = executionOptions.providers.find(
-        (provider) => provider.id === "codex",
-      );
-      expect(codexProvider).toMatchObject({
-        id: "codex",
-      });
-      expect(executionOptions.models[0]?.model).toBe("gpt-5.5");
-      expect(
-        providerResponder.requests.map((request) => request.command),
-      ).toEqual([
-        {
-          type: "known_acp_agents.status",
-          agents: [
-            { id: "acp-opencode", executableName: "opencode" },
-            { id: "acp-omp", executableName: "omp" },
-            { id: "acp-grok", executableName: "grok" },
-            { id: "acp-hermes-agent", executableName: "hermes" },
-          ],
-        },
-        {
-          type: "provider.list_models",
-          providerId: "codex",
-          cwd: "/tmp/test-environment",
-        },
-      ]);
-    });
-  });
-
-  it("keeps ACP thread composer defaults when provider discovery is degraded", async () => {
-    await withTestHarness(async (harness) => {
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-composer-acp-degraded",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const providerResponder = registerHostRpcResponder(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        handle: (request) => {
-          if (
-            request.command.type === "known_acp_agents.status" ||
-            request.command.type === "provider.list_models"
-          ) {
-            return {
-              ok: false,
-              errorCode: "command_failed",
-              errorMessage: "Runtime shutting down",
-            };
-          }
-          throw new Error(`Unexpected RPC command ${request.command.type}`);
-        },
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      upsertProjectExecutionDefaults(harness.deps.db, {
-        projectId: project.id,
-        providerId: "acp-cursor",
-        model: "composer-2.5",
-        reasoningLevel: "medium",
-        permissionMode: "accept-edits",
-        serviceTier: "default",
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-        providerId: "acp-opencode",
-      });
-      seedThreadRuntimeState(harness.deps, {
-        environmentId: environment.id,
-        inputText: "New review comments on the PR",
-        model: "zai-coding-plan/glm-5.2",
-        permissionMode: "accept-edits",
-        providerThreadId: "ses_opencode",
-        reasoningLevel: "medium",
-        threadId: thread.id,
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/composer-bootstrap`,
-      );
-
-      expect(response.status).toBe(200);
-      const bootstrap = threadComposerBootstrapResponseSchema.parse(
-        await readJson(response),
-      );
-      expect(bootstrap.defaultExecutionOptions).toMatchObject({
-        model: "zai-coding-plan/glm-5.2",
-        permissionMode: "accept-edits",
-        reasoningLevel: "medium",
-      });
-      const { executionOptions } = bootstrap;
-      if (executionOptions === null) {
-        throw new Error(
-          "expected degraded executionOptions for an environment-backed ACP thread",
-        );
-      }
-      expect(
-        executionOptions.providers.some(
-          (provider) => provider.id === "acp-opencode",
-        ),
-      ).toBe(true);
-      expect(executionOptions.modelLoadError).toMatchObject({
-        providerId: "acp-opencode",
-      });
-      expect(
-        providerResponder.requests.map((request) => request.command.type),
-      ).toEqual(["known_acp_agents.status", "provider.list_models"]);
-      expect(providerResponder.requests[1]?.command).toMatchObject({
-        type: "provider.list_models",
-        providerId: "acp-opencode",
-      });
-    });
-  });
-
-  it("returns null composer defaults for stale project execution defaults", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-composer-stale-project-defaults",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      upsertProjectExecutionDefaults(harness.deps.db, {
-        projectId: project.id,
-        providerId: "codex",
-        model: "gpt-5.5",
-        // ultracode is Claude-only; stale for Codex project defaults.
-        reasoningLevel: "ultracode",
-        permissionMode: "full",
-        serviceTier: "default",
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: null,
-        providerId: "codex",
-      });
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/composer-bootstrap`,
-      );
-
-      expect(response.status).toBe(200);
-      const bootstrap = threadComposerBootstrapResponseSchema.parse(
-        await readJson(response),
-      );
-      expect(bootstrap.defaultExecutionOptions).toBeNull();
-      expect(bootstrap.executionOptions).toBeNull();
-    });
-  });
-
-  it("returns null composer execution options for archived threads on offline hosts", async () => {
-    await withTestHarness(async (harness) => {
-      const host = seedHost(harness.deps, {
-        id: "host-composer-archived-offline",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-      });
-      const environment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: project.id,
-      });
-      const thread = seedThread(harness.deps, {
-        projectId: project.id,
-        environmentId: environment.id,
-      });
-      archiveThread(harness.db, harness.hub, thread.id);
-
-      const response = await harness.app.request(
-        `/api/v1/threads/${thread.id}/composer-bootstrap`,
-      );
-
-      expect(response.status).toBe(200);
-      const bootstrap = threadComposerBootstrapResponseSchema.parse(
-        await readJson(response),
-      );
-      expect(bootstrap.executionOptions).toBeNull();
-    });
-  });
-
   it("inherits thread default execution options when queued message overrides are omitted", async () => {
     await withTestHarness(async (harness) => {
       const { environment, thread } = seedThreadFixture(harness);
@@ -4104,6 +4087,37 @@ describe("public thread data routes", () => {
         ],
         truncated: false,
         storageRootPath: threadStoragePath,
+      });
+    });
+  });
+
+  it("resolves thread storage location without a host filesystem command", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/project-source",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/project-source",
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/thread-storage/location`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(
+        threadStorageLocationResponseSchema.parse(await readJson(response)),
+      ).toEqual({
+        hostId: host.id,
+        storageRootPath: `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`,
       });
     });
   });
@@ -4842,6 +4856,69 @@ describe("public thread data routes", () => {
         code: "file_too_large",
         message: "File exceeds limit",
         retryable: false,
+      });
+    });
+  });
+
+  it("filters and reverse-pages thread events", async () => {
+    await withTestHarness(async (harness) => {
+      const { environment, thread } = seedThreadFixture(harness);
+
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 1,
+        type: "system/error",
+        scope: threadScope(),
+        data: { message: "first" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-1"),
+        sequence: 2,
+        type: "item/completed",
+        data: { item: { type: "agentMessage", id: "msg-1", text: "Reply" } },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 3,
+        type: "system/error",
+        scope: threadScope(),
+        data: { message: "second" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        sequence: 4,
+        type: "system/manager/user_message",
+        scope: threadScope(),
+        data: { text: "excluded" },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=system%2Ferror%2Citem%2Fcompleted&order=desc&beforeSeq=4&limit=2`,
+      );
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject([
+        { seq: 3, type: "system/error" },
+        { seq: 2, type: "item/completed" },
+      ]);
+    });
+  });
+
+  it("rejects invalid thread event list filters", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/events?types=not-a-real-event`,
+      );
+      expect(response.status).toBe(400);
+      await expect(readJson(response)).resolves.toMatchObject({
+        code: "invalid_request",
+        message: "Invalid thread event types",
       });
     });
   });

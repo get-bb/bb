@@ -29,7 +29,7 @@ export interface HostDaemonEntrypointConfig {
   BB_HOST_TYPE?: HostType;
 }
 
-export type LoadHostDaemonEntrypointConfigArgs = EnvLoaderArgs;
+type LoadHostDaemonEntrypointConfigArgs = EnvLoaderArgs;
 
 export function loadHostDaemonEntrypointConfig(
   args: LoadHostDaemonEntrypointConfigArgs = {},

@@ -6,8 +6,21 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { omitNpmScriptPolicyEnv } from "@bb/process-utils";
 
 const run = promisify(execFile);
+
+// Same shim scripts/build-utils.mjs applies to our own node bundles: plugin
+// deps may be CJS and reference require/__dirname/__filename, which do not
+// exist in ESM output.
+export const NODE_ESM_REQUIRE_BANNER = [
+  'import { createRequire as __createRequire } from "node:module";',
+  'import { dirname as __pathDirname } from "node:path";',
+  'import { fileURLToPath as __fileURLToPath } from "node:url";',
+  "const require = __createRequire(import.meta.url);",
+  "var __filename = __fileURLToPath(import.meta.url);",
+  "var __dirname = __pathDirname(__filename);",
+].join("\n");
 
 /**
  * Exact versions bb builds plugin bundles with. Pinned rather than ranged so
@@ -222,7 +235,12 @@ export async function resolvePluginBuildToolchain(
           ([name, version]) => `${name}@${version}`,
         ),
       ],
-      { maxBuffer: 1024 * 1024 * 16 },
+      {
+        maxBuffer: 1024 * 1024 * 16,
+        // Script policy is bb's (`--ignore-scripts` above); an inherited
+        // `npm_config_allow_scripts` would make npm refuse the install.
+        env: omitNpmScriptPolicyEnv(process.env),
+      },
     );
     const staged = toolchainFrom(createRequire(join(staging, "noop.js")));
     if (staged === null) {

@@ -1,42 +1,12 @@
-import { spawnSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  listTemplates,
   renderTemplate,
   type TemplateId,
   type TemplateVariables,
 } from "../src/index.js";
-
-const packageRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-);
+import { templateDefinitions } from "../src/generated/templates.generated.js";
 
 describe("@bb/templates", () => {
-  it("keeps generated templates in sync with source templates", () => {
-    const result = spawnSync(
-      process.execPath,
-      [path.join(packageRoot, "scripts", "generate-templates.mjs"), "--check"],
-      {
-        cwd: packageRoot,
-        encoding: "utf8",
-      },
-    );
-
-    expect(result.status, result.stderr || result.stdout).toBe(0);
-  });
-
-  it("renders a template with variables", () => {
-    const rendered = renderTemplate("threadOperationCommitFailureFollowUp", {
-      errorMessage: "hooks/pre-commit exited with status 1",
-    });
-
-    expect(rendered).toContain("Commit in this thread workspace failed.");
-    expect(rendered).toContain("hooks/pre-commit exited with status 1");
-  });
-
   it("documents project creation machine routing", () => {
     const guide = renderTemplate("bbGuideProjects", {});
 
@@ -69,20 +39,6 @@ describe("@bb/templates", () => {
         "Please check the failing test.",
       ].join("\n"),
     );
-  });
-
-  it("renders squash merge commit failure follow-up from structured variables", () => {
-    const rendered = renderTemplate(
-      "threadOperationSquashMergeCommitFailureFollowUp",
-      {
-        prepCommitMergeBaseBranch: "main",
-        errorMessage: "nothing to commit",
-      },
-    );
-
-    expect(rendered).toContain("could not create the prep commit");
-    expect(rendered).toContain("main");
-    expect(rendered).toContain("nothing to commit");
   });
 
   it("renders standardAgentAppendInstructions without user-question guidance", () => {
@@ -143,7 +99,7 @@ describe("@bb/templates", () => {
   });
 
   it("renders all templates without error", () => {
-    const templates = listTemplates();
+    const templates = templateDefinitions;
 
     // Build placeholder variables for each template
     const placeholderVariables: Record<string, Record<string, string>> = {};

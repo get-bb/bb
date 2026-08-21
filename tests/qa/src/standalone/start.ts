@@ -7,8 +7,8 @@ import {
   buildDaemonRestartCommand,
   buildStandaloneRuntimeEnv,
   cleanupStandaloneOrphans,
+  createHostEnrollKey,
   createProject,
-  createStandaloneHostEnrollKey,
   createTestGitRepo,
   killProcess,
   loadDotEnv,
@@ -92,13 +92,8 @@ async function main() {
       port: serverPort,
     });
     serverProcess = qaServer.process;
-    if (!serverProcess) {
-      throw new Error(
-        "Standalone QA server unexpectedly reused an existing server",
-      );
-    }
 
-    const enrollKey = await createStandaloneHostEnrollKey(serverUrl);
+    const enrollKey = await createHostEnrollKey(serverUrl);
 
     daemonProcess = spawnLoggedProcess({
       command: "node",

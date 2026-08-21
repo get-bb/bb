@@ -1,14 +1,10 @@
+import {
+  buildTerminalWebSocketPath,
+  type BuildTerminalWebSocketPathArgs,
+} from "@bb/client-core";
 import { buildDevWebSocketUrl } from "@/lib/dev-websocket-url";
 
-interface BuildTerminalWebSocketUrlArgs {
-  terminalId: string;
-}
-
-function buildTerminalWebSocketPath({
-  terminalId,
-}: BuildTerminalWebSocketUrlArgs): string {
-  return `/ws/terminals/${encodeURIComponent(terminalId)}`;
-}
+type BuildTerminalWebSocketUrlArgs = BuildTerminalWebSocketPathArgs;
 
 function buildWebSocketUrl(path: string): string {
   const devWebSocketUrl = buildDevWebSocketUrl({ path });

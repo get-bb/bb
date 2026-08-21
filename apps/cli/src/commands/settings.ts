@@ -3,6 +3,7 @@ import {
   appCommandIdSchema,
   appShortcutSchema,
   appSettingsSchema,
+  experimentKeySchema,
   experimentsSchema,
   type AppSettings,
   type AppShortcut,
@@ -53,25 +54,51 @@ function parseShortcut(value: string): AppShortcut {
   });
 }
 
+/**
+ * Command-line values are text, so read each one two ways: as JSON, which
+ * covers booleans, numbers, null, and structured values, and as the raw text a
+ * string setting wants. The setting's own schema picks between them below, so a
+ * string setting can still hold `true` or `null`.
+ */
+function generalSettingValueCandidates(value: string): unknown[] {
+  if (value === "on") return [true, value];
+  if (value === "off") return [false, value];
+  try {
+    return [JSON.parse(value), value];
+  } catch {
+    return [value];
+  }
+}
+
+/**
+ * Keys and value shapes both come from `appSettingsSchema`, so a preference
+ * added to `@bb/domain` is settable here with no change to this command.
+ */
 function updateGeneralSetting(
   settings: AppSettings,
   key: string,
-  value: boolean,
+  value: string,
 ): AppSettings {
-  switch (key) {
-    case "caffeinate":
-    case "showKeyboardHints":
-    case "steerActiveThreadOnEnter":
-    case "showUnhandledProviderEvents":
-    case "codexMemoryEnabled":
-    case "claudeCodeMemoryEnabled":
-    case "codexSubagentsDisabled":
-    case "claudeCodeSubagentsDisabled":
-    case "claudeCodeWorkflowsDisabled":
-      return appSettingsSchema.parse({ ...settings, [key]: value });
-    default:
-      throw new Error(`Unknown general setting '${key}'.`);
+  const settingKey = appSettingsSchema.keyof().safeParse(key);
+  if (!settingKey.success) {
+    throw new Error(
+      `Unknown general setting '${key}'. Known settings: ${appSettingsSchema
+        .keyof()
+        .options.join(", ")}.`,
+    );
   }
+
+  for (const candidate of generalSettingValueCandidates(value)) {
+    const updated = appSettingsSchema.safeParse({
+      ...settings,
+      [settingKey.data]: candidate,
+    });
+    if (updated.success) return updated.data;
+  }
+
+  throw new Error(
+    `Invalid value '${value}' for '${settingKey.data}'. Booleans take true, false, on, or off, null clears a nullable setting, and structured values take JSON.`,
+  );
 }
 
 function updateExperiment(
@@ -80,14 +107,14 @@ function updateExperiment(
   value: string,
 ): Experiments {
   const enabled = parseBoolean(value);
-  switch (key) {
-    case "claudeCodeMockCliTraffic":
-    case "newOnboarding":
-    case "toolsHub":
-      return experimentsSchema.parse({ ...experiments, [key]: enabled });
-    default:
-      throw new Error(`Unknown experiment '${key}'.`);
+  const experimentKey = experimentKeySchema.safeParse(key);
+  if (!experimentKey.success) {
+    throw new Error(`Unknown experiment '${key}'.`);
   }
+  return experimentsSchema.parse({
+    ...experiments,
+    [experimentKey.data]: enabled,
+  });
 }
 
 export function registerSettingsCommands(
@@ -112,45 +139,17 @@ export function registerSettingsCommands(
 
   settings
     .command("general <key> <value>")
-    .description("Set a boolean Settings → General preference")
+    .description("Set a Settings → General preference")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (key: string, value: string, opts: JsonOptions) => {
         const sdk = createCliBbSdk(getUrl());
         const config = await sdk.system.config();
         const result = await sdk.system.updateGeneralSettings(
-          updateGeneralSetting(
-            config.generalSettings,
-            key,
-            parseBoolean(value),
-          ),
+          updateGeneralSetting(config.generalSettings, key, value),
         );
         if (outputJson(opts, result)) return;
         console.log(`${key} updated`);
-      }),
-    );
-
-  settings
-    .command("replay-onboarding")
-    .description("Show the first-run setup guide again on the next app load")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(async (opts: JsonOptions) => {
-        const sdk = createCliBbSdk(getUrl());
-        const config = await sdk.system.config();
-        let experiments = config.experiments;
-        if (!config.experiments.newOnboarding) {
-          experiments = await sdk.system.updateExperiments({
-            ...config.experiments,
-            newOnboarding: true,
-          });
-        }
-        const generalSettings = await sdk.system.updateGeneralSettings({
-          ...config.generalSettings,
-          onboardingCompletedAt: null,
-        });
-        if (outputJson(opts, { experiments, generalSettings })) return;
-        console.log("New onboarding is enabled; onboarding will show again");
       }),
     );
 
@@ -185,7 +184,7 @@ export function registerSettingsCommands(
           updateGeneralSetting(
             config.generalSettings,
             "showKeyboardHints",
-            parseBoolean(value),
+            value,
           ),
         );
         if (outputJson(opts, result)) return;

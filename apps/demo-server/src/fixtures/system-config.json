@@ -1,0 +1,3187 @@
+{
+  "keybindings": [
+    {
+      "command": "thread.new",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "o",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.new",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "n",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.search",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "k",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "settings.open",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": ",",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "sidebar.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "\\",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.previous",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "[",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.previous",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "[",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.next",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "]",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.next",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "]",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.1",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.2",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.3",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.4",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.5",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.6",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.7",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.8",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.9",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "9",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.9",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "9",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.9",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "9",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.1",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.2",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.3",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.4",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.5",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.6",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.7",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.8",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.maximize.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "e",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.close",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "x",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "panel.newTab",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "panel.close",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "w",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "panel.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "j",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "file.quickOpen",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "diff.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "d",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "terminal.open",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "Enter",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "terminal.open",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "t",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "composer.focus",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "c",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleModel",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleModelBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleProvider",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleProviderBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoning",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoningBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleModel",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleModelBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleProvider",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleProviderBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoning",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoningBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "browser.focusLocation",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "l",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "browserFocus"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "browser.reload",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "r",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "browserFocus"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "browser.find",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "f",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "browserFocus"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "workspace.openPreferred",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "o",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "question.select.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.9",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "9",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "window.new",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "n",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    }
+  ],
+  "defaultKeybindings": [
+    {
+      "command": "thread.new",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "o",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.new",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "n",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.search",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "k",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.rename",
+      "desktopOnly": false,
+      "shortcut": null,
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.archive",
+      "desktopOnly": false,
+      "shortcut": null,
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "settings.open",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": ",",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "sidebar.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "\\",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.previous",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "[",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.previous",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "[",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.next",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "]",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.next",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "]",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.1",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.2",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.3",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.4",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.5",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.6",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.7",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.8",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.9",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "9",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "thread.jump.9",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "9",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "thread.jump.9",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "9",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.previous",
+      "desktopOnly": false,
+      "shortcut": null,
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.next",
+      "desktopOnly": false,
+      "shortcut": null,
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.1",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "1",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.2",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "2",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.3",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "3",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.4",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "4",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.5",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "5",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.6",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "6",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.7",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "7",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": false,
+        "meta": false,
+        "control": true,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface", "macPlatform"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.focus.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive", "webSurface"],
+        "none": ["modalOpen", "macPlatform"]
+      }
+    },
+    {
+      "command": "pane.focus.8",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "8",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.maximize.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "e",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "pane.close",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "x",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "splitActive"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "panel.newTab",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "panel.close",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "w",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "panel.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "j",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "file.quickOpen",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "diff.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "d",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen", "editableFocus", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "terminal.open",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "Enter",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "terminal.open",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "t",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "composer.focus",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "c",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.toggle",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleModel",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleModelBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleProvider",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleProviderBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoning",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoningBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "promptAvailable"],
+        "none": ["modalOpen", "terminalFocus", "browserFocus"]
+      }
+    },
+    {
+      "command": "modelPicker.cycleModel",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleModelBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "m",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleProvider",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleProviderBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "p",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoning",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "modelPicker.cycleReasoningBackward",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "t",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": true,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface", "modelPickerOpen"],
+        "none": []
+      }
+    },
+    {
+      "command": "browser.focusLocation",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "l",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "browserFocus"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "browser.reload",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "r",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "browserFocus"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "browser.find",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "f",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "browserFocus"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "workspace.openPreferred",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "o",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    },
+    {
+      "command": "question.select.1",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "1",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.2",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "2",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.3",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "3",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.4",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "4",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.5",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "5",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.6",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "6",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.7",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "7",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.8",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "8",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "question.select.9",
+      "desktopOnly": false,
+      "shortcut": {
+        "key": "9",
+        "mod": false,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": false
+      },
+      "when": {
+        "all": ["mainSurface", "questionOpen"],
+        "none": ["modalOpen", "editableFocus"]
+      }
+    },
+    {
+      "command": "window.new",
+      "desktopOnly": true,
+      "shortcut": {
+        "key": "n",
+        "mod": true,
+        "meta": false,
+        "control": false,
+        "alt": false,
+        "shift": true
+      },
+      "when": {
+        "all": ["mainSurface"],
+        "none": ["modalOpen"]
+      }
+    }
+  ],
+  "keybindingOverrides": [],
+  "customThemes": [],
+  "pluginThemes": [],
+  "hostDaemonPort": null,
+  "localHelperPorts": [],
+  "primaryHostId": "host_demo0000001",
+  "primaryHostPlatform": "linux",
+  "voiceTranscriptionEnabled": true,
+  "dataDir": "/home/demo/.bb"
+}

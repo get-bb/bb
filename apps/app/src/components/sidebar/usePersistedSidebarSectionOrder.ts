@@ -3,7 +3,7 @@ import type { SidebarSectionId } from "./sidebarCollapsedAtoms";
 import {
   normalizeSidebarSectionOrder,
   type LegacySidebarEntityAnchor,
-} from "./sidebarSectionOrder";
+} from "@bb/client-core";
 
 interface UsePersistedSidebarSectionOrderArgs {
   entitySectionIds: readonly SidebarSectionId[];
@@ -15,7 +15,10 @@ interface UsePersistedSidebarSectionOrderArgs {
   storedOrder: readonly string[];
 }
 
-function haveSameOrder(left: readonly string[], right: readonly string[]) {
+export function haveSameOrder(
+  left: readonly string[],
+  right: readonly string[],
+) {
   return (
     left.length === right.length &&
     left.every((sectionId, index) => sectionId === right[index])

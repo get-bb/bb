@@ -1,0 +1,1 @@
+{"ts":1787277411315,"run":1787275055276,"seq":1358,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"You are a fork of an earlier thread. What word did the assistant reply with first in this conversation? Reply with that word only.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}

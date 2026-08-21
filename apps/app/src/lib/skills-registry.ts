@@ -1,16 +1,19 @@
+import { REGISTRY_ENTRY_BATCH_LIMIT } from "@bb/server-contract";
 import type { SkillSummary } from "@bb/server-contract";
 import type {
   RegistryPagination,
+  RegistryRanking,
   RegistrySkill,
   RegistrySkillDetail,
   RegistrySkillFile,
   RegistrySkillsPage,
 } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
-import { BbHttpError, sdk } from "@/lib/sdk";
+import { sdk } from "@/lib/sdk";
 
 export type {
   RegistryPagination,
+  RegistryRanking,
   RegistrySkill,
   RegistrySkillDetail,
   RegistrySkillFile,
@@ -18,10 +21,6 @@ export type {
 };
 
 export const REGISTRY_PAGE_SIZE = RESOURCE_GRID_PAGE_SIZE;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 export async function fetchRegistrySkills(args: {
   query: string;
@@ -56,38 +55,33 @@ export async function fetchRegistrySkillEntry(
   return sdk.skills.registry.get({ registrySkillId: id, signal });
 }
 
+/**
+ * Resolves many registry entries in one request per {@link
+ * REGISTRY_ENTRY_BATCH_LIMIT}-sized chunk instead of one per card. Ids the
+ * server could not resolve are absent from the result; callers treat a missing
+ * id as "unknown".
+ */
+export async function fetchRegistrySkillEntries(
+  ids: readonly string[],
+  signal?: AbortSignal,
+): Promise<RegistrySkill[]> {
+  const chunks: string[][] = [];
+  for (let start = 0; start < ids.length; start += REGISTRY_ENTRY_BATCH_LIMIT) {
+    chunks.push(ids.slice(start, start + REGISTRY_ENTRY_BATCH_LIMIT));
+  }
+  const responses = await Promise.all(
+    chunks.map((chunk) =>
+      sdk.skills.registry.entries({ registrySkillIds: chunk, signal }),
+    ),
+  );
+  return responses.flatMap((response) => response.entries);
+}
+
 export async function fetchRegistryRepositoryStars(
   source: string,
   signal?: AbortSignal,
 ): Promise<number> {
   return (await sdk.skills.registry.repositoryStars({ source, signal })).stars;
-}
-
-export async function installRegistrySkill(args: { skill: RegistrySkill }) {
-  try {
-    return await sdk.skills.registry.install({
-      registrySkillId: args.skill.id,
-    });
-  } catch (error) {
-    if (error instanceof BbHttpError) {
-      throw new Error(
-        isRecord(error.body) && typeof error.body.message === "string"
-          ? error.body.message
-          : "Couldn't save skill",
-      );
-    }
-    if (error instanceof Error && error.name === "ZodError") {
-      throw new Error("Couldn't save skill");
-    }
-    throw error;
-  }
-}
-
-export function normalizeSkillName(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-");
 }
 
 export function resolveInstalledRegistrySkill(

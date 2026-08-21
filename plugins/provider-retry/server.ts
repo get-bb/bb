@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { registerProviderRetryCli } from "./src/cli.js";
 import { providerRetryRpcContract } from "./src/contract.js";
 import {
@@ -59,8 +59,8 @@ export default async function plugin(bb: BbPluginApi) {
   bb.onDispose(() => service.dispose());
 
   bb.rpc.register(providerRetryRpcContract, {
-    providerRetryCancel({ threadId }) {
-      return { cancelled: service.cancel(threadId) };
+    async providerRetryCancel({ threadId }) {
+      return { cancelled: await service.cancel(threadId) };
     },
     providerRetryStatus({ threadId }) {
       return { view: service.status(threadId) };
@@ -68,21 +68,32 @@ export default async function plugin(bb: BbPluginApi) {
   });
   registerProviderRetryCli(bb, service);
 
-  bb.events.on("thread.failed", async ({ thread }) => {
+  async function reconcile(
+    threadId: string,
+    trackedOnly = false,
+  ): Promise<void> {
     try {
-      await service.reconcile(thread.id);
+      await (trackedOnly
+        ? service.reconcileTracked(threadId)
+        : service.reconcile(threadId));
     } catch (error) {
-      logFailure(
-        bb,
-        `Could not inspect provider retry for ${thread.id}`,
-        error,
-      );
+      logFailure(bb, `Could not inspect provider retry for ${threadId}`, error);
     }
+  }
+
+  bb.events.on("thread.failed", async ({ thread }) => {
+    await reconcile(thread.id);
   });
-  bb.events.on("thread.active", ({ thread }) => service.supersede(thread.id));
-  bb.events.on("thread.idle", ({ thread }) => service.supersede(thread.id));
+  bb.events.on("thread.active", async ({ thread }) => {
+    await reconcile(thread.id, true);
+  });
+  bb.events.on("thread.idle", async ({ thread }) => {
+    await reconcile(thread.id, true);
+  });
   bb.events.on("thread.archived", ({ thread }) => service.supersede(thread.id));
-  bb.events.on("thread.deleted", ({ thread }) => service.supersede(thread.id));
+  bb.events.on("thread.deleted", ({ thread }) =>
+    service.deleteThread(thread.id),
+  );
 
   bb.background.service("provider-retry-scheduler", {
     async start(signal) {

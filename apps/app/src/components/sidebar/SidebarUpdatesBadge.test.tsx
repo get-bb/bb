@@ -52,6 +52,34 @@ function providerIssue(
   };
 }
 
+function missingInstallIssue(
+  provider: ProviderCliKey,
+  displayName: string,
+): ProviderCliIssue {
+  return {
+    provider,
+    status: {
+      displayName,
+      executableName: provider,
+      executablePath: null,
+      installed: false,
+      installSource: "notInstalled",
+      currentVersion: null,
+      latestVersion: "1.1.0",
+      minimumSupportedVersion: null,
+      npmPackageName: `@example/${provider}`,
+      npmGlobalPackageVersion: null,
+      installAction: null,
+      needsUpdate: false,
+      versionUnsupported: false,
+    },
+    action: null,
+    title: `${displayName} CLI not installed`,
+    description: `Install ${displayName} so bb can start ${displayName} sessions.`,
+    fingerprint: `${provider}:missing:1.1.0`,
+  };
+}
+
 function host(id: string): Host {
   return {
     id,
@@ -74,6 +102,7 @@ function machine(
     isPrimary: true,
     providerStatus: null,
     statusPending: false,
+    statusFetching: false,
     statusError: false,
     issues: [],
     canRetryDaemonUpdate: false,
@@ -125,7 +154,7 @@ describe("SidebarUpdatesBadge", () => {
   it("shows only the provider chip when bb itself is current", () => {
     renderBadge({
       machines: [
-        machine({ issues: [providerIssue("claudeCode", "Claude Code")] }),
+        machine({ issues: [providerIssue("claude-code", "Claude Code")] }),
       ],
     });
 
@@ -137,18 +166,45 @@ describe("SidebarUpdatesBadge", () => {
     ).toBe("Claude Code update available");
   });
 
+  it("renders no provider chip when a CLI is not installed", () => {
+    renderBadge({
+      machines: [
+        machine({
+          issues: [missingInstallIssue("claude-code", "Claude Code")],
+        }),
+      ],
+    });
+
+    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
+    expect(screen.queryByTestId("sidebar-updates-badge-bb")).toBeNull();
+  });
+
+  it("still shows the bb chip when the only provider issue is a missing CLI", () => {
+    renderBadge({
+      appUpdateAvailable: true,
+      machines: [
+        machine({
+          issues: [missingInstallIssue("codex", "Codex")],
+        }),
+      ],
+    });
+
+    expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();
+    expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
+  });
+
   it("renders one mark per provider in a stable order when the same CLI is stale on several machines", () => {
     renderBadge({
       appUpdateAvailable: true,
       machines: [
         machine({
           host: host("host-1"),
-          issues: [providerIssue("claudeCode", "Claude Code")],
+          issues: [providerIssue("claude-code", "Claude Code")],
         }),
         machine({
           host: host("host-2"),
           issues: [
-            providerIssue("claudeCode", "Claude Code"),
+            providerIssue("claude-code", "Claude Code"),
             providerIssue("codex", "Codex"),
           ],
         }),
@@ -156,9 +212,10 @@ describe("SidebarUpdatesBadge", () => {
     });
 
     const providerChip = screen.getByTestId("sidebar-updates-badge-providers");
-    // Codex leads regardless of which machine surfaced the issue first.
+    // The first host-reported provider order is retained while duplicates
+    // from later machines collapse into one mark.
     expect(providerChip.getAttribute("aria-label")).toBe(
-      "Codex and Claude Code updates available",
+      "Claude Code and Codex updates available",
     );
     expect(providerChip.querySelectorAll("svg[viewBox]").length).toBe(3);
     expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();

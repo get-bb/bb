@@ -2,6 +2,7 @@ import { getThread } from "@bb/db";
 import { threadSchema } from "@bb/domain";
 import {
   apiErrorSchema,
+  sidebarBootstrapResponseSchema,
   threadArchiveAllResponseSchema,
   threadChildSummaryResponseSchema,
   threadListResponseSchema,
@@ -150,6 +151,97 @@ describe("public thread parenting routes", () => {
       expect(response.status).toBe(200);
       const updatedThread = threadSchema.parse(await readJson(response));
       expect(updatedThread.parentThreadId).toBe(parentThread.id);
+    });
+  });
+
+  it("creates and reparents a child thread under a parent from another project", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project: parentProject } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Parent Project",
+        path: "/tmp/parent-project",
+      });
+      const { project: childProject } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        name: "Child Project",
+        path: "/tmp/child-project",
+      });
+      const parentThread = seedThread(harness.deps, {
+        projectId: parentProject.id,
+      });
+      const childEnvironment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: childProject.id,
+      });
+
+      const createResponse = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "app",
+          projectId: childProject.id,
+          providerId: "codex",
+          model: "gpt-5",
+          input: [{ type: "text", text: "Work in the other repo" }],
+          environment: {
+            type: "reuse",
+            environmentId: childEnvironment.id,
+          },
+          parentThreadId: parentThread.id,
+        }),
+      });
+      expect(createResponse.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(createResponse));
+      expect(createdThread.parentThreadId).toBe(parentThread.id);
+      expect(createdThread.projectId).toBe(childProject.id);
+
+      const orphanThread = seedThread(harness.deps, {
+        projectId: childProject.id,
+      });
+      const patchResponse = await harness.app.request(
+        `/api/v1/threads/${orphanThread.id}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ parentThreadId: parentThread.id }),
+        },
+      );
+      expect(patchResponse.status).toBe(200);
+      expect(
+        threadSchema.parse(await readJson(patchResponse)).parentThreadId,
+      ).toBe(parentThread.id);
+
+      // Listing by parent alone returns children from every project; the
+      // sidebar bootstrap still files each child under its own project.
+      const listResponse = await harness.app.request(
+        `/api/v1/threads?parentThreadId=${parentThread.id}`,
+      );
+      expect(listResponse.status).toBe(200);
+      const listed = threadListResponseSchema.parse(
+        await readJson(listResponse),
+      );
+      expect(listed.map((thread) => thread.id).sort()).toEqual(
+        [createdThread.id, orphanThread.id].sort(),
+      );
+
+      const bootstrapResponse = await harness.app.request(
+        "/api/v1/sidebar-bootstrap",
+      );
+      expect(bootstrapResponse.status).toBe(200);
+      const bootstrap = sidebarBootstrapResponseSchema.parse(
+        await readJson(bootstrapResponse),
+      );
+      const childProjectThreads = bootstrap.projects.find(
+        (project) => project.id === childProject.id,
+      )?.threads;
+      expect(childProjectThreads).toContainEqual(
+        expect.objectContaining({
+          id: createdThread.id,
+          parentThreadId: parentThread.id,
+          projectId: childProject.id,
+        }),
+      );
     });
   });
 

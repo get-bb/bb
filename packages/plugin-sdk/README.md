@@ -1,4 +1,4 @@
-# @bb/plugin-sdk
+# @get-bb/plugin-sdk
 
 The typed facade BB plugin authors compile against. The root preserves the
 complete `BbPluginApi` and `BbSdk` contract; `./app` is the frontend runtime
@@ -21,6 +21,50 @@ Any mounted plugin component can use
 same plugin's registered thread-panel actions; it returns false when the
 current surface has no thread side panel.
 
+Use `experimental_UrlLink` for a real anchor that applies BB's current
+in-app/external-browser preference on ordinary HTTP(S) activation, or
+`useBbNavigate().experimental_openUrl(url)` for a button or menu. Internal app
+routes, modifier clicks, explicit anchor targets, and unsupported schemes stay
+browser-owned. A `_blank` or named target preserves supplied `rel` tokens but
+adds `noopener noreferrer` unless `rel` explicitly contains `opener`, so a
+newly opened page cannot control BB by accident. The frontend harness records
+both forms in `navigateCalls` and accepts an `openUrl` behavior option.
+
+Use `experimental_FileLink` for an explicit live workspace, host, or
+thread-storage file. Ordinary activation opens the shared BB preview and its
+context menu exposes built-in/plugin viewers, preferred external opening, and
+copy actions. Valid targets expose an encoded, scheme-safe anchor href so
+modifier clicks, downloads, and copied links cannot reinterpret a file name as
+an external URL scheme. Malformed runtime targets—including traversal paths
+and ill-formed Unicode—have no active href and cannot record a preview in the
+frontend harness. Buttons and menus can call
+`experimental_openFilePreview({ target, location })` or
+`experimental_openFileExternally({ target, location })`; both return whether
+the current host accepted the intent. Targets never infer an ambient workspace.
+The frontend harness records both methods and accepts `openFilePreview` and
+`openFileExternally` behavior options.
+
+A nav panel's `experimental_fixedTabs` entries must include the containing nav
+panel's `id` as `panelId`; each entry is also a stable reference to that
+plugin's own tab. Give a targeted tab an `experimental_target.validate` type guard, call
+`experimental_useAppPanel().openFixedTab({ surface: { kind:
+"current" }, tab, target })`, and read the in-memory state inside the tab with
+`experimental_useFixedTabTarget(tab)`. The target survives tab, panel, and
+route remounts for the current app session; call `clear()` when the tab returns
+to its untargeted state. The host validates JSON before the owner's type guard,
+persists only selection, and returns false for an unavailable tab or invalid
+target. The frontend harness records accepted requests in
+`experimental_fixedTabOpenCalls`, accepts an `experimental_openFixedTab`
+behavior, and can seed `experimental_fixedTabTarget` state.
+
+Every panel-open entry point reports the same way: `openThreadPanel` and the
+`openPanel` handed to `threadPanelAction`, `experimental_newThreadPanelAction`,
+and `messageAction` `run` callbacks all return `boolean` — true when the host
+accepted the open, false when it declined (non-JSON `params`, an unavailable
+action id, or a surface with no side panel). A decline is a return value, never
+a thrown error, so a plugin registering several kinds of action can share one
+open routine and branch on the result.
+
 See the
 [`composer-customization` reference plugin](../../examples/plugins/composer-customization/README.md)
 for every region in one small app. The deprecated pre-1.0
@@ -37,28 +81,33 @@ reload, disable, removal, failed replacement, and app-window teardown. The old
 generation is disposed before candidate mounts, so generations never overlap.
 Content scripts are trusted same-origin page code, not a sandbox.
 
-Static styles should stay in the normal imported `app.css`; scripts may own
-dynamic DOM/style nodes when their disposer removes them. See the
+Static styles should stay in the normal imported `app.css`. The host keeps
+that stylesheet active while the plugin has rendered slot, panel-header, or
+portal UI, and for the full lifetime of any active content-script generation;
+it is not an app-wide stylesheet hook. Use manifest `bb.themes` entries for
+app-wide selectable palette CSS. Styling or decorating existing app-shell DOM
+belongs in a content script, and scripts may own dynamic DOM/style nodes only
+when their disposer removes them. See the
 [`content-script` reference plugin](../../examples/plugins/content-script/README.md)
 for a cleanup-safe editor enhancement.
 
 ## External plugin tests
 
 The packed package includes executable JavaScript and portable declarations
-for `@bb/plugin-sdk/testing` and `@bb/plugin-sdk/testing/app`; neither subpath
+for `@get-bb/plugin-sdk/testing` and `@get-bb/plugin-sdk/testing/app`; neither subpath
 imports BB workspace packages or source TypeScript at runtime. Install the SDK
 with the test stack used by your plugin (the peer dependencies are optional so
 headless plugins do not install a browser harness):
 
 ```sh
-npm install --save-dev @bb/plugin-sdk vitest better-sqlite3 zod
+npm install --save-dev @get-bb/plugin-sdk vitest better-sqlite3 zod cron-parser hono
 npm install --save-dev react react-dom @testing-library/react jsdom # frontend tests
 ```
 
 Backend example:
 
 ```ts
-import { createFakePluginHost } from "@bb/plugin-sdk/testing";
+import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import plugin from "./server.js";
 
 const host = createFakePluginHost({ pluginId: "notes" });
@@ -84,7 +133,7 @@ import {
   loadPluginApp,
   mountPluginContentScripts,
   renderSlot,
-} from "@bb/plugin-sdk/testing/app";
+} from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
 const scripts = await mountPluginContentScripts(app, { pluginId: "notes" });
@@ -133,9 +182,13 @@ multi-plugin arbitration; use a live BB test for those boundaries.
 ## Declaration surface
 
 The complete root declaration flattens the unpublished BB workspace contracts.
-The testing declarations reuse that public `@bb/plugin-sdk` root instead of
+The testing declarations reuse that public `@get-bb/plugin-sdk` root instead of
 embedding a second copy, and no declaration depends on unpublished `@bb/*`
 packages. Genuine npm types (`hono`, `better-sqlite3`, `zod`, React, and Testing
-Library) remain peer imports. Scaffolded plugins still vendor the root/app
-declarations in `types/`; installing this package is needed only when their
-tests import the testing subpaths.
+Library) remain peer imports. Scaffolded plugins depend on this package —
+`bb plugin new` pins it exactly in `devDependencies` — and read the root/app
+declarations straight from `node_modules/@get-bb/plugin-sdk/bundled-types/`,
+the same files the testing subpaths reuse. Plugins scaffolded before that
+switch still vendor a copy of the root/app declarations in `types/` and map
+`@get-bb/plugin-sdk` onto them through their `tsconfig.json`; `bb plugin
+types` keeps those refreshed until they migrate.

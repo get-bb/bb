@@ -14,7 +14,7 @@ const PREFERRED_TEST_MODELS_BY_PROVIDER: Record<string, readonly string[]> = {
   ],
 };
 
-export interface ResolvePreferredTestModelArgs {
+interface ResolvePreferredTestModelArgs {
   models: AvailableModel[];
   providerId: string;
 }

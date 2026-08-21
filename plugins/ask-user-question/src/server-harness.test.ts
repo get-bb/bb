@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createFakePluginHost,
   type FakePluginHost,
-} from "@bb/plugin-sdk/testing";
-import type { PluginAgentConfigurationContext } from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk/testing";
+import type { PluginAgentConfigurationContext } from "@get-bb/plugin-sdk";
 import plugin, { RENDERER_ID, TOOL_NAME } from "./server.js";
 import { TOOL_INPUT_JSON_SCHEMA } from "./tool-definition.js";
 import type { InteractionPayload, ToolResult } from "./contracts.js";
@@ -16,6 +16,7 @@ function createHost(): FakePluginHost {
 
 function configurationContext(
   providerId: string,
+  supportsNativeUserQuestion = false,
 ): PluginAgentConfigurationContext {
   return {
     thread: {
@@ -38,7 +39,11 @@ function configurationContext(
       branchName: null,
     },
     host: { id: "host-test", name: "local" },
-    provider: { id: providerId, model: "test-model" },
+    provider: {
+      id: providerId,
+      model: "test-model",
+      capabilities: { supportsNativeUserQuestion },
+    },
     origin: { kind: null, pluginId: null },
   };
 }
@@ -69,13 +74,18 @@ async function resultText(
 }
 
 describe("provider gating", () => {
-  it("withholds the tool from claude-code, which has it natively", async () => {
-    const host = createHost();
-    const resolved = await host.harness.resolveAgentConfiguration(
-      configurationContext("claude-code"),
-    );
-    expect(resolved.tools).toEqual([]);
-  });
+  // Gated on the provider's declared capability, not on its id: a plugin
+  // provider that ships the tool natively is withheld too.
+  it.each(["claude-code", "some-plugin-provider"])(
+    "withholds the tool from %s, which declares it natively",
+    async (providerId) => {
+      const host = createHost();
+      const resolved = await host.harness.resolveAgentConfiguration(
+        configurationContext(providerId, true),
+      );
+      expect(resolved.tools).toEqual([]);
+    },
+  );
 
   it.each(["codex", "pi", "acp-cursor"])(
     "registers the tool for %s with Claude's exact advertised schema",

@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { promptTextInput } from "./test/prompt-input.js";
+import { resolveIntegrationBridgeLaunch } from "./test/integration-provider-bridges.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -17,7 +18,6 @@ import {
   type PendingInteractionApprovalSubject,
   type PendingInteractionCreate,
 } from "@bb/domain";
-import { listAvailableProviderInfos } from "./provider-registry.js";
 import {
   cleanup,
   createApprovalResolution,
@@ -28,7 +28,6 @@ import {
   getAgentText,
   getStreamedText,
   getThreadText,
-  hasDeniedCommandExecution,
   newThreadId,
   resolveRuntimeOptions,
   waitForInteractiveRequestBeforeTurnCompletion,
@@ -505,21 +504,19 @@ describe("interactive request scenarios", () => {
   );
 
   it.concurrent(
-    "routes Codex readonly workspace writes through onInteractiveRequest when escalation is ask",
+    "allows Codex automatic review to approve workspace writes without user interaction",
     async () => {
-      const ctx = createTestRuntime("codex", {
-        onInteractiveRequest: createApprovalResolution,
-      });
-      const fileName = createTempFileName("codex-readonly-write");
+      const ctx = createTestRuntime("codex");
+      const fileName = createTempFileName("codex-auto-write");
       const filePath = join(ctx.tmpDir, fileName);
-      const token = createToken("CODEX_READONLY_APPROVED");
+      const token = createToken("CODEX_AUTO_APPROVED");
 
       try {
         const threadId = newThreadId();
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "auto-ask",
+          preset: "auto-deny",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -528,7 +525,7 @@ describe("interactive request scenarios", () => {
           providerId: "codex",
           options,
           instructions:
-            "When the user asks you to run an exact shell command, run that shell command exactly once. If approval is needed, request approval; it will be approved. Then report DONE.",
+            "When the user asks you to run an exact shell command, run that shell command exactly once. Then report DONE.",
         });
 
         await ctx.runtime.runTurn({
@@ -539,26 +536,19 @@ describe("interactive request scenarios", () => {
             promptTextInput({
               text:
                 `Run this exact shell command: printf '${token}' > ${fileName}. ` +
-                "If approval is needed, request approval. After the command finishes, reply with exactly DONE.",
+                "After the command finishes, reply with exactly DONE.",
             }),
           ],
         });
 
-        await waitForInteractiveRequestBeforeTurnCompletion({
-          ctx,
-          threadId,
-          count: 1,
-          timeoutMs: 45_000,
-          label: "Codex readonly write approval",
-        });
         await waitForThreadTurnCompleted({
           ctx,
           threadId,
           timeoutMs: 45_000,
-          label: "Codex readonly ask turn/completed",
+          label: "Codex automatic review turn/completed",
         });
 
-        expectWriteApprovalRequest(ctx.interactiveRequests);
+        expect(ctx.interactiveRequests).toHaveLength(0);
         expect(readFileSync(filePath, "utf8")).toBe(token);
       } finally {
         await ctx.runtime.shutdown();
@@ -569,13 +559,16 @@ describe("interactive request scenarios", () => {
   );
 
   it.concurrent(
-    "routes Codex readonly file edits through semantic file-change approvals",
+    "routes Codex outside-workspace file edits through semantic approvals",
     async () => {
       const ctx = createTestRuntime("codex", {
         onInteractiveRequest: createApprovalResolution,
       });
-      const fileName = createTempFileName("codex-readonly-file-change");
-      const filePath = join(ctx.tmpDir, fileName);
+      const outsideDir = mkdtempSync(
+        join(process.cwd(), ".bb-codex-file-change-"),
+      );
+      const fileName = createTempFileName("codex-outside-file-change");
+      const filePath = join(outsideDir, fileName);
       const token = createToken("CODEX_FILE_CHANGE_APPROVED");
 
       try {
@@ -583,7 +576,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "auto-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -602,7 +595,7 @@ describe("interactive request scenarios", () => {
           input: [
             promptTextInput({
               text:
-                `Create a file named ${fileName} in the current workspace. ` +
+                `Create exactly this file outside the current workspace: ${filePath}. ` +
                 `The file content must be exactly ${token} with no trailing newline. ` +
                 "Do not run shell commands. After the file is written, reply with exactly DONE.",
             }),
@@ -614,55 +607,55 @@ describe("interactive request scenarios", () => {
           threadId,
           count: 1,
           timeoutMs: 45_000,
-          label: "Codex readonly file-change approval",
+          label: "Codex outside-workspace file-change approval",
         });
         await waitForThreadTurnCompleted({
           ctx,
           threadId,
           timeoutMs: 45_000,
-          label: "Codex readonly file-change turn/completed",
+          label: "Codex outside-workspace file-change turn/completed",
         });
 
-        const fileChangeApproval = ctx.interactiveRequests.find(
+        const editApproval = ctx.interactiveRequests.find(
           (request) =>
-            hasApprovalSubjectKind(request, "file_change") &&
+            (hasApprovalSubjectKind(request, "file_change") ||
+              hasApprovalSubjectKind(request, "command")) &&
             hasAvailableApprovalDecision(request, "allow_once"),
         );
         expect(
-          fileChangeApproval,
-          `Expected a Codex file-change approval; got ${JSON.stringify(
+          editApproval,
+          `Expected a Codex edit approval; got ${JSON.stringify(
             ctx.interactiveRequests.map((request) => request.payload),
           )}`,
         ).toBeDefined();
         if (
-          !fileChangeApproval ||
-          !isApprovalPendingInteractionPayload(fileChangeApproval.payload) ||
-          fileChangeApproval.payload.subject.kind !== "file_change"
+          !editApproval ||
+          !isApprovalPendingInteractionPayload(editApproval.payload)
         ) {
-          throw new Error("Expected a semantic file-change approval");
+          throw new Error("Expected a semantic edit approval");
         }
-        expect(fileChangeApproval.payload.subject.kind).toBe("file_change");
-        expect(fileChangeApproval.payload.subject.itemId).toEqual(
-          expect.any(String),
-        );
-        expect(
-          fileChangeApproval.payload.subject.writeScope,
-        ).not.toBeUndefined();
-        expect(
-          fileChangeApproval.payload.subject.sessionGrant,
-        ).not.toBeUndefined();
-        expect(fileChangeApproval.payload.availableDecisions).toContain(
-          "allow_once",
-        );
-        expect(Object.keys(fileChangeApproval.payload.subject).sort()).toEqual([
-          "itemId",
-          "kind",
-          "sessionGrant",
-          "writeScope",
-        ]);
+        const subject = editApproval.payload.subject;
+        expect(subject.itemId).toEqual(expect.any(String));
+        expect(editApproval.payload.availableDecisions).toContain("allow_once");
+        if (subject.kind === "file_change") {
+          expect(subject.writeScope).not.toBeUndefined();
+          expect(subject.sessionGrant).not.toBeUndefined();
+          expect(Object.keys(subject).sort()).toEqual([
+            "itemId",
+            "kind",
+            "sessionGrant",
+            "writeScope",
+          ]);
+        } else if (subject.kind === "command") {
+          expect(subject.command).toEqual(expect.any(String));
+          expect(subject.sessionGrant).toBeNull();
+        } else {
+          throw new Error("Unexpected edit approval kind");
+        }
         expect(readFileSync(filePath, "utf8").trimEnd()).toBe(token);
       } finally {
         await ctx.runtime.shutdown();
+        rmSync(outsideDir, { recursive: true, force: true });
         cleanup(ctx);
       }
     },
@@ -670,7 +663,7 @@ describe("interactive request scenarios", () => {
   );
 
   it.concurrent(
-    "respects user-denied Codex command approvals in readonly ask mode",
+    "respects user-denied Codex outside-workspace command approvals",
     async () => {
       const ctx = createTestRuntime("codex", {
         onInteractiveRequest: async (request) => {
@@ -690,16 +683,19 @@ describe("interactive request scenarios", () => {
           };
         },
       });
-      const fileName = createTempFileName("codex-readonly-user-denied");
-      const filePath = join(ctx.tmpDir, fileName);
-      const token = createToken("CODEX_READONLY_USER_DENIED");
+      const outsideDir = mkdtempSync(
+        join(process.cwd(), ".bb-codex-user-denied-"),
+      );
+      const fileName = createTempFileName("codex-user-denied");
+      const filePath = join(outsideDir, fileName);
+      const token = createToken("CODEX_OUTSIDE_USER_DENIED");
 
       try {
         const threadId = newThreadId();
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "codex",
-          preset: "auto-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -718,7 +714,7 @@ describe("interactive request scenarios", () => {
           input: [
             promptTextInput({
               text:
-                `Run this exact shell command: printf '${token}' > ${fileName}. ` +
+                `Run this exact shell command: printf '${token}' > ${filePath}. ` +
                 "If approval is denied, reply with exactly DENIED.",
             }),
           ],
@@ -729,7 +725,7 @@ describe("interactive request scenarios", () => {
           threadId,
           count: 1,
           timeoutMs: 45_000,
-          label: "Codex user-denied command approval",
+          label: "Codex outside-workspace user-denied command approval",
         });
         await waitForThreadTurnCompleted({
           ctx,
@@ -739,147 +735,23 @@ describe("interactive request scenarios", () => {
         });
 
         expect(
-          ctx.interactiveRequests.some(
-            (request) => hasApprovalSubjectKind(request, "command"),
+          ctx.interactiveRequests.some((request) =>
+            hasApprovalSubjectKind(request, "command"),
           ),
         ).toBe(true);
-        expect(hasDeniedCommandExecution(ctx.events)).toBe(true);
-        expect(existsSync(filePath)).toBe(false);
-      } finally {
-        await ctx.runtime.shutdown();
-        cleanup(ctx);
-      }
-    },
-    75_000,
-  );
-
-  it.concurrent(
-    "blocks Codex readonly workspace writes without interactive requests when escalation is deny",
-    async () => {
-      const ctx = createTestRuntime("codex");
-      const fileName = createTempFileName("codex-readonly-denied");
-      const filePath = join(ctx.tmpDir, fileName);
-      const token = createToken("CODEX_READONLY_DENIED");
-
-      try {
-        const threadId = newThreadId();
-        const options = await resolveRuntimeOptions({
-          ctx,
-          providerId: "codex",
-          preset: "auto-deny",
-        });
-        await ctx.runtime.startThread({
-          environmentId: "env-1",
-          threadId,
-          projectId: "test-project",
-          providerId: "codex",
-          options,
-          instructions:
-            "When the user asks you to run an exact shell command, run that shell command exactly once and then report DONE.",
-        });
-
-        await ctx.runtime.runTurn({
-          clientRequestId: "creq_2222222239",
-          threadId,
-          options,
-          input: [
-            promptTextInput({
-              text:
-                `Run this exact shell command: printf '${token}' > ${fileName}. ` +
-                "If it is denied, say DENIED.",
-            }),
-          ],
-        });
-
-        await waitForThreadTurnCompleted({
-          ctx,
-          threadId,
-          timeoutMs: 45_000,
-          label: "Codex readonly deny turn/completed",
-        });
-
-        expect(ctx.interactiveRequests).toHaveLength(0);
-        expect(existsSync(filePath)).toBe(false);
-      } finally {
-        await ctx.runtime.shutdown();
-        cleanup(ctx);
-      }
-    },
-    75_000,
-  );
-
-  it.concurrent(
-    "routes Codex readonly network requests through semantic approvals",
-    async () => {
-      const ctx = createTestRuntime("codex", {
-        onInteractiveRequest: createApprovalResolution,
-      });
-
-      try {
-        const threadId = newThreadId();
-        const options = await resolveRuntimeOptions({
-          ctx,
-          providerId: "codex",
-          preset: "auto-ask",
-        });
-        await ctx.runtime.startThread({
-          environmentId: "env-1",
-          threadId,
-          projectId: "test-project",
-          providerId: "codex",
-          options,
-          instructions:
-            "When the user asks you to run an exact shell command, run that shell command exactly once. If approval is needed, request approval; it will be approved. Then report DONE.",
-        });
-
-        await ctx.runtime.runTurn({
-          clientRequestId: "creq_222222223a",
-          threadId,
-          options,
-          input: [
-            promptTextInput({
-              text:
-                "Run this exact shell command: curl -L --max-time 10 https://example.com >/dev/null. " +
-                "If approval is needed, request approval. After the command finishes, reply with exactly DONE.",
-            }),
-          ],
-        });
-
-        await waitForInteractiveRequestBeforeTurnCompletion({
-          ctx,
-          threadId,
-          count: 1,
-          timeoutMs: 45_000,
-          label: "Codex readonly network approval",
-        });
-        await waitForThreadTurnCompleted({
-          ctx,
-          threadId,
-          timeoutMs: 45_000,
-          label: "Codex readonly network turn/completed",
-        });
-
-        const commandApproval = ctx.interactiveRequests.find(
-          (request) =>
-            hasApprovalSubjectKind(request, "command") &&
-            hasAvailableApprovalDecision(request, "allow_once"),
-        );
         expect(
-          commandApproval,
-          `Expected a Codex command approval for network access; got ${JSON.stringify(
-            ctx.interactiveRequests.map((request) => request.payload),
-          )}`,
-        ).toBeDefined();
-        if (
-          !commandApproval ||
-          !isApprovalPendingInteractionPayload(commandApproval.payload) ||
-          commandApproval.payload.subject.kind !== "command"
-        ) {
-          throw new Error("Expected a semantic command approval");
-        }
-        expect(commandApproval.payload.subject.sessionGrant).toBeNull();
+          ctx.events.filter(
+            (event) =>
+              event.threadId === threadId &&
+              event.type === "item/completed" &&
+              event.item.type === "commandExecution" &&
+              event.item.approvalStatus === "denied",
+          ),
+        ).toHaveLength(1);
+        expect(existsSync(filePath)).toBe(false);
       } finally {
         await ctx.runtime.shutdown();
+        rmSync(outsideDir, { recursive: true, force: true });
         cleanup(ctx);
       }
     },
@@ -887,13 +759,16 @@ describe("interactive request scenarios", () => {
   );
 
   it.concurrent(
-    "routes Claude readonly Bash mutations through onInteractiveRequest when escalation is ask",
+    "routes Claude outside-workspace Bash mutations through user approval",
     async () => {
       const ctx = createTestRuntime("claude-code", {
         onInteractiveRequest: createApprovalResolution,
       });
+      const outsideDir = mkdtempSync(
+        join(process.cwd(), ".bb-claude-bash-"),
+      );
       const fileName = "note.txt";
-      const filePath = join(ctx.tmpDir, fileName);
+      const filePath = join(outsideDir, fileName);
       const token = "sample text";
 
       try {
@@ -901,7 +776,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "auto-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -920,7 +795,7 @@ describe("interactive request scenarios", () => {
           input: [
             promptTextInput({
               text:
-                `Use Bash to run exactly: printf '${token}' > ${fileName}. ` +
+                `Use Bash to run exactly: printf '${token}' > ${filePath}. ` +
                 "After the command finishes, reply with exactly DONE.",
             }),
           ],
@@ -931,13 +806,13 @@ describe("interactive request scenarios", () => {
           threadId,
           count: 1,
           timeoutMs: 45_000,
-          label: "Claude readonly permission request",
+          label: "Claude outside-workspace Bash permission request",
         });
         await waitForThreadTurnCompleted({
           ctx,
           threadId,
           timeoutMs: 45_000,
-          label: "Claude readonly ask turn/completed",
+          label: "Claude outside-workspace Bash turn/completed",
         });
 
         const commandApproval = ctx.interactiveRequests.find(
@@ -962,6 +837,7 @@ describe("interactive request scenarios", () => {
         expect(readFileSync(filePath, "utf8")).toBe(token);
       } finally {
         await ctx.runtime.shutdown();
+        rmSync(outsideDir, { recursive: true, force: true });
         cleanup(ctx);
       }
     },
@@ -969,21 +845,24 @@ describe("interactive request scenarios", () => {
   );
 
   it.concurrent(
-    "routes Claude readonly Write tool mutations through onInteractiveRequest when escalation is ask",
+    "routes Claude outside-workspace Write mutations through user approval",
     async () => {
       const ctx = createTestRuntime("claude-code", {
         onInteractiveRequest: createApprovalResolution,
       });
-      const fileName = createTempFileName("claude-readonly-write-tool");
-      const filePath = join(ctx.tmpDir, fileName);
-      const token = createToken("CLAUDE_READONLY_WRITE_TOOL_APPROVED");
+      const outsideDir = mkdtempSync(
+        join(process.cwd(), ".bb-claude-write-"),
+      );
+      const fileName = createTempFileName("claude-write-tool");
+      const filePath = join(outsideDir, fileName);
+      const token = createToken("CLAUDE_OUTSIDE_WRITE_TOOL_APPROVED");
 
       try {
         const threadId = newThreadId();
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "auto-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -1014,13 +893,13 @@ describe("interactive request scenarios", () => {
           threadId,
           count: 1,
           timeoutMs: 45_000,
-          label: "Claude readonly Write permission request",
+          label: "Claude outside-workspace Write permission request",
         });
         await waitForThreadTurnCompleted({
           ctx,
           threadId,
           timeoutMs: 45_000,
-          label: "Claude readonly Write ask turn/completed",
+          label: "Claude outside-workspace Write turn/completed",
         });
 
         const fileChangeApproval = ctx.interactiveRequests.find(
@@ -1039,11 +918,15 @@ describe("interactive request scenarios", () => {
         }
         expect(fileChangeApproval.payload.subject.sessionGrant).toEqual({
           network: null,
-          fileSystem: null,
+          fileSystem: {
+            read: [],
+            write: expect.arrayContaining([outsideDir]),
+          },
         });
         expect(readFileSync(filePath, "utf8")).toBe(token);
       } finally {
         await ctx.runtime.shutdown();
+        rmSync(outsideDir, { recursive: true, force: true });
         cleanup(ctx);
       }
     },
@@ -1063,7 +946,7 @@ describe("interactive request scenarios", () => {
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "auto-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -1104,22 +987,18 @@ describe("interactive request scenarios", () => {
 
         const firstRequestCount = ctx.interactiveRequests.length;
         expect(
-          ctx.interactiveRequests.some(
-            (request) => {
-              if (
-                !isApprovalPendingInteractionPayload(request.payload) ||
-                request.payload.subject.kind !== "permission_grant"
-              ) {
-                return false;
-              }
-              return (
-                request.payload.subject.toolName === "WebFetch" &&
-                request.payload.availableDecisions.includes(
-                  "allow_for_session",
-                )
-              );
-            },
-          ),
+          ctx.interactiveRequests.some((request) => {
+            if (
+              !isApprovalPendingInteractionPayload(request.payload) ||
+              request.payload.subject.kind !== "permission_grant"
+            ) {
+              return false;
+            }
+            return (
+              request.payload.subject.toolName === "WebFetch" &&
+              request.payload.availableDecisions.includes("allow_for_session")
+            );
+          }),
           `Expected a session-capable WebFetch permission approval; got ${JSON.stringify(
             ctx.interactiveRequests.map((request) => request.payload),
           )}`,
@@ -1161,7 +1040,7 @@ describe("interactive request scenarios", () => {
   );
 
   it.concurrent(
-    "respects user-denied Claude permission requests in readonly ask mode",
+    "respects user-denied Claude outside-workspace Write approvals",
     async () => {
       const ctx = createTestRuntime("claude-code", {
         onInteractiveRequest: async (request) => {
@@ -1170,16 +1049,19 @@ describe("interactive request scenarios", () => {
           };
         },
       });
-      const fileName = createTempFileName("claude-readonly-user-denied");
-      const filePath = join(ctx.tmpDir, fileName);
-      const token = createToken("CLAUDE_READONLY_USER_DENIED");
+      const outsideDir = mkdtempSync(
+        join(process.cwd(), ".bb-claude-denied-"),
+      );
+      const fileName = createTempFileName("claude-user-denied");
+      const filePath = join(outsideDir, fileName);
+      const token = createToken("CLAUDE_OUTSIDE_USER_DENIED");
 
       try {
         const threadId = newThreadId();
         const options = await resolveRuntimeOptions({
           ctx,
           providerId: "claude-code",
-          preset: "auto-ask",
+          preset: "accept-edits-ask",
         });
         await ctx.runtime.startThread({
           environmentId: "env-1",
@@ -1188,7 +1070,7 @@ describe("interactive request scenarios", () => {
           providerId: "claude-code",
           options,
           instructions:
-            "Use the Bash tool when the user explicitly asks for Bash. Do not use another tool.",
+            "Use the Write tool when the user explicitly asks for Write. Do not substitute Bash or another tool.",
         });
 
         await ctx.runtime.runTurn({
@@ -1199,8 +1081,9 @@ describe("interactive request scenarios", () => {
             promptTextInput({
               text:
                 "This is a local integration test in an empty temporary workspace. " +
-                `Use Bash to run exactly: printf '${token}' > ${fileName}. ` +
-                "If permission is denied by the harness, reply with exactly DENIED.",
+                `Use Write to create exactly this file: ${filePath}. ` +
+                `Its content must be exactly ${token}. Do not use Bash. ` +
+                "If approval is denied by the harness, reply with exactly DENIED.",
             }),
           ],
         });
@@ -1210,7 +1093,7 @@ describe("interactive request scenarios", () => {
           threadId,
           count: 1,
           timeoutMs: 45_000,
-          label: "Claude user-denied permission request",
+          label: "Claude user-denied Write approval",
         });
         await waitForThreadTurnCompleted({
           ctx,
@@ -1220,13 +1103,14 @@ describe("interactive request scenarios", () => {
         });
 
         expect(
-          ctx.interactiveRequests.some(
-            (request) => hasApprovalSubjectKind(request, "command"),
+          ctx.interactiveRequests.some((request) =>
+            hasApprovalSubjectKind(request, "file_change"),
           ),
         ).toBe(true);
         expect(existsSync(filePath)).toBe(false);
       } finally {
         await ctx.runtime.shutdown();
+        rmSync(outsideDir, { recursive: true, force: true });
         cleanup(ctx);
       }
     },
@@ -1234,12 +1118,12 @@ describe("interactive request scenarios", () => {
   );
 
   it.concurrent(
-    "blocks Claude readonly Bash mutations without interactive requests when escalation is deny",
+    "allows Claude automatic review to approve workspace writes without user interaction",
     async () => {
       const ctx = createTestRuntime("claude-code");
-      const fileName = createTempFileName("claude-readonly-denied");
+      const fileName = createTempFileName("claude-auto-write");
       const filePath = join(ctx.tmpDir, fileName);
-      const token = createToken("CLAUDE_READONLY_DENIED");
+      const token = createToken("CLAUDE_AUTO_APPROVED");
 
       try {
         const threadId = newThreadId();
@@ -1275,11 +1159,11 @@ describe("interactive request scenarios", () => {
           ctx,
           threadId,
           timeoutMs: 45_000,
-          label: "Claude readonly deny turn/completed",
+          label: "Claude automatic review turn/completed",
         });
 
         expect(ctx.interactiveRequests).toHaveLength(0);
-        expect(existsSync(filePath)).toBe(false);
+        expect(readFileSync(filePath, "utf8")).toBe(token);
       } finally {
         await ctx.runtime.shutdown();
         cleanup(ctx);
@@ -1288,11 +1172,12 @@ describe("interactive request scenarios", () => {
     75_000,
   );
 
+  // Pi's permission ladder now reaches the daemon on the wire, built in global
+  // setup from the plugin's own declaration — so this pins the declaration, not
+  // a second copy of it inside the runtime.
   it.concurrent("keeps Pi limited to full permission mode", () => {
-    const piProvider = listAvailableProviderInfos().find(
-      (provider) => provider.id === "pi",
-    );
-
-    expect(piProvider?.capabilities.supportedPermissionModes).toEqual(["full"]);
+    expect(
+      resolveIntegrationBridgeLaunch("pi").capabilities.permissionModes,
+    ).toEqual(["full"]);
   });
 });

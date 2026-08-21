@@ -2,7 +2,25 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { getStoredFaviconColor, getStoredThemeId } from "@bb/db";
-import { appThemeSchema, formatPluginThemeId } from "@bb/domain";
+import {
+  appThemeSchema,
+  builtInPaletteCodeThemes,
+  defaultAppTheme,
+  formatPluginThemeId,
+  resolveCodeTheme,
+} from "@bb/domain";
+
+function appearanceForPalette(
+  themeId: keyof typeof builtInPaletteCodeThemes,
+  extras: Partial<typeof defaultAppTheme> = {},
+) {
+  return {
+    ...defaultAppTheme,
+    themeId,
+    resolvedCodeTheme: resolveCodeTheme(null, themeId),
+    ...extras,
+  };
+}
 import {
   themeCatalogResponseSchema,
   systemConfigResponseSchema,
@@ -27,11 +45,7 @@ describe("appearance settings", () => {
       const response = await harness.app.request("/api/v1/system/config");
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
-      expect(body.appearance).toEqual({
-        themeId: "default",
-        customCss: null,
-        faviconColor: "default",
-      });
+      expect(body.appearance).toEqual(defaultAppTheme);
       expect(body.customThemes).toEqual([]);
       expect(body.pluginThemes).toEqual([]);
     });
@@ -45,17 +59,15 @@ describe("appearance settings", () => {
         body: JSON.stringify({ themeId: "nord", faviconColor: "default" }),
       });
       expect(put.status).toBe(200);
-      expect(appThemeSchema.parse(await readJson(put))).toEqual({
-        themeId: "nord",
-        customCss: null,
-        faviconColor: "default",
-      });
+      expect(appThemeSchema.parse(await readJson(put))).toEqual(
+        appearanceForPalette("nord"),
+      );
       expect(getStoredThemeId(harness.db)).toBe("nord");
 
       const config = await harness.app.request("/api/v1/system/config");
       expect(
         systemConfigResponseSchema.parse(await readJson(config)).appearance,
-      ).toEqual({ themeId: "nord", customCss: null, faviconColor: "default" });
+      ).toEqual(appearanceForPalette("nord"));
     });
   });
 
@@ -71,9 +83,9 @@ describe("appearance settings", () => {
       });
       expect(put.status).toBe(200);
       expect(appThemeSchema.parse(await readJson(put))).toEqual({
+        ...defaultAppTheme,
         themeId: "midnight",
         customCss: css,
-        faviconColor: "default",
       });
       expect(getStoredThemeId(harness.db)).toBe("midnight");
 
@@ -81,9 +93,9 @@ describe("appearance settings", () => {
         await readJson(await harness.app.request("/api/v1/system/config")),
       );
       expect(config.appearance).toEqual({
+        ...defaultAppTheme,
         themeId: "midnight",
         customCss: css,
-        faviconColor: "default",
       });
       expect(config.customThemes).toEqual(["midnight"]);
     });
@@ -103,8 +115,7 @@ describe("appearance settings", () => {
         await readJson(await harness.app.request("/api/v1/system/config")),
       );
       expect(config.appearance).toEqual({
-        themeId: "default",
-        customCss: null,
+        ...defaultAppTheme,
         faviconColor: "teal",
       });
     });
@@ -123,11 +134,9 @@ describe("appearance settings", () => {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ themeId: "nord", faviconColor: "purple" }),
       });
-      expect(appThemeSchema.parse(await readJson(put))).toEqual({
-        themeId: "nord",
-        customCss: null,
-        faviconColor: "purple",
-      });
+      expect(appThemeSchema.parse(await readJson(put))).toEqual(
+        appearanceForPalette("nord", { faviconColor: "purple" }),
+      );
       expect(getStoredFaviconColor(harness.db)).toBe("purple");
     });
   });
@@ -180,11 +189,7 @@ describe("appearance settings", () => {
       expect(catalog.dir).toBe(join(harness.config.dataDir, "theme"));
       expect(catalog.custom).toEqual(["amber", "zephyr"]);
       expect(catalog.plugins).toEqual([]);
-      expect(catalog.active).toEqual({
-        themeId: "default",
-        customCss: null,
-        faviconColor: "default",
-      });
+      expect(catalog.active).toEqual(defaultAppTheme);
     });
   });
 
@@ -253,9 +258,9 @@ describe("appearance settings", () => {
       );
       expect(response.status).toBe(200);
       expect(appThemeSchema.parse(await readJson(response))).toEqual({
+        ...defaultAppTheme,
         themeId,
         customCss: ":root { --canvas: blue; }",
-        faviconColor: "default",
       });
     });
   });
@@ -279,11 +284,7 @@ describe("appearance settings", () => {
       );
       // The selection is still stored, but resolution falls back gracefully.
       expect(getStoredThemeId(harness.db)).toBe("ghost");
-      expect(config.appearance).toEqual({
-        themeId: "default",
-        customCss: null,
-        faviconColor: "default",
-      });
+      expect(config.appearance).toEqual(defaultAppTheme);
       expect(config.customThemes).toEqual([]);
     });
   });
@@ -316,6 +317,52 @@ describe("appearance settings", () => {
         },
       );
       expect(response.status).toBe(400);
+    });
+  });
+
+  it("lets a custom UI theme ship Pierre code-theme JSON", async () => {
+    await withTestHarness(async (harness) => {
+      await writeCustomTheme(harness.config.dataDir, "ocean", ":root {}");
+      const darkTheme = {
+        name: "Ocean Dark",
+        type: "dark",
+        colors: { "editor.background": "#001" },
+        tokenColors: [],
+      };
+      await writeFile(
+        join(harness.config.dataDir, "theme", "ocean", "pierre-dark.json"),
+        JSON.stringify(darkTheme),
+        "utf8",
+      );
+
+      const put = await harness.app.request("/api/v1/settings/appearance", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ themeId: "ocean", faviconColor: "default" }),
+      });
+      expect(appThemeSchema.parse(await readJson(put))).toEqual({
+        ...defaultAppTheme,
+        themeId: "ocean",
+        customCss: ":root {}",
+        resolvedCodeTheme: {
+          dark: "bb:ocean:dark",
+          light: "pierre-light",
+          files: { "bb:ocean:dark": { ...darkTheme, name: "bb:ocean:dark" } },
+        },
+      });
+    });
+  });
+
+  it("follows a built-in palette's matching Shiki pair", async () => {
+    await withTestHarness(async (harness) => {
+      const put = await harness.app.request("/api/v1/settings/appearance", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ themeId: "dracula", faviconColor: "default" }),
+      });
+      expect(appThemeSchema.parse(await readJson(put))).toEqual(
+        appearanceForPalette("dracula"),
+      );
     });
   });
 });

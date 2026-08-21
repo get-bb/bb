@@ -21,7 +21,7 @@ export interface QuestionAnswerState {
 
 export type QuestionFormState = Record<string, QuestionAnswerState>;
 
-export function questionHasOptions(
+function questionHasOptions(
   question: PendingInteractionUserQuestionQuestion,
 ): boolean {
   return (question.options?.length ?? 0) > 0;

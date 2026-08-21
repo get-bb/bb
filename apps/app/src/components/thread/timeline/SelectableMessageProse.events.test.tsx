@@ -57,7 +57,92 @@ function waitForAnimationFrame(): Promise<void> {
   });
 }
 
+const SHARED_DOCUMENT_EVENT_TYPES = [
+  "pointerdown",
+  "pointerup",
+  "pointercancel",
+  "mouseup",
+  "selectionchange",
+  "keyup",
+];
+
+function countSharedListenerCalls(spy: {
+  mock: { calls: readonly unknown[][] };
+}): number {
+  return spy.mock.calls.filter(
+    ([type]) =>
+      typeof type === "string" && SHARED_DOCUMENT_EVENT_TYPES.includes(type),
+  ).length;
+}
+
 describe("SelectableMessageProse", () => {
+  it("shares one set of document listeners across many mounted messages", () => {
+    const addSpy = vi.spyOn(document, "addEventListener");
+    const removeSpy = vi.spyOn(document, "removeEventListener");
+
+    const { rerender, unmount } = render(
+      <SelectableMessageProse>First answer</SelectableMessageProse>,
+    );
+    const addsAfterFirstMount = countSharedListenerCalls(addSpy);
+
+    // Per-tap handler work is O(document listeners): additional messages must
+    // reuse the shared registry instead of registering their own handlers.
+    rerender(
+      <>
+        <SelectableMessageProse>First answer</SelectableMessageProse>
+        <SelectableMessageProse>Second answer</SelectableMessageProse>
+        <SelectableMessageProse>Third answer</SelectableMessageProse>
+      </>,
+    );
+    expect(countSharedListenerCalls(addSpy)).toBe(addsAfterFirstMount);
+
+    // Unmounting the last message must detach the shared listeners.
+    unmount();
+    expect(countSharedListenerCalls(removeSpy)).toBeGreaterThanOrEqual(
+      SHARED_DOCUMENT_EVENT_TYPES.length,
+    );
+  });
+
+  it("moves the reported selection between messages and clears the previous one", async () => {
+    const onSelectFirst = vi.fn();
+    const onSelectSecond = vi.fn();
+    const { getByText } = render(
+      <>
+        <SelectableMessageProse onSelect={onSelectFirst}>
+          First selectable answer
+        </SelectableMessageProse>
+        <SelectableMessageProse onSelect={onSelectSecond}>
+          Second selectable answer
+        </SelectableMessageProse>
+      </>,
+    );
+    const firstTextNode = getByText("First selectable answer").firstChild;
+    const secondTextNode = getByText("Second selectable answer").firstChild;
+    expect(firstTextNode).not.toBeNull();
+    expect(secondTextNode).not.toBeNull();
+
+    mockWindowSelection({ node: firstTextNode!, text: "First selectable" });
+    fireEvent.pointerDown(document);
+    fireEvent.pointerUp(document);
+    await waitFor(() =>
+      expect(onSelectFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "First selectable" }),
+      ),
+    );
+    expect(onSelectSecond).not.toHaveBeenCalled();
+
+    mockWindowSelection({ node: secondTextNode!, text: "Second selectable" });
+    fireEvent.pointerDown(document);
+    fireEvent.pointerUp(document);
+    await waitFor(() =>
+      expect(onSelectSecond).toHaveBeenCalledWith(
+        expect.objectContaining({ text: "Second selectable" }),
+      ),
+    );
+    // The first message must clear its stale selection exactly once.
+    await waitFor(() => expect(onSelectFirst).toHaveBeenLastCalledWith(null));
+  });
+
   it("keeps selectable prose available to the compact sidebar swipe gesture", () => {
     const { getByText } = render(
       <SelectableMessageProse>Selectable answer text</SelectableMessageProse>,

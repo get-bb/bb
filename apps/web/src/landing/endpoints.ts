@@ -22,7 +22,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type DownloadPlacement = CtaPlacement | "direct";
 
-export type MarketingEnv = {
+type MarketingEnv = {
   LANDING_POSTHOG_KEY?: string;
   // Set in production via wrangler secret / vars; unset on forks and local dev,
   // where /api/subscribe reports that signup is not configured.

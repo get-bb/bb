@@ -7,10 +7,10 @@ Use these sources instead:
 
 - Upstream reference: [openai/codex app-server README](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md)
 - Generated local types:
-  `packages/agent-runtime/src/codex/generated/codex-app-server/**`
+  `plugins/provider-codex/src/generated/codex-app-server/**`
 - Local Codex adapter code:
-  `packages/agent-runtime/src/codex/**`
+  `plugins/provider-codex/src/**`
 
 If you need to understand which Codex notifications bb currently consumes, read
 the generated schema plus the normalization code in
-`packages/agent-runtime/src/codex/event-translation.ts`.
+`plugins/provider-codex/src/delta-translation.ts`.

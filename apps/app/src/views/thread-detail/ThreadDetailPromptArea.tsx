@@ -1,5 +1,13 @@
-import { useCallback, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
@@ -10,6 +18,7 @@ import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
+  PromptInput,
   ThreadQueuedMessage,
   ThreadPullRequest,
   ThreadTimelineActivePromptMode,
@@ -23,11 +32,10 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
+import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
-import { PluginComposerBanners } from "@/components/plugin/PluginComposerBanners";
 import {
-  PluginComposerHostProvider,
   type PluginComposerHost,
   usePublishPluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
@@ -45,6 +53,7 @@ import { ThreadPromptModeCard } from "@/components/promptbox/banner/ThreadPrompt
 import { ThreadWorkflowCard } from "@/components/promptbox/banner/ThreadWorkflowCard";
 import { ThreadBackgroundCommandsCard } from "@/components/promptbox/banner/ThreadBackgroundCommandsCard";
 import { ThreadModelFallbackCard } from "@/components/promptbox/banner/ThreadModelFallbackCard";
+import { InlineMessageEditorFrame } from "@/components/promptbox/InlineMessageEditorFrame";
 import type {
   WorkspaceChangedFileSelection,
   WorkspaceChangedFilesSection,
@@ -56,12 +65,13 @@ import {
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { useComposerTextEffects } from "@/lib/composer-text-effects";
-import { useEscapeToHide } from "@/hooks/useEscapeToHide";
+import { useLatestRef } from "@/hooks/useLatestRef";
 import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
 import { useProjectDisplayName } from "@/hooks/queries/sidebar-navigation-query";
 import {
   useActiveComposerDraft,
   useComposerAttachmentUploads,
+  useDraftAttachmentUploads,
   useComposerTypeahead,
   useInlineQueuedMessageEditing,
   useQueuedMessageActions,
@@ -82,13 +92,20 @@ import {
 import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default-execution-options-query";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
+import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
+import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { appToast } from "@/components/ui/app-toast";
+import {
+  promptDraftToInput,
+  type PromptDraftAttachment,
+  type PromptDraftState,
+} from "@bb/client-core";
 import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
+  type FollowUpPromptBoxProps,
   type FollowUpSubmitMode,
 } from "@/components/promptbox/FollowUpPromptBox";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
@@ -101,14 +118,29 @@ import {
   resolveDefaultExecutionOptionsState,
   shouldQueueFollowUpMessage,
   type FollowUpExecutionSelection,
-} from "./threadDetailPromptSubmission";
+} from "@bb/client-core";
 
 const ignorePromptBannerFileClick = () => {};
 
-export const THREAD_DETAIL_COMPOSER_TEXTAREA_ID =
-  "thread-detail-follow-up-composer";
+export interface ThreadDetailSentMessageEdit {
+  draft: PromptDraftState;
+  hostElement: HTMLDivElement | null;
+  isSubmitting: boolean;
+  operationId: string;
+  onCancel: () => void;
+  onSubmit: (target: {
+    execution: FollowUpExecutionSelection;
+    input: PromptInput[];
+  }) => void;
+  updateDraft: (
+    update: (current: PromptDraftState) => PromptDraftState,
+  ) => void;
+}
+
+const THREAD_DETAIL_COMPOSER_TEXTAREA_ID = "thread-detail-follow-up-composer";
 
 interface ThreadDetailPromptAreaProps {
+  activeBackgroundAgentCount: number;
   canUseGitUi: boolean;
   contextWindowUsage?: ThreadTimelineResponse["contextWindowUsage"];
   environmentCheckout?: WorkspaceCheckoutDisplay;
@@ -122,10 +154,11 @@ interface ThreadDetailPromptAreaProps {
     EnvironmentStatus,
     "destroying" | "destroyed"
   > | null;
+  /** Machine of the thread's environment; routes host-scoped model catalogs by host. */
+  environmentHostId?: string;
   environmentIcon?: IconName;
   environmentLabel?: string;
   onCreateNewThreadInWorktree?: () => void;
-  onEscapeEmptyPrompt?: () => void;
   onPullRequestDraft?: () => void;
   onPullRequestMerge?: (method: PullRequestMergeMethod) => void;
   onPullRequestReady?: () => void;
@@ -134,7 +167,6 @@ interface ThreadDetailPromptAreaProps {
   pendingInteractions: readonly PendingInteraction[];
   pendingInteractionsInitialLoading: boolean;
   onChangedFileClick: (selection: WorkspaceChangedFileSelection) => void;
-  openThreadDiffPanel: () => void;
   projectId: string;
   /** Click handler for inserted mention pills (navigate to threads, open file previews). */
   resolveMentionLink: PromptMentionLinkResolver;
@@ -174,11 +206,15 @@ interface ThreadDetailPromptAreaProps {
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
   /** Parent reference for child threads. Null for root threads. */
   parentThreadSection: ThreadPromptParentThreadSection | null;
+  /** Pending permission or question prompts from delegated child threads. */
+  childPendingInteractions: readonly ChildThreadPendingAttention[];
   /** Active child threads for parent threads. Null otherwise. */
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   /** Pull request summary for the active thread branch. Null when there is no PR. */
   pullRequest: ThreadPullRequest | null;
   sendMessage: SendMessageMutationLike;
+  /** Present only while a sent-message editor is mounted in the timeline. */
+  sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
   /**
    * Bumped by the timeline host each time a quote is appended to the shared
@@ -189,16 +225,188 @@ interface ThreadDetailPromptAreaProps {
   thread: ThreadWithRuntime;
 }
 
+interface InlineDraftComposerOptions {
+  attachments: FollowUpPromptBoxProps["attachments"];
+  canModifierSubmit: boolean;
+  compactPromptPlaceholder: string;
+  composerId: string;
+  /** Live draft under edit; supplies the message text, mentions, and history draft. */
+  draft: PromptDraftState;
+  editFocusNonce: number;
+  execution: FollowUpPromptBoxProps["execution"];
+  /** Combined with editFocusNonce to focus the caret at the end per edit session. */
+  focusSessionKey: string | number;
+  historyResetKey: string;
+  isSubmitting: boolean;
+  onChangeMessage: FollowUpComposerProps["onChangeMessage"];
+  /** Escape pressed in the editor; passes the editor's cancel action. */
+  onEscape?: FollowUpComposerProps["onEscape"];
+  onSelectHistoryEntry: (draft: PromptDraftState) => void;
+  permission: FollowUpPromptBoxProps["permission"];
+  pluginComposerHost: PluginComposerHost;
+  promptActions: FollowUpPromptBoxProps["promptActions"];
+  promptPlaceholder: string;
+  submit: () => void;
+  submitMode: FollowUpSubmitMode;
+  submitTitle?: string;
+  suppressPluginComposerCustomizations?: boolean;
+  textEffects: FollowUpPromptBoxProps["textEffects"];
+  threadRuntimeDisplayStatus: FollowUpComposerProps["threadRuntimeDisplayStatus"];
+  typeahead: FollowUpPromptBoxProps["typeahead"];
+  collapseResetKey: string;
+}
+
+/**
+ * The queued-message and sent-message inline editors render the same
+ * FollowUpPromptBox shape: read-only execution/permission controls, no stack,
+ * no environment summary, and a plugin-composer host bound to the draft under
+ * edit. Only the draft accessors, submit wiring, and session keys differ, so
+ * both call sites pass those in here and share the rest.
+ */
+function buildInlineDraftComposer(options: InlineDraftComposerOptions) {
+  return (
+    <FollowUpPromptBox
+      id={options.composerId}
+      attachments={options.attachments}
+      stack={null}
+      composer={{
+        history: {
+          currentDraft: options.draft,
+          entries: [],
+          onSelectEntry: options.onSelectHistoryEntry,
+          resetKey: options.historyResetKey,
+        },
+        isFollowUpSubmitting: options.isSubmitting,
+        message: options.draft.text,
+        mentionRanges: options.draft.mentions,
+        onChangeMessage: options.onChangeMessage,
+        onModifierSubmit: options.submit,
+        onSubmit: options.submit,
+        onEscape: options.onEscape,
+        submitTitle: options.submitTitle,
+        compactPromptPlaceholder: options.compactPromptPlaceholder,
+        promptPlaceholder: options.promptPlaceholder,
+        canModifierSubmit: options.canModifierSubmit,
+        steerActiveThreadOnEnter: false,
+        submitMode: options.submitMode,
+        threadRuntimeDisplayStatus: options.threadRuntimeDisplayStatus,
+      }}
+      pluginComposerHost={options.pluginComposerHost}
+      pluginComposerScope={options.pluginComposerHost.scope}
+      suppressPluginComposerCustomizations={
+        options.suppressPluginComposerCustomizations
+      }
+      textEffects={options.textEffects}
+      environmentSummary={null}
+      contextWindowUsage={null}
+      execution={options.execution}
+      executionReadOnly
+      permission={options.permission}
+      permissionReadOnly
+      typeahead={options.typeahead}
+      promptActions={options.promptActions}
+      collapseResetKey={options.collapseResetKey}
+      focusEndKey={`${options.focusSessionKey}:${options.editFocusNonce}`}
+      isPrimaryComposer={false}
+      showScrollToBottomButton={false}
+    />
+  );
+}
+
+type InlineQueuedMessageEditSession = Pick<
+  InlineQueuedMessageEditState,
+  "editSessionId" | "queuedMessageId"
+>;
+
+function isInlineQueuedMessageEditSession(
+  current: InlineQueuedMessageEditState | null,
+  session: InlineQueuedMessageEditSession,
+): current is InlineQueuedMessageEditState {
+  return (
+    current?.editSessionId === session.editSessionId &&
+    current.queuedMessageId === session.queuedMessageId
+  );
+}
+
+/** Plugin composer-host accessors for the queued-message inline editor (see below). */
+function readInlineQueuedMessageDraft(
+  editStateRef: RefObject<InlineQueuedMessageEditState | null>,
+  session: InlineQueuedMessageEditSession,
+  fallback: PromptDraftState,
+): PromptDraftState {
+  const current = editStateRef.current;
+  return isInlineQueuedMessageEditSession(current, session)
+    ? current.draft
+    : fallback;
+}
+
+function writeInlineQueuedMessageDraft(
+  editStateRef: RefObject<InlineQueuedMessageEditState | null>,
+  session: InlineQueuedMessageEditSession,
+  draft: PromptDraftState,
+  commit: (next: InlineQueuedMessageEditState) => void,
+): void {
+  const current = editStateRef.current;
+  if (isInlineQueuedMessageEditSession(current, session)) {
+    commit({ ...current, draft });
+  }
+}
+
+/**
+ * Plugin composer-host accessors for the sent-message inline editor. Module
+ * level on purpose: inlined closures that return `ref.current.draft` in one
+ * branch and the render-time `draft` in another make React Compiler type the
+ * whole edit object as a ref value and bail out of the component.
+ */
+function readSentMessageEditDraft(
+  sentMessageEditRef: RefObject<ThreadDetailSentMessageEdit | undefined>,
+  operationId: string,
+  fallback: PromptDraftState,
+): PromptDraftState {
+  const current = sentMessageEditRef.current;
+  return current?.operationId === operationId ? current.draft : fallback;
+}
+
+function writeSentMessageEditDraft(
+  sentMessageEditRef: RefObject<ThreadDetailSentMessageEdit | undefined>,
+  operationId: string,
+  nextDraft: PromptDraftState,
+): void {
+  const current = sentMessageEditRef.current;
+  if (current?.operationId === operationId) {
+    current.updateDraft(() => nextDraft);
+  }
+}
+
+/**
+ * Flip the "sending" flag around a task. Kept outside the component: React
+ * Compiler bails out of any function containing `try`/`finally`, and one such
+ * block inside `ThreadDetailPromptArea` left the whole ~1600-line body
+ * unmemoized.
+ */
+async function runWhileFollowUpShortcutSending(
+  setSending: (sending: boolean) => void,
+  task: () => Promise<void>,
+): Promise<void> {
+  setSending(true);
+  try {
+    await task();
+  } finally {
+    setSending(false);
+  }
+}
+
 export function ThreadDetailPromptArea({
+  activeBackgroundAgentCount,
   canUseGitUi,
   contextWindowUsage,
   environmentCheckout,
   environmentCompactLabel,
   environmentGoneStatus,
+  environmentHostId,
   environmentIcon,
   environmentLabel,
   onCreateNewThreadInWorktree,
-  onEscapeEmptyPrompt,
   onPullRequestDraft,
   onPullRequestMerge,
   onPullRequestReady,
@@ -207,7 +415,6 @@ export function ThreadDetailPromptArea({
   pendingInteractions,
   pendingInteractionsInitialLoading,
   onChangedFileClick,
-  openThreadDiffPanel,
   projectId,
   resolveMentionLink,
   workspaceChangedFilesSection,
@@ -220,9 +427,11 @@ export function ThreadDetailPromptArea({
   activeWorkflows,
   activeBackgroundCommands,
   parentThreadSection,
+  childPendingInteractions,
   childThreadsSection,
   pullRequest,
   sendMessage,
+  sentMessageEdit,
   steerActiveThreadOnEnter,
   composerFocusRequestNonce,
   thread,
@@ -235,10 +444,18 @@ export function ThreadDetailPromptArea({
     },
   );
   const defaultExecutionOptions = defaultExecutionOptionsQuery.data;
+  // A replayed (placeholder) resolution seeds the pickers so the first frame
+  // shows the thread's last-known settings, but it is not proof of anything:
+  // submission and the permission controls wait for the live resolution.
+  const verifiedDefaultExecutionOptions =
+    defaultExecutionOptionsQuery.isPlaceholderData
+      ? undefined
+      : defaultExecutionOptions;
   const hasResolvedDefaultExecutionOptions =
-    defaultExecutionOptions !== undefined;
+    verifiedDefaultExecutionOptions !== undefined;
   const hasConcreteDefaultExecutionOptions =
-    defaultExecutionOptions !== undefined && defaultExecutionOptions !== null;
+    verifiedDefaultExecutionOptions !== undefined &&
+    verifiedDefaultExecutionOptions !== null;
   const defaultExecutionOptionsState = resolveDefaultExecutionOptionsState({
     hasConcreteDefaultExecutionOptions,
     hasResolvedDefaultExecutionOptions,
@@ -249,16 +466,17 @@ export function ThreadDetailPromptArea({
   const { data: queuedMessages = [] } = useThreadQueuedMessages(thread.id, {
     enabled: true,
   });
-  const queuedMessagesRef = useRef<readonly ThreadQueuedMessage[]>([]);
-  queuedMessagesRef.current = queuedMessages;
+  const queuedMessagesRef =
+    useLatestRef<readonly ThreadQueuedMessage[]>(queuedMessages);
   const [bottomPluginFocusNonce, setBottomPluginFocusNonce] = useState(0);
   const [editFocusNonce, setEditFocusNonce] = useState(0);
   const focusBottomPluginComposer = useCallback(() => {
     setBottomPluginFocusNonce((nonce) => nonce + 1);
   }, []);
-  const focusQueuedPluginComposer = useCallback(() => {
+  const focusInlinePluginComposer = useCallback(() => {
     setEditFocusNonce((nonce) => nonce + 1);
   }, []);
+  const sentMessageEditRef = useLatestRef(sentMessageEdit);
   const clearInlineAttachmentErrorRef = useRef<() => void>(() => {});
   const {
     inlineEditingQueuedMessage,
@@ -276,10 +494,11 @@ export function ThreadDetailPromptArea({
       setEditFocusNonce((nonce) => nonce + 1);
     },
   });
+  const promptHistoryEnabled = usePromptHistoryEnabled();
   const { data: promptHistoryEntries = [] } = useThreadPromptHistory(
     thread.id,
     {
-      enabled: true,
+      enabled: promptHistoryEnabled,
     },
   );
   const createQueuedMessage = useCreateThreadQueuedMessage();
@@ -310,6 +529,22 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
   });
+  const updateSentMessageEditDraft = sentMessageEdit?.updateDraft;
+  const addSentMessageEditAttachment = useCallback(
+    (attachment: PromptDraftAttachment) => {
+      updateSentMessageEditDraft?.((current) =>
+        current.attachments.some(
+          (existing) => existing.path === attachment.path,
+        )
+          ? current
+          : {
+              ...current,
+              attachments: [...current.attachments, attachment],
+            },
+      );
+    },
+    [updateSentMessageEditDraft],
+  );
   const {
     bottomAttachmentError,
     setBottomAttachmentError,
@@ -326,13 +561,35 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
   });
-  clearInlineAttachmentErrorRef.current = () => setInlineAttachmentError(null);
+  const {
+    attachmentError: sentMessageAttachmentError,
+    handleAttachFiles: handleAttachSentMessageFiles,
+    isAttachingFiles: isAttachingSentMessageFiles,
+  } = useDraftAttachmentUploads({
+    projectId,
+    target: sentMessageEdit
+      ? {
+          key: sentMessageEdit.operationId,
+          addAttachment: addSentMessageEditAttachment,
+        }
+      : null,
+  });
+  // Read only from the queued-message edit handler (never during render), so
+  // a layout-effect write is current by the time it can run.
+  useLayoutEffect(() => {
+    clearInlineAttachmentErrorRef.current = () =>
+      setInlineAttachmentError(null);
+  }, [setInlineAttachmentError]);
   const promptTextEffects = useComposerTextEffects(promptDraft.storageKey);
-  const queuedComposerTextEffectKey = inlineEditingQueuedMessage
-    ? `queued-message:${thread.id}:${inlineEditingQueuedMessage.queuedMessageId}:${inlineEditingQueuedMessage.editSessionId}`
-    : null;
   const queuedComposerTextEffects = useComposerTextEffects(
-    queuedComposerTextEffectKey,
+    inlineEditingQueuedMessage
+      ? `queued-message:${thread.id}:${inlineEditingQueuedMessage.queuedMessageId}:${inlineEditingQueuedMessage.editSessionId}`
+      : null,
+  );
+  const sentMessageComposerTextEffects = useComposerTextEffects(
+    sentMessageEdit
+      ? `sent-message:${thread.id}:${sentMessageEdit.operationId}`
+      : null,
   );
   const [expandedBannerSection, setExpandedBannerSection] =
     useState<ThreadPromptContextBannerExpandedSection | null>(null);
@@ -399,7 +656,6 @@ export function ThreadDetailPromptArea({
     selectedProviderId,
     providerOptions,
     hasMultipleProviders,
-    selectedProviderDisplayName,
     selectedProviderComposerActions,
     selectedModel,
     setSelectedModel,
@@ -424,6 +680,7 @@ export function ThreadDetailPromptArea({
   } = useThreadCreationOptions({
     enabled: thread.archivedAt === null,
     environmentId: thread.environmentId ?? undefined,
+    environmentHostId,
     scope: "component-local",
     resetKey: thread.id,
     initialProviderId: thread.providerId,
@@ -552,49 +809,6 @@ export function ThreadDetailPromptArea({
       thread.id,
     ],
   );
-  const queuedPluginComposerHostBinding = useMemo<Omit<
-    PluginComposerHost,
-    "draft"
-  > | null>(() => {
-    if (!inlineEditingQueuedMessage) return null;
-
-    const {
-      draft: initialDraft,
-      editSessionId,
-      queuedMessageId,
-    } = inlineEditingQueuedMessage;
-    const isCurrentSession = (
-      current: InlineQueuedMessageEditState | null,
-    ): current is InlineQueuedMessageEditState =>
-      current?.editSessionId === editSessionId &&
-      current.queuedMessageId === queuedMessageId;
-
-    return {
-      scope: {
-        kind: "queued-message",
-        threadId: thread.id,
-        queuedMessageId,
-      },
-      textEffectKey: `queued-message:${thread.id}:${queuedMessageId}:${editSessionId}`,
-      getCurrent: () => {
-        const current = inlineEditingQueuedMessageRef.current;
-        return isCurrentSession(current) ? current.draft : initialDraft;
-      },
-      setDraft: (draft) => {
-        const current = inlineEditingQueuedMessageRef.current;
-        if (isCurrentSession(current)) {
-          commitInlineQueuedMessage({ ...current, draft });
-        }
-      },
-      focus: focusQueuedPluginComposer,
-    };
-  }, [
-    inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
-    commitInlineQueuedMessage,
-    focusQueuedPluginComposer,
-    thread.id,
-  ]);
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       ...normalPluginComposerHostBinding,
@@ -602,32 +816,7 @@ export function ThreadDetailPromptArea({
     }),
     [currentPromptDraft, normalPluginComposerHostBinding],
   );
-  const queuedPluginComposerHost = useMemo<PluginComposerHost | null>(
-    () =>
-      queuedPluginComposerHostBinding
-        ? {
-            ...queuedPluginComposerHostBinding,
-            draft: activeComposerDraft,
-          }
-        : null,
-    [activeComposerDraft, queuedPluginComposerHostBinding],
-  );
-  usePublishPluginComposerHost(
-    queuedPluginComposerHost ?? normalPluginComposerHost,
-  );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
-  const isPromptEmpty = useCallback(
-    () => !hasPromptDraftInput,
-    [hasPromptDraftInput],
-  );
-  const hideEmptyPrompt = useCallback(() => {
-    onEscapeEmptyPrompt?.();
-  }, [onEscapeEmptyPrompt]);
-  useEscapeToHide({
-    enabled: onEscapeEmptyPrompt !== undefined,
-    isEmpty: isPromptEmpty,
-    onHide: hideEmptyPrompt,
-  });
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
     hasPromptDraftInput,
     isFollowUpSubmitting,
@@ -726,6 +915,7 @@ export function ThreadDetailPromptArea({
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
     const shortcutRequest = buildFollowUpShortcutRequest({
+      execution: followUpExecutionSelection,
       input: submittedInput,
       queuedMessages: queuedMessagesRef.current,
       threadId: thread.id,
@@ -735,24 +925,25 @@ export function ThreadDetailPromptArea({
     }
 
     if (shortcutRequest.kind === "draft") {
-      setIsFollowUpShortcutSending(true);
       promptDraft.clearIfCurrentMatches(submittedDraft);
       setBottomAttachmentError(null);
-
-      try {
-        await sendMessage.mutateAsync(shortcutRequest.request);
-      } catch (nextError) {
-        promptDraft.restoreIfEmpty(submittedDraft);
-        appToast.error(
-          getMutationErrorMessage({
-            error: nextError,
-            fallbackMessage: "Failed to send message",
-            lifecycleOperation: "send_message",
-          }),
-        );
-      } finally {
-        setIsFollowUpShortcutSending(false);
-      }
+      await runWhileFollowUpShortcutSending(
+        setIsFollowUpShortcutSending,
+        async () => {
+          try {
+            await sendMessage.mutateAsync(shortcutRequest.request);
+          } catch (nextError) {
+            promptDraft.restoreIfEmpty(submittedDraft);
+            appToast.error(
+              getMutationErrorMessage({
+                error: nextError,
+                fallbackMessage: "Failed to send message",
+                lifecycleOperation: "send_message",
+              }),
+            );
+          }
+        },
+      );
       return;
     }
 
@@ -761,20 +952,22 @@ export function ThreadDetailPromptArea({
       return;
     }
 
-    setIsFollowUpShortcutSending(true);
-    try {
-      await sendQueuedMessageById({
-        guard: "current-head",
-        messageId: queuedMessageId,
-      });
-    } finally {
-      setIsFollowUpShortcutSending(false);
-    }
+    await runWhileFollowUpShortcutSending(
+      setIsFollowUpShortcutSending,
+      async () => {
+        await sendQueuedMessageById({
+          guard: "current-head",
+          messageId: queuedMessageId,
+        });
+      },
+    );
   }, [
     canSubmitModifierShortcut,
     currentPromptDraft,
     currentPromptDraftInput,
+    followUpExecutionSelection,
     promptDraft,
+    queuedMessagesRef,
     sendMessage,
     sendQueuedMessageById,
     setBottomAttachmentError,
@@ -792,13 +985,6 @@ export function ThreadDetailPromptArea({
   );
 
   const bottomFocusEndKey = `${composerFocusRequestNonce}:${bottomPluginFocusNonce}`;
-
-  const handlePromptBannerFileClick = useCallback(
-    (selection: WorkspaceChangedFileSelection) => {
-      onChangedFileClick(selection);
-    },
-    [onChangedFileClick],
-  );
 
   const handleToggleBannerSection = useCallback(
     (section: ThreadPromptContextBannerExpandedSection | null) => {
@@ -853,25 +1039,6 @@ export function ThreadDetailPromptArea({
       promptDraft.removeAttachment,
     ],
   );
-  const inlineAttachmentsConfig = useMemo(
-    () => ({
-      items: activeComposerDraft.attachments,
-      projectId,
-      isAttaching: isAttachingInlineFiles,
-      error: inlineAttachmentError,
-      onAttachFiles: handleAttachInlineFiles,
-      onRemove: removeActiveComposerAttachment,
-    }),
-    [
-      activeComposerDraft.attachments,
-      inlineAttachmentError,
-      handleAttachInlineFiles,
-      isAttachingInlineFiles,
-      projectId,
-      removeActiveComposerAttachment,
-    ],
-  );
-
   const handleBottomComposerSubmit = useCallback(() => {
     void handleSend();
   }, [handleSend]);
@@ -920,47 +1087,49 @@ export function ThreadDetailPromptArea({
       thread.id,
     ],
   );
-  const inlineComposerConfig = useMemo<FollowUpComposerProps | null>(
-    () =>
-      inlineEditingQueuedMessage
-        ? {
-            history: {
-              currentDraft: activeComposerDraft,
-              entries: [],
-              onSelectEntry: setActiveComposerDraft,
-              resetKey: `${thread.id}:${inlineEditingQueuedMessage.editSessionId}`,
-            },
-            isFollowUpSubmitting: isUpdateQueuedMessagePending,
-            message: activeComposerDraft.text,
-            mentionRanges: activeComposerDraft.mentions,
-            onChangeMessage: handleComposerMessageChange,
-            onModifierSubmit: handleInlineComposerSubmit,
-            onSubmit: handleInlineComposerSubmit,
-            compactPromptPlaceholder,
-            promptPlaceholder,
-            canModifierSubmit:
-              activeComposerDraftInput.length > 0 &&
-              !isUpdateQueuedMessagePending,
-            steerActiveThreadOnEnter: false,
-            submitMode: { kind: "ready" },
-            threadRuntimeDisplayStatus: runtimeDisplayStatus,
-          }
-        : null,
-    [
-      activeComposerDraft,
-      activeComposerDraftInput.length,
-      compactPromptPlaceholder,
-      handleComposerMessageChange,
-      handleInlineComposerSubmit,
-      inlineEditingQueuedMessage,
-      isUpdateQueuedMessagePending,
-      promptPlaceholder,
-      runtimeDisplayStatus,
-      setActiveComposerDraft,
-      thread.id,
-    ],
+  const sentMessageEditInput = useMemo(
+    () => (sentMessageEdit ? promptDraftToInput(sentMessageEdit.draft) : []),
+    [sentMessageEdit],
   );
-
+  const canSubmitSentMessageEdit =
+    sentMessageEdit !== undefined &&
+    sentMessageEditInput.length > 0 &&
+    submitMode.kind === "ready" &&
+    !shouldHideComposer &&
+    !isDefaultExecutionOptionsLoading &&
+    !isAttachingSentMessageFiles &&
+    !isFollowUpSubmitting &&
+    !isQueueMutationPending &&
+    !sentMessageEdit.isSubmitting &&
+    queuedMessages.length === 0 &&
+    activeBackgroundAgentCount === 0 &&
+    activeWorkflows.length === 0 &&
+    activeBackgroundCommands.length === 0;
+  // Empty input renders as "ready" with a no-op submit, matching the queued
+  // inline editor; handleSentMessageEditSubmit guards on canSubmitSentMessageEdit.
+  const sentMessageEditSubmitMode = useMemo<FollowUpSubmitMode>(
+    () =>
+      canSubmitSentMessageEdit || sentMessageEditInput.length === 0
+        ? { kind: "ready" }
+        : submitMode.kind === "blocked"
+          ? submitMode
+          : { kind: "blocked", reason: "unavailable" },
+    [canSubmitSentMessageEdit, sentMessageEditInput.length, submitMode],
+  );
+  const handleSentMessageEditSubmit = useCallback(() => {
+    if (!sentMessageEdit || !canSubmitSentMessageEdit) {
+      return;
+    }
+    sentMessageEdit.onSubmit({
+      execution: followUpExecutionSelection,
+      input: sentMessageEditInput,
+    });
+  }, [
+    canSubmitSentMessageEdit,
+    followUpExecutionSelection,
+    sentMessageEdit,
+    sentMessageEditInput,
+  ]);
   const bottomExecutionConfig = useMemo(
     () => ({
       providerRouting: executionOptionsRouting,
@@ -968,7 +1137,6 @@ export function ThreadDetailPromptArea({
         options: providerOptions,
         selectedId: selectedProviderId,
         hasMultiple: hasMultipleProviders,
-        displayName: selectedProviderDisplayName,
       },
       model: {
         active: effectiveSelectedModel
@@ -1013,7 +1181,6 @@ export function ThreadDetailPromptArea({
       reasoningLevel,
       reasoningOptions,
       selectedModel,
-      selectedProviderDisplayName,
       selectedProviderId,
       serviceTier,
       serviceTierSupportByProvider,
@@ -1022,27 +1189,30 @@ export function ThreadDetailPromptArea({
       supportsServiceTier,
     ],
   );
-  const inlineExecutionConfig = useMemo(() => {
-    if (!inlineEditingQueuedMessage) return null;
+  const compactExecutionConfig = useMemo(() => {
     const { footerAction: _footerAction, ...executionWithoutFooterAction } =
       bottomExecutionConfig;
+    return executionWithoutFooterAction;
+  }, [bottomExecutionConfig]);
+  const inlineExecutionConfig = useMemo(() => {
+    if (!inlineEditingQueuedMessage) return null;
     return {
-      ...executionWithoutFooterAction,
+      ...compactExecutionConfig,
       model: {
-        ...bottomExecutionConfig.model,
+        ...compactExecutionConfig.model,
         active: { model: inlineEditingQueuedMessage.model },
         selected: inlineEditingQueuedMessage.model,
       },
       serviceTier: {
-        ...bottomExecutionConfig.serviceTier,
+        ...compactExecutionConfig.serviceTier,
         value: inlineEditingQueuedMessage.serviceTier,
       },
       reasoning: {
-        ...bottomExecutionConfig.reasoning,
+        ...compactExecutionConfig.reasoning,
         value: inlineEditingQueuedMessage.reasoningLevel,
       },
     };
-  }, [bottomExecutionConfig, inlineEditingQueuedMessage]);
+  }, [compactExecutionConfig, inlineEditingQueuedMessage]);
 
   const bottomPermissionConfig = useMemo(
     () => ({
@@ -1121,60 +1291,235 @@ export function ThreadDetailPromptArea({
     ),
     [clearThreadGoal.isPending, goal, handleClearGoal, isGoalExpanded],
   );
-  const inlineEditor = useMemo<QueuedMessageInlineEditor | undefined>(() => {
+  const queuedMessageEditor = useMemo(() => {
     if (
       !inlineEditingQueuedMessage ||
-      !inlineComposerConfig ||
       !inlineExecutionConfig ||
-      !inlinePermissionConfig ||
-      !queuedPluginComposerHost
+      !inlinePermissionConfig
     ) {
-      return undefined;
+      return null;
     }
-    return {
-      queuedMessageId: inlineEditingQueuedMessage.queuedMessageId,
+    const {
+      draft: initialDraft,
+      editSessionId,
+      queuedMessageId,
+    } = inlineEditingQueuedMessage;
+    const session = { editSessionId, queuedMessageId };
+    const pluginComposerHost: PluginComposerHost = {
+      scope: {
+        kind: "queued-message",
+        threadId: thread.id,
+        queuedMessageId,
+      },
+      textEffectKey: `queued-message:${thread.id}:${queuedMessageId}:${editSessionId}`,
+      draft: activeComposerDraft,
+      getCurrent: () =>
+        readInlineQueuedMessageDraft(
+          inlineEditingQueuedMessageRef,
+          session,
+          initialDraft,
+        ),
+      setDraft: (draft) =>
+        writeInlineQueuedMessageDraft(
+          inlineEditingQueuedMessageRef,
+          session,
+          draft,
+          commitInlineQueuedMessage,
+        ),
+      focus: focusInlinePluginComposer,
+    };
+    const inlineEditor: QueuedMessageInlineEditor = {
+      queuedMessageId,
       queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
       onDismiss: dismissInlineQueuedMessageEditor,
-      content: (
-        <FollowUpPromptBox
-          id={`${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-queued-${inlineEditingQueuedMessage.queuedMessageId}`}
-          attachments={inlineAttachmentsConfig}
-          stack={null}
-          composer={inlineComposerConfig}
-          pluginComposerHost={queuedPluginComposerHost}
-          pluginComposerScope={queuedPluginComposerHost.scope}
-          textEffects={queuedComposerTextEffects}
-          environmentSummary={null}
-          contextWindowUsage={null}
-          execution={inlineExecutionConfig}
-          executionReadOnly
-          permission={inlinePermissionConfig}
-          permissionReadOnly
-          typeahead={typeaheadConfig}
-          promptActions={promptActions}
-          zenModeResetKey={`queued-message:${inlineEditingQueuedMessage.queuedMessageId}`}
-          focusEndKey={`${inlineEditingQueuedMessage.editSessionId}:${editFocusNonce}`}
-          isPrimaryComposer={false}
-          showScrollToBottomButton={false}
-        />
-      ),
+      content: buildInlineDraftComposer({
+        attachments: {
+          items: activeComposerDraft.attachments,
+          projectId,
+          isAttaching: isAttachingInlineFiles,
+          error: inlineAttachmentError,
+          onAttachFiles: handleAttachInlineFiles,
+          onRemove: removeActiveComposerAttachment,
+        },
+        canModifierSubmit:
+          activeComposerDraftInput.length > 0 && !isUpdateQueuedMessagePending,
+        compactPromptPlaceholder,
+        composerId: `${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-queued-${queuedMessageId}`,
+        draft: activeComposerDraft,
+        editFocusNonce,
+        execution: inlineExecutionConfig,
+        focusSessionKey: editSessionId,
+        historyResetKey: `${thread.id}:${editSessionId}`,
+        isSubmitting: isUpdateQueuedMessagePending,
+        onChangeMessage: handleComposerMessageChange,
+        onSelectHistoryEntry: setActiveComposerDraft,
+        permission: inlinePermissionConfig,
+        pluginComposerHost,
+        promptActions,
+        promptPlaceholder,
+        submit: handleInlineComposerSubmit,
+        submitMode: { kind: "ready" },
+        textEffects: queuedComposerTextEffects,
+        threadRuntimeDisplayStatus: runtimeDisplayStatus,
+        typeahead: typeaheadConfig,
+        collapseResetKey: `queued-message:${queuedMessageId}`,
+      }),
     };
+    return { inlineEditor, pluginComposerHost };
   }, [
+    activeComposerDraft,
+    activeComposerDraftInput.length,
+    commitInlineQueuedMessage,
+    compactPromptPlaceholder,
     dismissInlineQueuedMessageEditor,
     editFocusNonce,
-    inlineAttachmentsConfig,
-    inlineComposerConfig,
+    focusInlinePluginComposer,
+    handleAttachInlineFiles,
+    handleComposerMessageChange,
+    handleInlineComposerSubmit,
+    inlineAttachmentError,
     inlineEditingQueuedMessage,
+    inlineEditingQueuedMessageRef,
     inlineExecutionConfig,
     inlinePermissionConfig,
+    isAttachingInlineFiles,
+    isUpdateQueuedMessagePending,
+    projectId,
     promptActions,
+    promptPlaceholder,
     queuedComposerTextEffects,
-    queuedPluginComposerHost,
+    removeActiveComposerAttachment,
+    runtimeDisplayStatus,
+    setActiveComposerDraft,
+    thread.id,
     typeaheadConfig,
   ]);
+  usePublishPluginComposerHost(
+    queuedMessageEditor?.pluginComposerHost ?? normalPluginComposerHost,
+  );
+  const sentMessageEditorPortal = useMemo(() => {
+    if (!sentMessageEdit?.hostElement) {
+      return null;
+    }
+    const { draft, hostElement, operationId } = sentMessageEdit;
+    return createPortal(
+      <InlineMessageEditorFrame
+        cancelLabel="Stop editing sent message"
+        label="Editing message"
+        onCancel={sentMessageEdit.onCancel}
+        variant="cap"
+      >
+        {buildInlineDraftComposer({
+          attachments: {
+            items: draft.attachments,
+            projectId,
+            isAttaching: isAttachingSentMessageFiles,
+            error: sentMessageAttachmentError,
+            onAttachFiles: handleAttachSentMessageFiles,
+            onRemove: (path) => {
+              sentMessageEdit.updateDraft((current) => ({
+                ...current,
+                attachments: current.attachments.filter(
+                  (attachment) => attachment.path !== path,
+                ),
+              }));
+            },
+          },
+          canModifierSubmit: canSubmitSentMessageEdit,
+          compactPromptPlaceholder: "Edit message",
+          composerId: `${THREAD_DETAIL_COMPOSER_TEXTAREA_ID}-sent-${operationId}`,
+          draft,
+          editFocusNonce,
+          execution: compactExecutionConfig,
+          focusSessionKey: operationId,
+          historyResetKey: `${thread.id}:${operationId}`,
+          isSubmitting: sentMessageEdit.isSubmitting,
+          onChangeMessage: (text, mentions) =>
+            sentMessageEdit.updateDraft((current) => ({
+              ...current,
+              text,
+              mentions,
+            })),
+          onEscape: sentMessageEdit.onCancel,
+          onSelectHistoryEntry: (nextDraft) =>
+            sentMessageEdit.updateDraft(() => nextDraft),
+          permission: bottomPermissionConfig,
+          pluginComposerHost: {
+            scope: { kind: "thread", threadId: thread.id },
+            textEffectKey: `sent-message:${thread.id}:${operationId}`,
+            draft,
+            getCurrent: () =>
+              readSentMessageEditDraft(sentMessageEditRef, operationId, draft),
+            setDraft: (nextDraft) =>
+              writeSentMessageEditDraft(
+                sentMessageEditRef,
+                operationId,
+                nextDraft,
+              ),
+            focus: focusInlinePluginComposer,
+          },
+          promptActions,
+          promptPlaceholder: "Edit message",
+          submit: handleSentMessageEditSubmit,
+          submitMode: sentMessageEditSubmitMode,
+          submitTitle: "Submit edit (Enter)",
+          suppressPluginComposerCustomizations: true,
+          textEffects: sentMessageComposerTextEffects,
+          threadRuntimeDisplayStatus: runtimeDisplayStatus,
+          typeahead: typeaheadConfig,
+          collapseResetKey: `sent-message:${operationId}`,
+        })}
+      </InlineMessageEditorFrame>,
+      hostElement,
+    );
+  }, [
+    bottomPermissionConfig,
+    canSubmitSentMessageEdit,
+    compactExecutionConfig,
+    editFocusNonce,
+    focusInlinePluginComposer,
+    handleAttachSentMessageFiles,
+    handleSentMessageEditSubmit,
+    isAttachingSentMessageFiles,
+    projectId,
+    promptActions,
+    runtimeDisplayStatus,
+    sentMessageAttachmentError,
+    sentMessageComposerTextEffects,
+    sentMessageEdit,
+    sentMessageEditRef,
+    sentMessageEditSubmitMode,
+    thread.id,
+    typeaheadConfig,
+  ]);
+  const childPendingInteractionBanners = useMemo(
+    () =>
+      childPendingInteractions.map((item) =>
+        isPluginPendingInteraction(item.interaction) ? (
+          <div key={item.interaction.id}>
+            <NavLink
+              to={item.href}
+              className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
+            >
+              From child thread: {item.childTitle}
+            </NavLink>
+            <PluginPendingInteractionComposer interaction={item.interaction} />
+          </div>
+        ) : (
+          <ThreadPendingInteractionBanner
+            key={item.interaction.id}
+            interaction={item.interaction}
+            sourceThread={{ href: item.href, title: item.childTitle }}
+            threadId={item.childThreadId}
+          />
+        ),
+      ),
+    [childPendingInteractions],
+  );
   const promptStack = useMemo(
     () => (
       <>
+        {childPendingInteractionBanners}
         {activeWorkflows.map((workflow) => (
           <ThreadWorkflowCard
             key={workflow.id}
@@ -1223,7 +1568,7 @@ export function ThreadDetailPromptArea({
                   changedFiles: workspaceChangedFilesSection,
                   mergeBase: contextBannerMergeBase,
                   onPromptBannerFileClick: canUseGitUi
-                    ? handlePromptBannerFileClick
+                    ? onChangedFileClick
                     : ignorePromptBannerFileClick,
                 }
               : null
@@ -1243,7 +1588,7 @@ export function ThreadDetailPromptArea({
           <QueuedMessagesList
             queuedMessages={queuedMessages}
             resolveMentionLink={resolveMentionLink}
-            inlineEditor={inlineEditor}
+            inlineEditor={queuedMessageEditor?.inlineEditor}
             sendDisabled={
               !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
               runtimeDisplayStatus === "provisioning" ||
@@ -1266,11 +1611,12 @@ export function ThreadDetailPromptArea({
     ),
     [
       canUseGitUi,
+      childPendingInteractionBanners,
       contextBannerMergeBase,
       expandedBannerSection,
       handleDeleteQueuedMessage,
       beginEditQueuedMessage,
-      handlePromptBannerFileClick,
+      onChangedFileClick,
       handleReorderQueuedMessage,
       handleSendQueuedImmediately,
       handleSetQueuedMessageGroupBoundary,
@@ -1280,7 +1626,7 @@ export function ThreadDetailPromptArea({
       isFollowUpSubmitting,
       isUnarchiveCurrentThreadPending,
       isQueueMutationPending,
-      inlineEditor,
+      queuedMessageEditor,
       activeGoalCard,
       activePromptModeCard,
       isTodoExpanded,
@@ -1307,10 +1653,17 @@ export function ThreadDetailPromptArea({
     ],
   );
 
-  if (activePendingInteraction && !shouldHideComposer) {
-    const pendingInteractionComposer = isPluginPendingInteraction(
-      activePendingInteraction,
-    ) ? (
+  // A pending permission/question takes the composer's place, but the
+  // composer itself stays mounted (hidden) inside FollowUpPromptBox so the
+  // TipTap editor, draft and pickers survive every approval instead of being
+  // rebuilt per interaction (submitMode is already "blocked" here). The
+  // interaction shows as the last stack item above a reduced stack: child
+  // banners, plan mode and goal cards, plus plugin banners.
+  const pendingInteractionNode = useMemo(() => {
+    if (!activePendingInteraction || shouldHideComposer) {
+      return null;
+    }
+    return isPluginPendingInteraction(activePendingInteraction) ? (
       <PluginPendingInteractionComposer
         interaction={activePendingInteraction}
       />
@@ -1320,43 +1673,36 @@ export function ThreadDetailPromptArea({
         threadId={thread.id}
       />
     );
-    return (
-      <div className="space-y-2">
+  }, [activePendingInteraction, shouldHideComposer, thread.id]);
+  const pendingInteractionStack = useMemo(
+    () => (
+      <>
+        {childPendingInteractionBanners}
         {activePromptMode ? activePromptModeCard : null}
         {goal ? activeGoalCard : null}
-        <PluginComposerHostProvider value={normalPluginComposerHost}>
-          <PluginComposerBanners
-            view={{
-              scope: normalPluginComposerHost.scope,
-              layout: "expanded",
-              draft: {
-                text: normalPluginComposerHost.draft.text,
-                isEmpty:
-                  normalPluginComposerHost.draft.text.trim().length === 0 &&
-                  normalPluginComposerHost.draft.attachments.length === 0,
-                attachmentCount:
-                  normalPluginComposerHost.draft.attachments.length,
-              },
-              run: { isRunning: false, isSubmitting: false },
-            }}
-          />
-        </PluginComposerHostProvider>
-        {pendingInteractionComposer}
-      </div>
-    );
-  }
+      </>
+    ),
+    [
+      activeGoalCard,
+      activePromptMode,
+      activePromptModeCard,
+      childPendingInteractionBanners,
+      goal,
+    ],
+  );
 
-  return (
+  const bottomContent = (
     <FollowUpPromptBox
       id={THREAD_DETAIL_COMPOSER_TEXTAREA_ID}
       attachments={bottomAttachmentsConfig}
-      stack={promptStack}
+      stack={pendingInteractionNode ? pendingInteractionStack : promptStack}
+      pendingInteraction={pendingInteractionNode}
       activePromptMode={activePromptMode}
       composer={shouldHideComposer ? null : bottomComposerConfig}
       pluginComposerHost={normalPluginComposerHost}
       pluginComposerScope={normalPluginComposerHost.scope}
       textEffects={promptTextEffects}
-      zenModeResetKey={thread.id}
+      collapseResetKey={thread.id}
       focusEndKey={bottomFocusEndKey}
       environmentSummary={environmentSummary}
       contextWindowUsage={contextWindowUsage ?? null}
@@ -1365,5 +1711,12 @@ export function ThreadDetailPromptArea({
       typeahead={typeaheadConfig}
       promptActions={promptActions}
     />
+  );
+
+  return (
+    <>
+      {sentMessageEditorPortal}
+      {bottomContent}
+    </>
   );
 }

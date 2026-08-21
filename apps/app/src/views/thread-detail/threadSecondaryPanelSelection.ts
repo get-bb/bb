@@ -22,11 +22,6 @@ interface GetActiveFixedSecondaryTabArgs {
   fixedPanelTabsState: FixedPanelTabsState;
 }
 
-interface GetOpenFixedSecondaryTabArgs {
-  activeFixedSecondaryTab: ActiveFixedSecondaryTab;
-  isSecondaryPanelOpen: boolean;
-}
-
 export function getActiveFixedSecondaryTab({
   fixedPanelTabsState,
 }: GetActiveFixedSecondaryTabArgs): ActiveFixedSecondaryTab {
@@ -38,13 +33,6 @@ export function getActiveFixedSecondaryTab({
     fixedPanelTabsState.secondary.tabs.find((tab) => tab.id === activeTabId) ??
     null;
   return activeTab;
-}
-
-export function getOpenFixedSecondaryTab({
-  activeFixedSecondaryTab,
-  isSecondaryPanelOpen,
-}: GetOpenFixedSecondaryTabArgs): ActiveFixedSecondaryTab {
-  return isSecondaryPanelOpen ? activeFixedSecondaryTab : null;
 }
 
 export function useSetThreadSecondaryPanelSelection(

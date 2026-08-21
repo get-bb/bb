@@ -113,6 +113,30 @@ function turnPlanEvent({ plan, seq }: TurnPlanEventArgs): ThreadEventWithMeta {
   };
 }
 
+function planStepsEvent({
+  steps,
+  seq,
+}: {
+  steps: ThreadEventPlanStep[];
+  seq: number;
+}): ThreadEventWithMeta {
+  return {
+    event: {
+      type: "item/completed",
+      threadId: "thread-1",
+      providerThreadId: "provider-thread-1",
+      scope: turnScope("turn-1"),
+      item: {
+        type: "planSteps",
+        id: `plan-${seq}`,
+        steps,
+        status: "completed",
+      },
+    },
+    meta: { id: `event-${seq}`, seq, createdAt: seq },
+  };
+}
+
 function nonTodoToolCallEvent(seq: number): ThreadEventWithMeta {
   return {
     event: {
@@ -133,6 +157,35 @@ function nonTodoToolCallEvent(seq: number): ThreadEventWithMeta {
 }
 
 describe("extractThreadTimelinePendingTodos", () => {
+  it("reads a grammar v3 planSteps snapshot as the banner, latest snapshot winning", () => {
+    const result = extractThreadTimelinePendingTodos(ACTIVE, [
+      todoWriteEvent({
+        seq: 1,
+        todos: [{ content: "Legacy todo", status: "pending" }],
+      }),
+      planStepsEvent({
+        seq: 2,
+        steps: [
+          { step: "Read the spec", status: "completed" },
+          { step: "Writing the code", status: "active" },
+          { step: "Run the tests", status: "pending" },
+          { step: "Flaky step", status: "failed" },
+          { step: "   ", status: "pending" },
+        ],
+      }),
+    ]);
+    expect(result).toEqual({
+      sourceSeq: 2,
+      updatedAt: 2,
+      items: [
+        { id: "seq:2:0", text: "Read the spec", status: "completed" },
+        { id: "seq:2:1", text: "Writing the code", status: "in_progress" },
+        { id: "seq:2:2", text: "Run the tests", status: "pending" },
+        { id: "seq:2:3", text: "Flaky step", status: "completed" },
+      ],
+    });
+  });
+
   it("returns null when no TodoWrite or task events are observed", () => {
     expect(extractThreadTimelinePendingTodos(ACTIVE, [])).toBeNull();
     expect(
@@ -638,12 +691,7 @@ describe("extractThreadTimelinePendingTodos", () => {
     });
   });
 
-  it.each<Thread["status"]>([
-    "idle",
-    "starting",
-    "stopping",
-    "error",
-  ])(
+  it.each<Thread["status"]>(["idle", "starting", "stopping", "error"])(
     "returns null when the thread status is %s, even with valid TodoWrite snapshots",
     (status) => {
       const result = extractThreadTimelinePendingTodos(status, [

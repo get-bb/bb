@@ -9,6 +9,7 @@ export const THREAD_CHANGE_KINDS = [
   "thread-created",
   "thread-deleted",
   "events-appended",
+  "history-rewritten",
   "interactions-changed",
   "status-changed",
   "title-changed",
@@ -54,6 +55,7 @@ export type HostChangeKind = (typeof HOST_CHANGE_KINDS)[number];
 export const SYSTEM_CHANGE_KINDS = [
   "config-changed",
   "plugins-changed",
+  "provider-registrations-changed",
 ] as const;
 export type SystemChangeKind = (typeof SYSTEM_CHANGE_KINDS)[number];
 
@@ -118,23 +120,48 @@ export type RealtimeSubscriptionTarget = z.infer<
   typeof realtimeSubscriptionTargetSchema
 >;
 
-export const subscribeMessageSchema = z.object({
+const subscribeMessageSchema = z.object({
   type: z.literal("subscribe"),
   target: realtimeSubscriptionTargetSchema,
 });
 export type SubscribeMessage = z.infer<typeof subscribeMessageSchema>;
 
-export const unsubscribeMessageSchema = z.object({
+const unsubscribeMessageSchema = z.object({
   type: z.literal("unsubscribe"),
   target: realtimeSubscriptionTargetSchema,
 });
 export type UnsubscribeMessage = z.infer<typeof unsubscribeMessageSchema>;
 
+/**
+ * Application-level liveness probe from a realtime client. Browsers expose no
+ * WebSocket ping/pong API and a half-open socket (Wi-Fi/LTE switch, iOS
+ * background suspend) stays `OPEN` indefinitely, so the app asks the server
+ * for a `pong` and reconnects when none arrives.
+ */
+export const pingMessageSchema = z.object({
+  type: z.literal("ping"),
+});
+export type PingMessage = z.infer<typeof pingMessageSchema>;
+
 export const clientMessageSchema = z.discriminatedUnion("type", [
   subscribeMessageSchema,
   unsubscribeMessageSchema,
+  pingMessageSchema,
 ]);
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
+
+/** Server answer to {@link pingMessageSchema}; strict, guards the outgoing side. */
+export const pongMessageSchema = z
+  .object({
+    type: z.literal("pong"),
+  })
+  .strict();
+export type PongMessage = z.infer<typeof pongMessageSchema>;
+
+/** Lenient inbound counterpart of {@link pongMessageSchema} for clients. */
+export const pongMessageLenientSchema = z.object({
+  type: z.literal("pong"),
+});
 
 function assertUnhandledRealtimeSubscriptionTarget(target: never): never {
   throw new Error(`Unhandled realtime subscription target: ${target}`);

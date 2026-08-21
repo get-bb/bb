@@ -1,4 +1,5 @@
 import { atomWithStorage } from "jotai/utils";
+import type { CollapsibleSidebarSectionId } from "@bb/client-core";
 import {
   createJsonLocalStorage,
   type SyncStorage,
@@ -23,13 +24,10 @@ const COLLAPSED_THREAD_SECTIONS_STORAGE_KEY =
 const LEGACY_COLLAPSED_FOLDERS_STORAGE_KEY = "bb.sidebar.collapsedFolders";
 const COLLAPSED_MACHINES_STORAGE_KEY = "bb.sidebar.collapsedMachines";
 
-export type SidebarSectionId =
-  | "pinned"
-  | "threads"
-  | `project:${string}`
-  | `section:${string}`
-  | `machine:${string}`;
-export type CollapsibleSidebarSectionId = "pinned" | "threads";
+export type {
+  CollapsibleSidebarSectionId,
+  SidebarSectionId,
+} from "@bb/client-core";
 
 // "project" keeps the per-project grouping; "chronological" is the persisted
 // value for the cross-project Sections view that replaced the old None view;
@@ -40,7 +38,7 @@ export type SidebarOrganizationMode = "project" | "chronological" | "machine";
 // that the runtime normalizes back to "updated".
 export type SidebarChronologicalSort = "updated" | "created" | "alpha" | "none";
 
-export const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
+const DEFAULT_SIDEBAR_SECTION_ORDER: readonly string[] = [
   "pinned",
   "projects",
   "threads",

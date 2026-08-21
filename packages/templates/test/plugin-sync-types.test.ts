@@ -133,7 +133,11 @@ describe("syncPluginTypes", () => {
   });
 
   it("check mode reports stale files and writes nothing", async () => {
-    const missing = await syncPluginTypes({ rootDir, app: true, check: true });
+    const missing = await syncPluginTypes({
+      rootDir,
+      app: true,
+      check: true,
+    });
     expect(missing).toEqual([
       { path: "types/bb-plugin-sdk.d.ts", outcome: "stale" },
       { path: "types/bb-plugin-sdk-app.d.ts", outcome: "stale" },
@@ -141,7 +145,11 @@ describe("syncPluginTypes", () => {
     await expect(stat(join(rootDir, "types"))).rejects.toThrow();
 
     await syncPluginTypes({ rootDir, app: true });
-    const current = await syncPluginTypes({ rootDir, app: true, check: true });
+    const current = await syncPluginTypes({
+      rootDir,
+      app: true,
+      check: true,
+    });
     expect(current.every((file) => file.outcome === "unchanged")).toBe(true);
   });
 });

@@ -65,7 +65,6 @@ describe("MessageActionBar", () => {
     const button = screen.getByRole("button", {
       name: "Send to main thread",
     });
-    expect(button.className).toContain("cursor-pointer");
     fireEvent.click(button);
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
@@ -207,7 +206,6 @@ describe("MessageActionBar", () => {
     );
 
     const button = screen.getByRole("button", { name: "Add to chat" });
-    expect(button.className).toContain("cursor-pointer");
     fireEvent.click(button);
     expect(onAddToChat).toHaveBeenCalledWith("Quote this message.");
   });
@@ -290,30 +288,6 @@ describe("MessageActionBar", () => {
     expect(onSendToMain).toHaveBeenCalledTimes(1);
   });
 
-  it("uses a single overflow trigger on coarse pointers", () => {
-    render(
-      <MessageActionBar
-        messageText="An answer."
-        alignment="start"
-        mobileActionDisplay="overflow"
-        onFork={vi.fn()}
-      />,
-    );
-
-    const button = screen.getByRole("button", { name: "Fork into new thread" });
-    expect(button.className).toContain("max-md:pointer-coarse:hidden");
-
-    const overflowTrigger = screen.getByRole("button", {
-      name: "Message actions",
-    });
-    expect(overflowTrigger.className).toContain("cursor-pointer");
-    expect(overflowTrigger.className).toContain("hidden");
-    expect(overflowTrigger.className).toContain(
-      "max-md:pointer-coarse:inline-flex",
-    );
-    expect(overflowTrigger.className).not.toContain("opacity-0");
-  });
-
   it("uses an anchored popover instead of a bottom drawer on mobile", () => {
     mockMobileCoarsePointer();
     const onAddToChat = vi.fn();
@@ -388,8 +362,33 @@ describe("MessageActionBar", () => {
 
     expect(onFork).toHaveBeenCalledTimes(1);
   });
+  it("skips the desktop tooltip trees on touch phones", () => {
+    mockMobileCoarsePointer();
+    render(
+      <MessageActionBar
+        messageText="The latest answer."
+        alignment="start"
+        mobileActionDisplay="inline"
+        onAddToChat={vi.fn()}
+        onFork={vi.fn()}
+      />,
+    );
 
-  it("shows compact inline mobile actions without an overflow menu when requested", () => {
+    // Radix TooltipTrigger stamps `data-state` on its child; the mobile branch
+    // must render plain buttons (no tooltip tree per action).
+    const fork = screen.getByRole("button", { name: "Fork into new thread" });
+    expect(fork.hasAttribute("data-state")).toBe(false);
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
+    expect(
+      screen.queryByRole("button", { name: "Message actions" }),
+    ).toBeNull();
+  });
+
+  it("mounts the tooltip bar on fine-pointer viewports", () => {
     render(
       <MessageActionBar
         messageText="The latest answer."
@@ -398,16 +397,7 @@ describe("MessageActionBar", () => {
         onFork={vi.fn()}
       />,
     );
-
-    for (const name of ["Copy message", "Fork into new thread"]) {
-      const button = screen.getByRole("button", { name });
-      expect(button.className).toContain("max-md:pointer-coarse:size-7");
-      expect(button.className).toContain("max-md:pointer-coarse:opacity-100");
-      expect(button.className).not.toContain("max-md:pointer-coarse:hidden");
-    }
-
-    expect(
-      screen.queryByRole("button", { name: "Message actions" }),
-    ).toBeNull();
+    const fork = screen.getByRole("button", { name: "Fork into new thread" });
+    expect(fork.getAttribute("data-state")).toBe("closed");
   });
 });

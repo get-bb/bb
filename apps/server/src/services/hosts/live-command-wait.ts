@@ -9,7 +9,7 @@ import { ApiError } from "../../errors.js";
 import { roundDurationMs } from "../lib/duration.js";
 import { callHostOnlineRpc } from "./online-rpc.js";
 
-export interface RunLiveCommandAndWaitArgs<
+interface RunLiveCommandAndWaitArgs<
   TType extends HostDaemonSettledCommandType,
 > {
   command: Extract<HostDaemonCommand, { type: TType }>;

@@ -18,6 +18,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -73,6 +74,7 @@ describe("plugin background services", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-bg-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -137,6 +139,7 @@ describe("plugin background services", () => {
     }));
     const interruptPluginInteractions = vi.fn(() => []);
     const local = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -197,6 +200,7 @@ describe("plugin background services", () => {
     // Own instance: the stop bound must exceed the service's stop delay so
     // the slow stop is a legitimate (non-hung) dispose in progress.
     const local = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -315,6 +319,71 @@ describe("plugin background services", () => {
     });
   });
 
+  it("routes an uncaught exception from a service's async context to the supervisor", async () => {
+    // An unlistened EventEmitter 'error' fired from a timer never reaches the
+    // start() promise: Node raises it as a process-level uncaughtException.
+    // Without attribution the server exits and crash-loops (#1746).
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-emitter",
+      serverSource: `
+        import { EventEmitter } from "node:events";
+        export default function plugin(bb: any) {
+          const g = globalThis as any;
+          g.__emitterStarts = 0;
+          g.__emitterAborts = 0;
+          bb.background.service("imap", {
+            async start(signal: any) {
+              g.__emitterStarts += 1;
+              if (g.__emitterStarts === 1) {
+                const client = new EventEmitter(); // no client.on("error")
+                setTimeout(() => client.emit("error", new Error("Socket timeout")), 5);
+              }
+              await new Promise<void>((resolve) =>
+                signal.addEventListener("abort", () => {
+                  g.__emitterAborts += 1;
+                  resolve();
+                }));
+            },
+          });
+        }
+      `,
+    });
+    // Stand in for the server's process listener (start-server.ts). vitest's
+    // own listener would report the exception as an unhandled error, so it
+    // steps aside for the duration of this test.
+    const vitestListeners = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    const unclaimed: unknown[] = [];
+    process.on("uncaughtException", (error) => {
+      if (!service.handleUncaughtException(error)) unclaimed.push(error);
+    });
+    try {
+      await service.installPath(rootDir);
+      await vi.waitFor(
+        () => {
+          expect(globals.__emitterStarts).toBe(2);
+        },
+        { timeout: 2000 },
+      );
+      // The first instance was aborted before the second one started.
+      expect(globals.__emitterAborts).toBe(1);
+      await vi.waitFor(() => {
+        expect(
+          service.list().find((p) => p.id === "emitter")?.services,
+        ).toEqual([{ name: "imap", state: "running" }]);
+      });
+      expect(unclaimed).toEqual([]);
+      expect(service.list().find((p) => p.id === "emitter")?.status).toBe(
+        "running",
+      );
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const listener of vitestListeners) {
+        process.on("uncaughtException", listener);
+      }
+    }
+  });
+
   it("NeedsConfigurationError maps to needs-configuration and stops restarts", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-needy",
@@ -396,6 +465,7 @@ describe("plugin schedules", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sched-test-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,

@@ -1,7 +1,7 @@
 import path from "node:path";
 import { ApiError } from "../errors.js";
 
-export interface SafeRelativeRoutePath {
+interface SafeRelativeRoutePath {
   relativePath: string;
 }
 

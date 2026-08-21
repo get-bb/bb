@@ -8,7 +8,7 @@ interface DaemonAuthContext {
   set(key: string, value: unknown): void;
 }
 
-export interface AuthenticatedDaemon {
+interface AuthenticatedDaemon {
   hostId: string;
   hostType: HostType;
   keyId: string;

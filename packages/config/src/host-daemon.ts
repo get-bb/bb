@@ -20,33 +20,31 @@ import { validateOptionalUrl } from "./public-url.js";
 import { validatePortNumber } from "./runtime.js";
 import { loadServerUrlValue } from "./server-url.js";
 
-export interface HostDaemonConnectionConfig {
+interface HostDaemonConnectionConfig {
   BB_APP_URL: string;
   BB_DEV_APP_PORT?: number;
   BB_HOST_DAEMON_PORT: number;
   BB_SERVER_URL: string;
 }
 
-export interface HostDaemonConfig
-  extends CommonConfig, HostDaemonConnectionConfig {}
+interface HostDaemonConfig extends CommonConfig, HostDaemonConnectionConfig {}
 
-export interface LoadHostDaemonConnectionConfigArgs extends EnvLoaderArgs {
+interface LoadHostDaemonConnectionConfigArgs extends EnvLoaderArgs {
   hostDaemonPort?: number;
   repoRoot?: string;
   serverUrl?: string;
 }
 
-export interface LoadHostDaemonConfigArgs
+interface LoadHostDaemonConfigArgs
   extends LoadCommonConfigArgs, LoadHostDaemonConnectionConfigArgs {}
 
-export interface HostDaemonStartConfig {
-  dataDir?: string;
-  connectionConfig?: HostDaemonConnectionConfig;
+interface HostDaemonStartConfig {
+  dataDir: string;
+  connectionConfig: HostDaemonConnectionConfig;
 }
 
-export interface LoadHostDaemonStartConfigArgs extends LoadHostDaemonConfigArgs {
+interface LoadHostDaemonStartConfigArgs extends LoadHostDaemonConfigArgs {
   dataDir?: string;
-  enableLocalApi: boolean;
 }
 
 function resolveHostDaemonPort(
@@ -124,14 +122,8 @@ export function loadHostDaemonStartConfig(
     };
   }
 
-  if (args.serverUrl === undefined || args.enableLocalApi) {
-    return {
-      connectionConfig: loadHostDaemonConnectionConfig(args),
-      dataDir: args.dataDir,
-    };
-  }
-
   return {
+    connectionConfig: loadHostDaemonConnectionConfig(args),
     dataDir: args.dataDir,
   };
 }

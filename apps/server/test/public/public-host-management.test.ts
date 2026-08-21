@@ -9,7 +9,10 @@ import {
   createHostJoinCodeResponseSchema,
   type CreateHostJoinCodeResponse,
 } from "@bb/server-contract";
-import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_PROTOCOL_VERSION,
+  hostDaemonSessionOpenResponseSchema,
+} from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { readJson } from "../helpers/json.js";
@@ -46,7 +49,7 @@ function requestJoinCode(app: {
 }
 
 describe("public host management", () => {
-  it("mints a join code that enrolls through the existing internal route", async () => {
+  it("preserves a renamed host across a daemon reconnect", async () => {
     await withTestHarness(async (harness) => {
       const issued = await createJoinCode(harness.app);
       expect(issued.joinCode).toMatch(/^bbde_/u);
@@ -82,6 +85,20 @@ describe("public host management", () => {
         type: "persistent",
       });
 
+      const renameResponse = await harness.app.request(
+        `${API}/hosts/${issued.hostId}`,
+        {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ name: "My Build Box" }),
+        },
+      );
+      expect(renameResponse.status).toBe(200);
+      expect(await readJson(renameResponse)).toMatchObject({
+        id: issued.hostId,
+        name: "My Build Box",
+      });
+
       const sessionResponse = await harness.app.request(
         "/internal/session/open",
         {
@@ -100,15 +117,32 @@ describe("public host management", () => {
             hostType: "persistent",
             instanceId: "instance-cloud-2",
             loadedEnvironments: [],
+            localApiPort: 38_888,
             platform: "linux",
             protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
           }),
         },
       );
       expect(sessionResponse.status).toBe(201);
-      expect(getHost(harness.db, issued.hostId)?.connectMachineId).toBe(
-        "machine-cloud-2",
+      const openedSession = hostDaemonSessionOpenResponseSchema.parse(
+        await readJson(sessionResponse),
       );
+      expect(getHost(harness.db, issued.hostId)).toMatchObject({
+        connectMachineId: "machine-cloud-2",
+        name: "My Build Box",
+      });
+      expect(
+        getSessionById(harness.db, { sessionId: openedSession.sessionId }),
+      ).toMatchObject({ hostName: "Build Machine" });
+
+      const publicHostResponse = await harness.app.request(
+        `${API}/hosts/${issued.hostId}`,
+      );
+      expect(publicHostResponse.status).toBe(200);
+      expect(await readJson(publicHostResponse)).toMatchObject({
+        id: issued.hostId,
+        name: "My Build Box",
+      });
     });
   });
 
@@ -423,12 +457,17 @@ describe("public host management", () => {
         connectMachineId: "machine-cloud-remove",
         id: "host_cloud_remove",
       });
-      await harness.pluginService.start();
-      const connectPlugin = harness.pluginService
-        .list()
-        .find((plugin) => plugin.source === "builtin:connect");
-      expect(connectPlugin).toBeDefined();
-      if (!connectPlugin) throw new Error("connect plugin was not installed");
+      // Install only the plugin this route calls. Starting the whole service
+      // builds every enabled builtin, including all provider bridges, and made
+      // this focused route test contend with unrelated plugin compilation.
+      const connectPlugin = await harness.pluginService.install(
+        "builtin:connect",
+        { kind: "root" },
+      );
+      expect(connectPlugin).toMatchObject({
+        source: "builtin:connect",
+        status: "running",
+      });
       const revokeHandler = vi.fn(async () => ({ ok: true }));
       const revokeRecord = {
         inputSchema: z.object({ machineId: z.string() }),
@@ -443,23 +482,16 @@ describe("public host management", () => {
         .spyOn(harness.pluginService, "invokeRpcHandler")
         .mockResolvedValue({ ok: true, result: { ok: true } });
 
-      try {
-        const response = await harness.app.request(`${API}/hosts/${host.id}`, {
-          method: "DELETE",
-        });
-        expect(response.status).toBe(200);
-        expect(invoke).toHaveBeenCalledWith(
-          connectPlugin.id,
-          "revokeMachine",
-          revokeRecord,
-          { machineId: "machine-cloud-remove" },
-        );
-      } finally {
-        await harness.pluginService.stop();
-      }
+      const response = await harness.app.request(`${API}/hosts/${host.id}`, {
+        method: "DELETE",
+      });
+      expect(response.status).toBe(200);
+      expect(invoke).toHaveBeenCalledWith(
+        connectPlugin.id,
+        "revokeMachine",
+        revokeRecord,
+        { machineId: "machine-cloud-remove" },
+      );
     });
-    // Starting the plugin service builds and loads the builtin plugins, which
-    // is real work; the other plugin-service suites budget 30s+ for it. The
-    // 5s default is a coin flip on a loaded CI runner.
   }, 30_000);
 });

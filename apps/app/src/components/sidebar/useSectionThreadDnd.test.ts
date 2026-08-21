@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import {
   collectSectionThreadDndLookup,
   PINNED_THREAD_PARENT_KEY,
@@ -28,7 +28,6 @@ function createThread(overrides: Partial<ThreadListEntry>): ThreadListEntry {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,

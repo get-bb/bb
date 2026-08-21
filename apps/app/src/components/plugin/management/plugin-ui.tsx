@@ -1,7 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { PluginIcon } from "@/components/plugin/PluginIcon";
+import {
+  PluginCompactIconMask,
+  PluginIcon,
+  pluginIconName,
+} from "@/components/plugin/PluginIcon";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
 
@@ -17,24 +21,32 @@ import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
  * derivations, where both poles are achromatic and there is no hue to lose.)
  */
 
-/** Green "Update X.Y.Z" tint (sketch v2 `.pill.update`). */
-export const UPDATE_TINT_STYLE = {
-  background: "color-mix(in oklab, var(--success) 14%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
-  color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
+/**
+ * The update control's icon accent: a quiet neutral button whose download mark
+ * carries the "improvement available" tone, instead of a full green pill
+ * shouting over the row.
+ */
+export const UPDATE_ICON_STYLE = {
+  color: "color-mix(in oklab, var(--success) 72%, var(--ink))",
 } as const;
 
-/** Success verdict banner tint (sketch v2 `.banner`). */
-export const SUCCESS_BANNER_STYLE = {
-  background: "color-mix(in oklab, var(--success) 9%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--success) 35%, var(--canvas))",
-} as const;
+/**
+ * Whether a plugin version reads as a version to a person. Git-sourced
+ * plugins report resolved commit hashes as their available version, and a
+ * hash in a control's label reads as debug output rather than an offer.
+ */
+export function isReadablePluginVersion(version: string): boolean {
+  return /^v?\d+\.\d+/u.test(version);
+}
 
-/** Warning note tint (sketch `.notebox.warn`, full-trust warning). */
-export const WARNING_NOTE_STYLE = {
-  background: "color-mix(in oklab, var(--warning-text) 6%, var(--canvas))",
-  borderColor: "color-mix(in oklab, var(--warning-text) 35%, var(--canvas))",
-} as const;
+/**
+ * Human-facing version text: readable versions pass through, long hex commit
+ * hashes shorten to the conventional 7 characters. Detail grids that exist
+ * for precision should keep the full value instead of this.
+ */
+export function displayPluginVersion(version: string): string {
+  return /^[0-9a-f]{12,}$/iu.test(version) ? version.slice(0, 7) : version;
+}
 
 export const SUCCESS_TEXT_STYLE = {
   color: "color-mix(in oklab, var(--success) 80%, var(--ink))",
@@ -87,12 +99,56 @@ export function PluginLogo({
 }
 
 /**
+ * Identity for a marketplace catalog entry. A listing may ship an icon image,
+ * which BB fetched, validated, and now serves from its own origin — the app
+ * never requests the marketplace's URL. Everything else falls back to the
+ * entry's named icon, then to the generic plugin glyph.
+ */
+export function CatalogEntryIcon({
+  entry,
+  className,
+}: {
+  entry: {
+    displayName: string;
+    icon: string | null;
+    iconUrl: string | null;
+    iconTinted: boolean;
+  };
+  className: string;
+}) {
+  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
+  // The server marks single-color artwork (a bundled compact icon or a catalog
+  // SVG not declared a logo) for masking with the surrounding text color, so a
+  // black-on-transparent glyph stays visible on a dark theme.
+  if (entry.iconUrl !== null && entry.iconTinted) {
+    return <PluginCompactIconMask url={entry.iconUrl} className={className} />;
+  }
+  if (entry.iconUrl === null || entry.iconUrl === failedIconUrl) {
+    return (
+      <PlaceholderBadge
+        className={className}
+        iconName={pluginIconName(entry.icon)}
+      />
+    );
+  }
+  return (
+    <img
+      src={entry.iconUrl}
+      alt=""
+      aria-hidden="true"
+      className={cn("rounded-sm object-contain", className)}
+      onError={() => setFailedIconUrl(entry.iconUrl)}
+    />
+  );
+}
+
+/**
  * Neutral avatar for entries without a shipped logo (installed rows, browse
  * cards and catalog status). Renders a bare generic glyph — a placeholder, not
  * the entry's initial and not a tile. The `className` sizes the footprint so
  * it aligns with sibling logo images.
  */
-export function PlaceholderBadge({
+function PlaceholderBadge({
   className,
   iconName = "Zap",
 }: {
@@ -120,7 +176,7 @@ export function formatAbsoluteDate(epochMs: number): string {
   });
 }
 
-export interface DetailsDisclosureProps {
+interface DetailsDisclosureProps {
   summary: string;
   children: ReactNode;
   /** Pre-expand when the details are the story (failure, skipped release). */
@@ -172,19 +228,14 @@ export function DetailsDisclosure({
 export function KeyValueGrid({
   entries,
 }: {
-  entries: { key: string; value: ReactNode; mono?: boolean }[];
+  entries: { key: string; value: ReactNode }[];
 }) {
   return (
     <dl className="grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1.5 text-xs">
       {entries.map((entry) => (
         <div key={entry.key} className="contents">
           <dt className="text-muted-foreground">{entry.key}</dt>
-          <dd
-            className={cn(
-              "min-w-0 break-words text-foreground",
-              entry.mono !== false && "font-mono",
-            )}
-          >
+          <dd className="min-w-0 break-words text-foreground font-mono">
             {entry.value}
           </dd>
         </div>
@@ -202,8 +253,8 @@ export function FullTrustWarning() {
     >
       <Icon name="Lock" className="mt-0.5 size-3 shrink-0" />
       <span>
-        Plugins run as full-trust code with access to all local bb data. Only
-        install sources you trust.
+        Plugins run as full-trust code with access to your computer. Only
+        install from sources you trust.
       </span>
     </p>
   );

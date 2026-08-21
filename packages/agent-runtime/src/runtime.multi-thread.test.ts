@@ -1,17 +1,14 @@
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
-import { fakeProviderScriptPath } from "./test/index.js";
+import { createAgentRuntime } from "./runtime.js";
 import type { AgentRuntime } from "./types.js";
 import {
-  createFakeAdapter,
-  createStartedEventAdapter,
-  createWarningEventAdapter,
+  createScriptedEchoLaunch,
+  createScriptedEchoRuntime,
   fullRuntimeOptions,
-  waitForRuntimeThreadEvent,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
   waitForThreadTurnCompleted,
@@ -51,11 +48,9 @@ async function waitForBothThreadsStarted(
 
 describe("createAgentRuntime multi-thread routing", () => {
   let tmpDir: string;
-  let scriptPath: string;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-test-"));
-    scriptPath = fakeProviderScriptPath;
   });
 
   afterEach(() => {
@@ -64,14 +59,8 @@ describe("createAgentRuntime multi-thread routing", () => {
 
   it("handles multiple threads on the same provider", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events.push(e),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
+    const runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: (e) => events.push(e) },
     });
 
     const r1 = await runtime.startThread({
@@ -89,10 +78,10 @@ describe("createAgentRuntime multi-thread routing", () => {
       options: fullRuntimeOptions,
     });
 
-    // Each thread gets a unique providerThreadId
+    // One bridge process serves both threads; each gets its own identity.
+    expect(runtime.listRunningProviders()).toEqual(["fake"]);
     expect(r1.providerThreadId).not.toBe(r2.providerThreadId);
 
-    // Run turns concurrently
     await Promise.all([
       runtime.runTurn({
         clientRequestId: "creq_222222222b",
@@ -122,38 +111,47 @@ describe("createAgentRuntime multi-thread routing", () => {
       }),
     ]);
 
-    // Both threads should have turn/completed events with correct threadIds
-    const t1Completed = events.filter(
-      (e) =>
-        e.type === "turn/completed" && "threadId" in e && e.threadId === "t1",
-    );
-    const t2Completed = events.filter(
-      (e) =>
-        e.type === "turn/completed" && "threadId" in e && e.threadId === "t2",
-    );
-    expect(t1Completed.length).toBe(1);
-    expect(t2Completed.length).toBe(1);
+    const completedFor = (threadId: string) =>
+      events.filter(
+        (e) => e.type === "turn/completed" && e.threadId === threadId,
+      );
+    expect(completedFor("t1")).toHaveLength(1);
+    expect(completedFor("t2")).toHaveLength(1);
+    // Each thread's answer lands on its own thread, never on the sibling.
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: "fake",
+      runtime,
+      threadId: "t1",
+      text: "Response to: thread 1",
+    });
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: "fake",
+      runtime,
+      threadId: "t2",
+      text: "Response to: thread 2",
+    });
+    expect(
+      events.some(
+        (e) =>
+          e.type === "item/completed" &&
+          e.threadId === "t1" &&
+          e.item.type === "agentMessage" &&
+          e.item.text.includes("thread 2"),
+      ),
+    ).toBe(false);
 
     await runtime.shutdown();
   });
 
-  it("keeps sibling threads running for keep-provider adapters after stopping one thread", async () => {
+  it("keeps sibling threads running after stopping one thread", async () => {
     const events: ThreadEvent[] = [];
     const providerId = "keep-provider-fake";
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => {
-        const adapter = createFakeAdapter(scriptPath);
-        return {
-          ...adapter,
-          displayName: "Keep Provider Fake",
-          id: providerId,
-        };
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
       },
     });
 
@@ -195,7 +193,16 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
 
     await runtime.stopThread({ threadId: "t1" });
+    // The shared bridge process outlives the stopped thread.
     expect(runtime.listRunningProviders()).toEqual([providerId]);
+    expect(
+      events.some(
+        (e) =>
+          e.type === "turn/completed" &&
+          e.threadId === "t1" &&
+          e.status === "interrupted",
+      ),
+    ).toBe(true);
 
     await waitForThreadAgentMessageText({
       events,
@@ -224,14 +231,8 @@ describe("createAgentRuntime multi-thread routing", () => {
 
   it("stamps all events with bb threadId and providerThreadId", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events.push(e),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
+    const runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: (e) => events.push(e) },
     });
 
     const { providerThreadId } = await runtime.startThread({
@@ -254,10 +255,10 @@ describe("createAgentRuntime multi-thread routing", () => {
       threadId: "my-thread",
     });
 
-    // Every event with a threadId should have the bb threadId, not the provider's
-    const threadEvents = events.filter((e) => "threadId" in e);
-    expect(threadEvents.length).toBeGreaterThan(0);
-    for (const e of threadEvents) {
+    // Every event carries the bb thread id, never the provider's, and every
+    // provider event carries the provider thread id the session reported.
+    expect(events.length).toBeGreaterThan(0);
+    for (const e of events) {
       expect(e.threadId).toBe("my-thread");
       if ("providerThreadId" in e) {
         expect(e.providerThreadId).toBe(providerThreadId);
@@ -269,14 +270,8 @@ describe("createAgentRuntime multi-thread routing", () => {
 
   it("stamps events correctly for multiple threads", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events.push(e),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
+    const runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: (e) => events.push(e) },
     });
 
     const r1 = await runtime.startThread({
@@ -323,17 +318,10 @@ describe("createAgentRuntime multi-thread routing", () => {
       }),
     ]);
 
-    // t1 events should have threadId "t1" and providerThreadId from r1
-    const t1Events = events.filter(
-      (e) => "threadId" in e && e.threadId === "t1",
-    );
-    const t2Events = events.filter(
-      (e) => "threadId" in e && e.threadId === "t2",
-    );
-
+    const t1Events = events.filter((e) => e.threadId === "t1");
+    const t2Events = events.filter((e) => e.threadId === "t2");
     expect(t1Events.length).toBeGreaterThan(0);
     expect(t2Events.length).toBeGreaterThan(0);
-
     for (const e of t1Events) {
       if ("providerThreadId" in e) {
         expect(e.providerThreadId).toBe(r1.providerThreadId);
@@ -348,261 +336,31 @@ describe("createAgentRuntime multi-thread routing", () => {
     await runtime.shutdown();
   });
 
-  it("maps thread/started before identity for multiple threads on one provider", async () => {
-    const events: ThreadEvent[] = [];
-    const startedScriptPath = join(tmpDir, "started-provider.cjs");
-    writeFileSync(
-      startedScriptPath,
-      `
-let nextThreadId = 1;
-const readline = require("node:readline");
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    send({
-      jsonrpc: "2.0",
-      method: "thread/started",
-      params: {
-        thread: {
-          id: providerThreadId,
-        },
-      },
-    });
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { providerThreadId },
-    });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createStartedEventAdapter(startedScriptPath),
-    });
-
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "started-fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t2",
-      projectId: "p1",
-      providerId: "started-fake",
-      options: fullRuntimeOptions,
-    });
-    await Promise.all([
-      waitForRuntimeThreadEvent({
-        events,
-        label: "thread/started for t1",
-        predicate: (event) =>
-          event.type === "thread/started" && event.threadId === "t1",
-        providerId: "started-fake",
-        runtime,
-        threadId: "t1",
-      }),
-      waitForRuntimeThreadEvent({
-        events,
-        label: "thread/started for t2",
-        predicate: (event) =>
-          event.type === "thread/started" && event.threadId === "t2",
-        providerId: "started-fake",
-        runtime,
-        threadId: "t2",
-      }),
-    ]);
-
-    expect(
-      events.filter(
-        (event) => event.type === "thread/started" && event.threadId === "t1",
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.filter(
-        (event) => event.type === "thread/started" && event.threadId === "t2",
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.some(
-        (event) =>
-          event.type === "thread/started" && event.threadId.startsWith("prov-"),
-      ),
-    ).toBe(false);
-
-    await runtime.shutdown();
-  });
-
-  it("drops unscoped provider events when multiple threads share one provider", async () => {
-    const events: ThreadEvent[] = [];
-    const warningScriptPath = join(tmpDir, "warning-provider.cjs");
-    writeFileSync(
-      warningScriptPath,
-      `
-let nextThreadId = 1;
-const readline = require("node:readline");
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.method === "initialize") {
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    send({
-      jsonrpc: "2.0",
-      id: message.id,
-      result: { providerThreadId },
-    });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    const providerThreadId = message.params.threadId;
-    const turnId = "turn-" + providerThreadId;
-    send({ jsonrpc: "2.0", method: "warning", params: {} });
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId: providerThreadId, providerThreadId, turnId },
-    });
-    send({
-      jsonrpc: "2.0",
-      method: "turn/completed",
-      params: { threadId: providerThreadId, providerThreadId, turnId },
-    });
-    send({ jsonrpc: "2.0", id: message.id, result: {} });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events.push(e),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createWarningEventAdapter(warningScriptPath),
-    });
-
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "warning-fake",
-      options: fullRuntimeOptions,
-    });
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t2",
-      projectId: "p1",
-      providerId: "warning-fake",
-      options: fullRuntimeOptions,
-    });
-
-    await Promise.all([
-      runtime.runTurn({
-        clientRequestId: "creq_222222222j",
-        threadId: "t1",
-        input: [promptTextInput({ text: "from t1" })],
-        options: fullRuntimeOptions,
-      }),
-      runtime.runTurn({
-        clientRequestId: "creq_222222222k",
-        threadId: "t2",
-        input: [promptTextInput({ text: "from t2" })],
-        options: fullRuntimeOptions,
-      }),
-    ]);
-    await Promise.all([
-      waitForThreadTurnCompleted({
-        events,
-        providerId: "warning-fake",
-        runtime,
-        threadId: "t1",
-      }),
-      waitForThreadTurnCompleted({
-        events,
-        providerId: "warning-fake",
-        runtime,
-        threadId: "t2",
-      }),
-    ]);
-
-    expect(
-      events.find((event) => event.type === "provider/warning"),
-    ).toBeUndefined();
-    expect(
-      events.filter(
-        (event) => event.type === "turn/completed" && event.threadId === "t1",
-      ),
-    ).toHaveLength(1);
-    expect(
-      events.filter(
-        (event) => event.type === "turn/completed" && event.threadId === "t2",
-      ),
-    ).toHaveLength(1);
-
-    await runtime.shutdown();
-  });
-
   // ---- Multi-provider ----
 
   it("handles multiple providers in a single runtime", async () => {
     const events: ThreadEvent[] = [];
-    const script2 = fakeProviderScriptPath;
-
-    let adapterCallCount = 0;
-    const runtime = createAgentRuntimeWithAdapters({
+    const runtime = createAgentRuntime({
       workspacePath: tmpDir,
       onEvent: (e) => events.push(e),
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "ok" }],
         success: true,
       }),
-      adapterFactory: (providerId) => {
-        adapterCallCount++;
-        const adapter = createFakeAdapter(
-          adapterCallCount === 1 ? scriptPath : script2,
-        );
-        return { ...adapter, id: providerId };
-      },
+    });
+    // Two providers, two bridge launches (distinct artifact digests), two
+    // bridge processes.
+    const launchA = createScriptedEchoLaunch({
+      pluginId: "provider-a",
+      digest: "provider-a",
+    });
+    const launchB = createScriptedEchoLaunch({
+      pluginId: "provider-b",
+      digest: "provider-b",
     });
 
     await runtime.startThread({
+      bridgeLaunch: launchA,
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -610,12 +368,17 @@ rl.on("line", (line) => {
       options: fullRuntimeOptions,
     });
     await runtime.startThread({
+      bridgeLaunch: launchB,
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
       providerId: "provider-b",
       options: fullRuntimeOptions,
     });
+    expect(runtime.listRunningProviders().sort()).toEqual([
+      "provider-a",
+      "provider-b",
+    ]);
 
     await Promise.all([
       runtime.runTurn({
@@ -657,14 +420,8 @@ rl.on("line", (line) => {
   it("resumes across runtime instances", async () => {
     // Runtime 1: start a thread
     const events1: ThreadEvent[] = [];
-    const runtime1 = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events1.push(e),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
+    const runtime1 = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: (e) => events1.push(e) },
     });
 
     const { providerThreadId } = await runtime1.startThread({
@@ -688,25 +445,20 @@ rl.on("line", (line) => {
     });
     await runtime1.shutdown();
 
-    // Runtime 2: resume the thread
+    // Runtime 2: resume the thread under the first runtime's provider identity
     const events2: ThreadEvent[] = [];
-    const runtime2 = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events2.push(e),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () => createFakeAdapter(scriptPath),
+    const runtime2 = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: (e) => events2.push(e) },
     });
 
-    await runtime2.resumeThread({
+    const resumed = await runtime2.resumeThread({
       environmentId: "env-1",
       threadId: "t1-resumed",
       providerThreadId,
       providerId: "fake",
       options: fullRuntimeOptions,
     });
+    expect(resumed.providerThreadId).toBe(providerThreadId);
     await runtime2.runTurn({
       clientRequestId: "creq_222222222q",
       threadId: "t1-resumed",
@@ -720,7 +472,13 @@ rl.on("line", (line) => {
       threadId: "t1-resumed",
     });
 
-    expect(events2.some((e) => e.type === "turn/completed")).toBe(true);
+    await waitForThreadAgentMessageText({
+      events: events2,
+      providerId: "fake",
+      runtime: runtime2,
+      threadId: "t1-resumed",
+      text: "Response to: second runtime",
+    });
     await runtime2.shutdown();
   }, 15_000);
 });

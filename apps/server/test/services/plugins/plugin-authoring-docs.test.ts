@@ -1,13 +1,14 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import * as pluginSdkApp from "@bb/plugin-sdk/app";
+import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
   type PluginContentScriptRegistration,
+  type PluginDiffRendererProps,
   type PluginFileOpenerProps,
   type PluginHomepageSectionProps,
   type PluginHttpAuthMode,
@@ -16,10 +17,13 @@ import {
   type PluginMessageDirectiveProps,
   type PluginNavPanelProps,
   type PluginNavPanelRegistration,
+  type PluginNewThreadPanelProps,
   type PluginPendingInteractionProps,
+  type PluginProviderIconRegistration,
   type PluginSettingDescriptor,
   type PluginSettingsSectionProps,
   type PluginSidebarFooterActionProps,
+  type PluginSourceCodeRendererProps,
   type PluginThreadHeaderActionProps,
   type PluginThreadListProps,
   type PluginSidebarFooterActionRegistration,
@@ -27,7 +31,7 @@ import {
   type PluginThreadPanelProps,
   type ThreadChatMessageAction,
   type ThreadChatProps,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 const FRONTEND_RUNTIME_EXPORT_NAMES = Object.keys(pluginSdkApp).sort();
 
@@ -60,6 +64,7 @@ const BB_PLUGIN_API_KEYS = [
   "background",
   "cli",
   "agents",
+  "providers",
   "ui",
   "events",
   "status",
@@ -154,13 +159,19 @@ type SlotPropsByName = {
   settingsSection: PluginSettingsSectionProps;
   navPanel: PluginNavPanelProps;
   threadPanelAction: PluginThreadPanelProps;
+  experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
+  experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
+  experimental_diffRenderer: PluginDiffRendererProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
+  // Registration-object slot: the component receives only className, so the
+  // registration type is the documented surface.
+  experimental_providerIcon: PluginProviderIconRegistration;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -217,6 +228,7 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   settingsSection: [],
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
+  experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
   experimental_threadList: [
@@ -225,25 +237,33 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "isCompactViewport",
     "onNavigate",
     "searchQuery",
+    "experimental_Original",
   ],
   experimental_threadHeaderAction: [
     "threadId",
     "projectId",
     "isCompactViewport",
   ],
-  fileOpener: ["path", "source"],
-  messageDirective: [
-    "attributes",
-    "source",
-    "message",
-    "openWorkspaceFile",
+  fileOpener: ["path", "source", "experimental_Original"],
+  experimental_sourceCodeRenderer: [
+    "content",
+    "path",
+    "overflow",
+    "highlightedLines",
+    "experimental_Original",
   ],
-  messageAction: [
-    "threadId",
-    "message",
-    "selectedText",
-    "openPanel",
+  experimental_diffRenderer: [
+    "patch",
+    "path",
+    "view",
+    "overflow",
+    "showLineNumbers",
+    "experimental_fullFileContents",
+    "experimental_Original",
   ],
+  messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],
+  messageAction: ["threadId", "message", "selectedText", "openPanel"],
+  experimental_providerIcon: ["providerId", "icon"],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];
 };
@@ -270,6 +290,8 @@ const NAV_PANEL_REGISTRATION_FIELDS = [
   "icon",
   "path",
   "component",
+  "experimental_fixedTabs",
+  "experimental_sidebarAccessory",
   "headerContent",
 ] as const satisfies readonly (keyof PluginNavPanelRegistration)[];
 
@@ -371,7 +393,7 @@ describe("bb-plugin-authoring skill", () => {
     }
   });
 
-  it("documents every @bb/plugin-sdk/app runtime export", () => {
+  it("documents every @get-bb/plugin-sdk/app runtime export", () => {
     for (const name of FRONTEND_RUNTIME_EXPORT_NAMES) {
       expect(skill, `${name} is not documented in the skill`).toContain(name);
     }

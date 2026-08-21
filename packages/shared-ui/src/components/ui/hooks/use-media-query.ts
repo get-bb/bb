@@ -1,5 +1,8 @@
 import { useSyncExternalStore } from "react";
 
+export const DARK_COLOR_SCHEME_QUERY = "(prefers-color-scheme: dark)";
+export const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
+
 // One MediaQueryList per query, shared across every caller. This avoids adding
 // a browser listener for each row, tooltip, or overlay that subscribes.
 type MediaQueryRef = {
@@ -10,7 +13,7 @@ type MediaQueryRef = {
 const mediaQueryCache = new Map<string, MediaQueryRef>();
 
 function createMediaQueryRef(query: string): MediaQueryRef | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined" || !window.matchMedia) return null;
 
   let ref = mediaQueryCache.get(query);
   if (ref) return ref;
@@ -42,16 +45,15 @@ function createMediaQueryRef(query: string): MediaQueryRef | null {
   return ref;
 }
 
-function subscribeMediaQuery(
+export function subscribeMediaQuery(
   query: string,
   notify: () => void,
 ): () => void {
   return createMediaQueryRef(query)?.subscribe(notify) ?? (() => {});
 }
 
-function getMediaQuerySnapshot(query: string): boolean {
-  if (typeof window === "undefined") return false;
-
+export function getMediaQuerySnapshot(query: string): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
   return (
     mediaQueryCache.get(query)?.mql.matches ?? window.matchMedia(query).matches
   );
@@ -63,4 +65,8 @@ export function useMediaQuery(query: string): boolean {
     () => getMediaQuerySnapshot(query),
     () => false,
   );
+}
+
+export function usePrefersReducedMotion(): boolean {
+  return useMediaQuery(REDUCED_MOTION_QUERY);
 }

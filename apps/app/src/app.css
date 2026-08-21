@@ -6,14 +6,11 @@
    * Keep the real app shell from becoming a second scroll container. These
    * selectors are class-scoped because Ladle imports app.css but does not use
    * the Vite index.html shell classes.
-   */
-  html.bb-app-shell-root,
-  body.bb-app-shell,
-  body.bb-app-shell #root {
-    height: 100%;
-  }
-
-  /*
+   *
+   * Use the dynamic viewport height in browser tabs so native/in-app browser
+   * chrome cannot leave the percentage-height containing block taller than
+   * the visible window.
+   *
    * iOS standalone subtracts the top safe-area inset from the small and
    * dynamic viewports but not from the large one. On a 852pt screen with a
    * 59pt inset, innerHeight/100svh/100dvh/height:100% all report 793 while
@@ -33,13 +30,18 @@
     --bb-shell-height: 100dvh;
   }
 
+  html.bb-app-shell-root {
+    height: var(--bb-shell-height);
+  }
+
+  body.bb-app-shell,
+  body.bb-app-shell #root {
+    height: 100%;
+  }
+
   @media (display-mode: standalone) {
     :root {
       --bb-shell-height: 100lvh;
-    }
-
-    html.bb-app-shell-root {
-      height: var(--bb-shell-height);
     }
   }
 
@@ -51,6 +53,19 @@
      * two-finger back/forward gesture.
      */
     overscroll-behavior-y: none;
+  }
+
+  /*
+   * App chrome (sidebar, page headers, composer toolbars) opts out of text
+   * selection with `select-none` so drags and Select All only pick up
+   * content. `user-select: auto` resolves from the parent, so WebKit would
+   * carry that opt-out into editable controls inside those regions (the
+   * sidebar thread search, the inline thread-title rename) and refuse to
+   * select their text. Restore native selection on the controls themselves.
+   */
+  .select-none
+    :where(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    user-select: text;
   }
 
   .chat-prompt-box {
@@ -96,10 +111,28 @@
   }
 
   /* Keep the drag cursor stable while crossing rows whose normal pointer
-   * cursor would otherwise override the cursor inherited from the body. */
-  body[data-sidebar-dragging="true"],
-  body[data-sidebar-dragging="true"] * {
-    cursor: grabbing !important;
+   * cursor would otherwise override the cursor inherited from the body.
+   * Only the sidebar panel's rows carry their own cursor rules, so the
+   * descendant override is scoped to that panel rather than the whole
+   * document, and the rules exist only for fine pointers: a touch drag has
+   * no cursor, and a document-wide `*` rule would restyle every mounted
+   * timeline node when the body attribute flips at drag start and end. */
+  @media (pointer: fine) {
+    body[data-sidebar-dragging="true"],
+    body[data-sidebar-dragging="true"] [data-sidebar="panel"] * {
+      cursor: grabbing !important;
+    }
+  }
+
+  /* A sidebar drag projects the dragged row into the hovered list, which can
+   * grow or shrink content above the scrolled viewport. Scroll anchoring would
+   * then move scrollTop to keep the visible rows still, but dnd-kit offsets
+   * its measured droppable rects by that scroll delta even though nothing
+   * moved on screen, so `over` resolves against the wrong rows and the
+   * projection flips back and forth (#1830). Keep scrollTop stable while a
+   * sidebar drag is active so the measured geometry matches the pointer. */
+  body[data-sidebar-dragging="true"] [data-sidebar="content"] {
+    overflow-anchor: none;
   }
 }
 
@@ -393,17 +426,8 @@
     position: static;
   }
 
-  [data-follow-up-composer] [data-promptbox-action-row] {
-    /* The submit group owns the edge inset in this mode. Neutralize the
-     * compact React layout's matching right inset so the two do not stack. */
-    right: 0;
-    padding-right: 3rem;
-  }
-
   [data-follow-up-composer] [data-promptbox-submit-group] {
-    position: absolute;
-    right: 0.5rem;
-    bottom: 0.5rem;
+    position: static;
     z-index: 1;
   }
 
@@ -423,32 +447,34 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    ) {
+    [data-promptbox]:not([data-promptbox-voice-active]) {
     overflow: hidden;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
+    [data-promptbox-action-row] {
+    position: absolute;
+    inset-block: 0;
+    right: 0.5rem;
+    gap: 0;
+    padding: 0;
+  }
+
+  [data-follow-up-composer]:not([data-follow-up-composer-expanded])
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-main] {
     height: 3rem;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-expanded-only] {
     display: none !important;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-scroll] {
     height: 3rem !important;
     min-height: 3rem !important;
@@ -460,9 +486,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content] {
     display: flex;
     align-items: center;
@@ -470,9 +494,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable] {
     width: 100%;
@@ -484,16 +506,12 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     > *,
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
@@ -510,26 +528,20 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     > *
     + *::before,
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     :where(blockquote, li)
     > *
     + *::before,
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     :where(ol, ul)
@@ -539,9 +551,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     br {
@@ -550,9 +560,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     br::after {
@@ -560,9 +568,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .prompt-mention-pill
     > span:last-child {
@@ -570,9 +576,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror
     p.is-editor-empty:first-child::before {
@@ -740,5 +744,60 @@
 @media (prefers-reduced-motion: reduce) {
   .bb-search-flash {
     animation: none;
+  }
+}
+
+/* Browse hero (Extensions → Browse): the archetype chips orbiting the mini bb
+ * window drift slowly so the hero reads as alive without competing with the
+ * composer sitting in the middle of it. Duration and delay are per-chip custom
+ * properties so each chip drifts out of phase with its neighbours from one
+ * shared rule. */
+@keyframes bb-hero-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+.bb-hero-chip {
+  animation: bb-hero-drift var(--bb-hero-drift-duration, 6s) ease-in-out
+    infinite;
+  animation-delay: var(--bb-hero-drift-delay, 0s);
+}
+
+/* Autoplay progress for the active slide segment. The element is keyed by slide
+ * in React, so a slide change remounts it and restarts the animation from zero
+ * rather than needing an imperative reset. */
+@keyframes bb-hero-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.bb-hero-progress-fill {
+  transform-origin: left center;
+  animation: bb-hero-progress var(--bb-hero-slide-duration, 5s) linear forwards;
+}
+
+.bb-hero-progress-fill[data-paused="true"] {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bb-hero-chip {
+    animation: none;
+  }
+
+  /* No autoplay under reduced motion, so the segment shows a resting full
+   * state instead of an animation frozen at zero width. */
+  .bb-hero-progress-fill {
+    animation: none;
+    transform: scaleX(1);
   }
 }

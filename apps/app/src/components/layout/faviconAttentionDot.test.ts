@@ -9,8 +9,9 @@ function makeSidebarThread(
   overrides: Partial<FaviconSidebarThread> = {},
 ): FaviconSidebarThread {
   return {
+    id: "thr_sidebar",
     originKind: null,
-    childOrigin: null,
+    parentThreadId: null,
     hasPendingInteraction: false,
     lastReadAt: 10,
     latestAttentionAt: 20,
@@ -133,6 +134,47 @@ describe("shouldShowFaviconAttentionDot", () => {
         sidebarThreads: [
           makeSidebarThread({
             visibility: "hidden",
+            lastReadAt: 30,
+            latestAttentionAt: 20,
+            hasPendingInteraction: true,
+          }),
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("shows the dot when a viewed parent has a delegated child waiting on the user", () => {
+    expect(
+      shouldShowFaviconAttentionDot({
+        ...BASE_ARGS,
+        isThreadView: true,
+        currentThreadId: "thr_parent",
+        thread: { lastReadAt: 30, latestAttentionAt: 20 },
+        sidebarThreads: [
+          makeSidebarThread({
+            id: "thr_child",
+            parentThreadId: "thr_parent",
+            lastReadAt: 30,
+            latestAttentionAt: 20,
+            hasPendingInteraction: true,
+          }),
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("ignores a pending fork of the viewed thread", () => {
+    expect(
+      shouldShowFaviconAttentionDot({
+        ...BASE_ARGS,
+        isThreadView: true,
+        currentThreadId: "thr_parent",
+        thread: { lastReadAt: 30, latestAttentionAt: 20 },
+        sidebarThreads: [
+          makeSidebarThread({
+            id: "thr_fork",
+            originKind: "fork",
+            parentThreadId: "thr_parent",
             lastReadAt: 30,
             latestAttentionAt: 20,
             hasPendingInteraction: true,

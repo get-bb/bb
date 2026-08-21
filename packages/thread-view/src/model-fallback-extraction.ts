@@ -6,7 +6,7 @@ import type {
 } from "@bb/domain";
 import type { ThreadEventWithMeta } from "./group-event-projection-turns.js";
 
-export interface ProviderModelFallbackData {
+interface ProviderModelFallbackData {
   originalModel: string;
   fallbackModel: string;
   reason: "refusal" | "provider";

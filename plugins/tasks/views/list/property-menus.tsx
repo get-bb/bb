@@ -1,6 +1,5 @@
-import type { ReactNode, Ref } from "react";
+import type { ReactNode } from "react";
 import {
-  TASK_PRIORITIES,
   TASK_STATUSES,
   type Label,
   type Task,
@@ -30,7 +29,13 @@ import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { TaskEdit } from "./optimistic.js";
 import { PriorityIcon, StatusIcon } from "./icons.js";
-import { formatDueDate, PRIORITY_LABELS, STATUS_LABELS } from "./lib.js";
+import {
+  DUE_DATE_PRESETS,
+  formatDueDate,
+  localIsoDate,
+  PRIORITY_LABELS,
+  STATUS_LABELS,
+} from "./lib.js";
 
 export type EditFn = (task: Task, patch: TaskEdit) => void;
 
@@ -75,20 +80,6 @@ export function isBareKey(event: {
 }): boolean {
   return !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
 }
-
-function localIsoDate(daysFromNow: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + daysFromNow);
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
-
-const DUE_DATE_PRESETS: readonly [label: string, days: number][] = [
-  ["Today", 0],
-  ["Tomorrow", 1],
-  ["Next week", 7],
-];
 
 function MenuHeading({ label, shortcut }: { label: string; shortcut: string }) {
   return (
@@ -154,14 +145,12 @@ export function StatusEditor({
   onEdit,
   open,
   onOpenChange,
-  triggerRef,
   className,
 }: {
   task: Task;
   onEdit: EditFn;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  triggerRef?: Ref<HTMLButtonElement>;
   /** Extra classes for the trigger button (e.g. grid placement in list rows). */
   className?: string;
 }) {
@@ -172,7 +161,6 @@ export function StatusEditor({
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
-          ref={triggerRef}
           type="button"
           aria-label={`Change status, currently ${STATUS_LABELS[task.status]}`}
           className={cn(TRIGGER_CLASS, className)}
@@ -219,14 +207,12 @@ export function PriorityEditor({
   onEdit,
   open,
   onOpenChange,
-  triggerRef,
   className,
 }: {
   task: Task;
   onEdit: EditFn;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  triggerRef?: Ref<HTMLButtonElement>;
   /** Extra classes for the trigger button (e.g. grid placement in list rows). */
   className?: string;
 }) {
@@ -237,7 +223,6 @@ export function PriorityEditor({
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
-          ref={triggerRef}
           type="button"
           aria-label={`Set priority, currently ${PRIORITY_LABELS[task.priority]}`}
           className={cn(TRIGGER_CLASS, className)}

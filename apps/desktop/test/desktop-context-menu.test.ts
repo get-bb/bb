@@ -8,8 +8,14 @@ import {
 } from "../src/desktop-context-menu.js";
 
 const popup = vi.fn();
+const { writeClipboardText } = vi.hoisted(() => ({
+  writeClipboardText: vi.fn(),
+}));
 
 vi.mock("electron", () => ({
+  clipboard: {
+    writeText: writeClipboardText,
+  },
   Menu: {
     buildFromTemplate(template: MenuItemConstructorOptions[]) {
       return { popup, template };
@@ -270,6 +276,69 @@ describe("desktop context menu", () => {
       { role: "paste", enabled: true },
       { role: "delete", enabled: false },
       { type: "separator" },
+      { role: "selectAll", enabled: true },
+    ]);
+  });
+
+  it("copies a link target", () => {
+    const webContents = createFakeWebContents();
+    const template = buildDesktopContextMenuTemplate({
+      webContents,
+      params: createContextMenuParams({
+        linkURL: "https://example.com/device",
+      }),
+    });
+
+    expect(template).toEqual([
+      { label: "Copy Link", click: expect.any(Function) },
+    ]);
+
+    clickMenuItem(template[0]);
+
+    expect(writeClipboardText).toHaveBeenCalledWith(
+      "https://example.com/device",
+    );
+  });
+
+  it("groups selected-text actions together", () => {
+    const webContents = createFakeWebContents();
+    const template = buildDesktopContextMenuTemplate({
+      webContents,
+      params: createContextMenuParams({
+        selectionText: "device authorization",
+        editFlags: {
+          ...DEFAULT_EDIT_FLAGS,
+          canCopy: true,
+          canSelectAll: true,
+        },
+      }),
+    });
+
+    expect(template).toEqual([
+      { role: "copy", enabled: true },
+      { role: "selectAll", enabled: true },
+    ]);
+  });
+
+  it("preserves selected-text actions for links", () => {
+    const webContents = createFakeWebContents();
+    const template = buildDesktopContextMenuTemplate({
+      webContents,
+      params: createContextMenuParams({
+        linkURL: "https://example.com/device",
+        selectionText: "device authorization",
+        editFlags: {
+          ...DEFAULT_EDIT_FLAGS,
+          canCopy: true,
+          canSelectAll: true,
+        },
+      }),
+    });
+
+    expect(template).toMatchObject([
+      { label: "Copy Link" },
+      { type: "separator" },
+      { role: "copy", enabled: true },
       { role: "selectAll", enabled: true },
     ]);
   });

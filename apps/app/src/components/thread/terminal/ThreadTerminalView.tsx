@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
 } from "react";
 import "@xterm/xterm/css/xterm.css";
 import type {
@@ -21,22 +22,44 @@ import type {
 import { useAppThemeEpoch } from "@/hooks/useAppTheme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
-import {
-  openUrlInExternalBrowser,
-  useOpenUrlByPreference,
-} from "@/lib/url-open-routing";
+import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import type { MessageProseSelection } from "@/components/thread/timeline/SelectableMessageProse.js";
 import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu.js";
 import { buildTerminalWebSocketUrl } from "./terminal-websocket-url";
-import { TerminalWebSocketTransport } from "./terminal-websocket-transport";
+import { TerminalWebSocketTransport } from "@bb/client-core";
 
 export const TERMINAL_FONT_FAMILY =
   '"JetBrainsMono Nerd Font Mono", "MesloLGS NF", "Symbols Nerd Font Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace';
 export const TERMINAL_UNICODE_VERSION = "11";
 export const TERMINAL_ALLOW_PROPOSED_API = true;
 const TERMINAL_SELECTION_DRAG_DIRECTION_THRESHOLD_PX = 4;
+const TERMINAL_TOUCH_FOCUS_MAX_DURATION_MS = 700;
+const TERMINAL_TOUCH_FOCUS_MOVEMENT_THRESHOLD_PX = 10;
 
 type TerminalFitScheduler = () => void;
+
+interface ShouldFocusTerminalAfterAsyncMountArgs {
+  currentFocusIsAvailable: boolean;
+  hasExplicitFocusRequest: boolean;
+  focusMovedDuringMount: boolean;
+  isPanelOpen: boolean;
+}
+
+export function shouldFocusTerminalAfterAsyncMount({
+  currentFocusIsAvailable,
+  hasExplicitFocusRequest,
+  focusMovedDuringMount,
+  isPanelOpen,
+}: ShouldFocusTerminalAfterAsyncMountArgs): boolean {
+  if (!isPanelOpen) {
+    return false;
+  }
+  if (focusMovedDuringMount && currentFocusIsAvailable) {
+    return false;
+  }
+  return hasExplicitFocusRequest || !currentFocusIsAvailable;
+}
 
 interface WebglRendererAddon extends ITerminalAddon {
   onContextLoss: (listener: () => void) => IDisposable;
@@ -82,6 +105,112 @@ export function loadTerminalWebglRenderer(
 interface TerminalSelectionAnchorPoint {
   x: number;
   y: number;
+}
+
+interface TerminalTouchPoint extends TerminalSelectionAnchorPoint {
+  identifier: number;
+}
+
+interface TerminalTouchFocusGesture {
+  identifier: number;
+  maximumMovementPx: number;
+  startedAt: number;
+  startPoint: TerminalSelectionAnchorPoint;
+}
+
+interface FocusTerminalFromTouchReleaseArgs {
+  changedTouches: readonly TerminalTouchPoint[];
+  focus: () => void;
+  gesture: TerminalTouchFocusGesture | null;
+  releasedAt: number;
+  remainingTouchCount: number;
+}
+
+function terminalTouchMovement(
+  startPoint: TerminalSelectionAnchorPoint,
+  currentPoint: TerminalSelectionAnchorPoint,
+): number {
+  return Math.hypot(
+    currentPoint.x - startPoint.x,
+    currentPoint.y - startPoint.y,
+  );
+}
+
+export function startTerminalTouchFocusGesture(
+  touches: readonly TerminalTouchPoint[],
+  startedAt: number,
+): TerminalTouchFocusGesture | null {
+  const touch = touches.length === 1 ? touches[0] : undefined;
+  if (touch === undefined) {
+    return null;
+  }
+  return {
+    identifier: touch.identifier,
+    maximumMovementPx: 0,
+    startedAt,
+    startPoint: { x: touch.x, y: touch.y },
+  };
+}
+
+export function updateTerminalTouchFocusGesture(
+  gesture: TerminalTouchFocusGesture | null,
+  touches: readonly TerminalTouchPoint[],
+): TerminalTouchFocusGesture | null {
+  const touch = touches.length === 1 ? touches[0] : undefined;
+  if (
+    gesture === null ||
+    touch === undefined ||
+    touch.identifier !== gesture.identifier
+  ) {
+    return null;
+  }
+  return {
+    ...gesture,
+    maximumMovementPx: Math.max(
+      gesture.maximumMovementPx,
+      terminalTouchMovement(gesture.startPoint, touch),
+    ),
+  };
+}
+
+export function focusTerminalFromTouchRelease({
+  changedTouches,
+  focus,
+  gesture,
+  releasedAt,
+  remainingTouchCount,
+}: FocusTerminalFromTouchReleaseArgs): boolean {
+  if (remainingTouchCount !== 0) {
+    return false;
+  }
+  const completedGesture = updateTerminalTouchFocusGesture(
+    gesture,
+    changedTouches,
+  );
+  if (completedGesture === null) {
+    return false;
+  }
+  const duration = releasedAt - completedGesture.startedAt;
+  if (
+    duration < 0 ||
+    duration >= TERMINAL_TOUCH_FOCUS_MAX_DURATION_MS ||
+    completedGesture.maximumMovementPx >
+      TERMINAL_TOUCH_FOCUS_MOVEMENT_THRESHOLD_PX
+  ) {
+    return false;
+  }
+  focus();
+  return true;
+}
+
+function terminalTouchPoints(
+  touches: ReactTouchEvent<HTMLDivElement>["touches"],
+): TerminalTouchPoint[] {
+  return Array.from(touches, (touch) => ({
+    identifier: touch.identifier,
+    x: touch.clientX,
+    y: touch.clientY,
+  }));
 }
 
 interface TerminalSelectionAnchor {
@@ -154,7 +283,9 @@ function buildTerminalTheme(): ITheme {
 }
 
 interface ThreadTerminalViewProps {
+  autoFocus: boolean;
   isPanelOpen: boolean;
+  onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   onSessionChange?: (session: TerminalSession) => void;
@@ -458,7 +589,9 @@ function handleTerminalServerMessage({
 }
 
 export function ThreadTerminalView({
+  autoFocus,
   isPanelOpen,
+  onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
   onSessionChange,
@@ -474,6 +607,7 @@ export function ThreadTerminalView({
   const pointerStartPointRef = useRef<TerminalSelectionAnchorPoint | null>(
     null,
   );
+  const touchFocusGestureRef = useRef<TerminalTouchFocusGesture | null>(null);
   const lastPointerReleaseAnchorRef = useRef<TerminalSelectionAnchor | null>(
     null,
   );
@@ -484,6 +618,10 @@ export function ThreadTerminalView({
     onTitleChange,
   );
   const onUserInputRef = useRef<(() => void) | undefined>(onUserInput);
+  const onAutoFocusHandledRef = useRef<(() => void) | undefined>(
+    onAutoFocusHandled,
+  );
+  const autoFocusRef = useRef(autoFocus);
   const isPanelOpenRef = useRef(isPanelOpen);
   const sessionStatusRef = useRef<TerminalSession["status"]>(session.status);
   const sessionRef = useRef(session);
@@ -493,17 +631,19 @@ export function ThreadTerminalView({
   // The xterm canvas bakes its palette, so re-apply the theme on app-palette
   // changes too, not just light/dark toggles.
   const appThemeEpoch = useAppThemeEpoch();
-  const openUrlByPreference = useOpenUrlByPreference();
+  const appNavigation = useAppNavigationHost();
   const handleOpenLinkByPreference = useCallback<MarkdownPreviewLinkHandler>(
-    ({ href }) => openUrlByPreference(href),
-    [openUrlByPreference],
+    ({ href }) => appNavigation.openUrl({ url: href }),
+    [appNavigation],
   );
   const effectiveOnOpenLink = onOpenLink ?? handleOpenLinkByPreference;
   const onOpenLinkRef = useRef<MarkdownPreviewLinkHandler>(effectiveOnOpenLink);
 
+  autoFocusRef.current = autoFocus;
   isPanelOpenRef.current = isPanelOpen;
   sessionStatusRef.current = session.status;
   sessionRef.current = session;
+  onAutoFocusHandledRef.current = onAutoFocusHandled;
   onOpenLinkRef.current = effectiveOnOpenLink;
   onSessionChangeRef.current = onSessionChange;
   onTitleChangeRef.current = onTitleChange;
@@ -574,7 +714,49 @@ export function ThreadTerminalView({
     });
   }, [reportTerminalSelection]);
 
+  const handleTerminalTouchStart = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      touchFocusGestureRef.current = startTerminalTouchFocusGesture(
+        terminalTouchPoints(event.touches),
+        event.timeStamp,
+      );
+    },
+    [],
+  );
+
+  const handleTerminalTouchMove = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      touchFocusGestureRef.current = updateTerminalTouchFocusGesture(
+        touchFocusGestureRef.current,
+        terminalTouchPoints(event.touches),
+      );
+    },
+    [],
+  );
+
+  const handleTerminalTouchEnd = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      const gesture = touchFocusGestureRef.current;
+      touchFocusGestureRef.current = null;
+      // xterm cancels the synthetic mouse event on touch devices.
+      // Focus during the touch event so iOS can open its software keyboard.
+      focusTerminalFromTouchRelease({
+        changedTouches: terminalTouchPoints(event.changedTouches),
+        focus: () => terminalRef.current?.focus(),
+        gesture,
+        releasedAt: event.timeStamp,
+        remainingTouchCount: event.touches.length,
+      });
+    },
+    [],
+  );
+
+  const handleTerminalTouchCancel = useCallback(() => {
+    touchFocusGestureRef.current = null;
+  }, []);
+
   useEffect(() => {
+    touchFocusGestureRef.current = null;
     setActiveSelection(null);
   }, [session.id]);
 
@@ -583,6 +765,8 @@ export function ThreadTerminalView({
     if (!container) {
       return;
     }
+
+    const activeElementAtMount = document.activeElement;
 
     let disposed = false;
     let transport: TerminalWebSocketTransport | null = null;
@@ -679,8 +863,24 @@ export function ThreadTerminalView({
       };
       fitTerminal();
       scheduleFitRef.current = scheduleFit;
-      if (isPanelOpenRef.current) {
+      const currentActiveElement = document.activeElement;
+      // A terminal can mount after either an explicit terminal action or a
+      // passive panel swap during navigation. Only the explicit action may
+      // replace an existing focus owner, and neither path may override focus
+      // that moved elsewhere while xterm's modules were loading.
+      if (
+        shouldFocusTerminalAfterAsyncMount({
+          currentFocusIsAvailable:
+            currentActiveElement !== null &&
+            currentActiveElement !== document.body &&
+            currentActiveElement.isConnected,
+          hasExplicitFocusRequest: autoFocusRef.current,
+          focusMovedDuringMount: currentActiveElement !== activeElementAtMount,
+          isPanelOpen: isPanelOpenRef.current,
+        })
+      ) {
         terminal.focus();
+        onAutoFocusHandledRef.current?.();
       }
 
       const activeTerminal = terminal;
@@ -815,12 +1015,16 @@ export function ThreadTerminalView({
   }, [reportTerminalSelection, session.id, session.threadId]);
 
   useEffect(() => {
-    if (!isPanelOpen) {
+    if (!isPanelOpen || !autoFocus) {
       return;
     }
-    terminalRef.current?.focus();
+    const terminal = terminalRef.current;
+    if (terminal !== null) {
+      terminal.focus();
+      onAutoFocusHandledRef.current?.();
+    }
     scheduleFitRef.current?.();
-  }, [isPanelOpen]);
+  }, [autoFocus, isPanelOpen]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -848,6 +1052,10 @@ export function ThreadTerminalView({
       onPointerDown={handleTerminalPointerDown}
       onPointerUp={handleTerminalPointerRelease}
       onPointerCancel={handleTerminalPointerCancel}
+      onTouchStart={handleTerminalTouchStart}
+      onTouchMove={handleTerminalTouchMove}
+      onTouchEnd={handleTerminalTouchEnd}
+      onTouchCancel={handleTerminalTouchCancel}
     >
       <div
         ref={containerRef}

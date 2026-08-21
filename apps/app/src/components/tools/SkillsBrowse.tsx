@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { SkillSummary } from "@bb/server-contract";
-import { ResourcePagination } from "@bb/shared-ui/resource-pagination";
+import { ResourceInfiniteScrollSentinel } from "@bb/shared-ui/resource-pagination";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   ResourceBrowseCard,
@@ -17,15 +17,11 @@ import {
   formatRegistrySource,
   REGISTRY_PAGE_SIZE,
 } from "@/lib/skills-registry";
-import type {
-  RegistryPagination,
-  RegistrySkill,
-  RegistrySkillDetail,
-} from "@/lib/skills-registry";
+import type { RegistrySkill, RegistrySkillDetail } from "@/lib/skills-registry";
+import { cn } from "@bb/shared-ui/lib/utils";
 import { useLocalOpenTargets } from "@/hooks/useLocalOpenTargets";
 import { SkillDetailView } from "@/components/tools/SkillDetailView";
-
-const SKILLS_SH_URL = "https://www.skills.sh/";
+import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 
 function RegistrySkillActions({
   skillName,
@@ -48,18 +44,26 @@ function RegistrySkillActions({
   );
 }
 
-function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
+function RegistrySkillSocialProof({
+  skill,
+  installsKnown,
+}: {
+  skill: RegistrySkill;
+  installsKnown: boolean;
+}) {
   const installs = formatInstallCount(skill.installs);
   const stars = skill.stars !== null ? formatInstallCount(skill.stars) : null;
   return (
     <span className="inline-flex flex-nowrap items-center gap-1 text-[11px] leading-none">
-      <ResourceCardStat
-        icon="Download"
-        iconClassName="text-success"
-        accessibleLabel={`${installs} installs`}
-      >
-        {installs}
-      </ResourceCardStat>
+      {installsKnown ? (
+        <ResourceCardStat
+          icon="Download"
+          iconClassName="text-success"
+          accessibleLabel={`${installs} installs`}
+        >
+          {installs}
+        </ResourceCardStat>
+      ) : null}
       {stars !== null ? (
         <ResourceCardStat
           icon="Star"
@@ -75,10 +79,12 @@ function RegistrySkillSocialProof({ skill }: { skill: RegistrySkill }) {
 
 function RegistrySkillSourceItem({
   skill,
+  installsKnown,
   onFork,
   onSelect,
 }: {
   skill: RegistrySkill;
+  installsKnown: boolean;
   onFork: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
 }) {
@@ -96,7 +102,9 @@ function RegistrySkillSourceItem({
           presentation="icon"
         />
       }
-      footerMeta={<RegistrySkillSocialProof skill={skill} />}
+      footerMeta={
+        <RegistrySkillSocialProof skill={skill} installsKnown={installsKnown} />
+      }
     />
   );
 }
@@ -121,113 +129,114 @@ function RegistrySkillSourceItemSkeleton({ skillName }: { skillName: string }) {
   );
 }
 
-function SkillsShAttributionLink() {
-  return (
-    <a
-      href={SKILLS_SH_URL}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 rounded-sm text-[11px] text-subtle-foreground/65 hover:text-subtle-foreground/90 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <span>powered by</span>
-      <span className="font-mono">skills.sh</span>
-    </a>
-  );
-}
-
 export function RegistrySkillsBrowsePage({
   skills,
   pendingSkillIds,
-  pagination,
+  unknownInstallSkillIds,
   isLoading,
+  loadingMore,
+  hasMore,
   hasError,
   query,
+  action,
   onRetry,
   onQueryChange,
-  onPageChange,
+  onLoadMore,
   onFork,
   onSelect,
 }: {
   skills: readonly RegistrySkill[];
   pendingSkillIds: ReadonlySet<string>;
-  pagination: RegistryPagination;
+  /** Cards with no resolved lifetime install count; they show none. */
+  unknownInstallSkillIds: ReadonlySet<string>;
   isLoading: boolean;
+  /** A further page is on its way; already-loaded cards stay put. */
+  loadingMore: boolean;
+  hasMore: boolean;
   hasError: boolean;
   query: string;
+  /** The page's create control, rendered at the toolbar row's right edge. */
+  action?: ReactNode;
   onRetry?: () => void;
   onQueryChange: (query: string) => void;
-  onPageChange: (page: number) => void;
+  onLoadMore: () => void;
   onFork: (skill: RegistrySkill) => void;
   onSelect: (skill: RegistrySkill) => void;
 }) {
-  const footer = (
-    <div className="space-y-2">
-      <ResourcePagination
-        page={pagination.page}
-        pageSize={pagination.perPage}
-        total={pagination.total}
-        visibleCount={skills.length}
-        onPageChange={onPageChange}
-        scrollTargetId="skills-browse-results"
-      />
-      <div className="flex justify-end px-1">
-        <SkillsShAttributionLink />
-      </div>
-    </div>
-  );
   return (
     <ResourceCollectionViewport
       scrollId="skills-browse-results"
+      bandClassName={TOOLS_PAGE_BAND_CLASSES}
       toolbar={
         <ResourceToolbar
           searchValue={query}
           searchPlaceholder="Search skills"
           onSearchChange={onQueryChange}
+          action={action}
         />
       }
-      footer={footer}
-      contentClassName="space-y-4"
     >
-      {hasError ? (
-        <ResourceListState
-          state="error"
-          message="Couldn't load skills.sh."
-          onRetry={onRetry}
-        />
-      ) : isLoading ? (
-        <ResourceListState
-          state="loading"
-          message="Loading skills.sh skills"
-          loadingRows={REGISTRY_PAGE_SIZE}
-        />
-      ) : skills.length === 0 ? (
-        <ResourceListState
-          state="empty"
-          message={
-            query.trim().length === 0
-              ? "No skills.sh resources available."
-              : `No skills.sh resources match "${query}"`
-          }
-        />
-      ) : (
-        <ResourceBrowseGrid>
-          {skills.map((skill) =>
-            pendingSkillIds.has(skill.id) ? (
-              <RegistrySkillSourceItemSkeleton
-                key={skill.id}
-                skillName={skill.name}
+      <div className={cn("space-y-4", TOOLS_PAGE_BAND_CLASSES)}>
+        {hasError && skills.length === 0 ? (
+          <ResourceListState
+            state="error"
+            message="Couldn't load skills.sh."
+            onRetry={onRetry}
+          />
+        ) : isLoading ? (
+          <ResourceListState
+            state="loading"
+            message="Loading skills.sh skills"
+            loadingRows={REGISTRY_PAGE_SIZE}
+          />
+        ) : skills.length === 0 ? (
+          <ResourceListState
+            state="empty"
+            message={
+              query.trim().length === 0
+                ? "No skills.sh resources available."
+                : `No skills.sh resources match "${query}"`
+            }
+          />
+        ) : (
+          <>
+            <ResourceBrowseGrid>
+              {skills.map((skill) =>
+                pendingSkillIds.has(skill.id) ? (
+                  <RegistrySkillSourceItemSkeleton
+                    key={skill.id}
+                    skillName={skill.name}
+                  />
+                ) : (
+                  <RegistrySkillSourceItem
+                    key={skill.id}
+                    skill={skill}
+                    installsKnown={!unknownInstallSkillIds.has(skill.id)}
+                    onFork={onFork}
+                    onSelect={onSelect}
+                  />
+                ),
+              )}
+            </ResourceBrowseGrid>
+            {hasError ? (
+              // A later page failed. The cards already on screen are fine —
+              // keep them and scope the error to the load that broke.
+              <ResourceListState
+                state="error"
+                message="Couldn't load more from skills.sh."
+                onRetry={onRetry}
               />
-            ) : (
-              <RegistrySkillSourceItem
-                key={skill.id}
-                skill={skill}
-                onFork={onFork}
-                onSelect={onSelect}
-              />
-            ),
-          )}
-        </ResourceBrowseGrid>
-      )}
+            ) : null}
+          </>
+        )}
+        {hasError || isLoading ? null : (
+          <ResourceInfiniteScrollSentinel
+            hasMore={hasMore}
+            loading={loadingMore}
+            onLoadMore={onLoadMore}
+          />
+        )}
+      </div>
     </ResourceCollectionViewport>
   );
 }

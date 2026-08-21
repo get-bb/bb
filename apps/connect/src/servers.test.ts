@@ -20,6 +20,7 @@ import {
   createDesktopSessionCookie,
   listAccountServers,
   resolveAccountUserId,
+  revokeServerCredential,
   verifyDesktopSessionCookie,
   verifyServerCredential,
 } from "./servers.js";
@@ -28,6 +29,7 @@ import {
   assignMachineLabelForCredential,
   sanitizeMachineLabelBase,
 } from "./machine-label.js";
+import { SECURE_SESSION_COOKIE } from "./cloud-dev.js";
 import { verifyMachineCredential } from "./session.js";
 
 // Real in-memory SQLite (never mock the DB). Same harness as session.test.ts.
@@ -220,6 +222,50 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
     expect(await verifyServerCredential("wrong", db)).toBeNull();
   });
 
+  it("revokes only the row authenticated by the presenting server", async () => {
+    seedUser("acct-a");
+    const plaintext = "bbcred_revoke_this_server";
+    seedServer({
+      id: "s1",
+      userId: "acct-a",
+      name: "default",
+      subdomain: "sawyer",
+      credentialHash: await sha256Hex(plaintext),
+    });
+    seedServer({
+      id: "s2",
+      userId: "acct-a",
+      name: "desktop",
+      subdomain: "sawyer-desktop",
+      credentialHash: await sha256Hex("bbcred_keep_this_server"),
+    });
+
+    // Prime the warm-isolate credential cache before revoking.
+    expect(await verifyServerCredential(plaintext, db)).toBe("acct-a");
+    await expect(revokeServerCredential(plaintext, db)).resolves.toEqual({
+      subdomain: "sawyer",
+    });
+
+    const rows = await db
+      .select({
+        id: server.id,
+        credentialHash: server.credentialHash,
+        revokedAt: server.revokedAt,
+      })
+      .from(server)
+      .all();
+    expect(rows.find((row) => row.id === "s1")).toMatchObject({
+      credentialHash: null,
+      revokedAt: expect.any(Date),
+    });
+    expect(rows.find((row) => row.id === "s2")).toMatchObject({
+      credentialHash: await sha256Hex("bbcred_keep_this_server"),
+      revokedAt: null,
+    });
+    await expect(verifyServerCredential(plaintext, db)).resolves.toBeNull();
+    await expect(revokeServerCredential(plaintext, db)).resolves.toBeNull();
+  });
+
   it("authenticates a machine credential and isolates cross-account rows", async () => {
     seedUser("acct-a");
     seedUser("acct-b");
@@ -254,7 +300,12 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
     const req = new Request("https://sawyer.getbb.app/api/connect/servers", {
       headers: { "x-bb-connect-machine": machinePlain },
     });
-    const userId = await resolveAccountUserId(req, "secret", db);
+    const userId = await resolveAccountUserId(
+      req,
+      "secret",
+      db,
+      SECURE_SESSION_COOKIE,
+    );
     expect(userId).toBe("acct-a");
     const listed = await listAccountServers(db, userId!, now.getTime());
     expect(listed.map((s) => s.handle)).toEqual(["sawyer"]);
@@ -262,7 +313,9 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
 
   it("returns null (unauthorized) when no credential or session is presented", async () => {
     const req = new Request("https://sawyer.getbb.app/api/connect/servers");
-    expect(await resolveAccountUserId(req, "secret", db)).toBeNull();
+    expect(
+      await resolveAccountUserId(req, "secret", db, SECURE_SESSION_COOKIE),
+    ).toBeNull();
   });
 
   it("accepts a valid owner session cookie", async () => {
@@ -303,7 +356,24 @@ describe("verifyServerCredential / resolveAccountUserId", () => {
         cookie: `__Secure-better-auth.session_token=${cookieValue}`,
       },
     });
-    expect(await resolveAccountUserId(req, secret, db)).toBe("acct-a");
+    expect(
+      await resolveAccountUserId(req, secret, db, SECURE_SESSION_COOKIE),
+    ).toBe("acct-a");
+
+    const localRequest = new Request(
+      "http://sawyer.bb.localhost:8787/api/connect/servers",
+      {
+        headers: { cookie: `better-auth.session_token=${cookieValue}` },
+      },
+    );
+    expect(
+      await resolveAccountUserId(
+        localRequest,
+        secret,
+        db,
+        "better-auth.session_token",
+      ),
+    ).toBe("acct-a");
   });
 });
 

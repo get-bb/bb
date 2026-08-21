@@ -3,6 +3,7 @@ import {
   useCallback,
   useState,
   type CSSProperties,
+  type MouseEvent,
   type MouseEventHandler,
 } from "react";
 import { Button } from "@bb/shared-ui/button";
@@ -29,7 +30,7 @@ import {
   SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
 } from "@/components/ui/sidebar-hover-actions.js";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { CollapsedChildActivity } from "@/lib/thread-activity";
+import type { CollapsedChildActivity } from "@bb/client-core";
 import {
   SIDEBAR_MORE_ACTION_TRIGGER_CLASS,
   SIDEBAR_ROW_BASE_CLASS,
@@ -40,7 +41,6 @@ import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
 import { CollapsedThreadStatusGlyph } from "./ThreadRow";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import {
   useThreadGroupSplitIndicator,
   type ThreadSplitIndicatorTarget,
@@ -48,6 +48,10 @@ import {
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
+
+function stopActionsClick(event: MouseEvent<HTMLElement>) {
+  event.stopPropagation();
+}
 
 interface SidebarSectionRowProps {
   // Leaf segment shown on the header ("Q3").
@@ -89,10 +93,9 @@ function SidebarSectionRowComponent({
   stickyLevel,
 }: SidebarSectionRowProps) {
   const [isActionsOpen, setIsActionsOpen] = useState(false);
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const collapsedSplitIndicator = useThreadGroupSplitIndicator(
     collapsedThreads,
-    threadSplitsEnabled && isCollapsed,
+    isCollapsed,
   );
   const hasMenuActions = Boolean(onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
@@ -141,12 +144,6 @@ function SidebarSectionRowComponent({
       event.stopPropagation();
     },
     [consumeClickSuppression],
-  );
-  const stopActionsClick = useCallback<MouseEventHandler<HTMLElement>>(
-    (event) => {
-      event.stopPropagation();
-    },
-    [],
   );
   const content = (
     <>

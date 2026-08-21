@@ -4,10 +4,35 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
+  createWorkspaceOpenTargetRuntime,
   listWorkspaceOpenTargetsWithRuntime,
   openPathInTargetWithRuntime,
   type WorkspaceOpenTargetRuntime,
 } from "../src/index.js";
+
+describe("default workspace open-target runtime", () => {
+  it("exposes the resolved shell PATH without changing system-tool launches", async () => {
+    const runtime = createWorkspaceOpenTargetRuntime({
+      shellPath: "/Users/test/.local/bin:/usr/bin",
+    });
+
+    expect(runtime.env?.PATH).toBe("/Users/test/.local/bin:/usr/bin");
+    const inheritedResult = await runtime.execFile(process.execPath, [
+      "-e",
+      "process.stdout.write(process.env.PATH ?? '')",
+    ]);
+    expect(inheritedResult.stdout).toBe(process.env.PATH ?? "");
+
+    const userExecutableResult = await runtime.execFile(
+      process.execPath,
+      ["-e", "process.stdout.write(process.env.PATH ?? '')"],
+      { env: runtime.env },
+    );
+    expect(userExecutableResult.stdout).toBe(
+      "/Users/test/.local/bin:/usr/bin",
+    );
+  });
+});
 
 type ExecFileHandler = WorkspaceOpenTargetRuntime["execFile"];
 
@@ -325,6 +350,7 @@ describe("workspace open targets", () => {
       expect(calls.find((call) => call.file === "wslview")).toEqual({
         file: "wslview",
         args: [filePath],
+        env: { WSL_DISTRO_NAME: "Ubuntu" },
       });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
@@ -361,6 +387,7 @@ describe("workspace open targets", () => {
       expect(calls.find((call) => call.file === "explorer.exe")).toEqual({
         file: "explorer.exe",
         args: [path.dirname(filePath)],
+        env: { WSL_DISTRO_NAME: "Ubuntu" },
       });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
@@ -405,13 +432,23 @@ describe("workspace open targets", () => {
           path: filePath,
           targetId: "vscode",
         },
-        createRuntime({ execFile, platform: "linux" }),
+        createRuntime({
+          env: { PATH: "/Users/test/.local/bin:/usr/bin" },
+          execFile,
+          platform: "linux",
+        }),
       );
 
       expect(calls.find((call) => call.file === "code")).toEqual({
         file: "code",
         args: ["-g", `${filePath}:15:6`],
+        env: { PATH: "/Users/test/.local/bin:/usr/bin" },
       });
+      expect(
+        calls.find(
+          (call) => call.file === "which" && call.args[0] === "code",
+        )?.env,
+      ).toEqual({ PATH: "/Users/test/.local/bin:/usr/bin" });
     } finally {
       await rm(workspacePath, { force: true, recursive: true });
     }
@@ -507,8 +544,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 8,
@@ -611,7 +646,10 @@ describe("workspace open targets", () => {
           path: filePath,
           targetId: "default-app",
         },
-        createRuntime({ execFile }),
+        createRuntime({
+          env: { PATH: "/Users/test/.local/bin:/usr/bin" },
+          execFile,
+        }),
       );
 
       expect(calls.find((call) => call.file === "open")).toEqual({
@@ -941,7 +979,19 @@ describe("workspace open targets", () => {
           "bin",
           "windsurf",
         ],
-        targetId: "windsurf",
+        targetId: "devin-desktop",
+      },
+      {
+        appName: "Devin",
+        args: ["-g", `${filePath}:15:6`],
+        relativeExecutablePath: [
+          "Contents",
+          "Resources",
+          "app",
+          "bin",
+          "devin-desktop",
+        ],
+        targetId: "devin-desktop",
       },
       {
         appName: "Antigravity",
@@ -1048,8 +1098,6 @@ describe("workspace open targets", () => {
         {
           context: {
             kind: "remote-ssh",
-            serverOrigin: "https://example.test",
-            hostId: "host_1",
             sshAuthority: "mbp-intel",
           },
           columnNumber: 2,
@@ -1123,7 +1171,7 @@ describe("workspace open targets", () => {
     expect(targets.map((target) => target.id)).toContain("antigravity");
   });
 
-  it("discovers Windsurf with the current bundle id", async () => {
+  it("discovers Devin Desktop with its current bundle id", async () => {
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.exafunction.windsurf"],
     });
@@ -1134,16 +1182,18 @@ describe("workspace open targets", () => {
       }),
     );
 
-    expect(targets.find((target) => target.id === "windsurf")).toMatchObject({
+    expect(
+      targets.find((target) => target.id === "devin-desktop"),
+    ).toMatchObject({
       capabilities: {
         openDirectory: true,
         openFile: true,
         openFileAtColumn: true,
         openFileAtLine: true,
       },
-      icon: { kind: "builtin", name: "windsurf" },
+      icon: { kind: "builtin", name: "devin-desktop" },
       kind: "editor",
-      label: "Windsurf",
+      label: "Devin Desktop",
     });
   });
 
@@ -1481,6 +1531,7 @@ describe("workspace open targets", () => {
       expect(calls.find((call) => call.file === webStormExecutable)).toEqual({
         file: webStormExecutable,
         args: ["--line", "15", "--column", "6", filePath],
+        env: { HOME: homeDirectory },
       });
     } finally {
       await rm(root, { force: true, recursive: true });
@@ -1732,8 +1783,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 9,
@@ -1766,8 +1815,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 8,
@@ -1805,8 +1852,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: null,
@@ -1845,8 +1890,6 @@ describe("workspace open targets", () => {
       {
         context: {
           kind: "remote-ssh",
-          serverOrigin: "https://bb.example.test",
-          hostId: "host_remote",
           sshAuthority: "devbox",
         },
         columnNumber: 3,
@@ -1869,8 +1912,6 @@ describe("workspace open targets", () => {
         {
           context: {
             kind: "remote-ssh",
-            serverOrigin: "https://bb.example.test",
-            hostId: "host_remote",
             sshAuthority: "devbox",
           },
           columnNumber: null,
@@ -2263,13 +2304,13 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("uses Windsurf line and column direct-editor commands when available", async () => {
+  it("uses Devin Desktop line and column direct-editor commands when available", async () => {
     const workspacePath = await mkdtemp(path.join(tmpdir(), "bb-workspace-"));
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({
       availableBundleIdSubstrings: ["com.exafunction.windsurf"],
-      availableExecutables: ["windsurf"],
+      availableExecutables: ["devin-desktop"],
       calls,
     });
 
@@ -2283,13 +2324,13 @@ describe("workspace open targets", () => {
           columnNumber: 6,
           lineNumber: 15,
           path: filePath,
-          targetId: "windsurf",
+          targetId: "devin-desktop",
         },
         createRuntime({ execFile }),
       );
 
-      expect(calls.find((call) => call.file === "windsurf")).toEqual({
-        file: "windsurf",
+      expect(calls.find((call) => call.file === "devin-desktop")).toEqual({
+        file: "devin-desktop",
         args: ["-g", `${filePath}:15:6`],
       });
       expect(calls.some((call) => call.file === "open")).toBe(false);

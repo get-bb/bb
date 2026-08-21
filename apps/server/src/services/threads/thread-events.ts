@@ -18,6 +18,7 @@ import {
   CLIENT_TURN_REQUEST_ID_SUFFIX_LENGTH,
   encodeClientTurnRequestIdAlphabetIndexes,
   getThreadEventScopeTurnId,
+  isStandaloneBuiltinCompactCommand,
   parseStoredThreadEvent,
   systemErrorEventDataSchema,
   threadScope,
@@ -43,6 +44,7 @@ import type {
   ThreadTurnInitiator,
   ThreadChangeKind,
   ThreadChangeMetadata,
+  Thread,
 } from "@bb/domain";
 import { ApiError, TurnStartGuardError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
@@ -58,7 +60,7 @@ interface ThreadEventTransactionDeps {
   hub: DbNotifier;
 }
 
-export interface ClientTurnRequestedEventArgs {
+interface ClientTurnRequestedEventArgs {
   continuationOfRequestId?: ClientTurnRequestId;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
@@ -79,11 +81,11 @@ export interface ClientTurnRequestedEventArgs {
   type: "client/turn/requested";
 }
 
-export interface PreparedClientTurnRequestedEventArgs extends ClientTurnRequestedEventArgs {
+interface PreparedClientTurnRequestedEventArgs extends ClientTurnRequestedEventArgs {
   requestId: ClientTurnRequestId;
 }
 
-export interface ClientTurnLifecycleEventArgs {
+interface ClientTurnLifecycleEventArgs {
   environmentId: string | null;
   initiator: ThreadTurnInitiator;
   requestMethod: "thread/start" | "turn/start";
@@ -92,11 +94,11 @@ export interface ClientTurnLifecycleEventArgs {
   type: "client/thread/start" | "client/turn/start";
 }
 
-export type ClientTurnEventArgs =
+type ClientTurnEventArgs =
   | ClientTurnLifecycleEventArgs
   | ClientTurnRequestedEventArgs;
 
-export interface AppendedClientTurnRequest {
+interface AppendedClientTurnRequest {
   requestId: ClientTurnRequestId;
   sequence: number;
 }
@@ -106,16 +108,16 @@ export interface AppendedClientTurnRequestWithNotification extends AppendedClien
   notificationMetadata: ThreadChangeMetadata;
 }
 
-export type ThreadOwnershipChangeAction = "assign" | "release" | "transfer";
+type ThreadOwnershipChangeAction = "assign" | "release" | "transfer";
 
-export interface AppendThreadOwnershipChangeEventArgs {
+interface AppendThreadOwnershipChangeEventArgs {
   environmentId?: string | null;
   nextParentThreadId: string | null;
   previousParentThreadId: string | null;
   threadId: string;
 }
 
-export interface AppendSystemErrorEventArgs {
+interface AppendSystemErrorEventArgs {
   code: string;
   detail?: string;
   environmentId?: string | null;
@@ -126,7 +128,7 @@ export interface AppendSystemErrorEventArgs {
   threadId: string;
 }
 
-export interface AppendThreadProvisioningEventArgs {
+interface AppendThreadProvisioningEventArgs {
   entries: ProvisioningTranscriptEntry[];
   environmentId: string;
   provisioningId: string;
@@ -134,12 +136,12 @@ export interface AppendThreadProvisioningEventArgs {
   threadId: string;
 }
 
-export interface BuildCwdBranchEntriesArgs {
+interface BuildCwdBranchEntriesArgs {
   branchName: string | null;
   path: string;
 }
 
-export interface AppendThreadInterruptedEventArgs {
+interface AppendThreadInterruptedEventArgs {
   reason: SystemThreadInterruptedReason;
   threadId: string;
 }
@@ -230,12 +232,6 @@ function buildClientTurnBaseEventData(
   };
 }
 
-function buildClientTurnLifecycleEventData(
-  args: ClientTurnLifecycleEventArgs,
-): ClientTurnLifecycleEventData {
-  return buildClientTurnBaseEventData(args);
-}
-
 function buildClientTurnRequestedEventData(
   args: ClientTurnRequestedEventArgs,
   requestId: ClientTurnRequestId,
@@ -323,7 +319,7 @@ function appendBuiltClientTurnEvent(
         environmentId: args.environmentId,
         type: args.type,
         scope: threadScope(),
-        data: buildClientTurnLifecycleEventData(args),
+        data: buildClientTurnBaseEventData(args),
       });
     case "client/turn/requested": {
       return appendBuiltClientTurnRequestedEvent(append, {
@@ -371,13 +367,6 @@ function applyUserTurnReadForEvent(
   };
 }
 
-function applyReadStateUpdateForEvent(
-  db: DbTransaction,
-  args: AppendThreadEventArgs,
-): ThreadReadStateUpdate | null {
-  return applyUserTurnReadForEvent(db, args);
-}
-
 function appendThreadEventsInTransactionWithAttention(
   db: DbTransaction,
   args: readonly AppendThreadEventArgs[],
@@ -385,7 +374,7 @@ function appendThreadEventsInTransactionWithAttention(
   assertStoredTurnStartedForEvents(db, args);
   const sequences = appendStoredThreadEventsInTransaction(db, args);
   const readStateUpdates = args
-    .map((eventArgs) => applyReadStateUpdateForEvent(db, eventArgs))
+    .map((eventArgs) => applyUserTurnReadForEvent(db, eventArgs))
     .filter(isThreadReadStateUpdate);
 
   return { readStateUpdates, sequences };
@@ -584,21 +573,6 @@ export function appendClientTurnEventInTransaction(
     (eventArgs) => appendThreadEventInTransaction(db, eventArgs),
     args,
   );
-}
-
-export function appendPreparedClientTurnRequestedEventInTransaction(
-  db: DbTransaction,
-  args: PreparedClientTurnRequestedEventArgs,
-): AppendedClientTurnRequest {
-  const result =
-    appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
-      db,
-      args,
-    );
-  return {
-    requestId: result.requestId,
-    sequence: result.sequence,
-  };
 }
 
 export function appendPreparedClientTurnRequestedEventWithNotificationInTransaction(
@@ -960,6 +934,32 @@ export function getActiveTurnId(
   return getActiveStoredTurnId(deps.db, threadId);
 }
 
+export function isManualCompactionActive(
+  deps: ThreadEventReadDeps,
+  thread: Pick<Thread, "id" | "status">,
+): boolean {
+  if (thread.status !== "active") {
+    return false;
+  }
+
+  const activeTurnId = getActiveStoredTurnId(deps.db, thread.id);
+  const requestRow = activeTurnId
+    ? (getStoredTurnRequestEventForTurn(deps.db, {
+        threadId: thread.id,
+        turnId: activeTurnId,
+      }) ?? getLastStoredTurnRequestEvent(deps.db, thread.id))
+    : getLastStoredTurnRequestEvent(deps.db, thread.id);
+  if (!requestRow) {
+    return false;
+  }
+
+  const request = parseStoredTurnRequestEvent(requestRow);
+  return (
+    request.target.kind === "new-turn" &&
+    isStandaloneBuiltinCompactCommand(request.input)
+  );
+}
+
 export function getLastProviderThreadId(
   deps: ThreadEventReadDeps,
   threadId: string,
@@ -982,22 +982,6 @@ export function getLastExecutionOptions(
   threadId: string,
 ): RecordedThreadExecutionOptions | null {
   const row = getLastStoredTurnRequestEvent(deps.db, threadId);
-
-  return row
-    ? parseStoredTurnRequestEvent({
-        data: row.data,
-        sequence: row.sequence,
-        threadId: row.threadId,
-        type: row.type,
-      }).execution
-    : null;
-}
-
-export function getTurnExecutionOptions(
-  deps: Pick<AppDeps, "db">,
-  args: { threadId: string; turnId: string },
-): RecordedThreadExecutionOptions | null {
-  const row = getStoredTurnRequestEventForTurn(deps.db, args);
 
   return row
     ? parseStoredTurnRequestEvent({

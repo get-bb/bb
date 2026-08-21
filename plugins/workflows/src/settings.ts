@@ -2,7 +2,7 @@ import type {
   BbPluginApi,
   PluginSettingDescriptors,
   PluginSettingsValues,
-} from "@bb/plugin-sdk";
+} from "@get-bb/plugin-sdk";
 
 export const WORKFLOW_SETTING_DESCRIPTORS = {
   maxActiveRuns: {
@@ -200,7 +200,7 @@ export function parseStoredWorkflowSettings(value: unknown): WorkflowSettings {
   return parseWorkflowSettings(raw);
 }
 
-export interface WorkflowSettingsHandle {
+interface WorkflowSettingsHandle {
   get(): Promise<WorkflowSettings>;
   onChange(
     listener: (next: WorkflowSettings, previous: WorkflowSettings) => void,

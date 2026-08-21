@@ -1,0 +1,111 @@
+# Phase 4b pending interactions + queue: Settings → Developer → Interactions
+# showcase renders every banner variant on synthetic payloads; the "Live
+# thread" section then answers a real pending user question on THREAD_ID
+# (pass `-e THREAD_ID=<id>` after sending `ask_user` to that thread through
+# the API), expecting the banner to clear once the answer is accepted, and
+# finally checks the synthetic secret-request and unknown-plugin cards.
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+#      maestro test -e THREAD_ID=thr_xxx e2e/flows/phase4b-interactions.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "settings-dev-interactions"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "settings-dev-interactions"
+- extendedWaitUntil:
+    visible:
+      id: "dev-interactions-screen"
+    timeout: 30000
+# Live thread: answer the pending user question for real.
+- tapOn:
+    id: "dev-live-thread-input"
+- inputText: "${THREAD_ID}"
+- hideKeyboard
+- tapOn:
+    id: "dev-live-thread-load"
+- extendedWaitUntil:
+    visible:
+      id: "pending-interaction-question"
+    timeout: 20000
+- assertVisible: "(?s).*Which deployment path.*"
+- takeScreenshot: phase4b-interactions-question
+- tapOn:
+    id: "question-option-0"
+- tapOn:
+    id: "question-submit"
+- extendedWaitUntil:
+    visible:
+      id: "dev-live-thread-no-interaction"
+    timeout: 20000
+- takeScreenshot: phase4b-interactions-answered
+# Synthetic variants: approval command card, plan, secrets, unknown plugin.
+- scrollUntilVisible:
+    element:
+      id: "approval-command"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*Allow for session.*"
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Approve plan.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- scrollUntilVisible:
+    element:
+      id: "pending-interaction-plugin-secrets"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*STAGING_API_KEY.*"
+- assertVisible: "(?s).*Add secrets.*"
+- takeScreenshot: phase4b-interactions-secrets
+- scrollUntilVisible:
+    element:
+      id: "pending-interaction-plugin-unsupported"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*needs the desktop app.*"
+# Prompt chips: the composer's chip row (workflows, background tasks, plan,
+# goal, to-dos). The workflows chip opens a sheet with the agent tree.
+- scrollUntilVisible:
+    element:
+      id: "dev-prompt-chips"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*2 workflows.*"
+- tapOn:
+    id: "thread-chip-workflows"
+- extendedWaitUntil:
+    visible: "(?s).*fix-confirmed-bugs.*"
+    timeout: 10000
+- assertVisible: "(?s).*Draft the plan.*"
+- takeScreenshot: phase4b-interactions-chips-workflows
+- swipe:
+    direction: DOWN
+    duration: 300
+# Queued messages list: three synthetic rows, "…" menu offers move/group/delete.
+- scrollUntilVisible:
+    element:
+      id: "queued-messages-list"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*3 queued messages.*"
+- takeScreenshot: phase4b-interactions-queue

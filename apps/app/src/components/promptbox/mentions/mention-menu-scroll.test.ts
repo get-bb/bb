@@ -45,7 +45,6 @@ describe("shouldLoadMoreCommandResults", () => {
     expect(
       shouldLoadMoreCommandResults({
         trigger: "command",
-        hasLoadMoreCallback: true,
         scrollHeight: 500,
         scrollTop: 252,
         clientHeight: 200,
@@ -57,7 +56,6 @@ describe("shouldLoadMoreCommandResults", () => {
     expect(
       shouldLoadMoreCommandResults({
         trigger: "command",
-        hasLoadMoreCallback: true,
         scrollHeight: 500,
         scrollTop: 200,
         clientHeight: 200,
@@ -69,19 +67,6 @@ describe("shouldLoadMoreCommandResults", () => {
     expect(
       shouldLoadMoreCommandResults({
         trigger: "mention",
-        hasLoadMoreCallback: true,
-        scrollHeight: 500,
-        scrollTop: 252,
-        clientHeight: 200,
-      }),
-    ).toBe(false);
-  });
-
-  it("does not load when no command pager is available", () => {
-    expect(
-      shouldLoadMoreCommandResults({
-        trigger: "command",
-        hasLoadMoreCallback: false,
         scrollHeight: 500,
         scrollTop: 252,
         clientHeight: 200,

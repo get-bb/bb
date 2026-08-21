@@ -15,10 +15,12 @@ interface PortAvailabilityCheck {
   port: number;
 }
 
-interface DevTurboCommand {
+interface DevCommand {
   args: string[];
   command: string;
 }
+
+export type DevLaunchMode = "vite" | "worktree";
 
 const LOOPBACK_HOST = "127.0.0.1";
 
@@ -26,7 +28,7 @@ const commandDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(commandDir, "..", "..");
 const repoRoot = resolve(packageRoot, "..", "..");
 
-export function createDevTurboCommand(): DevTurboCommand {
+export function createDevTurboCommand(): DevCommand {
   return {
     args: [
       "exec",
@@ -46,13 +48,62 @@ export function createDevTurboCommand(): DevTurboCommand {
   };
 }
 
-function formatConfig(config: DevInstanceConfig): string {
+export function createStartWorktreeCommand(): DevCommand {
+  return {
+    args: [
+      "--conditions=source",
+      "--import",
+      "tsx",
+      resolve(repoRoot, "scripts", "start-bb.mjs"),
+      "--worktree-runtime-policy",
+    ],
+    command: process.execPath,
+  };
+}
+
+export function resolveDevLaunchMode(args: string[]): DevLaunchMode {
+  if (args.length === 0) {
+    return "vite";
+  }
+  if (args.length === 1 && args[0] === "--worktree") {
+    return "worktree";
+  }
+  throw new Error(
+    `[dev] Unknown arguments: ${args.join(" ")}. Expected no arguments or --worktree.`,
+  );
+}
+
+export function toDevLaunchProcessEnv(args: {
+  baseEnv: NodeJS.ProcessEnv;
+  config: DevInstanceConfig;
+  mode: DevLaunchMode;
+}): NodeJS.ProcessEnv {
+  const env = toDevProcessEnv({
+    baseEnv: args.baseEnv,
+    config: args.config,
+  });
+  if (args.mode === "vite") {
+    return env;
+  }
+
+  delete env.BB_DEV_APP_PORT;
+  env.BB_TELEMETRY = "false";
+  env.NODE_ENV = "production";
+  return env;
+}
+
+function formatConfig(config: DevInstanceConfig, mode: DevLaunchMode): string {
+  const prefix = mode === "worktree" ? "[start:worktree]" : "[dev]";
+  const appUrl =
+    mode === "worktree"
+      ? config.serverUrl
+      : `http://localhost:${config.ports.appPort}`;
   return [
-    `[dev] Instance ${config.instanceId}`,
-    `[dev] Data dir ${config.dataDir}`,
-    `[dev] App http://localhost:${config.ports.appPort}`,
-    `[dev] Server ${config.serverUrl}`,
-    `[dev] Host daemon http://127.0.0.1:${config.ports.hostDaemonPort}`,
+    `${prefix} Instance ${config.instanceId}`,
+    `${prefix} Data dir ${config.dataDir}`,
+    `${prefix} App ${appUrl}`,
+    `${prefix} Server ${config.serverUrl}`,
+    `${prefix} Host daemon http://127.0.0.1:${config.ports.hostDaemonPort}`,
   ].join("\n");
 }
 
@@ -80,12 +131,17 @@ function checkPortAvailable(check: PortAvailabilityCheck): Promise<void> {
   });
 }
 
-async function assertPortsAvailable(config: DevInstanceConfig): Promise<void> {
+async function assertPortsAvailable(
+  config: DevInstanceConfig,
+  mode: DevLaunchMode,
+): Promise<void> {
   const checks: PortAvailabilityCheck[] = [
-    { label: "app", port: config.ports.appPort },
     { label: "server", port: config.ports.serverPort },
     { label: "host-daemon", port: config.ports.hostDaemonPort },
   ];
+  if (mode === "vite") {
+    checks.unshift({ label: "app", port: config.ports.appPort });
+  }
   await Promise.all(checks.map(checkPortAvailable));
 }
 
@@ -94,7 +150,8 @@ async function resolveExistingRepoRoot(): Promise<string> {
   return repoRoot;
 }
 
-export async function main(): Promise<void> {
+async function main(): Promise<void> {
+  const mode = resolveDevLaunchMode(process.argv.slice(2));
   const resolvedRepoRoot = await resolveExistingRepoRoot();
   const config = resolveCurrentDevInstanceConfig(resolvedRepoRoot);
   const migration = await migrateLegacyDevData({
@@ -106,17 +163,21 @@ export async function main(): Promise<void> {
       "[dev] Legacy ~/.bb-dev data was found, but an old dev server or host-daemon is still running. Stop the old dev process and rerun pnpm dev to migrate it.",
     );
   }
-  await assertPortsAvailable(config);
-  process.stdout.write(`${formatConfig(config)}\n`);
+  await assertPortsAvailable(config, mode);
+  process.stdout.write(`${formatConfig(config, mode)}\n`);
 
-  const turboCommand = createDevTurboCommand();
+  const command =
+    mode === "worktree"
+      ? createStartWorktreeCommand()
+      : createDevTurboCommand();
   process.exitCode = await runScriptProcess({
-    args: turboCommand.args,
-    command: turboCommand.command,
+    args: command.args,
+    command: command.command,
     cwd: config.repoRoot,
-    env: toDevProcessEnv({
+    env: toDevLaunchProcessEnv({
       baseEnv: process.env,
       config,
+      mode,
     }),
     stdio: "inherit",
   });

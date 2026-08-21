@@ -4,9 +4,9 @@ import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { OverflowFade } from "./overflow-fade.js";
 
-export type PageShellScrollBehavior = "bottom-anchor" | "static";
+type PageShellScrollBehavior = "bottom-anchor" | "static";
 
-export interface PageShellBaseProps {
+interface PageShellBaseProps {
   children: ReactNode;
   footer?: ReactNode;
   scrollOverlay?: ReactNode;
@@ -17,7 +17,7 @@ export interface PageShellBaseProps {
   maxWidthClassName?: string;
 }
 
-export interface PageShellProps extends PageShellBaseProps {
+interface PageShellProps extends PageShellBaseProps {
   scrollBehavior?: PageShellScrollBehavior;
   // Only meaningful with `scrollBehavior="bottom-anchor"`: persists and restores
   // the timeline scroll position per thread so switching away and back doesn't

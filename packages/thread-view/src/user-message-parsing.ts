@@ -104,7 +104,7 @@ export function parsePromptInput(
   };
 }
 
-export function shouldRenderClientRequestedInput(
+function shouldRenderClientRequestedInput(
   threadStatus: BuildEventProjectionMessagesOptions["threadStatus"] | undefined,
 ): boolean {
   if (!threadStatus) return false;
@@ -154,19 +154,25 @@ function buildAttachments(
   };
 }
 
-export interface ParseUserFromClientRequestArgs {
+interface ParseUserFromClientRequestArgs {
   acceptedClientRequest?: AcceptedClientRequest;
   decoded: ThreadEvent;
   meta: EventMeta;
   options?: BuildEventProjectionMessagesOptions;
 }
 
-export interface ParseAcceptedSteerFromClientRequestArgs extends ParseUserFromClientRequestArgs {
+interface ParseAcceptedSteerFromClientRequestArgs extends ParseUserFromClientRequestArgs {
   acceptedClientRequest: AcceptedClientRequest;
 }
 
-export interface ParsePendingSteerFromClientRequestArgs extends ParseUserFromClientRequestArgs {
+interface ParsePendingSteerFromClientRequestArgs extends ParseUserFromClientRequestArgs {
   acceptedClientRequest: AcceptedClientRequest | undefined;
+}
+
+interface ParseRejectedUsersFromClientRequestArgs {
+  decoded: ThreadEvent;
+  meta: EventMeta;
+  options?: BuildEventProjectionMessagesOptions;
 }
 
 type ClientTurnRequestedEvent = Extract<
@@ -209,7 +215,7 @@ function resolveTurnRequestKind({
   return "steer";
 }
 
-export function isSteerRequest(decoded: ClientTurnRequestedEvent): boolean {
+function isSteerRequest(decoded: ClientTurnRequestedEvent): boolean {
   return (
     resolveTurnRequestKind({
       acceptedClientRequest: undefined,
@@ -224,6 +230,7 @@ function buildTurnRequest(
   acceptedClientRequest: AcceptedClientRequest | undefined,
 ): EventProjectionTurnRequest {
   return {
+    isGrouped: decoded.inputGroups !== undefined,
     kind: resolveTurnRequestKind({
       acceptedClientRequest,
       decoded,
@@ -324,41 +331,6 @@ function clientUserMessageIdSuffix(messageIndex: number): string | undefined {
   return messageIndex > 0 ? String(messageIndex) : undefined;
 }
 
-export function parseUserFromClientRequest(
-  args: ParseUserFromClientRequestArgs,
-): EventProjectionUserMessage | null {
-  const { acceptedClientRequest, decoded, meta, options } = args;
-  if (decoded.type !== "client/turn/requested") {
-    return null;
-  }
-
-  const parsedInput = parsePromptInput(decoded.input);
-  if (!parsedInput) return null;
-  if (!shouldRenderClientRequestedInput(options?.threadStatus)) {
-    return null;
-  }
-
-  // Steers flow through parsePendingSteer / parseAcceptedSteer regardless of
-  // initiator — the steer-vs-message distinction is about turn shape, not who
-  // initiated it.
-  if (
-    resolveTurnRequestKind({
-      acceptedClientRequest,
-      decoded,
-    }) !== "message"
-  ) {
-    return null;
-  }
-
-  return buildClientUserMessage({
-    acceptedClientRequest,
-    decoded,
-    input: decoded.input,
-    meta,
-    requestStatus: acceptedClientRequest ? "accepted" : "pending",
-  });
-}
-
 export function parseUsersFromClientRequest(
   args: ParseUserFromClientRequestArgs,
 ): EventProjectionUserMessage[] {
@@ -398,12 +370,6 @@ export function parseUsersFromClientRequest(
   return messages;
 }
 
-export function parsePendingSteerFromClientRequest(
-  args: ParsePendingSteerFromClientRequestArgs,
-): EventProjectionUserMessage | null {
-  return parsePendingSteersFromClientRequest(args)[0] ?? null;
-}
-
 export function parsePendingSteersFromClientRequest(
   args: ParsePendingSteerFromClientRequestArgs,
 ): EventProjectionUserMessage[] {
@@ -434,12 +400,6 @@ export function parsePendingSteersFromClientRequest(
     );
   }
   return messages;
-}
-
-export function parseAcceptedSteerFromClientRequest(
-  args: ParseAcceptedSteerFromClientRequestArgs,
-): EventProjectionUserMessage | null {
-  return parseAcceptedSteersFromClientRequest(args)[0] ?? null;
 }
 
 export function parseAcceptedSteersFromClientRequest(
@@ -474,6 +434,35 @@ export function parseAcceptedSteersFromClientRequest(
         input,
         meta,
         requestStatus: "accepted",
+      }),
+    );
+  }
+  return messages;
+}
+
+export function parseRejectedUsersFromClientRequest(
+  args: ParseRejectedUsersFromClientRequestArgs,
+): EventProjectionUserMessage[] {
+  const { decoded, meta, options } = args;
+  if (decoded.type !== "client/turn/requested") {
+    return [];
+  }
+  if (!shouldRenderClientRequestedInput(options?.threadStatus)) {
+    return [];
+  }
+
+  const groups = decoded.inputGroups ?? [decoded.input];
+  const messages: EventProjectionUserMessage[] = [];
+  for (const input of groups) {
+    if (!parsePromptInput(input)) continue;
+    const visibleMessageIndex = messages.length;
+    messages.push(
+      buildClientUserMessage({
+        decoded,
+        idSuffix: clientUserMessageIdSuffix(visibleMessageIndex),
+        input,
+        meta,
+        requestStatus: "rejected",
       }),
     );
   }

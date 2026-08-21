@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { Environment, Thread } from "@bb/domain";
-import { describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EnvironmentRow, ParentSelectorRow } from "./ThreadMetadataContent";
 import { parentThreads } from "./ThreadMetadataContent.fixtures";
 
@@ -25,7 +26,6 @@ function makeThread(overrides: Partial<Thread> = {}): Thread {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     deletedAt: null,
@@ -61,20 +61,48 @@ function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
 
 function renderEnvironmentRow(environment: Environment): string {
   return renderToStaticMarkup(
-    <MemoryRouter>
-      <EnvironmentRow
-        thread={makeThread({ environmentId: environment.id })}
-        environment={environment}
-        environmentDisplayHost={localHost}
-      />
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter>
+        <EnvironmentRow
+          thread={makeThread({ environmentId: environment.id })}
+          environment={environment}
+          environmentDisplayHost={localHost}
+        />
+      </MemoryRouter>
+    </TooltipProvider>,
   );
 }
+
+afterEach(cleanup);
 
 describe("EnvironmentRow", () => {
   it("shows the create-thread action for a provisioned worktree", () => {
     expect(renderEnvironmentRow(makeEnvironment())).toContain(
       'aria-label="Create new thread in this worktree"',
+    );
+  });
+
+  it("explains the create-thread action in a tooltip", async () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <MemoryRouter>
+          <EnvironmentRow
+            thread={makeThread()}
+            environment={makeEnvironment()}
+            environmentDisplayHost={localHost}
+          />
+        </MemoryRouter>
+      </TooltipProvider>,
+    );
+
+    fireEvent.focus(
+      screen.getByRole("button", {
+        name: "Create new thread in this worktree",
+      }),
+    );
+
+    expect((await screen.findByRole("tooltip")).textContent).toBe(
+      "Create new thread in this worktree",
     );
   });
 
@@ -114,6 +142,7 @@ describe("ParentSelectorRow", () => {
         <ParentSelectorRow
           thread={makeThread({ environmentId: null })}
           projectId="proj_test"
+          parentThreadProjectId={null}
           parentThreadDisplayName={null}
           parentThreads={[]}
           canAssignToParent
@@ -145,6 +174,7 @@ describe("ParentSelectorRow", () => {
         <ParentSelectorRow
           thread={makeThread({ environmentId: null })}
           projectId="proj_test"
+          parentThreadProjectId={null}
           parentThreadDisplayName={null}
           parentThreads={candidates}
           canAssignToParent

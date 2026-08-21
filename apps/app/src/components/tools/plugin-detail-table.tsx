@@ -109,12 +109,10 @@ export function PluginDetailGlyph({
   icon,
   label,
   className,
-  spin = false,
 }: {
   icon: IconName;
   label: string;
   className?: string;
-  spin?: boolean;
 }) {
   return (
     <TooltipProvider delayDuration={200}>
@@ -126,11 +124,7 @@ export function PluginDetailGlyph({
             tabIndex={0}
             className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
-            <Icon
-              name={icon}
-              className={cn("size-4", className, spin && "animate-shine-icon")}
-              aria-hidden
-            />
+            <Icon name={icon} className={cn("size-4", className)} aria-hidden />
           </span>
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>

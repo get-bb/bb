@@ -23,6 +23,7 @@ import type {
 } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
+  buildTimelineRowTitle,
   buildThreadTimelineFromEvents,
   extractThreadTimelineActivePlanTurn,
   type ThreadEventWithMeta,
@@ -50,6 +51,7 @@ interface FileChangeItemEventArgs {
 }
 
 interface ToolCallItemEventArgs {
+  parentToolCallId?: string;
   statusLabels?: { pending: string; completed: string };
   itemId?: string;
   result?: string;
@@ -58,6 +60,13 @@ interface ToolCallItemEventArgs {
   tool: string;
   toolArgs?: JsonObject;
   type: "item/completed" | "item/started";
+}
+
+interface LowercaseStructuredToolCase {
+  expectedIntent: JsonObject;
+  expectedTitle: string;
+  tool: string;
+  toolArgs: JsonObject;
 }
 
 interface ImageViewItemEventArgs {
@@ -283,6 +292,7 @@ function fileChangeItemEvent({
 }
 
 function toolCallItemEvent({
+  parentToolCallId,
   statusLabels,
   itemId = "tool-call-1",
   result,
@@ -303,6 +313,7 @@ function toolCallItemEvent({
         id: itemId,
         tool,
         ...(toolArgs ? { arguments: toolArgs } : {}),
+        ...(parentToolCallId ? { parentToolCallId } : {}),
         ...(statusLabels ? { statusLabels } : {}),
         status: status ?? (type === "item/completed" ? "completed" : "pending"),
         ...(result ? { result } : {}),
@@ -663,7 +674,6 @@ function buildContextWindowUsage(
     contextWindowEvents,
     events: [],
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: false,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -685,7 +695,6 @@ function buildTimelineRows(
     contextWindowEvents: [],
     events,
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -704,11 +713,34 @@ function buildTimelineRowsWithAcceptedContext(
   return buildThreadTimelineFromEvents({
     acceptedClientRequestContext: {
       acceptedClientRequestEvents,
+      rejectedClientRequestEvents: [],
     },
     contextWindowEvents: [],
     events,
     options: {
-      includeDebugRawEvents: false,
+      includeNestedRows: true,
+      includeProviderUnhandledOperations: false,
+      isLatestPage: true,
+      threadStatus: "idle",
+      threadName: "",
+      turnMessageDetail: "full",
+      workspaceRoot: null,
+    },
+  }).rows;
+}
+
+function buildTimelineRowsWithRejectedContext(
+  events: ThreadEventWithMeta[],
+  rejectedClientRequestEvents: ThreadEventWithMeta[],
+): TimelineRow[] {
+  return buildThreadTimelineFromEvents({
+    acceptedClientRequestContext: {
+      acceptedClientRequestEvents: [],
+      rejectedClientRequestEvents,
+    },
+    contextWindowEvents: [],
+    events,
+    options: {
       includeNestedRows: true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -912,6 +944,97 @@ function fileChangeRowIdByPath(
 }
 
 describe("buildThreadTimelineFromEvents", () => {
+  it("renders one turn when daemon retry history contains duplicate turn starts", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      turnStartedEvent({ seq: 2 }),
+      toolCallItemEvent({
+        seq: 3,
+        tool: "read",
+        type: "item/started",
+      }),
+      toolCallItemEvent({
+        result: "ok",
+        seq: 4,
+        tool: "read",
+        type: "item/completed",
+      }),
+      turnCompletedEvent({ seq: 5 }),
+    ]);
+
+    expect(rows.filter((row) => row.kind === "turn")).toHaveLength(1);
+    expect(collectToolRows(rows)).toHaveLength(1);
+  });
+
+  const lowercaseStructuredToolCases: LowercaseStructuredToolCase[] = [
+    {
+      expectedIntent: {
+        type: "read",
+        name: "read",
+        path: "src/app.ts",
+      },
+      expectedTitle: "Read src/app.ts",
+      tool: "read",
+      toolArgs: { path: "src/app.ts", offset: 1, limit: 20 },
+    },
+    {
+      expectedIntent: {
+        type: "search",
+        query: "TODO",
+        path: "src",
+      },
+      expectedTitle: "Searched for TODO in src",
+      tool: "grep",
+      toolArgs: { pattern: "TODO", path: "src" },
+    },
+    {
+      expectedIntent: {
+        type: "list_files",
+        path: "src/**/*.ts",
+      },
+      expectedTitle: "Listed files in src/**/*.ts",
+      tool: "glob",
+      toolArgs: { pattern: "src/**/*.ts" },
+    },
+  ];
+
+  it.each(lowercaseStructuredToolCases)(
+    "humanizes Pi's lowercase $tool tool calls",
+    ({ expectedIntent, expectedTitle, tool, toolArgs }) => {
+      const rows = buildTimelineRows([
+        turnStartedEvent({ seq: 1 }),
+        toolCallItemEvent({
+          seq: 2,
+          tool,
+          toolArgs,
+          type: "item/started",
+        }),
+        toolCallItemEvent({
+          result: "ok",
+          seq: 3,
+          tool,
+          toolArgs,
+          type: "item/completed",
+        }),
+      ]);
+      const [row] = collectToolRows(rows);
+
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error(`Expected a projected ${tool} tool row`);
+      }
+      expect(row.activityIntents).toEqual([
+        expect.objectContaining(expectedIntent),
+      ]);
+      expect(
+        buildTimelineRowTitle(row, {
+          summaryStyle: "bundle",
+          workStyle: "default",
+        }).plain,
+      ).toBe(expectedTitle);
+    },
+  );
+
   it("preserves server-enriched plugin status labels on a tool row", () => {
     const statusLabels = {
       pending: "Reading project overview",
@@ -961,6 +1084,7 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       extractThreadTimelineActivePlanTurn({
         events,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "codex",
         threadStatus: "active",
       }),
@@ -972,6 +1096,43 @@ describe("buildThreadTimelineFromEvents", () => {
       },
       turnId: "turn-plan-42",
     });
+  });
+
+  // Eligibility comes from the provider's declared plan composer action, not
+  // from an id list, so a plugin provider gets plan mode and a provider that
+  // declares no plan command gets none even with a matching pill.
+  it("gates plan mode on the declared plan command, not the provider id", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const requestId = "creq_3456789abc";
+    const events = fromRows([
+      event.clientTurnRequested({
+        requestId,
+        text: "/plan inspect the failing command",
+        input: planPromptInput,
+      }),
+      event.turnStarted({ turnId: "turn-plan-43" }),
+      event.inputAccepted({
+        clientRequestId: requestId,
+        turnId: "turn-plan-43",
+      }),
+    ]);
+
+    expect(
+      extractThreadTimelineActivePlanTurn({
+        events,
+        planCommand: { trigger: "/", name: "plan" },
+        providerId: "my-plugin-provider",
+        threadStatus: "active",
+      })?.promptMode.providerId,
+    ).toBe("my-plugin-provider");
+    expect(
+      extractThreadTimelineActivePlanTurn({
+        events,
+        planCommand: null,
+        providerId: "codex",
+        threadStatus: "active",
+      }),
+    ).toBeNull();
   });
 
   it("projects active Claude plan mode from an accepted plan command pill", () => {
@@ -991,10 +1152,10 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
@@ -1027,10 +1188,10 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "codex",
         threadStatus: "active",
         threadName: "",
@@ -1062,10 +1223,10 @@ describe("buildThreadTimelineFromEvents", () => {
         event.inputAccepted({ clientRequestId: requestId }),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
         threadStatus: "active",
         threadName: "",
@@ -1095,10 +1256,10 @@ describe("buildThreadTimelineFromEvents", () => {
         event.turnCompleted(),
       ]),
       options: {
-        includeDebugRawEvents: false,
         includeNestedRows: true,
         includeProviderUnhandledOperations: false,
         isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
         providerId: "claude-code",
         threadStatus: "idle",
         threadName: "",
@@ -1172,6 +1333,52 @@ describe("buildThreadTimelineFromEvents", () => {
         }),
       ]),
     );
+  });
+
+  it("keeps nested Claude agents out of root active-work rows", () => {
+    const events = [
+      turnStartedEvent({ seq: 1 }),
+      toolCallItemEvent({
+        seq: 2,
+        itemId: "root-agent-call",
+        tool: "Agent",
+        type: "item/started",
+      }),
+      toolCallItemEvent({
+        seq: 3,
+        itemId: "nested-agent-call",
+        parentToolCallId: "root-agent-call",
+        tool: "Agent",
+        type: "item/started",
+      }),
+      backgroundTaskStartedEvent({
+        seq: 4,
+        id: "task:nested-agent",
+        taskType: "local_agent",
+        description: "Nested Claude agent still running",
+        parentToolCallId: "nested-agent-call",
+      }),
+      turnCompletedEvent({ seq: 5 }),
+    ];
+
+    const timeline = buildThreadTimelineFromEvents({
+      acceptedClientRequestContext: EMPTY_ACCEPTED_CLIENT_REQUEST_CONTEXT,
+      contextWindowEvents: [],
+      events,
+      options: {
+        includeNestedRows: true,
+        includeProviderUnhandledOperations: false,
+        isLatestPage: true,
+        planCommand: { trigger: "/", name: "plan" },
+        providerId: "claude-code",
+        threadStatus: "idle",
+        threadName: "",
+        turnMessageDetail: "full",
+        workspaceRoot: null,
+      },
+    });
+
+    expect(timeline.activeBackgroundCommands).toEqual([]);
   });
 
   it("does not project thread-start provider-session markers as provisioning rows", () => {
@@ -1421,6 +1628,29 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(
       rows.filter((row) => row.kind === "conversation" && row.role === "user"),
     ).toHaveLength(0);
+  });
+
+  it("uses rejected context to render a failed steer across a page boundary", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const steerRequest = event.clientTurnRequested({
+      target: { kind: "steer", expectedTurnId: "turn-1" },
+      text: "Late steer",
+    });
+    const rejectedContext = fromRows([
+      event.clientTurnRejected({ requestId: steerRequest.data.requestId }),
+    ]);
+
+    const rows = buildTimelineRowsWithRejectedContext(
+      fromRows([event.turnStarted({ turnId: "turn-1" }), steerRequest]),
+      rejectedContext,
+    );
+
+    expect(
+      rows.find((row) => row.kind === "conversation" && row.role === "user"),
+    ).toMatchObject({
+      text: "Late steer",
+      turnRequest: { status: "rejected" },
+    });
   });
 
   it("uses accepted context to classify stale steers as messages when the accepted turn is visible", () => {
@@ -1784,6 +2014,20 @@ describe("buildThreadTimelineFromEvents", () => {
         operationId: "pint-test",
         seq: 2,
         status: "resolved",
+      }),
+    ]);
+
+    expect(collectSystemRows(rows)).toEqual([]);
+  });
+
+  it("suppresses the internal message-edit commit marker", () => {
+    const rows = buildTimelineRows([
+      systemOperationEvent({
+        message: "Message edited",
+        operation: "edit_message",
+        operationId: "edit-op-test",
+        seq: 1,
+        status: "completed",
       }),
     ]);
 
@@ -2348,6 +2592,158 @@ describe("buildThreadTimelineFromEvents", () => {
     );
 
     expect(finalRows.map((row) => row.change.path)).toEqual(["src/a.ts"]);
+  });
+
+  it("keeps file changes from different turns that reuse the same item id", () => {
+    const turn2Started: ThreadEventWithMeta = {
+      event: {
+        type: "turn/started",
+        threadId: "thread-1",
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-2"),
+      },
+      meta: { id: "event-2", seq: 2, createdAt: 2 },
+    };
+    const turn2FileChange: ThreadEventWithMeta = {
+      event: {
+        type: "item/completed",
+        threadId: "thread-1",
+        providerThreadId: "provider-thread-1",
+        scope: turnScope("turn-2"),
+        item: {
+          type: "fileChange",
+          id: "file-edit-1",
+          changes: [
+            {
+              path: "src/a.ts",
+              kind: "update",
+              diff: "@@ -1 +1 @@\n-old a\n+turn 2 a",
+            },
+          ],
+          status: "completed",
+          approvalStatus: null,
+        },
+      },
+      meta: { id: "event-3", seq: 3, createdAt: 3 },
+    };
+
+    const rows = collectFileChangeRows(
+      buildTimelineRows([
+        turnStartedEvent({ seq: 0 }),
+        fileChangeItemEvent({
+          changes: [
+            {
+              path: "src/a.ts",
+              kind: "update",
+              diff: "@@ -1 +1 @@\n-old a\n+turn 1 a",
+            },
+          ],
+          itemId: "file-edit-1",
+          seq: 1,
+          type: "item/completed",
+        }),
+        turn2Started,
+        turn2FileChange,
+      ]),
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+    expect(rows.map((row) => row.change.diff)).toEqual([
+      "@@ -1 +1 @@\n-old a\n+turn 1 a",
+      "@@ -1 +1 @@\n-old a\n+turn 2 a",
+    ]);
+  });
+
+  it("keeps file-change output separate across turns that reuse the same item id", () => {
+    function reusedIdFileChangeEvents(
+      turnId: string,
+      startSeq: number,
+      output: string,
+    ): ThreadEventWithMeta[] {
+      const scope = turnScope(turnId);
+      const change = {
+        path: "src/a.ts",
+        kind: "update" as const,
+        diff: `@@ -1 +1 @@\n-old a\n+${turnId} a`,
+      };
+      return [
+        {
+          event: {
+            type: "turn/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+          },
+          meta: { id: `event-${startSeq}`, seq: startSeq, createdAt: startSeq },
+        },
+        {
+          event: {
+            type: "item/started",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+            item: {
+              type: "fileChange",
+              id: "file-edit-1",
+              changes: [change],
+              status: "pending",
+              approvalStatus: null,
+            },
+          },
+          meta: {
+            id: `event-${startSeq + 1}`,
+            seq: startSeq + 1,
+            createdAt: startSeq + 1,
+          },
+        },
+        {
+          event: {
+            type: "item/fileChange/outputDelta",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+            itemId: "file-edit-1",
+            delta: output,
+          },
+          meta: {
+            id: `event-${startSeq + 2}`,
+            seq: startSeq + 2,
+            createdAt: startSeq + 2,
+          },
+        },
+        {
+          event: {
+            type: "item/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-thread-1",
+            scope,
+            item: {
+              type: "fileChange",
+              id: "file-edit-1",
+              changes: [change],
+              status: "completed",
+              approvalStatus: null,
+            },
+          },
+          meta: {
+            id: `event-${startSeq + 3}`,
+            seq: startSeq + 3,
+            createdAt: startSeq + 3,
+          },
+        },
+      ];
+    }
+
+    const rows = collectFileChangeRows(
+      buildTimelineRows([
+        ...reusedIdFileChangeEvents("turn-1", 0, "one-output"),
+        ...reusedIdFileChangeEvents("turn-2", 4, "two-output"),
+      ]),
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.stdout)).toEqual(["one-output", "two-output"]);
   });
 
   it("keeps file-change row identity stable when movePath appears later", () => {

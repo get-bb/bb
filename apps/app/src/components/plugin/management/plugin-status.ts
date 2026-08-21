@@ -10,7 +10,7 @@ export interface PluginRuntimeStatusPresentation {
   recovery: string;
 }
 
-export type PluginRuntimeStatusDefinition = Omit<
+type PluginRuntimeStatusDefinition = Omit<
   PluginRuntimeStatusPresentation,
   "condition" | "recovery"
 >;
@@ -20,7 +20,7 @@ export type PluginRuntimeStatusDefinition = Omit<
  * remains lifecycle state, while updates remain release state; neither is
  * folded into this health vocabulary.
  */
-export const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
+const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   PluginRuntimeStatus,
   PluginRuntimeStatusDefinition | null
 > = {
@@ -40,12 +40,6 @@ export const PLUGIN_RUNTIME_STATUS_DEFINITIONS: Record<
   },
   degraded: { icon: "AlertTriangle", label: "Degraded", tone: "warning" },
 };
-
-export function pluginRuntimeStatusDefinition(
-  status: PluginRuntimeStatus,
-): PluginRuntimeStatusDefinition | null {
-  return PLUGIN_RUNTIME_STATUS_DEFINITIONS[status];
-}
 
 function pluginRuntimeRecovery(plugin: PluginListItem): string {
   switch (plugin.status) {
@@ -67,7 +61,7 @@ function pluginRuntimeRecovery(plugin: PluginListItem): string {
         : "Remove the plugin, then install it again from its source.";
     case "needs-configuration":
       return plugin.hasSettings
-        ? "Complete the Settings section; bb reloads the plugin after you save."
+        ? "Complete the Configuration section; bb reloads the plugin after you save."
         : "Add the required configuration, then reload the plugin.";
     case "degraded":
       return "Wait a moment, then reload the plugin.";
@@ -96,7 +90,7 @@ function pluginRuntimeCondition(plugin: PluginListItem): string {
 export function pluginRuntimeStatusPresentation(
   plugin: PluginListItem,
 ): PluginRuntimeStatusPresentation | null {
-  const definition = pluginRuntimeStatusDefinition(plugin.status);
+  const definition = PLUGIN_RUNTIME_STATUS_DEFINITIONS[plugin.status];
   if (definition === null) return null;
   return {
     ...definition,
@@ -151,16 +145,17 @@ export function pluginRowSignal(
       detail: plugin.statusDetail,
     };
   }
+  if (state.outcome === "unavailable") {
+    return {
+      kind: "status",
+      icon: "AlertTriangle",
+      label: "Needs attention",
+      tone: "warning",
+      detail: state.detail,
+    };
+  }
   if (state.availableVersion !== null) {
     return { kind: "update", version: state.availableVersion };
   }
   return null;
-}
-
-/** The detail-page banner mirrors the row pill's update case. */
-export function pluginUpdateAvailableVersion(
-  plugin: PluginListItem,
-): string | null {
-  const signal = pluginRowSignal(plugin);
-  return signal?.kind === "update" ? signal.version : null;
 }

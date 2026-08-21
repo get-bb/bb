@@ -1,0 +1,17 @@
+{
+  "provider": "pi",
+  "cell": "fork",
+  "threadId": "thr_ja2y8t49k8",
+  "scope": "thread",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "recordedAt": "2026-08-21",
+  "description": "A thread forked from a resumed source thread, then one turn.",
+  "note": "fork of thr_7mq98ky59s",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 10,
+    "provider→bridge": 12,
+    "bridge→provider": 1
+  }
+}

@@ -12,6 +12,7 @@ export {
   ResourceCreateButton,
   type ResourceCreateMenuAction,
   type ResourceCreateTemplate,
+  type ResourceCreateTemplateGroup,
   type ResourceFilterGroup,
   ResourceFilterMenu,
   ResourceMultiSelectMenu,

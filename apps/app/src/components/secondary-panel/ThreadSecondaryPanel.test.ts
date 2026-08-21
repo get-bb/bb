@@ -4,7 +4,6 @@ import {
   getReservedInlinePanelToggleClassName,
   isSecondaryPanelLayoutTransition,
   resolveCollapsedPanelTrafficLightReserveClassName,
-  resolveSecondaryPanelHideControl,
 } from "./ThreadSecondaryPanel";
 import {
   CHROME_ROW_CLASS,
@@ -16,15 +15,6 @@ import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasse
 describe("secondary panel surface tone", () => {
   it("uses the same sidebar background token as the primary sidebar", () => {
     expect(SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS).toBe("bg-sidebar");
-  });
-});
-
-describe("secondary panel hide control", () => {
-  it("uses the existing collapse affordance in the compact drawer", () => {
-    expect(resolveSecondaryPanelHideControl()).toEqual({
-      iconName: "PanelRight",
-      label: "Hide right panel",
-    });
   });
 });
 

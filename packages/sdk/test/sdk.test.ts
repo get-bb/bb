@@ -116,12 +116,12 @@ describe("@bb/sdk", () => {
     await expect(
       sdk.threads.paneAction({
         threadId: "thr_test",
-        action: "restore",
+        action: "spotlight",
       }),
     ).resolves.toEqual({ delivered: 3 });
     expect(queue.requests).toEqual([
       {
-        bodyText: JSON.stringify({ action: "restore" }),
+        bodyText: JSON.stringify({ action: "spotlight" }),
         method: "POST",
         url: "http://bb.test/api/v1/threads/thr_test/pane-action",
       },
@@ -140,6 +140,34 @@ describe("@bb/sdk", () => {
 
     expect(typeof sdk.subscribe).toBe("function");
     expect("on" in sdk).toBe(false);
+  });
+
+  it("maps thread event filters and reverse pagination onto the public query", async () => {
+    const queue = createFetchQueue([{ body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.events.list({
+        beforeSeq: "10",
+        limit: "2",
+        order: "desc",
+        threadId: "thr_test",
+        types: ["system/error", "turn/completed"],
+      }),
+    ).resolves.toEqual([]);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_test/events?beforeSeq=10&limit=2&order=desc&types=system%2Ferror%2Cturn%2Fcompleted",
+      },
+    ]);
   });
 
   it("forwards read abort signals to fetch", async () => {
@@ -192,6 +220,11 @@ describe("@bb/sdk", () => {
       themeId: "nord",
       customCss: null,
       faviconColor: "teal" as const,
+      resolvedCodeTheme: {
+        dark: "nord",
+        light: "nord",
+        files: {},
+      },
     };
     const queue = createFetchQueue([{ body: appearance }]);
     const sdk = createBbSdk({
@@ -220,12 +253,22 @@ describe("@bb/sdk", () => {
         themeId: "dracula",
         customCss: null,
         faviconColor: "purple" as const,
+        resolvedCodeTheme: {
+          dark: "dracula",
+          light: "dracula",
+          files: {},
+        },
       },
     };
     const updated = {
       themeId: "nord",
       customCss: null,
       faviconColor: "purple" as const,
+      resolvedCodeTheme: {
+        dark: "nord",
+        light: "nord",
+        files: {},
+      },
     };
     const queue = createFetchQueue([{ body: current }, { body: updated }]);
     const sdk = createBbSdk({
@@ -512,7 +555,7 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.providers.list({ hostId: "host_remote" }),
+      sdk.providers.list({ capability: "usage", hostId: "host_remote" }),
     ).resolves.toEqual([]);
     await expect(
       sdk.providers.models({
@@ -525,7 +568,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/providers?hostId=host_remote",
+        url: "http://bb.test/api/v1/system/providers?capability=usage&hostId=host_remote",
       },
       {
         bodyText: undefined,
@@ -538,8 +581,8 @@ describe("@bb/sdk", () => {
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },
-      claudeCode: { status: "unauthenticated" as const },
-      cursor: { status: "unauthenticated" as const },
+      "claude-code": { status: "unauthenticated" as const },
+      "acp-cursor": { status: "unauthenticated" as const },
     };
     const queue = createFetchQueue([{ body: usage }]);
     const sdk = createBbSdk({
@@ -551,20 +594,23 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.system.usageLimits({ hostId: "host_remote" }),
+      sdk.system.usageLimits({
+        hostId: "host_remote",
+        providerId: "codex",
+      }),
     ).resolves.toEqual(usage);
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote",
+        url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote&providerId=codex",
       },
     ]);
   });
 
   it("routes onboarding agent status through a reused environment", async () => {
-    const overview = { agents: [] };
-    const queue = createFetchQueue([{ body: overview }]);
+    const states = { providers: [] };
+    const queue = createFetchQueue([{ body: states }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
         baseUrl: "http://bb.test",
@@ -574,13 +620,13 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.system.onboardingAgents({ environmentId: "env_remote" }),
-    ).resolves.toEqual(overview);
+      sdk.system.providerStates({ environmentId: "env_remote" }),
+    ).resolves.toEqual(states);
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/onboarding/agents?environmentId=env_remote",
+        url: "http://bb.test/api/v1/system/providers/state?environmentId=env_remote",
       },
     ]);
   });
@@ -604,6 +650,39 @@ describe("@bb/sdk", () => {
         bodyText: undefined,
         method: "GET",
         url: "http://bb.test/api/v1/threads?projectId=proj_123&archived=true",
+      },
+    ]);
+  });
+
+  it("routes bounded thread mention resolution through one HTTP request", async () => {
+    const resolved = [
+      {
+        threadId: "thr_23456789ab",
+        projectId: "proj_target",
+        label: "Target thread",
+      },
+    ];
+    const queue = createFetchQueue([{ body: resolved }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.resolveMentions({
+        threadIds: ["thr_23456789ab", "thr_23456789ab"],
+      }),
+    ).resolves.toEqual(resolved);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          threadIds: ["thr_23456789ab", "thr_23456789ab"],
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/resolve-mentions",
       },
     ]);
   });
@@ -935,7 +1014,6 @@ describe("@bb/sdk", () => {
         origin: "sdk",
         startedOnBehalfOf: null,
         originKind: null,
-        childOrigin: null,
       }),
     );
   });
@@ -1051,6 +1129,46 @@ describe("@bb/sdk", () => {
       expect.objectContaining({ permissionMode: "auto" }),
       expect.objectContaining({ permissionMode: "accept-edits" }),
       expect.objectContaining({ permissionMode: "full" }),
+    ]);
+  });
+
+  it("submits an atomic message edit", async () => {
+    const queue = createFetchQueue([
+      {
+        body: {
+          ok: true,
+          operationId: "edit-op-1",
+          requestSequence: 43,
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.editMessage({
+        threadId: "thr_edit",
+        operationId: "edit-op-1",
+        expectedRequestSequence: 41,
+        input: [{ type: "text", text: "Replacement", mentions: [] }],
+      }),
+    ).resolves.toMatchObject({ requestSequence: 43 });
+
+    expect(queue.requests).toEqual([
+      {
+        bodyText: JSON.stringify({
+          operationId: "edit-op-1",
+          expectedRequestSequence: 41,
+          input: [{ type: "text", text: "Replacement", mentions: [] }],
+        }),
+        method: "POST",
+        url: "http://bb.test/api/v1/threads/thr_edit/edit-message",
+      },
     ]);
   });
 
@@ -1211,6 +1329,7 @@ describe("@bb/sdk", () => {
       provenance: "catalog" as const,
       isOrphanedBuiltin: false,
       catalogEntryId: "notes",
+      publisherLabel: "BB Community",
       sourceDisplay: "npm · @bb/notes · tracks compatible",
       updateState: {},
       enabled: true,
@@ -1275,8 +1394,15 @@ describe("@bb/sdk", () => {
               displayName: "Notes",
               description: "Notes",
               icon: null,
+              iconUrl: null,
               category: "Productivity",
               source: "npm:@bb/notes@^1",
+              marketplace: "acme-plugins",
+              marketplaceDisplayName: "Acme Plugins",
+              publisherKey: "acme-plugins",
+              publisherLabel: "Acme Plugins",
+              official: false,
+              author: { name: "Acme", url: null },
               installed: true,
               compatible: true,
               incompatibleReason: null,
@@ -1318,7 +1444,6 @@ describe("@bb/sdk", () => {
     ).resolves.toMatchObject([
       { entryId: "notes", pluginId: "notes", compatible: true },
     ]);
-
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
@@ -1326,7 +1451,9 @@ describe("@bb/sdk", () => {
         url: "http://bb.test/api/v1/plugins",
       },
       {
-        bodyText: JSON.stringify({ source: "npm:@bb/notes@^1" }),
+        bodyText: JSON.stringify({
+          source: "npm:@bb/notes@^1",
+        }),
         method: "POST",
         url: "http://bb.test/api/v1/plugins/install",
       },
@@ -1368,6 +1495,49 @@ describe("@bb/sdk", () => {
         url: "http://bb.test/api/v1/plugin-catalog/search?q=notes",
       },
     ]);
+  });
+
+  it("sends a nested-plugin selection and refuses two selectors at once", async () => {
+    const plugin = { id: "notes" };
+    const queue = createFetchQueue([
+      { body: { ok: true, plugin } },
+      { body: { ok: true, plugin } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.plugins
+      .install({ source: "git:github.com/acme/repo@main", plugin: "notes" })
+      .catch(() => undefined);
+    await sdk.plugins
+      .install({
+        source: "path:/work/repo",
+        subdirectory: "plugins/notes",
+      })
+      .catch(() => undefined);
+
+    expect(queue.requests.map((request) => request.bodyText)).toEqual([
+      JSON.stringify({
+        source: "git:github.com/acme/repo@main",
+        selection: { kind: "entry", name: "notes" },
+      }),
+      JSON.stringify({
+        source: "path:/work/repo",
+        selection: { kind: "subdirectory", path: "plugins/notes" },
+      }),
+    ]);
+    await expect(
+      sdk.plugins.install({
+        source: "path:/work/repo",
+        plugin: "notes",
+        subdirectory: "plugins/notes",
+      }),
+    ).rejects.toThrow(/not both/);
   });
 
   it("surfaces typed plugin update failures as HTTP errors", async () => {
@@ -1502,6 +1672,7 @@ describe("@bb/sdk", () => {
         body: {
           skills: [registrySkill],
           pagination: { page: 0, perPage: 24, total: 1, hasMore: false },
+          ranking: "trending",
         },
       },
       { body: { stars: 27_053 } },

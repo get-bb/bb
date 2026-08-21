@@ -1,3 +1,9 @@
+import { useEffect, useState, type CSSProperties, type Key } from "react";
+
+type PanelCollapseTransitionStyle = CSSProperties & {
+  "--panel-collapse-duration": string;
+};
+
 /**
  * Shared collapse/expand easing for the thread-detail panels that animate
  * between sizes (the secondary panel, the terminal panel, and the collapsible
@@ -5,7 +11,44 @@
  * stay in lockstep across all of them.
  */
 export const PANEL_COLLAPSE_TRANSITION_CLASS =
-  "duration-[220ms] ease-[cubic-bezier(0.32,0.72,0,1)]";
+  "duration-[var(--panel-collapse-duration,220ms)] ease-[cubic-bezier(0.32,0.72,0,1)]";
+
+export function getPanelCollapseTransitionStyle(
+  transitionsReady: boolean,
+): PanelCollapseTransitionStyle {
+  return {
+    "--panel-collapse-duration": transitionsReady ? "220ms" : "0ms",
+  };
+}
+
+/**
+ * Storage-backed panel state may settle during mount (for example, a transient
+ * New tab is absent from the durable state). Keep that initial reconciliation
+ * from looking like a user-requested open/close animation. Two paint frames
+ * leave normal interactions animated while covering the mount subscription.
+ */
+export function usePanelCollapseTransitionsReady(
+  resetKey: Key,
+  enabled: boolean,
+): boolean {
+  const [readyKey, setReadyKey] = useState<Key | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let secondFrame: number | null = null;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        setReadyKey(resetKey);
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      if (secondFrame !== null) window.cancelAnimationFrame(secondFrame);
+    };
+  }, [enabled, resetKey]);
+
+  return !enabled || readyKey === resetKey;
+}
 
 /**
  * Hit-area margins for the thread-detail `PanelResizeHandle`s.

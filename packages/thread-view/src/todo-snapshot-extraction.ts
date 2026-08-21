@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   Thread,
   ThreadEvent,
+  ThreadEventPlanStep,
   ThreadTimelinePendingTodoItem,
   ThreadTimelinePendingTodoItemStatus,
   ThreadTimelinePendingTodos,
@@ -42,13 +43,13 @@ const todoWriteArgsSchema = z.object({
   todos: z.array(z.unknown()),
 });
 
-export interface ParsedTodoWriteTodo {
+interface ParsedTodoWriteTodo {
   activeForm?: string;
   content: string;
   status: ThreadTimelinePendingTodoItemStatus;
 }
 
-export interface ParsedTodoWriteArgs {
+interface ParsedTodoWriteArgs {
   todos: ParsedTodoWriteTodo[];
 }
 
@@ -91,9 +92,7 @@ export function parseTodoWriteTodos(
     const content = trimAndTruncate(todo.content);
     if (content.length === 0) continue;
     const activeForm =
-      todo.activeForm !== undefined
-        ? trimAndTruncate(todo.activeForm)
-        : null;
+      todo.activeForm !== undefined ? trimAndTruncate(todo.activeForm) : null;
     todos.push({
       ...(activeForm && activeForm.length > 0 ? { activeForm } : {}),
       content,
@@ -221,6 +220,44 @@ function extractTodoWriteCandidate(
   };
 }
 
+const PLAN_STEP_TODO_STATUSES: Readonly<
+  Record<
+    NonNullable<ThreadEventPlanStep["status"]>,
+    ThreadTimelinePendingTodoItemStatus
+  >
+> = {
+  pending: "pending",
+  active: "in_progress",
+  completed: "completed",
+  // A failed step is settled work: it is no longer pending in the banner.
+  failed: "completed",
+};
+
+/**
+ * A grammar v3 `planSteps` snapshot (Claude TodoWrite and the folded
+ * task-list tools, codex update_plan): the bridge already reduced the plan
+ * to its full step list, so the snapshot is the candidate as-is.
+ */
+function extractPlanStepsCandidate(
+  event: ThreadEvent,
+  meta: SnapshotCandidateMeta,
+): SnapshotCandidate | null {
+  if (event.type !== "item/completed" || event.item.type !== "planSteps") {
+    return null;
+  }
+  const items: ThreadTimelinePendingTodoItem[] = [];
+  for (const [index, step] of event.item.steps.entries()) {
+    const text = trimAndTruncate(step.step);
+    if (text.length === 0) continue;
+    items.push({
+      id: todoIdFor(meta.seq, index),
+      text,
+      status: PLAN_STEP_TODO_STATUSES[step.status ?? "pending"],
+    });
+  }
+  return { seq: meta.seq, createdAt: meta.createdAt, items };
+}
+
 function extractTaskCreateCandidate(
   event: ThreadEvent,
   meta: SnapshotCandidateMeta,
@@ -235,9 +272,7 @@ function extractTaskCreateCandidate(
     return null;
   }
 
-  const parsedArgs = claudeTaskCreateArgsSchema.safeParse(
-    event.item.arguments,
-  );
+  const parsedArgs = claudeTaskCreateArgsSchema.safeParse(event.item.arguments);
   if (!parsedArgs.success) return null;
   const parsedResult = claudeTaskCreateOutputSchema.safeParse(
     parseMaybeJson(event.item.result),
@@ -277,9 +312,7 @@ function extractTaskUpdateCandidate(
     return null;
   }
 
-  const parsedArgs = claudeTaskUpdateArgsSchema.safeParse(
-    event.item.arguments,
-  );
+  const parsedArgs = claudeTaskUpdateArgsSchema.safeParse(event.item.arguments);
   if (!parsedArgs.success) return null;
 
   const parsedResult = claudeTaskUpdateOutputSchema.safeParse(
@@ -413,9 +446,11 @@ function extractTaskCandidate(
  * active turn. Returns null when the thread is idle/errored/etc., when no
  * candidate event was observed, or when every candidate failed to parse.
  *
- * TodoWrite carries complete legacy snapshots. Claude Task tools carry deltas
- * or snapshots, so this walks ordered events and reduces
- * TaskCreate/TaskUpdate/TaskList/TaskGet into a current snapshot.
+ * A grammar v3 `planSteps` item is a complete snapshot the bridge already
+ * reduced. For events persisted before it existed: TodoWrite carries complete
+ * legacy snapshots, and the Claude Task tools carry deltas or snapshots, so
+ * this walks ordered events and reduces TaskCreate/TaskUpdate/TaskList/
+ * TaskGet into a current snapshot.
  */
 export function extractThreadTimelinePendingTodos(
   threadStatus: Thread["status"],
@@ -427,6 +462,7 @@ export function extractThreadTimelinePendingTodos(
   const taskState: ClaudeTaskTodoState = { tasks: new Map() };
   for (const { event, meta } of getOrderedThreadEvents(events)) {
     const candidate =
+      extractPlanStepsCandidate(event, meta) ??
       extractTodoWriteCandidate(event, meta) ??
       extractTaskCandidate(event, meta, taskState);
     if (!candidate || candidate.items === null) continue;

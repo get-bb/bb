@@ -1,39 +1,27 @@
 export { createAgentRuntime } from "./runtime.js";
-export { fingerprintAcpLaunchSpec } from "./acp-launch-spec-fingerprint.js";
 export {
-  createProviderForId,
-  listAvailableProviderInfos as listAvailableProviders,
-} from "./provider-registry.js";
+  fingerprintAcpLaunchSpec,
+  bridgeLaunchProcessKey,
+} from "./acp-launch-spec-fingerprint.js";
 export type {
   AgentRuntime,
-  AgentRuntimeAcpSkill,
   AgentRuntimeAcpSkillRoot,
+  AgentRuntimeBridgeLaunch,
   AgentRuntimeClaudeCodeSkillRoot,
   AgentRuntimeCodexSkillRoot,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
   AgentRuntimePiSkillRoot,
   AgentRuntimeProcessExitInfo,
-  AgentRuntimeProcessExitThreadState,
   AgentRuntimeProviderSession,
   AgentRuntimeSkillRoot,
   EnsureProviderArgs,
   ListModelsArgs,
   ReapedIdleProviderSession,
-  ReapIdleProviderSessionsArgs,
-  ReapIdleProviderSessionsResult,
   RenameThreadArgs,
   ResumeThreadArgs,
-  ResumeThreadResult,
   RunTurnArgs,
   StartThreadArgs,
-  StartThreadResult,
   SteerTurnArgs,
   StopThreadArgs,
-  WaitForActiveTurnArgs,
 } from "./types.js";
-export type {
-  ProviderRawEventCoverage,
-  ProviderRawEventDescription,
-  ProviderVisibilityMetadata,
-} from "./provider-visibility.js";

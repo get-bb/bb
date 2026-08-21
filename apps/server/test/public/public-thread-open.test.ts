@@ -198,7 +198,7 @@ describe("public thread open", () => {
       harness.deps.hub.registerClient(socket);
 
       const response = await postPaneAction(harness, thread.id, {
-        action: "maximize",
+        action: "spotlight",
       });
 
       expect(response.status).toBe(200);
@@ -207,9 +207,8 @@ describe("public thread open", () => {
         type: "thread-pane-action",
         projectId: project.id,
         threadId: thread.id,
-        action: "maximize",
+        action: "spotlight",
       });
     });
   });
-
 });

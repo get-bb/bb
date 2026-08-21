@@ -11,24 +11,12 @@ type ThreadSecondaryPanelThreadId =
   | null
   | undefined;
 
-interface ThreadSecondaryPanelStorageKeyArgs {
-  prefix: string;
-  threadId: ResolvedThreadSecondaryPanelThreadId;
-}
-
-function getThreadSecondaryPanelStorageKey({
-  prefix,
-  threadId,
-}: ThreadSecondaryPanelStorageKeyArgs): string {
-  return `${prefix}-${encodeURIComponent(threadId)}`;
-}
-
 /**
  * User's preferred secondary panel width as a percentage of the surrounding
  * PanelGroup. Persisted across reloads. The default (50) is used when the
  * panel opens for the first time.
  */
-export const DEFAULT_SECONDARY_PANEL_WIDTH_PERCENT = 50;
+const DEFAULT_SECONDARY_PANEL_WIDTH_PERCENT = 50;
 const secondaryPanelWidthStorage = createLocalStorageSyncStorage<number>({
   parse: (storedValue, initialValue) => {
     if (storedValue === null) return initialValue;
@@ -74,27 +62,12 @@ const THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX =
  * Persisted per thread; only takes effect while the secondary panel is open on
  * a wide viewport — see ThreadDetailSecondaryContent for the gating.
  */
-interface ThreadConversationCollapsedStorageKeyArgs {
-  threadId: ResolvedThreadSecondaryPanelThreadId;
-}
-
-export function getThreadConversationCollapsedStorageKey({
-  threadId,
-}: ThreadConversationCollapsedStorageKeyArgs): string {
-  return getThreadSecondaryPanelStorageKey({
-    prefix: THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX,
-    threadId,
-  });
-}
-
-const conversationCollapsedStorage = threadSecondaryPanelBooleanStorage;
-
 const threadConversationCollapsedAtomFamily = atomFamily(
   (threadId: ResolvedThreadSecondaryPanelThreadId) =>
     atomWithStorage<boolean>(
-      getThreadConversationCollapsedStorageKey({ threadId }),
+      `${THREAD_CONVERSATION_COLLAPSED_STORAGE_PREFIX}-${encodeURIComponent(threadId)}`,
       false,
-      conversationCollapsedStorage,
+      threadSecondaryPanelBooleanStorage,
       { getOnInit: true },
     ),
 );
@@ -116,12 +89,3 @@ export function getThreadConversationCollapsedAtom(
     ? threadConversationCollapsedAtomFamily(threadId)
     : disabledThreadConversationCollapsedAtom;
 }
-
-/** User-selected merge-base branch override. Read by prompt banner + diff panel + git-action dialog. */
-export const selectedMergeBaseBranchAtom = atom<string | undefined>(undefined);
-
-/** Set by openDiffFile (prompt banner), consumed by useGitDiffPanelState to reset the diff to all-changes so the opened file is in the slice. */
-export const pendingGitDiffScrollPathAtom = atom<string | null>(null);
-
-/** Set by openCommitDiff (info tab Commits row), consumed by useGitDiffPanelState to scope the diff to a commit. */
-export const pendingGitDiffCommitShaAtom = atom<string | null>(null);

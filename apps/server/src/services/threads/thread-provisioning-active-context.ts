@@ -1,19 +1,12 @@
 import type { ThreadProvisionContext } from "./thread-provisioning-context.js";
 
-interface ActiveThreadProvisionContextEntry {
+const activeThreadProvisionContexts = new Map<string, ThreadProvisionContext>();
+
+export function rememberActiveThreadProvisionContext(entry: {
   context: ThreadProvisionContext;
   threadId: string;
-}
-
-const activeThreadProvisionContexts = new Map<
-  string,
-  ActiveThreadProvisionContextEntry
->();
-
-export function rememberActiveThreadProvisionContext(
-  entry: ActiveThreadProvisionContextEntry,
-): void {
-  activeThreadProvisionContexts.set(entry.threadId, entry);
+}): void {
+  activeThreadProvisionContexts.set(entry.threadId, entry.context);
 }
 
 export function forgetActiveThreadProvisionContext(threadId: string): void {
@@ -23,5 +16,5 @@ export function forgetActiveThreadProvisionContext(threadId: string): void {
 export function getActiveThreadProvisionContext(
   threadId: string,
 ): ThreadProvisionContext | null {
-  return activeThreadProvisionContexts.get(threadId)?.context ?? null;
+  return activeThreadProvisionContexts.get(threadId) ?? null;
 }

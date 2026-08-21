@@ -34,7 +34,7 @@ const testState = vi.hoisted(() => ({
         alt: false,
         shift: true,
       },
-      when: { all: ["mainSurface" as const], none: [] },
+      when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
     },
     {
       command: "thread.new" as const,
@@ -47,13 +47,26 @@ const testState = vi.hoisted(() => ({
         alt: false,
         shift: false,
       },
-      when: { all: ["mainSurface" as const], none: [] },
+      when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
     },
     {
       command: "thread.previous" as const,
       desktopOnly: false,
       shortcut: {
         key: "ArrowUp",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: true,
+      },
+      when: { all: ["mainSurface" as const], none: [] },
+    },
+    {
+      command: "thread.next" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "ArrowDown",
         mod: true,
         meta: false,
         control: false,
@@ -152,6 +165,19 @@ const testState = vi.hoisted(() => ({
         all: ["mainSurface" as const, "questionOpen" as const],
         none: [],
       },
+    },
+    {
+      command: "panel.toggle" as const,
+      desktopOnly: false,
+      shortcut: {
+        key: "j",
+        mod: true,
+        meta: false,
+        control: false,
+        alt: false,
+        shift: false,
+      },
+      when: { all: ["mainSurface" as const], none: ["modalOpen" as const] },
     },
     {
       command: "browser.reload" as const,
@@ -432,6 +458,37 @@ describe("AppCommandProvider", () => {
     expect(nativeTabShortcut.defaultPrevented).toBe(false);
   });
 
+  it.each([
+    ["thread.previous" as const, "ArrowUp"],
+    ["thread.next" as const, "ArrowDown"],
+  ])(
+    "dispatches configured %s shortcuts from a focused editable control",
+    (command, key) => {
+      vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+      renderProvider(
+        <>
+          <Handler command={command} name={command} result={true} />
+          <textarea aria-label="Composer" />
+        </>,
+      );
+      const composer = screen.getByLabelText("Composer");
+      composer.focus();
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        key,
+        metaKey: true,
+        shiftKey: true,
+      });
+
+      composer.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(testState.calls).toEqual([command]);
+      expect(document.activeElement).toBe(composer);
+    },
+  );
+
   it("falls through declining handlers in priority order", () => {
     renderProvider(
       <>
@@ -522,5 +579,74 @@ describe("AppCommandProvider", () => {
     expect(testState.calls).toEqual([]);
     expect(dispatchReload(inside).defaultPrevented).toBe(true);
     expect(testState.calls).toEqual(["browser"]);
+  });
+
+  // The compact sidebar drawer keeps its `aria-modal` panel mounted across
+  // open/close and only marks it `inert` while closed, so a retained panel used
+  // to keep `modalOpen` on for the rest of the session.
+  it.each([
+    ["thread.new" as const, "o", true],
+    ["panel.toggle" as const, "j", false],
+  ])(
+    "runs %s from any focused surface while a closed drawer stays mounted",
+    (command, key, shiftKey) => {
+      renderProvider(
+        <>
+          <Handler command={command} name={command} result={true} />
+          <div role="dialog" aria-modal="true" data-state="closed" inert>
+            {/* Nested and still marked open: only an inert ancestor rules it
+                out, so this covers the ancestor half of the selector. */}
+            <div role="dialog" data-state="open">
+              <button type="button">Sidebar entry</button>
+            </div>
+          </div>
+          <button type="button">Timeline row</button>
+          <div contentEditable data-testid="composer" />
+        </>,
+      );
+      const dispatchChord = (target: Element | null) => {
+        const event = new KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: true,
+          key,
+          shiftKey,
+        });
+        target?.dispatchEvent(event);
+        return event;
+      };
+
+      for (const target of [
+        screen.getByText("Timeline row"),
+        screen.getByText("Sidebar entry"),
+        screen.getByTestId("composer"),
+      ]) {
+        testState.calls.length = 0;
+        expect(dispatchChord(target).defaultPrevented).toBe(true);
+        expect(testState.calls).toEqual([command]);
+      }
+    },
+  );
+
+  it("suppresses main-surface commands while a drawer is actually open", () => {
+    renderProvider(
+      <>
+        <Handler command="thread.new" name="thread.new" result={true} />
+        <div role="dialog" aria-modal="true" data-state="open">
+          <button type="button">Drawer entry</button>
+        </div>
+      </>,
+    );
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      ctrlKey: true,
+      key: "o",
+      shiftKey: true,
+    });
+    screen.getByText("Drawer entry").dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(testState.calls).toEqual([]);
   });
 });

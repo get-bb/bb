@@ -7,6 +7,7 @@ import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
+import { isFsErrorWithCode } from "../lib/fs-errors.js";
 import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
@@ -47,10 +48,11 @@ export interface ResolveInjectedSkillSourcesArgs {
   pluginSkillSelections?: ReadonlyMap<string, ReadonlySet<string>>;
   projectSkillSources?: readonly ProjectInjectedSkillSource[];
   projectSkillsRootPath?: string;
+  sharedSkillSources?: readonly SharedInjectedSkillSource[];
   skillTreeRegistry: SkillTreeRegistry;
 }
 
-export interface PluginSkillRoot {
+interface PluginSkillRoot {
   pluginId: string;
   rootPath: string;
 }
@@ -83,7 +85,7 @@ export function discoverPluginSkillIds(
   );
 }
 
-export type SkillCatalogProvenance =
+type SkillCatalogProvenance =
   | { kind: "builtin" }
   | { kind: "plugin"; pluginId: string }
   | { kind: "project" }
@@ -94,7 +96,7 @@ export interface ResolvedSkillCatalogEntry {
   runtimeSource: HostDaemonInjectedSkillSource;
 }
 
-export interface ResolveServerOwnedSkillCatalogEntriesArgs {
+interface ResolveServerOwnedSkillCatalogEntriesArgs {
   builtinSkillsRootPath: string;
   dataDir: string;
   logger: ServerLogger;
@@ -105,6 +107,10 @@ export type ProjectInjectedSkillSource = Extract<
   HostDaemonInjectedSkillSource,
   { kind: "workspace-path" }
 >;
+export type SharedInjectedSkillSource = Extract<
+  HostDaemonInjectedSkillSource,
+  { kind: "host-path" }
+>;
 
 export interface SkillTreeEntry {
   bytes: Buffer;
@@ -112,7 +118,7 @@ export interface SkillTreeEntry {
   path: string;
 }
 
-export interface SkillTreeManifest {
+interface SkillTreeManifest {
   entries: readonly SkillTreeEntry[];
   treeHash: string;
 }
@@ -130,7 +136,10 @@ export class SkillTreeRegistry {
 }
 
 interface SkillCandidateSource {
-  sourceType: HostDaemonInjectedSkillSource["sourceType"];
+  sourceType: Extract<
+    HostDaemonInjectedSkillSource["sourceType"],
+    "builtin" | "data-dir" | "project"
+  >;
 }
 
 interface SkillRootScanArgs extends SkillCandidateSource {
@@ -156,10 +165,6 @@ interface SkillCollisionLogArgs {
   colliding: readonly HostDaemonInjectedSkillSource[];
   logger: ServerLogger;
   name: string;
-}
-
-function isFsErrorWithCode(error: Error, code: string): boolean {
-  return "code" in error && error.code === code;
 }
 
 function compactZodIssues(issues: z.ZodIssue[]): string {
@@ -273,9 +278,9 @@ export function readSkillTreeManifest(rootPath: string): SkillTreeManifest {
 }
 
 function sourceRootPath(source: HostDaemonInjectedSkillSource): string {
-  return source.kind === "workspace-path"
-    ? source.sourceRootPath
-    : `skill-tree:${source.treeHash}`;
+  return source.kind === "tree"
+    ? `skill-tree:${source.treeHash}`
+    : source.sourceRootPath;
 }
 
 function toSkillFilePath(candidatePath: string): string {
@@ -680,6 +685,12 @@ export function resolveSkillCatalogEntries(
           sourceType: "project",
         })
       : [];
+  const sharedProjectSources = (args.sharedSkillSources ?? []).filter(
+    (source) => source.sourceType === "shared-project",
+  );
+  const sharedUserSources = (args.sharedSkillSources ?? []).filter(
+    (source) => source.sourceType === "shared-user",
+  );
   const builtinSources = readSkillsRoot({
     logger,
     skillTreeRegistry,
@@ -703,6 +714,13 @@ export function resolveSkillCatalogEntries(
       }),
   );
 
+  const configuredUserSources = [
+    ...dataDirSources,
+    ...excludeOverriddenLowerPriorityUserSources(logger, {
+      higherPrioritySources: dataDirSources,
+      lowerPrioritySources: sharedUserSources,
+    }),
+  ];
   const userSources = inheritedSourceGroups.reduce<
     HostDaemonInjectedSkillSource[]
   >(
@@ -713,7 +731,7 @@ export function resolveSkillCatalogEntries(
         lowerPrioritySources,
       }),
     ],
-    dataDirSources,
+    configuredUserSources,
   );
   // The plugin tier (design §4.4): sources ride the "data-dir" wire label —
   // the daemon stages every sourceType identically, so the tier is purely a
@@ -762,9 +780,18 @@ export function resolveSkillCatalogEntries(
     ...activePluginSources,
   ]);
   const activeProjectSources = excludeCollisions(logger, projectSources);
-  const projectNames = new Set(
-    activeProjectSources.map((source) => source.name),
+  const activeSharedProjectSources = excludeOverriddenLowerPriorityUserSources(
+    logger,
+    {
+      higherPrioritySources: activeProjectSources,
+      lowerPrioritySources: excludeCollisions(logger, sharedProjectSources),
+    },
   );
+  const projectTierSources = [
+    ...activeProjectSources,
+    ...activeSharedProjectSources,
+  ];
+  const projectNames = new Set(projectTierSources.map((source) => source.name));
 
   const provenanceBySource = new Map<
     HostDaemonInjectedSkillSource,
@@ -772,6 +799,12 @@ export function resolveSkillCatalogEntries(
   >();
   for (const source of projectSources) {
     provenanceBySource.set(source, { kind: "project" });
+  }
+  for (const source of sharedProjectSources) {
+    provenanceBySource.set(source, { kind: "project" });
+  }
+  for (const source of sharedUserSources) {
+    provenanceBySource.set(source, { kind: "user" });
   }
   for (const source of builtinSources) {
     provenanceBySource.set(source, { kind: "builtin" });
@@ -788,10 +821,12 @@ export function resolveSkillCatalogEntries(
     }
   }
 
-  return [...activeProjectSources, ...globalSources]
+  return [...projectTierSources, ...globalSources]
     .filter(
       (source) =>
-        source.sourceType === "project" || !projectNames.has(source.name),
+        source.sourceType === "project" ||
+        source.sourceType === "shared-project" ||
+        !projectNames.has(source.name),
     )
     .sort((left, right) => compareStringsByCodePoint(left.name, right.name))
     .map((runtimeSource) => {

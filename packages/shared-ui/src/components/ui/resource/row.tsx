@@ -286,7 +286,12 @@ export function ResourceRow({
             <span
               data-row-action
               className={cn(
-                "flex shrink-0 items-center gap-0.5 transition-opacity",
+                // The row is clickable and sets `cursor-pointer` on itself, but
+                // `targetsResourceAction` exempts this slot from that click. An
+                // inert status glyph here would promise a click that goes
+                // nowhere. Real controls inside are buttons or links and
+                // reassert `cursor-pointer` on themselves.
+                "flex shrink-0 cursor-default items-center gap-0.5 transition-opacity",
                 actionsVisibility === "hover" &&
                   "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
               )}
@@ -297,7 +302,7 @@ export function ResourceRow({
           {persistentActions ? (
             <span
               data-row-action
-              className="flex shrink-0 items-center gap-0.5"
+              className="flex shrink-0 cursor-default items-center gap-0.5"
             >
               {persistentActions}
             </span>

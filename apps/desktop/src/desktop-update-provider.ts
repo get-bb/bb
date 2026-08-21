@@ -1,6 +1,11 @@
-export type DesktopReleaseChannel = "latest" | "nightly";
+import {
+  createBbDesktopVersionFeedFileName,
+  type BbDesktopVersionFeedPlatform,
+} from "@bb/desktop-contract";
 
-export interface DesktopReleaseInfo {
+type DesktopReleaseChannel = "latest" | "nightly";
+
+interface DesktopReleaseInfo {
   applicationName: "bb" | "bb Nightly";
   channel: DesktopReleaseChannel;
   iconFileName: "icon.png" | "icon-nightly.png";
@@ -44,10 +49,14 @@ export const DESKTOP_RELEASE_CHANNEL = resolveBuiltDesktopReleaseChannel(
 export const DESKTOP_RELEASE_INFO = createDesktopReleaseInfo(
   DESKTOP_RELEASE_CHANNEL,
 );
-export const DESKTOP_UPDATE_RELEASE_BASE_URL =
+const DESKTOP_UPDATE_RELEASE_BASE_URL =
   DESKTOP_RELEASE_INFO.updateReleaseBaseUrl;
-export const DESKTOP_UPDATE_CHANNEL = DESKTOP_RELEASE_CHANNEL;
-export const DESKTOP_UPDATE_FEED_URL = `${DESKTOP_UPDATE_RELEASE_BASE_URL}desktop-version.json`;
+
+export function createDesktopUpdateFeedUrl(
+  platform: BbDesktopVersionFeedPlatform,
+): string {
+  return `${DESKTOP_UPDATE_RELEASE_BASE_URL}${createBbDesktopVersionFeedFileName(platform)}`;
+}
 
 export interface DesktopAutoUpdateFeedConfig {
   channel: DesktopReleaseChannel;
@@ -56,7 +65,51 @@ export interface DesktopAutoUpdateFeedConfig {
 }
 
 export const DESKTOP_AUTO_UPDATE_FEED_CONFIG: DesktopAutoUpdateFeedConfig = {
-  channel: DESKTOP_UPDATE_CHANNEL,
+  channel: DESKTOP_RELEASE_CHANNEL,
   provider: "generic",
   url: DESKTOP_UPDATE_RELEASE_BASE_URL,
 };
+
+interface DesktopUpdateSupport {
+  /**
+   * electron-updater can download a replacement build and install it. Linux
+   * only qualifies inside an AppImage, which is the one Linux target that can
+   * replace its own file in place.
+   */
+  autoUpdate: boolean;
+  /** The JSON version feed can be polled to tell the user a release exists. */
+  versionCheck: boolean;
+}
+
+interface ResolveDesktopUpdateSupportArgs {
+  /**
+   * Whether the AppImage at this path can actually be replaced in place.
+   * Injected so the decision stays testable without touching a real file.
+   */
+  canReplaceAppImage: (appImagePath: string) => boolean;
+  env: NodeJS.ProcessEnv;
+  platform: BbDesktopVersionFeedPlatform;
+}
+
+export function resolveDesktopUpdateSupport(
+  args: ResolveDesktopUpdateSupportArgs,
+): DesktopUpdateSupport {
+  if (args.platform === "macos") {
+    return { autoUpdate: true, versionCheck: true };
+  }
+
+  // A distro package or an extracted directory cannot rewrite itself, so those
+  // Linux installs still learn that a release exists but never self-install.
+  const appImagePath = args.env.APPIMAGE?.trim() ?? "";
+  if (appImagePath.length === 0) {
+    return { autoUpdate: false, versionCheck: true };
+  }
+
+  // electron-updater's AppImage install unlinks the running file before it
+  // moves the replacement in, so a read-only directory destroys the user's
+  // install instead of failing harmlessly. Never offer the install path there.
+  return {
+    autoUpdate: args.canReplaceAppImage(appImagePath),
+    versionCheck: true,
+  };
+}

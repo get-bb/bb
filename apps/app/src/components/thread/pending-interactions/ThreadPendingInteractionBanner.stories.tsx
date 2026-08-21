@@ -3,6 +3,7 @@ import type {
   ProviderPendingInteraction,
 } from "@bb/domain";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { ThreadPromptContextBanner } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
@@ -123,6 +124,56 @@ const permissionGrant: PendingInteraction = {
 export function Overview() {
   return (
     <StoryCard>
+      <StoryRow
+        label="parent thread when a child needs approval"
+        hint="the parent composer shows the child's prompt plus the needs-approval banner"
+      >
+        <PromptStage>
+          <ThreadPendingInteractionBanner
+            interaction={commandApproval}
+            sourceThread={{
+              href: "/projects/proj-1/threads/thr_blocked",
+              title: "Install workspace tools",
+            }}
+            threadId={commandApproval.threadId}
+          />
+          <ThreadPromptContextBanner
+            gitSection={null}
+            gitSectionPending={false}
+            archivedSection={null}
+            environmentGoneSection={null}
+            parentThreadSection={null}
+            childThreadsSection={{
+              items: [
+                {
+                  id: "thr_blocked",
+                  title: "Install workspace tools",
+                  href: "/projects/proj-1/threads/thr_blocked",
+                  hasPendingInteraction: true,
+                },
+              ],
+            }}
+            pullRequestSection={null}
+            expandedSection={null}
+            onToggleSection={() => {}}
+          />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="command approval from a child thread"
+        hint="parent composer surfaces the child's permission prompt with a link back to that child"
+      >
+        <PromptStage>
+          <ThreadPendingInteractionBanner
+            interaction={commandApproval}
+            sourceThread={{
+              href: "/projects/proj-1/threads/thr_blocked",
+              title: "Install workspace tools",
+            }}
+            threadId={commandApproval.threadId}
+          />
+        </PromptStage>
+      </StoryRow>
       <StoryRow
         label="command approval"
         hint="agent wants to run a shell command; default selection is the first decision"

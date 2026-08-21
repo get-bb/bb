@@ -3,7 +3,13 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
-import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
+import type { PromptDraftAttachment } from "@bb/client-core";
+import { BbHttpError } from "@bb/sdk/browser";
+import { createDeferredPromise } from "@bb/test-helpers";
+import {
+  useComposerAttachmentUploads,
+  useDraftAttachmentUploads,
+} from "./useComposerAttachmentUploads";
 
 const mocks = vi.hoisted(() => ({
   upload: vi.fn(),
@@ -12,16 +18,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/hooks/mutations/project-mutations", () => ({
   useUploadPromptAttachment: () => ({ mutateAsync: mocks.upload }),
 }));
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, reject, resolve };
-}
 
 function makeInlineEdit(editSessionId: number): InlineQueuedMessageEditState {
   return {
@@ -44,8 +40,8 @@ describe("useComposerAttachmentUploads", () => {
   });
 
   it("keeps bottom and queued attachment operations independent", async () => {
-    const bottomUpload = deferred<never>();
-    const inlineUpload = deferred<never>();
+    const bottomUpload = createDeferredPromise<never>();
+    const inlineUpload = createDeferredPromise<never>();
     mocks.upload
       .mockReturnValueOnce(bottomUpload.promise)
       .mockReturnValueOnce(inlineUpload.promise);
@@ -102,7 +98,7 @@ describe("useComposerAttachmentUploads", () => {
   });
 
   it("does not leak a dismissed upload into a later queued edit", async () => {
-    const oldUpload = deferred<never>();
+    const oldUpload = createDeferredPromise<never>();
     mocks.upload.mockReturnValueOnce(oldUpload.promise);
     const firstEdit = makeInlineEdit(1);
     const inlineRef: { current: InlineQueuedMessageEditState | null } = {
@@ -149,5 +145,89 @@ describe("useComposerAttachmentUploads", () => {
     expect(result.current.isAttachingInlineFiles).toBe(false);
     expect(result.current.inlineAttachmentError).toBeNull();
     expect(commitInlineQueuedMessage).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's reason when it refuses an upload", async () => {
+    const message =
+      "HEIC images are not supported. Convert the image to JPEG or PNG before attaching it.";
+    mocks.upload
+      .mockRejectedValueOnce(
+        new BbHttpError({
+          body: { code: "invalid_request", message },
+          code: "invalid_request",
+          message,
+          status: 400,
+        }),
+      )
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const { result } = renderHook(() =>
+      useDraftAttachmentUploads({
+        projectId: "proj_1",
+        target: { key: "bottom", addAttachment: vi.fn() },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.handleAttachFiles([
+        new File(["heic"], "IMG_0001.heic", { type: "image/heic" }),
+        new File(["png"], "shot.png", { type: "image/png" }),
+      ]);
+    });
+
+    expect(result.current.attachmentError).toBe(
+      `Failed to attach IMG_0001.heic, shot.png: ${message}`,
+    );
+  });
+
+  it("does not leak a dismissed upload into a later independent draft", async () => {
+    const oldUpload = createDeferredPromise<PromptDraftAttachment>();
+    mocks.upload.mockReturnValueOnce(oldUpload.promise);
+    const addFirstAttachment = vi.fn();
+    const addSecondAttachment = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ target }) =>
+        useDraftAttachmentUploads({
+          projectId: "proj_1",
+          target,
+        }),
+      {
+        initialProps: {
+          target: {
+            key: "edit-1",
+            addAttachment: addFirstAttachment,
+          } as {
+            key: string;
+            addAttachment: (attachment: PromptDraftAttachment) => void;
+          } | null,
+        },
+      },
+    );
+
+    let uploadPromise!: Promise<void>;
+    act(() => {
+      uploadPromise = result.current.handleAttachFiles([
+        new File(["old"], "old.txt"),
+      ]);
+    });
+    expect(result.current.isAttachingFiles).toBe(true);
+
+    rerender({ target: null });
+    rerender({
+      target: { key: "edit-2", addAttachment: addSecondAttachment },
+    });
+    await act(async () => {
+      oldUpload.resolve({
+        type: "localFile",
+        path: "uploads/old.txt",
+        name: "old.txt",
+        sizeBytes: 3,
+      });
+      await uploadPromise;
+    });
+
+    expect(addFirstAttachment).not.toHaveBeenCalled();
+    expect(addSecondAttachment).not.toHaveBeenCalled();
+    expect(result.current.attachmentError).toBeNull();
+    expect(result.current.isAttachingFiles).toBe(false);
   });
 });

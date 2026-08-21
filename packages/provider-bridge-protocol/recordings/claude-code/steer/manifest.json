@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "steer",
+  "threadId": "thr_7avz7jm9zv",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "A long turn steered mid-way with a new instruction.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 51,
+    "provider→bridge": 178,
+    "bridge→provider": 24
+  }
+}

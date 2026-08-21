@@ -9,13 +9,14 @@ import {
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
+import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
   ThreadEvent,
   WorkspaceProvisionType,
 } from "@bb/domain";
-import { turnScope } from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
   HostDaemonEnvironmentChange,
@@ -41,11 +42,13 @@ import {
 } from "./injected-skills.js";
 import { reconnectProvisionArgs } from "./workspace-provision-target.js";
 import type { FetchSkillTree } from "./skill-trees.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type StopWatching = () => void | Promise<void>;
 
 const STOP_WATCHING: StopWatching = () => undefined;
 const PROVIDER_MAINTENANCE_WORKSPACE_DIR = "provider-maintenance-workspace";
+const PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS = 60_000;
 const PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH = 4000;
 
 interface RuntimeSkillConfig {
@@ -148,7 +151,7 @@ export interface RuntimeEntry {
   terminals: Set<string>;
 }
 
-export interface InjectedSkillsChangedNotification {
+interface InjectedSkillsChangedNotification {
   changedPaths: string[];
   sourceType: InjectedSkillsObservedChange["sourceType"];
 }
@@ -171,15 +174,15 @@ export interface EnsureEnvironmentArgs {
   provision?: ProvisionWorkspaceArgs;
 }
 
-export interface CancelEnvironmentProvisionArgs {
+interface CancelEnvironmentProvisionArgs {
   environmentId: string;
 }
 
-export interface CancelEnvironmentProvisionResult {
+interface CancelEnvironmentProvisionResult {
   aborted: boolean;
 }
 
-export interface RefreshEnvironmentWorkspaceArgs {
+interface RefreshEnvironmentWorkspaceArgs {
   environmentId: string;
   provision: ProvisionWorkspaceArgs;
   workspacePath: string;
@@ -187,6 +190,10 @@ export interface RefreshEnvironmentWorkspaceArgs {
 
 export interface RuntimeManagerOptions {
   bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"];
+  /**
+   * Reads the daemon's cached provider-bridge policy at runtime creation.
+   * Per-runtime static: a policy flip applies to runtimes created after it.
+   */
   createRuntime?: (options: AgentRuntimeOptions) => AgentRuntime;
   dataDir?: string;
   dataDirSkillsRootPath?: string | null;
@@ -196,6 +203,7 @@ export interface RuntimeManagerOptions {
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
+  providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
   threadStorageRootPath?: string | null;
@@ -218,14 +226,30 @@ export interface RuntimeManagerOptions {
 export interface RuntimeManagerReapIdleProviderSessionsArgs {
   idleForMs: number;
   nowMs: number;
+  providerSessionReapingEnabled: boolean;
 }
 
-export interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
+interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
   environmentId: string;
 }
 
 export interface RuntimeManagerReapIdleProviderSessionsResult {
   reapedSessions: RuntimeManagerReapedIdleProviderSession[];
+}
+
+/**
+ * `interrupt` stops an old runtime even while it runs a turn. `keep` leaves
+ * that turn alone and reports its environment to the caller.
+ */
+type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
+
+interface ReleaseThreadFromOtherEnvironmentsResult {
+  /** Environments that still run a turn for the thread under `keep`. */
+  activeTurnEnvironmentIds: string[];
+  /** Provider checkpoint retained by a stopped runtime, when one reported it. */
+  providerCheckpointId: string | null;
+  /** Environments whose runtime released the thread. */
+  releasedEnvironmentIds: string[];
 }
 
 interface RuntimeWorkspaceWriteRootsArgs {
@@ -267,10 +291,13 @@ function providerProcessEnvFromShellEnv(
   if (shellEnv.PATH) {
     env.PATH = shellEnv.PATH;
   }
-  // The Claude bridge resolves the CLI from its own process env; forward the
-  // documented override past the BB_* spawn sanitization.
-  if (shellEnv.BB_CLAUDE_CODE_EXECUTABLE) {
-    env.BB_CLAUDE_CODE_EXECUTABLE = shellEnv.BB_CLAUDE_CODE_EXECUTABLE;
+  // Bridge record mode (docs/provider-bridge-protocol.md) rides the same
+  // forward, from the daemon's own env rather than the shell env: the shell
+  // env doubles as the agent's shell environment, and the variable must reach
+  // the bridge process only, never the provider child or its shells.
+  const recordDir = process.env.BB_PROVIDER_BRIDGE_RECORD_DIR;
+  if (recordDir) {
+    env.BB_PROVIDER_BRIDGE_RECORD_DIR = recordDir;
   }
   return Object.keys(env).length > 0 ? env : null;
 }
@@ -294,11 +321,18 @@ export class RuntimeManager {
     string,
     Map<string, number>
   >();
+  private readonly inFlightThreadCommandCompletionsByEnvironmentId = new Map<
+    string,
+    Map<string, Set<Promise<void>>>
+  >();
+  private readonly threadControlTails = new Map<string, Promise<void>>();
   private providerMaintenanceRuntime: AgentRuntime | null = null;
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
   private providerMaintenanceRuntimeGeneration = 0;
-  private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
+  private providerMaintenanceActiveRequests = 0;
+  private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
+    null;
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
@@ -340,6 +374,127 @@ export class RuntimeManager {
     return undefined;
   }
 
+  private enqueueThreadControl<T>(
+    threadId: string,
+    work: () => T | PromiseLike<T>,
+  ): Promise<T> {
+    const previous = this.threadControlTails.get(threadId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(work);
+    const settled = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.threadControlTails.set(threadId, settled);
+    void settled.then(() => {
+      if (this.threadControlTails.get(threadId) === settled) {
+        this.threadControlTails.delete(threadId);
+      }
+    });
+    return next;
+  }
+
+  /**
+   * A thread can move between environments while its provider session is
+   * still resident in the old environment runtime. Release that old runtime
+   * before the new environment resumes the persisted provider thread, so two
+   * runtime processes never own the same provider session at once.
+   *
+   * `activeTurn` selects what happens when an old runtime still runs a turn.
+   * Turn dispatch and stop controls own the session, so they interrupt it.
+   * Other controls keep it and report the environment back to their caller.
+   */
+  async releaseThreadFromOtherEnvironments(args: {
+    activeTurn: ReleaseThreadActiveTurnPolicy;
+    environmentId: string;
+    threadId: string;
+  }): Promise<ReleaseThreadFromOtherEnvironmentsResult> {
+    // Wait outside the control lane. An in-flight thread command takes this
+    // same lane for its own release step, so a wait inside the lane can hold
+    // the lane against the command it waits for and deadlock the thread.
+    await this.waitForThreadCommandsInOtherEnvironments(args);
+    return this.enqueueThreadControl(args.threadId, () =>
+      this.releaseThreadFromOtherEnvironmentsOnce(args),
+    );
+  }
+
+  private async waitForThreadCommandsInOtherEnvironments(args: {
+    environmentId: string;
+    threadId: string;
+  }): Promise<void> {
+    // A command can register while an earlier one settles, so drain until no
+    // other environment holds a thread command. Each pass awaits real command
+    // completions, so this cannot spin.
+    for (;;) {
+      const inFlightOldCommands = [
+        ...this.inFlightThreadCommandCompletionsByEnvironmentId.entries(),
+      ].flatMap(([environmentId, commandsByThreadId]) =>
+        environmentId === args.environmentId
+          ? []
+          : [...(commandsByThreadId.get(args.threadId) ?? [])],
+      );
+      if (inFlightOldCommands.length === 0) {
+        return;
+      }
+      await Promise.all(inFlightOldCommands);
+    }
+  }
+
+  private async releaseThreadFromOtherEnvironmentsOnce(args: {
+    activeTurn: ReleaseThreadActiveTurnPolicy;
+    environmentId: string;
+    threadId: string;
+  }): Promise<ReleaseThreadFromOtherEnvironmentsResult> {
+    const staleEntries = [...this.entries.values()].filter(
+      (entry) =>
+        entry.environmentId !== args.environmentId &&
+        entry.runtime.hasThread(args.threadId),
+    );
+    const keptEntries =
+      args.activeTurn === "interrupt"
+        ? []
+        : staleEntries.filter(
+            (entry) => entry.runtime.getActiveTurnId(args.threadId) !== null,
+          );
+    const releasedEntries = staleEntries.filter(
+      (entry) => !keptEntries.includes(entry),
+    );
+
+    const stopResults = await Promise.all(
+      releasedEntries.map((entry) =>
+        entry.runtime.stopThread({ threadId: args.threadId }),
+      ),
+    );
+    const providerCheckpointIds = new Set(
+      stopResults.flatMap((result) =>
+        result.providerCheckpointId === null
+          ? []
+          : [result.providerCheckpointId],
+      ),
+    );
+    return {
+      activeTurnEnvironmentIds: keptEntries.map((entry) => entry.environmentId),
+      providerCheckpointId:
+        providerCheckpointIds.size === 1
+          ? (providerCheckpointIds.values().next().value ?? null)
+          : null,
+      releasedEnvironmentIds: releasedEntries.map(
+        (entry) => entry.environmentId,
+      ),
+    };
+  }
+
+  /**
+   * Every loaded runtime that still holds the thread, in any environment. A
+   * moved thread can keep its provider session in the environment it left,
+   * so controls that act on the live session must look past the command's
+   * own environment.
+   */
+  listThreadOwnerEntries(threadId: string): RuntimeEntry[] {
+    return [...this.entries.values()].filter((entry) =>
+      entry.runtime.hasThread(threadId),
+    );
+  }
+
   markTerminalActive(environmentId: string, terminalId: string): void {
     this.entries.get(environmentId)?.terminals.add(terminalId);
   }
@@ -354,50 +509,84 @@ export class RuntimeManager {
    * accepts the command, so it cannot by itself protect that short interval
    * from a concurrent shell-environment refresh.
    */
-  retainEnvironmentForThreadCommand(
+  async retainEnvironmentForThreadCommand(
     environmentId: string,
     threadId: string,
-  ): () => void {
-    const commandsByThreadId =
-      this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ??
-      new Map<string, number>();
-    commandsByThreadId.set(
-      threadId,
-      (commandsByThreadId.get(threadId) ?? 0) + 1,
-    );
-    this.inFlightThreadCommandsByEnvironmentId.set(
-      environmentId,
-      commandsByThreadId,
-    );
+  ): Promise<() => void> {
+    return this.enqueueThreadControl(threadId, () => {
+      const commandsByThreadId =
+        this.inFlightThreadCommandsByEnvironmentId.get(environmentId) ??
+        new Map<string, number>();
+      commandsByThreadId.set(
+        threadId,
+        (commandsByThreadId.get(threadId) ?? 0) + 1,
+      );
+      this.inFlightThreadCommandsByEnvironmentId.set(
+        environmentId,
+        commandsByThreadId,
+      );
 
-    let released = false;
-    return () => {
-      if (released) {
-        return;
-      }
-      released = true;
+      let resolveCompletion!: () => void;
+      const completion = new Promise<void>((resolve) => {
+        resolveCompletion = resolve;
+      });
+      const completionsByThreadId =
+        this.inFlightThreadCommandCompletionsByEnvironmentId.get(
+          environmentId,
+        ) ?? new Map<string, Set<Promise<void>>>();
+      const completions =
+        completionsByThreadId.get(threadId) ?? new Set<Promise<void>>();
+      completions.add(completion);
+      completionsByThreadId.set(threadId, completions);
+      this.inFlightThreadCommandCompletionsByEnvironmentId.set(
+        environmentId,
+        completionsByThreadId,
+      );
 
-      const activeCommands =
-        this.inFlightThreadCommandsByEnvironmentId.get(environmentId);
-      if (!activeCommands) {
-        return;
-      }
-      const count = activeCommands.get(threadId) ?? 0;
-      if (count <= 1) {
-        activeCommands.delete(threadId);
-      } else {
-        activeCommands.set(threadId, count - 1);
-      }
-      if (activeCommands.size === 0) {
-        this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
-      }
-    };
+      let released = false;
+      return () => {
+        if (released) {
+          return;
+        }
+        released = true;
+
+        const activeCommands =
+          this.inFlightThreadCommandsByEnvironmentId.get(environmentId);
+        if (activeCommands) {
+          const count = activeCommands.get(threadId) ?? 0;
+          if (count <= 1) {
+            activeCommands.delete(threadId);
+          } else {
+            activeCommands.set(threadId, count - 1);
+          }
+          if (activeCommands.size === 0) {
+            this.inFlightThreadCommandsByEnvironmentId.delete(environmentId);
+          }
+        }
+
+        const activeCompletions =
+          this.inFlightThreadCommandCompletionsByEnvironmentId.get(
+            environmentId,
+          );
+        const threadCompletions = activeCompletions?.get(threadId);
+        threadCompletions?.delete(completion);
+        if (threadCompletions?.size === 0) {
+          activeCompletions?.delete(threadId);
+        }
+        if (activeCompletions?.size === 0) {
+          this.inFlightThreadCommandCompletionsByEnvironmentId.delete(
+            environmentId,
+          );
+        }
+        resolveCompletion();
+      };
+    });
   }
 
   listActiveThreads(): HostDaemonActiveThread[] {
     const activeThreads: HostDaemonActiveThread[] = [];
     for (const entry of this.entries.values()) {
-      for (const threadId of entry.runtime.getActiveThreadIds()) {
+      for (const threadId of entry.runtime.getLiveThreadIds()) {
         activeThreads.push({
           threadId,
         });
@@ -417,7 +606,16 @@ export class RuntimeManager {
   ): Promise<RuntimeManagerReapIdleProviderSessionsResult> {
     const reapedSessions: RuntimeManagerReapedIdleProviderSession[] = [];
     for (const entry of this.entries.values()) {
-      const result = await entry.runtime.reapIdleProviderSessions(args);
+      const result = await entry.runtime.reapIdleProviderSessions({
+        ...args,
+        runThreadExclusive: (threadId, work) =>
+          this.enqueueThreadControl(threadId, () => {
+            if (this.entryHasInFlightThreadCommand(entry, threadId)) {
+              return null;
+            }
+            return work();
+          }),
+      });
       for (const session of result.reapedSessions) {
         reapedSessions.push({
           ...session,
@@ -429,10 +627,7 @@ export class RuntimeManager {
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
-    return {
-      ...this.baseShellEnv,
-      ...this.managedShellEnv,
-    };
+    return { ...this.baseShellEnv };
   }
 
   async replaceBaseShellEnv(
@@ -485,7 +680,7 @@ export class RuntimeManager {
   private entryHasActiveRuntimeWork(entry: RuntimeEntry): boolean {
     return (
       entry.terminals.size > 0 ||
-      entry.runtime.getActiveThreadIds().length > 0 ||
+      entry.runtime.getLiveThreadIds().length > 0 ||
       entry.runtime.hasOpenBackgroundWork()
     );
   }
@@ -502,6 +697,17 @@ export class RuntimeManager {
     }
     return [...commandsByThreadId.keys()].some(
       (threadId) => threadId !== excludingThreadId,
+    );
+  }
+
+  private entryHasInFlightThreadCommand(
+    entry: RuntimeEntry,
+    threadId: string,
+  ): boolean {
+    return (
+      this.inFlightThreadCommandsByEnvironmentId
+        .get(entry.environmentId)
+        ?.has(threadId) ?? false
     );
   }
 
@@ -623,12 +829,6 @@ export class RuntimeManager {
     return null;
   }
 
-  replaceManagedShellEnv(
-    shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
-  ): void {
-    this.managedShellEnv = { ...shellEnv };
-  }
-
   /**
    * Tears down the resident provider-maintenance runtime so the next caller
    * gets a fresh one. In-flight maintenance RPCs fail with "Runtime shutting
@@ -646,6 +846,7 @@ export class RuntimeManager {
   }
 
   private async shutdownProviderMaintenanceRuntime(): Promise<void> {
+    this.clearProviderMaintenanceIdleTimer();
     const existingRuntime = this.providerMaintenanceRuntime;
     const pendingRuntime = this.pendingProviderMaintenanceRuntime;
     this.providerMaintenanceRuntimeGeneration += 1;
@@ -670,6 +871,38 @@ export class RuntimeManager {
     );
   }
 
+  private clearProviderMaintenanceIdleTimer(): void {
+    if (this.providerMaintenanceIdleTimer === null) return;
+    clearTimeout(this.providerMaintenanceIdleTimer);
+    this.providerMaintenanceIdleTimer = null;
+  }
+
+  private scheduleProviderMaintenanceIdleShutdown(): void {
+    this.clearProviderMaintenanceIdleTimer();
+    if (
+      this.providerMaintenanceActiveRequests > 0 ||
+      (this.providerMaintenanceRuntime === null &&
+        this.pendingProviderMaintenanceRuntime === null)
+    ) {
+      return;
+    }
+
+    const timeoutMs =
+      this.options.providerMaintenanceIdleTimeoutMs ??
+      PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS;
+    this.providerMaintenanceIdleTimer = setTimeout(() => {
+      this.providerMaintenanceIdleTimer = null;
+      if (this.providerMaintenanceActiveRequests > 0) return;
+      void this.shutdownProviderMaintenanceRuntime().catch((error) => {
+        this.options.logger?.warn(
+          { err: error },
+          "Failed to shut down idle provider maintenance runtime",
+        );
+      });
+    }, timeoutMs);
+    this.providerMaintenanceIdleTimer.unref();
+  }
+
   private async evictIdleRuntimeEntries(): Promise<void> {
     const idleEntries = [...this.entries.values()].filter(
       (entry) => !this.entryHasActiveEnvironmentWork(entry),
@@ -682,13 +915,6 @@ export class RuntimeManager {
 
     await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
-  }
-
-  async openWorkspace(path: string): Promise<HostWorkspace> {
-    return this.provisionWorkspace({
-      workspaceProvisionType: "unmanaged",
-      path,
-    });
   }
 
   async ensureProviderMaintenanceRuntime(args: {
@@ -725,6 +951,23 @@ export class RuntimeManager {
     };
     this.pendingProviderMaintenanceRuntime = pendingRuntime;
     return promise;
+  }
+
+  async withProviderMaintenanceRuntime<TResult>(
+    args: { dataDir: string },
+    request: (runtime: AgentRuntime) => Promise<TResult>,
+  ): Promise<TResult> {
+    this.clearProviderMaintenanceIdleTimer();
+    this.providerMaintenanceActiveRequests += 1;
+    try {
+      const runtime = await this.ensureProviderMaintenanceRuntime(args);
+      return await request(runtime);
+    } finally {
+      this.providerMaintenanceActiveRequests -= 1;
+      if (this.providerMaintenanceActiveRequests === 0) {
+        this.scheduleProviderMaintenanceIdleShutdown();
+      }
+    }
   }
 
   async ensureEnvironment(args: EnsureEnvironmentArgs): Promise<RuntimeEntry> {
@@ -822,7 +1065,7 @@ export class RuntimeManager {
       );
     }
 
-    const workspace = await this.provisionWorkspace(args.provision);
+    const workspace = await this.provisionHostWorkspace(args.provision);
     if (workspace.path !== args.workspacePath) {
       throw new Error(
         `Workspace refresh for ${args.environmentId} returned ${workspace.path}, not ${args.workspacePath}`,
@@ -907,7 +1150,10 @@ export class RuntimeManager {
       );
     }
 
-    await this.provisionWorkspace({ ...args.provision, signal: args.signal });
+    await this.provisionHostWorkspace({
+      ...args.provision,
+      signal: args.signal,
+    });
     this.options.onWorkspaceStatusChanged?.({
       environmentId: args.entry.environmentId,
       changeKinds: ["work-status-changed", "git-refs-changed"],
@@ -926,8 +1172,54 @@ export class RuntimeManager {
     this.entries.delete(environmentId);
     await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
+    await this.killManagedWorkspaceProcesses(entry);
     await entry.workspace.destroy();
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
+  }
+
+  /**
+   * Reaps every process still rooted in a managed workspace before its
+   * directory is removed. Runtime and terminal shutdown signal their own
+   * process groups, but processes that start a new session (`setsid`,
+   * `nohup`, detached dev servers) survive that and would otherwise keep
+   * running with a cwd in a deleted directory.
+   *
+   * The sweep is ownership-agnostic on purpose: it kills ANY process of this
+   * user whose cwd is inside the workspace, including ones bb never started
+   * (a shell `cd`'d into the worktree, an editor terminal, a debugger). The
+   * directory is about to be deleted, so those processes lose their cwd
+   * anyway. Only managed workspaces are swept; personal workspaces stay
+   * untouched.
+   */
+  private async killManagedWorkspaceProcesses(
+    entry: RuntimeEntry,
+  ): Promise<void> {
+    if (!entry.workspace.managed) {
+      return;
+    }
+    try {
+      const killed = await killProcessesWithCwdUnder({
+        directory: entry.workspace.path,
+      });
+      if (killed.length > 0) {
+        this.options.logger?.warn(
+          {
+            environmentId: entry.environmentId,
+            workspacePath: entry.workspace.path,
+            pids: killed.map((process) => process.pid),
+          },
+          "Killed processes still running in a destroyed environment",
+        );
+      }
+    } catch (error) {
+      this.options.logger?.warn(
+        {
+          environmentId: entry.environmentId,
+          reason: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to reap processes in a destroyed environment",
+      );
+    }
   }
 
   async forgetEnvironment(environmentId: string): Promise<void> {
@@ -1016,9 +1308,10 @@ export class RuntimeManager {
   /**
    * Synthesizes failure events for threads that were mid-turn when their
    * provider process died, from the runtime's final per-thread snapshot.
-   * Threads without an active turn need no synthesized events: in-flight
-   * RPCs fail through the command result path, and idle resident threads
-   * simply resume on their next turn.
+   * A process can also die after a turn request is sent but before the
+   * provider emits turn/started. That request has already made the server
+   * thread active, so synthesize a thread-scoped error to settle it instead
+   * of waiting for the live-command timeout.
    */
   private buildUnexpectedProviderExitEvents(
     info: AgentRuntimeProcessExitInfo,
@@ -1028,7 +1321,21 @@ export class RuntimeManager {
     const events: ThreadEvent[] = [];
 
     for (const thread of info.threads) {
-      if (thread.activeTurnId === null || thread.providerThreadId === null) {
+      if (thread.activeTurnId === null) {
+        if (thread.pendingTurnStart) {
+          events.push({
+            type: "system/error",
+            threadId: thread.threadId,
+            scope: threadScope(),
+            code: "provider_process_exited",
+            message,
+            ...(detail ? { detail } : {}),
+          });
+        }
+        continue;
+      }
+
+      if (thread.providerThreadId === null) {
         continue;
       }
 
@@ -1120,12 +1427,8 @@ export class RuntimeManager {
       );
     }
 
-    const setupPath = this.getShellEnv().PATH;
-    const workspace = await this.provisionWorkspace({
+    const workspace = await this.provisionHostWorkspace({
       ...provision,
-      ...(provision.workspaceProvisionType === "managed-worktree" && setupPath
-        ? { setupPath }
-        : {}),
       signal: args.provisionSignal,
     });
     const workspaceWriteRoots =
@@ -1159,6 +1462,21 @@ export class RuntimeManager {
         })),
       onInteractiveRequest: this.options.onInteractiveRequest,
       onStderr: this.options.onStderr,
+      onProviderRecovery: (hint) => {
+        // Parse-and-forward only: the recovery actions land with the runtime
+        // cleanup workstream. Logged so a hint is never silently consumed.
+        this.options.logger?.debug(
+          {
+            environmentId: args.environmentId,
+            providerId: hint.providerId,
+            threadId: hint.threadId,
+            kind: hint.kind,
+            retryable: hint.retryable,
+            message: hint.message,
+          },
+          "Provider bridge raised a recovery hint",
+        );
+      },
       onProcessExit: (info) => {
         if (!info.expected) {
           for (const event of this.buildUnexpectedProviderExitEvents(info)) {
@@ -1190,6 +1508,15 @@ export class RuntimeManager {
       workspace,
       path: workspace.path,
     };
+  }
+
+  private provisionHostWorkspace(
+    provision: ProvisionWorkspaceArgs,
+  ): Promise<HostWorkspace> {
+    return this.provisionWorkspace({
+      ...provision,
+      ...userExecutableProcessOptions(this.getShellEnv()),
+    });
   }
 
   private async stopWatchingStatus(entry: RuntimeEntry): Promise<void> {

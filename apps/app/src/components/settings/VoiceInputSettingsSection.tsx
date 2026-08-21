@@ -9,12 +9,11 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
-import { SettingsSection, SettingsWithControl } from "@/components/ui/settings-section";
+  SettingsSection,
+  SettingsWithControl,
+} from "@/components/ui/settings-section";
 import {
   useAudioInputDevices,
   type AudioInputDeviceOption,

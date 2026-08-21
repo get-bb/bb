@@ -17,7 +17,7 @@ function serializeEvents(
   return events.map((event) => ({ path: event.path, type: event.type }));
 }
 
-export interface ParcelChildHandler {
+interface ParcelChildHandler {
   handleMessage(message: ParentToChildMessage): void;
   dispose(): Promise<void>;
 }

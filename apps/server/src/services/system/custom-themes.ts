@@ -5,9 +5,12 @@ import {
   customThemeNameSchema,
   defaultAppTheme,
   isBuiltInThemeId,
+  resolveCodeTheme,
   type AppTheme,
+  type DeclaredCodeTheme,
   type FaviconColorPreference,
 } from "@bb/domain";
+import { readCustomThemeCodeTheme } from "./code-themes.js";
 
 const THEME_DIR_NAME = "theme";
 const THEME_CSS_FILE_NAME = "theme.css";
@@ -75,14 +78,37 @@ export function readCustomThemeCss(
  * selection whose theme folder is gone (deleted out from under the app) falls
  * back to the default palette so the app never renders against missing CSS. The
  * favicon tint is an independent appearance facet, passed through unchanged.
+ * Code colors follow the palette: a custom or plugin theme's Pierre files when
+ * present, otherwise the matching built-in Shiki pair.
  */
 export function resolveAppTheme(
   themeRoot: string,
   themeId: string,
   faviconColor: FaviconColorPreference,
+  declaredCodeTheme?: DeclaredCodeTheme | null,
 ): AppTheme {
-  if (isBuiltInThemeId(themeId)) return { themeId, customCss: null, faviconColor };
+  const declared =
+    declaredCodeTheme !== undefined
+      ? declaredCodeTheme
+      : isBuiltInThemeId(themeId)
+        ? null
+        : readCustomThemeCodeTheme(themeRoot, themeId);
+  const resolvedCodeTheme = resolveCodeTheme(declared, themeId);
+  if (isBuiltInThemeId(themeId)) {
+    return {
+      themeId,
+      customCss: null,
+      faviconColor,
+      resolvedCodeTheme,
+    };
+  }
   const customCss = readCustomThemeCss(themeRoot, themeId);
-  if (customCss === null) return { ...defaultAppTheme, faviconColor };
-  return { themeId, customCss, faviconColor };
+  if (customCss === null) {
+    return {
+      ...defaultAppTheme,
+      faviconColor,
+      resolvedCodeTheme: resolveCodeTheme(null, "default"),
+    };
+  }
+  return { themeId, customCss, faviconColor, resolvedCodeTheme };
 }

@@ -31,13 +31,57 @@ Windows support means the Linux stack runs entirely inside WSL2:
 - native Windows PowerShell, CMD, drive-letter paths, and UNC paths are not
   supported product paths
 
+## Mobile app
+
+[`apps/mobile`](../apps/mobile) is a native phone client for a bb server
+(Expo / React Native). It runs no agents, host daemon, or plugins itself; it
+talks to a server over the same HTTP + WebSocket contract as the web app.
+
+- Platforms: iOS first (iPhone; iPad runs the phone layout). Android is
+  planned next; the code is platform-neutral but no Android build has been
+  produced or tested yet.
+- Connecting: **Direct** mode takes any `http(s)://` URL the phone can reach
+  (the iOS Simulator's `http://127.0.0.1:<port>`, a LAN address with
+  `--server-bind-host 0.0.0.0`, a Tailscale Serve HTTPS URL). It is
+  unauthenticated, the same trust model as the browser PWA on a LAN; iOS
+  allows plain `http://` only for LAN IPs and `.local` names, so Tailscale
+  hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
+  machine (QR / code from Settings → Remote access or
+  `bb connect machine-code`, both behind the `mobileApp` experiment during
+  early access), keeps the credential in the device keychain, and mints
+  short-lived sessions; see [multiple-devices.md](multiple-devices.md).
+- Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator
+  runtime) today; TestFlight / Play builds go through EAS once the Expo
+  account exists (see `apps/mobile/README.md`). No store release yet.
+- Push notifications arrive in a later PR; they will need an EAS project,
+  APNs / FCM credentials, a physical device, and a server that can reach
+  `exp.host`.
+
+Not available on the phone (use the web app or desktop for these):
+
+- Plugin **frontends**: nav panels (Automations, Tasks, Docs, GitHub), DOM
+  `settingsSection` pages (connect Remote access, memory, custom
+  instructions, keep-awake), composer customization, message-action callbacks,
+  content scripts, side-chat panels. Plugin backends (tools, CLI, mentions,
+  declarative settings, pending-interaction forms for `ask-user-question` and
+  `secrets`) work.
+- Provider sign-in (`codex login`, `claude /login`): still needs a terminal on
+  the host; the phone assumes a signed-in host.
+- Local editor integration, "Open in …", native folder picker, local daemon
+  features: phones have no host daemon. The remote path browser works.
+- Custom CSS themes and plugin themes: only the built-in palettes map to the
+  native tokens.
+- Splits, drag reorder, the keyboard shortcut editor, desktop browser
+  automation. Text-selection quoting is per paragraph. KaTeX / Mermaid render
+  as source; video files open outside the app.
+
 ## Support Boundaries
 
 ### Supported product flows
 
 - `npx bb-app`
 - `npx --package bb-app bb ...`
-- source checkout package startup with `pnpm start`
+- source checkout package startup with `pnpm start` or `pnpm start:worktree`
 - source checkout validation with `pnpm install`, `pnpm build`,
   `pnpm exec turbo run typecheck`, and `pnpm exec turbo run test`
 - app + server + host-daemon startup on supported persistent-host OSes
@@ -157,3 +201,9 @@ rebuild the native dependency, for example `npm rebuild better-sqlite3`.
 - Native Windows CI is intentionally not required because Windows support uses
   the Linux runtime path inside WSL2 rather than a separate native Windows
   product path.
+- `apps/mobile` typecheck, lint, and unit tests run inside the Ubuntu
+  `Checks` and `Tests (packages)` jobs like every other workspace package. The
+  iOS simulator Maestro flows run in `Mobile E2E`
+  (`.github/workflows/mobile-e2e.yml`) on the macOS runner only when a pull
+  request carries the `mobile-e2e` label, nightly on `main`, or on manual
+  dispatch; they are not a required check.

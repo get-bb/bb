@@ -1,20 +1,20 @@
-import type { BbPluginApi } from "@bb/plugin-sdk";
+import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import type { TasksStore } from "../db";
 import { isSideChatShapedThread } from "../shared/side-chat";
 
-export interface DeliverCommentInput {
+interface DeliverCommentInput {
   taskId: string;
   commentId: string;
   body: string;
   authorName: string;
 }
 
-export type CommentDeliveryOutcome =
+type CommentDeliveryOutcome =
   | { threadId: string; status: "delivered" }
   | { threadId: string | null; status: "skipped"; reason: string }
   | { threadId: string; status: "failed"; reason: string };
 
-export interface CommentDeliveryResult {
+interface CommentDeliveryResult {
   notifiedCount: number;
   outcomes: CommentDeliveryOutcome[];
 }

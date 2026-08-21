@@ -35,7 +35,6 @@ describe("thread creation on a path another project already uses", () => {
       });
 
       const thread = await createThreadFromRequest(harness.deps, {
-        childOrigin: null,
         environment: {
           type: "host",
           hostId: host.id,
@@ -98,7 +97,6 @@ describe("thread creation on a path another project already uses", () => {
 
       await expect(
         createThreadFromRequest(harness.deps, {
-          childOrigin: null,
           environment: {
             type: "host",
             hostId: host.id,
@@ -147,7 +145,6 @@ describe("thread creation on a path another project already uses", () => {
 
       await expect(
         createThreadFromRequest(harness.deps, {
-          childOrigin: null,
           environment: {
             type: "host",
             hostId: host.id,
@@ -194,7 +191,6 @@ describe("thread creation on a path another project already uses", () => {
 
       await expect(
         createThreadFromRequest(harness.deps, {
-          childOrigin: null,
           environment: {
             type: "host",
             hostId: host.id,

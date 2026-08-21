@@ -130,7 +130,8 @@ export type EnvironmentArgs = z.infer<typeof environmentArgsSchema>;
 /**
  * Server-resolved environment default for thread creation: the server picks
  * the host and workspace using its own defaulting policy (personal workspace
- * for the personal project, a managed worktree on the primary host otherwise).
+ * for the personal project; otherwise a managed worktree when the primary
+ * source has a usable base branch, or that source checkout when it does not).
  * For callers — plugins, scripts — that should not re-derive compose-flow
  * policy. Accepted only by thread creation; other surfaces keep the explicit
  * {@link environmentArgsSchema}.
@@ -157,7 +158,6 @@ export const branchListQuerySchema = z.object({
   query: z.string().min(1).max(BRANCH_LIST_QUERY_MAX_LENGTH).optional(),
   limit: z.string().regex(/^\d+$/).optional(),
 });
-export type BranchListQuery = z.infer<typeof branchListQuerySchema>;
 
 export const serverMessageSchema = changedMessageSchema;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;

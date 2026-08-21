@@ -43,7 +43,7 @@ import {
 const NO_FOLDER = "__none__";
 const NEW_FOLDER = "__new__";
 
-export interface NewProjectDialogProps {
+interface NewProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -150,7 +150,8 @@ export function NewProjectDialog({ open, onOpenChange }: NewProjectDialogProps) 
         linkedBbProjectId: linkedTrimmed === "" ? null : linkedTrimmed,
       });
       onOpenChange(false);
-      navigation.go({ kind: "project", projectId: project.id, view: "list" });
+      // No explicit view: the shell opens the view this client last used.
+      navigation.go({ kind: "project", projectId: project.id, view: null });
     } catch (submitError) {
       setError(describeCreateProjectError(submitError));
     } finally {

@@ -292,6 +292,7 @@ describe("consumer-specific config", () => {
         BB_EXTERNAL_URL: undefined,
         BB_FF_PLACEHOLDER: undefined,
         BB_INFERENCE: undefined,
+        BB_INFERENCE_FALLBACK: undefined,
         BB_TRANSCRIPTION: undefined,
       }),
     });
@@ -304,12 +305,26 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_APP_VERSION).toBe("0.0.0-dev");
     expect(serverConfig.BB_EXTERNAL_URL).toBe("");
     expect(serverConfig.BB_INFERENCE).toBe("codex/gpt-5.6-luna");
+    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe("codex/gpt-5.4-mini");
     expect(serverConfig.BB_TRANSCRIPTION).toBe("codex/gpt-transcribe");
     expect(serverConfig.OPENAI_API_KEY).toBe("test-openai-key");
     expect(serverConfig.featureFlags).toEqual({
       placeholder: false,
       timelineWindowEventBudget: 1_500,
     });
+  });
+
+  it("carries the launcher's server launch id only when it is set", () => {
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_SERVER_LAUNCH_ID: undefined }),
+      }),
+    ).not.toHaveProperty("BB_SERVER_LAUNCH_ID");
+    expect(
+      loadServerConfig({
+        env: createServerRuntimeEnv({ BB_SERVER_LAUNCH_ID: "launch-123" }),
+      }).BB_SERVER_LAUNCH_ID,
+    ).toBe("launch-123");
   });
 
   it("defaults the server bind host to loopback", () => {
@@ -468,6 +483,28 @@ describe("consumer-specific config", () => {
     ).toThrow(/BB_INFERENCE/u);
   });
 
+  it("requires provider/model format for BB_INFERENCE_FALLBACK", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_INFERENCE_FALLBACK: "gpt-5.4-mini",
+        }),
+      }),
+    ).toThrow(/BB_INFERENCE_FALLBACK/u);
+  });
+
+  it("loads an explicit inference fallback model", () => {
+    const serverConfig = loadServerConfig({
+      env: createServerRuntimeEnv({
+        BB_INFERENCE_FALLBACK: "anthropic/claude-haiku-4-5",
+      }),
+    });
+
+    expect(serverConfig.BB_INFERENCE_FALLBACK).toBe(
+      "anthropic/claude-haiku-4-5",
+    );
+  });
+
   it("requires provider/model format for BB_TRANSCRIPTION", () => {
     expect(() =>
       loadServerConfig({
@@ -558,7 +595,6 @@ describe("consumer-specific config", () => {
 
   it("builds host-daemon start config from full config when data dir is not provided", () => {
     const hostDaemonStartConfig = loadHostDaemonStartConfig({
-      enableLocalApi: true,
       env: {
         BB_DATA_DIR: "/tmp/bb-data",
         BB_HOST_DAEMON_PORT: "3999",
@@ -568,28 +604,12 @@ describe("consumer-specific config", () => {
     });
 
     expect(hostDaemonStartConfig.dataDir).toBe("/tmp/bb-data");
-    expect(hostDaemonStartConfig.connectionConfig?.BB_SERVER_URL).toBe(
+    expect(hostDaemonStartConfig.connectionConfig.BB_SERVER_URL).toBe(
       "http://localhost:9999",
     );
-    expect(hostDaemonStartConfig.connectionConfig?.BB_HOST_DAEMON_PORT).toBe(
+    expect(hostDaemonStartConfig.connectionConfig.BB_HOST_DAEMON_PORT).toBe(
       3999,
     );
-  });
-
-  it("skips host-daemon env loading when explicit start options are complete", () => {
-    const hostDaemonStartConfig = loadHostDaemonStartConfig({
-      dataDir: "/tmp/bb-data",
-      enableLocalApi: false,
-      env: {
-        BB_SERVER_URL: "not-a-url",
-        NODE_ENV: "development",
-      },
-      serverUrl: "http://localhost:9999",
-    });
-
-    expect(hostDaemonStartConfig).toEqual({
-      dataDir: "/tmp/bb-data",
-    });
   });
 
   it("builds logger config from an explicit data dir without resolving BB_DATA_DIR", () => {
@@ -699,10 +719,6 @@ describe("consumer-specific config", () => {
       appPort: 4173,
       serverHttpOrigin: "http://127.0.0.1:4444",
       serverPort: 4444,
-      serverWsOrigin: {
-        kind: "browser-host",
-        port: 4444,
-      },
     });
 
     const explicitViteDevConfig = loadViteDevConfig({

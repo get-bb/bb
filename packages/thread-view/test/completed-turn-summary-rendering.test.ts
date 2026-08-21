@@ -14,14 +14,12 @@ type TimelineWorkRow = Extract<TimelineRow, { kind: "work" }>;
 
 interface RenderCompletedTimelineArgs {
   events: TimelineFixtureEvent[];
-  includeDebugRawEvents?: boolean;
 }
 
 function renderCompletedTimeline(args: RenderCompletedTimelineArgs) {
   return renderTimelineFixture({
     events: args.events,
     projectionOptions: {
-      includeDebugRawEvents: args.includeDebugRawEvents,
       threadStatus: "idle",
       turnMessageDetail: "summary",
     },
@@ -107,6 +105,94 @@ describe("completed turn summary rendering", () => {
       summaryCount: 1,
     });
     expect(rowSignatures(turnRow.children ?? [])).toEqual(["work:command"]);
+  });
+
+  it("keeps an assistant answer visible when the provider re-queries and the model answers again", () => {
+    // A Claude Code Stop hook blocks the stop and injects its reason as a
+    // synthetic user message that bb never sees (get-bb/bb#1355). The turn
+    // then holds two assistant texts back to back: the real answer and a
+    // short reply to the hook. Only the reply is the terminal message.
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "SQLite vs Postgres for a desktop app? End with a question.",
+    });
+    const answer =
+      "- SQLite is a file, zero ops.\n- Postgres needs a server.\n**Question for you**: multi-user someday?";
+    const hookReply =
+      "The verify gate is open: no fresh fast-loop verdict for HEAD, nothing actionable this turn.";
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.assistantCompleted({ itemId: "assistant-1", text: answer }),
+        event.assistantCompleted({ itemId: "assistant-2", text: hookReply }),
+        event.turnCompleted(),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "conversation:assistant",
+      "conversation:assistant",
+    ]);
+    expect(
+      timeline.rows.flatMap((row) =>
+        row.kind === "conversation" && row.role === "assistant"
+          ? [row.text]
+          : [],
+      ),
+    ).toEqual([answer, hookReply]);
+    expect(turnRows(timeline.rows)).toHaveLength(0);
+  });
+
+  it("folds narration before work but keeps the answer that precedes a hook reply", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const request = event.clientTurnRequested({
+      target: { kind: "new-turn" },
+      text: "Is the daemon command blob pruning durable?",
+    });
+
+    const timeline = renderCompletedTimeline({
+      events: [
+        request,
+        event.turnStarted(),
+        event.inputAccepted({ clientRequestId: request.data.requestId }),
+        event.assistantCompleted({
+          itemId: "assistant-1",
+          text: "Let me check the pruning code.",
+        }),
+        event.commandCompleted({ itemId: "tool-1", command: "rg prune" }),
+        event.assistantCompleted({
+          itemId: "assistant-2",
+          text: "Yes: pruning runs inside the daemon transaction, so it is durable.",
+        }),
+        event.assistantCompleted({
+          itemId: "assistant-3",
+          text: "The verify gate is still open for HEAD.",
+        }),
+        event.turnCompleted(),
+      ],
+    });
+
+    expect(rowSignatures(timeline.rows)).toEqual([
+      "conversation:user",
+      "turn:4-5",
+      "conversation:assistant",
+      "conversation:assistant",
+    ]);
+    const turnRow = requireOnlyTurnRow(timeline.rows);
+    expect(turnRow).toMatchObject({
+      startedAt: 2,
+      completedAt: 8,
+      summaryCount: 2,
+    });
+    expect(rowSignatures(turnRow.children ?? [])).toEqual([
+      "conversation:assistant",
+      "work:command",
+    ]);
   });
 
   it("keeps turn-scoped environment directory update operations inside the completed turn summary", () => {
@@ -624,44 +710,6 @@ describe("completed turn summary rendering", () => {
     expect(
       turnRows(timeline.rows).map((row) => rowSignatures(row.children ?? [])),
     ).toEqual([["work:command"], ["work:command"]]);
-  });
-
-  it("keeps summary rows on both sides of debug raw events", () => {
-    const event = createTimelineEventFactory({ threadId: "thread-1" });
-
-    const timeline = renderCompletedTimeline({
-      events: [
-        event.turnStarted(),
-        event.commandCompleted({
-          itemId: "tool-before-debug",
-          command: "pnpm test",
-        }),
-        event.providerUnhandled({
-          rawType: "session.unexpected",
-        }),
-        event.commandCompleted({
-          itemId: "tool-after-debug",
-          command: "git status --short",
-        }),
-        event.assistantCompleted({
-          itemId: "assistant-1",
-          text: "Done.",
-        }),
-        event.turnCompleted(),
-      ],
-      includeDebugRawEvents: true,
-    });
-
-    expect(rowSignatures(timeline.rows)).toEqual([
-      "turn:2-2",
-      "system:debug",
-      "turn:4-4",
-      "conversation:assistant",
-    ]);
-    expect(topLevelWorkRows(timeline.rows)).toHaveLength(0);
-    expect(turnRows(timeline.rows).map((row) => row.summaryCount)).toEqual([
-      1, 1,
-    ]);
   });
 
   it("does not synthesize empty summary rows for user-only completed turns", () => {

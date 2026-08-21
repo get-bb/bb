@@ -1,9 +1,8 @@
 import { useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-export interface ExpandableLineProps {
+interface ExpandableLineProps {
   fullText: string;
   children: ReactNode;
-  className?: string;
   collapsedClassName: string;
   collapsedStyle?: CSSProperties;
   expandedClassName?: string;
@@ -14,7 +13,6 @@ const DEFAULT_EXPANDED_CLASS_NAME = "whitespace-pre-wrap break-words";
 export function ExpandableLine({
   fullText,
   children,
-  className,
   collapsedClassName,
   collapsedStyle,
   expandedClassName = DEFAULT_EXPANDED_CLASS_NAME,
@@ -41,7 +39,6 @@ export function ExpandableLine({
       className={[
         "block w-full cursor-pointer select-text text-left leading-tight transition-[max-height] duration-200 ease-out",
         isExpanded ? expandedClassName : collapsedClassName,
-        className,
       ]
         .filter(Boolean)
         .join(" ")}

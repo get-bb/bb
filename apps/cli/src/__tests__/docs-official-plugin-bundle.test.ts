@@ -103,6 +103,12 @@ describe("Docs official plugin frontend bundle", () => {
       radixContextMenu: componentStub,
       radixDialog: componentStub,
       radixSelect: componentStub,
+      // Host-resident libraries: cva() runs at module scope in vendored
+      // components, and cn() reads clsx/twMerge.
+      clsx: componentStub,
+      tailwindMerge: componentStub,
+      classVarianceAuthority: componentStub,
+      sharedUiIcon: componentStub,
     };
     // Some browser-bundle dependencies touch `document` at module scope
     // (shared-ui's overlay-trigger registers input-modality listeners).

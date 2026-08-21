@@ -6,9 +6,13 @@ import type {
   HostDaemonOnlineRpcResult,
   HostPathEntryKind,
 } from "@bb/host-daemon-contract";
-import { CommandDispatchError } from "../command-dispatch-support.js";
-import type { CommandOf } from "../command-dispatch-support.js";
+import {
+  CommandDispatchError,
+  type CommandDispatchOptions,
+  type CommandOf,
+} from "../command-dispatch-support.js";
 import { isFsErrorWithCode } from "../fs-errors.js";
+import { userExecutableProcessOptions } from "../user-executable-env.js";
 import {
   finalizeListedFiles,
   finalizeListedPaths,
@@ -194,6 +198,7 @@ export async function checkHostPathsExist(
 
 export async function readHostFile(
   command: CommandOf<"host.read_file">,
+  options?: Pick<CommandDispatchOptions, "runtimeManager">,
 ): Promise<HostDaemonOnlineRpcResult<"host.read_file">> {
   assertAbsoluteHostDiskPathCommand(command);
 
@@ -210,6 +215,9 @@ export async function readHostFile(
       resolvedPath: command.path,
       resultPath: command.path,
       ref: command.ref,
+      ...userExecutableProcessOptions(
+        options?.runtimeManager.getShellEnv() ?? {},
+      ),
     });
   }
 

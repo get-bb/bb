@@ -6,45 +6,45 @@ import type {
   HostPathEntryKind,
 } from "@bb/host-daemon-contract";
 
-export interface FinalizeListedFilesArgs {
+interface FinalizeListedFilesArgs {
   filePaths: string[];
   limit: number;
   query?: string;
 }
 
-export interface FinalizedFileList {
+interface FinalizedFileList {
   files: FileListEntry[];
   truncated: boolean;
 }
 
-export interface FileListEntry {
+interface FileListEntry {
   path: string;
   name: string;
 }
 
-export interface ListedPath {
+interface ListedPath {
   kind: HostPathEntryKind;
   path: string;
   name: string;
 }
 
-export interface PathListInclusion {
+interface PathListInclusion {
   includeFiles: boolean;
   includeDirectories: boolean;
 }
 
-export interface FinalizeListedPathsArgs extends PathListInclusion {
+interface FinalizeListedPathsArgs extends PathListInclusion {
   paths: ListedPath[];
   limit: number;
   query?: string;
 }
 
-export interface FinalizedPathList {
+interface FinalizedPathList {
   paths: HostPathEntry[];
   truncated: boolean;
 }
 
-export interface ListPathsRecursivelyArgs extends PathListInclusion {
+interface ListPathsRecursivelyArgs extends PathListInclusion {
   dir: string;
   root: string;
 }

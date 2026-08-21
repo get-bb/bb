@@ -16,7 +16,7 @@ export interface BbAppArtifactCommandRunner {
   (command: string, args: readonly string[], cwd: string): Promise<string>;
 }
 
-export interface CreateBbAppArtifactServiceOptions {
+interface CreateBbAppArtifactServiceOptions {
   dataDir: string;
   commandRunner?: BbAppArtifactCommandRunner;
   protocolVersion?: number;
@@ -59,7 +59,7 @@ async function readBbAppPackageJson(
   return { name: parsed.name, version: parsed.version };
 }
 
-export interface ResolvedBbAppPackage {
+interface ResolvedBbAppPackage {
   layout: "packaged" | "repo";
   packageJson: BbAppPackageJson;
   root: string;

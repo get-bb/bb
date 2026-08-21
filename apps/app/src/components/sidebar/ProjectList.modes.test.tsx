@@ -18,7 +18,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadListEntry } from "@bb/domain";
 import { ActiveSidebarModeSections, MachineModeSections } from "./ProjectList";
-import { buildMachineThreadGroups } from "./machineThreadGroups";
+import { buildMachineThreadGroups } from "@bb/client-core";
 import {
   collapsedSidebarSectionIdsAtom,
   sidebarCollapsedMachinesAtom,
@@ -39,8 +39,8 @@ vi.mock("@/hooks/queries/host-queries", () => ({
   usePrimaryHost: vi.fn(() => undefined),
 }));
 
-vi.mock("./machineThreadGroups", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./machineThreadGroups")>();
+vi.mock("@bb/client-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@bb/client-core")>();
   return {
     ...actual,
     buildMachineThreadGroups: vi.fn(actual.buildMachineThreadGroups),
@@ -121,7 +121,6 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     originKind: null,
     originPluginId: null,
     visibility: "visible",
-    childOrigin: null,
     archivedAt: null,
     pinnedAt: null,
     pinSortKey: null,

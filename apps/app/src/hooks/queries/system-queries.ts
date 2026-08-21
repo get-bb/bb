@@ -1,90 +1,195 @@
-import { useQuery } from "@tanstack/react-query";
-import {
-  listBuiltInAgentProviderInfos,
-  listClaudeCodeFallbackModels,
-} from "@bb/agent-providers";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { QueryKey } from "@tanstack/react-query";
+import type { PermissionMode, ProviderInfo } from "@bb/domain";
+import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
+import { permissionModeValues } from "@bb/domain";
 import { toRecord } from "@bb/core-ui";
 import type {
   SystemCliSkillsStatusResponse,
   SystemConfigResponse,
   SystemExecutionOptionsResponse,
-  OnboardingAgentOverview,
+  SystemProvidersQuery,
+  SystemProviderStatesResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type {
-  DiscoverReposResult,
   ProviderCliStatusResponse,
+  ProviderUsage,
+  ProviderUsageResponse,
 } from "@bb/host-daemon-contract";
-import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import {
-  claudeModelCatalogCacheKey,
-  readCachedClaudeModelCatalog,
-  writeCachedClaudeModelCatalog,
-} from "@/lib/claude-model-catalog-cache";
+  modelCatalogCacheKey,
+  readCachedModelCatalog,
+  writeCachedModelCatalog,
+} from "@/lib/model-catalog-cache";
+import {
+  providerListCacheKey,
+  readCachedProviderList,
+  writeCachedProviderList,
+} from "@/lib/provider-list-cache";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
   hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
-  onboardingAgentsQueryKey,
-  onboardingReposQueryKey,
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
+  systemProvidersQueryKey,
+  systemProviderStatesQueryKey,
   systemUsageLimitsQueryKey,
   systemVersionQueryKey,
 } from "./query-keys";
-import { requireEnabledQueryArg } from "./query-helpers";
+import { requireEnabledQueryArg, type QueryOptions } from "./query-helpers";
 import {
   FOCUS_OWNED_LIVE_QUERY_POLICY,
   SERVER_SESSION_QUERY_POLICY,
   SESSION_STATIC_QUERY_POLICY,
 } from "./query-policies";
 
-export interface UseSystemExecutionOptionsArgs {
+interface UseSystemExecutionOptionsArgs {
   enabled?: boolean;
   environmentId?: string;
   hostId?: string;
   providerId?: string;
 }
 
-export interface UseOnboardingAgentsOptions extends QueryOptions {
+interface UseSystemProviderStatesOptions extends QueryOptions {
   environmentId?: string;
   hostId?: string;
   poll?: boolean;
 }
 
-interface QueryOptions {
-  enabled?: boolean;
-}
+type SystemProviderRoutingArgs =
+  | { environmentId: string; hostId?: never }
+  | { environmentId?: never; hostId: string }
+  | { environmentId?: never; hostId?: never };
+
+type UseSystemProvidersArgs = QueryOptions &
+  SystemProviderRoutingArgs &
+  Pick<SystemProvidersQuery, "capability">;
+
+type UseSystemProviderInfoArgs = UseSystemProvidersArgs & {
+  providerId?: string;
+};
 
 const SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS = 250;
 const SYSTEM_EXECUTION_OPTIONS_RETRY_COUNT = 1;
-const CLAUDE_CODE_PROVIDER_ID = "claude-code";
-
-// Claude's account-scoped model probe spawns a CLI process on the host, so
-// waiting for it leaves the composer with no model list for seconds. Render a
-// provisional catalog immediately and let the authoritative rows replace it when
-// the probe lands.
+// Model probes run on the host (Claude's spawns a CLI process; every provider
+// pays a round trip), so waiting for one leaves the composer with no model list
+// for seconds on each full load. Render the last catalog this routing actually
+// reported immediately and let the authoritative rows replace it when the probe
+// lands: its ids match what the fresh probe will return, so a selection made
+// during the preload window survives instead of snapping back to a default.
 //
-// Prefer the last catalog this account actually reported: its ids match what the
-// fresh probe will return, so a selection made during the preload window
-// survives instead of snapping back to a default. The curated aliases are only
-// for a cold cache, where no account-scoped ids are known yet.
+// On a cold cache there is nothing to replay: the app vendors no provider
+// roster and no model catalog of its own (a provider's declared cold-cache
+// fallback is served by the server when a probe fails), so the composer waits
+// for the first probe, and a provider that no replayable list can vouch for
+// waits too.
+//
+// The provider list rides along from its own last-known cache: the live list
+// carries the host's custom and installed ACP agents. If the remembered
+// provider is not in the list we can replay, there is no honest provisional
+// frame and the composer waits.
 //
 // Callers must gate model recovery on `isPlaceholderData` either way: a cached
 // catalog can be stale, so absence from this list is not evidence that a stored
 // model was retired.
-function claudeCodePlaceholderExecutionOptions(
-  cacheKey: string,
-): SystemExecutionOptionsResponse {
-  const cached = readCachedClaudeModelCatalog(cacheKey);
+//
+// The placeholder's permission ceiling is the most restrictive mode. Consumers
+// ignore the ceiling while data is provisional, so the value is never used —
+// but a replay must fail safe if a future reader forgets that gate.
+const PLACEHOLDER_PERMISSION_CEILING: PermissionMode = permissionModeValues[0];
+
+function isSameExecutionOptionsRoute(
+  previousQueryKey: QueryKey | undefined,
+  environmentId: string | null,
+  hostId: string | null,
+): boolean {
+  return (
+    previousQueryKey?.[0] === SYSTEM_EXECUTION_OPTIONS_QUERY_KEY &&
+    previousQueryKey[1] === environmentId &&
+    previousQueryKey[2] === hostId
+  );
+}
+
+function resolveExecutionOptionsPlaceholder({
+  previousData,
+  previousQueryKey,
+  environmentId,
+  hostId,
+  providerId,
+  catalogCacheKey,
+  providersCacheKey,
+}: {
+  previousData: SystemExecutionOptionsResponse | undefined;
+  previousQueryKey: QueryKey | undefined;
+  environmentId: string | null;
+  hostId: string | null;
+  providerId: string | null;
+  catalogCacheKey: string;
+  providersCacheKey: string;
+}): SystemExecutionOptionsResponse | undefined {
+  // Same-route provider roster from the prior response: dynamic (ACP) tabs
+  // stay visible while the newly selected provider's models load.
+  const previousProviders = isSameExecutionOptionsRoute(
+    previousQueryKey,
+    environmentId,
+    hostId,
+  )
+    ? previousData?.providers
+    : undefined;
+  // Only the exact routing key replays. The model endpoint resolves the
+  // environment's path as its working directory and a host's account decides
+  // its entitlements, so a catalog observed on one environment or host says
+  // nothing about another — and a placeholder is enough for a composer to
+  // offer a model, so a cross-route replay could let it submit one the current
+  // route never returned. A routing that was never fetched to completion (a
+  // composer mounted before its environment is known) gets no rows and waits
+  // for its own probe.
+  const cached = readCachedModelCatalog(catalogCacheKey);
+  const remembered = readCachedProviderList(providersCacheKey);
+  const providers =
+    previousProviders ??
+    (remembered !== null && remembered.length > 0 ? remembered : null);
+  if (
+    providers === null ||
+    (providerId !== null &&
+      !providers.some((provider) => provider.id === providerId))
+  ) {
+    return undefined;
+  }
   return {
-    providers: listBuiltInAgentProviderInfos(),
-    models: cached?.models ?? listClaudeCodeFallbackModels(),
+    providers,
+    // A prior response's models belong to the prior provider. Only this
+    // provider's own remembered catalog may stand in while its probe runs.
+    models: cached?.models ?? [],
     selectedOnlyModels: cached?.selectedOnlyModels ?? [],
-    permissionCeiling: "full",
+    permissionCeiling: PLACEHOLDER_PERMISSION_CEILING,
     modelLoadError: null,
   };
+}
+
+/**
+ * The freshest ProviderInfo the client already has for a provider id, scanned
+ * across every cached execution-options response (any environment/host).
+ * Null when no cached response mentions the id — callers treat that as the
+ * capability being absent (graceful absence for unknown providers).
+ */
+export function findCachedProviderInfo(
+  queryClient: import("@tanstack/react-query").QueryClient,
+  providerId: string,
+): ProviderInfo | null {
+  const entries = queryClient.getQueriesData<SystemExecutionOptionsResponse>({
+    queryKey: [SYSTEM_EXECUTION_OPTIONS_QUERY_KEY],
+  });
+  for (const [, data] of entries) {
+    const match = data?.providers.find((info) => info.id === providerId);
+    if (match !== undefined) {
+      return match;
+    }
+  }
+  return null;
 }
 
 function isAbortLikeError(error: unknown): boolean {
@@ -110,6 +215,75 @@ function shouldRetrySystemExecutionOptions(
   return true;
 }
 
+/**
+ * The provider roster with the server's display names. Cheaper than the full
+ * execution-options query (no model probe), which is what surfaces that only
+ * need provider metadata or capabilities should use.
+ */
+export function useSystemProviders(args: UseSystemProvidersArgs = {}) {
+  const capability = args.capability ?? null;
+  const environmentId = args.environmentId ?? null;
+  const hostId = args.hostId ?? null;
+  const enabled = args.enabled ?? true;
+  useSystemRealtimeSubscription({ enabled });
+  return useQuery<ProviderInfo[]>({
+    queryKey: systemProvidersQueryKey({ capability, environmentId, hostId }),
+    queryFn: ({ signal }) => {
+      if (args.environmentId !== undefined) {
+        return sdk.providers.list({
+          ...(args.capability === undefined
+            ? {}
+            : { capability: args.capability }),
+          environmentId: args.environmentId,
+          signal,
+        });
+      }
+      if (args.hostId !== undefined) {
+        return sdk.providers.list({
+          ...(args.capability === undefined
+            ? {}
+            : { capability: args.capability }),
+          hostId: args.hostId,
+          signal,
+        });
+      }
+      return sdk.providers.list({
+        ...(args.capability === undefined
+          ? {}
+          : { capability: args.capability }),
+        signal,
+      });
+    },
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * Resolve one provider from the lightweight provider roster. Unlike the full
+ * execution-options request, this does not wait for model discovery, so
+ * capability-gated controls can render as soon as provider metadata arrives.
+ * A just-submitted composer has already loaded the same provider facts through
+ * execution options, so reuse that warm cache synchronously during navigation
+ * while the lightweight roster fills its own route-scoped cache.
+ */
+export function useSystemProviderInfo({
+  providerId,
+  ...args
+}: UseSystemProviderInfoArgs): ProviderInfo | null {
+  const queryClient = useQueryClient();
+  const providersQuery = useSystemProviders({
+    ...args,
+    enabled: (args.enabled ?? true) && providerId !== undefined,
+  });
+  return (
+    providersQuery.data?.find((provider) => provider.id === providerId) ??
+    (providerId === undefined
+      ? null
+      : findCachedProviderInfo(queryClient, providerId))
+  );
+}
+
 export function useSystemExecutionOptions(
   args: UseSystemExecutionOptionsArgs = {},
 ) {
@@ -118,12 +292,12 @@ export function useSystemExecutionOptions(
   const providerId = args.providerId ?? null;
   const enabled = args.enabled ?? true;
   useSystemRealtimeSubscription({ enabled });
-  const isClaudeCode = providerId === CLAUDE_CODE_PROVIDER_ID;
-  const catalogCacheKey = claudeModelCatalogCacheKey({
+  const providersCacheKey = providerListCacheKey({ environmentId, hostId });
+  const catalogCacheKey = modelCatalogCacheKey({
     environmentId,
     hostId,
+    providerId,
   });
-
   return useQuery<SystemExecutionOptionsResponse>({
     queryKey: systemExecutionOptionsQueryKey({
       environmentId,
@@ -137,14 +311,18 @@ export function useSystemExecutionOptions(
         providerId: args.providerId,
         signal,
       });
-      // Only a verified catalog is worth remembering. Caching a provisional list
-      // would let the server's probe-failure fallback masquerade as this
-      // account's real models on the next cold load.
-      if (isClaudeCode && response.modelLoadError === null) {
-        writeCachedClaudeModelCatalog(catalogCacheKey, {
+      // The provider list is authoritative whether or not the model probe
+      // succeeded. Only a verified catalog is worth remembering, though:
+      // caching a provisional list would let the server's probe-failure
+      // fallback masquerade as this routing's real models on the next cold
+      // load.
+      writeCachedProviderList(providersCacheKey, response.providers);
+      if (response.modelLoadError === null) {
+        const catalog = {
           models: response.models,
           selectedOnlyModels: response.selectedOnlyModels,
-        });
+        };
+        writeCachedModelCatalog(catalogCacheKey, catalog);
       }
       return response;
     },
@@ -152,12 +330,16 @@ export function useSystemExecutionOptions(
     staleTime: 60_000,
     retry: shouldRetrySystemExecutionOptions,
     retryDelay: SYSTEM_EXECUTION_OPTIONS_RETRY_DELAY_MS,
-    ...(isClaudeCode
-      ? {
-          placeholderData: () =>
-            claudeCodePlaceholderExecutionOptions(catalogCacheKey),
-        }
-      : {}),
+    placeholderData: (previousData, previousQuery) =>
+      resolveExecutionOptionsPlaceholder({
+        previousData,
+        previousQueryKey: previousQuery?.queryKey,
+        environmentId,
+        hostId,
+        providerId,
+        catalogCacheKey,
+        providersCacheKey,
+      }),
   });
 }
 
@@ -196,7 +378,7 @@ export function useSystemVersion(options?: QueryOptions) {
   });
 }
 
-export interface UseHostProviderCliStatusArgs {
+interface UseHostProviderCliStatusArgs {
   hostId: string | null;
   enabled?: boolean;
 }
@@ -221,56 +403,82 @@ export function useHostProviderCliStatus({
   });
 }
 
-/**
- * Live agent state for onboarding. Polled while the step is open so installing
- * or signing in from a terminal updates the list without a manual refresh.
- */
-export function useOnboardingAgents(options: UseOnboardingAgentsOptions = {}) {
+/** Live provider readiness for unset composer selection. */
+export function useSystemProviderStates(
+  options: UseSystemProviderStatesOptions = {},
+) {
   const environmentId = options.environmentId ?? null;
   const hostId = options.hostId ?? null;
-  return useQuery<OnboardingAgentOverview>({
-    queryKey: onboardingAgentsQueryKey({ environmentId, hostId }),
+  return useQuery<SystemProviderStatesResponse>({
+    queryKey: systemProviderStatesQueryKey({ environmentId, hostId }),
     queryFn: ({ signal }) =>
-      sdk.system.onboardingAgents({
+      sdk.system.providerStates({
         environmentId: options.environmentId,
         hostId: options.hostId,
         signal,
       }),
     enabled: options.enabled ?? true,
-    // Each read runs CLI health checks, known-agent checks, and up to three
-    // provider usage requests, so this polls slowly and only while the agents
-    // step is actually on screen. An explicit re-check covers the impatient
-    // case. Other readers (the composer's provider default) want one answer.
+    // Each read starts sessionless bridge health checks. The root composer's
+    // provider default wants one answer rather than a polling query.
     ...(options.poll === false
       ? { staleTime: 60_000 }
       : { refetchInterval: 15_000 }),
   });
 }
 
-/** Candidate projects on the host. Runs once when the projects step opens. */
-export function useOnboardingRepos(options: QueryOptions = {}) {
-  return useQuery<DiscoverReposResult>({
-    queryKey: onboardingReposQueryKey(),
-    queryFn: ({ signal }) => sdk.system.onboardingRepos({ signal }),
-    enabled: options.enabled ?? true,
-    staleTime: Infinity,
-  });
+export interface ProviderUsageQueryState {
+  isError: boolean;
+  isLoading: boolean;
 }
 
-export interface UseSystemUsageLimitsArgs extends QueryOptions {
+interface UseSystemProviderUsageLimitsArgs extends QueryOptions {
   hostId?: string;
+  providerIds: readonly string[];
 }
 
-export function useSystemUsageLimits(args: UseSystemUsageLimitsArgs = {}) {
+/** Loads each provider independently so one slow bridge cannot block peers. */
+export function useSystemProviderUsageLimits(
+  args: UseSystemProviderUsageLimitsArgs,
+) {
   const hostId = args.hostId ?? null;
-  return useQuery<ProviderUsageResponse>({
-    queryKey: systemUsageLimitsQueryKey(hostId),
-    queryFn: ({ signal }) =>
-      sdk.system.usageLimits({
-        ...(args.hostId === undefined ? {} : { hostId: args.hostId }),
-        signal,
-      }),
-    enabled: args.enabled ?? true,
-    ...FOCUS_OWNED_LIVE_QUERY_POLICY,
+  const enabled = args.enabled ?? true;
+  const queries = useQueries({
+    queries: args.providerIds.map((providerId) => ({
+      queryKey: systemUsageLimitsQueryKey(hostId, providerId),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        sdk.system.usageLimits({
+          ...(args.hostId === undefined ? {} : { hostId: args.hostId }),
+          providerId,
+          signal,
+        }),
+      enabled,
+      ...FOCUS_OWNED_LIVE_QUERY_POLICY,
+    })),
   });
+  const usage: ProviderUsageResponse = {};
+  const providerStates: Record<string, ProviderUsageQueryState> = {};
+
+  args.providerIds.forEach((providerId, index) => {
+    const query = queries[index];
+    if (query === undefined) return;
+    const providerUsage: ProviderUsage | undefined = query.data?.[providerId];
+    if (providerUsage !== undefined) {
+      usage[providerId] = providerUsage;
+    }
+    providerStates[providerId] = {
+      isError: query.isError,
+      isLoading: query.isLoading,
+    };
+  });
+
+  return {
+    isError: queries.some((query) => query.isError),
+    isFetching: queries.some((query) => query.isFetching),
+    isLoading: queries.some((query) => query.isLoading),
+    providerStates,
+    refetch: async () => {
+      await Promise.all(queries.map((query) => query.refetch()));
+    },
+    usage,
+  };
 }

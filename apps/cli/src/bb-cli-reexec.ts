@@ -11,7 +11,7 @@ import { resolve } from "node:path";
 /** Set on the re-exec child so a shell-script → node hop cannot loop. */
 export const BB_CLI_REEXEC_ENV = "BB_CLI_REEXEC";
 
-export interface MaybeReexecViaBbCliArgs {
+interface MaybeReexecViaBbCliArgs {
   env?: NodeJS.ProcessEnv;
   /** Arguments after the node/script path (default: process.argv.slice(2)). */
   argv?: string[];

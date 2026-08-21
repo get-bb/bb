@@ -1,5 +1,9 @@
 import type { Hono } from "hono";
-import { registrySkillInstallRequestSchema } from "@bb/server-contract";
+import {
+  registrySkillEntriesRequestSchema,
+  registrySkillInstallRequestSchema,
+  type RegistrySkill,
+} from "@bb/server-contract";
 import { ApiError } from "../errors.js";
 import {
   githubRepoForSource,
@@ -66,6 +70,36 @@ export function registerSkillsRegistryRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       await proxyUpstream(() => resolveRegistrySkillById(id)),
     );
+  });
+
+  /**
+   * Batch counterpart of `/skills-registry/entry`: the browse grid needs an
+   * entry per visible card (lifetime installs on the trending ranking, missing
+   * summaries elsewhere), and issuing those as one request instead of one per
+   * card keeps a page load at a single round trip. Per-id upstream fetches are
+   * cached and de-duplicated by the proxy; ids that fail to resolve are
+   * omitted from the response rather than failing the batch.
+   */
+  app.post("/skills-registry/entries", async (context) => {
+    const body = registrySkillEntriesRequestSchema.safeParse(
+      await context.req.json().catch(() => null),
+    );
+    if (!body.success) {
+      throw new ApiError(400, "invalid_request", "Expected registry skill ids");
+    }
+    const ids = [...new Set(body.data.ids)];
+    const entries = (
+      await Promise.all(
+        ids.map(async (id): Promise<RegistrySkill | null> => {
+          try {
+            return await resolveRegistrySkillById(id);
+          } catch {
+            return null;
+          }
+        }),
+      )
+    ).filter((entry): entry is RegistrySkill => entry !== null);
+    return context.json({ entries });
   });
 
   app.get("/skills-registry/repository-stars", async (context) => {

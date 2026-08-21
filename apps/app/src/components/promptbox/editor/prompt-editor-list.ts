@@ -34,7 +34,7 @@ export function createSplitPromptListItemTransaction(args: {
     : null;
 }
 
-export function createLiftPromptListItemTransaction(args: {
+function createLiftPromptListItemTransaction(args: {
   state: EditorState;
   editor: SplitListEditorContext;
 }): Transaction | null {

@@ -34,7 +34,7 @@ export function ProjectDeleteDialog({
   );
 }
 
-export interface ProjectDeleteDialogContentProps {
+interface ProjectDeleteDialogContentProps {
   target: ProjectDeleteDialogTarget;
   pending: boolean;
   onDelete: (projectId: string) => void;

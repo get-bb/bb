@@ -1,0 +1,41 @@
+{
+  "name": "bb-plugin-provider-acp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "ACP providers",
+    "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",
+    "branding": {
+      "icon": "./icons/acp.svg"
+    },
+    "server": "./server.ts",
+    "host": "./src/bridge/bridge.ts"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@bb/agent-runtime": "workspace:*",
+    "@bb/domain": "workspace:*",
+    "@bb/host-daemon-contract": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  },
+  "dependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "zod": "^4.3.6"
+  }
+}

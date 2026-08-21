@@ -17,10 +17,27 @@ describe("bb theme commands", () => {
     registerThemeCommands(program, () => "http://server");
 
   function stubAppearance(themeId = "dracula", faviconColor = "purple") {
-    const put = vi.fn(async ({ json }) => ({ ...json, customCss: null }));
+    const put = vi.fn(async ({ json }) => ({
+      ...json,
+      customCss: null,
+      resolvedCodeTheme: {
+        dark: "pierre-dark",
+        light: "pierre-light",
+        files: {},
+      },
+    }));
     stubServerApi({
       "v1.system.config.$get": vi.fn(async () => ({
-        appearance: { themeId, faviconColor, customCss: null },
+        appearance: {
+          themeId,
+          faviconColor,
+          customCss: null,
+          resolvedCodeTheme: {
+            dark: "pierre-dark",
+            light: "pierre-light",
+            files: {},
+          },
+        },
       })),
       "v1.settings.appearance.$put": put,
     });
@@ -50,7 +67,16 @@ describe("bb theme commands", () => {
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       JSON.stringify(
-        { themeId: "nord", faviconColor: "teal", customCss: null },
+        {
+          themeId: "nord",
+          faviconColor: "teal",
+          customCss: null,
+          resolvedCodeTheme: {
+            dark: "pierre-dark",
+            light: "pierre-light",
+            files: {},
+          },
+        },
         null,
         2,
       ),
@@ -106,6 +132,7 @@ describe("bb theme commands", () => {
     const faviconHelp = await getHelpOutput(["theme", "favicon"], register);
 
     expect(themeHelp).toContain("favicon");
+    expect(themeHelp).not.toContain("code-theme");
     expect(setHelp).toContain("--favicon-color <color>");
     expect(faviconHelp).toContain("set [options] <color>");
     expect(faviconHelp).toContain("reset");

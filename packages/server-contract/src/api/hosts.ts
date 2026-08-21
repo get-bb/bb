@@ -2,18 +2,15 @@ import { z } from "zod";
 import { permissionModeSchema } from "@bb/domain";
 import {
   pathsExistRequestSchema,
-  pathsExistResponseSchema,
-  pickFolderResponseSchema,
   providerCliInstallEventSchema,
   providerCliInstallRequestSchema,
-  providerCliStatusResponseSchema,
   type PathsExistRequest,
   type PathsExistResponse,
   type PickFolderResponse,
   type ProviderCliInstallEvent,
   type ProviderCliInstallRequest,
   type ProviderCliStatusResponse,
-} from "@bb/host-daemon-contract";
+} from "@bb/host-daemon-contract/local";
 
 /**
  * Query for `GET /hosts/:id/directory`, the interactive path browser's
@@ -31,7 +28,6 @@ export const hostDirectoryEntrySchema = z.object({
   name: z.string(),
   path: z.string(),
 });
-export type HostDirectoryEntry = z.infer<typeof hostDirectoryEntrySchema>;
 
 export const hostDirectoryListingSchema = z.object({
   // Resolved absolute directory that was listed (symlinks already followed).
@@ -105,7 +101,6 @@ export type HostRetryUpdateResponse = z.infer<
 export const hostPathsExistRequestSchema = pathsExistRequestSchema;
 export type HostPathsExistRequest = PathsExistRequest;
 
-export const hostPathsExistResponseSchema = pathsExistResponseSchema;
 export type HostPathsExistResponse = PathsExistResponse;
 
 export const hostPickFolderRequestSchema = z
@@ -115,11 +110,8 @@ export const hostPickFolderRequestSchema = z
   .strict();
 export type HostPickFolderRequest = z.infer<typeof hostPickFolderRequestSchema>;
 
-export const hostPickFolderResponseSchema = pickFolderResponseSchema;
 export type HostPickFolderResponse = PickFolderResponse;
 
-export const hostProviderCliStatusResponseSchema =
-  providerCliStatusResponseSchema;
 export type HostProviderCliStatusResponse = ProviderCliStatusResponse;
 
 export const hostProviderCliInstallRequestSchema =

@@ -54,6 +54,7 @@ function runThreadSearchMigrationFiles(
   for (const migrationFile of [
     "0039_thread_search.sql",
     "0040_thread_search_rowid_fts.sql",
+    "0101_thread_search_prefix_fts.sql",
   ]) {
     const migrationSql = readFileSync(
       resolve(__dirname, "../../drizzle", migrationFile),
@@ -129,6 +130,7 @@ describe("thread search data", () => {
           scope: threadScope(),
           itemId: null,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify(
             turnRequestData([
               textInput("visiblebackfill"),
@@ -143,6 +145,7 @@ describe("thread search data", () => {
           scope: turnScope("turn-1"),
           itemId: "msg-1",
           itemKind: "agentMessage",
+          parentToolCallId: null,
           data: JSON.stringify({
             item: {
               id: "msg-1",
@@ -158,6 +161,7 @@ describe("thread search data", () => {
           scope: threadScope(),
           itemId: null,
           itemKind: null,
+          parentToolCallId: null,
           data: JSON.stringify({ text: "legacybackfill" }),
         },
       ]);
@@ -325,7 +329,7 @@ describe("thread search data", () => {
     }
   });
 
-  it("caps hydrated snippets for broad matches across limited threads", () => {
+  it("keeps one message match per thread for broad matches across limited threads", () => {
     const { db, project } = setup();
     try {
       const threadIndexesById = new Map<string, number>();
@@ -359,10 +363,265 @@ describe("thread search data", () => {
         expect(threadIndex).toBeDefined();
         expect(result.matches.map((match) => match.text)).toEqual([
           `broadmatchneedle thread ${threadIndex} segment 0`,
-          `broadmatchneedle thread ${threadIndex} segment 1`,
-          `broadmatchneedle thread ${threadIndex} segment 2`,
         ]);
       }
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("returns title matches alongside the single best message match", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "pairedneedle title",
+        titleFallback: "pairedneedle fallback",
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: thread.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "first pairedneedle message",
+          },
+          {
+            threadId: thread.id,
+            sourceKind: "assistant_message",
+            sourceKey: "event:2",
+            sourceSeq: 2,
+            text: "second pairedneedle reply",
+          },
+        ],
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "pairedneedle",
+        limitPerGroup: 20,
+      });
+
+      expect(results.active.total).toBe(1);
+      const matches = results.active.results[0]?.matches ?? [];
+      // Both title kinds survive so the sidebar can pair the display title with
+      // its highlight; message kinds collapse to the single best-ranked one.
+      expect(
+        matches
+          .filter((match) => match.sourceSeq === null)
+          .map((match) => match.sourceKind)
+          .sort(),
+      ).toEqual(["title", "title_fallback"]);
+      expect(matches.filter((match) => match.sourceSeq !== null)).toHaveLength(1);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("limits and counts each group from one partitioned scan", () => {
+    const { db, project } = setup();
+    try {
+      const activeIds: string[] = [];
+      const archivedIds: string[] = [];
+      for (let index = 0; index < 4; index += 1) {
+        const activeThread = createThread(db, noopNotifier, {
+          projectId: project.id,
+          providerId: "codex",
+          title: `partitionneedle active ${index}`,
+        });
+        activeIds.push(activeThread.id);
+        const archivedThread = createThread(db, noopNotifier, {
+          projectId: project.id,
+          providerId: "codex",
+          title: `partitionneedle archived ${index}`,
+        });
+        archiveThread(db, noopNotifier, archivedThread.id);
+        archivedIds.push(archivedThread.id);
+      }
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "partitionneedle",
+        limitPerGroup: 2,
+      });
+
+      expect(results.active.total).toBe(4);
+      expect(results.archived.total).toBe(4);
+      expect(results.active.results).toHaveLength(2);
+      expect(results.archived.results).toHaveLength(2);
+      for (const result of results.active.results) {
+        expect(activeIds).toContain(result.thread.id);
+        expect(result.thread.archivedAt).toBeNull();
+      }
+      for (const result of results.archived.results) {
+        expect(archivedIds).toContain(result.thread.id);
+        expect(result.thread.archivedAt).not.toBeNull();
+      }
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("bounds message snippets around the first highlight with rebased ranges", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Long message thread",
+      });
+      const filler = Array.from(
+        { length: 80 },
+        (_, index) => `word${index}`,
+      ).join(" ");
+      const text = `${filler} snippetneedle here ${filler} snippetneedle again ${filler}`;
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: thread.id,
+            sourceKind: "assistant_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text,
+          },
+        ],
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "SnippetNeedle",
+        limitPerGroup: 20,
+      });
+
+      const match = results.active.results[0]?.matches.find(
+        (candidate) => candidate.sourceKind === "assistant_message",
+      );
+      expect(match).toBeDefined();
+      if (match === undefined) {
+        return;
+      }
+      expect(match.text.length).toBeLessThanOrEqual(162);
+      expect(match.text.startsWith("…")).toBe(true);
+      expect(match.text.endsWith("…")).toBe(true);
+      expect(match.text).toContain("snippetneedle here");
+      expect(match.highlightRanges.length).toBeGreaterThan(0);
+      for (const range of match.highlightRanges) {
+        expect(match.text.slice(range.start, range.end)).toBe("snippetneedle");
+      }
+      // The lead context is trimmed to a word boundary, not cut mid-word.
+      expect(match.text.slice(1)).toMatch(/^word\d+ /u);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("returns short messages whole and cuts unmatched long text from the start", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Snippet edge thread",
+      });
+      const longTail = "x".repeat(400);
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: thread.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "wholeneedle stays intact",
+          },
+          {
+            threadId: thread.id,
+            sourceKind: "user_message",
+            sourceKey: "event:2",
+            sourceSeq: 2,
+            text: `leadneedle then ${longTail}`,
+          },
+        ],
+      });
+
+      const wholeResults = searchThreadsWithPendingInteractionState(db, {
+        query: "wholeneedle",
+        limitPerGroup: 20,
+      });
+      expect(wholeResults.active.results[0]?.matches[0]).toMatchObject({
+        text: "wholeneedle stays intact",
+        highlightRanges: [{ start: 0, end: 11 }],
+      });
+
+      const leadResults = searchThreadsWithPendingInteractionState(db, {
+        query: "leadneedle",
+        limitPerGroup: 20,
+      });
+      const leadMatch = leadResults.active.results[0]?.matches[0];
+      expect(leadMatch?.text.startsWith("leadneedle then ")).toBe(true);
+      expect(leadMatch?.text.endsWith("…")).toBe(true);
+      expect(leadMatch?.text.length).toBeLessThanOrEqual(161);
+      expect(leadMatch?.highlightRanges).toEqual([{ start: 0, end: 10 }]);
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("never splits a surrogate pair when cutting a snippet", () => {
+    const { db, project } = setup();
+    try {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        title: "Emoji thread",
+      });
+      // No whitespace anywhere, so both cuts land on hard character offsets
+      // that fall inside astral code points unless the snippet snaps them.
+      const emoji = "\u{1F600}".repeat(100);
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: thread.id,
+            sourceKind: "assistant_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: `${emoji}surrogateneedle${emoji}`,
+          },
+        ],
+      });
+
+      const results = searchThreadsWithPendingInteractionState(db, {
+        query: "surrogateneedle",
+        limitPerGroup: 20,
+      });
+
+      const match = results.active.results[0]?.matches[0];
+      expect(match).toBeDefined();
+      if (match === undefined) {
+        return;
+      }
+      // With the `u` flag a surrogate range only matches lone surrogates, so
+      // this fails if a cut landed inside an emoji.
+      expect(match.text).not.toMatch(/[\uD800-\uDFFF]/u);
+      expect(match.text.startsWith("…")).toBe(true);
+      expect(match.text.endsWith("…")).toBe(true);
+      expect(match.highlightRanges).toHaveLength(1);
+      const range = match.highlightRanges[0];
+      expect(
+        range === undefined ? null : match.text.slice(range.start, range.end),
+      ).toBe("surrogateneedle");
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("creates the FTS index with a prefix index for typeahead queries", () => {
+    const { db } = setup();
+    try {
+      const row = db.$client
+        .prepare<[], { sql: string }>(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'thread_search_segments_fts'",
+        )
+        .get();
+      expect(row?.sql).toContain("prefix = '2 3'");
     } finally {
       closeConnection(db);
     }

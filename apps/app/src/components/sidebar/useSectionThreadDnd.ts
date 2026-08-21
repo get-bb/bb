@@ -20,19 +20,17 @@ import {
   useUnpinThread,
   useUpdateThread,
 } from "@/hooks/mutations/thread-state-mutations";
-import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
+import type { NeighborReorderRequest } from "@bb/client-core";
 import {
+  buildSidebarEntitySectionId,
   getSidebarDndItemId,
+  reorderSidebarSectionOrder,
   type ProjectThreadItem,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import {
   sidebarCollapsedThreadSectionsAtom,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import {
-  buildSidebarEntitySectionId,
-  reorderSidebarSectionOrder,
-} from "./sidebarSectionOrder";
 import {
   sidebarReorderCollisionDetection,
   useSidebarReorderDnd,
@@ -70,7 +68,7 @@ interface UseSectionThreadDndArgs {
   ) => void;
 }
 
-export interface SectionThreadDndLookup {
+interface SectionThreadDndLookup {
   sectionParentKeyBySectionId: Map<string, string>;
   sectionSectionIdByParentKey: Map<string, SidebarSectionId>;
   sectionIdByParentKey: Map<string, string | null>;
@@ -80,13 +78,13 @@ export interface SectionThreadDndLookup {
   threadByItemId: Map<string, ThreadListEntry>;
 }
 
-export interface SectionThreadDropTarget {
+interface SectionThreadDropTarget {
   activeId: string;
   fromParentKey: string;
   toParentKey: string;
 }
 
-export type SectionThreadDropDecision =
+type SectionThreadDropDecision =
   | { kind: "move"; activeId: string; sectionId: string | null }
   | { kind: "pin"; activeId: string }
   | {
@@ -266,6 +264,61 @@ export function resolveProjectedSectionThreadDropTarget(
   return { activeId, fromParentKey, toParentKey: projectedParentKey };
 }
 
+/**
+ * Decides whether a projection change may apply (#1830).
+ *
+ * dnd-kit recomputes `over` synchronously whenever a projection re-renders the
+ * dragged row into another list: the row's droppable re-registers, every
+ * container is re-measured, and the sidebar's scroll geometry can shift under
+ * a pointer that never moved. That recomputation can resolve to the target we
+ * just left, which un-projects the row, which flips `over` again, until React
+ * aborts the nested update loop with error #185 and the route falls into its
+ * error boundary.
+ *
+ * The gate therefore lets each target apply at most once per user input
+ * (pointer move, touch move, wheel, key press). A revert that arrives without
+ * new input is our own render feeding back, not the user, and is dropped.
+ */
+export class SectionThreadProjectionGate {
+  private inputGeneration = 0;
+  private appliedInputGeneration = -1;
+  private readonly visitedTargets = new Set<string | null>();
+
+  /** Records user input; the next projection change starts a fresh cycle. */
+  noteInput(): void {
+    this.inputGeneration += 1;
+  }
+
+  reset(): void {
+    this.inputGeneration = 0;
+    this.appliedInputGeneration = -1;
+    this.visitedTargets.clear();
+  }
+
+  /**
+   * Returns true when `target` may replace `current`. Call only when they
+   * differ; a successful call marks `target` as visited for the current input.
+   */
+  allow(current: string | null, target: string | null): boolean {
+    if (this.appliedInputGeneration !== this.inputGeneration) {
+      this.appliedInputGeneration = this.inputGeneration;
+      this.visitedTargets.clear();
+      this.visitedTargets.add(current);
+    } else if (this.visitedTargets.has(target)) {
+      return false;
+    }
+    this.visitedTargets.add(target);
+    return true;
+  }
+}
+
+const PROJECTION_INPUT_EVENTS = [
+  "pointermove",
+  "touchmove",
+  "wheel",
+  "keydown",
+] as const;
+
 function getEventIds(event: DragOverEvent | DragEndEvent) {
   return {
     activeId: typeof event.active.id === "string" ? event.active.id : null,
@@ -337,6 +390,30 @@ export function useSectionThreadDnd({
   const dwellTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dwellParentKeyRef = useRef<string | null>(null);
+  const projectionGateRef = useRef(new SectionThreadProjectionGate());
+  const stopProjectionInputTrackingRef = useRef<(() => void) | null>(null);
+
+  const stopProjectionInputTracking = useCallback(() => {
+    stopProjectionInputTrackingRef.current?.();
+    stopProjectionInputTrackingRef.current = null;
+  }, []);
+  const startProjectionInputTracking = useCallback(() => {
+    stopProjectionInputTracking();
+    const gate = projectionGateRef.current;
+    gate.reset();
+    const noteInput = () => gate.noteInput();
+    for (const type of PROJECTION_INPUT_EVENTS) {
+      document.addEventListener(type, noteInput, {
+        capture: true,
+        passive: true,
+      });
+    }
+    stopProjectionInputTrackingRef.current = () => {
+      for (const type of PROJECTION_INPUT_EVENTS) {
+        document.removeEventListener(type, noteInput, { capture: true });
+      }
+    };
+  }, [stopProjectionInputTracking]);
 
   const clearDropDwell = useCallback(() => {
     if (dwellTimerRef.current !== null) clearTimeout(dwellTimerRef.current);
@@ -359,8 +436,9 @@ export function useSectionThreadDnd({
     () => () => {
       clearDropDwell();
       clearDropSettle();
+      stopProjectionInputTracking();
     },
-    [clearDropDwell, clearDropSettle],
+    [clearDropDwell, clearDropSettle, stopProjectionInputTracking],
   );
 
   const handleDragStart = useCallback(
@@ -373,10 +451,11 @@ export function useSectionThreadDnd({
       draggingThreadRef.current = thread !== null;
       clearDropSettle();
       clearDropDwell();
+      startProjectionInputTracking();
       setActiveThread(thread);
       setDragOverParentKey(null);
     },
-    [clearDropDwell, clearDropSettle, lookup],
+    [clearDropDwell, clearDropSettle, lookup, startProjectionInputTracking],
   );
 
   const handleDragOver = useCallback(
@@ -410,6 +489,14 @@ export function useSectionThreadDnd({
           : (drop?.toParentKey ??
             (decision?.kind === "pin" ? PINNED_THREAD_PARENT_KEY : null));
       if (targetParentKey === dwellParentKeyRef.current) return;
+      if (
+        !projectionGateRef.current.allow(
+          dwellParentKeyRef.current,
+          targetParentKey,
+        )
+      ) {
+        return;
+      }
 
       clearDropDwell();
       dwellParentKeyRef.current = targetParentKey;
@@ -451,6 +538,7 @@ export function useSectionThreadDnd({
     (event: DragEndEvent) => {
       draggingThreadRef.current = false;
       clearDropDwell();
+      stopProjectionInputTracking();
       if (!enabled) {
         clearProjectedDrag();
         return;
@@ -525,6 +613,7 @@ export function useSectionThreadDnd({
       lookup,
       onTopLevelSectionOrderChange,
       pinThread,
+      stopProjectionInputTracking,
       topLevelSectionIds,
       topLevelSectionOrder,
       updateThread,
@@ -536,8 +625,9 @@ export function useSectionThreadDnd({
   const handleDragCancel = useCallback(() => {
     draggingThreadRef.current = false;
     clearDropDwell();
+    stopProjectionInputTracking();
     clearProjectedDrag();
-  }, [clearDropDwell, clearProjectedDrag]);
+  }, [clearDropDwell, clearProjectedDrag, stopProjectionInputTracking]);
 
   const { consumeClickSuppression, dndContextProps, onClickCapture } =
     useSidebarReorderDnd({

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPluginApp, renderSlot } from "@bb/plugin-sdk/testing/app";
+import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type { Task } from "../../shared/contract.js";
 import { LIST_PREFERENCE_STORAGE_KEY } from "./list-preference.js";
@@ -91,10 +91,7 @@ const tasksA = [
   task(PROJECT_A, 3, "done", "low"),
 ];
 
-const tasksB = [
-  task(PROJECT_B, 1, "todo"),
-  task(PROJECT_B, 2, "in_progress"),
-];
+const tasksB = [task(PROJECT_B, 1, "todo"), task(PROJECT_B, 2, "in_progress")];
 
 function applyListFilters(
   tasks: Task[],
@@ -204,7 +201,9 @@ async function selectSort(
 ) {
   fireEvent.click(slot.getByRole("button", { name: /Sort/ }));
   const drawer = await slot.findByRole("dialog", { name: "Sort tasks" });
-  fireEvent.click(within(drawer).getByRole("menuitemcheckbox", { name: label }));
+  fireEvent.click(
+    await within(drawer).findByRole("menuitemcheckbox", { name: label }),
+  );
 }
 
 describe("list filter/sort preference persistence", () => {
@@ -232,7 +231,9 @@ describe("list filter/sort preference persistence", () => {
     fireEvent.click(doneOption);
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(LIST_PREFERENCE_STORAGE_KEY)).not.toBeNull();
+      expect(
+        window.localStorage.getItem(LIST_PREFERENCE_STORAGE_KEY),
+      ).not.toBeNull();
     });
 
     slot.lifecycle.unmount();
@@ -266,9 +267,9 @@ describe("list filter/sort preference persistence", () => {
     await slotA.findByText("ALP-1");
     await selectSort(slotA, "Priority");
     await waitFor(() =>
-      expect(
-        slotA.getByRole("button", { name: /Sort/ }).textContent,
-      ).toContain("Priority"),
+      expect(slotA.getByRole("button", { name: /Sort/ }).textContent).toContain(
+        "Priority",
+      ),
     );
     slotA.lifecycle.unmount();
 
@@ -279,14 +280,14 @@ describe("list filter/sort preference persistence", () => {
     );
     await slotB.findByText("BET-1");
     // Project B still defaults to manual.
-    expect(slotB.getByRole("button", { name: /Sort/ }).textContent).not.toContain(
-      "Priority",
-    );
+    expect(
+      slotB.getByRole("button", { name: /Sort/ }).textContent,
+    ).not.toContain("Priority");
     await selectSort(slotB, "Due date");
     await waitFor(() =>
-      expect(
-        slotB.getByRole("button", { name: /Sort/ }).textContent,
-      ).toContain("Due date"),
+      expect(slotB.getByRole("button", { name: /Sort/ }).textContent).toContain(
+        "Due date",
+      ),
     );
     slotB.lifecycle.unmount();
 
@@ -296,9 +297,9 @@ describe("list filter/sort preference persistence", () => {
       { rpc: baseRpc() },
     );
     await backToA.findByText("ALP-1");
-    expect(
-      backToA.getByRole("button", { name: /Sort/ }).textContent,
-    ).toContain("Priority");
+    expect(backToA.getByRole("button", { name: /Sort/ }).textContent).toContain(
+      "Priority",
+    );
     expect(
       backToA.getByRole("button", { name: /Sort/ }).textContent,
     ).not.toContain("Due date");
@@ -398,11 +399,7 @@ describe("list filter/sort preference persistence", () => {
   it("persists priority and label filters and sends resolved label ids", async () => {
     const registration = app.navPanels[0]!;
     const rpc = baseRpc();
-    const slot = renderSlot(
-      registration,
-      { subPath: PROJECT_A },
-      { rpc },
-    );
+    const slot = renderSlot(registration, { subPath: PROJECT_A }, { rpc });
     await slot.findByText("ALP-1");
 
     fireEvent.click(slot.getByRole("button", { name: /^Priority/ }));
@@ -419,12 +416,12 @@ describe("list filter/sort preference persistence", () => {
       const stored = JSON.parse(
         window.localStorage.getItem(LIST_PREFERENCE_STORAGE_KEY)!,
       );
-      expect(
-        stored.scopes[`project:${PROJECT_A}`].filters.priorities,
-      ).toEqual(["urgent"]);
-      expect(
-        stored.scopes[`project:${PROJECT_A}`].filters.labelNames,
-      ).toEqual(["Bug"]);
+      expect(stored.scopes[`project:${PROJECT_A}`].filters.priorities).toEqual([
+        "urgent",
+      ]);
+      expect(stored.scopes[`project:${PROJECT_A}`].filters.labelNames).toEqual([
+        "Bug",
+      ]);
     });
 
     await waitFor(() => {
@@ -476,11 +473,7 @@ describe("list filter/sort preference persistence", () => {
       }),
     );
     const rpc = baseRpc();
-    const slot = renderSlot(
-      app.navPanels[0]!,
-      { subPath: PROJECT_A },
-      { rpc },
-    );
+    const slot = renderSlot(app.navPanels[0]!, { subPath: PROJECT_A }, { rpc });
     await slot.findByRole("button", { name: /^Label/ });
     expect(slot.getByRole("button", { name: /^Label/ }).textContent).toContain(
       "DeletedLabel",
@@ -497,8 +490,10 @@ describe("list filter/sort preference persistence", () => {
       ).toBe(true);
     });
     // Empty labelIds filter yields no rows (not the full unfiltered list).
-    expect(slot.queryByText("ALP-1")).toBeNull();
-    expect(slot.queryByText("ALP-2")).toBeNull();
+    await waitFor(() => {
+      expect(slot.queryByText("ALP-1")).toBeNull();
+      expect(slot.queryByText("ALP-2")).toBeNull();
+    });
   });
 });
 

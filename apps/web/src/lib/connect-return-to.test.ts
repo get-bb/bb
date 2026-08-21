@@ -21,6 +21,15 @@ describe("connect return-to URLs", () => {
     ).toBe("https://sawyer.vibecodethis.site/");
   });
 
+  it("accepts local Cloud handles under the shared cookie domain", () => {
+    expect(
+      connectReturnTo(
+        "http://sawyer.bb.localhost:42745/threads/thr_1",
+        "http://bb.localhost:42745",
+      ),
+    ).toBe("http://sawyer.bb.localhost:42745/threads/thr_1");
+  });
+
   it("rejects nested subdomains and off-domain return targets", () => {
     expect(
       connectReturnTo("https://a.b.getbb.app/", "https://getbb.app"),

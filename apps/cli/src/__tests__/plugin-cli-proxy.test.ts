@@ -1,5 +1,9 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
+import { Agent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
+import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 
 import { registerEnvironmentCommands } from "../commands/environment.js";
 import { registerGuideCommand } from "../commands/guide.js";
@@ -12,30 +16,15 @@ import { registerStatusCommand } from "../commands/status.js";
 import { registerThemeCommands } from "../commands/theme.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
 import {
+  describeUnreachableServer,
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
   findPluginCliCommand,
   pluginProxyCandidate,
+  PLUGIN_CLI_HEADERS_TIMEOUT_MS,
   runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
-
-// Mirror of RESERVED_BB_CLI_COMMANDS in
-// apps/server/src/services/plugins/plugin-api.ts — the server rejects plugin
-// CLI commands shadowing core bb commands. Update both together.
-const RESERVED_BB_CLI_COMMANDS = [
-  "environment",
-  "guide",
-  "help",
-  "manager",
-  "plugin",
-  "project",
-  "provider",
-  "skill",
-  "status",
-  "theme",
-  "thread",
-];
 
 function buildProgram(): Command {
   const program = new Command();
@@ -43,7 +32,7 @@ function buildProgram(): Command {
   registerStatusCommand(program, getUrl);
   registerProjectCommands(program, getUrl);
   registerProviderCommands(program, getUrl);
-  registerManagerCommands(program, getUrl);
+  registerManagerCommands(program);
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
@@ -119,17 +108,22 @@ describe("fetchPluginCliContributions", () => {
   });
 
   it("distinguishes an unreachable server from an old/invalid one", async () => {
-    // Unreachable (server down): fetch rejects → tell the user to start bb.
+    // Unreachable (server down): fetch rejects → keep the thrown error so
+    // the caller can diagnose refused vs blocked vs timed out.
+    const thrown = new Error("ECONNREFUSED");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
-        throw new Error("ECONNREFUSED");
+        throw thrown;
       }),
     );
     await expect(
       fetchPluginCliContributions("http://localhost"),
     ).resolves.toEqual({
       outcome: "unreachable",
+      cause: thrown,
+      attempts: 1,
+      lastTimeoutMs: 2000,
     });
 
     // Old server without the route: silent fallback to commander's error.
@@ -172,6 +166,252 @@ describe("fetchPluginCliContributions", () => {
         { pluginId: "connect", name: "connect", summary: "s", commands: [] },
       ],
     });
+  });
+});
+
+describe("fetchPluginCliContributions retries", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const okResponse = () =>
+    new Response(JSON.stringify({ cliCommands: [] }), { status: 200 });
+
+  function timeoutError(): Error {
+    return Object.assign(
+      new Error("The operation was aborted due to timeout"),
+      {
+        name: "TimeoutError",
+      },
+    );
+  }
+
+  function connectError(code: string): Error {
+    return new TypeError("fetch failed", {
+      cause: Object.assign(new Error(`connect ${code} 127.0.0.1:38886`), {
+        code,
+      }),
+    });
+  }
+
+  /** Record the sleeps instead of taking them, so the test stays instant. */
+  function recordingSleep() {
+    const slept: number[] = [];
+    return {
+      slept,
+      sleep: async (ms: number) => {
+        slept.push(ms);
+      },
+    };
+  }
+
+  it("recovers when a busy server answers on a later attempt", async () => {
+    // The regression: a single stalled probe used to fail the whole command,
+    // so `bb memory add` reported bb down and the write was simply lost.
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(timeoutError())
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(slept).toEqual([150]);
+  });
+
+  it("retries when the response body transport fails", async () => {
+    const bodyFailedResponse = new Response("{}");
+    vi.spyOn(bodyFailedResponse, "json").mockRejectedValue(
+      connectError("UND_ERR_SOCKET"),
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(bodyFailedResponse)
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(slept).toEqual([150]);
+  });
+
+  it("does not retry malformed response JSON", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("not json", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "invalid" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(slept).toEqual([]);
+  });
+
+  it("widens the probe window on each retry before giving up", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(timeoutError());
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    const result = await fetchPluginCliContributions("http://localhost", 2000, {
+      sleep,
+    });
+    expect(result).toMatchObject({
+      outcome: "unreachable",
+      attempts: 3,
+      lastTimeoutMs: 4000,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(slept).toEqual([150, 500]);
+  });
+
+  it("fails fast when nothing is listening", async () => {
+    // ECONNREFUSED is the one cause that really does mean bb is down;
+    // retrying it would only delay a correct, actionable answer.
+    const fetchMock = vi.fn().mockRejectedValue(connectError("ECONNREFUSED"));
+    vi.stubGlobal("fetch", fetchMock);
+    const { slept, sleep } = recordingSleep();
+
+    const result = await fetchPluginCliContributions("http://localhost", 2000, {
+      sleep,
+    });
+    expect(result).toMatchObject({ outcome: "unreachable", attempts: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(slept).toEqual([]);
+  });
+
+  it("fails fast when the shell is sandboxed", async () => {
+    for (const code of ["EPERM", "EACCES"]) {
+      const fetchMock = vi.fn().mockRejectedValue(connectError(code));
+      vi.stubGlobal("fetch", fetchMock);
+      const { slept, sleep } = recordingSleep();
+
+      const result = await fetchPluginCliContributions(
+        "http://localhost",
+        2000,
+        { sleep },
+      );
+      expect(result).toMatchObject({ outcome: "unreachable", attempts: 1 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(slept).toEqual([]);
+    }
+  });
+
+  it("retries a dropped socket", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(connectError("ECONNRESET"))
+      .mockResolvedValueOnce(okResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const { sleep } = recordingSleep();
+
+    await expect(
+      fetchPluginCliContributions("http://localhost", 2000, { sleep }),
+    ).resolves.toEqual({ outcome: "ok", contributions: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("describeUnreachableServer", () => {
+  const url = "http://127.0.0.1:38886";
+
+  function fetchFailed(code: string): Error {
+    return new TypeError("fetch failed", {
+      cause: Object.assign(new Error(`connect ${code} 127.0.0.1:38886`), {
+        code,
+      }),
+    });
+  }
+
+  function aggregateFetchFailed(codes: string[]): Error {
+    const errors = codes.map((code, index) =>
+      Object.assign(new Error(`connect ${code} address-${index + 1}:38886`), {
+        code,
+      }),
+    );
+    return new TypeError("fetch failed", {
+      // NodeAggregateError exposes the first attempt's code on the aggregate,
+      // even when later attempts failed for a different reason.
+      cause: Object.assign(new AggregateError(errors), {
+        code: errors[0]?.code,
+      }),
+    });
+  }
+
+  it("says bb is not running only on ECONNREFUSED", () => {
+    expect(describeUnreachableServer(url, fetchFailed("ECONNREFUSED"))).toBe(
+      `bb is not running at ${url} — open the bb app, then re-run this command.`,
+    );
+  });
+
+  it("requires every aggregate connection attempt to be refused", () => {
+    expect(
+      describeUnreachableServer(
+        url,
+        aggregateFetchFailed(["ECONNREFUSED", "ECONNREFUSED"]),
+      ),
+    ).toBe(
+      `bb is not running at ${url} — open the bb app, then re-run this command.`,
+    );
+
+    const mixedMessage = describeUnreachableServer(
+      url,
+      aggregateFetchFailed(["ECONNREFUSED", "EPERM"]),
+    );
+    expect(mixedMessage).toContain(`Cannot reach bb at ${url}: EPERM`);
+    expect(mixedMessage).toContain("bb may still be running");
+    expect(mixedMessage).not.toContain("not running at");
+  });
+
+  it("reports a blocked connection without declaring bb down", () => {
+    for (const code of ["EPERM", "EACCES"]) {
+      const message = describeUnreachableServer(url, fetchFailed(code));
+      expect(message).toContain(`Cannot reach bb at ${url}: ${code}`);
+      expect(message).toContain("bb may still be running");
+      expect(message).not.toContain("not running at");
+    }
+  });
+
+  it("reports a timeout with the probe window", () => {
+    const timeout = Object.assign(new Error("The operation timed out"), {
+      name: "TimeoutError",
+    });
+    const message = describeUnreachableServer(url, timeout, 2000);
+    expect(message).toContain(`bb did not respond at ${url} within 2000ms`);
+    expect(message).toContain("it may be busy or temporarily unreachable");
+    // The reader is usually an agent: a timeout must never read as "bb is
+    // down", and must say the work is still pending so it is not dropped.
+    expect(message).not.toContain("not running at");
+    expect(message).not.toContain("bb is running");
+    expect(message).toContain("re-run it");
+  });
+
+  it("names the attempt count once the probe was retried", () => {
+    const timeout = Object.assign(new Error("The operation timed out"), {
+      name: "TimeoutError",
+    });
+    const message = describeUnreachableServer(url, timeout, 4000, 3);
+    expect(message).toContain("after 3 attempts (last window 4000ms)");
+    expect(message).not.toContain("not running at");
+  });
+
+  it("falls back to the unwrapped cause chain", () => {
+    const err = new TypeError("fetch failed", {
+      cause: new Error("getaddrinfo ENOTFOUND example.invalid"),
+    });
+    expect(describeUnreachableServer(url, err)).toBe(
+      `Cannot reach bb at ${url}: fetch failed: getaddrinfo ENOTFOUND example.invalid`,
+    );
   });
 });
 
@@ -318,4 +558,69 @@ describe("runPluginCliCommand", () => {
       { channel: "stderr", value: "warning\n" },
     ]);
   });
+
+  // Issue #1621: `bb secret request` holds POST /plugins/secrets/cli open
+  // while a human fills the form. Node's default undici headersTimeout
+  // (300 s) rejected that fetch with a bare "fetch failed" and the server
+  // then aborted the interaction. The plugin dispatch must not inherit the
+  // global headers timeout, but it keeps its own finite deadline above the
+  // longest server interaction. The global timeout is scaled down here
+  // (undici timers have ~1 s granularity) so the test finishes in seconds.
+  it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {
+    const RESPONSE_DELAY_MS = 1500;
+    const server: Server = createServer((request, response) => {
+      setTimeout(() => {
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            exitCode: 0,
+            stdout: `${request.method} ${request.url}`,
+          }),
+        );
+      }, RESPONSE_DELAY_MS);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const previousDispatcher = getGlobalDispatcher();
+    setGlobalDispatcher(new Agent({ headersTimeout: 200 }));
+    try {
+      // The bare fetch every other CLI call uses dies on the shortened
+      // headers timeout, which is the failure the reporter saw at 300 s.
+      await expect(
+        fetch(`${baseUrl}/api/v1/plugins/secrets/cli`, { method: "POST" }),
+      ).rejects.toMatchObject({
+        message: "fetch failed",
+        cause: { code: "UND_ERR_HEADERS_TIMEOUT" },
+      });
+
+      const writes: string[] = [];
+      const stream = {
+        write(value: string, callback: (error?: Error | null) => void) {
+          writes.push(value);
+          callback();
+          return true;
+        },
+      };
+      const exitCode = await runPluginCliCommand(
+        baseUrl,
+        "secrets",
+        ["request", "--purpose", "Testing the transport \u2014 an em dash"],
+        { stdout: stream, stderr: stream },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(writes).toEqual(["POST /api/v1/plugins/secrets/cli\n"]);
+      // Finite, and above ui.requestInput's 60-minute maximum so the server's
+      // interaction deadline (which resolves the form cleanly) fires first.
+      expect(PLUGIN_CLI_HEADERS_TIMEOUT_MS).toBeGreaterThan(60 * 60 * 1000);
+      expect(PLUGIN_CLI_HEADERS_TIMEOUT_MS).toBeLessThanOrEqual(
+        2 * 60 * 60 * 1000,
+      );
+    } finally {
+      setGlobalDispatcher(previousDispatcher);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 15_000);
 });

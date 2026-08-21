@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface TimelineStatusIndicatorProps {
+interface TimelineStatusIndicatorProps {
   label: ReactNode;
   className?: string;
 }

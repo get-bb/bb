@@ -11,26 +11,9 @@ import {
 } from "@/lib/provider-icon";
 import { getSettingsRoutePath } from "@/lib/route-paths";
 
-export interface SidebarUpdatesBadgeProps {
+interface SidebarUpdatesBadgeProps {
   onNavigate?: () => void;
 }
-
-/**
- * Provider CLI keys are their own namespace (`claudeCode`), distinct from the
- * agent provider ids the icon registry is keyed by (`claude-code`).
- */
-const PROVIDER_CLI_AGENT_PROVIDER_ID = {
-  codex: "codex",
-  claudeCode: "claude-code",
-  cursor: "acp-cursor",
-} as const satisfies Record<ProviderCliKey, string>;
-
-/** Stable left-to-right order so the marks never reshuffle between polls. */
-const PROVIDER_CLI_DISPLAY_ORDER = [
-  "codex",
-  "claudeCode",
-  "cursor",
-] as const satisfies readonly ProviderCliKey[];
 
 const CHIP_CLASS = cn(
   "flex h-6 shrink-0 items-center gap-1.5 rounded-full border border-sidebar-border px-2",
@@ -57,6 +40,10 @@ interface StaleProvider {
  * protocol) and the agent CLIs, which carry their own brand marks so it is
  * clear which agent is stale without hovering. Both chips open the
  * consolidated Settings → Updates view.
+ *
+ * A CLI that is not installed at all is not an update and gets no chip here:
+ * there is no installed version to stale against, and the Settings → Updates
+ * page already surfaces the install prompt for it.
  */
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
@@ -70,9 +57,14 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
     stuckDaemonCount;
 
   // One mark per provider, even when the same CLI is stale on several machines.
+  // Missing CLIs are install prompts, not updates: skip them so the chip never
+  // claims an update is available for a CLI that isn't installed.
   const staleProvidersByKey = new Map<ProviderCliKey, StaleProvider>();
   for (const machine of inventory.machines) {
     for (const issue of machine.issues) {
+      if (!issue.status.installed) {
+        continue;
+      }
       if (!staleProvidersByKey.has(issue.provider)) {
         staleProvidersByKey.set(issue.provider, {
           provider: issue.provider,
@@ -81,10 +73,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
       }
     }
   }
-  const staleProviders = PROVIDER_CLI_DISPLAY_ORDER.flatMap((provider) => {
-    const stale = staleProvidersByKey.get(provider);
-    return stale === undefined ? [] : [stale];
-  });
+  const staleProviders = [...staleProvidersByKey.values()];
 
   if (bbUpdateCount === 0 && staleProviders.length === 0) {
     return null;
@@ -132,8 +121,7 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               <Icon name="Download" className="size-3 text-muted-foreground" />
               <span className="flex items-center gap-1">
                 {staleProviders.map((stale) => {
-                  const providerId =
-                    PROVIDER_CLI_AGENT_PROVIDER_ID[stale.provider];
+                  const providerId = stale.provider;
                   const iconInfo = getProviderIconInfo(providerId);
                   if (iconInfo === undefined) {
                     return null;

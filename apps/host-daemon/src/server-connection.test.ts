@@ -51,6 +51,7 @@ function createSession(args: CreateSessionArgs): HostDaemonSessionOpenResponse {
     leaseTimeoutMs: args.leaseTimeoutMs,
     retiredEnvironmentIds: [],
     connectShares: { generation: 0, ports: [] },
+    pluginHostGenerations: [],
     sessionId: args.sessionId,
     watchSet: {
       generation: 0,
@@ -83,8 +84,10 @@ function createServerClientFixture(args: CreateServerClientFixtureArgs = {}) {
   };
   const serverClient = {
     openSession,
+    getRuntimePolicy: unused,
     fetchProjectAttachment: unused,
     fetchSkillTree: unused,
+    fetchPluginHostArtifact: unused,
     postEvents: unused,
     callTool: unused,
     registerInteractiveRequest: unused,
@@ -170,6 +173,7 @@ function createConnectionFixture(args: ConnectionFixtureArgs = {}) {
     hostName: "Server Connection Test Host",
     hostType: "persistent",
     instanceId: "instance-server-connection-test",
+    localApiPort: 38_887,
     logger,
     ...(args.machineCredential !== undefined
       ? { machineCredential: args.machineCredential }
@@ -303,7 +307,10 @@ describe("ServerConnection", () => {
     try {
       await fixture.connection.start();
       expect(fixture.openSession).toHaveBeenCalledWith(
-        expect.objectContaining({ connectMachineId: "machine-cloud-1" }),
+        expect.objectContaining({
+          connectMachineId: "machine-cloud-1",
+          localApiPort: 38_887,
+        }),
       );
     } finally {
       await fixture.connection.shutdown();
@@ -341,6 +348,33 @@ describe("ServerConnection", () => {
           websocketReadyState: 1,
         }),
         "Host daemon heartbeat timer delayed",
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("reports a system-suspension gap without calling it a heartbeat stall", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { connection, logger } = createConnectionFixture({
+      heartbeatIntervalMs: 5_000,
+      leaseTimeoutMs: 30_000,
+    });
+    try {
+      await connection.start();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      vi.setSystemTime(300_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "Host daemon heartbeat timer delayed",
+      );
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ gapMs: 300_000 }),
+        "Host daemon resumed after likely system suspension",
       );
     } finally {
       await connection.shutdown();

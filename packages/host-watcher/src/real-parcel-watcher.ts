@@ -1,7 +1,10 @@
 import parcelWatcher from "@parcel/watcher";
 import type { ParcelWatcherBackend } from "./parcel-watcher-backend.js";
 
-// The only module that loads the native @parcel/watcher addon in the parent
-// process. Kept in its own file so it can be dynamically imported on demand,
-// leaving the parent parcel-free under BB_WATCHER_SUBPROCESS=1.
+// Static handle on the native @parcel/watcher addon for the forked watcher
+// child (parcel-child-entry.ts). Do NOT dynamically import this module from
+// code that ends up in the daemon bundle: esbuild inlines internal dynamic
+// imports and hoists this static import to the bundle's top level, which loads
+// watcher.node in the parent at startup (get-bb/bb#1873). The in-process
+// fallback in parcel-watcher-backend.ts imports "@parcel/watcher" directly.
 export const realParcelWatcher: ParcelWatcherBackend = parcelWatcher;

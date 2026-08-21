@@ -1,0 +1,63 @@
+# Phase 4a: the native diff renderer and ANSI terminal output render on
+# device. Opens the dev showcase (/dev/diff, Settings → Developer) and checks
+# a parsed multi-file patch (paths, +/- tally, rename, binary), the large-hunk
+# "Show N more lines" cap, the timeline file-change fallbacks, and a terminal
+# block that collapses to its tail.
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+---
+- runFlow: ../subflows/launch-app.yaml
+- openLink: "bb://dev/diff"
+- extendedWaitUntil:
+    visible:
+      id: "dev-diff-screen"
+    timeout: 30000
+# Multi-file patch: modified file with stats, pure rename, binary add, delete.
+- assertVisible:
+    text: ".*src/diff/parse\\.ts, \\+10, -3.*"
+- assertVisible:
+    text: "@@ -1,9 \\+1,11 @@ import type.*"
+- assertVisible:
+    text: ".*old/name\\.ts, new/name\\.ts, renamed.*"
+- assertVisible:
+    text: ".*assets/logo\\.png, binary.*"
+# Collapse the first card and expand it again.
+- tapOn:
+    id: "dev-diff-card-apps-mobile-src-diff-parse.ts-header"
+- assertNotVisible:
+    text: "@@ -1,9 \\+1,11 @@ import type.*"
+- tapOn:
+    id: "dev-diff-card-apps-mobile-src-diff-parse.ts-header"
+- assertVisible:
+    text: "@@ -1,9 \\+1,11 @@ import type.*"
+# Timeline file-change fallbacks.
+- scrollUntilVisible:
+    element:
+      text: "No diff available."
+    direction: DOWN
+    timeout: 60000
+- assertVisible:
+    text: "Applied edit to src/index.ts.*"
+# Terminal output: collapsed tail with an earlier-lines toggle.
+- scrollUntilVisible:
+    element:
+      text: ".*36 earlier lines"
+    direction: DOWN
+    timeout: 60000
+- assertNotVisible:
+    text: ".*line 1 of a fairly long command output.*"
+- tapOn: ".*36 earlier lines"
+- assertVisible:
+    text: ".*line 1 of a fairly long command output.*"
+# Large hunk collapses behind "Show N more lines" (400 lines, cap 40).
+- scrollUntilVisible:
+    element:
+      text: "Show 360 more lines"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "Show 360 more lines"
+- assertNotVisible:
+    text: "Show 360 more lines"

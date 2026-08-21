@@ -5,7 +5,7 @@ import { PluginContext } from "@/components/plugin/plugin-context";
  * Shared DOM attributes for portaled UI content. Overlay content (dialog,
  * select, popover, …) portals into document.body — outside every
  * `[data-bb-plugin-root]` mount — so a plugin's compiled stylesheet
- * (`@scope ([data-bb-plugin="<id>"], …)`, see PluginSlotMount) would not
+ * (prefixed with `:where([data-bb-plugin="<id>"], …)`, see PluginSlotMount) would not
  * style it.
  * Spreading these props on the portaled element re-attaches the plugin scope
  * inside a plugin slot. Every portal also carries a stable overlay marker so

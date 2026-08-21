@@ -1,0 +1,125 @@
+# Phase 6 terminal: add the harness server → open a thread → workspace panel →
+# Terminal tab → Start terminal → the session attaches in the panel (xterm in
+# a WebView, the attach socket owned by React Native) → open it full screen →
+# type a command on the keyboard → its output shows up (read back through the
+# dev-only text mirror under the terminal, `terminal-text-mirror`: a WebView's
+# text is invisible to the accessibility tree) → the accessory bar's sticky
+# Ctrl + c interrupts and ArrowUp recalls the last command → the "…" menu
+# renames the session.
+#
+# Setup: any thread of the backend works; pass its title.
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+#      maestro test -e THREAD_TITLE="Idle thread" e2e/flows/phase6-terminal.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "Idle thread"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- extendedWaitUntil:
+    visible: "${THREAD_TITLE}"
+    timeout: 30000
+- tapOn: "${THREAD_TITLE}"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-screen"
+    timeout: 30000
+# Workspace panel → Terminal.
+- tapOn:
+    id: "thread-panel-button"
+- extendedWaitUntil:
+    visible:
+      id: "panel-tab-terminal"
+    timeout: 20000
+- tapOn:
+    id: "panel-tab-terminal"
+- extendedWaitUntil:
+    visible:
+      id: "terminal-sessions-start"
+    timeout: 20000
+- takeScreenshot: phase6-terminal-launcher
+- tapOn:
+    id: "terminal-sessions-start"
+# The started session becomes a panel tab with its own toolbar.
+- extendedWaitUntil:
+    visible:
+      id: "panel-terminal-tab"
+    timeout: 30000
+- takeScreenshot: phase6-terminal-panel
+# Full screen through the tab's title.
+- tapOn:
+    id: "panel-terminal-title"
+- extendedWaitUntil:
+    visible:
+      id: "terminal-screen"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "terminal-accessory-bar"
+    timeout: 20000
+# The shell prompt reached the page (mirrored under the terminal).
+- extendedWaitUntil:
+    visible:
+      id: "terminal-text-mirror"
+      text: ".*test-project.*"
+    timeout: 30000
+# The full-screen terminal focused itself on open: typing lands in the shell.
+- inputText: "echo bb-4"
+- inputText: "2"
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: "terminal-text-mirror"
+      text: ".*bb-42.*"
+    timeout: 30000
+- takeScreenshot: phase6-terminal-echo
+# Accessory bar: sticky Ctrl then "c" interrupts a running command.
+- inputText: "sleep 45"
+- pressKey: Enter
+- tapOn:
+    id: "terminal-key-ctrl"
+- inputText: "c"
+- extendedWaitUntil:
+    visible:
+      id: "terminal-text-mirror"
+      text: ".*sleep 45.*"
+    timeout: 30000
+# ArrowUp recalls the previous command line, Ctrl+u clears it again.
+- tapOn:
+    id: "terminal-key-ArrowUp"
+- tapOn:
+    id: "terminal-key-ctrl"
+- inputText: "u"
+- takeScreenshot: phase6-terminal-keys
+# Terminal menu: rename the session. (The accessory bar's "…" mirrors the
+# header's, which the dev client's floating gear covers on large simulators.)
+- tapOn:
+    id: "terminal-key-menu"
+- extendedWaitUntil:
+    visible:
+      id: "terminal-action-rename"
+    timeout: 10000
+- assertVisible:
+    id: "terminal-action-restart"
+- assertVisible:
+    id: "terminal-action-new"
+- assertVisible:
+    id: "terminal-action-close"
+- takeScreenshot: phase6-terminal-menu
+- tapOn:
+    id: "terminal-action-rename"
+- extendedWaitUntil:
+    visible:
+      id: "terminal-rename-input"
+    timeout: 10000
+- tapOn:
+    id: "terminal-rename-input"
+- eraseText: 60
+- inputText: "P6 shell"
+- tapOn:
+    id: "terminal-rename-submit"
+- extendedWaitUntil:
+    visible: "P6 shell"
+    timeout: 15000
+- takeScreenshot: phase6-terminal-renamed

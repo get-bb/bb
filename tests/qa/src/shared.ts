@@ -16,7 +16,6 @@ import {
 } from "@bb/server-contract";
 import {
   hostDaemonEnrollKeyResponseSchema,
-  type HostDaemonEnrollKeyRequest,
   type HostDaemonEnrollKeyResponse,
 } from "@bb/host-daemon-contract";
 import { z } from "zod";
@@ -103,12 +102,10 @@ interface StartQaServerArgs {
   logPath: string;
   port: number;
   publicUrl?: string;
-  reuseExisting?: boolean;
 }
 
 interface StartQaServerResult {
-  process: ChildProcess | null;
-  reusedExisting: boolean;
+  process: ChildProcess;
   serverUrl: string;
 }
 
@@ -150,12 +147,12 @@ interface LoadDotEnvResult {
   path: string | null;
 }
 
-export interface BuildStandaloneRuntimeEnvArgs {
+interface BuildStandaloneRuntimeEnvArgs {
   baseEnv: NodeJS.ProcessEnv;
   overrides: NodeJS.ProcessEnv;
 }
 
-export interface ResolveStandaloneParentPidArgs {
+interface ResolveStandaloneParentPidArgs {
   env: NodeJS.ProcessEnv;
   fallbackPid: number;
 }
@@ -226,7 +223,7 @@ export function shellQuote(value: string): string {
   return `'${String(value).replaceAll("'", `'\\''`)}'`;
 }
 
-export function buildShellExports(env: EnvironmentMap): string {
+function buildShellExports(env: EnvironmentMap): string {
   return Object.entries(env)
     .map(([key, value]) => `export ${key}=${shellQuote(String(value))}`)
     .join("\n");
@@ -359,14 +356,13 @@ export async function createProject(
 
 export async function createHostEnrollKey(
   serverUrl: string,
-  body: HostDaemonEnrollKeyRequest = {},
 ): Promise<HostDaemonEnrollKeyResponse> {
   const response = await fetch(`${serverUrl}/internal/hosts/enroll-key`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({}),
   });
   if (!response.ok) {
     throw new Error(
@@ -374,12 +370,6 @@ export async function createHostEnrollKey(
     );
   }
   return hostDaemonEnrollKeyResponseSchema.parse(await response.json());
-}
-
-export async function createStandaloneHostEnrollKey(
-  serverUrl: string,
-): Promise<HostDaemonEnrollKeyResponse> {
-  return createHostEnrollKey(serverUrl);
 }
 
 export async function killProcess(
@@ -470,11 +460,11 @@ export async function reservePort(): Promise<number> {
   });
 }
 
-export function buildLocalServerUrl(port: number): string {
+function buildLocalServerUrl(port: number): string {
   return `http://127.0.0.1:${port}`;
 }
 
-export async function runGit(cwd: string, args: string[]): Promise<void> {
+async function runGit(cwd: string, args: string[]): Promise<void> {
   await execFile("git", args, { cwd });
 }
 
@@ -498,17 +488,6 @@ export function spawnLoggedProcess(
   }
 }
 
-async function isServerReady(serverUrl: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${serverUrl}/api/v1/system/config`, {
-      signal: AbortSignal.timeout(1_000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
 async function readLogExcerpt(logPath: string): Promise<string | null> {
   try {
     const content = await fs.readFile(logPath, "utf8");
@@ -525,14 +504,6 @@ export async function startQaServer(
   args: StartQaServerArgs,
 ): Promise<StartQaServerResult> {
   const serverUrl = buildLocalServerUrl(args.port);
-
-  if (args.reuseExisting && (await isServerReady(serverUrl))) {
-    return {
-      process: null,
-      reusedExisting: true,
-      serverUrl,
-    };
-  }
 
   const serverEnv: NodeJS.ProcessEnv = {
     ...(args.env ?? process.env),
@@ -569,7 +540,6 @@ export async function startQaServer(
 
   return {
     process: serverProcess,
-    reusedExisting: false,
     serverUrl,
   };
 }
@@ -819,12 +789,20 @@ export async function cleanupStandaloneOrphans(): Promise<CleanupStandaloneResul
 export function buildDaemonRestartCommand(
   args: BuildDaemonRestartCommandArgs,
 ): string {
-  const shutdownCommand = args.daemonPid
-    ? [
-        `(kill ${shellQuote(String(args.daemonPid))} >/dev/null 2>&1 || true)`,
-        `while kill -0 ${shellQuote(String(args.daemonPid))} 2>/dev/null; do sleep 1; done`,
-      ]
-    : [];
+  const fallbackDaemonPid = args.daemonPid
+    ? shellQuote(String(args.daemonPid))
+    : "''";
+  const pidPath = shellQuote(args.pidPath);
+  const resolveCurrentPidCommand = [
+    `daemon_pid=${fallbackDaemonPid}`,
+    `if [ -s ${pidPath} ]; then daemon_pid=$(cat ${pidPath}); fi`,
+    "daemon_pid_valid=1",
+    `case "$daemon_pid" in '' ) ;; *[!0-9]*) echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0 ;; *) if ! [ "$daemon_pid" -gt 0 ]; then echo "Invalid daemon PID: $daemon_pid" >&2; daemon_pid_valid=0; fi ;; esac`,
+  ].join("; ");
+  const shutdownCommand = [
+    `(kill "$daemon_pid" >/dev/null 2>&1 || true)`,
+    `while kill -0 "$daemon_pid" 2>/dev/null; do sleep 1; done`,
+  ].join("; ");
 
   const envFileCommand = args.envFilePath
     ? `[ ! -f ${shellQuote(args.envFilePath)} ] || . ${shellQuote(args.envFilePath)}`
@@ -861,10 +839,15 @@ export function buildDaemonRestartCommand(
   ].join("; ");
   const startAndWaitCommand = `${startCommand}; ${waitForReconnectCommand}`;
 
-  return [...shutdownCommand, startAndWaitCommand].join("; ");
+  return (
+    `${resolveCurrentPidCommand}; ` +
+    `if [ "$daemon_pid_valid" = 1 ]; then ` +
+    `if [ -n "$daemon_pid" ]; then ${shutdownCommand}; fi; ` +
+    `${startAndWaitCommand}; else false; fi`
+  );
 }
 
-export async function waitFor<TResult>(
+async function waitFor<TResult>(
   check: () => Promise<TResult | null | false> | TResult | null | false,
   options: WaitForOptions,
 ): Promise<TResult> {
@@ -905,7 +888,7 @@ export async function waitForConnectedHost(serverUrl: string): Promise<Host> {
   );
 }
 
-export async function waitForServerReady(serverUrl: string): Promise<boolean> {
+async function waitForServerReady(serverUrl: string): Promise<boolean> {
   return waitFor(
     async () => {
       try {

@@ -34,7 +34,7 @@ import {
   DetailRow,
   DetailRowIconLabel,
 } from "@/components/ui/detail-card.js";
-import { CHROME_SECTION_LABEL_CLASS } from "@/components/ui/chromeStyleTokens.js";
+import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import {
   DropdownMenu,
@@ -44,6 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   BranchPicker,
   getMergeBaseBranchCandidateGroups,
@@ -72,6 +73,7 @@ import {
   PullRequestGithubCheckIcon,
   PullRequestStateIcon,
 } from "@/components/pull-request/PullRequestStatusPill";
+import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 
 // ---------------------------------------------------------------------------
@@ -81,14 +83,12 @@ import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 // without bypassing the production rendering path.
 // ---------------------------------------------------------------------------
 
-const GITHUB_FAVICON_URL =
-  "https://github.githubassets.com/favicons/favicon.png";
-const GITHUB_DARK_FAVICON_URL =
-  "https://github.githubassets.com/favicons/favicon-dark.png";
-
-export interface ParentSelectorRowProps {
+interface ParentSelectorRowProps {
   thread: Thread;
   projectId: string;
+  // Project of the current parent thread. A parent may live in another project,
+  // so the link routes through it. Null until the parent record loads.
+  parentThreadProjectId: string | null;
   parentThreadDisplayName: string | null;
   parentThreads: readonly ThreadListEntry[];
   canAssignToParent: boolean;
@@ -106,6 +106,7 @@ export interface ParentSelectorRowProps {
 export function ParentSelectorRow({
   thread,
   projectId,
+  parentThreadProjectId,
   parentThreadDisplayName,
   parentThreads,
   canAssignToParent,
@@ -151,7 +152,10 @@ export function ParentSelectorRow({
           )}
         >
           <Link
-            to={getThreadRoutePath({ projectId, threadId: parentThreadId })}
+            to={getThreadRoutePath({
+              projectId: parentThreadProjectId ?? projectId,
+              threadId: parentThreadId,
+            })}
             className={cn(
               "min-w-0 truncate text-foreground no-underline transition-[text-decoration-color] duration-150 hover:underline hover:underline-offset-2",
               COARSE_POINTER_TEXT_SM_CLASS,
@@ -244,7 +248,7 @@ export function ParentSelectorRow({
   );
 }
 
-export interface ForksRowProps {
+interface ForksRowProps {
   thread: Thread;
   projectId: string;
 }
@@ -255,7 +259,7 @@ export interface ForksRowProps {
  * Fetched with a targeted list query filtered by `sourceThreadId` + `originKind`
  * — no load-all-and-filter. Renders nothing when the thread has no forks.
  */
-export function ForksRow({ thread, projectId }: ForksRowProps) {
+function ForksRow({ thread, projectId }: ForksRowProps) {
   const forksQuery = useThreads({
     projectId: thread.projectId,
     sourceThreadId: thread.id,
@@ -286,7 +290,7 @@ export function ForksRow({ thread, projectId }: ForksRowProps) {
   );
 }
 
-export interface EnvironmentRowProps {
+interface EnvironmentRowProps {
   thread: Thread;
   environment: Environment | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
@@ -338,21 +342,26 @@ export function EnvironmentRow({
           </span>
         ) : null}
         {showCreateThreadButton ? (
-          <button
-            type="button"
-            aria-label="Create new thread in this worktree"
-            onClick={createThreadInWorktree}
-            className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-          >
-            <Icon name="MessageSquarePlus" className="size-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Create new thread in this worktree"
+                onClick={createThreadInWorktree}
+                className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+              >
+                <Icon name="MessageSquarePlus" className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Create new thread in this worktree</TooltipContent>
+          </Tooltip>
         ) : null}
       </span>
     </DetailRow>
   );
 }
 
-export interface WorkspacePathRowProps {
+interface WorkspacePathRowProps {
   environment: Environment | null;
 }
 
@@ -390,12 +399,11 @@ export function WorkspacePathRow({ environment }: WorkspacePathRowProps) {
   );
 }
 
-export interface BranchRowProps {
-  thread: Thread;
+interface BranchRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
 }
 
-export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
+export function BranchRow({ workspaceStatus }: BranchRowProps) {
   const checkoutDisplay = workspaceStatus
     ? formatWorkspaceCheckoutDisplay({ checkout: workspaceStatus.checkout })
     : null;
@@ -430,7 +438,7 @@ export function BranchRow({ thread, workspaceStatus }: BranchRowProps) {
   );
 }
 
-export interface PullRequestRowProps {
+interface PullRequestRowProps {
   pullRequest: ThreadPullRequest | null;
 }
 
@@ -491,20 +499,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
         {showGithubCheckIcon ? (
           <PullRequestGithubCheckIcon pullRequest={pullRequest} />
         ) : (
-          <>
-            <img
-              src={GITHUB_FAVICON_URL}
-              alt=""
-              className="size-4 shrink-0 dark:hidden"
-              aria-hidden="true"
-            />
-            <img
-              src={GITHUB_DARK_FAVICON_URL}
-              alt=""
-              className="hidden size-4 shrink-0 dark:block"
-              aria-hidden="true"
-            />
-          </>
+          <GithubFaviconIcon />
         )}
         <span className="shrink-0 text-muted-foreground">
           #{pullRequest.number}
@@ -526,8 +521,7 @@ export function PullRequestRow({ pullRequest }: PullRequestRowProps) {
   );
 }
 
-export interface MergeBaseRowProps {
-  thread: Thread;
+interface MergeBaseRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   selectedMergeBaseBranch: string | undefined;
   mergeBaseBranchRef?: GitBranchRefClassification | null;
@@ -542,7 +536,6 @@ export interface MergeBaseRowProps {
 }
 
 export function MergeBaseRow({
-  thread,
   workspaceStatus,
   selectedMergeBaseBranch,
   mergeBaseBranchRef,
@@ -627,7 +620,7 @@ export function MergeBaseRow({
   );
 }
 
-export interface GitStatusRowProps {
+interface GitStatusRowProps {
   thread: Thread;
   environment: Environment | null;
   workspaceStatus: WorkspaceStatus | undefined;
@@ -696,7 +689,7 @@ export function GitStatusRow({
   );
 }
 
-export interface ArchivedRowProps {
+interface ArchivedRowProps {
   thread: Thread;
 }
 
@@ -715,7 +708,7 @@ export function ArchivedRow({ thread }: ArchivedRowProps) {
   );
 }
 
-export interface ThreadCommitsRowProps {
+interface ThreadCommitsRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   /** When provided, each commit becomes a button that opens its diff. */
   onCommitClick?: (sha: string) => void;
@@ -803,14 +796,12 @@ export function ThreadCommitsRow({
   );
 }
 
-export interface ChangedFilesRowProps {
-  thread: Thread;
+interface ChangedFilesRowProps {
   workspaceStatus: WorkspaceStatus | undefined;
   onChangedFileClick?: (selection: WorkspaceChangedFileSelection) => void;
 }
 
 export function ChangedFilesRow({
-  thread,
   workspaceStatus,
   onChangedFileClick,
 }: ChangedFilesRowProps) {
@@ -825,7 +816,7 @@ export function ChangedFilesRow({
   );
 }
 
-export interface ThreadStorageRowProps {
+interface ThreadStorageRowProps {
   controller: ThreadStorageBrowserController;
   filesError?: Error | null;
   isFilesLoading: boolean;
@@ -887,6 +878,7 @@ export function ThreadStorageRow({
 export interface ThreadMetadataContentProps {
   thread: Thread;
   projectId: string;
+  parentThreadProjectId: string | null;
   parentThreadDisplayName: string | null;
   parentThreads: readonly ThreadListEntry[];
   canAssignToParent: boolean;
@@ -1003,6 +995,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
   const {
     thread,
     projectId,
+    parentThreadProjectId,
     parentThreadDisplayName,
     parentThreads,
     canAssignToParent,
@@ -1037,6 +1030,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       <ParentSelectorRow
         thread={thread}
         projectId={projectId}
+        parentThreadProjectId={parentThreadProjectId}
         parentThreadDisplayName={parentThreadDisplayName}
         parentThreads={parentThreads}
         canAssignToParent={canAssignToParent}
@@ -1055,9 +1049,8 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         environmentDisplayHost={environmentDisplayHost}
       />
       <WorkspacePathRow environment={environment} />
-      <BranchRow thread={thread} workspaceStatus={workspaceStatus} />
+      <BranchRow workspaceStatus={workspaceStatus} />
       <MergeBaseRow
-        thread={thread}
         workspaceStatus={workspaceStatus}
         selectedMergeBaseBranch={selectedMergeBaseBranch}
         mergeBaseBranchRef={mergeBaseBranchRef}
@@ -1083,7 +1076,6 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
         onCommitClick={onCommitClick}
       />
       <ChangedFilesRow
-        thread={thread}
         workspaceStatus={workspaceStatus}
         onChangedFileClick={onChangedFileClick}
       />

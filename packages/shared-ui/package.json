@@ -104,6 +104,11 @@
       "types": "./src/components/ui/dialog.tsx",
       "default": "./src/components/ui/dialog.tsx"
     },
+    "./delayed-loading": {
+      "source": "./src/components/ui/delayed-loading.tsx",
+      "types": "./src/components/ui/delayed-loading.tsx",
+      "default": "./src/components/ui/delayed-loading.tsx"
+    },
     "./drawer": {
       "source": "./src/components/ui/drawer.tsx",
       "types": "./src/components/ui/drawer.tsx",
@@ -133,6 +138,16 @@
       "source": "./src/components/ui/icon.tsx",
       "types": "./src/components/ui/icon.tsx",
       "default": "./src/components/ui/icon.tsx"
+    },
+    "./icon-extended": {
+      "source": "./src/components/ui/icon-extended.tsx",
+      "types": "./src/components/ui/icon-extended.tsx",
+      "default": "./src/components/ui/icon-extended.tsx"
+    },
+    "./icon-registry": {
+      "source": "./src/components/ui/icon-registry.ts",
+      "types": "./src/components/ui/icon-registry.ts",
+      "default": "./src/components/ui/icon-registry.ts"
     },
     "./input-otp": {
       "source": "./src/components/ui/input-otp.tsx",
@@ -203,6 +218,11 @@
       "source": "./src/components/ui/resource-list.tsx",
       "types": "./src/components/ui/resource-list.tsx",
       "default": "./src/components/ui/resource-list.tsx"
+    },
+    "./resource-detail": {
+      "source": "./src/components/ui/resource-detail.ts",
+      "types": "./src/components/ui/resource-detail.ts",
+      "default": "./src/components/ui/resource-detail.ts"
     },
     "./resource-edit-prompt": {
       "source": "./src/components/ui/resource-edit-prompt.ts",
@@ -346,6 +366,7 @@
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-slot": "^1.2.4",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "vaul": "^1.1.2"
   },
   "devDependencies": {
@@ -379,6 +400,7 @@
     "@radix-ui/react-tooltip": "^1.2.12",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -386,6 +408,7 @@
     "input-otp": "^1.4.2",
     "lucide-react": "^1.23.0",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "react-day-picker": "^10.0.1",
     "react-hook-form": "^7.80.0",
     "react-resizable-panels": "^2.1.7",

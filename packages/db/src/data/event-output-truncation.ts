@@ -31,7 +31,7 @@ const NOOP_JSON_PATH = "$.__bb_timeline_truncation_noop__";
  * the same way `toLocaleString("en-US")` does.
  */
 function truncationMarkerSql(originalLength: SQL, max: number): SQL {
-  return sql`char(10) || '…[' || printf('%,d', ${originalLength} - ${max}) || ' more characters truncated — open the turn to view the full output]'`;
+  return sql`char(10) || '…[' || printf('%,d', ${originalLength} - ${max}) || ' more characters truncated]'`;
 }
 
 /**
@@ -40,11 +40,11 @@ function truncationMarkerSql(originalLength: SQL, max: number): SQL {
  *
  * The point is what does *not* happen: a 300 KB command output is never read
  * out of the page cache into the driver, never crosses into JS, and is never
- * `JSON.parse`d — the timeline discards it a few steps later anyway, because
- * the window only renders a preview and the full text stays available from the
- * un-truncated `timeline/turn-summary-details` route. Rows whose entire payload
- * already fits are returned as stored, so the JSON functions are skipped for
- * the overwhelming majority of events.
+ * `JSON.parse`d — the timeline discards it a few steps later anyway. The
+ * turn-details route returns the full text only when its complete slice stays
+ * under the safe byte limit. Rows whose entire payload already fits are
+ * returned as stored, so the JSON functions are skipped for the overwhelming
+ * majority of events.
  *
  * Two limits of SQLite's string functions are deliberate here, not oversights.
  * `length`/`substr` count Unicode code points where JavaScript counts UTF-16

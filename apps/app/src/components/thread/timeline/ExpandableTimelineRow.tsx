@@ -28,7 +28,7 @@ import {
   type TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
 
-export interface ExpandableTimelineRowProps {
+interface ExpandableTimelineRowProps {
   autoExpanded?: boolean;
   forceExpanded?: boolean;
   /**
@@ -36,12 +36,10 @@ export interface ExpandableTimelineRowProps {
    * state until the user toggles the row or the row unmounts.
    */
   terminalAutoExpanded?: boolean;
-  onBeforeExpand?: () => void;
   renderBody: () => ReactNode;
   title: TimelineTitle;
   /** Replaces the generic timeline-title renderer for a specialized header. */
   titleContent?: ReactNode;
-  className?: string;
   collapsedPreview?: ReactNode;
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
@@ -81,13 +79,11 @@ function isInteractivePreviewTarget({
 
 function ExpandableTimelineRowComponent({
   autoExpanded = false,
-  className,
   collapsedPreview,
   expandable = true,
   forceExpanded = false,
   horizontalPadding = "default",
   leadingIcon,
-  onBeforeExpand,
   onTitleAction,
   renderBody,
   resolveSegmentLinkHref,
@@ -119,11 +115,8 @@ function ExpandableTimelineRowComponent({
   const horizontalPaddingClass =
     timelineRowHorizontalPaddingClassName(horizontalPadding);
   const handleToggle = useCallback((): void => {
-    if (!isExpanded) {
-      onBeforeExpand?.();
-    }
     setManualExpansionOverride(!isExpanded);
-  }, [isExpanded, onBeforeExpand]);
+  }, [isExpanded]);
   const handleCollapsedPreviewClick = useCallback(
     (event: CollapsedPreviewClickEvent): void => {
       if (
@@ -230,7 +223,7 @@ function ExpandableTimelineRowComponent({
       forceHeaderChevronVisible={
         expandable && !isExpanded && collapsedPreviewActive
       }
-      className={cn("w-full", className)}
+      className="w-full"
       headerClassName={timelineRowHeaderClassName(horizontalPadding)}
       contentClassName={cn(horizontalPaddingClass, "pb-1 pt-0.5")}
       renderBody={renderBody}

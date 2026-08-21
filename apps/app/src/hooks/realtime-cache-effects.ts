@@ -4,6 +4,9 @@ import {
   createDebouncedCallbackScheduler,
   type ChangedMessage,
   type EnvironmentChangeKind,
+  type HostChangeKind,
+  type ProjectChangeKind,
+  type SystemChangeKind,
   type ThreadEventType,
   type ThreadChangeMetadata,
   type ThreadChangeKind,
@@ -15,7 +18,12 @@ import {
 } from "./cache-owners/system-cache-effects";
 import { createBufferedEnvironmentInvalidator } from "./buffered-environment-invalidator";
 import {
+  isDocumentVisible,
+  subscribeToDocumentVisibility,
+} from "@/lib/document-visibility";
+import {
   collectCachedThreadIdsForEnvironment,
+  createFlushOncePredicate,
   disposeTrailingActiveRefetches,
   executeRealtimeDirtyHandlers,
   REALTIME_ENVIRONMENT_CHANGE_REGISTRY,
@@ -31,18 +39,42 @@ const INVALIDATION_MAX_WAIT_MS = 200;
 const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
 
-export interface RealtimeConnectedEvent {
-  reconnected: boolean;
-}
+type RealtimeConnectedEvent =
+  | { reconnected: false }
+  | { reconnected: true; disconnectedAt: number };
 
-export interface RealtimeCacheEffects {
+interface RealtimeCacheEffects {
   dispose: () => void;
   handleChanged: (message: ChangedMessage) => void;
   handleConnected: (event: RealtimeConnectedEvent) => void;
 }
 
-export interface RealtimeCacheEffectsOptions {
+/**
+ * Document visibility source. Defaults to the real document; tests inject a
+ * fake so the hidden/visible gating can be driven without a DOM.
+ */
+export interface RealtimeCacheEffectsVisibility {
+  isDocumentVisible: () => boolean;
+  subscribe: (listener: () => void) => () => void;
+}
+
+interface RealtimeCacheEffectsOptions {
   queryClient: QueryClient;
+  visibility?: RealtimeCacheEffectsVisibility;
+}
+
+/**
+ * Non-thread changes that arrived while the document was hidden. Thread
+ * changes already merge into {@link ThreadChangeState}; environment changes
+ * merge into the buffered invalidator. Host, project and system changes are
+ * normally applied on arrival, so while hidden they are merged here (one entry
+ * per entity/id, kinds deduplicated) and replayed once on the next visible.
+ */
+interface DeferredNonThreadChanges {
+  environmentKindsById: Map<string, Set<EnvironmentChangeKind>>;
+  hostKinds: Set<HostChangeKind>;
+  projectKindsById: Map<string | undefined, Set<ProjectChangeKind>>;
+  systemKinds: Set<SystemChangeKind>;
 }
 
 interface ThreadChangeState {
@@ -138,11 +170,13 @@ function flushThreadInvalidations(
   queryClient: QueryClient,
   state: ThreadChangeState,
 ): void {
+  const flushOnce = createFlushOncePredicate();
   for (const changeKind of state.globalChangeKinds) {
     executeRealtimeDirtyHandlers({
       context: {
         backgroundActivityChanged: undefined,
         eventTypes: undefined,
+        flushOnce,
         hasPendingInteraction: undefined,
         projectId: undefined,
         queryClient,
@@ -158,8 +192,9 @@ function flushThreadInvalidations(
       executeRealtimeDirtyHandlers({
         context: {
           backgroundActivityChanged: metadata?.backgroundActivityChanged,
-          hasPendingInteraction: metadata?.hasPendingInteraction,
           eventTypes: metadata?.eventTypes,
+          flushOnce,
+          hasPendingInteraction: metadata?.hasPendingInteraction,
           projectId: metadata?.projectId,
           queryClient,
           threadId,
@@ -221,18 +256,89 @@ function invalidateRealtimeEnvironmentChange({
   }
 }
 
+function createDeferredNonThreadChanges(): DeferredNonThreadChanges {
+  return {
+    environmentKindsById: new Map(),
+    hostKinds: new Set(),
+    projectKindsById: new Map(),
+    systemKinds: new Set(),
+  };
+}
+
+function addAll<T>(target: Set<T>, values: readonly T[]): void {
+  for (const value of values) {
+    target.add(value);
+  }
+}
+
+function mergeInto<K, V>(
+  target: Map<K, Set<V>>,
+  key: K,
+  values: readonly V[],
+): void {
+  let entry = target.get(key);
+  if (!entry) {
+    entry = new Set<V>();
+    target.set(key, entry);
+  }
+  addAll(entry, values);
+}
+
+function hasDeferredNonThreadChanges(
+  deferred: DeferredNonThreadChanges,
+): boolean {
+  return (
+    deferred.environmentKindsById.size > 0 ||
+    deferred.hostKinds.size > 0 ||
+    deferred.projectKindsById.size > 0 ||
+    deferred.systemKinds.size > 0
+  );
+}
+
+const DEFAULT_VISIBILITY: RealtimeCacheEffectsVisibility = {
+  isDocumentVisible,
+  subscribe: subscribeToDocumentVisibility,
+};
+
 export function createRealtimeCacheEffects({
   queryClient,
+  visibility = DEFAULT_VISIBILITY,
 }: RealtimeCacheEffectsOptions): RealtimeCacheEffects {
   const threadChangeState = createThreadChangeState();
+  // Hidden documents merge changes but never invalidate: `invalidateQueries`
+  // refetches every active observer even when nothing can be seen, and iOS
+  // suspends the tab anyway, so the fetches only queue up to fire (and be
+  // partially aborted) on resume. Everything merged while hidden is applied
+  // once, as one wave, on the next visible.
+  let hasDeferredThreadChanges = false;
+  const deferredNonThreadChanges = createDeferredNonThreadChanges();
   const invalidationScheduler = createDebouncedCallbackScheduler({
     debounceMs: INVALIDATION_DEBOUNCE_MS,
     maxWaitMs: INVALIDATION_MAX_WAIT_MS,
-    onFlush: () => flushThreadInvalidations(queryClient, threadChangeState),
+    onFlush: () => {
+      if (!visibility.isDocumentVisible()) {
+        // Keep the merged state; the visibility listener flushes it.
+        hasDeferredThreadChanges = true;
+        return;
+      }
+      hasDeferredThreadChanges = false;
+      flushThreadInvalidations(queryClient, threadChangeState);
+    },
   });
   const environmentInvalidator = createBufferedEnvironmentInvalidator({
     debounceMs: ENVIRONMENT_INVALIDATION_DEBOUNCE_MS,
     flushChangedEnvironmentIds: (changedEnvironments) => {
+      if (!visibility.isDocumentVisible()) {
+        // Marked while visible, debounce elapsed hidden: hold for the resume.
+        for (const { changeKinds, environmentId } of changedEnvironments) {
+          mergeInto(
+            deferredNonThreadChanges.environmentKindsById,
+            environmentId,
+            changeKinds,
+          );
+        }
+        return;
+      }
       for (const { changeKinds, environmentId } of changedEnvironments) {
         invalidateRealtimeEnvironmentChange({
           changeKinds,
@@ -244,66 +350,141 @@ export function createRealtimeCacheEffects({
     maxWaitMs: ENVIRONMENT_INVALIDATION_MAX_WAIT_MS,
   });
 
+  const applyHostChanges = (changeKinds: Iterable<HostChangeKind>): void => {
+    for (const changeKind of changeKinds) {
+      executeRealtimeDirtyHandlers({
+        context: { queryClient },
+        handlers: REALTIME_HOST_CHANGE_REGISTRY[changeKind].dirty,
+      });
+    }
+  };
+  const applyProjectChanges = (
+    projectId: string | undefined,
+    changeKinds: Iterable<ProjectChangeKind>,
+  ): void => {
+    for (const changeKind of changeKinds) {
+      executeRealtimeDirtyHandlers({
+        context: { projectId, queryClient },
+        handlers: REALTIME_PROJECT_CHANGE_REGISTRY[changeKind].dirty,
+      });
+    }
+  };
+  const applySystemChanges = (
+    changeKinds: Iterable<SystemChangeKind>,
+  ): void => {
+    for (const changeKind of changeKinds) {
+      const rule = REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind];
+      if (!rule) {
+        continue;
+      }
+      executeRealtimeDirtyHandlers({
+        context: { queryClient },
+        handlers: rule.dirty,
+      });
+    }
+  };
+
+  const flushDeferredChanges = (): void => {
+    if (hasDeferredNonThreadChanges(deferredNonThreadChanges)) {
+      const { environmentKindsById, hostKinds, projectKindsById, systemKinds } =
+        deferredNonThreadChanges;
+      for (const [environmentId, changeKinds] of environmentKindsById) {
+        environmentInvalidator.markChanged(
+          environmentId,
+          Array.from(changeKinds),
+        );
+      }
+      applyHostChanges(hostKinds);
+      for (const [projectId, changeKinds] of projectKindsById) {
+        applyProjectChanges(projectId, changeKinds);
+      }
+      applySystemChanges(systemKinds);
+      environmentKindsById.clear();
+      hostKinds.clear();
+      projectKindsById.clear();
+      systemKinds.clear();
+    }
+    if (hasDeferredThreadChanges) {
+      invalidationScheduler.flush();
+    }
+  };
+
+  const unsubscribeVisibility = visibility.subscribe(() => {
+    if (visibility.isDocumentVisible()) {
+      flushDeferredChanges();
+    }
+  });
+
   return {
     dispose: () => {
+      unsubscribeVisibility();
       invalidationScheduler.dispose();
       environmentInvalidator.dispose();
       disposeTrailingActiveRefetches(queryClient);
       resetThreadChangeState(threadChangeState);
     },
     handleChanged: (message) => {
+      const documentVisible = visibility.isDocumentVisible();
       switch (message.entity) {
         case "thread":
           recordThreadChange(threadChangeState, message);
-          if (shouldFlushThreadChangesImmediately(message.changes)) {
+          if (!documentVisible) {
+            hasDeferredThreadChanges = true;
+          } else if (shouldFlushThreadChangesImmediately(message.changes)) {
             invalidationScheduler.flush();
           } else {
             invalidationScheduler.schedule();
           }
           break;
         case "environment":
-          if (message.id) {
-            environmentInvalidator.markChanged(message.id, message.changes);
+          if (!message.id) {
+            break;
           }
+          if (!documentVisible) {
+            mergeInto(
+              deferredNonThreadChanges.environmentKindsById,
+              message.id,
+              message.changes,
+            );
+            break;
+          }
+          environmentInvalidator.markChanged(message.id, message.changes);
           break;
         case "host":
-          for (const changeKind of message.changes) {
-            executeRealtimeDirtyHandlers({
-              context: { queryClient },
-              handlers: REALTIME_HOST_CHANGE_REGISTRY[changeKind].dirty,
-            });
+          if (!documentVisible) {
+            addAll(deferredNonThreadChanges.hostKinds, message.changes);
+            break;
           }
+          applyHostChanges(message.changes);
           break;
         case "project":
-          for (const changeKind of message.changes) {
-            executeRealtimeDirtyHandlers({
-              context: {
-                projectId: message.id,
-                queryClient,
-              },
-              handlers: REALTIME_PROJECT_CHANGE_REGISTRY[changeKind].dirty,
-            });
+          if (!documentVisible) {
+            mergeInto(
+              deferredNonThreadChanges.projectKindsById,
+              message.id,
+              message.changes,
+            );
+            break;
           }
+          applyProjectChanges(message.id, message.changes);
           break;
         case "system":
-          for (const changeKind of message.changes) {
-            const rule = REALTIME_SYSTEM_CHANGE_REGISTRY[changeKind];
-            if (!rule) {
-              continue;
-            }
-            executeRealtimeDirtyHandlers({
-              context: { queryClient },
-              handlers: rule.dirty,
-            });
+          if (!documentVisible) {
+            addAll(deferredNonThreadChanges.systemKinds, message.changes);
+            break;
           }
+          applySystemChanges(message.changes);
           break;
         default:
           assertNever(message);
       }
     },
-    handleConnected: ({ reconnected }) => {
-      if (reconnected) {
-        invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
+    handleConnected: (event) => {
+      if (event.reconnected) {
+        invalidateRealtimeQueriesAfterServerReconnect({
+          disconnectedAt: event.disconnectedAt,
+          queryClient,
+        });
         return;
       }
       refetchErroredRealtimeQueriesOnInitialConnect({ queryClient });

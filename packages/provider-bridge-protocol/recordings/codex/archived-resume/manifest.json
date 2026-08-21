@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "archived-resume",
+  "threadId": "thr_7ez8wtw5bq",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "codex: resume a thread archived natively by another app-server client.",
+  "note": "archived natively via codex app-server thread/archive, then resumed",
+  "bridgeRuns": 2,
+  "lines": {
+    "runtime→bridge": 7,
+    "bridge→runtime": 30,
+    "provider→bridge": 57,
+    "bridge→provider": 14
+  }
+}

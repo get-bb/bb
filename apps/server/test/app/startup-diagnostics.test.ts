@@ -36,11 +36,23 @@ describe("server startup diagnostics", () => {
     expect(packageJson).toContain("src/start-server.ts dist/start-server.js");
   });
 
-  it("binds the default server listener to IPv4 loopback", async () => {
+  it.each([
+    {
+      bindHost: undefined,
+      expectedAddress: "127.0.0.1",
+      name: "binds the default server listener to IPv4 loopback",
+    },
+    {
+      bindHost: "0.0.0.0",
+      expectedAddress: "0.0.0.0",
+      name: "binds the explicit wildcard listener to IPv4 only",
+    },
+  ])("$name", async ({ bindHost, expectedAddress }) => {
     const serverConfig = loadServerConfig({
       env: {
         BB_DATA_DIR: "/tmp/bb-server-listener-test",
         BB_HOST_DAEMON_PORT: "49162",
+        ...(bindHost === undefined ? {} : { BB_SERVER_BIND_HOST: bindHost }),
         BB_SERVER_PORT: "49161",
         NODE_ENV: "development",
       },
@@ -54,7 +66,10 @@ describe("server startup diagnostics", () => {
       if (!server.listening) {
         await once(server, "listening");
       }
-      expect(server.address()).toMatchObject({ address: "127.0.0.1" });
+      expect(server.address()).toMatchObject({
+        address: expectedAddress,
+        family: "IPv4",
+      });
     } finally {
       await new Promise<void>((resolveClose, rejectClose) => {
         server.close((error) => {

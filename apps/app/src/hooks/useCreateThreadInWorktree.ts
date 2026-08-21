@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
 
@@ -17,7 +17,7 @@ export function useCreateThreadInWorktree({
   projectId,
   environmentId,
 }: UseCreateThreadInWorktreeArgs): () => void {
-  const navigate = useNavigate();
+  const navigate = useRouteNavigate();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   return useCallback(() => {
     setRootComposeProjectId(projectId);

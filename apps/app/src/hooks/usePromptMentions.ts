@@ -22,22 +22,25 @@ import {
   usePathSuggestions,
   PATH_SUGGESTION_DEBOUNCE_MS,
 } from "./usePathSuggestions";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
+import type { PromptMentionSuggestion } from "@bb/client-core";
 import {
   DEFAULT_PLUGIN_MENTION_TRIGGER,
   PLUGIN_MENTION_TRIGGER_VALUES,
   type PluginMentionTrigger,
-} from "@/lib/plugin-mention-triggers";
+} from "@bb/client-core";
 
 const PROMPT_MENTION_SOURCE_LIMIT = 8;
 
-export interface UsePromptMentionsOptions {
+interface UsePromptMentionsOptions {
+  /** Existing thread that owns the composer and must not mention itself. */
   currentThreadId?: string;
+  /** Thread whose storage files are available to the composer. */
+  threadStorageThreadId?: string;
   environmentId: string | null;
   hostId?: string | null;
 }
 
-export interface UsePromptMentionsResult {
+interface UsePromptMentionsResult {
   query: string | null;
   triggers: readonly PluginMentionTrigger[];
   setQuery: (
@@ -170,7 +173,7 @@ export function usePromptMentions(
     limit: PROMPT_MENTION_SOURCE_LIMIT,
     environmentId: options.environmentId,
     hostId: options.hostId,
-    currentThreadId: options.currentThreadId,
+    currentThreadId: options.threadStorageThreadId,
     includeDirectories: true,
   });
   const projectNamesQuery = useSidebarNavigation({

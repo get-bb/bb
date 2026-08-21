@@ -1,9 +1,9 @@
-import { resolvePiDefaultModelId } from "@bb/agent-providers";
 import {
   HIGH_REASONING_EFFORT,
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
+  NONE_REASONING_EFFORT,
   XHIGH_REASONING_EFFORT,
   type AvailableModel,
   type ModelReasoningEffort,
@@ -18,11 +18,11 @@ export interface PiCatalogModel {
   supportedThinkingLevels: readonly string[];
 }
 
-export interface BuildPiAvailableModelsArgs {
+interface BuildPiAvailableModelsArgs {
   models: readonly PiCatalogModel[];
 }
 
-export interface BuildPiAvailableModelsResult {
+interface BuildPiAvailableModelsResult {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }
@@ -52,12 +52,18 @@ function buildPiAvailableModel(model: PiCatalogModel): AvailableModel {
     supportedReasoningEfforts.find(
       ({ reasoningEffort }) => reasoningEffort === "medium",
     )?.reasoningEffort ??
+    supportedReasoningEfforts.find(
+      ({ reasoningEffort }) => reasoningEffort !== "none",
+    )?.reasoningEffort ??
     supportedReasoningEfforts[0]?.reasoningEffort ??
-    "low";
+    "none";
   return {
     id: canonicalId,
     model: canonicalId,
     displayName: model.name,
+    // Pi is the selected agent provider; this is the nested model route that
+    // determines authentication, billing, and where workspace content is sent.
+    routeProviderId: model.provider,
     description: describePiModel(model),
     supportedReasoningEfforts,
     defaultReasoningEffort,
@@ -108,18 +114,22 @@ export function toCanonicalPiModelId(
 }
 
 function getPiReasoningEfforts(model: PiCatalogModel): ModelReasoningEffort[] {
-  if (!model.reasoning) {
-    return [LOW_REASONING_EFFORT];
-  }
-
+  // Derive the picker ladder from the model's supported thinking levels rather
+  // than treating non-reasoning models specially: a non-reasoning model reports
+  // only "off", so it surfaces a single "No extended thinking" entry, and a
+  // reasoning model that can disable thinking (e.g. Ollama Cloud's
+  // `kimi-k2.7-code` with `off: "none"`) gets "none" at the bottom of its
+  // ladder. Pi's `getSupportedThinkingLevels` is the source of truth for which
+  // levels are usable, so honor "off" here instead of silently dropping it.
   const supportedLevels = new Set(model.supportedThinkingLevels);
   const efforts: ModelReasoningEffort[] = [];
+  if (supportedLevels.has("off")) efforts.push(NONE_REASONING_EFFORT);
   if (supportedLevels.has("low")) efforts.push(LOW_REASONING_EFFORT);
   if (supportedLevels.has("medium")) efforts.push(MEDIUM_REASONING_EFFORT);
   if (supportedLevels.has("high")) efforts.push(HIGH_REASONING_EFFORT);
   if (supportedLevels.has("xhigh")) efforts.push(XHIGH_REASONING_EFFORT);
   if (supportedLevels.has("max")) efforts.push(MAX_REASONING_EFFORT);
-  return efforts.length > 0 ? efforts : [LOW_REASONING_EFFORT];
+  return efforts.length > 0 ? efforts : [NONE_REASONING_EFFORT];
 }
 
 function describePiModel(model: PiCatalogModel): string {
@@ -134,6 +144,29 @@ function describePiModel(model: PiCatalogModel): string {
       ? model.provider[0].toUpperCase() + model.provider.slice(1)
       : model.provider;
   return `${provider} ${capabilities.join(", ")} model via Pi`;
+}
+
+/**
+ * Best default model per upstream provider. Subset of Pi's
+ * `defaultModelPerProvider`:
+ * https://github.com/earendil-works/pi/blob/main/packages/coding-agent/src/core/model-resolver.ts
+ */
+const PI_DEFAULT_MODEL_PER_PROVIDER: Partial<Record<string, string>> = {
+  anthropic: "claude-opus-4-8",
+  openai: "gpt-5.4",
+  "openai-codex": "gpt-5.6-sol",
+  "amazon-bedrock": "us.anthropic.claude-opus-4-8",
+  google: "gemini-2.5-pro",
+  "google-gemini-cli": "gemini-2.5-pro",
+  "google-vertex": "gemini-3-pro-preview",
+  openrouter: "openai/gpt-5.1-codex",
+  "vercel-ai-gateway": "anthropic/claude-opus-4.8",
+  xai: "grok-4-fast-non-reasoning",
+  mistral: "devstral-medium-latest",
+};
+
+function resolvePiDefaultModelId(providerId: string): string | undefined {
+  return PI_DEFAULT_MODEL_PER_PROVIDER[providerId];
 }
 
 function resolveDefaultPiModelId(models: AvailableModel[]): string | undefined {

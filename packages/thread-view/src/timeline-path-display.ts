@@ -1,6 +1,6 @@
 export type TimelinePathDisplayMode = "compact" | "full";
 
-export interface FormatTimelinePathArgs {
+interface FormatTimelinePathArgs {
   mode: TimelinePathDisplayMode;
   path: string;
 }

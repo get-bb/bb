@@ -12,7 +12,7 @@ export interface WorkspaceStatusChangeEvent {
   changeKinds: WorkspaceStatusWatchChangeKind[];
 }
 
-export type WorkspaceStatusChangeCallback = (
+type WorkspaceStatusChangeCallback = (
   event: WorkspaceStatusChangeEvent,
 ) => void;
 
@@ -21,11 +21,12 @@ export interface WorkspaceStatusWatchError {
   rootPath: string;
 }
 
-export type WorkspaceStatusWatchErrorCallback = (
+type WorkspaceStatusWatchErrorCallback = (
   error: WorkspaceStatusWatchError,
 ) => void;
 
 export interface WorkspaceStatusWatchArgs {
   onChange: WorkspaceStatusChangeCallback;
+  onReady?: () => void;
   onWatchError: WorkspaceStatusWatchErrorCallback;
 }

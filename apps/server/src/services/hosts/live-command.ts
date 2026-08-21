@@ -20,9 +20,7 @@ import { callHostOnlineRpc } from "./online-rpc.js";
 
 export const LIVE_DAEMON_COMMAND_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
-export interface RunLiveHostCommandArgs<
-  TType extends HostDaemonSettledCommandType,
-> {
+interface RunLiveHostCommandArgs<TType extends HostDaemonSettledCommandType> {
   command: Extract<HostDaemonCommand, { type: TType }>;
   execution?: HostDaemonCommandExecutionRecord;
   hostId: string;
@@ -42,11 +40,12 @@ type LiveHostCommandErrorHandler<TType extends HostDaemonSettledCommandType> = (
   args: LiveHostCommandErrorHandlerArgs<TType>,
 ) => void;
 
-export interface StartLiveHostCommandArgs<
+interface StartLiveHostCommandArgs<
   TType extends HostDaemonSettledCommandType,
 > extends RunLiveHostCommandArgs<TType> {
   onError?: LiveHostCommandErrorHandler<TType>;
   onExpectedError?: LiveHostCommandErrorHandler<TType>;
+  onSettled?: () => void | Promise<void>;
 }
 
 type LiveHostCommandResultReportForType<
@@ -81,7 +80,7 @@ interface BuildLiveHostCommandFailureReportArgs<
   execution: HostDaemonCommandExecutionRecord;
 }
 
-export interface ExpectedLiveHostCommandErrorLogFields {
+interface ExpectedLiveHostCommandErrorLogFields {
   errorCode: string;
   errorMessage: string;
   errorStatus: number;
@@ -267,28 +266,39 @@ export function startLiveHostCommand<
 ): void {
   const execution =
     args.execution ?? createLiveHostCommandExecution(args.hostId);
-  void runLiveHostCommand(deps, { ...args, execution }).catch((error) => {
-    const normalized =
-      error instanceof Error ? error : new Error(String(error));
-    const handlerArgs: LiveHostCommandErrorHandlerArgs<TType> = {
-      command: args.command,
-      error: normalized,
-      execution,
-      hostId: args.hostId,
-    };
-    const expectedErrorFields =
-      expectedLiveHostCommandErrorLogFields(normalized);
-    if (expectedErrorFields !== null) {
-      deps.logger.debug(
-        {
-          ...liveHostCommandBaseLogFields(handlerArgs),
-          ...expectedErrorFields,
-        },
-        "Expected live host command failure",
-      );
-      args.onExpectedError?.(handlerArgs);
-      return;
-    }
-    args.onError?.(handlerArgs);
-  });
+  void runLiveHostCommand(deps, { ...args, execution })
+    .catch((error) => {
+      const normalized =
+        error instanceof Error ? error : new Error(String(error));
+      const handlerArgs: LiveHostCommandErrorHandlerArgs<TType> = {
+        command: args.command,
+        error: normalized,
+        execution,
+        hostId: args.hostId,
+      };
+      const expectedErrorFields =
+        expectedLiveHostCommandErrorLogFields(normalized);
+      if (expectedErrorFields !== null) {
+        deps.logger.debug(
+          {
+            ...liveHostCommandBaseLogFields(handlerArgs),
+            ...expectedErrorFields,
+          },
+          "Expected live host command failure",
+        );
+        args.onExpectedError?.(handlerArgs);
+        return;
+      }
+      args.onError?.(handlerArgs);
+    })
+    .finally(async () => {
+      try {
+        await args.onSettled?.();
+      } catch (error) {
+        deps.logger.error(
+          { err: error, commandType: args.command.type },
+          "Live command settled callback failed",
+        );
+      }
+    });
 }

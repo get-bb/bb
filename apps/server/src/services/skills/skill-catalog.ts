@@ -1,4 +1,3 @@
-import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { getPluginSkillRootContributions } from "../plugins/plugin-agent-contributions.js";
 import { generatedSkillsRootPath } from "../plugins/plugin-commands-skill.js";
@@ -6,11 +5,13 @@ import {
   resolveSkillCatalogEntries,
   type ProjectInjectedSkillSource,
   type ResolvedSkillCatalogEntry,
+  type SharedInjectedSkillSource,
 } from "./injected-skills.js";
 
 interface ResolveSkillCatalogSourcesArgs {
   pluginSkillSelections?: ReadonlyMap<string, ReadonlySet<string>>;
   projectSkillSources?: readonly ProjectInjectedSkillSource[];
+  sharedSkillSources?: readonly SharedInjectedSkillSource[];
 }
 
 /**
@@ -18,13 +19,6 @@ interface ResolveSkillCatalogSourcesArgs {
  * slash-command discovery. Project sources are supplied by callers that have
  * a concrete workspace; global, plugin, and built-in tiers are always present.
  */
-export function resolveSkillCatalogSources(
-  deps: Pick<LoggedWorkSessionDeps, "config" | "logger" | "skillTreeRegistry">,
-  args: ResolveSkillCatalogSourcesArgs = {},
-): HostDaemonInjectedSkillSource[] {
-  return resolveSkillCatalog(deps, args).map((entry) => entry.runtimeSource);
-}
-
 export function resolveSkillCatalog(
   deps: Pick<LoggedWorkSessionDeps, "config" | "logger" | "skillTreeRegistry">,
   args: ResolveSkillCatalogSourcesArgs = {},
@@ -42,6 +36,9 @@ export function resolveSkillCatalog(
       : {}),
     ...(args.projectSkillSources !== undefined
       ? { projectSkillSources: args.projectSkillSources }
+      : {}),
+    ...(args.sharedSkillSources !== undefined
+      ? { sharedSkillSources: args.sharedSkillSources }
       : {}),
     skillTreeRegistry: deps.skillTreeRegistry,
   });

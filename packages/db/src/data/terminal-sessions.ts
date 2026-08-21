@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import type {
   TerminalSessionCloseReason,
   TerminalSessionStatus,
@@ -7,8 +7,7 @@ import type { DbConnection, DbTransaction } from "../connection.js";
 import { createTerminalSessionId } from "../ids.js";
 import { terminalSessions } from "../schema.js";
 
-type TerminalSessionWriteConnection = DbConnection | DbTransaction;
-type TerminalSessionReadConnection = DbConnection | DbTransaction;
+type TerminalSessionConnection = DbConnection | DbTransaction;
 
 export type TerminalSessionRow = typeof terminalSessions.$inferSelect;
 
@@ -25,139 +24,175 @@ export interface CreateTerminalSessionInput {
   title: string;
 }
 
-export interface GetTerminalSessionArgs {
-  terminalId: string;
+interface TerminalStatusScope {
+  statuses?: readonly TerminalSessionStatus[];
 }
 
-export interface GetTerminalSessionForThreadArgs {
-  terminalId: string;
-  threadId: string;
+export type TerminalSessionScope = TerminalStatusScope &
+  (
+    | { kind: "all" }
+    | { daemonSessionId: string; kind: "daemon"; terminalId?: string }
+    | { environmentId: string; kind: "environment" }
+    | { hostId: string; kind: "host" }
+    | { kind: "terminal"; terminalId: string }
+    | { kind: "thread"; terminalId?: string; threadId: string }
+    | {
+        environmentId: string;
+        kind: "threadless-environment";
+        terminalId?: string;
+      }
+  );
+
+export type TerminalSessionSingleScope = TerminalStatusScope &
+  (
+    | { daemonSessionId: string; kind: "daemon"; terminalId: string }
+    | { kind: "terminal"; terminalId: string }
+    | { kind: "thread"; terminalId: string; threadId: string }
+    | {
+        environmentId: string;
+        kind: "threadless-environment";
+        terminalId: string;
+      }
+  );
+
+export type TerminalSessionMutation =
+  | { kind: "disconnect" }
+  | {
+      closeReason: TerminalSessionCloseReason;
+      exitCode?: number | null;
+      kind: "exit";
+    }
+  | {
+      cols: number;
+      daemonSessionId: string;
+      initialCwd: string;
+      kind: "running";
+      rows: number;
+      title: string;
+    }
+  | { cols: number; kind: "size"; rows: number }
+  | { kind: "title"; title: string }
+  | { kind: "user-input" };
+
+export interface ListTerminalSessionsArgs {
+  scope: TerminalSessionScope;
+  visible: boolean;
 }
 
-export interface GetThreadlessTerminalSessionForEnvironmentArgs {
-  environmentId: string;
-  terminalId: string;
-}
-
-export interface UpdateTerminalSessionTitleArgs {
+export interface UpdateTerminalSessionArgs {
   now?: number;
-  terminalId: string;
-  threadId: string;
-  title: string;
+  scope: TerminalSessionSingleScope;
+  update: TerminalSessionMutation;
 }
 
-export interface UpdateTerminalSessionTitleByIdArgs {
+export interface UpdateTerminalSessionsArgs {
   now?: number;
-  terminalId: string;
-  title: string;
+  scope: TerminalSessionScope;
+  update: TerminalSessionMutation;
 }
 
-export interface UpdateThreadlessTerminalSessionTitleArgs {
-  environmentId: string;
-  now?: number;
-  terminalId: string;
-  title: string;
-}
-
-export interface MarkTerminalSessionRunningArgs {
-  cols: number;
-  daemonSessionId: string;
-  initialCwd: string;
-  now?: number;
-  rows: number;
-  terminalId: string;
-  title: string;
-}
-
-export interface UpdateTerminalSessionSizeArgs {
-  cols: number;
-  now?: number;
-  rows: number;
-  terminalId: string;
-  threadId: string;
-}
-
-export interface UpdateTerminalSessionSizeByIdArgs {
-  cols: number;
-  now?: number;
-  rows: number;
-  terminalId: string;
-}
-
-export interface UpdateThreadlessTerminalSessionSizeArgs {
-  cols: number;
-  environmentId: string;
-  now?: number;
-  rows: number;
-  terminalId: string;
-}
-
-export interface MarkTerminalSessionExitedArgs {
-  closeReason: TerminalSessionCloseReason;
-  exitCode: number | null;
-  now?: number;
-  terminalId: string;
-}
-
-export interface MarkTerminalSessionUserInputArgs {
-  now?: number;
-  terminalId: string;
-  threadId: string;
-}
-
-export interface MarkTerminalSessionUserInputByIdArgs {
-  now?: number;
-  terminalId: string;
-}
-
-export interface MarkThreadlessTerminalSessionUserInputArgs {
-  environmentId: string;
-  now?: number;
-  terminalId: string;
-}
-
-export interface MarkDaemonTerminalSessionExitedArgs {
-  closeReason: TerminalSessionCloseReason;
-  daemonSessionId: string;
-  exitCode: number | null;
-  now?: number;
-  terminalId: string;
-}
-
-export interface MarkThreadTerminalSessionsExitedArgs {
-  closeReason: TerminalSessionCloseReason;
-  now?: number;
-  threadId: string;
-}
-
-export interface MarkEnvironmentTerminalSessionsExitedArgs {
-  closeReason: TerminalSessionCloseReason;
-  environmentId: string;
-  now?: number;
-}
-
-export interface MarkHostDisconnectedTerminalSessionsExitedArgs {
-  closeReason: TerminalSessionCloseReason;
-  hostId: string;
-  now?: number;
-}
-
-export interface MarkDaemonTerminalSessionsDisconnectedArgs {
-  daemonSessionId: string;
-  now?: number;
-}
-
-const DAEMON_OWNED_TERMINAL_STATUSES: TerminalSessionStatus[] = [
+const NON_TERMINAL_SESSION_STATUSES: TerminalSessionStatus[] = [
   "starting",
   "running",
-];
-const NON_TERMINAL_SESSION_STATUSES: TerminalSessionStatus[] = [
-  ...DAEMON_OWNED_TERMINAL_STATUSES,
   "disconnected",
 ];
 
+function terminalScope(
+  scope: TerminalSessionScope,
+  ...where: (SQL | undefined)[]
+): SQL | undefined {
+  let scoped: SQL | undefined;
+  switch (scope.kind) {
+    case "all":
+      break;
+    case "daemon":
+      scoped = and(
+        eq(terminalSessions.daemonSessionId, scope.daemonSessionId),
+        scope.terminalId
+          ? eq(terminalSessions.id, scope.terminalId)
+          : undefined,
+      );
+      break;
+    case "environment":
+      scoped = eq(terminalSessions.environmentId, scope.environmentId);
+      break;
+    case "host":
+      scoped = eq(terminalSessions.hostId, scope.hostId);
+      break;
+    case "terminal":
+      scoped = eq(terminalSessions.id, scope.terminalId);
+      break;
+    case "thread":
+      scoped = and(
+        eq(terminalSessions.threadId, scope.threadId),
+        scope.terminalId
+          ? eq(terminalSessions.id, scope.terminalId)
+          : undefined,
+      );
+      break;
+    case "threadless-environment":
+      scoped = and(
+        eq(terminalSessions.environmentId, scope.environmentId),
+        isNull(terminalSessions.threadId),
+        scope.terminalId
+          ? eq(terminalSessions.id, scope.terminalId)
+          : undefined,
+      );
+      break;
+  }
+  return and(
+    scoped,
+    scope.statuses
+      ? inArray(terminalSessions.status, [...scope.statuses])
+      : undefined,
+    ...where,
+  );
+}
+
+function mutationValues(
+  update: TerminalSessionMutation,
+  now: number,
+): Partial<typeof terminalSessions.$inferInsert> {
+  switch (update.kind) {
+    case "disconnect":
+      return { daemonSessionId: null, status: "disconnected", updatedAt: now };
+    case "exit":
+      return {
+        closeReason: update.closeReason,
+        daemonSessionId: null,
+        ...(update.exitCode === undefined ? {} : { exitCode: update.exitCode }),
+        status: "exited",
+        updatedAt: now,
+      };
+    case "running":
+      return {
+        closeReason: null,
+        cols: update.cols,
+        daemonSessionId: update.daemonSessionId,
+        exitCode: null,
+        initialCwd: update.initialCwd,
+        rows: update.rows,
+        status: "running",
+        title: update.title,
+        updatedAt: now,
+      };
+    case "size":
+      return { cols: update.cols, rows: update.rows, updatedAt: now };
+    case "title":
+      return { title: update.title, updatedAt: now };
+    case "user-input":
+      return { lastUserInputAt: now, updatedAt: now };
+  }
+}
+
+function mutationWhere(update: TerminalSessionMutation): SQL | undefined {
+  return update.kind === "user-input"
+    ? isNull(terminalSessions.lastUserInputAt)
+    : undefined;
+}
+
 export function createTerminalSession(
-  db: TerminalSessionWriteConnection,
+  db: TerminalSessionConnection,
   input: CreateTerminalSessionInput,
 ): TerminalSessionRow {
   const now = input.now ?? Date.now();
@@ -184,506 +219,54 @@ export function createTerminalSession(
     .get();
 }
 
-export function listTerminalSessionsByThread(
-  db: TerminalSessionReadConnection,
-  threadId: string,
-): TerminalSessionRow[] {
-  return db
-    .select()
-    .from(terminalSessions)
-    .where(eq(terminalSessions.threadId, threadId))
-    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
-    .all();
-}
-
-export function listVisibleTerminalSessionsByThread(
-  db: TerminalSessionReadConnection,
-  threadId: string,
+export function listTerminalSessions(
+  db: TerminalSessionConnection,
+  args: ListTerminalSessionsArgs,
 ): TerminalSessionRow[] {
   return db
     .select()
     .from(terminalSessions)
     .where(
-      and(
-        eq(terminalSessions.threadId, threadId),
-        inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES),
+      terminalScope(
+        args.scope,
+        args.visible
+          ? inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES)
+          : undefined,
       ),
     )
-    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
-    .all();
-}
-
-export function listVisibleTerminalSessions(
-  db: TerminalSessionReadConnection,
-): TerminalSessionRow[] {
-  return db
-    .select()
-    .from(terminalSessions)
-    .where(inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES))
-    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
-    .all();
-}
-
-export function listThreadlessTerminalSessionsByEnvironment(
-  db: TerminalSessionReadConnection,
-  environmentId: string,
-): TerminalSessionRow[] {
-  return db
-    .select()
-    .from(terminalSessions)
-    .where(
-      and(
-        eq(terminalSessions.environmentId, environmentId),
-        isNull(terminalSessions.threadId),
-      ),
-    )
-    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
-    .all();
-}
-
-export function listVisibleThreadlessTerminalSessionsByEnvironment(
-  db: TerminalSessionReadConnection,
-  environmentId: string,
-): TerminalSessionRow[] {
-  return db
-    .select()
-    .from(terminalSessions)
-    .where(
-      and(
-        eq(terminalSessions.environmentId, environmentId),
-        isNull(terminalSessions.threadId),
-        inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES),
-      ),
-    )
-    .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
-    .all();
-}
-
-export function listTerminalSessionsByEnvironment(
-  db: TerminalSessionReadConnection,
-  environmentId: string,
-): TerminalSessionRow[] {
-  return db
-    .select()
-    .from(terminalSessions)
-    .where(eq(terminalSessions.environmentId, environmentId))
     .orderBy(asc(terminalSessions.createdAt), asc(terminalSessions.id))
     .all();
 }
 
 export function getTerminalSession(
-  db: TerminalSessionReadConnection,
-  args: GetTerminalSessionArgs,
+  db: TerminalSessionConnection,
+  scope: TerminalSessionSingleScope,
 ): TerminalSessionRow | null {
-  return (
-    db
-      .select()
-      .from(terminalSessions)
-      .where(eq(terminalSessions.id, args.terminalId))
-      .get() ?? null
-  );
+  return db.select().from(terminalSessions).where(terminalScope(scope)).get() ?? null;
 }
 
-export function getTerminalSessionForThread(
-  db: TerminalSessionReadConnection,
-  args: GetTerminalSessionForThreadArgs,
-): TerminalSessionRow | null {
-  return (
-    db
-      .select()
-      .from(terminalSessions)
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.threadId, args.threadId),
-        ),
-      )
-      .get() ?? null
-  );
-}
-
-export function getThreadlessTerminalSessionForEnvironment(
-  db: TerminalSessionReadConnection,
-  args: GetThreadlessTerminalSessionForEnvironmentArgs,
-): TerminalSessionRow | null {
-  return (
-    db
-      .select()
-      .from(terminalSessions)
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.environmentId, args.environmentId),
-          isNull(terminalSessions.threadId),
-        ),
-      )
-      .get() ?? null
-  );
-}
-
-export function updateTerminalSessionTitle(
-  db: TerminalSessionWriteConnection,
-  args: UpdateTerminalSessionTitleArgs,
+export function updateTerminalSession(
+  db: TerminalSessionConnection,
+  args: UpdateTerminalSessionArgs,
 ): TerminalSessionRow | null {
   return (
     db
       .update(terminalSessions)
-      .set({
-        title: args.title,
-        updatedAt: args.now ?? Date.now(),
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.threadId, args.threadId),
-        ),
-      )
+      .set(mutationValues(args.update, args.now ?? Date.now()))
+      .where(terminalScope(args.scope, mutationWhere(args.update)))
       .returning()
       .get() ?? null
   );
 }
 
-export function updateTerminalSessionTitleById(
-  db: TerminalSessionWriteConnection,
-  args: UpdateTerminalSessionTitleByIdArgs,
-): TerminalSessionRow | null {
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        title: args.title,
-        updatedAt: args.now ?? Date.now(),
-      })
-      .where(eq(terminalSessions.id, args.terminalId))
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function updateThreadlessTerminalSessionTitle(
-  db: TerminalSessionWriteConnection,
-  args: UpdateThreadlessTerminalSessionTitleArgs,
-): TerminalSessionRow | null {
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        title: args.title,
-        updatedAt: args.now ?? Date.now(),
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.environmentId, args.environmentId),
-          isNull(terminalSessions.threadId),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function markTerminalSessionRunning(
-  db: TerminalSessionWriteConnection,
-  args: MarkTerminalSessionRunningArgs,
-): TerminalSessionRow | null {
-  const now = args.now ?? Date.now();
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        cols: args.cols,
-        rows: args.rows,
-        daemonSessionId: args.daemonSessionId,
-        initialCwd: args.initialCwd,
-        title: args.title,
-        status: "running",
-        closeReason: null,
-        exitCode: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.status, "starting"),
-          eq(terminalSessions.daemonSessionId, args.daemonSessionId),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function updateTerminalSessionSize(
-  db: TerminalSessionWriteConnection,
-  args: UpdateTerminalSessionSizeArgs,
-): TerminalSessionRow | null {
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        cols: args.cols,
-        rows: args.rows,
-        updatedAt: args.now ?? Date.now(),
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.threadId, args.threadId),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function updateTerminalSessionSizeById(
-  db: TerminalSessionWriteConnection,
-  args: UpdateTerminalSessionSizeByIdArgs,
-): TerminalSessionRow | null {
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        cols: args.cols,
-        rows: args.rows,
-        updatedAt: args.now ?? Date.now(),
-      })
-      .where(eq(terminalSessions.id, args.terminalId))
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function updateThreadlessTerminalSessionSize(
-  db: TerminalSessionWriteConnection,
-  args: UpdateThreadlessTerminalSessionSizeArgs,
-): TerminalSessionRow | null {
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        cols: args.cols,
-        rows: args.rows,
-        updatedAt: args.now ?? Date.now(),
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.environmentId, args.environmentId),
-          isNull(terminalSessions.threadId),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function markTerminalSessionUserInput(
-  db: TerminalSessionWriteConnection,
-  args: MarkTerminalSessionUserInputArgs,
-): TerminalSessionRow | null {
-  const now = args.now ?? Date.now();
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        lastUserInputAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.threadId, args.threadId),
-          isNull(terminalSessions.lastUserInputAt),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function markTerminalSessionUserInputById(
-  db: TerminalSessionWriteConnection,
-  args: MarkTerminalSessionUserInputByIdArgs,
-): TerminalSessionRow | null {
-  const now = args.now ?? Date.now();
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        lastUserInputAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          isNull(terminalSessions.lastUserInputAt),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function markThreadlessTerminalSessionUserInput(
-  db: TerminalSessionWriteConnection,
-  args: MarkThreadlessTerminalSessionUserInputArgs,
-): TerminalSessionRow | null {
-  const now = args.now ?? Date.now();
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        lastUserInputAt: now,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.environmentId, args.environmentId),
-          isNull(terminalSessions.threadId),
-          isNull(terminalSessions.lastUserInputAt),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function markTerminalSessionExited(
-  db: TerminalSessionWriteConnection,
-  args: MarkTerminalSessionExitedArgs,
-): TerminalSessionRow | null {
-  const now = args.now ?? Date.now();
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        status: "exited",
-        exitCode: args.exitCode,
-        closeReason: args.closeReason,
-        daemonSessionId: null,
-        updatedAt: now,
-      })
-      .where(eq(terminalSessions.id, args.terminalId))
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function markDaemonTerminalSessionExited(
-  db: TerminalSessionWriteConnection,
-  args: MarkDaemonTerminalSessionExitedArgs,
-): TerminalSessionRow | null {
-  const now = args.now ?? Date.now();
-  return (
-    db
-      .update(terminalSessions)
-      .set({
-        status: "exited",
-        exitCode: args.exitCode,
-        closeReason: args.closeReason,
-        daemonSessionId: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(terminalSessions.id, args.terminalId),
-          eq(terminalSessions.daemonSessionId, args.daemonSessionId),
-        ),
-      )
-      .returning()
-      .get() ?? null
-  );
-}
-
-export function markThreadTerminalSessionsExited(
-  db: TerminalSessionWriteConnection,
-  args: MarkThreadTerminalSessionsExitedArgs,
-): TerminalSessionRow[] {
-  const now = args.now ?? Date.now();
-  return db
-    .update(terminalSessions)
-    .set({
-      status: "exited",
-      closeReason: args.closeReason,
-      daemonSessionId: null,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(terminalSessions.threadId, args.threadId),
-        inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES),
-      ),
-    )
-    .returning()
-    .all();
-}
-
-export function markEnvironmentTerminalSessionsExited(
-  db: TerminalSessionWriteConnection,
-  args: MarkEnvironmentTerminalSessionsExitedArgs,
-): TerminalSessionRow[] {
-  const now = args.now ?? Date.now();
-  return db
-    .update(terminalSessions)
-    .set({
-      status: "exited",
-      closeReason: args.closeReason,
-      daemonSessionId: null,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(terminalSessions.environmentId, args.environmentId),
-        inArray(terminalSessions.status, NON_TERMINAL_SESSION_STATUSES),
-      ),
-    )
-    .returning()
-    .all();
-}
-
-export function markHostDisconnectedTerminalSessionsExited(
-  db: TerminalSessionWriteConnection,
-  args: MarkHostDisconnectedTerminalSessionsExitedArgs,
-): TerminalSessionRow[] {
-  const now = args.now ?? Date.now();
-  return db
-    .update(terminalSessions)
-    .set({
-      status: "exited",
-      closeReason: args.closeReason,
-      daemonSessionId: null,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(terminalSessions.hostId, args.hostId),
-        eq(terminalSessions.status, "disconnected"),
-      ),
-    )
-    .returning()
-    .all();
-}
-
-export function markDaemonTerminalSessionsDisconnected(
-  db: TerminalSessionWriteConnection,
-  args: MarkDaemonTerminalSessionsDisconnectedArgs,
+export function updateTerminalSessions(
+  db: TerminalSessionConnection,
+  args: UpdateTerminalSessionsArgs,
 ): TerminalSessionRow[] {
   return db
     .update(terminalSessions)
-    .set({
-      status: "disconnected",
-      daemonSessionId: null,
-      updatedAt: args.now ?? Date.now(),
-    })
-    .where(
-      and(
-        eq(terminalSessions.daemonSessionId, args.daemonSessionId),
-        inArray(terminalSessions.status, DAEMON_OWNED_TERMINAL_STATUSES),
-      ),
-    )
+    .set(mutationValues(args.update, args.now ?? Date.now()))
+    .where(terminalScope(args.scope, mutationWhere(args.update)))
     .returning()
     .all();
 }

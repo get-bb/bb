@@ -46,25 +46,25 @@ interface UpdateCachedTimelineRowsArgs {
   updater: TimelineRowsUpdater;
 }
 
-export interface EnvironmentInvalidationParams {
+interface EnvironmentInvalidationParams {
   environmentId: string;
 }
 
-export interface EnvironmentDiffPatchRemovalParams {
+interface EnvironmentDiffPatchRemovalParams {
   environmentId: string;
   queryClient: QueryClient;
 }
 
-export interface ProjectThreadListInvalidationParams {
+interface ProjectThreadListInvalidationParams {
   projectId: string;
   queryClient: QueryClient;
 }
 
-export interface CachedGlobalThreadListInvalidationParams {
+interface CachedGlobalThreadListInvalidationParams {
   queryClient: QueryClient;
 }
 
-export interface RootOrderThreadListInvalidationParams {
+interface RootOrderThreadListInvalidationParams {
   projectId?: string;
   queryClient: QueryClient;
 }
@@ -197,6 +197,32 @@ function getArchivedThreadListFiltersFromQueryKey(
   return filters;
 }
 
+export function isArchivedThreadListQueryKey(queryKey: QueryKey): boolean {
+  return getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined;
+}
+
+/**
+ * Every cached thread-list key (active and archived, all projects). Used by
+ * handlers that must treat archived lists differently from active ones and so
+ * cannot rely on a bare `threadsQueryKey()` prefix invalidation.
+ */
+export function getCachedThreadListQueryKeys(
+  queryClient: QueryClient,
+): QueryKey[] {
+  const queryKeys: QueryKey[] = [];
+  for (const [queryKey] of queryClient.getQueriesData({
+    queryKey: threadsQueryKey(),
+  })) {
+    if (
+      getThreadListFiltersFromQueryKey(queryKey) !== undefined ||
+      getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined
+    ) {
+      queryKeys.push(queryKey);
+    }
+  }
+  return queryKeys;
+}
+
 function getThreadListProjectIdFromQueryKey(
   queryKey: QueryKey,
 ): string | undefined {
@@ -318,6 +344,20 @@ export function applyToCachedThreadListsAndSidebarNavigation(
   });
 }
 
+/**
+ * Every thread row the sidebar bootstrap carries, across every project plus
+ * the personal project. The bootstrap lists all visible, unarchived threads
+ * (children included), so this is the complete live thread set.
+ */
+export function listSidebarNavigationThreads(
+  navigation: SidebarBootstrapResponse,
+): ThreadListEntry[] {
+  return [
+    ...navigation.projects.flatMap((project) => project.threads),
+    ...navigation.personalProject.threads,
+  ];
+}
+
 export function getCachedSidebarNavigationThreads(
   queryClient: QueryClient,
 ): ThreadListEntry[] {
@@ -327,10 +367,7 @@ export function getCachedSidebarNavigationThreads(
   if (!navigation) {
     return [];
   }
-  return [
-    ...navigation.projects.flatMap((project) => project.threads),
-    ...navigation.personalProject.threads,
-  ];
+  return listSidebarNavigationThreads(navigation);
 }
 
 export function snapshotCachedSidebarNavigation(
@@ -462,7 +499,7 @@ export function getEnvironmentActionInvalidationQueryKeys({
 export function getCachedThreadListPlaceholder(
   queryClient: QueryClient,
   threadId: string,
-): ThreadWithRuntime | undefined {
+): ThreadListEntry | undefined {
   if (!threadId) {
     return undefined;
   }
@@ -533,13 +570,7 @@ function threadMatchesListFilters(
   }
   if (
     filters?.originKind !== undefined &&
-    (thread.originKind ?? thread.childOrigin) !== filters.originKind
-  ) {
-    return false;
-  }
-  if (
-    filters?.childOrigin !== undefined &&
-    (thread.originKind ?? thread.childOrigin) !== filters.childOrigin
+    thread.originKind !== filters.originKind
   ) {
     return false;
   }

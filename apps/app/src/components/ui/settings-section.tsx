@@ -1,11 +1,16 @@
 import type { ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface SettingsSectionProps {
+interface SettingsSectionProps {
   action?: ReactNode;
   children: ReactNode;
   description?: string;
-  title: string;
+  title: ReactNode;
+  /**
+   * Extra classes for the card, e.g. a section whose whole body is one link
+   * and needs a positioning context and a hover state.
+   */
+  bodyClassName?: string;
 }
 
 export function SettingsSection({
@@ -13,33 +18,43 @@ export function SettingsSection({
   children,
   description,
   title,
+  bodyClassName,
 }: SettingsSectionProps) {
   return (
     <section className="space-y-3">
       <div
         className={cn(
-          "flex justify-between gap-4",
-          description ? "items-start" : "items-center",
+          "flex flex-col gap-3 sm:flex-row sm:justify-between sm:gap-4",
+          description ? "sm:items-start" : "sm:items-center",
         )}
       >
-        <div>
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 className="min-w-0 text-sm font-semibold text-foreground">
+              {title}
+            </h2>
+          </div>
           {description ? (
             <p className="mt-0.5 text-xs leading-snug text-subtle-foreground/75">
               {description}
             </p>
           ) : null}
         </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
+        {action ? <div className="shrink-0 self-start">{action}</div> : null}
       </div>
-      <div className="rounded-lg border border-border bg-card px-4 py-3.5">
+      <div
+        className={cn(
+          "rounded-lg border border-border bg-card px-4 py-3.5",
+          bodyClassName,
+        )}
+      >
         {children}
       </div>
     </section>
   );
 }
 
-export interface SettingsRowListProps {
+interface SettingsRowListProps {
   children: ReactNode;
 }
 
@@ -47,7 +62,7 @@ export function SettingsRowList({ children }: SettingsRowListProps) {
   return <div className="divide-y divide-border">{children}</div>;
 }
 
-export interface SettingsRowProps {
+interface SettingsRowProps {
   children: ReactNode;
   /** Extra classes for rows that need positioning, e.g. a stretched row link. */
   className?: string;
@@ -66,10 +81,10 @@ export function SettingsRow({ children, className }: SettingsRowProps) {
   );
 }
 
-export interface SettingsWithControlProps {
+interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
-  description?: string;
+  description?: ReactNode;
   children: ReactNode;
 }
 

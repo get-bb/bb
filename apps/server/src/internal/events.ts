@@ -53,6 +53,7 @@ import {
   requireAuthenticatedDaemonSession,
 } from "./session-state.js";
 import { getAuthenticatedDaemon } from "./auth.js";
+import { validateExtensionPayloads } from "./extension-payloads.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -210,6 +211,7 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "thread/started":
     case "client/thread/start":
     case "client/turn/requested":
+    case "client/turn/rejected":
     case "client/turn/start":
     case "system/error":
     case "system/manager/user_message":
@@ -228,8 +230,11 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
       return { providerThreadId: event.providerThreadId };
     case "thread/compacted":
       return { providerThreadId: event.providerThreadId };
+    case "thread/context/cleared":
+      return { providerThreadId: event.providerThreadId };
     case "thread/goal/updated":
     case "thread/goal/cleared":
+    case "thread/extensionState/updated":
       return { providerThreadId: event.providerThreadId };
     case "turn/started":
     case "turn/completed":
@@ -238,6 +243,8 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "item/completed":
     case "item/backgroundTask/progress":
     case "item/backgroundTask/completed":
+    case "item/delegation/progress":
+    case "item/delegation/completed":
     case "item/agentMessage/delta":
     case "item/commandExecution/outputDelta":
     case "item/fileChange/outputDelta":
@@ -904,10 +911,23 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           "Rejected daemon events for threads outside the session host",
         );
       }
-      const labelledEntries = entries.map((entry) => ({
-        ...entry,
-        envelope: withPluginToolStatusLabels(entry.envelope),
-      }));
+      // Extension payloads are validated against the owning plugin's declared
+      // schema before anything else reads them; a miss becomes a visible
+      // provider/unhandled in the same batch slot.
+      const validatedEnvelopes = await validateExtensionPayloads(
+        deps,
+        entries.map((entry) => entry.envelope),
+      );
+      const labelledEntries = entries.map((entry, index) => {
+        const validated = validatedEnvelopes[index];
+        if (validated === undefined) {
+          throw new Error("Missing validated envelope for daemon event entry");
+        }
+        return {
+          ...entry,
+          envelope: withPluginToolStatusLabels(validated),
+        };
+      });
       const eventInputs = labelledEntries.map((entry) => {
         return toStoredEvent({
           envelope: entry.envelope,

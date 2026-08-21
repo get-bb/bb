@@ -3,16 +3,12 @@ import fs from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { removePathWithRetry } from "./helpers/remove-path.js";
+import { isNodeError, removePathWithRetry } from "./helpers/remove-path.js";
 
 const execFile = promisify(execFileCallback);
 
 const INTEGRATION_TMP_PREFIX = "bb-integration-";
 const STALE_TMP_ROOT_AGE_MS = 60 * 60_000;
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error;
-}
 
 function isExecExitCodeOne(error: unknown): boolean {
   if (typeof error !== "object" || error === null || !("code" in error)) {

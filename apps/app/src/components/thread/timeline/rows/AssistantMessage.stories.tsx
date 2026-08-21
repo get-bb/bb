@@ -207,13 +207,11 @@ export function Overview() {
             id="row_story_short"
             threadId="thr_story"
             turnId="turn_story_short"
-            sourceSeqStart={0}
-            sourceSeqEnd={0}
             text={shortMessage}
             attachments={null}
-            turnRequest={null}
             showActions={true}
             mobileActionDisplay="inline"
+            streaming={false}
           />
         </TimelineStage>
       </StoryRow>
@@ -227,13 +225,11 @@ export function Overview() {
             id="row_story_long"
             threadId="thr_story"
             turnId="turn_story_long"
-            sourceSeqStart={0}
-            sourceSeqEnd={0}
             text={longMessage}
             attachments={null}
-            turnRequest={null}
             showActions={true}
             mobileActionDisplay="inline"
+            streaming={false}
           />
         </TimelineStage>
       </StoryRow>

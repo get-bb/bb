@@ -10,7 +10,9 @@ import type {
   PermissionMode,
 } from "./src/rpc-types";
 import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
+import { RUN_STATE_PRESENTATION } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
@@ -64,7 +66,7 @@ import {
 import { AutomationProviderIcon } from "./lib/provider-icon";
 import { AutomationMetadataItem } from "./metadata";
 
-export interface AutomationRunsViewState {
+interface AutomationRunsViewState {
   runs: readonly AutomationRunResponse[];
   nextCursor: string | null;
   loading: boolean;
@@ -74,7 +76,7 @@ export interface AutomationRunsViewState {
   retry: () => void;
 }
 
-export interface AutomationDetailViewProps {
+interface AutomationDetailViewProps {
   automation: AutomationResponse;
   projectLabel: string;
   runsState: AutomationRunsViewState;
@@ -82,6 +84,12 @@ export interface AutomationDetailViewProps {
   executionOptions: AutomationExecutionOptionsResponse | null;
   executionOptionsError: string | null;
   permissionModes: readonly PermissionMode[];
+  /**
+   * The execution provider's display name from the host's provider directory
+   * (`experimental_useProviders`), or undefined when the directory does not
+   * list it; the view then falls back to a readable form of the id.
+   */
+  providerName?: string;
   editing: boolean;
   onToggle: (enabled: boolean) => void;
   onEdit: () => void;
@@ -147,22 +155,10 @@ export function automationIconName(automation: AutomationResponse): IconName {
     : "Calendar";
 }
 
-export function automationScheduleLabel(
-  automation: AutomationResponse,
-): string {
-  return formatScheduleStatusLabel({
-    enabled: automation.enabled,
-    nextRunAt: automation.nextRunAt,
-    trigger: automation.trigger,
-    runCount: automation.runCount,
-    lastRunStatus: automation.lastRunStatus,
-  });
-}
-
 function automationDetailNextRun(
   automation: AutomationResponse,
 ): ReactNode | null {
-  const label = automationDetailScheduleLabel(automation);
+  const label = formatDetailScheduleStatusLabel(automation);
   if (label === null) return null;
   if (!label.startsWith("Next ")) return label;
   return (
@@ -170,18 +166,6 @@ function automationDetailNextRun(
       {label.slice("Next ".length)}
     </AutomationMetadataItem>
   );
-}
-
-function automationDetailScheduleLabel(
-  automation: AutomationResponse,
-): string | null {
-  return formatDetailScheduleStatusLabel({
-    enabled: automation.enabled,
-    nextRunAt: automation.nextRunAt,
-    trigger: automation.trigger,
-    runCount: automation.runCount,
-    lastRunStatus: automation.lastRunStatus,
-  });
 }
 
 function automationBodyLabel(execution: AutomationExecution): string {
@@ -496,7 +480,14 @@ function isSilentRun(run: AutomationRunResponse): boolean {
   );
 }
 
-export const AUTOMATION_RUN_STATUS_VISUALS: Record<
+/**
+ * Glyphs and labels come from the shared run-state vocabulary in `@bb/domain`
+ * — the same map Settings → Updates and `bb updates` read — so the two
+ * surfaces cannot drift. Only the colour classes are local: a run history
+ * colours success green because a succeeded run is its headline, where the
+ * Updates page mutes it because up-to-date is its resting state.
+ */
+const AUTOMATION_RUN_STATUS_VISUALS: Record<
   AutomationRunStatus,
   {
     label: string;
@@ -506,26 +497,22 @@ export const AUTOMATION_RUN_STATUS_VISUALS: Record<
 > = {
   running: {
     label: "Running",
-    icon: "Loading",
+    icon: RUN_STATE_PRESENTATION["in-progress"].icon as IconName,
     className: "animate-spin text-muted-foreground",
   },
   failed: {
-    label: "Failed",
-    icon: "CircleX",
+    label: RUN_STATE_PRESENTATION.failed.label,
+    icon: RUN_STATE_PRESENTATION.failed.icon as IconName,
     className: "text-destructive",
   },
   skipped: {
-    label: "Skipped",
-    // Not CircleDashed: icon.tsx aliases it to the same DashedLineCircleIcon as
-    // Spinner, so a skipped run rendered an identical shape to a running one.
-    // ArrowTurnForward is the only glyph in the map that reads as "passed
-    // over", and it is shape-distinct from check, x, spinner, clock and pause.
-    icon: "ArrowTurnForward",
+    label: RUN_STATE_PRESENTATION.skipped.label,
+    icon: RUN_STATE_PRESENTATION.skipped.icon as IconName,
     className: "text-subtle-foreground",
   },
   succeeded: {
-    label: "Succeeded",
-    icon: "CircleCheck",
+    label: RUN_STATE_PRESENTATION.succeeded.label,
+    icon: RUN_STATE_PRESENTATION.succeeded.icon as IconName,
     className: "text-success",
   },
 };
@@ -661,6 +648,7 @@ function AgentAutomationDefinition({
   projectContextLabel,
   pending,
   permissionModes,
+  providerName,
   onCancel,
   onUpdate,
 }: {
@@ -672,6 +660,7 @@ function AgentAutomationDefinition({
   projectContextLabel: string;
   pending: boolean;
   permissionModes: readonly PermissionMode[];
+  providerName: string | undefined;
   onCancel: () => void;
   onUpdate: (update: AgentExecutionUpdate) => Promise<void>;
 }) {
@@ -685,6 +674,11 @@ function AgentAutomationDefinition({
     setModel(execution.model);
     setPermissionMode(execution.permissionMode);
   }, [execution.model, execution.permissionMode, execution.prompt]);
+  // The host's provider directory (resolved by the plugin entry) names the
+  // provider; the local formatter only covers an id the directory no longer
+  // lists (a removed plugin).
+  const providerLabel =
+    providerName ?? formatAutomationProviderLabel(execution.providerId);
   const trimmedPrompt = prompt.trim();
   const dirty =
     prompt !== execution.prompt ||
@@ -797,7 +791,7 @@ function AgentAutomationDefinition({
         <div className="flex min-w-0 flex-1 items-center gap-1">
           <AutomationSelector
             label="Provider and model"
-            accessibleLabel={`Provider and model: ${formatAutomationProviderLabel(execution.providerId)}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
+            accessibleLabel={`Provider and model: ${providerLabel}, ${modelOptions.find((option) => option.value === model)?.label ?? model}`}
             value={model}
             options={modelOptions}
             disabled={pending || options === null}
@@ -842,11 +836,11 @@ function AgentAutomationDefinition({
                 execution.model,
                 execution.providerId,
               )}
-              accessibleValue={`${formatAutomationProviderLabel(execution.providerId)}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+              accessibleValue={`${providerLabel}, ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
               leading={
                 <AutomationProviderIcon providerId={execution.providerId} />
               }
-              title={`${formatAutomationProviderLabel(execution.providerId)}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
+              title={`${providerLabel}: ${formatAutomationModelLabel(execution.model, execution.providerId)}`}
             />
           ),
         },
@@ -894,6 +888,7 @@ export function AutomationDetailView({
   onRunNow,
   onDelete,
   onOpenThread,
+  providerName,
   footer,
 }: AutomationDetailViewProps) {
   useResourceRouteLabel(automation.name);
@@ -950,7 +945,7 @@ export function AutomationDetailView({
             oneShotLifecycle === "expired"
               ? "Expired automation; edit to reschedule"
               : lifecycleLocked
-                ? `${automationScheduleLabel(automation)} automation`
+                ? `${formatScheduleStatusLabel(automation)} automation`
                 : automation.enabled
                   ? "Pause automation"
                   : "Resume automation"
@@ -1001,6 +996,7 @@ export function AutomationDetailView({
               permissionModes={permissionModes}
               personalProject={personalProject}
               projectContextLabel={projectContextLabel}
+              providerName={providerName}
               onCancel={onCancelEdit}
               onUpdate={onUpdateAgent}
             />
@@ -1058,18 +1054,20 @@ export function AutomationDetailView({
               </div>
             </ResourceDetailCollection>
           ) : runsState.loading ? (
-            <ResourceDetailCollection>
-              <div
-                data-automation-runs-state="loading"
-                role="status"
-                aria-label="Loading runs"
-                className="flex min-w-0 items-center gap-2.5 px-2 py-2.5"
-              >
-                <Skeleton className="size-3.5 shrink-0 rounded-full" />
-                <Skeleton className="h-3 w-28 rounded-sm" />
-                <Skeleton className="h-3 w-10 rounded-sm" />
-              </div>
-            </ResourceDetailCollection>
+            <DelayedLoading>
+              <ResourceDetailCollection>
+                <div
+                  data-automation-runs-state="loading"
+                  role="status"
+                  aria-label="Loading runs"
+                  className="flex min-w-0 items-center gap-2.5 px-2 py-2.5"
+                >
+                  <Skeleton className="size-3.5 shrink-0 rounded-full" />
+                  <Skeleton className="h-3 w-28 rounded-sm" />
+                  <Skeleton className="h-3 w-10 rounded-sm" />
+                </div>
+              </ResourceDetailCollection>
+            </DelayedLoading>
           ) : runsState.runs.length === 0 ? (
             <ResourceDetailCollection>
               <div

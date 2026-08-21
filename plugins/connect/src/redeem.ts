@@ -3,7 +3,42 @@
 
 export const DEFAULT_CONNECT_BASE_URL = "https://getbb.app";
 
-export interface RedeemedCredential {
+/**
+ * Resolve the unpaired Connect apex. Source development may point at the
+ * worktree-local Cloud, but production always keeps the hosted default.
+ */
+export function resolveDefaultConnectBaseUrl(env: NodeJS.ProcessEnv): string {
+  const configured = env.BB_DEV_CONNECT_BASE_URL?.trim();
+  if (env.NODE_ENV !== "development" || !configured) {
+    return DEFAULT_CONNECT_BASE_URL;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    throw new Error(
+      "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin",
+    );
+  }
+  if (
+    url.protocol !== "http:" ||
+    url.hostname !== "bb.localhost" ||
+    url.port.length === 0 ||
+    url.username.length > 0 ||
+    url.password.length > 0 ||
+    (url.pathname !== "" && url.pathname !== "/") ||
+    url.search.length > 0 ||
+    url.hash.length > 0
+  ) {
+    throw new Error(
+      "BB_DEV_CONNECT_BASE_URL must be an http://bb.localhost:<port> origin",
+    );
+  }
+  return url.origin;
+}
+
+interface RedeemedCredential {
   credential: string;
   /**
    * Routing label of the redeemed server (its subdomain). Equal to the
@@ -19,7 +54,7 @@ export interface RedeemedCredential {
  * human copy by the panel); `message` keeps the raw wire detail for the CLI
  * and the plugin log — never shown verbatim in the panel.
  */
-export type ConnectPairErrorCode =
+type ConnectPairErrorCode =
   | "invalid_code"
   | "expired_code"
   | "already_used"

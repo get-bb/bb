@@ -6,14 +6,14 @@ import { isApprovalPendingInteractionPayload } from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import { summarizePendingInteractionRequestedPermissions } from "./pending-interaction-formatting.js";
 
-export type PendingInteractionPresentationSurface = "app" | "cli";
+type PendingInteractionPresentationSurface = "app" | "cli";
 
-export interface FormatPendingInteractionSummaryArgs {
+interface FormatPendingInteractionSummaryArgs {
   interaction: PendingInteraction;
   surface: PendingInteractionPresentationSurface;
 }
 
-export interface FormatPendingInteractionUserQuestionOptionLabelArgs {
+interface FormatPendingInteractionUserQuestionOptionLabelArgs {
   question: PendingInteractionUserQuestionQuestion;
   value: string;
 }
@@ -49,6 +49,11 @@ export function formatPendingInteractionSummary(
       return interaction.payload.subject.command;
     case "file_change":
       return "File changes pending approval";
+    case "plan":
+      return "Plan ready for review";
+    // Declarative base only: no producer emits this subject until WS5.
+    case "tool_use":
+      return interaction.payload.subject.presentation.label.pending;
     case "permission_grant":
       break;
     default:

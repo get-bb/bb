@@ -16,12 +16,6 @@ export type PathThreadAndFilePath = {
 export type PathPreviewAndFilePath = {
   param: { id: string; filePath: string };
 };
-export type PathThreadAndTerminal = {
-  param: { id: string; terminalId: string };
-};
-export type PathEnvironmentAndTerminal = {
-  param: { id: string; terminalId: string };
-};
 export type PathTerminal = {
   param: { terminalId: string };
 };

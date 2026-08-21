@@ -37,9 +37,12 @@ Both surfaces are implemented by the plugin app with `@bb/shared-ui` controls
 and BB theme tokens. Directive attributes and restored panel parameters are
 treated as untrusted input. The backend additionally binds every requested run
 to the directive message or panel thread, so a run ID from another thread
-cannot be inspected or stopped through these UI RPCs. The composer status
-surface checks once per second while mounted so newly started runs appear;
-active message cards and panels poll once per second, then stop when terminal.
+cannot be inspected or stopped through these UI RPCs. The service publishes a
+`workflow-runs` realtime signal for the origin thread when a run starts, is
+claimed, settles, or is cancelled, so the composer status surface learns about
+new runs without a standing poll; it and the active message cards poll once
+per second only while a run is active and the page is visible, refresh once
+when the page or the realtime connection comes back, and stop when terminal.
 
 The security boundary is the QuickJS context: workflow code has JSON data and
 explicit orchestration capabilities, but no Node, filesystem, shell, network,

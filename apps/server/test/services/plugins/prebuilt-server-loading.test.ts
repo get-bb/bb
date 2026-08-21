@@ -15,6 +15,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -25,8 +26,11 @@ function gitPersistence(url: string, requestedRef: string) {
       kind: "git" as const,
       url,
       subdirectory: null,
-      requestedRef,
-      refKind: "branch" as const,
+      selector: {
+        kind: "ref" as const,
+        ref: requestedRef,
+        refKind: "branch" as const,
+      },
     },
     exactResolution: { kind: "git" as const, commit: "test-commit" },
     updateState: {
@@ -65,6 +69,7 @@ describe("prebuilt server bundle loading", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-prebuilt-"));
     service = createPluginService({
+      telemetry: createNoopTelemetryService(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,

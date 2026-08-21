@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
 import { turnScope } from "@bb/domain";
-import { RuntimeTurnReplayFilter } from "./runtime-turn-replay-filter.js";
 import { RuntimeTurnState } from "./runtime-turn-state.js";
 
 function turnStarted(
@@ -44,6 +43,20 @@ describe("RuntimeTurnState", () => {
     state.observe(turnCompleted("turn-1"));
     expect(state.getActiveTurnId("t1")).toBeNull();
     expect(state.getActiveThreadIds()).toEqual([]);
+  });
+
+  it("keeps the root turn active when a delegated child completes", () => {
+    const state = new RuntimeTurnState();
+
+    state.observe(turnStarted("root-turn"));
+    state.observe(turnStarted("child-turn", { parentToolCallId: "tool-1" }));
+    state.observe(turnCompleted("child-turn"));
+
+    expect(state.getActiveTurnId("t1")).toBe("root-turn");
+
+    state.observe(turnCompleted("root-turn"));
+
+    expect(state.getActiveTurnId("t1")).toBeNull();
   });
 
   it("ignores delegated child turn starts for active foreground state", async () => {
@@ -155,17 +168,3 @@ describe("RuntimeTurnState", () => {
   });
 });
 
-describe("RuntimeTurnReplayFilter", () => {
-  it("marks replayed turn starts as drops", () => {
-    const filter = new RuntimeTurnReplayFilter();
-
-    expect(filter.observe(turnStarted("turn-1")).kind).toBe("emit");
-    expect(filter.observe(turnCompleted("turn-1")).kind).toBe("emit");
-
-    expect(filter.observe(turnStarted("turn-1"))).toEqual({
-      kind: "drop-replayed-turn-start",
-      threadId: "t1",
-      turnId: "turn-1",
-    });
-  });
-});

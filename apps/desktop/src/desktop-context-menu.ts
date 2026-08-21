@@ -1,4 +1,5 @@
 import {
+  clipboard,
   Menu,
   type ContextMenuParams,
   type Event,
@@ -24,13 +25,13 @@ export interface DesktopContextMenuWebContents {
   >;
 }
 
-export interface DesktopContextMenuSpellcheckContext {
+interface DesktopContextMenuSpellcheckContext {
   dictionarySuggestions: string[];
   misspelledWord: string;
   replacementMode: "electron-misspelling" | "selected-text";
 }
 
-export interface BuildDesktopContextMenuTemplateArgs {
+interface BuildDesktopContextMenuTemplateArgs {
   params: ContextMenuParams;
   spellcheckContext?: DesktopContextMenuSpellcheckContext | null;
   webContents: Pick<
@@ -39,7 +40,7 @@ export interface BuildDesktopContextMenuTemplateArgs {
   >;
 }
 
-export interface RegisterDesktopContextMenuArgs {
+interface RegisterDesktopContextMenuArgs {
   webContents: DesktopContextMenuWebContents;
 }
 
@@ -162,6 +163,16 @@ export function buildDesktopContextMenuTemplate({
     pushSeparatorIfNeeded(template);
   }
 
+  if (params.linkURL.length > 0) {
+    template.push({
+      label: "Copy Link",
+      click: () => {
+        clipboard.writeText(params.linkURL);
+      },
+    });
+    pushSeparatorIfNeeded(template);
+  }
+
   if (params.isEditable) {
     const { editFlags } = params;
     template.push(
@@ -182,7 +193,6 @@ export function buildDesktopContextMenuTemplate({
     template.push({ role: "copy", enabled: true });
   }
   if (params.editFlags.canSelectAll) {
-    pushSeparatorIfNeeded(template);
     template.push({ role: "selectAll", enabled: true });
   }
 

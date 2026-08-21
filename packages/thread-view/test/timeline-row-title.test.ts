@@ -545,9 +545,7 @@ describe("buildTimelineRowTitle", () => {
       pending: "Reading project overview",
       completed: "Read project overview",
     };
-    const render = (
-      overrides: Partial<ReturnType<typeof toolRow>>,
-    ): string =>
+    const render = (overrides: Partial<ReturnType<typeof toolRow>>): string =>
       buildTimelineRowTitle(
         {
           ...toolRow(),
@@ -569,9 +567,9 @@ describe("buildTimelineRowTitle", () => {
     expect(
       render({ status: "pending", approvalStatus: "waiting_for_approval" }),
     ).not.toContain("Reading project overview");
-    expect(render({ status: "pending", approvalStatus: "denied" })).not.toContain(
-      "Reading project overview",
-    );
+    expect(
+      render({ status: "pending", approvalStatus: "denied" }),
+    ).not.toContain("Reading project overview");
   });
 
   it("can render completed work leaves with muted summary title treatment", () => {
@@ -1266,6 +1264,24 @@ describe("buildTimelineRowTitle", () => {
     expect(title.decorations).toEqual([
       { kind: "duration", startedAt: 1, completedAt: null, em: false },
     ]);
+  });
+
+  it("renders context-cleared operations without a synthetic duration", () => {
+    const row: TimelineSystemRow = {
+      ...baseRow("context-cleared"),
+      kind: "system",
+      systemKind: "operation",
+      operationKind: "context-clear",
+      title: "Context cleared",
+      detail: null,
+      status: "completed",
+      completedAt: 1,
+    };
+
+    const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
+
+    expect(title.plain).toBe("Context cleared");
+    expect(title.decorations).toEqual([]);
   });
 
   it("formats turn durations over 60 minutes as hours", () => {

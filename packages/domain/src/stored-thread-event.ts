@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { convertLegacyStoredThreadEvent } from "./legacy-thread-events.js";
 import { threadEventSchema, threadEventTypeSchema } from "./provider-event.js";
 import {
   systemMessageKindSchema,
@@ -38,7 +39,7 @@ interface ThreadEventRowInput extends ThreadEventRowBase {
   data: Record<string, unknown>;
 }
 
-export interface StoredThreadEventParseArgs {
+interface StoredThreadEventParseArgs {
   data: Record<string, unknown>;
   providerThreadId?: string | null;
   scope: ThreadEventScope;
@@ -46,7 +47,7 @@ export interface StoredThreadEventParseArgs {
   type: ThreadEventType;
 }
 
-export type StoredThreadEventDataByType = {
+type StoredThreadEventDataByType = {
   [TType in ThreadEventType]: StoredThreadEventDataFromEvent<
     ThreadEventForType<TType>
   >;
@@ -129,9 +130,16 @@ export function parseStoredThreadEvent(
     throw new Error("Stored thread event is missing valid scope");
   }
   const scope = scopeResult.data;
-  const eventData = storedTurnRequestTypeSet.has(args.type)
-    ? parseStoredTurnRequestEventData(args)
-    : args.data;
+  // Read-time conversion: a row persisted under a vocabulary that has since
+  // moved (codex goals → the plugin's extension state) decodes into its
+  // current shape here, so no consumer ever sees the legacy type.
+  const stored = convertLegacyStoredThreadEvent({
+    type: args.type,
+    data: args.data,
+  });
+  const eventData = storedTurnRequestTypeSet.has(stored.type)
+    ? parseStoredTurnRequestEventData({ ...args, data: stored.data })
+    : stored.data;
 
   return threadEventSchema.parse({
     ...omitStoredScopeFields(eventData),
@@ -140,7 +148,7 @@ export function parseStoredThreadEvent(
       : {}),
     scope,
     threadId: args.threadId,
-    type: args.type,
+    type: stored.type,
   });
 }
 

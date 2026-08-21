@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { buildAttachmentUrl, registerAttachments } from "../attachments";
 import { tasksRpcContract } from "../shared/contract";
@@ -176,15 +176,9 @@ describe("Tasks RPC domain API", () => {
               return makeThreadResponse({
                 id: threadId,
                 title: "Internal side chat",
-                originKind: "side-chat",
-              });
-            }
-            if (threadId === "thr_side_chat_legacy") {
-              return makeThreadResponse({
-                id: threadId,
-                title: "Legacy side chat",
-                originKind: null,
-                childOrigin: "side-chat",
+                originKind: "fork",
+                originPluginId: "side-chat",
+                visibility: "hidden",
               });
             }
             // Deleted / hidden / inaccessible threads reject.
@@ -240,15 +234,6 @@ describe("Tasks RPC domain API", () => {
       body: "Side chat",
       notifiedCount: 0,
     });
-    // Agent comment authored by a legacy childOrigin side chat.
-    store.tasks.createComment({
-      taskId: task.id,
-      kind: "agent",
-      authorName: "agent (thr_side_chat_legacy)",
-      threadId: "thr_side_chat_legacy",
-      body: "Legacy side chat",
-      notifiedCount: 0,
-    });
     // Agent comment whose thread is gone/inaccessible.
     store.tasks.createComment({
       taskId: task.id,
@@ -287,12 +272,11 @@ describe("Tasks RPC domain API", () => {
     expect(titleByBody.get("Fallback title")).toBe("Untitled work");
     expect(titleByBody.get("Blank title")).toBe("Recovered fallback");
     expect(titleByBody.get("Side chat")).toBeNull();
-    expect(titleByBody.get("Legacy side chat")).toBeNull();
     expect(titleByBody.get("Missing thread")).toBeNull();
     expect(titleByBody.get("Legacy")).toBeNull();
     expect(titleByBody.get("Human note")).toBeNull();
     // Each distinct agent thread is resolved once, not per comment.
-    expect(harness.sdk.callsTo("threads.get")).toHaveLength(6);
+    expect(harness.sdk.callsTo("threads.get")).toHaveLength(5);
     await harness.dispose();
   });
 
@@ -316,7 +300,9 @@ describe("Tasks RPC domain API", () => {
               return makeThreadResponse({
                 id: threadId,
                 title: "Internal side chat",
-                originKind: "side-chat",
+                originKind: "fork",
+                originPluginId: "side-chat",
+                visibility: "hidden",
                 providerId: "claude-code",
               });
             }
@@ -457,14 +443,14 @@ describe("Tasks RPC domain API", () => {
               id: "codex",
               displayName: "Codex",
               capabilities: {
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             },
             {
               id: "claude-code",
               displayName: "Claude Code",
               capabilities: {
-                supportedPermissionModes: ["accept-edits", "auto", "full"],
+                permissionModes: ["accept-edits", "auto", "full"],
               },
             },
           ],
@@ -477,6 +463,7 @@ describe("Tasks RPC domain API", () => {
                 supportedReasoningEfforts: [
                   { reasoningEffort: "medium" },
                   { reasoningEffort: "high" },
+                  { reasoningEffort: "ultra" },
                 ],
               },
               {
@@ -500,12 +487,12 @@ describe("Tasks RPC domain API", () => {
         {
           id: "codex",
           name: "Codex",
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          permissionModes: ["accept-edits", "auto", "full"],
         },
         {
           id: "claude-code",
           name: "Claude Code",
-          supportedPermissionModes: ["accept-edits", "auto", "full"],
+          permissionModes: ["accept-edits", "auto", "full"],
         },
       ],
     });
@@ -516,7 +503,7 @@ describe("Tasks RPC domain API", () => {
         { id: "gpt-5.6-sol", name: "GPT-5.6", isDefault: true },
         { id: "gpt-5.5", name: "GPT-5.5", isDefault: false },
       ],
-      reasoningLevels: ["low", "medium", "high"],
+      reasoningLevels: ["low", "medium", "high", "ultra"],
     });
     expect(harness.sdk.callsTo("providers.list")).toEqual([[]]);
     expect(harness.sdk.callsTo("providers.models")).toEqual([
@@ -581,7 +568,7 @@ describe("Tasks RPC domain API", () => {
     await expect(
       harness.callRpc("listProviderModels", { providerId: "test" }),
     ).resolves.toMatchObject({
-      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+      reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
     });
     await harness.dispose();
   });
@@ -1054,6 +1041,21 @@ describe("Tasks RPC domain API", () => {
       title: "Implement nested detail",
       liveStatus: "working",
     });
+    store.tasks.createTask({
+      projectId: project.id,
+      title: "Open top-level follow-up",
+      status: "todo",
+    });
+    store.tasks.createTask({
+      projectId: project.id,
+      title: "Canceled top-level follow-up",
+      status: "canceled",
+    });
+
+    const openCount = tasksRpcContract.sidebarOpenTaskCount.output.parse(
+      await harness.callRpc("sidebarOpenTaskCount", null),
+    );
+    expect(openCount).toEqual({ openTaskCount: 2 });
 
     const summary = tasksRpcContract.sidebarSummary.output.parse(
       await harness.callRpc("sidebarSummary", null),
@@ -1062,7 +1064,7 @@ describe("Tasks RPC domain API", () => {
       projects: [
         {
           projectId: project.id,
-          taskCount: 1,
+          taskCount: 3,
           activeAgentCount: 1,
         },
       ],

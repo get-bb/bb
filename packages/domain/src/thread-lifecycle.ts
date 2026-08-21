@@ -42,7 +42,7 @@ export type ThreadLifecycleEventType = ThreadLifecycleEvent["type"];
  * is the `stopping` status (the table simply has no "begin new work"
  * transition out of `stopping`).
  */
-export interface ThreadLifecycleSupersessionPredicates {
+interface ThreadLifecycleSupersessionPredicates {
   notArchived?: true;
   notDeleted?: true;
 }
@@ -112,11 +112,11 @@ export interface ThreadLifecycleRowState {
 
 export type ThreadLifecycleNoopReason = "illegal-transition" | "superseded";
 
-export type ThreadLifecycleEvaluation =
+type ThreadLifecycleEvaluation =
   | { to: ThreadStatus }
   | { noop: ThreadLifecycleNoopReason; detail: string };
 
-export interface EvaluateThreadLifecycleEventArgs {
+interface EvaluateThreadLifecycleEventArgs {
   event: ThreadLifecycleEvent;
   thread: ThreadLifecycleRowState;
 }

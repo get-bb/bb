@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { resolveRuntimeMode, type BbRuntimeMode } from "./runtime.js";
 
-export interface EnvReaderContext {
+interface EnvReaderContext {
   homeDir: string;
 }
 
@@ -23,21 +23,19 @@ export interface EnvLoaderArgs {
   mode?: BbRuntimeMode;
 }
 
-export interface ResolvedEnvLoader {
+interface ResolvedEnvLoader {
   context: EnvReaderContext;
   env: NodeJS.ProcessEnv;
   mode: BbRuntimeMode;
 }
 
-export interface ReadEnvVarArgs<TValue> {
+interface ReadEnvVarArgs<TValue> {
   context: EnvReaderContext;
   definition: EnvVarDefinition<TValue>;
   env: NodeJS.ProcessEnv;
 }
 
-export interface ReadEnvVarWithDefaultArgs<
-  TValue,
-> extends ReadEnvVarArgs<TValue> {
+interface ReadEnvVarWithDefaultArgs<TValue> extends ReadEnvVarArgs<TValue> {
   defaultValue: TValue;
 }
 

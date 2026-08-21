@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  ownsModelPickerChord,
+  ownsModelPickerCycleChord,
+  ownsModelPickerToggleChord,
   resolveModelPickerToggle,
   type ModelPickerToggleInput,
 } from "./modelPickerToggle";
@@ -15,6 +16,7 @@ const base: ModelPickerToggleInput = {
   isPrimaryComposer: true,
   caretInThisComposer: true,
   caretInOtherComposerOfPane: false,
+  editableOutsideComposer: false,
 };
 
 describe("resolveModelPickerToggle", () => {
@@ -71,6 +73,16 @@ describe("resolveModelPickerToggle", () => {
     ).toBe("open");
   });
 
+  it("retains the split-pane fallback from unrelated editable controls", () => {
+    expect(
+      resolveModelPickerToggle({
+        ...base,
+        caretInThisComposer: false,
+        editableOutsideComposer: true,
+      }),
+    ).toBe("open");
+  });
+
   it("does NOT open a hidden secondary (side-chat) composer on the caret-outside fallback", () => {
     // The regression the reviewer flagged: a mounted-but-hidden side chat
     // must not win the fallback in a focused split pane.
@@ -94,10 +106,8 @@ describe("resolveModelPickerToggle", () => {
   });
 });
 
-// The cycle chords (Alt+M / Alt+T) resolve through this same predicate, so the
-// toggle and the cycles can never disagree about which picker a chord addresses.
-describe("ownsModelPickerChord", () => {
-  it("agrees with the toggle on every scope decision", () => {
+describe("ownsModelPickerCycleChord", () => {
+  it("agrees with the toggle except for unrelated editable controls", () => {
     for (const open of [false, true]) {
       for (const overrides of [
         {},
@@ -109,29 +119,44 @@ describe("ownsModelPickerChord", () => {
         { caretInThisComposer: false, caretInOtherComposerOfPane: true },
       ]) {
         const input = { ...base, ...overrides, open };
-        expect(ownsModelPickerChord(input)).toBe(
-          resolveModelPickerToggle(input) !== "ignore",
+        expect(ownsModelPickerCycleChord(input)).toBe(
+          ownsModelPickerToggleChord(input),
         );
       }
     }
+  });
+
+  it("leaves a closed picker's cycle chord to unrelated editable controls", () => {
+    expect(
+      ownsModelPickerCycleChord({
+        ...base,
+        caretInThisComposer: false,
+        editableOutsideComposer: true,
+      }),
+    ).toBe(false);
   });
 
   // The popover portals out of the composer, so once it opens the caret is in
   // neither composer. Without this rule the cycle chords would die on open.
   it("owns the chord while the picker is open and the caret is nowhere", () => {
     expect(
-      ownsModelPickerChord({
+      ownsModelPickerCycleChord({
         ...base,
         open: true,
         isSplitPane: false,
         caretInThisComposer: false,
+        editableOutsideComposer: true,
       }),
     ).toBe(true);
   });
 
   it("still ignores an open picker in an unfocused pane", () => {
     expect(
-      ownsModelPickerChord({ ...base, open: true, isFocusedPane: false }),
+      ownsModelPickerCycleChord({
+        ...base,
+        open: true,
+        isFocusedPane: false,
+      }),
     ).toBe(false);
   });
 });

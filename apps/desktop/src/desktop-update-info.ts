@@ -1,6 +1,6 @@
 import type { BbDesktopInfo } from "@bb/desktop-contract";
 
-export interface MergeDesktopUpdateInfoArgs {
+interface MergeDesktopUpdateInfoArgs {
   autoInfo: BbDesktopInfo | null;
   feedInfo: BbDesktopInfo | null;
 }

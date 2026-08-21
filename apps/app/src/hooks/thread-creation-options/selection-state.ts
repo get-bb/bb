@@ -11,7 +11,7 @@ import type {
   StoredServiceTier,
 } from "./persisted-selection-fields";
 
-export type ThreadCreationOptionsScope = "new-thread" | "component-local";
+type ThreadCreationOptionsScope = "new-thread" | "component-local";
 
 export interface ThreadPromptSelections {
   selectedProviderId: string;
@@ -31,12 +31,18 @@ export type ScopedExecutionInputSources =
 export interface UsePromptModelReasoningOptions {
   enabled?: boolean;
   environmentId?: string;
+  /**
+   * The machine the environment lives on. Component-local composers route
+   * host-scoped provider catalogs by host so threads in different
+   * environments on one machine share a single execution-options query.
+   */
+  environmentHostId?: string;
   scope?: ThreadCreationOptionsScope;
   resetKey?: string | number | null;
   initialProviderId?: string;
   /** When no project default or persisted choice exists, select the first
-   * connected provider reported by the routed machine. */
-  preferConnectedProviderWhenUnset?: boolean;
+   * ready provider reported by the routed machine. */
+  preferReadyProviderWhenUnset?: boolean;
   initialModel?: string;
   initialServiceTier?: ServiceTier;
   initialReasoningLevel?: ReasoningLevel;
@@ -56,7 +62,7 @@ export interface UseComponentLocalCreationOptions extends UsePromptModelReasonin
   scope: "component-local";
 }
 
-export interface StoredCreateExecutionValues {
+interface StoredCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
   serviceTier: StoredServiceTier;
@@ -64,7 +70,7 @@ export interface StoredCreateExecutionValues {
   permissionMode: StoredPermissionMode;
 }
 
-export interface EffectiveCreateExecutionValues {
+interface EffectiveCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
   serviceTier: ServiceTier | undefined;
@@ -72,7 +78,7 @@ export interface EffectiveCreateExecutionValues {
   permissionMode: PermissionMode;
 }
 
-export interface BuildExecutionInputSourcesArgs {
+interface BuildExecutionInputSourcesArgs {
   effectiveValues: EffectiveCreateExecutionValues;
   forceExplicitModel?: boolean;
   initialProviderSource?: ExecutionInputFieldSource;
@@ -81,13 +87,13 @@ export interface BuildExecutionInputSourcesArgs {
   touchedFields: ReadonlySet<ThreadPromptField>;
 }
 
-export interface SyncThreadPromptSelectionsArgs {
+interface SyncThreadPromptSelectionsArgs {
   currentSelections: ThreadPromptSelections;
   nextSelections: ThreadPromptSelections;
   touchedFields: ReadonlySet<ThreadPromptField>;
 }
 
-export interface UpdateThreadPromptSelectionsArgs {
+interface UpdateThreadPromptSelectionsArgs {
   currentSelections: ThreadPromptSelections;
   field: ThreadPromptField;
   value: ThreadPromptSelections[ThreadPromptField];
@@ -102,7 +108,7 @@ interface ResolveCreateExecutionInputSourceArgs {
 
 interface ResolvePermissionModeSelectionArgs {
   rawPermissionMode: PermissionMode;
-  supportedPermissionModes: readonly PermissionMode[];
+  permissionModes: readonly PermissionMode[];
 }
 
 function hasValue(value: string): boolean {
@@ -298,21 +304,21 @@ export function buildExecutionInputSources({
 
 export function resolvePermissionModeSelection({
   rawPermissionMode,
-  supportedPermissionModes,
+  permissionModes,
 }: ResolvePermissionModeSelectionArgs): PermissionMode {
-  if (supportedPermissionModes.includes(rawPermissionMode)) {
+  if (permissionModes.includes(rawPermissionMode)) {
     return rawPermissionMode;
   }
   // Auto is the product default. Providers without native automatic review
   // fall back to Full Access rather than implying that Accept Edits provides
   // equivalent automatic approval behavior.
-  if (supportedPermissionModes.includes("auto")) {
+  if (permissionModes.includes("auto")) {
     return "auto";
   }
-  if (supportedPermissionModes.includes("full")) {
+  if (permissionModes.includes("full")) {
     return "full";
   }
-  return supportedPermissionModes[0] ?? "auto";
+  return permissionModes[0] ?? "auto";
 }
 
 export function formatModelLabel(value: string): string {

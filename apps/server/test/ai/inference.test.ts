@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { Type } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import {
@@ -15,7 +16,6 @@ import { withTestHarness } from "../helpers/test-app.js";
 const titleSchema = Type.Object({
   title: Type.String(),
 });
-
 describe("inferenceComplete", () => {
   it("surfaces missing host for codex inference", async () => {
     await withTestHarness({
@@ -60,6 +60,63 @@ describe("inferenceComplete", () => {
         timeoutMs: 5000,
       });
 
+      await reportQueuedCommandSuccess(harness, queued, {
+        model: "gpt-5.6-luna",
+        value: { title: "Generated title" },
+      });
+
+      await expect(completion).resolves.toEqual({
+        title: "Generated title",
+      });
+    });
+  });
+
+  it("routes an explicit fallback model instead of the configured primary", async () => {
+    await withTestHarness({
+      inferenceModel: "codex/gpt-5.6-luna",
+    }, async (harness) => {
+      seedHostSession(harness.deps);
+      const completion = inferenceComplete(harness.deps, {
+        model: "codex/gpt-5.4-mini",
+        prompt: "Generate a title",
+        schema: titleSchema,
+        timeoutMs: 5000,
+      });
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "codex.inference.complete",
+      );
+      expect(queued.command).toMatchObject({
+        model: "gpt-5.4-mini",
+        type: "codex.inference.complete",
+      });
+
+      await reportQueuedCommandSuccess(harness, queued, {
+        model: "gpt-5.4-mini",
+        value: { title: "Fallback title" },
+      });
+
+      await expect(completion).resolves.toEqual({ title: "Fallback title" });
+    });
+  });
+
+  it("leaves grace for a daemon result to cross the host RPC boundary", async () => {
+    await withTestHarness({
+      inferenceModel: "codex/gpt-5.6-luna",
+    }, async (harness) => {
+      seedHostSession(harness.deps);
+      const completion = inferenceComplete(harness.deps, {
+        prompt: "Generate a title",
+        schema: titleSchema,
+        timeoutMs: 5,
+      });
+
+      const queued = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "codex.inference.complete",
+      );
+      await delay(20);
       await reportQueuedCommandSuccess(harness, queued, {
         model: "gpt-5.6-luna",
         value: { title: "Generated title" },

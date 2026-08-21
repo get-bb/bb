@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bbPluginSdk": "^0.4.0"
+    "bbPluginSdk": ">=0.4.3"
   },
   "bb": {
     "name": "Content Script Example",
@@ -16,7 +16,7 @@
     "app": "./app.ts"
   },
   "devDependencies": {
-    "@bb/plugin-sdk": "workspace:*",
+    "@get-bb/plugin-sdk": "workspace:*",
     "@bb/tsconfig": "workspace:*",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }

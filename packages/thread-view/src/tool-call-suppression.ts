@@ -13,6 +13,12 @@ const SUPPRESSED_TIMELINE_TOOL_NAMES = new Set([
   "AskUserQuestion",
 ]);
 
+/**
+ * A low-value tool call row: one the bridge marked `suppress` in its
+ * presentation (grammar v3 — the bridge owns its tools' presentation), or,
+ * for events persisted before presentation existed, one of the legacy names
+ * above. Failed and interrupted calls always render.
+ */
 export function shouldSuppressLowValueToolCall(decoded: ThreadEvent): boolean {
   if (
     (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
@@ -21,7 +27,10 @@ export function shouldSuppressLowValueToolCall(decoded: ThreadEvent): boolean {
     return false;
   }
 
-  if (!SUPPRESSED_TIMELINE_TOOL_NAMES.has(decoded.item.tool)) {
+  if (
+    decoded.item.presentation?.suppress !== true &&
+    !SUPPRESSED_TIMELINE_TOOL_NAMES.has(decoded.item.tool)
+  ) {
     return false;
   }
 

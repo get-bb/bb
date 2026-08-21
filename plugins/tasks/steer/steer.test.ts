@@ -1,7 +1,7 @@
 import {
   createFakePluginHost,
   makeThreadResponse,
-} from "@bb/plugin-sdk/testing";
+} from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createTasksStore } from "../db";
 import { deliverCommentToLatestAgent } from ".";
@@ -180,7 +180,9 @@ describe("comment notification delivery", () => {
       makeThreadResponse({
         id: threadId,
         status: "idle",
-        originKind: "side-chat",
+        originKind: "fork",
+        originPluginId: "side-chat",
+        visibility: "hidden",
       }),
     );
     store.createComment({

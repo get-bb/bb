@@ -94,6 +94,14 @@
       "type": "registry:ui"
     },
     {
+      "name": "icon-extended",
+      "type": "registry:ui"
+    },
+    {
+      "name": "icon-registry",
+      "type": "registry:ui"
+    },
+    {
       "name": "input",
       "type": "registry:ui"
     },
@@ -215,10 +223,6 @@
     },
     {
       "name": "use-media-query",
-      "type": "registry:hook"
-    },
-    {
-      "name": "use-pointer-coarse",
       "type": "registry:hook"
     },
     {

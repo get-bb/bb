@@ -17,7 +17,7 @@ import {
 } from "./window-state.js";
 import type { DesktopContextMenuWebContents } from "./desktop-context-menu.js";
 
-export type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
+type DesktopWindowIcon = BrowserWindowConstructorOptions["icon"];
 
 // Inset the macOS traffic lights an equal distance from the window's top and
 // left edges so they sit on a 45° diagonal from the top-left corner. The shared
@@ -32,11 +32,11 @@ const MACOS_TRAFFIC_LIGHT_POSITION = {
   y: MACOS_TRAFFIC_LIGHT_DIAGONAL_INSET,
 };
 
-export interface DesktopWindowOpenDetails {
+interface DesktopWindowOpenDetails {
   url: string;
 }
 
-export interface DesktopWindowOpenHandlerResult {
+interface DesktopWindowOpenHandlerResult {
   action: "deny";
 }
 
@@ -78,31 +78,32 @@ export interface DesktopBrowserWindowCreator {
   create(options: BrowserWindowConstructorOptions): DesktopBrowserWindow;
 }
 
-export interface OpenExternalUrlArgs {
+interface OpenExternalUrlArgs {
   url: string;
 }
 
-export interface CreateDesktopWindowFactoryArgs {
+interface CreateDesktopWindowFactoryArgs {
   browserWindowCreator: DesktopBrowserWindowCreator;
   createWindowStateKey(): WindowStateKey;
   displayWorkAreas: DisplayWorkArea[] | null;
   icon: DesktopWindowIcon;
+  isMac: boolean;
   isQuitting(): boolean;
   openExternalUrl(args: OpenExternalUrlArgs): void;
   preloadPath: string;
   userDataPath: string;
 }
 
-export interface CreateDesktopWindowArgs {
+interface CreateDesktopWindowArgs {
   initialUrl: string | null;
   stateKey: WindowStateKey | null;
 }
 
-export interface RestoreDesktopWindowsArgs {
+interface RestoreDesktopWindowsArgs {
   initialUrl: string | null;
 }
 
-export interface LoadDesktopWindowsUrlArgs {
+interface LoadDesktopWindowsUrlArgs {
   url: string;
 }
 
@@ -136,6 +137,7 @@ interface LoadUrlIntoWindowArgs {
 interface CreateWindowOptionsArgs {
   bounds: WindowBounds;
   icon: DesktopWindowIcon;
+  isMac: boolean;
   preloadPath: string;
 }
 
@@ -166,15 +168,19 @@ function createWindowOptions(
   args: CreateWindowOptionsArgs,
 ): BrowserWindowConstructorOptions {
   return {
-    frame: false,
+    ...(args.isMac
+      ? {
+          frame: false,
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
+        }
+      : {}),
     height: args.bounds.height,
     icon: args.icon,
     minHeight: MIN_WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,
     show: false,
     title: "bb",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: MACOS_TRAFFIC_LIGHT_POSITION,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -231,6 +237,7 @@ export function createDesktopWindowFactory(
         createWindowOptions({
           bounds: restoredState.bounds,
           icon: args.icon,
+          isMac: args.isMac,
           preloadPath: args.preloadPath,
         }),
       );

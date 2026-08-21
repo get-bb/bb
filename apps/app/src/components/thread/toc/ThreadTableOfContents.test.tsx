@@ -43,8 +43,33 @@ import {
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
+/**
+ * Models the part of ResizeObserver the TOC depends on: `observe` delivers the
+ * target's current content box immediately, and the content box is the border
+ * box minus horizontal padding. The TOC reads that entry instead of forcing a
+ * style recalculation, so the arithmetic belongs here in the platform stand-in
+ * rather than in the component.
+ */
 class ResizeObserverMock implements ResizeObserver {
-  observe: ResizeObserver["observe"] = vi.fn();
+  constructor(private readonly callback: ResizeObserverCallback) {}
+
+  observe: ResizeObserver["observe"] = (target) => {
+    const element = target as HTMLElement;
+    const paddingX =
+      (Number.parseFloat(element.style.paddingLeft) || 0) +
+      (Number.parseFloat(element.style.paddingRight) || 0);
+    const inlineSize = Math.max(0, element.clientWidth - paddingX);
+    this.callback(
+      [
+        {
+          target,
+          contentBoxSize: [{ inlineSize, blockSize: 0 }],
+          contentRect: { width: inlineSize } as DOMRectReadOnly,
+        } as unknown as ResizeObserverEntry,
+      ],
+      this,
+    );
+  };
   unobserve: ResizeObserver["unobserve"] = vi.fn();
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
@@ -67,6 +92,7 @@ function userConversationRow(index = 1): TimelineRow {
     systemMessageKind: "unlabeled",
     systemMessageSubject: null,
     turnRequest: {
+      isGrouped: false,
       kind: "message",
       status: "accepted",
     },
@@ -76,11 +102,16 @@ function userConversationRow(index = 1): TimelineRow {
 
 function TocHost({
   hasOlderTimelineRows = false,
+  hostPaddingX = 0,
+  hostWidth = 1_200,
   loadOlderTimelineRows = () => {},
   threadId = "thr_toc_test",
   timelineRows,
 }: {
   hasOlderTimelineRows?: boolean;
+  /** Horizontal padding on each side, as the real scroll overlay has. */
+  hostPaddingX?: number;
+  hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
   threadId?: string;
   timelineRows: readonly TimelineRow[];
@@ -91,10 +122,14 @@ function TocHost({
         if (!node) return;
         Object.defineProperty(node, "clientWidth", {
           configurable: true,
-          value: 1_200,
+          value: hostWidth,
         });
       }}
       data-scroll-overlay=""
+      style={{
+        paddingLeft: `${hostPaddingX}px`,
+        paddingRight: `${hostPaddingX}px`,
+      }}
     >
       <ThreadTableOfContents
         threadId={threadId}
@@ -193,7 +228,6 @@ function threadWithRuntime(
     sourceThreadId: null,
     originKind: null,
     originPluginId: null,
-    childOrigin: null,
     visibility: "visible",
     archivedAt: null,
     pinnedAt: null,
@@ -361,6 +395,48 @@ describe("ThreadTableOfContents", () => {
     );
 
     view.rerender(<TocHost timelineRows={[userConversationRow(1)]} />);
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: true },
+    );
+  });
+
+  it("does not request the hidden outline in a compact thread pane", () => {
+    render(<TocHost hostWidth={400} timelineRows={[userConversationRow(1)]} />);
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: false },
+    );
+  });
+
+  // The overlay pads itself, so its border box runs 24px ahead of the content
+  // box both the `@container` rule and the ResizeObserver entry report. The JS
+  // boundary and the CSS breakpoint must agree.
+  it("does not request the outline when padding hides the TOC", () => {
+    render(
+      <TocHost
+        hostPaddingX={12}
+        hostWidth={900}
+        timelineRows={[userConversationRow(1)]}
+      />,
+    );
+
+    expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
+      "thr_toc_test",
+      { enabled: false },
+    );
+  });
+
+  it("requests the outline once the padded content box reaches the breakpoint", () => {
+    render(
+      <TocHost
+        hostPaddingX={12}
+        hostWidth={920}
+        timelineRows={[userConversationRow(1)]}
+      />,
+    );
 
     expect(useThreadConversationOutline).toHaveBeenLastCalledWith(
       "thr_toc_test",
@@ -609,6 +685,45 @@ describe("ThreadTableOfContents", () => {
     expect(screen.getByText("Image attachment")).not.toBeNull();
     // The agent tab is offered because the outline has assistant messages.
     expect(screen.getByText("Agent messages")).not.toBeNull();
+  });
+
+  it("merges live timeline messages into the cached full outline", async () => {
+    setOutline([
+      {
+        id: "row_user_1",
+        role: "user",
+        preview: "First cached question",
+        attachmentSummary: null,
+      },
+      {
+        id: "row_user_2",
+        role: "user",
+        preview: "Second cached question",
+        attachmentSummary: null,
+      },
+      {
+        id: "row_user_3",
+        role: "user",
+        preview: "Stale third question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <TocHost
+        timelineRows={[userConversationRow(3), userConversationRow(4)]}
+      />,
+    );
+    openTocPanel();
+
+    expect(await screen.findByText("First cached question")).not.toBeNull();
+    expect(
+      screen.getByText("Loaded after client-side navigation 3"),
+    ).not.toBeNull();
+    expect(
+      screen.getByText("Loaded after client-side navigation 4"),
+    ).not.toBeNull();
+    expect(screen.queryByText("Stale third question")).toBeNull();
   });
 
   it("renders an agent-to-agent message source as a thread mention", async () => {

@@ -16,9 +16,7 @@ import { getRootComposeRoutePath } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteState } from "../useRouteState";
 
-export type DeletedResourceRouteChangeHandler = (
-  message: ChangedMessage,
-) => void;
+type DeletedResourceRouteChangeHandler = (message: ChangedMessage) => void;
 
 function isDeletedProjectMessage(
   message: ChangedMessage,

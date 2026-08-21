@@ -1,12 +1,12 @@
 import type { PathSuggestion } from "./usePathSuggestions";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
+import type { PromptMentionSuggestion } from "@bb/client-core";
 
 export type PathMentionSuggestion = Extract<
   PromptMentionSuggestion,
   { kind: "path" }
 >;
 
-export interface BuildPathMentionSuggestionsArgs {
+interface BuildPathMentionSuggestionsArgs {
   paths: readonly PathSuggestion[];
 }
 

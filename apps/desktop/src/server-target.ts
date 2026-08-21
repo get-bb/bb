@@ -12,7 +12,7 @@ export interface ConnectServerRef {
   url: string;
 }
 
-export type DesktopServerTarget =
+type DesktopServerTarget =
   | { kind: "builtin" }
   | { kind: "connect"; server: ConnectServerRef }
   | { kind: "custom"; url: string };
@@ -26,7 +26,7 @@ export interface ServerTargetFs {
   writeFile(path: string, data: string, encoding: "utf8"): Promise<void>;
 }
 
-export interface CreateServerTargetStoreArgs {
+interface CreateServerTargetStoreArgs {
   fs?: ServerTargetFs;
   storagePath: string;
 }

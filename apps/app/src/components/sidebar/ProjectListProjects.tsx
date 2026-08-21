@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/sidebar.js";
 import { ProjectRow } from "./ProjectRow";
 import type { ProjectRowProps, ProjectThreadListState } from "./ProjectRow";
-import type { ThreadComparator } from "./projectThreadGroups";
+import type { ThreadComparator } from "@bb/client-core";
 import { useSidebarSortable } from "./sortableMotion";
 import type { SidebarReorderDndContextProps } from "./useSidebarReorderDnd";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
@@ -36,7 +36,7 @@ export interface ProjectListRowModel {
  * such as stories. The live sidebar places the same sortable rows in its one
  * heterogeneous top-level context instead.
  */
-export interface ProjectListReorderBindings {
+interface ProjectListReorderBindings {
   dndContextProps: SidebarReorderDndContextProps;
   itemIds: string[];
   disabled: boolean;
@@ -59,7 +59,7 @@ interface ProjectListProjectsProps {
   reorder?: ProjectListReorderBindings;
 }
 
-export interface SortableProjectRowProps extends ProjectRowProps {
+interface SortableProjectRowProps extends ProjectRowProps {
   reorderDisabled: boolean;
   sortableId?: string;
 }

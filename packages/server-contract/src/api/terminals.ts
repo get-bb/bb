@@ -170,9 +170,6 @@ export const terminalWebSocketQuerySchema = z
     sinceSeq: z.coerce.number().int().nonnegative().default(0),
   })
   .strict();
-export type TerminalWebSocketQuery = z.infer<
-  typeof terminalWebSocketQuerySchema
->;
 
 export const terminalOutputResponseSchema = z
   .object({

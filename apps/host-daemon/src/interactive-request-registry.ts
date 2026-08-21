@@ -16,12 +16,12 @@ export interface InteractiveResolveCommandInput {
   threadId: string;
 }
 
-export interface InteractiveRequestRegistrationFailure {
+interface InteractiveRequestRegistrationFailure {
   error: Error;
   request: PendingInteractionCreate;
 }
 
-export interface InteractiveRequestRegistryOptions {
+interface InteractiveRequestRegistryOptions {
   onRegistrationFailure?: (
     failure: InteractiveRequestRegistrationFailure,
   ) => void;
@@ -30,7 +30,7 @@ export interface InteractiveRequestRegistryOptions {
   ) => Promise<HostDaemonInteractiveRequestResponse>;
 }
 
-export interface InterruptInteractiveThreadsArgs {
+interface InterruptInteractiveThreadsArgs {
   providerId: string;
   reason: string;
   threadIds: readonly string[];
