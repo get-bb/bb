@@ -63,7 +63,11 @@ function applyThemePreference(preference: ThemePreference) {
   const dark =
     preference === "dark" ||
     (preference === "system" && matchMedia(DARK_SCHEME_QUERY).matches);
-  document.documentElement.classList.toggle("dark", dark);
+  const root = document.documentElement;
+  root.classList.toggle("dark", dark);
+  // The button glyph keys off the preference (not the resolved theme), via
+  // the same attribute THEME_INIT stamps pre-paint.
+  root.setAttribute("data-theme-preference", preference);
   syncThemeColorMeta();
 }
 
@@ -76,11 +80,12 @@ function setThemePreference(preference: ThemePreference) {
   applyThemePreference(preference);
 }
 
-// Resolved-theme button (sun in light, moon in dark — both glyphs render and
-// CSS keyed off html.dark picks one, so SSR output is theme-independent and
-// hydration can't mismatch) that opens a Light / Dark / System menu. The
-// menu only exists while open, so its checked state is read from storage at
-// open time and never has to agree with the server render.
+// Preference button (sun / moon / monitor for Light / Dark / System — all
+// three glyphs render and CSS keyed off html[data-theme-preference] picks
+// one, so SSR output is preference-independent and hydration can't
+// mismatch) that opens a Light / Dark / System menu. The menu only exists
+// while open, so its checked state is read from storage at open time and
+// never has to agree with the server render.
 function ThemeMenu() {
   const [open, setOpen] = useState(false);
   const [preference, setPreference] = useState<ThemePreference>("system");
@@ -150,6 +155,7 @@ function ThemeMenu() {
       >
         <HugeiconsIcon icon={Sun03Icon} className="theme-ic-sun" />
         <HugeiconsIcon icon={Moon02Icon} className="theme-ic-moon" />
+        <HugeiconsIcon icon={ComputerIcon} className="theme-ic-system" />
       </button>
       {open && (
         <div className="theme-menu" role="menu" aria-label="Theme">

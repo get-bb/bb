@@ -202,10 +202,12 @@ code,
   font-weight: 500;
 }
 
-/* Theme control: the button shows the resolved theme (both glyphs are always
-   in the DOM — SSR can't know the theme, so this keeps hydration
-   deterministic — and the html.dark class the tokens key off picks one) and
-   opens a Light / Dark / System menu anchored to its right edge. */
+/* Theme control: the button shows the *preference* (sun / moon / monitor for
+   light / dark / system). All three glyphs are always in the DOM — SSR can't
+   know the preference, so this keeps hydration deterministic — and
+   html[data-theme-preference], stamped pre-paint by THEME_INIT, picks one;
+   no attribute (no JS) means the default, system. The button opens a
+   Light / Dark / System menu anchored to its right edge. */
 .theme-menu-wrap {
   position: relative;
   display: inline-flex;
@@ -239,16 +241,19 @@ code,
   height: 17px;
 }
 
+.theme-toggle .theme-ic-sun,
 .theme-toggle .theme-ic-moon {
   display: none;
 }
 
-.dark .theme-toggle .theme-ic-sun {
-  display: none;
+html[data-theme-preference="light"] .theme-toggle .theme-ic-sun,
+html[data-theme-preference="dark"] .theme-toggle .theme-ic-moon {
+  display: block;
 }
 
-.dark .theme-toggle .theme-ic-moon {
-  display: block;
+html[data-theme-preference="light"] .theme-toggle .theme-ic-system,
+html[data-theme-preference="dark"] .theme-toggle .theme-ic-system {
+  display: none;
 }
 
 .theme-menu {
