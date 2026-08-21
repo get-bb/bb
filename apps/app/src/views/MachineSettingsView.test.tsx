@@ -148,7 +148,7 @@ function stubSupportingFetches(): void {
   );
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
+    vi.fn(async () =>
       new Response(JSON.stringify({ projects: [] }), {
         status: 200,
         headers: { "content-type": "application/json" },
