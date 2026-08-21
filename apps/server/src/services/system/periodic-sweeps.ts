@@ -49,6 +49,7 @@ import {
 import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
+import { runDeferredThreadMessageSweep } from "../threads/thread-send-request.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
@@ -590,6 +591,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "queued-message-auto-send",
     run: runQueuedMessageAutoSendSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "deferred-thread-message-flush",
+    run: runDeferredThreadMessageSweep,
   },
   {
     cadenceMs: 0,

@@ -2624,7 +2624,10 @@ describe("public thread data routes", () => {
       );
 
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({ ok: true });
+      await expect(readJson(response)).resolves.toEqual({
+        ok: true,
+        delivery: "queued",
+      });
       const queuedRows = listQueuedThreadMessages(harness.db, thread.id);
       expect(queuedRows).toMatchObject([
         {
@@ -2685,7 +2688,10 @@ describe("public thread data routes", () => {
       // Sender attribution is allowed across projects, so the message queues
       // with the cross-project sender preserved for the reply affordance.
       expect(response.status).toBe(200);
-      await expect(readJson(response)).resolves.toEqual({ ok: true });
+      await expect(readJson(response)).resolves.toEqual({
+        ok: true,
+        delivery: "queued",
+      });
       expect(listQueuedThreadMessages(harness.db, thread.id)).toMatchObject([
         {
           senderThreadId: crossProjectSender.id,

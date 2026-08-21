@@ -16,6 +16,7 @@ import type {
 import type { HostDaemonCommand } from "@bb/host-daemon-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { requireThreadEnvironment } from "../lib/entity-lookup.js";
+import { deferThreadMessage } from "./deferred-thread-messages.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
@@ -407,7 +408,19 @@ export async function queueParentSystemMessage(
     return false;
   }
   if (deps.pendingInteractions.hasPendingThreadInteraction(parentThread.id)) {
-    return false;
+    // A prompt cannot interrupt an open question or approval, and dropping the
+    // notice left the parent believing its child had gone silent (#1650). It
+    // waits and flushes when the parent's interactions settle.
+    deferThreadMessage(deps, {
+      threadId: parentThread.id,
+      payload: {
+        kind: "parent-system",
+        input: args.input,
+        systemMessageKind: args.systemMessageKind,
+        systemMessageSubject: args.systemMessageSubject,
+      },
+    });
+    return true;
   }
 
   const { environment } = requireThreadEnvironment(

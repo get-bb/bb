@@ -882,6 +882,32 @@ export const promptHistoryEntries = sqliteTable(
   ],
 );
 
+// Messages addressed to a thread while it awaited user interaction (an
+// AskUserQuestion, a command approval, a plugin input request). A blocked thread
+// cannot take a prompt, and refusing the message dropped it with no trace on the
+// recipient side (#1650). The row holds the message until the thread's pending
+// interactions settle, then the server delivers it in the mode the sender asked
+// for. `payload` is the JSON-encoded deferred message, discriminated by `kind`.
+export const deferredThreadMessages = sqliteTable(
+  "deferred_thread_messages",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("deferred_thread_messages_thread_created_idx").on(
+      table.threadId,
+      table.createdAt,
+      table.id,
+    ),
+  ],
+);
+
 export const queuedThreadMessages = sqliteTable(
   "queued_thread_messages",
   {

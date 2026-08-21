@@ -16,7 +16,7 @@
 // PLUGIN_SDK_MAJOR is 0, so the major-only artifact gate cannot distinguish
 // 0.x releases and is intentionally vacuous for them until a future 1.0.
 // Rebuildable artifacts still rebuild on the exact sdkVersion-differs trigger.
-export const PLUGIN_SDK_VERSION = "0.4.16";
+export const PLUGIN_SDK_VERSION = "0.4.17";
 
 /** Major of {@link PLUGIN_SDK_VERSION} — the plugin API compatibility number. */
 export const PLUGIN_SDK_MAJOR = Number(PLUGIN_SDK_VERSION.split(".", 1)[0]);

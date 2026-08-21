@@ -406,6 +406,12 @@ or artifacts, validation performed, and blockers.
   agent can finish its current work first. Steer is especially important for a
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
+- If the target thread is awaiting user interaction (an open question or
+  approval), `bb thread tell` cannot interrupt it. The message is held and
+  delivers in the requested mode once the interaction settles; the CLI prints
+  "message held". That outcome is not a failure, so do not resend. For a hard
+  stop use `bb thread stop <thread-id>`. `--json` reports `delivery` as `sent`,
+  `queued`, or `deferred`.
 
 ## Inspecting Results
 

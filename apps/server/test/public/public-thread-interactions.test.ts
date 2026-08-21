@@ -1,4 +1,8 @@
-import { createQueuedThreadMessage, listQueuedThreadMessages } from "@bb/db";
+import {
+  createQueuedThreadMessage,
+  listDeferredThreadMessages,
+  listQueuedThreadMessages,
+} from "@bb/db";
 import {
   turnScope,
   USER_QUESTION_MAX_FREE_TEXT_LENGTH,
@@ -814,7 +818,7 @@ describe("public thread interaction routes", () => {
     },
   );
 
-  it("rejects send and queued-message send while a thread awaits user interaction", async () => {
+  it("holds sends and rejects queued-message send while a thread awaits user interaction", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-public-thread-blocked-send",
@@ -876,8 +880,30 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
-      expect(sendResponse.status).toBe(409);
+      // A prompt cannot interrupt the interaction, but the message is not lost:
+      // it waits and delivers once the interaction settles (#1650).
+      expect(sendResponse.status).toBe(200);
       await expect(readJson(sendResponse)).resolves.toEqual({
+        ok: true,
+        delivery: "deferred",
+      });
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+
+      const startResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            mode: "start",
+            input: [{ type: "text", text: "Try to start" }],
+          }),
+        },
+      );
+      expect(startResponse.status).toBe(409);
+      await expect(readJson(startResponse)).resolves.toEqual({
         code: "awaiting_user_interaction",
         message:
           "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
@@ -904,6 +930,11 @@ describe("public thread interaction routes", () => {
         projectId: project.id,
         environmentId: environment.id,
         status: "active",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        threadId: activeThread.id,
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-active-blocked",
       });
       const activeThreadPending = registerPendingInteraction(
         harness.deps,
@@ -941,14 +972,15 @@ describe("public thread interaction routes", () => {
           }),
         },
       );
-      expect(activeSendResponse.status).toBe(409);
+      // The queue drains when the thread is next idle, which an open
+      // interaction does not change, so an explicit queue request queues.
+      expect(activeSendResponse.status).toBe(200);
       await expect(readJson(activeSendResponse)).resolves.toEqual({
-        code: "awaiting_user_interaction",
-        message:
-          "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+        ok: true,
+        delivery: "queued",
       });
       expect(listQueuedThreadMessages(harness.db, activeThread.id)).toHaveLength(
-        0,
+        1,
       );
     });
   });

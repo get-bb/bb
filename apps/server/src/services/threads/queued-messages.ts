@@ -1,6 +1,7 @@
 import {
   claimQueuedThreadMessageGroup,
   claimNextQueuedThreadMessageGroup,
+  createQueuedThreadMessageInTransaction,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   getQueuedThreadMessage,
   getEnvironment,
@@ -8,6 +9,7 @@ import {
   listIdleThreadsWithQueuedMessages,
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
+  type DbQueryConnection,
 } from "@bb/db";
 import type {
   PromptInput,
@@ -16,6 +18,7 @@ import type {
   ThreadTurnInitiator,
 } from "@bb/domain";
 import type {
+  CreateQueuedMessageRequest,
   SendMessageRequest,
   SendQueuedMessageMode,
 } from "@bb/server-contract";
@@ -50,8 +53,10 @@ import { recoverThreadModelOverride } from "./thread-execution-override.js";
 import { requireReadyThreadEnvironment } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
+  ensureThreadIsWritable,
   formatAgentThreadInput,
   groupedInputForRuntime,
+  resolveMessageSenderThreadId,
   sendThreadMessage,
 } from "./thread-send.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
@@ -59,6 +64,12 @@ import { requireThreadCommandEnvironment } from "./thread-command-environment.js
 import { applyLoggedThreadLifecycleEventInTransaction } from "./lifecycle-outcome.js";
 import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
+import {
+  goneThreadEnvironmentDetails,
+  threadEnvironmentUnavailableDetails,
+  throwThreadEnvironmentUnavailable,
+} from "../lib/lifecycle-api-errors.js";
+import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 
 interface SendQueuedMessageArgs {
   mode: SendQueuedMessageMode;
@@ -101,6 +112,137 @@ async function requireReadyQueuedMessageEnvironment(
   return requireReadyThreadEnvironment(
     getEnvironment(deps.db, environment.id) ?? environment,
   );
+}
+
+export interface CreateQueuedMessageForThreadArgs {
+  payload: CreateQueuedMessageRequest;
+  thread: Thread;
+}
+
+export function queuedMessagePayloadFromSendRequest(
+  payload: SendMessageRequest,
+): CreateQueuedMessageRequest {
+  return {
+    input: payload.input,
+    ...(payload.model !== undefined ? { model: payload.model } : {}),
+    ...(payload.serviceTier !== undefined
+      ? { serviceTier: payload.serviceTier }
+      : {}),
+    ...(payload.reasoningLevel !== undefined
+      ? { reasoningLevel: payload.reasoningLevel }
+      : {}),
+    ...(payload.permissionMode !== undefined
+      ? { permissionMode: payload.permissionMode }
+      : {}),
+    ...(payload.executionInputSources !== undefined
+      ? { executionInputSources: payload.executionInputSources }
+      : {}),
+    ...(payload.senderThreadId !== undefined
+      ? { senderThreadId: payload.senderThreadId }
+      : {}),
+  };
+}
+
+/**
+ * Admits a queued message against the current thread and environment rows.
+ * Returns the provider thread id so the caller can decide on auto-send without
+ * a second event-history read.
+ *
+ * A queued message can only drain into the thread's environment. A gone
+ * environment (`destroying`/`destroyed`) is never reprovisioned, so accepting
+ * the message would park it in the queue forever while the thread keeps
+ * reporting `idle` (#1789). Refuse with the same 409 the direct send path
+ * returns.
+ *
+ * A thread with no environment row is accepted while it has never run: the
+ * queue is how messages wait for provisioning. Once the thread has a provider
+ * thread id, a missing environment means the row was pruned after destroy, and
+ * the direct send path already refuses with `never_attached`.
+ */
+function admitQueuedMessage(
+  db: DbQueryConnection,
+  thread: Thread,
+): { providerThreadId: string | null } {
+  ensureThreadIsWritable(thread);
+  const providerThreadId = getLastProviderThreadId({ db }, thread.id);
+  if (thread.environmentId === null) {
+    if (providerThreadId !== null) {
+      throwThreadEnvironmentUnavailable(
+        threadEnvironmentUnavailableDetails("never_attached", null),
+      );
+    }
+    return { providerThreadId };
+  }
+  const environment = getEnvironment(db, thread.environmentId);
+  const goneDetails = environment
+    ? goneThreadEnvironmentDetails(environment)
+    : null;
+  if (goneDetails) {
+    throwThreadEnvironmentUnavailable(goneDetails);
+  }
+  return { providerThreadId };
+}
+
+export async function createQueuedMessageForThread(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: CreateQueuedMessageForThreadArgs,
+): Promise<ThreadQueuedMessage> {
+  const { payload, thread } = args;
+  ensureThreadIsWritable(thread);
+  await validatePromptAttachmentReferences({
+    dataDir: deps.config.dataDir,
+    input: payload.input,
+    projectId: thread.projectId,
+  });
+  const execution = await buildExecutionOptions(deps, payload, {
+    threadId: thread.id,
+  });
+  const senderThreadId = resolveMessageSenderThreadId(deps, {
+    senderThreadId: payload.senderThreadId,
+    targetThread: thread,
+  });
+  // The awaits above can interleave with an archive or environment destroy, so
+  // admit against the rows as they are at insert time, in the same immediate
+  // transaction as the insert.
+  const { currentThread, providerThreadId, queuedMessage } =
+    deps.db.transaction(
+      (tx) => {
+        const currentThread = getThread(tx, thread.id);
+        if (!currentThread) {
+          throw new ApiError(404, "thread_not_found", "Thread not found");
+        }
+        const { providerThreadId } = admitQueuedMessage(tx, currentThread);
+        const queuedMessage = createQueuedThreadMessageInTransaction(tx, {
+          threadId: thread.id,
+          content: payload.input,
+          senderThreadId,
+          model: execution.model,
+          reasoningLevel: execution.reasoningLevel,
+          permissionMode: execution.permissionMode,
+          serviceTier: execution.serviceTier,
+        });
+        return { currentThread, providerThreadId, queuedMessage };
+      },
+      { behavior: "immediate" },
+    );
+  deps.hub.notifyThread(thread.id, ["queue-changed"]);
+  if (senderThreadId === null && payload.input.length > 0) {
+    deps.telemetry.capture({
+      name: "user_message_sent",
+      properties: {
+        is_child_thread: thread.parentThreadId !== null,
+        message_source: "queued_message",
+        provider: thread.providerId,
+      },
+    });
+  }
+  if (currentThread.status === "idle" && providerThreadId !== null) {
+    requestQueuedMessageAutoSendForThread(deps, {
+      queuedMessageId: queuedMessage.id,
+      threadId: thread.id,
+    });
+  }
+  return toThreadQueuedMessage(queuedMessage);
 }
 
 interface QueuedMessageAutoSendRequestArgs {
