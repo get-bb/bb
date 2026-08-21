@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import {
   query,
   type CanUseTool,
@@ -6,7 +7,13 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
+  type SpawnedProcess,
+  type SpawnOptions,
 } from "@anthropic-ai/claude-agent-sdk";
+import {
+  experimental_isProviderBridgeRecording,
+  experimental_recordProviderChildIo,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import type { ClaudePermissionMode } from "../interactive-contract.js";
 import {
   isMissingClaudeCliMessage,
@@ -34,6 +41,11 @@ export interface SdkSessionOptions {
   thinking?: Options["thinking"];
   /** Flag-tier settings (highest user-controlled tier); BB owns this layer. */
   settings?: Options["settings"];
+  /**
+   * The bb thread this session serves, read when the CLI is spawned. Record
+   * mode scopes the CLI's stdio recording to it; absent otherwise.
+   */
+  recordThreadId?: () => string;
 }
 
 export type ClaudeSdkReasoningEffort =
@@ -110,6 +122,33 @@ function buildSdkDoneErrorMessage(args: BuildSdkDoneErrorMessageArgs): string {
     return errorMessage;
   }
   return `${errorMessage}\n\nClaude Code stderr:\n${stderrTail}`;
+}
+
+/**
+ * Record mode's spawn of the Claude CLI. The Agent SDK owns the CLI pipe, so
+ * the only way to tee it is to spawn the process ourselves through the SDK's
+ * `spawnClaudeCodeProcess` seam — a byte-for-byte copy of its default spawn
+ * (piped stdio, stderr forwarded to the session's tail) plus the recorder.
+ * Used only when `BB_PROVIDER_BRIDGE_RECORD_DIR` is set; the default path is
+ * untouched otherwise.
+ */
+function spawnRecordedClaudeProcess(args: {
+  onStderr: (data: string) => void;
+  spawnOptions: SpawnOptions;
+  threadId: string | null;
+}): SpawnedProcess {
+  const child = spawn(args.spawnOptions.command, args.spawnOptions.args, {
+    cwd: args.spawnOptions.cwd,
+    env: args.spawnOptions.env,
+    signal: args.spawnOptions.signal,
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+  child.stderr?.setEncoding("utf8").on("data", (data: string) => {
+    args.onStderr(data);
+  });
+  experimental_recordProviderChildIo(child, { threadId: args.threadId });
+  return child as SpawnedProcess;
 }
 
 function buildSdkPermissionOptions(
@@ -213,11 +252,28 @@ export class SdkSession {
     const permissionOptions = buildSdkPermissionOptions({
       permissionMode: this.options.permissionMode,
     });
+    const onStderr = (data: string): void => {
+      this.stderrTail = appendBoundedText({
+        current: this.stderrTail,
+        chunk: data,
+      });
+    };
+    const recordThreadId = this.options.recordThreadId;
     const sdkOptions: Options = {
       abortController: this.abortController,
       cwd: this.options.cwd,
       systemPrompt: this.options.systemPrompt,
       ...permissionOptions,
+      ...(experimental_isProviderBridgeRecording()
+        ? {
+            spawnClaudeCodeProcess: (spawnOptions: SpawnOptions) =>
+              spawnRecordedClaudeProcess({
+                onStderr,
+                spawnOptions,
+                threadId: recordThreadId?.() ?? null,
+              }),
+          }
+        : {}),
       includePartialMessages: true,
       // Mirror the Claude CLI cascade so the SDK loads both the user's global
       // configuration (~/.claude/settings.json, ~/.claude/CLAUDE.md) and the
@@ -226,12 +282,7 @@ export class SdkSession {
       settingSources: ["user", "project", "local"],
       persistSession: true,
       env: this.options.env ?? process.env,
-      stderr: (data) => {
-        this.stderrTail = appendBoundedText({
-          current: this.stderrTail,
-          chunk: data,
-        });
-      },
+      stderr: onStderr,
       ...(this.options.mcpServers
         ? { mcpServers: this.options.mcpServers }
         : {}),

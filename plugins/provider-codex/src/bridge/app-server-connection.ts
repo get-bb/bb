@@ -16,6 +16,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
+import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
@@ -40,6 +41,11 @@ interface CreateCodexAppServerConnectionOptions {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  /**
+   * The bb thread this child serves, for record mode; null for process-level
+   * children (model-list probes, maintenance).
+   */
+  recordThreadId: string | null;
   onNotification(method: string, params: unknown): void;
   onRequest(
     method: string,
@@ -112,6 +118,9 @@ export function createCodexAppServerConnection(
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
+  });
+  experimental_recordProviderChildIo(child, {
+    threadId: options.recordThreadId,
   });
 
   const pending = new Map<number, PendingChildRequest>();

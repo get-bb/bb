@@ -8,6 +8,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
@@ -29,6 +30,11 @@ interface CreateAcpAgentConnectionOptions {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  /**
+   * The bb thread this agent serves, for record mode; null for process-level
+   * agents (model discovery).
+   */
+  recordThreadId: string | null;
   onNotification(method: string, params: unknown): void;
   onRequest(
     method: string,
@@ -144,6 +150,9 @@ export function createAcpAgentConnection(
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
+  });
+  experimental_recordProviderChildIo(child, {
+    threadId: options.recordThreadId,
   });
 
   const pending = new Map<number, PendingAgentRequest>();

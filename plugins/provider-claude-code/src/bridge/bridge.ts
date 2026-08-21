@@ -1148,6 +1148,7 @@ function buildTrackedSessionOptions(
     env,
   );
   addPermissionEscalationTrackingHooks(sessionOptions, threadIdRef);
+  sessionOptions.recordThreadId = () => threadIdRef.current;
   return sessionOptions;
 }
 

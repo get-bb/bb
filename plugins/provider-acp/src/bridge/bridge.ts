@@ -838,6 +838,7 @@ async function loadSessionDiscoveredModels(
     args: agent.args,
     cwd: agent.cwd ?? process.cwd(),
     env: childEnv,
+    recordThreadId: null,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(-32601, "ACP model discovery does not support requests");
@@ -1627,6 +1628,7 @@ async function startAgentSession(
     args: launch.args,
     cwd: params.cwd,
     env: childEnv,
+    recordThreadId: bbThreadId,
     onNotification: (method, notificationParams) =>
       handleAgentNotification(session, method, notificationParams),
     onRequest: (method, requestParams, responder) =>

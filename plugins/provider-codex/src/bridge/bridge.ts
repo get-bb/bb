@@ -814,6 +814,8 @@ function handleChildExit(
 // ---------------------------------------------------------------------------
 
 function spawnChildConnection(callbacks: {
+  /** The bb thread the child serves (record-mode scope); null when none. */
+  recordThreadId: string | null;
   onNotification: (method: string, params: unknown) => void;
   onRequest: (
     method: string,
@@ -948,6 +950,7 @@ async function constructThreadSession(
   sendThreadDeltas(session, [{ kind: "session.reset" }]);
 
   const connection = spawnChildConnection({
+    recordThreadId: args.threadId,
     onNotification: (method, params) =>
       handleChildNotification(args.threadId, serial, method, params),
     onRequest: (method, params, responder) =>
@@ -1107,6 +1110,7 @@ async function withMaintenanceChild<T>(
   fn: (connection: CodexAppServerConnection) => Promise<T>,
 ): Promise<T> {
   const connection = spawnChildConnection({
+    recordThreadId: null,
     onNotification: () => {},
     onRequest: (_method, _params, responder) => {
       responder.error(
@@ -1144,6 +1148,7 @@ async function getModelListConnection(): Promise<CodexAppServerConnection> {
 
   const connectionPromise = (async () => {
     const connection = spawnChildConnection({
+      recordThreadId: null,
       onNotification: () => {},
       onRequest: (_method, _params, responder) => {
         responder.error(

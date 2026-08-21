@@ -72,6 +72,7 @@ describe("ACP agent stdio lifecycle", () => {
     const ready = deferred<void>();
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
+      recordThreadId: null,
       command: process.execPath,
       args: [
         "-e",
@@ -105,6 +106,7 @@ describe("ACP agent stdio lifecycle", () => {
     const ready = deferred<void>();
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
+      recordThreadId: null,
       command: process.execPath,
       args: [
         "-e",
@@ -160,6 +162,7 @@ describe("ACP agent stdio lifecycle", () => {
   it("rejects pending requests when the agent exits", async () => {
     const exited = deferred<AcpAgentExitInfo>();
     const connection = createAcpAgentConnection({
+      recordThreadId: null,
       command: process.execPath,
       args: ["-e", "setTimeout(() => process.exit(7), 20)"],
       cwd: process.cwd(),

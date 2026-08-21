@@ -4,7 +4,8 @@
  *
  * A bridge no longer starts itself (see `experimental_defineProviderBridge`).
  * This entry owns everything outside the protocol: argv, the plugin-scoped
- * directories, the bounded stdin framing, and the signal handling. It is the
+ * directories, the bounded stdin framing, the signal handling, and the
+ * record-mode tee of the runtime wire (`BB_PROVIDER_BRIDGE_RECORD_DIR`). It is the
  * bridge-side twin of the daemon's `plugin-host-worker.ts` — same `bb.host`
  * artifact, a different consumer, its own process lifecycle. It lives beside
  * the protocol rather than in the daemon because the runtime, not the daemon,
@@ -22,6 +23,10 @@ import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createPluginProcessTempDir } from "@bb/process-utils";
 import { readBoundedLines } from "./bridge-kit/bounded-line-reader.js";
+import {
+  createRecordingLineSplitter,
+  getBridgeRecorder,
+} from "./bridge-kit/bridge-recorder.js";
 import {
   PROVIDER_BRIDGE_EXPORT_NAME,
   parseProviderBridgeEntry,
@@ -65,6 +70,29 @@ function removeTempDir(): void {
 }
 process.once("exit", removeTempDir);
 
+// Record mode: tee both sides of the runtime wire before the bridge module
+// loads, so its very first write is captured and a bridge that binds
+// `process.stdout.write` at import time binds the tee. The provider wire is
+// the bridge's own (see `experimental_recordProviderChildIo`).
+const recorder = getBridgeRecorder();
+if (recorder !== null) {
+  const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+  const outbound = createRecordingLineSplitter((line) =>
+    recorder.recordRuntimeLine("bridge→runtime", line),
+  );
+  process.stdout.write = ((
+    chunk: string | Uint8Array,
+    ...rest: unknown[]
+  ): boolean => {
+    outbound.push(chunk);
+    return (originalStdoutWrite as (...args: unknown[]) => boolean)(
+      chunk,
+      ...rest,
+    );
+  }) as typeof process.stdout.write;
+  process.once("exit", () => recorder.close());
+}
+
 let entry: ProviderBridgeEntry;
 try {
   const imported: unknown = await import(
@@ -104,7 +132,13 @@ if (entry.onSigint) {
 // taking the bridge down with it.
 readBoundedLines({
   input: process.stdin,
-  onLine: entry.handleLine,
+  onLine:
+    recorder === null
+      ? entry.handleLine
+      : (line) => {
+          recorder.recordRuntimeLine("runtime→bridge", line);
+          entry.handleLine(line);
+        },
   onOverflow: (bytes) => {
     process.stderr.write(
       `Discarded an oversized JSON-RPC line from the runtime (${bytes} bytes).\n`,

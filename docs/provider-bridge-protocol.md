@@ -340,3 +340,39 @@ never let a descendant holding an inherited pipe inject into a fresh
 session. The bridge's own environment is constructed by the runtime from an
 allowlist; bridges construct their children's environments the same way and
 must not leak their own inherited env downward (#1366, #1545).
+
+## Record mode
+
+Set `BB_PROVIDER_BRIDGE_RECORD_DIR` to a directory and every bridge process
+tees the lines that cross its two boundaries into NDJSON files. The bootstrap
+(`bridge-worker-entry.ts`) records the runtime wire for every bridge, first-
+or third-party. A bridge that spawns its provider child records the provider
+wire by calling `experimental_recordProviderChildIo(child, { threadId })`
+right after `spawn()`; the call is a no-op when record mode is off. A bridge
+whose provider pipe belongs to an SDK checks
+`experimental_isProviderBridgeRecording()` and takes the spawn over (the
+Claude bridge does this through the Agent SDK's `spawnClaudeCodeProcess`
+seam). Pi runs in-process and records its SDK event boundary instead.
+
+Layout: `<dir>/<threadId>/<direction>.ndjson`, with `_process` for lines that
+belong to no thread (`initialize`, `model/list`, provider health, and the
+children those spawn). The four directions are `runtime→bridge`,
+`bridge→runtime`, `provider→bridge`, and `bridge→provider`. One entry per
+line: `{ "ts", "seq", "dir", "line" }`. `seq` is one counter across every lane
+of the process, so the files of a thread merge back into their exact order.
+Responses, which carry only an id, land in the scope of the request they
+answer. Nothing buffers: each line is appended as it crosses.
+
+The daemon forwards the variable to the bridges it spawns and the runtime
+appends the provider id, so a daemon started with it writes
+`<dir>/<providerId>/<threadId>/…`. `withoutBridgeRuntimeEnv` and the
+`BB_*` allowlist both strip the variable from provider children, so a
+recorded provider never records itself.
+
+Recordings are the input of the parity harness
+(`packages/provider-bridge-protocol/src/testing/parity.ts`): the provider
+lanes replay into a fake child, the runtime lanes replay into a bridge, and
+two bridge versions are diffed on the assembled events and projected rows.
+Redacted recordings live under `packages/provider-bridge-protocol/recordings`;
+`scripts/provider-recordings/redact.mjs` produces them. Raw recordings stay
+out of git.

@@ -758,6 +758,7 @@ async function startPiThreadSession(
   }
 
   const sessionOptions = buildSessionOptions({ params, providerThreadId });
+  sessionOptions.recordThreadId = threadId;
   applyDynamicTools(sessionOptions, params.dynamicTools, threadId);
 
   const sessionSerial = nextSessionSerial();

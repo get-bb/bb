@@ -45,6 +45,25 @@ eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
 
+## Record Provider Bridge Traffic
+
+Export `BB_PROVIDER_BRIDGE_RECORD_DIR` before you start the dev app and every
+provider bridge records its runtime and provider wires as NDJSON:
+
+```bash
+BB_PROVIDER_BRIDGE_RECORD_DIR=$HOME/.bb/provider-recordings/raw scripts/bb-dev-app current
+eval "$(scripts/bb-dev-app env)"
+pnpm bb:dev thread spawn --project proj_personal --provider codex --prompt "Run git status." --json
+ls ~/.bb/provider-recordings/raw/codex/
+```
+
+The layout is `<dir>/<providerId>/<threadId>/<direction>.ndjson`, plus a
+`_process` scope for lines that belong to no thread. See
+[provider-bridge-protocol.md](provider-bridge-protocol.md), "Record mode",
+for the entry format. Raw recordings can contain secrets and absolute paths.
+Run `node scripts/provider-recordings/redact.mjs <raw-dir> <out-dir>` before
+you share one, and never commit a raw recording.
+
 ## Performance Fixture Database
 
 Use `pnpm seed:perf` to fill a dev database with a large, realistic fixture:

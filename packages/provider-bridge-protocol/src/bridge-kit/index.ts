@@ -14,6 +14,7 @@
 export * from "./adapter-utils.js";
 export * from "./bounded-line-reader.js";
 export * from "./bridge-harness.js";
+export * from "./bridge-recorder.js";
 export * from "./bridge-runtime-env.js";
 export * from "./bridge-tool-calls.js";
 export * from "./contracts.js";

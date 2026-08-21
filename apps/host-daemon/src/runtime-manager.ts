@@ -295,6 +295,10 @@ function providerProcessEnvFromShellEnv(
   if (shellEnv.BB_CLAUDE_CODE_EXECUTABLE) {
     env.BB_CLAUDE_CODE_EXECUTABLE = shellEnv.BB_CLAUDE_CODE_EXECUTABLE;
   }
+  // Bridge record mode: the runtime scopes the root per provider process.
+  if (shellEnv.BB_PROVIDER_BRIDGE_RECORD_DIR) {
+    env.BB_PROVIDER_BRIDGE_RECORD_DIR = shellEnv.BB_PROVIDER_BRIDGE_RECORD_DIR;
+  }
   return Object.keys(env).length > 0 ? env : null;
 }
 

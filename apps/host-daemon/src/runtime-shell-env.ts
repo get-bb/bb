@@ -425,6 +425,13 @@ export function prepareRuntimeShellEnv(
     target: shellEnv,
     value: process.env.BB_CLAUDE_CODE_EXECUTABLE,
   });
+  // Bridge record mode (docs/provider-bridge-protocol.md): forwarded for the
+  // same reason, so a daemon started with it records every bridge it spawns.
+  assignIfDefined({
+    key: "BB_PROVIDER_BRIDGE_RECORD_DIR",
+    target: shellEnv,
+    value: process.env.BB_PROVIDER_BRIDGE_RECORD_DIR,
+  });
 
   return shellEnv;
 }

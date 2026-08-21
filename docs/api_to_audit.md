@@ -17,6 +17,23 @@ content-block vocabulary; decide whether legacy aggregate fields still need to
 be accepted; and define any image MIME validation, decoding, or payload-size
 policy at the server boundary before making the helper stable.
 
+## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
+
+**What it does.** `experimental_recordProviderChildIo` tees a provider
+child's stdio into the bridge record mode (`BB_PROVIDER_BRIDGE_RECORD_DIR`),
+scoped to the bb thread the child serves. It is a no-op when record mode is
+off, so a bridge calls it unconditionally after `spawn()`.
+`experimental_isProviderBridgeRecording` reports whether record mode is on,
+for a bridge whose provider pipe is owned by an SDK and must take the spawn
+over to tee it. See [provider-bridge-protocol.md](provider-bridge-protocol.md),
+"Record mode".
+
+**Audit before stabilizing.** Decide whether the bridge kit should own the
+spawn itself (one helper that spawns and records) instead of a post-spawn
+hook; confirm the `{ threadId | null }` scope is the right key once bridges
+multiplex several threads over one child; and settle the recording entry
+shape (`{ ts, seq, dir, line }`) as a documented fixture format.
+
 ## Provider bridge maintenance (`PluginProviderCapabilities.experimental_providerHealth`, `PluginProviderCapabilities.experimental_providerUsage`, `PluginProviderCapabilities.experimental_providerInstallation`, `ProviderInfo.experimental_providerHealth`, `ProviderInfo.experimental_providerUsage`, `ProviderInfo.experimental_providerInstallation`, `BRIDGE_REQUEST_METHODS.experimentalProviderHealth`, `BRIDGE_REQUEST_METHODS.experimentalProviderUsage`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus`, `BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun`, `experimental_providerMaintenanceParamsSchema`, `experimental_providerHealthSchema`, `experimental_providerHealthResultSchema`, `experimental_providerUsageSchema`, `experimental_providerUsageWindowSchema`, `experimental_providerUsageResultSchema`, and the `experimental_providerInstallation*` schemas/types)
 
 **What it does.** Adds optional, sessionless `provider/health`,

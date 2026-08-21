@@ -14,6 +14,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { getBridgeRecorder } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createConfiguredPiServices } from "./configured-services.js";
 
 export interface PiSdkSessionOptions {
@@ -26,6 +27,13 @@ export interface PiSdkSessionOptions {
   sessionFilePath?: string;
   systemPrompt?: string;
   appendSystemPrompt?: string;
+  /**
+   * The bb thread this session serves. Pi runs in-process (no provider
+   * pipe), so record mode captures the SDK boundary instead: every
+   * `AgentSessionEvent` as `provider→bridge`, every prompt/abort/compact
+   * dispatch as `bridge→provider`.
+   */
+  recordThreadId?: string;
 }
 
 type ShellEnvOverrides = Record<string, string>;
@@ -229,6 +237,28 @@ export class PiSdkSession {
     return this.isProcessing || this.session?.isStreaming === true;
   }
 
+  /** Record-mode tee of the in-process SDK boundary; a no-op when off. */
+  private recordSdkBoundary(
+    direction: "provider→bridge" | "bridge→provider",
+    payload: unknown,
+  ): void {
+    const recorder = getBridgeRecorder();
+    if (recorder === null) {
+      return;
+    }
+    let line: string;
+    try {
+      line = JSON.stringify(payload) ?? "null";
+    } catch {
+      line = JSON.stringify({ unserializable: String(payload) });
+    }
+    recorder.record({
+      direction,
+      line,
+      threadId: this.options.recordThreadId ?? null,
+    });
+  }
+
   getIsCompacting(): boolean {
     return this.isCompacting;
   }
@@ -318,6 +348,7 @@ export class PiSdkSession {
 
     // Subscribe to session events
     this.unsubscribe = session.subscribe((event: AgentSessionEvent) => {
+      this.recordSdkBoundary("provider→bridge", event);
       this.trackProcessingState(event);
       this.observeInputConsumption(event);
       this.observeTerminalSteerSettlement(event);
@@ -414,6 +445,7 @@ export class PiSdkSession {
     const completionCount = this.manualCompactionCompletionCount;
     this.isProcessing = true;
     this.isCompacting = true;
+    this.recordSdkBoundary("bridge→provider", { method: "compact" });
     try {
       await this.session.compact();
     } catch (error) {
@@ -463,6 +495,7 @@ export class PiSdkSession {
 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let providerCheckpointId: string | undefined;
+    this.recordSdkBoundary("bridge→provider", { method: "abort" });
     const abortCompleted = session.abort().catch(() => undefined);
     const timeoutReached = new Promise<void>((resolve) => {
       timeout = setTimeout(resolve, timeoutMs);
@@ -737,6 +770,14 @@ export class PiSdkSession {
     }
     this.ensureCustomToolsActive();
     const pending = args.pending;
+    this.recordSdkBoundary("bridge→provider", {
+      method: "prompt",
+      params: {
+        text: args.text,
+        streamingBehavior: args.streamingBehavior,
+        imageCount: args.images?.length ?? 0,
+      },
+    });
     await this.session.prompt(args.text, {
       ...(this.session.isStreaming
         ? { streamingBehavior: args.streamingBehavior }
