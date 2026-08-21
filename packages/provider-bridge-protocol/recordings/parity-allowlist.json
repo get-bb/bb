@@ -422,5 +422,141 @@
     "path": "/0/children/0/subagentType",
     "pr": "#2178",
     "reason": "The delegation item carries no sub-agent type field; the type rides the presentation detail (\"Explore agent\") until the presentation-driven projection renders it."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-allow",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-deny",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "stop-interrupt",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/presentation",
+    "pr": "#2179",
+    "reason": "Grammar v3: the ACP bridge attaches a presentation (label/icon/title) to every item.open/item.close and the assembler persists it; the field is new, the items are otherwise byte-identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "events",
+    "path": "/*/item/tool",
+    "pr": "#2179",
+    "reason": "Grammar v3: an ACP tool call's `tool` slot names the native kind (`read`, `edit`, `fetch`, `other`) instead of the agent's human title (\"Read File\", \"Edit File\", \"Web Fetch\", \"MCP: tool\", \"Task: Subagent task\"), which now rides presentation.title. Cursor's read/fetch calls carry no path/URL, so these rows stay generic tools rather than fileRead/webFetch."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/tool",
+    "pr": "#2179",
+    "reason": "Grammar v3: an ACP tool call's `tool` slot names the native kind (`read`, `edit`, `fetch`, `other`) instead of the agent's human title (\"Read File\", \"Edit File\", \"Web Fetch\", \"MCP: tool\", \"Task: Subagent task\"), which now rides presentation.title. Cursor's read/fetch calls carry no path/URL, so these rows stay generic tools rather than fileRead/webFetch."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "events",
+    "path": "/*/item/tool",
+    "pr": "#2179",
+    "reason": "Grammar v3: an ACP tool call's `tool` slot names the native kind (`read`, `edit`, `fetch`, `other`) instead of the agent's human title (\"Read File\", \"Edit File\", \"Web Fetch\", \"MCP: tool\", \"Task: Subagent task\"), which now rides presentation.title. Cursor's read/fetch calls carry no path/URL, so these rows stay generic tools rather than fileRead/webFetch."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/tool",
+    "pr": "#2179",
+    "reason": "Grammar v3: an ACP tool call's `tool` slot names the native kind (`read`, `edit`, `fetch`, `other`) instead of the agent's human title (\"Read File\", \"Edit File\", \"Web Fetch\", \"MCP: tool\", \"Task: Subagent task\"), which now rides presentation.title. Cursor's read/fetch calls carry no path/URL, so these rows stay generic tools rather than fileRead/webFetch."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/1/toolName",
+    "pr": "#2179",
+    "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/1/toolName",
+    "pr": "#2179",
+    "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/0/children/1/toolName",
+    "pr": "#2179",
+    "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/1/toolName",
+    "pr": "#2179",
+    "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/3/toolName",
+    "pr": "#2179",
+    "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
   }
 ]
