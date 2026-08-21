@@ -196,7 +196,9 @@ describe("workspace provisioning", () => {
     const worktrees = await runGit(["worktree", "list", "--porcelain"], {
       cwd: root,
     });
-    expect(worktrees.stdout).toContain(`worktree ${targetPath}`);
+    expect(worktrees.stdout.split("\n")).toContain(
+      `worktree ${await fs.realpath(targetPath)}`,
+    );
   });
 
   it("fetches remote base branches before creating worktrees", async () => {
