@@ -358,8 +358,9 @@ Layout: `<dir>/<threadId>/<direction>.ndjson`, with `_process` for lines that
 belong to no thread (`initialize`, `model/list`, provider health, and the
 children those spawn). The four directions are `runtime→bridge`,
 `bridge→runtime`, `provider→bridge`, and `bridge→provider`. One entry per
-line: `{ "ts", "seq", "dir", "line" }`. `seq` is one counter across every lane
-of the process, so the files of a thread merge back into their exact order.
+line: `{ "ts", "run", "seq", "dir", "line" }`. `seq` is one counter across
+every lane of the process and `run` identifies the process, so the files of a
+thread merge back into their exact order even across a bridge restart.
 Responses, which carry only an id, land in the scope of the request they
 answer. Nothing buffers: each line is appended as it crosses.
 
