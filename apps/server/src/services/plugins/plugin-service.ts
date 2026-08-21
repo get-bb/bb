@@ -1736,6 +1736,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             recursive: true,
             force: true,
           });
+          logger.info(
+            `plugin ${id} removed from ${row.source}; its settings, secrets, and schedules were deleted`,
+          );
           // Legacy managed installs still own their mutable pre-cache layout.
           // Immutable artifact directories are retained for future GC policy;
           // path: sources are the user's directory and are never deleted.

@@ -1847,7 +1847,7 @@ export function registerPluginCommands(
   plugin
     .command("remove <id>")
     .description(
-      "Remove an installed plugin (git:/npm: managed files are deleted; local path sources are left alone)",
+      "Remove an installed plugin and delete its settings, secrets, and schedules (git:/npm: managed files are deleted; local path sources stay on disk). To move a local plugin to another directory, install the new path instead",
     )
     .option("--json", "Output JSON")
     .action(

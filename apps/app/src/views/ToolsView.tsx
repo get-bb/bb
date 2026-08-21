@@ -367,7 +367,7 @@ function PluginDetailToolView({ pluginId }: { pluginId: string }) {
                 }
                 description={
                   pluginIsLocalSource(deleteTarget)
-                    ? `Remove "${deleteTarget.id}" from bb? Its source files will stay on disk.`
+                    ? `Remove "${deleteTarget.id}" from bb and delete its settings? Its source files will stay on disk.`
                     : `Uninstall "${deleteTarget.id}" and delete its managed files and settings?`
                 }
                 confirmLabel={pluginRemovalLabel(deleteTarget)}

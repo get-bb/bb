@@ -818,9 +818,12 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     both exist the install fails — write `@semver:<range>` or `@ref:<name>`.
     Installs prompt for confirmation (plugins are full-trust code);
     pass `--yes` to skip. Reinstalling an already-installed managed plugin is
-    refused — use `bb plugin update`. Plugins that declare a frontend (`bb.app`)
-    are built at install time for path sources and git sources without a
-    prebuilt app when their imported dependencies are already available;
+    refused — use `bb plugin update`. Installing a local path for an id that
+    is already installed from another local path moves the plugin to the new
+    directory and keeps its settings, secrets, and schedules. Plugins that
+    declare a frontend (`bb.app`) are built at install time for path sources
+    and git sources without a prebuilt app when their imported dependencies
+    are already available;
     git/npm packages can also ship a metadata-validated prebuilt `dist/`, and
     npm packages must. Managed git/npm installs refuse `engines.bb` /
     `engines.bbPluginSdk` mismatches, manifest vs. artifact identity mismatches,
@@ -848,7 +851,9 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     prefix and resolved tag for a Git range install, engine ranges, install
     time, integrity/registry details, and recent activation history.
   - `bb plugin enable|disable <id>`, `bb plugin reload [id]`,
-    `bb plugin remove <id>` (builtin removals are remembered).
+    `bb plugin remove <id>` (deletes the plugin's settings, secrets, and
+    schedules; managed git/npm files are deleted, local path sources stay on
+    disk, builtin removals are remembered).
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.

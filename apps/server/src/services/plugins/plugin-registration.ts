@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { isBbManagedWorkspacePath } from "../threads/worktree-paths.js";
 import {
@@ -32,6 +33,7 @@ import {
 } from "./install-sources.js";
 import { gitRefNameForRow, gitSelectorForRow } from "./git-source-intent.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
+import { forgetMutableRoot } from "./plugin-runtime.js";
 import type {
   InstallContext,
   InstallRegistrationIdentity,
@@ -241,6 +243,33 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
     });
   }
 
+  /**
+   * A direct `path:` install of an id that is already registered from another
+   * local directory is a move, not a conflict: both trees are the operator's
+   * own, and the plugin's settings, secrets, and schedules are keyed by id.
+   * Refusing it would force `remove` + `install`, and `remove` deletes that
+   * configuration (#1766).
+   */
+  function isPathSourceMove(
+    existing: InstalledPluginRow,
+    identity: InstallRegistrationIdentity,
+  ): boolean {
+    return (
+      existing.provenance === "direct" &&
+      existing.sourceKind === "path" &&
+      identity.provenance.kind === "direct" &&
+      identity.sourceIntent.kind === "path"
+    );
+  }
+
+  function sameDirectory(a: string, b: string): boolean {
+    try {
+      return realpathSync(a) === realpathSync(b);
+    } catch {
+      return a === b;
+    }
+  }
+
   function assertInstallRegistrationAvailable(
     existing: InstalledPluginRow | undefined,
     identity: InstallRegistrationIdentity,
@@ -252,7 +281,8 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
         existing,
         identity.provenance,
         identity.sourceIntent,
-      )
+      ) &&
+      !isPathSourceMove(existing, identity)
     ) {
       throw new Error(
         `plugin id "${pluginId}" is already installed from ${existing.source}; remove it first`,
@@ -332,6 +362,17 @@ export function createPluginRegistration(context: PluginRegistrationContext) {
           await loadOne(previous);
         }
         throw error;
+      }
+      if (existing !== undefined && existing.rootDir !== args.rootDir) {
+        // The old tree is no longer registered: stop the module resolve hook
+        // from scanning it, exactly as `remove` does. Two paths can name one
+        // directory through a symlink, and that root is still in use.
+        if (!sameDirectory(existing.rootDir, args.rootDir)) {
+          forgetMutableRoot(existing.rootDir);
+        }
+        logger.info(
+          `plugin ${manifest.id} source moved from ${existing.source} to ${args.source}; settings, secrets, and schedules were kept`,
+        );
       }
     });
     await syncCliSkill();

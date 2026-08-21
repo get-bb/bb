@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createConnection,
+  getInstalledPlugin,
   migrate,
   upsertInstalledPlugin,
   type DbConnection,
@@ -821,6 +822,74 @@ describe("plugin service", () => {
       status: "running",
     });
     expect(service.getApi("reinstalled")).toBeDefined();
+  });
+
+  it("re-points a path plugin at a new checkout and keeps its settings, secrets, and schedules", async () => {
+    // Two checkouts of the same plugin (same package name, so same id).
+    const serverSource = (marker: string) => `
+      export default function plugin(bb) {
+        bb.settings.define({
+          floor: { type: "string", label: "Floor", default: "60" },
+          token: { type: "string", label: "Token", secret: true },
+        });
+        bb.background.schedule("sweep", "0 * * * *", async () => {});
+        globalThis.__movedCheckout = "${marker}";
+      }`;
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-moved",
+      serverSource: serverSource("a"),
+    });
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-moved",
+      serverSource: serverSource("b"),
+    });
+    await service.installPath(checkoutA);
+    await service.updateSettings("moved", { floor: "1", token: "s3cret" });
+    expect(
+      db.$client
+        .prepare("SELECT name FROM plugin_schedules WHERE plugin_id = ?")
+        .all("moved"),
+    ).toEqual([{ name: "sweep" }]);
+
+    // The same id from a different local directory replaces the registration
+    // in place instead of demanding a remove (which would delete settings).
+    const moved = await service.installPath(checkoutB);
+
+    expect(moved).toMatchObject({
+      id: "moved",
+      status: "running",
+      source: `path:${checkoutB}`,
+      rootDir: checkoutB,
+    });
+    expect((globalThis as Record<string, unknown>).__movedCheckout).toBe("b");
+    expect(getInstalledPlugin(db, "moved")).toMatchObject({
+      sourceKind: "path",
+      sourcePath: checkoutB,
+      rootDir: checkoutB,
+    });
+    expect((await service.getSettings("moved"))?.values).toEqual({
+      floor: "1",
+      token: { set: true },
+    });
+    expect(
+      db.$client
+        .prepare("SELECT name FROM plugin_schedules WHERE plugin_id = ?")
+        .all("moved"),
+    ).toEqual([{ name: "sweep" }]);
+
+    // A broken new checkout is refused before the live install is touched.
+    const checkoutC = join(workDir, "c", "bb-plugin-moved");
+    await mkdir(checkoutC, { recursive: true });
+    await writeFile(join(checkoutC, "package.json"), "{ not json");
+    await expect(service.installPath(checkoutC)).rejects.toThrowError();
+    expect(getInstalledPlugin(db, "moved")?.rootDir).toBe(checkoutB);
+    expect(service.list().find((p) => p.id === "moved")?.status).toBe(
+      "running",
+    );
+    expect((await service.getSettings("moved"))?.values).toEqual({
+      floor: "1",
+      token: { set: true },
+    });
   });
 
   it("warns when a path plugin is installed from inside a managed workspace", async () => {
