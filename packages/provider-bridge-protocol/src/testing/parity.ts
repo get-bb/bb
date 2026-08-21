@@ -17,7 +17,13 @@
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,9 +68,20 @@ export type ParityRowProjector = (args: {
 // Bridge launch
 // ---------------------------------------------------------------------------
 
-/** Where each first-party bridge lives inside a checkout. */
+/**
+ * Where each first-party bridge lives inside a checkout.
+ *
+ * `modulePath` is where it lives today; `legacyModulePaths` are where it lived
+ * before. A two-checkout parity run spawns the SAME provider from an older
+ * checkout, so a bridge that moved must still be found there — otherwise the
+ * old leg silently produces no events and every cell "fails" for a reason
+ * that has nothing to do with the change under test.
+ */
 export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
-  Record<string, { modulePath: string; pluginId: string }>
+  Record<
+    string,
+    { modulePath: string; legacyModulePaths?: string[]; pluginId: string }
+  >
 > = {
   codex: {
     modulePath: "plugins/provider-codex/src/bridge/bridge.ts",
@@ -76,6 +93,9 @@ export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
   },
   acp: {
     modulePath: "plugins/provider-acp/src/host.ts",
+    // Before the ACP bridge became the published kit, the plugin's host
+    // artifact was the bridge module itself.
+    legacyModulePaths: ["plugins/provider-acp/src/bridge/bridge.ts"],
     pluginId: "provider-acp",
   },
   pi: {
@@ -315,6 +335,26 @@ function tsxSpecifier(): string {
   return import.meta.resolve("tsx");
 }
 
+/**
+ * The bridge module as this checkout has it: the current path when it exists,
+ * else the first legacy path that does. An unknown path is left alone so the
+ * spawn fails loudly instead of silently replaying nothing.
+ */
+function resolveModulePath(
+  checkoutRoot: string,
+  entry: { modulePath: string; legacyModulePaths?: string[] },
+): string {
+  if (existsSync(join(checkoutRoot, entry.modulePath))) {
+    return entry.modulePath;
+  }
+  for (const legacy of entry.legacyModulePaths ?? []) {
+    if (existsSync(join(checkoutRoot, legacy))) {
+      return legacy;
+    }
+  }
+  return entry.modulePath;
+}
+
 export function resolveBridgeLaunch(spec: ParityBridgeSpec): {
   command: string;
   args: string[];
@@ -323,7 +363,7 @@ export function resolveBridgeLaunch(spec: ParityBridgeSpec): {
   const checkoutRoot = resolve(spec.checkoutRoot);
   const profile = resolveReplayProfile(spec.providerId);
   const defaults = FIRST_PARTY_BRIDGE_MODULES[profile.bridgeFamily];
-  const modulePath = spec.modulePath ?? defaults.modulePath;
+  const modulePath = spec.modulePath ?? resolveModulePath(checkoutRoot, defaults);
   const pluginId = spec.pluginId ?? defaults.pluginId;
   const dataDir = mkdtempSync(join(tmpdir(), "bb-parity-data-"));
   return {

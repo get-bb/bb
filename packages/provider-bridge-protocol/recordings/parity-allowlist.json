@@ -758,5 +758,21 @@
     "path": "/*/children/*/toolArgs",
     "pr": "#2211",
     "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-allow",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2234",
+    "reason": "M1 (#2234): a command that printed nothing shows no output. `touch approved.txt` reported {exitCode:0,stdout:\"\",stderr:\"\"}, and the empty stream join used to fall through to the rawOutput envelope rendered as JSON."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-allow",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2234",
+    "reason": "M1 (#2234): a command that printed nothing shows no output. `touch approved.txt` reported {exitCode:0,stdout:\"\",stderr:\"\"}, and the empty stream join used to fall through to the rawOutput envelope rendered as JSON."
   }
 ]
