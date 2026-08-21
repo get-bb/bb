@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 /**
  * Generic ACP bridge.
  *
@@ -11,33 +9,13 @@
  * workspace write policy on client `fs/write_text_file` requests.
  */
 
-import {
-  isStandaloneBuiltinCompactCommand,
-  pendingInteractionResolutionSchema,
-  reasoningEffortsForLevels,
-  type AvailableModel,
-  type PromptInput,
-  type ReasoningLevel,
-  type ThreadDelta,
-  hostDaemonAcpLaunchSpecSchema,
-  bridgeRequestEnvelopeSchema,
-  createBridgeIo,
-  createBridgeLineHandler,
-  decodeBridgeJsonRpcResponse,
-  decodeToolCallResponsePayload,
-  mimeTypeFromExtension,
-  runBridgeRequest,
-  withoutBridgeRuntimeEnv,
-  type BridgeJsonRpcResponse,
-  BRIDGE_INBOUND_REQUEST_METHODS,
-  BRIDGE_JSON_RPC_ERRORS,
-  BRIDGE_NOTIFICATION_METHODS,
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  THREAD_DELTA_GRAMMAR_V3,
-  THREAD_DELTA_NOTIFICATION_METHOD,
-  type InitializeResult,
-  experimental_defineProviderBridge,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { isStandaloneBuiltinCompactCommand, pendingInteractionResolutionSchema, reasoningEffortsForLevels } from "@bb/domain";
+import type { AvailableModel, PromptInput, ReasoningLevel } from "@bb/domain";
+import { hostDaemonAcpLaunchSpecSchema } from "@bb/host-daemon-contract";
+import { BRIDGE_INBOUND_REQUEST_METHODS, BRIDGE_JSON_RPC_ERRORS, BRIDGE_NOTIFICATION_METHODS, PROVIDER_BRIDGE_PROTOCOL_VERSION, THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
+import type { InitializeResult, ThreadDelta } from "@bb/provider-bridge-protocol";
+import { bridgeRequestEnvelopeSchema, createBridgeIo, createBridgeLineHandler, decodeBridgeJsonRpcResponse, decodeToolCallResponsePayload, experimental_defineProviderBridge, mimeTypeFromExtension, runBridgeRequest, withoutBridgeRuntimeEnv } from "@bb/provider-bridge-protocol/bridge-kit";
+import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promises as fs, readFileSync } from "node:fs";
@@ -71,6 +49,7 @@ import {
   type AcpDeltaTranslator,
 } from "../delta-translation.js";
 import { resolveAcpDialect, type AcpDialect } from "../dialect.js";
+import type { AcpMaintenanceDialect } from "./provider-maintenance.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -2426,6 +2405,22 @@ function decodeDialectId(
   return acpProviderOptionsSchema.parse(providerOptions ?? {}).acpDialect;
 }
 
+/**
+ * The maintenance surface for a provider-maintenance request: the agent's
+ * dialect owns it, so the bridge never asks which bb provider is calling.
+ */
+function maintenanceForRequest(
+  providerOptions: Record<string, unknown> | undefined,
+): AcpMaintenanceDialect | undefined {
+  const profile = decodeLaunchProfile(providerOptions);
+  return resolveAcpDialect({
+    ...(decodeDialectId(providerOptions) === undefined
+      ? {}
+      : { dialectId: decodeDialectId(providerOptions) }),
+    command: profile?.agentCommand.command ?? "",
+  }).maintenance;
+}
+
 async function handleRequest(
   request: AcpBridgeCommand & { id: string | number },
 ): Promise<void> {
@@ -2485,7 +2480,7 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderHealth({
-          providerId: request.params.providerId,
+          maintenance: maintenanceForRequest(request.params.providerOptions),
           command: profile?.agentCommand.command ?? null,
         }),
       );
@@ -2497,7 +2492,7 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderUsage({
-          providerId: request.params.providerId,
+          maintenance: maintenanceForRequest(request.params.providerOptions),
           command: profile?.agentCommand.command ?? null,
         }),
       );
@@ -2509,7 +2504,7 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderInstallationStatus({
-          providerId: request.params.providerId,
+          maintenance: maintenanceForRequest(request.params.providerOptions),
           command: profile?.agentCommand.command ?? null,
         }),
       );
@@ -2521,7 +2516,7 @@ async function handleRequest(
       sendResult(
         request.id,
         await getAcpProviderInstallationRun({
-          providerId: request.params.providerId,
+          maintenance: maintenanceForRequest(request.params.providerOptions),
           command: profile?.agentCommand.command ?? null,
           action: request.params.action,
         }),

@@ -6,23 +6,8 @@
  * why they are schemas rather than ad-hoc objects.
  */
 
-import {
-  acpPermissionCliSchema as acpBridgePermissionCliSchema,
-  acpNativeReasoningSchema as acpBridgeNativeReasoningSchema,
-  acpReasoningCliSchema as acpBridgeReasoningCliSchema,
-  modelListParamsSchema as canonicalModelListParamsSchema,
-  threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
-  threadForkParamsSchema as canonicalThreadForkParamsSchema,
-  threadResumeParamsSchema as canonicalThreadResumeParamsSchema,
-  threadStartParamsSchema as canonicalThreadStartParamsSchema,
-  threadStopParamsSchema as canonicalThreadStopParamsSchema,
-  turnStartParamsSchema as canonicalTurnStartParamsSchema,
-  turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
-  skillsConfigureParamsSchema,
-  experimental_providerMaintenanceParamsSchema,
-  experimental_providerInstallationRunParamsSchema,
-  experimental_providerInstallationStatusParamsSchema,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { acpNativeReasoningSchema as acpBridgeNativeReasoningSchema, acpPermissionCliSchema as acpBridgePermissionCliSchema, acpReasoningCliSchema as acpBridgeReasoningCliSchema } from "@bb/domain";
+import { experimental_providerInstallationRunParamsSchema, experimental_providerInstallationStatusParamsSchema, experimental_providerMaintenanceParamsSchema, modelListParamsSchema as canonicalModelListParamsSchema, skillsConfigureParamsSchema, threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema, threadForkParamsSchema as canonicalThreadForkParamsSchema, threadResumeParamsSchema as canonicalThreadResumeParamsSchema, threadStartParamsSchema as canonicalThreadStartParamsSchema, threadStopParamsSchema as canonicalThreadStopParamsSchema, turnStartParamsSchema as canonicalTurnStartParamsSchema, turnSteerParamsSchema as canonicalTurnSteerParamsSchema } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 import { acpSessionUpdateSchema, acpStopReasonSchema } from "./wire.js";
 

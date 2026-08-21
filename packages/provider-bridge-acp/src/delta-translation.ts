@@ -15,22 +15,12 @@
  * in the assembler.
  */
 
-import {
-  errorEnvelopeSchema,
-  jsonRpcEnvelopeSchema,
-  providerRawEventSchema,
-  type JsonRpcMessage,
-  type ProviderRawEvent,
-  type ProviderRuntimeEvent,
-} from "@get-bb/plugin-sdk/provider-bridge";
-import type {
-  DeltaItemShape,
-  DeltaNoTurnFallback,
-  ThreadDelta,
-  ThreadEventItemStatus,
-  ThreadEventPlanStep,
-  ThreadEventTurnStatus,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { providerRawEventSchema } from "@bb/domain";
+import type { ProviderRawEvent } from "@bb/domain";
+import { errorEnvelopeSchema, jsonRpcEnvelopeSchema } from "@bb/provider-bridge-protocol/bridge-kit";
+import type { JsonRpcMessage, ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
+import type { ThreadEventItemStatus, ThreadEventPlanStep, ThreadEventTurnStatus } from "@bb/domain";
+import type { DeltaItemShape, DeltaNoTurnFallback, ThreadDelta } from "@bb/provider-bridge-protocol";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,

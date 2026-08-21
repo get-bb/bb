@@ -2179,6 +2179,9 @@ importers:
       '@bb/process-utils':
         specifier: workspace:*
         version: link:../process-utils
+      '@bb/provider-bridge-acp':
+        specifier: workspace:*
+        version: link:../provider-bridge-acp
       '@bb/provider-bridge-protocol':
         specifier: workspace:*
         version: link:../provider-bridge-protocol
@@ -2255,6 +2258,43 @@ importers:
       '@types/cross-spawn':
         specifier: ^6.0.6
         version: 6.0.6
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.10
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+      typescript-7:
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      vitest:
+        specifier: ^4.1.1
+        version: 4.1.1(@opentelemetry/api@1.9.1)(@types/node@22.19.10)(jsdom@29.0.1(@noble/hashes@2.0.1))(msw@2.12.14(@types/node@22.19.10)(@typescript/typescript6@6.0.2))(vite@8.0.12(@types/node@22.19.10)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.50.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  packages/provider-bridge-acp:
+    dependencies:
+      '@bb/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@bb/host-daemon-contract':
+        specifier: workspace:*
+        version: link:../host-daemon-contract
+      '@bb/process-utils':
+        specifier: workspace:*
+        version: link:../process-utils
+      '@bb/provider-bridge-protocol':
+        specifier: workspace:*
+        version: link:../provider-bridge-protocol
+      zod:
+        specifier: 4.3.6
+        version: 4.3.6
+    devDependencies:
+      '@bb/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(zod@4.3.6)
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.10
@@ -3292,18 +3332,6 @@ importers:
         specifier: 4.3.6
         version: 4.3.6
     devDependencies:
-      '@bb/agent-runtime':
-        specifier: workspace:*
-        version: link:../../packages/agent-runtime
-      '@bb/domain':
-        specifier: workspace:*
-        version: link:../../packages/domain
-      '@bb/host-daemon-contract':
-        specifier: workspace:*
-        version: link:../../packages/host-daemon-contract
-      '@bb/provider-bridge-protocol':
-        specifier: workspace:*
-        version: link:../../packages/provider-bridge-protocol
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
@@ -19273,9 +19301,7 @@ snapshots:
       metro-runtime: 0.84.5
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.79.6': {}
 

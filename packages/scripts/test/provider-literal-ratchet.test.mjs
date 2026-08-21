@@ -93,6 +93,19 @@ describe("scanTree (pure)", () => {
     expect(scanTree(dir).total).toBe(0);
   });
 
+  // The published ACP bridge kit is a provider implementation that lives
+  // under packages/ so the plugin SDK can re-export it; it gets the same
+  // carve-out a provider plugin does. Its neighbours do not.
+  it("excludes the published provider bridge kit but not its neighbours", () => {
+    write(
+      "packages/provider-bridge-acp/src/dialect.ts",
+      'const dialects = { "cursor-agent": "cursor" };\n',
+    );
+    expect(scanTree(dir).total).toBe(0);
+    write("packages/provider-bridge-protocol/src/a.ts", 'const id = "cursor";\n');
+    expect(scanTree(dir).total).toBe(1);
+  });
+
   it('providerLiteralRegex does not double-count `providerId === "codex"`', () => {
     const line = 'if (providerId === "codex") {}';
     expect(line.match(providerLiteralRegex())).toHaveLength(1);

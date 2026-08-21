@@ -28,6 +28,14 @@ const entries = [
     output: "dist/provider-bridge-testing.js",
     external: ["zod", "zod/*"],
   },
+  // The ACP kit: the generic Agent Client Protocol bridge a provider plugin
+  // re-exports from its host artifact, plus the dialect hooks. Real code, so
+  // only zod stays external.
+  {
+    source: "src/provider-bridge-acp.ts",
+    output: "dist/provider-bridge-acp.js",
+    external: ["zod", "zod/*"],
+  },
   { source: "src/host.ts", output: "dist/host.js", external: [] },
   {
     source: "src/internal/composer-customization-validation.ts",

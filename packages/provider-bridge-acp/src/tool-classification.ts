@@ -20,13 +20,8 @@
  * disagree (#1803).
  */
 
-import {
-  extractResultText,
-  toOptionalString,
-  type DeltaFileChange,
-  type DeltaItemShape,
-  type DeltaPresentation,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import type { DeltaFileChange, DeltaItemShape, DeltaPresentation } from "@bb/provider-bridge-protocol";
+import { extractResultText, toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
 import {
   bbToolPresentation,

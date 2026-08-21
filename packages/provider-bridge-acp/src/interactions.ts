@@ -9,14 +9,8 @@
  * subject carrying the same presentation its timeline row does.
  */
 
-import {
-  type PendingInteractionApprovalDecision,
-  type PendingInteractionApprovalSubject,
-  type PendingInteractionPayload,
-  type PendingInteractionResolution,
-  isApprovalPendingInteractionPayload,
-  isApprovalPendingInteractionResolution,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { isApprovalPendingInteractionPayload, isApprovalPendingInteractionResolution } from "@bb/domain";
+import type { PendingInteractionApprovalDecision, PendingInteractionApprovalSubject, PendingInteractionPayload, PendingInteractionResolution } from "@bb/domain";
 import { toolKindPresentation } from "./presentation.js";
 import {
   type AcpToolCallOperation,

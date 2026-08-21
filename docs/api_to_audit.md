@@ -17,6 +17,38 @@ content-block vocabulary; decide whether legacy aggregate fields still need to
 be accepted; and define any image MIME validation, decoding, or payload-size
 policy at the server boundary before making the helper stable.
 
+## The ACP bridge kit (`@get-bb/plugin-sdk/provider-bridge/acp`)
+
+**What it does.** Publishes bb's generic Agent Client Protocol bridge so any
+plugin can add an ACP agent without bb-side code. `experimental_acpProviderBridge`
+is the bridge a plugin re-exports from its `bb.host` artifact; the agent to
+launch arrives per command in `providerOptions.acpLaunchSpec`, so one
+implementation serves every agent. `experimental_registerAcpDialect` and
+`experimental_resolveAcpDialect` are the dialect hooks: version 1 of the
+protocol has no sub-agent concept and standardizes nothing about `rawInput`,
+so each agent's vendor side channels (grok's `_meta["x.ai/tool"]`, Cursor's
+`cursor/task` request, an agent's own health/usage/installation surface) are
+read by a small profile-keyed module that a plugin can supply for its own
+agent and name in its registration's bridge options (`acpDialect`).
+`experimental_handleAcpBridgeLine` is the raw line handler for harnesses.
+`experimental_parseAcpAgentModelLines` / `experimental_buildAcpAgentModelCatalog`
+/ `experimental_splitAcpPrimaryModels` build a model picker from an agent's
+`--list-models` output. `experimental_acpProfileFromLaunchSpec` and
+`experimental_ACP_*` expose the launch profile and the protocol vocabularies.
+
+**Audit before stabilizing.** Decide whether `AcpDialect` is the right shape
+for a third-party agent — today it has four optional hooks (`toolIdentity`,
+`classifyToolCall`, `handleClientRequest`, `maintenance`) and no versioning,
+so adding a fifth is a silent capability change for every dialect. Decide
+whether `registerAcpDialect`'s process-global registry is right, or whether a
+dialect should be named by value in the provider registration instead of by
+id. Confirm the dialect id namespace (ids are unscoped strings today, so two
+plugins can collide) and whether a plugin may override a built-in dialect.
+Settle whether the bridge itself should be a factory rather than a module
+singleton before a host artifact ever needs two configured differently, and
+whether the model-catalog helpers belong in this kit at all or in a
+CLI-model-discovery kit of their own.
+
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
 **What it does.** `experimental_recordProviderChildIo` tees a provider

@@ -11,12 +11,12 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CURSOR_PRIMARY_MODELS } from "../../server.js";
 import {
-  buildAgentModelCatalog,
-  parseAgentModelLines,
-  splitPrimaryModels,
-} from "./model-catalog.js";
+  experimental_buildAcpAgentModelCatalog as buildAgentModelCatalog,
+  experimental_parseAcpAgentModelLines as parseAgentModelLines,
+  experimental_splitAcpPrimaryModels as splitPrimaryModels,
+} from "@get-bb/plugin-sdk/provider-bridge/acp";
+import { CURSOR_PRIMARY_MODELS } from "../server.js";
 
 // Captured with `cursor-agent --list-models` (2026.08.11-e8db854).
 const CURSOR_LIST_MODELS = readFileSync(

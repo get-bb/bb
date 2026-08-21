@@ -13,7 +13,7 @@
  * Icons are host glyph names from the shared icon registry
  * (`@bb/shared-ui/icon`); the persisted form is glyph-only by design.
  */
-import type { DeltaPresentation } from "@get-bb/plugin-sdk/provider-bridge";
+import type { DeltaPresentation } from "@bb/provider-bridge-protocol";
 import type { AcpToolKind } from "./wire.js";
 
 /** Row headlines stay one line and short; the item carries the full text. */

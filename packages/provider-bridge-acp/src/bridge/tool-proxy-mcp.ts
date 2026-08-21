@@ -1,8 +1,6 @@
-import {
-  dynamicToolSchema,
-  experimental_buildBridgeToolCallContent,
-  type DynamicTool,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { dynamicToolSchema } from "@bb/domain";
+import type { DynamicTool } from "@bb/domain";
+import { buildBridgeToolCallContent as experimental_buildBridgeToolCallContent } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createConnection } from "node:net";
 import { createInterface } from "node:readline";
 import { z } from "zod";

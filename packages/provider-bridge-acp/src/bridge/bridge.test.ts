@@ -13,18 +13,15 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION, THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
 import {
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  THREAD_DELTA_NOTIFICATION_METHOD,
-} from "@bb/provider-bridge-protocol";
-import {
-  experimental_assembleCapturedThreadEvents as assembleCapturedThreadEvents,
-  experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
-} from "@get-bb/plugin-sdk/provider-bridge/testing";
+  assembleCapturedThreadEvents,
+  captureBridgeJsonRpcOutput,
+} from "@bb/provider-bridge-protocol/testing";
 import type {
   BridgeJsonRpcOutputMessage,
   CapturedBridgeJsonRpcOutput,
-} from "@get-bb/plugin-sdk/provider-bridge/testing";
+} from "@bb/provider-bridge-protocol/testing";
 
 import { handleLine } from "./bridge.js";
 import { ACP_BRIDGE_NO_ACTIVE_TURN_ERROR_CODE } from "../bridge-protocol.js";

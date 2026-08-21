@@ -4,12 +4,7 @@
  * model-list params out.
  */
 
-import {
-  type DynamicTool,
-  type PermissionMode,
-  type ReasoningLevel,
-  type ServiceTier,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import type { DynamicTool, PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import path from "node:path";
 
 import { ACP_DEFAULT_MODEL_ID } from "./bridge-protocol.js";

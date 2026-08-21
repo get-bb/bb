@@ -75,7 +75,7 @@ export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
     pluginId: "provider-claude-code",
   },
   acp: {
-    modulePath: "plugins/provider-acp/src/bridge/bridge.ts",
+    modulePath: "plugins/provider-acp/src/host.ts",
     pluginId: "provider-acp",
   },
   pi: {

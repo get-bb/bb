@@ -7,6 +7,19 @@ import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 
+interface BuiltProviderBridge {
+  readonly experimental_apiVersion: 1;
+  readonly handleLine: (line: string) => void;
+}
+
+function isBuiltProviderBridge(value: unknown): value is BuiltProviderBridge {
+  if (typeof value !== "object" || value === null) return false;
+  return (
+    Reflect.get(value, "experimental_apiVersion") === 1 &&
+    typeof Reflect.get(value, "handleLine") === "function"
+  );
+}
+
 interface BuiltHostEntry {
   readonly experimental_apiVersion: 1;
   readonly handlers: Readonly<
@@ -78,4 +91,38 @@ describe("builtin host artifacts", () => {
       supported: process.platform === "darwin",
     });
   }, 20_000);
+
+  /**
+   * The ACP plugin's whole host side is one re-export of the published kit
+   * (`@get-bb/plugin-sdk/provider-bridge/acp`), which is exactly what a
+   * third-party ACP plugin writes. This builds that artifact the way the
+   * daemon does — inlining the SDK's published bundle from the plugin's own
+   * node_modules — and imports the result, so a kit that only resolves
+   * through the workspace source condition cannot pass.
+   */
+  it("builds the ACP provider bridge from the published SDK subpath", async () => {
+    const root = await mkdtemp(join(repositoryRoot, ".builtin-host-test-"));
+    tempDirs.push(root);
+    const source = join(repositoryRoot, "plugins", "provider-acp");
+    for (const fileName of ["package.json", "server.ts"]) {
+      await cp(join(source, fileName), join(root, fileName));
+    }
+    await cp(join(source, "src"), join(root, "src"), { recursive: true });
+    // The manifest's branding icon must resolve for the build to run.
+    await cp(join(source, "icons"), join(root, "icons"), { recursive: true });
+    await symlink(
+      join(source, "node_modules"),
+      join(root, "node_modules"),
+      "dir",
+    );
+    const toolchain = await resolvePluginBuildToolchain(
+      join(repositoryRoot, "node_modules", ".unused-toolchain"),
+    );
+    const built = await buildPluginHost(root, "0.9.0-test", toolchain);
+    const imported: unknown = await import(
+      `${pathToFileURL(built.jsPath).href}?test=${Date.now()}`
+    );
+    const bridge = Reflect.get(Object(imported), "experimental_providerBridge");
+    expect(isBuiltProviderBridge(bridge)).toBe(true);
+  }, 60_000);
 });

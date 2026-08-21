@@ -38,6 +38,12 @@
       "import": "./dist/provider-bridge-testing.js",
       "default": "./dist/provider-bridge-testing.js"
     },
+    "./provider-bridge/acp": {
+      "source": "./src/provider-bridge-acp.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge-acp.d.ts",
+      "import": "./dist/provider-bridge-acp.js",
+      "default": "./dist/provider-bridge-acp.js"
+    },
     "./app": {
       "source": "./src/app.ts",
       "types": "./bundled-types/bb-plugin-sdk-app.d.ts",
@@ -113,6 +119,7 @@
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
+    "@bb/provider-bridge-acp": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",

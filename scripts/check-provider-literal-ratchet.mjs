@@ -54,7 +54,19 @@ const EXCLUDED_SEGMENTS = new Set([
   "stories",
   "dev", // dev-only fixture screens (apps/mobile/src/screens/dev)
 ]);
-const EXCLUDED_PREFIXES = [join("plugins", "provider-"), join("examples", "")];
+/**
+ * Provider implementations are allowed to name their own provider; the
+ * ratchet exists to keep provider ids out of CORE. `plugins/provider-*` is
+ * one such implementation, and so is the published ACP bridge kit — the same
+ * code, moved into `packages/` so the plugin SDK can re-export it
+ * (`@get-bb/plugin-sdk/provider-bridge/acp`). It carries no bb provider id
+ * today: it selects behavior by the agent's dialect, never by a provider id.
+ */
+const EXCLUDED_PREFIXES = [
+  join("plugins", "provider-"),
+  join("packages", "provider-bridge-acp"),
+  join("examples", ""),
+];
 const EXCLUDED_FILE_RE =
   /\.(test|spec|stories)\.[cm]?[jt]sx?$|\.snap$|\.d\.ts$/;
 const INCLUDED_FILE_RE = /\.[cm]?[jt]sx?$/; // ts tsx js jsx mjs cjs mts cts

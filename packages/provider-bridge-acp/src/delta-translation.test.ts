@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
-import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import { createDeltaAssembler } from "@bb/provider-bridge-protocol/assembler";
+import type { DeltaAssembler } from "@bb/provider-bridge-protocol/assembler";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,

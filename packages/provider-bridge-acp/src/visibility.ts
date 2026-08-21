@@ -1,11 +1,5 @@
-import {
-  createProviderVisibilityMetadata,
-  getStringProperty,
-  isRecord,
-  type JsonRpcMessage,
-  type ProviderRawEventDescription,
-  type ProviderVisibilityMetadata,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { createProviderVisibilityMetadata, getStringProperty, isRecord } from "@bb/provider-bridge-protocol/bridge-kit";
+import type { JsonRpcMessage, ProviderRawEventDescription, ProviderVisibilityMetadata } from "@bb/provider-bridge-protocol/bridge-kit";
 import {
   ACP_FS_WRITE_METHOD,
   ACP_TURN_COMPLETED_METHOD,

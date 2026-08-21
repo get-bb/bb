@@ -5,20 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import type {
-  ExperimentalProviderHealthResult,
-  ExperimentalProviderInstallationRunResult,
-  ExperimentalProviderInstallationStatus,
-  ExperimentalProviderUsage,
-  ExperimentalProviderUsageResult,
-  ExperimentalProviderUsageWindow,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import type { ExperimentalProviderHealthResult, ExperimentalProviderInstallationRunResult, ExperimentalProviderInstallationStatus, ExperimentalProviderUsage, ExperimentalProviderUsageResult, ExperimentalProviderUsageWindow } from "@bb/provider-bridge-protocol";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
 const COMMAND_TIMEOUT_MS = 5_000;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
-const CURSOR_PROVIDER_ID = "acp-cursor";
 const CURSOR_DASHBOARD_URL =
   "https://api2.cursor.sh/aiserver.v1.DashboardService";
 const CURSOR_KEYCHAIN_ACCOUNT = "cursor-user";
@@ -155,14 +147,32 @@ function readAccountEmail(): string | null {
   }
 }
 
+/**
+ * What an agent's own dialect knows about keeping it healthy: how a user
+ * signs in, whether bb can install it, and where its account and usage live.
+ * ACP standardizes none of it, so a generic bridge can only report whether
+ * the executable exists — everything richer belongs to the agent, and is
+ * therefore the dialect's (see `dialect.ts`), never a bb provider id's.
+ */
+export interface AcpMaintenanceDialect {
+  /** The shell command that signs the user in. */
+  loginCommand: string;
+  /** How bb installs or updates the agent, when it can. */
+  installer(): { command: string; args: string[]; displayCommand: string };
+  /** The signed-in account, or null when the agent is not signed in. */
+  readAccount(): Promise<{ email: string | null } | null>;
+  /** The agent's usage windows, for the usage surfaces. */
+  readUsage(): Promise<ExperimentalProviderUsageResult>;
+}
+
 function healthResult(args: {
-  providerId: string;
+  maintenance: AcpMaintenanceDialect | undefined;
   status: "ready" | "not_installed" | "unauthenticated" | "unknown";
   accountEmail?: string | null;
   installedVersion?: string | null;
   statusMessage?: string | null;
 }): ExperimentalProviderHealthResult {
-  const cursor = args.providerId === CURSOR_PROVIDER_ID;
+  const maintained = args.maintenance !== undefined;
   return {
     supported: true,
     health: {
@@ -172,49 +182,47 @@ function healthResult(args: {
       planLabel: null,
       installedVersion: args.installedVersion ?? null,
       minimumSupportedVersion: null,
-      canInstall: cursor,
-      canUpdate: cursor && args.status !== "not_installed",
-      loginCommand: cursor ? "cursor-agent login" : null,
+      canInstall: maintained,
+      canUpdate: maintained && args.status !== "not_installed",
+      loginCommand: args.maintenance?.loginCommand ?? null,
     },
   };
 }
 
 export async function getAcpProviderHealth(args: {
-  providerId: string;
+  maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
 }): Promise<ExperimentalProviderHealthResult> {
+  const maintenance = args.maintenance;
   if (args.command === null) {
     return healthResult({
-      providerId: args.providerId,
+      maintenance,
       status: "unknown",
       statusMessage: "The ACP provider has no launch command.",
     });
   }
   if ((await executablePath(args.command)) === null) {
-    return healthResult({
-      providerId: args.providerId,
-      status: "not_installed",
-    });
+    return healthResult({ maintenance, status: "not_installed" });
   }
   const version = await installedVersion(args.command);
-  if (args.providerId !== CURSOR_PROVIDER_ID) {
+  if (maintenance === undefined) {
     return healthResult({
-      providerId: args.providerId,
+      maintenance,
       status: "ready",
       installedVersion: version,
     });
   }
   try {
-    const accessToken = await readAccessToken();
+    const account = await maintenance.readAccount();
     return healthResult({
-      providerId: args.providerId,
-      status: accessToken === null ? "unauthenticated" : "ready",
-      accountEmail: accessToken === null ? null : readAccountEmail(),
+      maintenance,
+      status: account === null ? "unauthenticated" : "ready",
+      accountEmail: account?.email ?? null,
       installedVersion: version,
     });
   } catch (error) {
     return healthResult({
-      providerId: args.providerId,
+      maintenance,
       status: "unknown",
       installedVersion: version,
       statusMessage: error instanceof Error ? error.message : String(error),
@@ -237,10 +245,10 @@ function cursorInstallerCommand(): {
 }
 
 export async function getAcpProviderInstallationStatus(args: {
-  providerId: string;
+  maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
 }): Promise<ExperimentalProviderInstallationStatus> {
-  const executableName = args.command ?? "cursor-agent";
+  const executableName = args.command ?? "";
   const resolvedExecutable =
     args.command === null ? null : await executablePath(args.command);
   const installed = resolvedExecutable !== null;
@@ -249,11 +257,11 @@ export async function getAcpProviderInstallationStatus(args: {
       ? await installedVersion(args.command)
       : null;
   const installAction =
-    args.providerId === CURSOR_PROVIDER_ID && !installed
+    args.maintenance !== undefined && !installed
       ? {
           kind: "install" as const,
           label: "Install" as const,
-          command: cursorInstallerCommand().displayCommand,
+          command: args.maintenance.installer().displayCommand,
         }
       : null;
   return {
@@ -273,7 +281,7 @@ export async function getAcpProviderInstallationStatus(args: {
 }
 
 export async function getAcpProviderInstallationRun(args: {
-  providerId: string;
+  maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
   action: "install" | "update";
 }): Promise<ExperimentalProviderInstallationRunResult> {
@@ -283,17 +291,21 @@ export async function getAcpProviderInstallationRun(args: {
 
 function buildAcpProviderInstallationRun(
   status: ExperimentalProviderInstallationStatus,
-  args: { providerId: string; action: "install" | "update" },
+  args: {
+    maintenance: AcpMaintenanceDialect | undefined;
+    command: string | null;
+    action: "install" | "update";
+  },
 ): ExperimentalProviderInstallationRunResult {
-  if (status.installAction?.kind !== args.action) {
+  if (status.installAction?.kind !== args.action || args.maintenance === undefined) {
     return {
       available: false,
-      message: `${args.providerId} ${args.action} is not available on this host.`,
+      message: `${args.command ?? "This ACP agent"} ${args.action} is not available on this host.`,
     };
   }
   return {
     available: true,
-    command: cursorInstallerCommand(),
+    command: args.maintenance.installer(),
     verification: { kind: "installed" },
   };
 }
@@ -409,13 +421,28 @@ function fetchDashboard(
 }
 
 export async function getAcpProviderUsage(args: {
-  providerId: string;
+  maintenance: AcpMaintenanceDialect | undefined;
   command: string | null;
 }): Promise<ExperimentalProviderUsageResult> {
-  if (args.providerId !== CURSOR_PROVIDER_ID) return { supported: false };
+  if (args.maintenance === undefined) return { supported: false };
   if (args.command === null || (await executablePath(args.command)) === null) {
     return { supported: true, usage: { status: "not_installed" } };
   }
+  return args.maintenance.readUsage();
+}
+
+/** Cursor's own maintenance surface; the cursor dialect carries it. */
+export const CURSOR_ACP_MAINTENANCE: AcpMaintenanceDialect = {
+  loginCommand: "cursor-agent login",
+  installer: cursorInstallerCommand,
+  readAccount: async () => {
+    const accessToken = await readAccessToken();
+    return accessToken === null ? null : { email: readAccountEmail() };
+  },
+  readUsage: readCursorUsage,
+};
+
+async function readCursorUsage(): Promise<ExperimentalProviderUsageResult> {
   const accessToken = await readAccessToken();
   if (!accessToken) {
     return { supported: true, usage: { status: "unauthenticated" } };

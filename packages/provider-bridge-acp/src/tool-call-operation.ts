@@ -9,7 +9,7 @@
  */
 
 import path from "node:path";
-import { toOptionalString } from "@get-bb/plugin-sdk/provider-bridge";
+import { toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
 import type { AcpToolCallContent } from "./wire.js";
 

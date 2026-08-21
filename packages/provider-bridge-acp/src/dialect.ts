@@ -18,9 +18,13 @@
  * nothing and leaves every decision to the protocol fields.
  */
 
-import type { DeltaItemShape } from "@get-bb/plugin-sdk/provider-bridge";
+import type { DeltaItemShape } from "@bb/provider-bridge-protocol";
 import { basename } from "node:path";
 import { z } from "zod";
+import {
+  CURSOR_ACP_MAINTENANCE,
+  type AcpMaintenanceDialect,
+} from "./bridge/provider-maintenance.js";
 import { delegationPresentation } from "./presentation.js";
 import type { AcpClassifiedToolCall } from "./tool-classification.js";
 import {
@@ -80,6 +84,12 @@ export interface AcpDialect {
     method: string,
     params: unknown,
   ): AcpClientRequestOutcome | undefined;
+  /**
+   * How bb keeps this agent healthy: sign-in, installation, account and
+   * usage. ACP standardizes none of it, so an agent without one reports only
+   * whether its executable exists.
+   */
+  maintenance?: AcpMaintenanceDialect;
 }
 
 export interface AcpClientRequestOutcome {
@@ -266,17 +276,34 @@ export const CURSOR_ACP_DIALECT: AcpDialect = {
   id: "cursor",
   classifyToolCall: cursorClassifyToolCall,
   handleClientRequest: cursorHandleClientRequest,
+  maintenance: CURSOR_ACP_MAINTENANCE,
 };
 
 // ---------------------------------------------------------------------------
 // Selection
 // ---------------------------------------------------------------------------
 
-/** Every dialect this kit ships, by id. */
-const DIALECTS_BY_ID: Readonly<Record<string, AcpDialect>> = {
-  [CURSOR_ACP_DIALECT.id]: CURSOR_ACP_DIALECT,
-  [GROK_ACP_DIALECT.id]: GROK_ACP_DIALECT,
-};
+/**
+ * Every dialect the bridge can select, by id: the ones this kit ships plus
+ * any a plugin registered. A plugin registers its own from the module scope
+ * of its `bb.host` artifact, which the bridge shares, before any session
+ * starts.
+ */
+const DIALECTS_BY_ID = new Map<string, AcpDialect>([
+  [CURSOR_ACP_DIALECT.id, CURSOR_ACP_DIALECT],
+  [GROK_ACP_DIALECT.id, GROK_ACP_DIALECT],
+]);
+
+/**
+ * Teach the bridge one agent's side channels. A plugin that registers an ACP
+ * agent bb has never seen — Amp, or an in-house agent — ships a dialect for
+ * it and names the id in its provider registration's bridge options
+ * (`acpDialect`). Registering an id twice replaces the earlier dialect, so a
+ * plugin can override a built-in for its own registration.
+ */
+export function registerAcpDialect(dialect: AcpDialect): void {
+  DIALECTS_BY_ID.set(dialect.id, dialect);
+}
 
 /** The executable name each dialect's agent is normally launched as. */
 const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
@@ -284,8 +311,10 @@ const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
   grok: GROK_ACP_DIALECT.id,
 };
 
-/** Every dialect id a profile may name. */
-export const ACP_DIALECT_IDS = Object.keys(DIALECTS_BY_ID);
+/** Every dialect id a profile may name, registered ones included. */
+export function acpDialectIds(): string[] {
+  return [...DIALECTS_BY_ID.keys()];
+}
 
 /**
  * The dialect for an agent launch. The profile names it (the ACP plugin puts
@@ -304,10 +333,10 @@ export function resolveAcpDialect(launch: {
   command: string;
 }): AcpDialect {
   if (launch.dialectId !== undefined) {
-    return DIALECTS_BY_ID[launch.dialectId] ?? GENERIC_ACP_DIALECT;
+    return DIALECTS_BY_ID.get(launch.dialectId) ?? GENERIC_ACP_DIALECT;
   }
   const byCommand = DIALECT_IDS_BY_COMMAND[basename(launch.command)];
   return byCommand === undefined
     ? GENERIC_ACP_DIALECT
-    : (DIALECTS_BY_ID[byCommand] ?? GENERIC_ACP_DIALECT);
+    : (DIALECTS_BY_ID.get(byCommand) ?? GENERIC_ACP_DIALECT);
 }

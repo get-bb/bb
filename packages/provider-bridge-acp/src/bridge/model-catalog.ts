@@ -31,12 +31,8 @@
  * marker, and Cursor's own `(default)`/`(current)` annotations.
  */
 
-import {
-  reasoningLevelValues,
-  type AvailableModel,
-  type ReasoningLevel,
-  type ServiceTier,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { reasoningLevelValues } from "@bb/domain";
+import type { AvailableModel, ReasoningLevel, ServiceTier } from "@bb/domain";
 import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
 
 interface RawAgentModel {

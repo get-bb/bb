@@ -4,16 +4,16 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
-  experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
-  experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
-  experimental_formatConformanceReport as formatConformanceReport,
-  experimental_runBridgeConformance as runBridgeConformance,
-  experimental_toConformanceMessages as toConformanceMessages,
-} from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type {
-  BridgeConformanceTransport,
-  CapturedBridgeJsonRpcOutput,
-} from "@get-bb/plugin-sdk/provider-bridge/testing";
+  formatConformanceReport,
+  runBridgeConformance,
+} from "@bb/provider-bridge-protocol/conformance";
+import type { BridgeConformanceTransport } from "@bb/provider-bridge-protocol/conformance";
+import {
+  captureBridgeJsonRpcOutput,
+  createBridgeDeltaEventCollector,
+  toConformanceMessages,
+} from "@bb/provider-bridge-protocol/testing";
+import type { CapturedBridgeJsonRpcOutput } from "@bb/provider-bridge-protocol/testing";
 
 import { handleLine } from "./bridge.js";
 
