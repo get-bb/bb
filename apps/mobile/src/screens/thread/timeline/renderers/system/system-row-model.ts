@@ -50,7 +50,7 @@ export function leadingIconForSystemRow(
 /** Detail bodies longer than this collapse to their head with a toggle. */
 export const SYSTEM_DETAIL_COLLAPSED_MAX_LINES = 40;
 
-export interface SystemDetailText {
+interface SystemDetailText {
   text: string;
   hiddenLineCount: number;
 }

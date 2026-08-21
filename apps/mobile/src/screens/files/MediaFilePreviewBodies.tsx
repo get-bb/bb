@@ -9,7 +9,7 @@ import {
   type LightboxState,
 } from "../thread/timeline/lightbox/lightbox-model";
 
-export interface ImageFilePreviewBodyProps {
+interface ImageFilePreviewBodyProps {
   /** Loadable URL: a `data:` URL (workspace files) or a content route (cookies). */
   url: string;
   name: string;
@@ -72,7 +72,7 @@ export function ImageFilePreviewBody({
   );
 }
 
-export interface VideoFilePreviewBodyProps {
+interface VideoFilePreviewBodyProps {
   mimeType: string;
   /** Null when the bytes only exist inline (no external URL to hand off). */
   externalUrl: string | null;

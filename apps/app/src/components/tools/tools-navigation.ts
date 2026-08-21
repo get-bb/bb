@@ -33,7 +33,7 @@ interface ToolsSectionDefinition {
   to: string;
 }
 
-export const TOOLS_SECTIONS = {
+const TOOLS_SECTIONS = {
   skills: {
     id: "skills",
     label: "Skills",

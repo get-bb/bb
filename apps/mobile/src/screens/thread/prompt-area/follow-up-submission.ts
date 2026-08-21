@@ -20,7 +20,7 @@ import type { ComposerSubmitKind } from "@/composer/model";
  * attributed, and the placeholder + blocked copy.
  */
 
-export type FollowUpSubmitIntent = "send" | "queue" | "steer";
+type FollowUpSubmitIntent = "send" | "queue" | "steer";
 
 /**
  * Web: Enter sends (`queue-if-active`), Cmd+Enter steers; with the
@@ -40,7 +40,7 @@ export function resolveFollowUpSubmitIntent({
   return kind === "queue" ? "steer" : "queue";
 }
 
-export type FollowUpSubmission =
+type FollowUpSubmission =
   /** `POST /threads/:id/send` with `queue-if-active` (the server decides). */
   | { kind: "send"; request: SendMessageMutationRequest }
   /** `POST /threads/:id/queued-messages` while the runtime is busy. */
@@ -50,7 +50,7 @@ export type FollowUpSubmission =
   /** Empty draft + steer intent: send the queue head now instead. */
   | { kind: "send-queued-head"; request: SendQueuedMessageByIdRequest };
 
-export interface BuildFollowUpSubmissionArgs {
+interface BuildFollowUpSubmissionArgs {
   intent: FollowUpSubmitIntent;
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
   threadId: string;
@@ -187,7 +187,7 @@ export type FollowUpEditTarget =
       expectedRequestSequence: number;
     };
 
-export interface CanEditSentMessagesArgs {
+interface CanEditSentMessagesArgs {
   editMessagesExperiment: boolean;
   providerSupportsSessionRewind: boolean;
   archived: boolean;

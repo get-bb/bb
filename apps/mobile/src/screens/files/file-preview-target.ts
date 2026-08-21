@@ -37,7 +37,7 @@ export type FilePreviewTarget =
       path: string;
     };
 
-export type FilePreviewTargetKind = FilePreviewTarget["kind"];
+type FilePreviewTargetKind = FilePreviewTarget["kind"];
 
 /** `kind` route param values. */
 const FILE_PREVIEW_ROUTE_KINDS = {
@@ -128,7 +128,7 @@ export function buildFilePreviewRouteParams(
   return base;
 }
 
-export interface ParsedFilePreviewRoute {
+interface ParsedFilePreviewRoute {
   target: FilePreviewTarget;
   lineRange: FilePreviewLineRange | null;
 }

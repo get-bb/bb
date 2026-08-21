@@ -28,7 +28,7 @@ export type {
 } from "@bb/server-contract";
 
 /** Live state of one registered background service. */
-export type PluginServiceState = "running" | "backoff" | "stopped";
+type PluginServiceState = "running" | "backoff" | "stopped";
 
 export type PluginListEntry = InstalledPlugin;
 

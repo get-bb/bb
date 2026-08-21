@@ -9,7 +9,7 @@ import { cacheKey, serveWithCache } from "../src/cache.js";
 
 export { TunnelDO } from "../src/tunnel-do.js";
 
-export interface FixtureEnv {
+interface FixtureEnv {
   TUNNEL_DO: DurableObjectNamespace;
   DB: D1Database;
   BASE_DOMAIN: string;

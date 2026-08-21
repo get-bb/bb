@@ -32,7 +32,7 @@ import type {
   ThreadTurnInitiator,
 } from "@bb/domain";
 
-export interface RowBaseOverrideArgs {
+interface RowBaseOverrideArgs {
   createdAt?: number;
   startedAt?: number;
   threadId?: string;

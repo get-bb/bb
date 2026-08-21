@@ -5,7 +5,7 @@ import { useProfileClient } from "@/app-shell/ProfilesProvider";
 import { threadQueuedMessagesQueryKey } from "@/lib/query/query-keys";
 import { toast } from "@/ui";
 
-export interface UseSendMessageToMainThreadArgs {
+interface UseSendMessageToMainThreadArgs {
   /** The side chat's source thread; null when this is not a side chat. */
   mainThreadId: string | null;
   sideChatThreadId: string | null;

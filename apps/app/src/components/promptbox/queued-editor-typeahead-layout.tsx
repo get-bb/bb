@@ -5,7 +5,7 @@ export interface QueuedEditorTypeaheadLayout {
   isOpen: boolean;
 }
 
-export type QueuedEditorTypeaheadLayoutReporter = (
+type QueuedEditorTypeaheadLayoutReporter = (
   layout: QueuedEditorTypeaheadLayout,
 ) => void;
 

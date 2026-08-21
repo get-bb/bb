@@ -46,7 +46,7 @@ const NO_MESSAGE_ACTION_HANDLERS: TimelineMessageActionHandlers = {};
  * image lightbox, and the long-press message action sheet. One provider per
  * thread detail screen.
  */
-export interface TimelineRowHostValue {
+interface TimelineRowHostValue {
   threadId: string;
   serverUrl: string;
   workspaceRootPath: string | undefined;
@@ -78,7 +78,7 @@ export function useTimelineRowHost(): TimelineRowHostValue {
   return value;
 }
 
-export interface TimelineRowHostProviderProps {
+interface TimelineRowHostProviderProps {
   threadId: string;
   workspaceRootPath: string | undefined;
   threadOriginKind: ThreadOriginKind | null;

@@ -18,11 +18,11 @@ export interface PiCatalogModel {
   supportedThinkingLevels: readonly string[];
 }
 
-export interface BuildPiAvailableModelsArgs {
+interface BuildPiAvailableModelsArgs {
   models: readonly PiCatalogModel[];
 }
 
-export interface BuildPiAvailableModelsResult {
+interface BuildPiAvailableModelsResult {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }

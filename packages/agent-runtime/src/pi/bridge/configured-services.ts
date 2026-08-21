@@ -10,7 +10,7 @@ import {
   type ResourceDiagnostic,
 } from "@earendil-works/pi-coding-agent";
 
-export type CreateConfiguredPiServicesOptions = Omit<
+type CreateConfiguredPiServicesOptions = Omit<
   CreateAgentSessionServicesOptions,
   "agentDir" | "cwd" | "resourceLoaderReloadOptions" | "settingsManager"
 > & {
@@ -104,7 +104,7 @@ function collectServiceErrors(services: AgentSessionServices): string[] {
   return [...new Set(errors)];
 }
 
-export interface LoadedPiServices {
+interface LoadedPiServices {
   /** Problems found in the user's Pi configuration. Empty when it is clean. */
   configErrors: string[];
   services: AgentSessionServices;

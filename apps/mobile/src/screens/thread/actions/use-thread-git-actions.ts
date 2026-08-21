@@ -7,7 +7,7 @@ import {
   type ThreadHeaderGitAction,
 } from "@/data/environments";
 
-export interface UseThreadGitActionsArgs {
+interface UseThreadGitActionsArgs {
   thread: Pick<Thread, "archivedAt" | "environmentId"> | undefined;
   environment: Environment | undefined;
   workspaceStatus: WorkspaceStatus | undefined;
@@ -15,7 +15,7 @@ export interface UseThreadGitActionsArgs {
   mergeBaseBranch: string | undefined;
 }
 
-export interface ThreadGitActionsState {
+interface ThreadGitActionsState {
   /** What the header offers right now (empty hides the git button). */
   actions: readonly ThreadHeaderGitAction[];
   /** Label of the primary (first) action for the header button. */

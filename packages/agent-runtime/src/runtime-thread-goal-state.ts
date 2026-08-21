@@ -6,7 +6,7 @@ interface PendingGoalClearWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-export interface WaitForGoalClearArgs {
+interface WaitForGoalClearArgs {
   afterRevision: number;
   threadId: string;
   timeoutMs: number;

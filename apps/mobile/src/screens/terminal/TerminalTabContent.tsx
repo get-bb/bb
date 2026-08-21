@@ -24,7 +24,7 @@ import { useTerminalTitleSync } from "./use-terminal-title-sync";
  * panel's Terminal tab or full screen (`TerminalScreen`).
  */
 
-export interface TerminalTabContentProps {
+interface TerminalTabContentProps {
   terminalId: string;
   autoFocus?: boolean;
   /** Offered on the exited / disconnected card (and by the screen header). */

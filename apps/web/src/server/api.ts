@@ -320,7 +320,7 @@ export async function revokeMachine(
 }
 
 /** Retry closure/release for revocations left pending by a transient DO error. */
-export async function retryPendingMachineRevocations(
+async function retryPendingMachineRevocations(
   deps: Pick<Deps, "db" | "closeTunnel">,
   userId: string,
 ): Promise<void> {
@@ -547,7 +547,7 @@ export async function createConnectCode(
 }
 
 /** Mint a one-time machine-pair code (dashboard "Add machine"). */
-export async function createMachineCode(
+async function createMachineCode(
   deps: Deps,
   userId: string,
   serverId?: string,

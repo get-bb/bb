@@ -11,7 +11,7 @@ import {
 } from "@/ui";
 import { usePickerSheetMaxHeight } from "../pickers/OptionSheet";
 
-export interface DiffTargetPickerSheetProps {
+interface DiffTargetPickerSheetProps {
   controller: SheetController;
   options: readonly DiffSelectionOption[];
   /** The picker value for the active target. */

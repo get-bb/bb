@@ -27,7 +27,7 @@ export interface ProjectSelectorCreateProjectConfig {
   isCreating?: boolean;
 }
 
-export interface ProjectSelectorProps {
+interface ProjectSelectorProps {
   projects: readonly ProjectSelectorOption[];
   /**
    * Selected project id, or `null` for the no-project case. Only emit/accept

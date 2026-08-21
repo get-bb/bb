@@ -71,7 +71,7 @@ const TERMINAL_ACCESSORY_KEYS = [
 ] as const;
 export type TerminalAccessoryKey = (typeof TERMINAL_ACCESSORY_KEYS)[number];
 
-export interface TerminalKeySequenceModes {
+interface TerminalKeySequenceModes {
   /** DECCKM: the application (vim, less, zsh) asked for SS3 cursor keys. */
   applicationCursorKeys: boolean;
 }
@@ -155,7 +155,7 @@ export function applyControlModifier(text: string): string {
   }
 }
 
-export interface StickyControlResult {
+interface StickyControlResult {
   text: string;
   /** Whether the sticky modifier was spent on this input. */
   consumed: boolean;
@@ -265,7 +265,7 @@ export interface TerminalWriter {
   write(data: string | Uint8Array, callback?: () => void): void;
 }
 
-export interface WriteTerminalOutputArgs {
+interface WriteTerminalOutputArgs {
   terminal: TerminalWriter;
   data: string | Uint8Array;
   isReplay: boolean;
@@ -310,7 +310,7 @@ export interface TerminalWriteBatch {
   replay: boolean;
 }
 
-export interface TerminalWriteBatcherOptions {
+interface TerminalWriteBatcherOptions {
   flush: (batch: TerminalWriteBatch) => void;
   maxBytes?: number;
   maxDelayMs?: number;

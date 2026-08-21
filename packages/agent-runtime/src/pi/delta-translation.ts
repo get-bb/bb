@@ -387,12 +387,12 @@ function resolvePiModelContextWindow(
 // Translator factory
 // ---------------------------------------------------------------------------
 
-export interface PiDeltaTranslationContext {
+interface PiDeltaTranslationContext {
   threadId?: string;
   parentToolCallId?: string;
 }
 
-export interface CreatePiDeltaTranslatorOptions {
+interface CreatePiDeltaTranslatorOptions {
   /** Override context-window resolution. Used by unit tests to avoid real catalogs. */
   resolveModelContextWindow?: PiModelContextWindowResolver;
 }

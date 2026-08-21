@@ -4,7 +4,7 @@ import { buildHighlightSegments, splitPathForRow } from "@/data/files";
 import { useTheme } from "@/theme";
 import { cn, Icon, Text, type IconName } from "@/ui";
 
-export interface FilePathRowProps {
+interface FilePathRowProps {
   /** Root-relative (or absolute) path shown split into name + directory. */
   path: string;
   /** Match offsets in `path` to highlight (fuzzy search / filter). */

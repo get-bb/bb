@@ -7,7 +7,7 @@ export function isIgnoredPluginDevPath(relativePath: string): boolean {
     .some((segment) => IGNORED_SEGMENTS.has(segment));
 }
 
-export interface PluginDevLoopDeps {
+interface PluginDevLoopDeps {
   pluginId: string;
   hasApp: boolean;
   hasHost: boolean;
@@ -19,7 +19,7 @@ export interface PluginDevLoopDeps {
   now?: () => number;
 }
 
-export interface PluginDevLoop {
+interface PluginDevLoop {
   handleChange: (relativePath: string) => void;
   settled: () => Promise<void>;
   dispose: () => void;

@@ -24,7 +24,7 @@ const eventProjectionTurnMessageDetailValues = ["summary", "full"] as const;
 export type EventProjectionTurnMessageDetail =
   (typeof eventProjectionTurnMessageDetailValues)[number];
 
-export interface EventProjectionState {
+interface EventProjectionState {
   /**
    * Root-projection-only ephemeral state that should not be modeled as a
    * timeline row. Nested child projections always expose `activeThinking` as
@@ -55,12 +55,12 @@ export type EventProjectionEntry =
   | EventProjectionMessageEntry
   | EventProjectionTurnEntry;
 
-export interface EventProjectionMessageEntry {
+interface EventProjectionMessageEntry {
   kind: "projected-message";
   message: EventProjectionMessage;
 }
 
-export interface EventProjectionTurnEntry {
+interface EventProjectionTurnEntry {
   kind: "turn";
   turn: EventProjectionTurn;
 }

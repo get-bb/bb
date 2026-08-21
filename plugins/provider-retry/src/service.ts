@@ -7,7 +7,7 @@ import {
 } from "./recovery.js";
 
 export const RESET_BUFFER_MS = 15_000;
-export const RESET_JITTER_MS = 30_000;
+const RESET_JITTER_MS = 30_000;
 export const RELEASE_PACE_MS = 1_000;
 export const DEFAULT_MAXIMUM_WAIT_MS = 6 * 60 * 60 * 1_000;
 const MAX_TIMER_DELAY_MS = 2_147_000_000;
@@ -18,12 +18,12 @@ interface AttemptedWindow {
   scopeKey: string;
 }
 
-export interface ProviderRetrySources {
+interface ProviderRetrySources {
   now(): number;
   random(): number;
 }
 
-export interface ManualProviderRetryResult {
+interface ManualProviderRetryResult {
   failedRequestId: string;
 }
 

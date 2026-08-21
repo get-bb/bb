@@ -67,7 +67,7 @@ interface InferenceCompleteArgs<T extends TSchema> {
   timeoutMs?: number;
 }
 
-export interface InferenceTimeoutErrorArgs {
+interface InferenceTimeoutErrorArgs {
   timeoutMs: number;
 }
 

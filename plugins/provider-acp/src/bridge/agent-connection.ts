@@ -24,7 +24,7 @@ export interface AcpAgentExitInfo {
   stderrTail: string;
 }
 
-export interface CreateAcpAgentConnectionOptions {
+interface CreateAcpAgentConnectionOptions {
   command: string;
   args: string[];
   cwd: string;
@@ -38,7 +38,7 @@ export interface CreateAcpAgentConnectionOptions {
   onExit(info: AcpAgentExitInfo): void;
 }
 
-export interface AcpAgentRequestArgs<TResult> {
+interface AcpAgentRequestArgs<TResult> {
   method: string;
   params: unknown;
   resultSchema: z.ZodType<TResult>;

@@ -148,7 +148,7 @@ function PhaseGroup({
   );
 }
 
-export interface WorkflowProgressViewProps {
+interface WorkflowProgressViewProps {
   progress: WorkflowProgressSnapshot;
   settled: boolean;
   error: string | null;

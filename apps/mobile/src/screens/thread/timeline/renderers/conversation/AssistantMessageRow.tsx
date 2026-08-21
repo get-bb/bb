@@ -20,7 +20,7 @@ import {
 
 const EMPTY_MENTIONS: readonly PromptTextMention[] = [];
 
-export interface AssistantMessageRowProps {
+interface AssistantMessageRowProps {
   row: Extract<TimelineConversationRow, { role: "assistant" }>;
   depth: number;
   projectId: string;

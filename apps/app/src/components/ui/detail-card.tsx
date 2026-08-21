@@ -86,7 +86,7 @@ export function DetailCard({
   );
 }
 
-export interface DetailRowProps {
+interface DetailRowProps {
   label: ReactNode;
   children: ReactNode;
   className?: string;

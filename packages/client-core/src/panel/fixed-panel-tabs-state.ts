@@ -20,8 +20,7 @@ import {
   type WorkspaceFileTabState,
 } from "../file-preview.js";
 
-export const FIXED_PANEL_TABS_STATE_STORAGE_PREFIX =
-  "bb.thread.fixedPanelTabsState";
+const FIXED_PANEL_TABS_STATE_STORAGE_PREFIX = "bb.thread.fixedPanelTabsState";
 export const FIXED_PANEL_TABS_STATE_STORAGE_VERSION = 1;
 export const FIXED_PANEL_TABS_IDLE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -199,12 +198,12 @@ const fixedPanelTabsStateSchema = z
   })
   .passthrough();
 
-export interface ThreadInfoFixedPanelTab {
+interface ThreadInfoFixedPanelTab {
   id: string;
   kind: "thread-info";
 }
 
-export interface GitDiffFixedPanelTab {
+interface GitDiffFixedPanelTab {
   id: string;
   kind: "git-diff";
 }
@@ -329,12 +328,12 @@ export type SecondaryFileFixedPanelTab =
 
 export type FixedPanelTab = SecondaryFixedPanelTab;
 
-export interface FixedPanelTabGroupState {
+interface FixedPanelTabGroupState {
   tabs: readonly FixedPanelTab[];
   activeTabId: string | null;
 }
 
-export interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupState {
+interface FixedSecondaryPanelTabGroupState extends FixedPanelTabGroupState {
   isOpen: boolean;
 }
 
@@ -353,13 +352,13 @@ interface CreateFixedPanelTabsStateArgs {
   secondary?: FixedSecondaryPanelTabGroupState;
 }
 
-export interface ParseFixedPanelTabsStateArgs {
+interface ParseFixedPanelTabsStateArgs {
   initialValue: FixedPanelTabsState;
   now: number;
   storedValue: string | null;
 }
 
-export interface ParseFixedPanelTabsStateForStorageResult {
+interface ParseFixedPanelTabsStateForStorageResult {
   shouldPrune: boolean;
   state: FixedPanelTabsState;
 }
@@ -898,7 +897,7 @@ function stripTransientFixedPanelTabsStateForStorage({
   };
 }
 
-export function normalizeFixedPanelTabsState({
+function normalizeFixedPanelTabsState({
   state,
 }: NormalizeFixedPanelTabsStateArgs): FixedPanelTabsState {
   const normalizedSecondary = normalizeFixedSecondaryPanelTabGroupState(
@@ -942,7 +941,7 @@ export function isFixedPanelTabsStateStorageKey(key: string): boolean {
   return key.startsWith(`${FIXED_PANEL_TABS_STATE_STORAGE_PREFIX}-`);
 }
 
-export function isFixedPanelTabsStateExpired({
+function isFixedPanelTabsStateExpired({
   now,
   state,
 }: IsFixedPanelTabsStateExpiredArgs): boolean {
@@ -966,7 +965,7 @@ export function parseFixedPanelTabsState({
  * keeping. Storage owners (web localStorage pruning) call this directly;
  * everything else goes through {@link parseFixedPanelTabsState}.
  */
-export function parseFixedPanelTabsStateForStorage({
+function parseFixedPanelTabsStateForStorage({
   initialValue,
   now,
   storedValue,

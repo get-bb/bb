@@ -4,7 +4,7 @@ import type { AppCommandId } from "@bb/domain";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
-export const bbDesktopDownloadStateSchema = z.enum([
+const bbDesktopDownloadStateSchema = z.enum([
   "idle",
   "downloading",
   "downloaded",

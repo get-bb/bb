@@ -5,7 +5,7 @@
  * a remote host's platform.
  */
 
-export interface PathCrumb {
+interface PathCrumb {
   label: string;
   path: string;
 }

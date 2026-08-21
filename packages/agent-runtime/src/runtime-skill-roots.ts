@@ -8,12 +8,12 @@ import type {
   AgentRuntimeSkillRoot,
 } from "./types.js";
 
-export interface FilterSkillRootsForProviderArgs {
+interface FilterSkillRootsForProviderArgs {
   providerId: string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
-export interface NormalizeSkillRootsArgs {
+interface NormalizeSkillRootsArgs {
   skillRoots: readonly AgentRuntimeSkillRoot[] | undefined;
 }
 

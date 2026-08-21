@@ -37,7 +37,7 @@ export function ThreadDeleteDialog({
   );
 }
 
-export interface ThreadDeleteDialogContentProps {
+interface ThreadDeleteDialogContentProps {
   target: ThreadDeleteDialogTarget;
   pending: boolean;
   onOpenChange: (open: boolean) => void;

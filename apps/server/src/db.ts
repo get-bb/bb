@@ -10,11 +10,11 @@ import {
   hasLegacyAutomationsToExport,
 } from "./legacy-automations-export.js";
 
-export type InitDbLogger = MigrationWarningLogger &
+type InitDbLogger = MigrationWarningLogger &
   SlowDbQueryLogger &
   Pick<Logger, "error" | "info">;
 
-export interface InitDbOptions {
+interface InitDbOptions {
   dataDir?: string;
   logger?: InitDbLogger;
 }

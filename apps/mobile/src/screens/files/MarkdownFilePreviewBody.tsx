@@ -17,7 +17,7 @@ import {
   type FileTargetUrlContext,
 } from "./file-preview-urls";
 
-export interface MarkdownFilePreviewBodyProps {
+interface MarkdownFilePreviewBodyProps {
   content: string;
   target: FilePreviewTarget;
   urlContext: FileTargetUrlContext;

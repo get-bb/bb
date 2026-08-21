@@ -76,7 +76,7 @@ export function CardNote({
   );
 }
 
-export function toneColor(
+function toneColor(
   tone: PluginStatusTone,
   tokens: { destructiveText: string; warningText: string },
 ): string {

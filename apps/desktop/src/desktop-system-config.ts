@@ -23,7 +23,7 @@ const desktopSystemConfigSchema = z.object({
   keybindings: z.array(desktopKeybindingSchema).max(256),
 });
 
-export interface DesktopSystemConfig {
+interface DesktopSystemConfig {
   keybindings: AppKeybindings;
 }
 

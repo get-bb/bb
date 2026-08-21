@@ -91,7 +91,7 @@ export function useConversationAttachments(
   return { items, openImage };
 }
 
-export interface ConversationMarkdownHandlers {
+interface ConversationMarkdownHandlers {
   onThreadPress: (mention: MarkdownThreadMentionPress) => void;
   onImagePress: (image: MarkdownImagePress) => void;
   /** Absolute local file links open the file preview. */

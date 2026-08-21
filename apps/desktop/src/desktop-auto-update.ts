@@ -55,7 +55,7 @@ export interface DesktopAutoUpdaterAdapter {
   setLogger(logger: DesktopAutoUpdateLogger): void;
 }
 
-export interface CreateDesktopAutoUpdateServiceArgs {
+interface CreateDesktopAutoUpdateServiceArgs {
   currentVersion: string;
   enabled: boolean;
   forceDevUpdateConfig: boolean;
@@ -65,7 +65,7 @@ export interface CreateDesktopAutoUpdateServiceArgs {
   updater: DesktopAutoUpdaterAdapter;
 }
 
-export interface ShouldEnableDesktopAutoUpdateArgs {
+interface ShouldEnableDesktopAutoUpdateArgs {
   env: NodeJS.ProcessEnv;
   isPackaged: boolean;
 }

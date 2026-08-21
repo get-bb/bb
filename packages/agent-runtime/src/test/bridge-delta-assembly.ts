@@ -21,7 +21,7 @@ import {
 export { createDeltaAssembler };
 export type { DeltaAssembler };
 
-export interface CapturedBridgeNotification {
+interface CapturedBridgeNotification {
   method?: string;
   params?: unknown;
 }

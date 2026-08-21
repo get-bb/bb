@@ -1,4 +1,4 @@
-export type ConnectListErrorCode =
+type ConnectListErrorCode =
   | "not_paired"
   | "unauthorized"
   | "network"

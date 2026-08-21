@@ -5,7 +5,7 @@ import { Icon } from "@bb/shared-ui/icon";
 
 const noop = () => {};
 
-export interface DialogStageProps {
+interface DialogStageProps {
   className?: string;
   children: ReactNode;
 }

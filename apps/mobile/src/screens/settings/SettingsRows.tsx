@@ -54,7 +54,7 @@ export function SettingsSection({
   );
 }
 
-export interface SettingsControlRowProps {
+interface SettingsControlRowProps {
   label: string;
   description?: string;
   /** Small pill after the label ("dev-only", "Installed"). */
@@ -145,7 +145,7 @@ export function SettingsControlRow({
   );
 }
 
-export interface SettingsSwitchRowProps {
+interface SettingsSwitchRowProps {
   label: string;
   description?: string;
   badge?: string;
@@ -194,7 +194,7 @@ export function SettingsSwitchRow({
   );
 }
 
-export interface SettingsValueRowProps {
+interface SettingsValueRowProps {
   label: string;
   value: string;
   description?: string;

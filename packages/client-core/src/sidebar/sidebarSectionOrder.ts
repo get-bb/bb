@@ -4,7 +4,7 @@ import {
   buildNeighborReorderRequest,
 } from "./neighbor-reorder.js";
 
-export type SidebarEntitySectionKind = "project" | "section" | "machine";
+type SidebarEntitySectionKind = "project" | "section" | "machine";
 export type LegacySidebarEntityAnchor = "projects" | "sections" | "machines";
 
 export function buildSidebarEntitySectionId(
@@ -14,7 +14,7 @@ export function buildSidebarEntitySectionId(
   return `${kind}:${id}`;
 }
 
-export function isSidebarSectionId(value: string): value is SidebarSectionId {
+function isSidebarSectionId(value: string): value is SidebarSectionId {
   return (
     value === "pinned" ||
     value === "threads" ||

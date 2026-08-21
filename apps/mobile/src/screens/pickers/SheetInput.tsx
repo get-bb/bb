@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import { resolveFont, useTheme } from "@/theme";
 import { cn, SheetTextInput } from "@/ui";
 
-export interface SheetInputProps extends ComponentProps<typeof SheetTextInput> {
+interface SheetInputProps extends ComponentProps<typeof SheetTextInput> {
   invalid?: boolean;
   mono?: boolean;
   className?: string;

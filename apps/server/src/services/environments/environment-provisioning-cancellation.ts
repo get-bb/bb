@@ -6,7 +6,7 @@ import {
   type DbTransaction,
 } from "@bb/db";
 
-export interface EnvironmentProvisionCancellationReadDeps {
+interface EnvironmentProvisionCancellationReadDeps {
   db: DbQueryConnection;
 }
 
@@ -19,7 +19,7 @@ interface CancelEnvironmentProvisioningForThreadStopArgs {
   threadId: string;
 }
 
-export type EnvironmentProvisioningCancellationForThreadStopResult =
+type EnvironmentProvisioningCancellationForThreadStopResult =
   | "awaiting_host_cancel"
   | "ready_to_finalize";
 

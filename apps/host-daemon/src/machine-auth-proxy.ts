@@ -10,7 +10,7 @@ import type { Duplex } from "node:stream";
 const LOOPBACK_HOST = "127.0.0.1";
 const MACHINE_HEADER = "x-bb-connect-machine";
 
-export interface StartMachineAuthProxyOptions {
+interface StartMachineAuthProxyOptions {
   machineCredential: string;
   serverUrl: string;
   port?: number;

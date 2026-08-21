@@ -594,13 +594,13 @@ async function bundledInputPaths(
   return paths;
 }
 
-export interface PluginAppBuildResult {
+interface PluginAppBuildResult {
   jsPath: string;
   cssPath: string;
   metaPath: string;
 }
 
-export interface PluginAppBuildOptions {
+interface PluginAppBuildOptions {
   /**
    * Minify app.js and app.css. On by default: the artifacts are what every
    * browser downloads and parses, so bytes are the product. `bb plugin dev`

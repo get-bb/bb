@@ -25,7 +25,7 @@ export interface ChildChannel {
 
 type ProxyLogLevel = "info" | "warn" | "error";
 
-export interface ParcelWatcherProxyOptions {
+interface ParcelWatcherProxyOptions {
   spawnChannel: () => ChildChannel;
   /** How often to ping the child to detect a wedged (e.g. deadlocked) process. */
   pingIntervalMs?: number;

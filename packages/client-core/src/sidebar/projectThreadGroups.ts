@@ -786,7 +786,7 @@ export function projectThreadItemContainsThread(
   }
 }
 
-export interface ProjectThreadItemNavigationEntry {
+interface ProjectThreadItemNavigationEntry {
   threadId: string;
   projectId: string;
 }

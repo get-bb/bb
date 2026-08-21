@@ -3,15 +3,15 @@ import { getThreadEventScopeTurnId } from "@bb/domain";
 import type { AgentRuntime } from "../types.js";
 
 export type RuntimeWaitPredicate = () => boolean;
-export type RuntimeWaitFailureDescription = () => string | null | undefined;
-export type RuntimeWaitConditionConfig = number | RuntimeWaitConditionOptions;
-export type RuntimeThreadEventPredicate = (event: ThreadEvent) => boolean;
-export type RuntimeErrorEvent = Extract<
+type RuntimeWaitFailureDescription = () => string | null | undefined;
+type RuntimeWaitConditionConfig = number | RuntimeWaitConditionOptions;
+type RuntimeThreadEventPredicate = (event: ThreadEvent) => boolean;
+type RuntimeErrorEvent = Extract<
   ThreadEvent,
   { type: "provider/error" | "system/error" }
 >;
 
-export interface RuntimeWaitConditionOptions {
+interface RuntimeWaitConditionOptions {
   describeFailure?: RuntimeWaitFailureDescription;
   failFast?: RuntimeWaitFailureDescription;
   intervalMs?: number;
@@ -19,7 +19,7 @@ export interface RuntimeWaitConditionOptions {
   timeoutMs?: number;
 }
 
-export interface RuntimeFailureContext {
+interface RuntimeFailureContext {
   describeFailure?: RuntimeWaitFailureDescription;
   events?: ThreadEvent[];
   failFast?: RuntimeWaitFailureDescription;
@@ -28,20 +28,20 @@ export interface RuntimeFailureContext {
   threadId?: string;
 }
 
-export interface RuntimeStateWaitArgs extends RuntimeFailureContext {
+interface RuntimeStateWaitArgs extends RuntimeFailureContext {
   label: string;
   predicate: RuntimeWaitPredicate;
   timeoutMs?: number;
 }
 
-export interface RuntimeThreadEventWaitArgs extends RuntimeFailureContext {
+interface RuntimeThreadEventWaitArgs extends RuntimeFailureContext {
   events: ThreadEvent[];
   label: string;
   predicate: RuntimeThreadEventPredicate;
   timeoutMs?: number;
 }
 
-export interface RuntimeThreadTurnStartedWaitArgs extends RuntimeFailureContext {
+interface RuntimeThreadTurnStartedWaitArgs extends RuntimeFailureContext {
   events: ThreadEvent[];
   label?: string;
   threadId: string;
@@ -49,7 +49,7 @@ export interface RuntimeThreadTurnStartedWaitArgs extends RuntimeFailureContext 
   turnId?: string;
 }
 
-export interface RuntimeThreadTurnCompletedWaitArgs extends RuntimeFailureContext {
+interface RuntimeThreadTurnCompletedWaitArgs extends RuntimeFailureContext {
   events: ThreadEvent[];
   label?: string;
   threadId: string;
@@ -57,7 +57,7 @@ export interface RuntimeThreadTurnCompletedWaitArgs extends RuntimeFailureContex
   turnId?: string;
 }
 
-export interface RuntimeThreadAgentMessageWaitArgs extends RuntimeFailureContext {
+interface RuntimeThreadAgentMessageWaitArgs extends RuntimeFailureContext {
   events: ThreadEvent[];
   label?: string;
   text: string;

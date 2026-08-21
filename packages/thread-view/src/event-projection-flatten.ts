@@ -19,7 +19,7 @@ function getProjectionEntryMessages(
   return [];
 }
 
-export function flattenEventProjectionMessages(
+function flattenEventProjectionMessages(
   projection: EventProjection,
 ): EventProjectionMessage[] {
   const messages: EventProjectionMessage[] = [];

@@ -57,7 +57,7 @@ interface RecoverOrphanedEnvironmentDestroyRequestsArgs {
   updatedBefore: number;
 }
 
-export interface RecoverOrphanedEnvironmentDestroyRequestsResult {
+interface RecoverOrphanedEnvironmentDestroyRequestsResult {
   destroyed: number;
   errored: number;
 }
@@ -67,7 +67,7 @@ type EnvironmentDestroyCommand =
 type EnvironmentDestroyCommandResultReport =
   CommandResultReportForType<"environment.destroy">;
 
-export interface SettleEnvironmentDestroyCommandResultArgs {
+interface SettleEnvironmentDestroyCommandResultArgs {
   command: EnvironmentDestroyCommand;
   deps: EnvironmentCleanupSettlementDeps;
   execution: HostDaemonCommandExecutionRecord;

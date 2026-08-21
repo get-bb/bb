@@ -6,9 +6,9 @@
  * start with an alphanumeric. Becomes a DNS label in `<handle>.getbb.app`, so
  * it must stay within LDH label rules.
  */
-export const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{2,29}$/;
+const HANDLE_REGEX = /^[a-z0-9][a-z0-9-]{2,29}$/;
 
-export const HANDLE_MIN_LENGTH = 3;
+const HANDLE_MIN_LENGTH = 3;
 export const HANDLE_MAX_LENGTH = 30;
 
 /**
@@ -167,7 +167,7 @@ function isValidShareTarget(target: string): boolean {
   return port >= 1 && port <= 65535;
 }
 
-export interface VisitorHost {
+interface VisitorHost {
   handle: string;
   /** Null on a bare handle host; a decimal port string on a share host. */
   target: string | null;

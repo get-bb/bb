@@ -60,7 +60,7 @@ export function resolveMachineTargetOption(args: {
   return args.machine ?? args.host;
 }
 
-export type MachineEnvironmentRouting =
+type MachineEnvironmentRouting =
   | { environmentId: string; hostId?: never }
   | { environmentId?: never; hostId: string }
   | { environmentId?: never; hostId?: never };

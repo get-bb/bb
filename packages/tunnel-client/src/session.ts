@@ -116,7 +116,7 @@ interface WsStream {
   countsAsRemoteClient: boolean;
 }
 
-export interface ResolvedStreamOrigin {
+interface ResolvedStreamOrigin {
   /** Fetch/WS base, e.g. `http://127.0.0.1:38886` or a share port. */
   origin: string;
   publicOrigin: string;
@@ -128,7 +128,7 @@ export type StreamOriginResult =
   | { kind: "ok"; resolved: ResolvedStreamOrigin }
   | { kind: "unregistered" };
 
-export interface TunnelSessionOptions {
+interface TunnelSessionOptions {
   tunnel: NodeWebSocket;
   log: TunnelClientLogger;
   /**

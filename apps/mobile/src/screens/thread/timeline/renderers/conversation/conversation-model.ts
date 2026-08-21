@@ -37,7 +37,7 @@ import type { IconName } from "@/ui/icon-map";
 // ---------------------------------------------------------------------------
 // Presentation variants
 
-export type UserMessageVariant =
+type UserMessageVariant =
   | { kind: "authored" }
   | { kind: "generated"; sourceKind: "agent"; senderThreadId: string }
   | { kind: "generated"; sourceKind: "system" };
@@ -146,7 +146,7 @@ export function clipMentionTextToVisibleRange({
 /** Web `max-h-[15lh]`: collapsed authored messages show this many lines. */
 export const USER_MESSAGE_COLLAPSED_MAX_LINES = 15;
 
-export interface AuthoredMessageBody {
+interface AuthoredMessageBody {
   /** The muted `[bb …]` prefix shown as its own line, or null. */
   prefixText: string | null;
   /** Markdown content to render (code spans closed when capped). */
@@ -270,7 +270,7 @@ function generatedConversationCollapsedPreview(
   return { hasAdditionalBodyLines: false, ...bounded };
 }
 
-export interface GeneratedMessageContent {
+interface GeneratedMessageContent {
   /** Trimmed body without the `[bb …]` prefix. */
   messageText: string;
   /** Mentions rebased onto `messageText`. */

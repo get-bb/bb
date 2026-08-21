@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-export type BridgeProcessArgs = string[];
+type BridgeProcessArgs = string[];
 
 /** The bootstrap bundle's name inside a packaged daemon's bridge bundle dir. */
 const BRIDGE_WORKER_BUNDLE_FILE_NAME = "bb-provider-bridge-worker.mjs";
@@ -47,7 +47,7 @@ export function resolveBridgeWorkerProcessArgs(args: {
     : [sourceEntry];
 }
 
-export interface ResolveBundledBridgeModuleArgs {
+interface ResolveBundledBridgeModuleArgs {
   importMetaUrl: string;
   bridgeRelativePath: string;
   bridgeBundleDir?: string;

@@ -64,12 +64,12 @@ const UNSTAMPED_THREAD_ID = "" as UnstampedThreadId;
 // Cumulative-text diffing (absorbed from the pi bridge's diff-cumulative-text)
 // ---------------------------------------------------------------------------
 
-export interface DiffCumulativeTextArgs {
+interface DiffCumulativeTextArgs {
   nextText: string;
   previousText?: string;
 }
 
-export interface DiffCumulativeTextResult {
+interface DiffCumulativeTextResult {
   delta: string;
   nextText: string;
   reset: boolean;
@@ -227,7 +227,7 @@ interface ThreadAssemblyState {
   pendingTextByStream: Map<string, PendingTextState>;
 }
 
-export interface CreateDeltaAssemblerOptions {
+interface CreateDeltaAssemblerOptions {
   /** Provider id stamped onto provider/unhandled events. */
   providerId: string;
   /**
@@ -260,7 +260,7 @@ export interface CreateDeltaAssemblerOptions {
   now?: () => number;
 }
 
-export interface AssembleDeltasArgs {
+interface AssembleDeltasArgs {
   threadId: string;
   deltas: readonly ThreadDelta[];
 }

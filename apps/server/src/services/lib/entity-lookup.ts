@@ -34,7 +34,7 @@ interface HostLookupDeps {
   hub: HostLookupHub;
 }
 
-export interface ThreadEnvironmentLookupResult {
+interface ThreadEnvironmentLookupResult {
   environment: Environment;
   thread: ThreadRow;
 }

@@ -65,13 +65,13 @@ interface ReconcileFixedPanelViewTabsInStateArgs {
   state: FixedPanelTabsState;
 }
 
-export function isWorkspaceFilePreviewTab(
+function isWorkspaceFilePreviewTab(
   tab: FixedPanelTab,
 ): tab is WorkspaceFilePreviewFixedPanelTab {
   return tab.kind === "workspace-file-preview";
 }
 
-export function isStorageFilePreviewTab(
+function isStorageFilePreviewTab(
   tab: FixedPanelTab,
 ): tab is ThreadStorageFilePreviewFixedPanelTab {
   return tab.kind === "thread-storage-file-preview";
@@ -81,7 +81,7 @@ export function isBrowserTab(tab: FixedPanelTab): tab is BrowserFixedPanelTab {
   return tab.kind === "browser";
 }
 
-export function isNewTab(tab: FixedPanelTab): tab is NewTabFixedPanelTab {
+function isNewTab(tab: FixedPanelTab): tab is NewTabFixedPanelTab {
   return tab.kind === "new-tab";
 }
 
@@ -194,7 +194,7 @@ export function setSecondaryPanelTabsInState({
   };
 }
 
-export function upsertSecondaryPanelTab(
+function upsertSecondaryPanelTab(
   tabs: readonly FixedPanelTab[],
   tab: FixedPanelTab,
 ): readonly FixedPanelTab[] {
@@ -215,7 +215,7 @@ export function upsertSecondaryPanelTab(
   );
 }
 
-export function removeSecondaryPanelTab(
+function removeSecondaryPanelTab(
   tabs: readonly FixedPanelTab[],
   tabId: string,
 ): readonly FixedPanelTab[] {

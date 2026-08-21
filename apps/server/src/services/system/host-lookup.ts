@@ -6,7 +6,7 @@ import {
   requireConnectedPrimaryHostId,
 } from "../hosts/primary-host.js";
 
-export type SystemHostLookupQuery = Pick<
+type SystemHostLookupQuery = Pick<
   SystemProvidersQuery,
   "environmentId" | "hostId"
 >;

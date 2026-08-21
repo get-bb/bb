@@ -12,14 +12,14 @@ import type { ThreadEventType } from "@bb/domain";
 import { roundDurationMs } from "../lib/duration.js";
 import type { AppDeps } from "../../types.js";
 
-export type ThreadEventPruningMode = "active" | "archived" | "idle";
+type ThreadEventPruningMode = "active" | "archived" | "idle";
 
-export interface PruneThreadEventHistoryArgs {
+interface PruneThreadEventHistoryArgs {
   mode: ThreadEventPruningMode;
   threadId: string;
 }
 
-export interface ThreadEventPruningResult {
+interface ThreadEventPruningResult {
   latestSequence: number;
   removedAgePrunableEvents: number;
   removedBackgroundTaskProgressEvents: number;
@@ -28,7 +28,7 @@ export interface ThreadEventPruningResult {
   totalRemoved: number;
 }
 
-export interface MaybePruneActiveThreadEventHistoryArgs {
+interface MaybePruneActiveThreadEventHistoryArgs {
   latestPrunableSequence: number;
   threadId: string;
 }

@@ -364,7 +364,7 @@ const claudeUserQuestionResponseSchema = z.object({
   updatedInput: claudeUserQuestionOutputSchema,
 });
 
-export const claudeInteractiveResponseSchema = z.union([
+const claudeInteractiveResponseSchema = z.union([
   claudePermissionApprovalResponseSchema,
   claudeUserQuestionResponseSchema,
 ]);

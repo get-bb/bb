@@ -13,7 +13,7 @@ import {
   type TimelineMessageActionsTarget,
 } from "./message-actions-model";
 
-export interface MessageActionSheetProps {
+interface MessageActionSheetProps {
   controller: SheetController;
   /** The long-pressed message; null before the first press. */
   target: TimelineMessageActionsTarget | null;

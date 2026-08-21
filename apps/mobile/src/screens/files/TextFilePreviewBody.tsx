@@ -44,7 +44,7 @@ export interface TextFilePreviewBodyHandle {
   scrollToLine: (lineNumber: number) => void;
 }
 
-export interface TextFilePreviewBodyProps {
+interface TextFilePreviewBodyProps {
   content: string;
   /** Highlighted on mount and scrolled into view. */
   lineRange: FilePreviewLineRange | null;

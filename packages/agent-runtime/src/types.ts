@@ -214,7 +214,7 @@ export interface StartThreadResult {
   providerThreadId: string;
 }
 
-export interface PrepareThreadRewindArgs {
+interface PrepareThreadRewindArgs {
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   environmentId: string;
@@ -231,11 +231,11 @@ export interface PrepareThreadRewindArgs {
   instructionMode?: InstructionMode;
 }
 
-export interface PrepareThreadRewindResult {
+interface PrepareThreadRewindResult {
   providerThreadId: string;
 }
 
-export interface DiscardThreadRewindArgs {
+interface DiscardThreadRewindArgs {
   leaseId: string;
 }
 
@@ -277,11 +277,11 @@ export interface SteerTurnArgs {
   instructions?: string;
 }
 
-export interface SteerTurnAppliedResult {
+interface SteerTurnAppliedResult {
   status: "steered";
 }
 
-export interface SteerTurnStaleResult {
+interface SteerTurnStaleResult {
   status: "stale";
   activeTurnId: string | null;
 }
@@ -331,18 +331,18 @@ export interface RenameThreadArgs {
   title: string;
 }
 
-export interface ClearThreadGoalArgs {
+interface ClearThreadGoalArgs {
   threadId: string;
 }
 
-export interface ArchiveThreadArgs {
+interface ArchiveThreadArgs {
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
-export interface UnarchiveThreadArgs {
+interface UnarchiveThreadArgs {
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
@@ -356,14 +356,14 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
-export interface ProviderMaintenanceArgs {
+interface ProviderMaintenanceArgs {
   providerId: string;
   acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   bridgeLaunch?: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }
 
-export interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
+interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
   requirement?: "thread_rewind";
 }
 

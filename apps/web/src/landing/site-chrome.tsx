@@ -2,7 +2,7 @@ import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 
-export type SiteNavPage = "blog" | "changelog";
+type SiteNavPage = "blog" | "changelog";
 
 export function SiteNav({ current }: { current?: SiteNavPage }) {
   return (

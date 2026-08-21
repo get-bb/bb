@@ -38,7 +38,7 @@ import {
   timelineHasAssistantConversation,
 } from "../helpers/timeline-response.js";
 
-export type RealProviderId = "codex" | "claude-code" | "pi";
+type RealProviderId = "codex" | "claude-code" | "pi";
 
 export const REAL_PROVIDER_IDS: ReadonlyArray<RealProviderId> = [
   "codex",
@@ -57,7 +57,7 @@ type RealProviderExecutionTemplate = Omit<
   "model"
 >;
 
-export type ProviderSmokeHarness = Awaited<
+type ProviderSmokeHarness = Awaited<
   ReturnType<typeof createIntegrationHarness>
 >;
 
@@ -67,12 +67,12 @@ interface WaitForThreadEventArgs {
   threadId: string;
 }
 
-export interface WaitForTurnStartedResult {
+interface WaitForTurnStartedResult {
   sequence: number;
   turnId: string;
 }
 
-export interface WaitForInputAcceptedResult {
+interface WaitForInputAcceptedResult {
   clientRequestId: ClientTurnRequestId;
   sequence: number;
   turnId: string;

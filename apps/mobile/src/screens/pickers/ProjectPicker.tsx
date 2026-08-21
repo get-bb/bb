@@ -4,12 +4,12 @@ import { ListRow, Separator, useSheet } from "@/ui";
 import { OptionSheet, type PickerOption } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
 
-export interface ProjectPickerProject {
+interface ProjectPickerProject {
   id: string;
   name: string;
 }
 
-export interface ProjectPickerProps {
+interface ProjectPickerProps {
   /** Ordinary projects in sidebar order. */
   projects: readonly ProjectPickerProject[];
   /** The personal project (listed last as the projectless choice). */

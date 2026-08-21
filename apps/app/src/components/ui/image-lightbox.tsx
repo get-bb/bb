@@ -30,7 +30,7 @@ interface WrappedImageIndexInput {
   itemCount: number;
 }
 
-export interface ImageLightboxProps {
+interface ImageLightboxProps {
   hasMultipleImages?: boolean;
   imageAlt: string;
   imageSrc: string | null;

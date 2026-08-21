@@ -46,7 +46,7 @@ export interface BundleStats {
  * name used in bundle-budget.json. The value is the route module's source
  * path suffix, matched against the output chunk's `facadeModuleId`.
  */
-export const MEASURED_ROUTE_CLOSURES: Record<string, string> = {
+const MEASURED_ROUTE_CLOSURES: Record<string, string> = {
   SplitWorkspaceRoute: "/src/views/SplitWorkspaceRoute.tsx",
 };
 

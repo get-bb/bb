@@ -19,7 +19,7 @@ export interface ThreadGitStatusDisplay {
   summaryContent: ReactNode;
 }
 
-export interface GetGitStatusDisplayOptions {
+interface GetGitStatusDisplayOptions {
   error?: unknown;
   mergeBaseBranch?: string;
   showBranchComparison?: boolean;

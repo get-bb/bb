@@ -23,7 +23,7 @@ export interface ForkThreadCreateSeed {
   sourceThreadTitle: string;
 }
 
-export interface BuildForkThreadRequestArgs extends ForkThreadCreateSeed {
+interface BuildForkThreadRequestArgs extends ForkThreadCreateSeed {
   input: PromptInput[];
   /**
    * The source thread provider's `capabilities.supportsFork`, read from the

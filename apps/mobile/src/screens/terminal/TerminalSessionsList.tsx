@@ -17,7 +17,7 @@ import { Button, EmptyStatePanel, ListRow, Skeleton, Text } from "@/ui";
  * session hands its id to the caller (a panel tab or the full-screen route).
  */
 
-export interface TerminalSessionsListProps {
+interface TerminalSessionsListProps {
   listScope: TerminalQueryScope;
   createScope: TerminalCreateScope;
   onOpenTerminal: (terminalId: string) => void;

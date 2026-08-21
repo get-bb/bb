@@ -13,7 +13,7 @@ import { assertNever } from "@bb/thread-view";
  * hides "working" tones; the timeline's working indicator already shows them.
  */
 
-export type ThreadStatusPillTone =
+type ThreadStatusPillTone =
   | "working"
   | "attention"
   | "error"
@@ -75,7 +75,7 @@ function lastPathSegment(path: string): string {
   return index >= 0 ? trimmed.slice(index + 1) : trimmed;
 }
 
-export interface ThreadEnvironmentSummaryArgs {
+interface ThreadEnvironmentSummaryArgs {
   environment: Pick<
     Environment,
     "name" | "branchName" | "path" | "managed" | "status"

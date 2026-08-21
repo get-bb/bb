@@ -205,7 +205,7 @@ export function offlinePage(
 }
 
 /** A machine label has no bb app of its own; only nested port shares proxy. */
-export function machinePage(
+function machinePage(
   label: string,
   accountHandle: string,
   runtime: ReturnType<typeof resolveConnectRuntime>,

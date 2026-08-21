@@ -9,7 +9,7 @@ import { z } from "zod";
  */
 export const SECRET_REQUEST_RENDERER_ID = "secret-request";
 
-export const SECRET_VALUE_MAX_LENGTH = 16 * 1024;
+const SECRET_VALUE_MAX_LENGTH = 16 * 1024;
 
 export const secretNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/u);
 
@@ -27,7 +27,7 @@ export const secretRequestPayloadSchema = z.object({
 });
 export type SecretRequestPayload = z.infer<typeof secretRequestPayloadSchema>;
 
-export const secretValueSchema = z
+const secretValueSchema = z
   .string()
   .min(1)
   .max(SECRET_VALUE_MAX_LENGTH)

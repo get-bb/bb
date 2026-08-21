@@ -27,7 +27,7 @@ export function hasUnsafePathSegment(value: string): boolean {
     .some((segment) => segment === "." || segment === "..");
 }
 
-export interface SkillsApiSkill {
+interface SkillsApiSkill {
   id: string;
   slug: string;
   name: string;

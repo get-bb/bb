@@ -70,7 +70,7 @@ type ManagedWorktreeEnvironmentProvisionCommand = Extract<
   { type: "environment.provision"; workspaceProvisionType: "managed-worktree" }
 >;
 
-export type ManagedWorktreeEnvironmentProvisionLiveCommand =
+type ManagedWorktreeEnvironmentProvisionLiveCommand =
   QueuedCommand<ManagedWorktreeEnvironmentProvisionCommand>;
 
 function isManagedWorktreeEnvironmentProvisionLiveCommand(
@@ -286,7 +286,7 @@ function buildDefaultBranchListResult(
   };
 }
 
-export interface CreateTestDaemonEventEnvelopeArgs {
+interface CreateTestDaemonEventEnvelopeArgs {
   event: ThreadEvent;
   threadId?: string;
 }

@@ -5,7 +5,7 @@ import {
   type ConnectCredential,
 } from "@bb/connect-client";
 
-export const CONNECT_CREDENTIAL_FILE_NAME = "connect-credential.bin";
+const CONNECT_CREDENTIAL_FILE_NAME = "connect-credential.bin";
 
 /** Electron's `safeStorage`, narrowed to what the cache uses. */
 export interface ConnectCredentialEncryption {
@@ -20,7 +20,7 @@ export interface ConnectCredentialCacheFs {
   writeFile(path: string, data: Buffer): Promise<void>;
 }
 
-export interface CreateConnectCredentialCacheArgs {
+interface CreateConnectCredentialCacheArgs {
   encryption: ConnectCredentialEncryption;
   fs?: ConnectCredentialCacheFs;
   userDataPath: string;

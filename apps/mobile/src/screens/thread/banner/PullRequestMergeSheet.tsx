@@ -7,7 +7,7 @@ import {
   type SheetController,
 } from "@/ui";
 
-export interface PullRequestMergeSheetProps {
+interface PullRequestMergeSheetProps {
   controller: SheetController;
   pullRequestNumber: number;
   onMerge: (method: PullRequestMergeMethod) => void;

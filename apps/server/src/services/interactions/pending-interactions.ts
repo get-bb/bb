@@ -53,7 +53,7 @@ import {
   validatePendingInteractionResolution,
 } from "./pending-interaction-validation.js";
 
-export type RegisterPendingInteractionResult =
+type RegisterPendingInteractionResult =
   | {
       outcome: "created" | "existing";
       interaction: PendingInteraction;

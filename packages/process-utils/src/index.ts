@@ -15,7 +15,7 @@ import {
 import type { Readable, Writable } from "node:stream";
 import crossSpawn from "cross-spawn";
 
-export interface PortableSpawnRequest {
+interface PortableSpawnRequest {
   command: string;
   args: string[];
   cwd?: string;
@@ -26,7 +26,7 @@ export interface PortableSpawnRequest {
 
 export type PortableChildProcess = ChildProcess;
 
-export interface PortablePipedSpawnRequest {
+interface PortablePipedSpawnRequest {
   command: string;
   args: string[];
   cwd?: string;
@@ -34,19 +34,19 @@ export interface PortablePipedSpawnRequest {
   env?: NodeJS.ProcessEnv;
 }
 
-export interface PortablePipedChildProcess extends PortableChildProcess {
+interface PortablePipedChildProcess extends PortableChildProcess {
   stdin: Writable;
   stdout: Readable;
   stderr: Readable;
 }
 
-export interface PortableOutputChildProcess extends PortableChildProcess {
+interface PortableOutputChildProcess extends PortableChildProcess {
   stdin: null;
   stdout: Readable;
   stderr: Readable;
 }
 
-export interface KillProcessGroupArgs {
+interface KillProcessGroupArgs {
   child: {
     pid?: number | undefined;
     kill: (signal: NodeJS.Signals) => unknown;
@@ -54,7 +54,7 @@ export interface KillProcessGroupArgs {
   signal: NodeJS.Signals;
 }
 
-export interface StopProcessGroupLeaderFirstArgs {
+interface StopProcessGroupLeaderFirstArgs {
   child: ChildProcess;
   /** Time after the leader SIGTERM before the whole group gets SIGKILL. */
   timeoutMs: number;
@@ -65,22 +65,22 @@ export interface StopProcessGroupLeaderFirstArgs {
   killGraceMs: number;
 }
 
-export interface ProcessWithCwd {
+interface ProcessWithCwd {
   pid: number;
   cwd: string;
 }
 
-export interface ListProcessesWithCwdUnderArgs {
+interface ListProcessesWithCwdUnderArgs {
   directory: string;
 }
 
-export interface KillProcessesWithCwdUnderArgs {
+interface KillProcessesWithCwdUnderArgs {
   directory: string;
   /** Time to wait after SIGTERM before SIGKILL. Defaults to 2000ms. */
   graceMs?: number;
 }
 
-export interface ResolveContainedPathArgs {
+interface ResolveContainedPathArgs {
   rootPath: string;
   candidatePath: string;
 }
@@ -98,14 +98,14 @@ export interface SanitizeInheritedChildProcessEnvArgs {
   shellPath?: string;
 }
 
-export type SafeProcessDiagnosticKind = "startupFailure" | "uncaughtException";
+type SafeProcessDiagnosticKind = "startupFailure" | "uncaughtException";
 
-export interface SafeProcessDiagnosticsOptions {
+interface SafeProcessDiagnosticsOptions {
   logsDir: string;
   processName: string;
 }
 
-export interface WriteSafeProcessDiagnosticReportArgs extends SafeProcessDiagnosticsOptions {
+interface WriteSafeProcessDiagnosticReportArgs extends SafeProcessDiagnosticsOptions {
   kind: SafeProcessDiagnosticKind;
   error: unknown;
   now?: () => Date;
@@ -561,7 +561,7 @@ export function sanitizeInheritedChildProcessEnv(
  * way to point bb's npm at a private registry, a shared cache, or an
  * alternate userconfig.
  */
-export const NPM_SCRIPT_POLICY_ENV_KEYS: ReadonlySet<string> = new Set([
+const NPM_SCRIPT_POLICY_ENV_KEYS: ReadonlySet<string> = new Set([
   "npm_config_allow_scripts",
   "npm_config_ignore_scripts",
   "npm_config_foreground_scripts",

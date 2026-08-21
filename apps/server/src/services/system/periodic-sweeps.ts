@@ -50,17 +50,17 @@ import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork } from "./event-loop-work.js";
 
-export type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
+type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
 /**
  * Narrow slice of the plugin service the schedule sweep needs (the plugin
  * service owns claiming and invocation; this loop just drives it).
  */
-export interface PluginScheduleSweeper {
+interface PluginScheduleSweeper {
   sweepDueSchedules(now: number): Promise<void>;
 }
 
-export type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
+type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
 };
 
@@ -71,7 +71,7 @@ const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
 
-export type PeriodicSweepJobCategory =
+type PeriodicSweepJobCategory =
   | "retention"
   | "durable-intent-retry"
   | "orphan-cleanup"

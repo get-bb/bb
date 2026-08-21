@@ -8,7 +8,7 @@ export interface AsyncTtlMemo<TKey, TValue> {
   run(key: TKey, task: () => Promise<TValue>): Promise<TValue>;
 }
 
-export interface CreateAsyncTtlMemoOptions {
+interface CreateAsyncTtlMemoOptions {
   ttlMs: number;
   now?: () => number;
 }

@@ -18,7 +18,7 @@ import {
   type SheetController,
 } from "@/ui";
 
-export interface ThreadGitActionSheetProps {
+interface ThreadGitActionSheetProps {
   controller: SheetController;
   /** The actions the header offers (web `threadHeaderGitActions`). */
   actions: readonly ThreadHeaderGitAction[];

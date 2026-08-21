@@ -8,7 +8,7 @@ export type ReleaseBlock =
   | { kind: "paragraph"; text: string }
   | { kind: "list"; items: string[] };
 
-export type ReleaseSection = {
+type ReleaseSection = {
   title: string;
   blocks: ReleaseBlock[];
 };
@@ -21,7 +21,7 @@ export type Release = {
 };
 
 /** Presentation extras that don't belong in CHANGELOG.md itself. */
-export type ReleaseMeta = {
+type ReleaseMeta = {
   /** Human-readable ship date, e.g. "July 14, 2026". */
   date: string;
   /** Marketing headline shown instead of the bare version number. */

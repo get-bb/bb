@@ -28,7 +28,7 @@ export function visibleBoardStatuses(
  * `beforeTaskId` is the card that sorts BEFORE (above) the dropped card and
  * `afterTaskId` the card that sorts AFTER (below) it.
  */
-export interface BoardDropNeighbors {
+interface BoardDropNeighbors {
   beforeTaskId: string | null;
   afterTaskId: string | null;
 }

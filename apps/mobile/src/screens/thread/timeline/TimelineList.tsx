@@ -44,7 +44,7 @@ export interface TimelineListHandle {
   scrollToEnd(): void;
 }
 
-export interface TimelineListProps {
+interface TimelineListProps {
   entries: readonly TimelineListEntry[];
   /** Index of the unread divider entry, or -1. */
   unreadDividerIndex: number;

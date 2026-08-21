@@ -467,7 +467,7 @@ function delegation(
   };
 }
 
-export interface WorkRowFixtureSection {
+interface WorkRowFixtureSection {
   title: string;
   rows: TimelineRow[];
 }

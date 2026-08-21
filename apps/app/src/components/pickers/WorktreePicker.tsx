@@ -40,7 +40,7 @@ export interface ReuseThreadOption {
   threads: ReadonlyArray<{ id: string; title: string }>;
 }
 
-export interface WorktreePickerProps {
+interface WorktreePickerProps {
   options: readonly ReuseThreadOption[];
   /** Currently-selected env id, or null when reuse mode is active but no
    * worktree has been chosen yet. */

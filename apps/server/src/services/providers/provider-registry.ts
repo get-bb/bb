@@ -67,7 +67,7 @@ export const PRODUCT_PROVIDER_ORDER: readonly string[] = [
   "acp-cursor",
 ];
 
-export type ProviderRegistrationSource = { kind: "plugin"; pluginId: string };
+type ProviderRegistrationSource = { kind: "plugin"; pluginId: string };
 
 /**
  * First-party provider ids, each reserved to the official plugin that owns it.
@@ -224,7 +224,7 @@ const REGISTRATIONS_SETTLED_TIMEOUT_MS = 30_000;
  * omitted resolver answers "no ACP agent declares anything", which is what
  * tests and pre-config construction want.
  */
-export interface ProviderRegistryDeps {
+interface ProviderRegistryDeps {
   resolveAcpAgentCapabilities?: (
     providerId: string,
   ) => { supportsManualCompaction: boolean } | null;

@@ -25,7 +25,7 @@ function loadTerminalPageHtml(): Promise<string> {
   return cached;
 }
 
-export interface TerminalPageHtmlState {
+interface TerminalPageHtmlState {
   html: string | null;
   error: Error | null;
 }

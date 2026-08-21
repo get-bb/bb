@@ -156,7 +156,7 @@ function modelSearchText(
  * pointer/native-focus driven); during an active search its filtered options are
  * flattened inline instead, keeping every match reachable from the keyboard.
  */
-export type ModelNavRow =
+type ModelNavRow =
   | { kind: "model"; option: ModelPickerOption }
   | { kind: "more-toggle" };
 

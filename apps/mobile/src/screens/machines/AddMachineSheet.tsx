@@ -18,7 +18,7 @@ import { pluginDetailHref } from "../shell/hrefs";
 const MULTIPLE_DEVICES_DOCS_URL =
   "https://github.com/get-bb/bb/blob/main/docs/multiple-devices.md";
 
-export interface AddMachineSheetProps {
+interface AddMachineSheetProps {
   controller: SheetController;
   /** The session from `useAddMachineSession()`; the caller's press handler runs `begin()` before presenting. */
   session: AddMachineSession;

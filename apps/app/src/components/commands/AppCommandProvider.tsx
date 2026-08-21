@@ -30,11 +30,11 @@ import {
   type AppShortcutPresentation,
 } from "@/lib/app-keybindings";
 
-export interface AppCommandInvocation {
+interface AppCommandInvocation {
   target: EventTarget | null;
 }
 
-export type AppCommandHandler = (invocation: AppCommandInvocation) => boolean;
+type AppCommandHandler = (invocation: AppCommandInvocation) => boolean;
 
 interface AppCommandHandlerRegistration {
   handler: AppCommandHandler;

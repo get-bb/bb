@@ -27,7 +27,7 @@ export interface SendQueuedMessageByIdRequest {
   queuedMessageId: string;
 }
 
-export interface ThreadExecutionSelection {
+interface ThreadExecutionSelection {
   model: string;
   permissionMode: PermissionMode;
   reasoningLevel: ReasoningLevel;
@@ -51,24 +51,24 @@ interface BaseFollowUpRequestArgs {
   threadId: string;
 }
 
-export interface BuildAutoFollowUpRequestArgs extends BaseFollowUpRequestArgs {
+interface BuildAutoFollowUpRequestArgs extends BaseFollowUpRequestArgs {
   execution: FollowUpExecutionSelection;
 }
 
-export interface BuildCreateQueuedFollowUpRequestArgs extends BaseFollowUpRequestArgs {
+interface BuildCreateQueuedFollowUpRequestArgs extends BaseFollowUpRequestArgs {
   execution: FollowUpExecutionSelection;
 }
 
-export interface BuildSendQueuedMessageByIdRequestArgs {
+interface BuildSendQueuedMessageByIdRequestArgs {
   queuedMessageId: string;
   threadId: string;
 }
 
-export interface BuildFollowUpShortcutRequestArgs extends BaseFollowUpRequestArgs {
+interface BuildFollowUpShortcutRequestArgs extends BaseFollowUpRequestArgs {
   queuedMessages: readonly QueuedMessageForSend[];
 }
 
-export interface CanSubmitFollowUpShortcutArgs {
+interface CanSubmitFollowUpShortcutArgs {
   hasPromptDraftInput: boolean;
   isFollowUpSubmitting: boolean;
   isQueueMutationPending: boolean;
@@ -77,7 +77,7 @@ export interface CanSubmitFollowUpShortcutArgs {
   submitModeKind: FollowUpSubmitMode["kind"];
 }
 
-export interface BuildFollowUpSubmitModeArgs {
+interface BuildFollowUpSubmitModeArgs {
   hasPendingInteraction: boolean;
   isDefaultExecutionOptionsLoading: boolean;
   isPendingInteractionsInitialLoading: boolean;
@@ -86,7 +86,7 @@ export interface BuildFollowUpSubmitModeArgs {
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
 }
 
-export interface BuildSideChatSubmitModeArgs {
+interface BuildSideChatSubmitModeArgs {
   childThreadId: string | null;
   isDefaultExecutionOptionsLoading: boolean;
   isStopRequested: boolean;
@@ -94,7 +94,7 @@ export interface BuildSideChatSubmitModeArgs {
   runtimeDisplayStatus: ThreadRuntimeDisplayStatus;
 }
 
-export interface ResolveDefaultExecutionOptionsStateArgs {
+interface ResolveDefaultExecutionOptionsStateArgs {
   hasConcreteDefaultExecutionOptions: boolean;
   hasResolvedDefaultExecutionOptions: boolean;
   isError: boolean;
@@ -104,7 +104,7 @@ export interface QueuedMessageForSend {
   id: string;
 }
 
-export type FollowUpShortcutRequest =
+type FollowUpShortcutRequest =
   | { kind: "draft"; request: SendMessageMutationRequest }
   | { kind: "queued"; request: SendQueuedMessageByIdRequest };
 
@@ -252,7 +252,7 @@ export function buildCreateQueuedFollowUpRequest({
   };
 }
 
-export function buildSendQueuedMessageByIdRequest({
+function buildSendQueuedMessageByIdRequest({
   queuedMessageId,
   threadId,
 }: BuildSendQueuedMessageByIdRequestArgs): SendQueuedMessageByIdRequest {

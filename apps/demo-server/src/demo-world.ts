@@ -94,7 +94,7 @@ interface ThreadState {
   turns: SentTurn[];
 }
 
-export interface DemoWorldOptions {
+interface DemoWorldOptions {
   now?: () => number;
   /** Runs `fn` after `ms`; swapped for a manual scheduler in tests. */
   schedule?: (fn: () => void, ms: number) => void;
@@ -146,7 +146,7 @@ async function readJson(request: Request): Promise<unknown> {
 }
 
 /** The text of a prompt, as the composer sends it: text parts joined, attachments dropped. */
-export function promptText(input: readonly PromptInput[]): string {
+function promptText(input: readonly PromptInput[]): string {
   return input
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join("\n")

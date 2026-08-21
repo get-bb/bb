@@ -6,21 +6,21 @@ import {
 } from "electron";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 
-export const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
-export const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
-export const NEW_THREAD_MENU_LABEL = "New Thread";
-export const NEW_WINDOW_MENU_LABEL = "New Window";
-export const CLOSE_WINDOW_MENU_LABEL = "Close Window";
-export const OPEN_SETTINGS_MENU_LABEL = "Settings…";
-export const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
-export const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
-export const RELOAD_ACCELERATOR = "CommandOrControl+R";
-export const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
-export const SERVER_MENU_LABEL = "Server";
-export const SERVER_MENU_ITEM_ID = "bb-server-menu";
+const SERVER_DAEMON_LOGS_MENU_LABEL = "Server & Daemon Logs";
+const OPEN_NEW_TAB_MENU_LABEL = "New Tab";
+const NEW_THREAD_MENU_LABEL = "New Thread";
+const NEW_WINDOW_MENU_LABEL = "New Window";
+const CLOSE_WINDOW_MENU_LABEL = "Close Window";
+const OPEN_SETTINGS_MENU_LABEL = "Settings…";
+const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
+const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
+const RELOAD_ACCELERATOR = "CommandOrControl+R";
+const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
+const SERVER_MENU_LABEL = "Server";
+const SERVER_MENU_ITEM_ID = "bb-server-menu";
 export const SET_SERVER_URL_MENU_LABEL = "Set Server URL…";
 
-export interface ApplicationMenuServerItem {
+interface ApplicationMenuServerItem {
   checked: boolean;
   id: string;
   name: string;

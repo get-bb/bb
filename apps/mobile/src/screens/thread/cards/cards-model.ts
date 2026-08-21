@@ -75,7 +75,7 @@ export function formatCompactTokenCount(value: number): string {
   ).toLowerCase();
 }
 
-export type ContextWindowTone = "default" | "warning" | "destructive";
+type ContextWindowTone = "default" | "warning" | "destructive";
 
 export function contextWindowTone(usedPercent: number): ContextWindowTone {
   if (usedPercent >= 90) return "destructive";

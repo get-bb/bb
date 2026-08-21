@@ -26,7 +26,7 @@ interface SettingsSidebarProps {
   mobileHosted?: boolean;
 }
 
-export type SettingsSidebarNavigation = Pick<
+type SettingsSidebarNavigation = Pick<
   SettingsNavState,
   | "activePluginId"
   | "activeProviderId"

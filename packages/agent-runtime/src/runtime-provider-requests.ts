@@ -23,7 +23,7 @@ import { shouldAutoDenyInteractiveRequest } from "@bb/provider-bridge-protocol/b
 
 export type RuntimeProviderRequestKind = "interactive request" | "tool call";
 
-export interface RuntimeProviderRequestProcess {
+interface RuntimeProviderRequestProcess {
   adapter: ProviderAdapter;
   child: ChildProcess;
   interactiveRequestScope: string;
@@ -36,14 +36,14 @@ export interface ResolveRuntimeProviderRequestThreadIdArgs {
   threadIdHint: string | undefined;
 }
 
-export interface RuntimeProviderRequestArgs {
+interface RuntimeProviderRequestArgs {
   parsedId: string | number;
   parsedMethod: string;
   providerProcess: RuntimeProviderRequestProcess;
   rawRequest: JsonRpcMessage;
 }
 
-export interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
+interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
   getActiveTurnId: (threadId: string) => string | null;
   getThreadExecutionOptions: (
     threadId: string,

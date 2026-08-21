@@ -14,11 +14,11 @@ export const DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS = 15 * 60 * 1000;
 
 type DesktopUpdateIntervalHandle = ReturnType<typeof setInterval>;
 
-export interface DesktopUpdateLogger {
+interface DesktopUpdateLogger {
   warn(message: string): void;
 }
 
-export interface ParseDesktopVersionFeedArgs {
+interface ParseDesktopVersionFeedArgs {
   channel: BbDesktopVersionFeed["channel"];
   checkedAt: string;
   currentVersion: string;
@@ -37,11 +37,11 @@ interface MalformedDesktopVersionFeedParseResult {
   reason: string;
 }
 
-export type DesktopVersionFeedParseResult =
+type DesktopVersionFeedParseResult =
   | MalformedDesktopVersionFeedParseResult
   | ValidDesktopVersionFeedParseResult;
 
-export interface CreateDesktopUpdateServiceArgs {
+interface CreateDesktopUpdateServiceArgs {
   channel: BbDesktopVersionFeed["channel"];
   currentVersion: string;
   enabled: boolean;

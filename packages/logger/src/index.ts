@@ -6,9 +6,9 @@ import { loadLoggerConfig } from "@bb/config/logger";
 
 export type { Logger };
 
-export type LoggerTransportMode = "stream" | "worker";
+type LoggerTransportMode = "stream" | "worker";
 
-export interface CreateLoggerOptions {
+interface CreateLoggerOptions {
   component: string;
   base?: Record<string, unknown>;
   dataDir?: string;

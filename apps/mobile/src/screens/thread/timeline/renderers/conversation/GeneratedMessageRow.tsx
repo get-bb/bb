@@ -33,7 +33,7 @@ import {
   useConversationMarkdownHandlers,
 } from "./conversation-shared";
 
-export interface GeneratedMessageRowProps {
+interface GeneratedMessageRowProps {
   row: TimelineUserConversationRow;
   sourceKind: GeneratedConversationSourceKind;
   depth: number;

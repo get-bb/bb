@@ -3,7 +3,7 @@ export interface ProviderModelInfo {
   modelId: string;
 }
 
-export interface ParseProviderModelConfigArgs {
+interface ParseProviderModelConfigArgs {
   name: string;
   value: string;
 }

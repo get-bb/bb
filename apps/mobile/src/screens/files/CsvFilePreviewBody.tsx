@@ -76,7 +76,7 @@ const CsvRow = memo(function CsvRow({
   );
 });
 
-export interface CsvFilePreviewBodyProps {
+interface CsvFilePreviewBodyProps {
   content: string;
   testID?: string;
 }

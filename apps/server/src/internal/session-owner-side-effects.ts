@@ -40,7 +40,7 @@ type DaemonDisconnectGraceDeps = Pick<
   "db" | "hub" | "logger" | "pendingInteractions" | "terminalSessions"
 >;
 
-export interface HandleHostSessionOpenedArgs {
+interface HandleHostSessionOpenedArgs {
   activeThreads: HostDaemonActiveThread[];
   hostId: string;
   openedSession: HostDaemonSessionRow;
@@ -53,11 +53,11 @@ export interface HandleHostSessionOpenedArgs {
   previousSession: HostDaemonSessionRow | null;
 }
 
-export interface HandleDaemonSocketClosedArgs {
+interface HandleDaemonSocketClosedArgs {
   sessionId: string;
 }
 
-export interface HandleHostRemovedArgs {
+interface HandleHostRemovedArgs {
   hostId: string;
   sessionId: string;
 }

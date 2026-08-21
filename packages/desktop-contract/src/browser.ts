@@ -20,7 +20,7 @@ export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
  * native window resizes, whose size the renderer's (possibly lagging) chrome
  * paint does not yet reflect.
  */
-export const bbDesktopBrowserViewBoundsSchema = z
+const bbDesktopBrowserViewBoundsSchema = z
   .object({
     x: z.number().int(),
     y: z.number().int(),
@@ -43,7 +43,7 @@ interface ClampIntegerToRangeArgs {
   value: number;
 }
 
-export interface ClampBbDesktopBrowserViewBoundsArgs {
+interface ClampBbDesktopBrowserViewBoundsArgs {
   bounds: BbDesktopBrowserViewBounds;
   viewport: BbDesktopBrowserViewportBounds;
 }
@@ -202,7 +202,7 @@ export type BbDesktopBrowserScopedOpenTabRequest = z.infer<
  * display lands well under this; the cap exists so a misbehaving push can
  * never balloon renderer memory.
  */
-export const BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH = 8_388_608;
+const BB_DESKTOP_BROWSER_MAX_SNAPSHOT_DATA_URL_LENGTH = 8_388_608;
 
 /**
  * A transient bitmap of a browser view, pushed main → renderer at the start

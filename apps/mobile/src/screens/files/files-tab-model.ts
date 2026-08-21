@@ -30,7 +30,7 @@ export type FilesTabRow =
       state: "loading" | "error" | "empty" | "unavailable" | "hint";
     };
 
-export interface BuildFilesTabRowsArgs {
+interface BuildFilesTabRowsArgs {
   hasQuery: boolean;
   search: {
     sections: readonly FileSearchSection[];

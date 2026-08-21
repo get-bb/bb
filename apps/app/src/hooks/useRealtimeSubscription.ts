@@ -14,7 +14,7 @@ const ENVIRONMENT_LIST_TARGET = {
 const HOST_LIST_TARGET = { kind: "host-list" } satisfies RealtimeSubscriptionTarget;
 const SYSTEM_TARGET = { kind: "system" } satisfies RealtimeSubscriptionTarget;
 
-export function useRealtimeSubscription(
+function useRealtimeSubscription(
   target: RealtimeSubscriptionTarget | null,
   options?: RealtimeSubscriptionOptions,
 ): void {

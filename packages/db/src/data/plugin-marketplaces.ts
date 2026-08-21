@@ -160,7 +160,7 @@ export function getPluginMarketplaceIcon(
     .get();
 }
 
-export function upsertPluginMarketplaceIcon(
+function upsertPluginMarketplaceIcon(
   db: DbQueryConnection,
   input: UpsertPluginMarketplaceIconInput,
 ): void {

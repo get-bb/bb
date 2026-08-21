@@ -150,7 +150,7 @@ async function resolveExistingRepoRoot(): Promise<string> {
   return repoRoot;
 }
 
-export async function main(): Promise<void> {
+async function main(): Promise<void> {
   const mode = resolveDevLaunchMode(process.argv.slice(2));
   const resolvedRepoRoot = await resolveExistingRepoRoot();
   const config = resolveCurrentDevInstanceConfig(resolvedRepoRoot);

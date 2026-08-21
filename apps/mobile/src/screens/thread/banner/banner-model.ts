@@ -20,7 +20,7 @@ import type { IconName } from "@/ui/icon-map";
 // ---------------------------------------------------------------------------
 // Parent / source thread
 
-export type ThreadRelationship = "parent" | "fork" | "side-chat";
+type ThreadRelationship = "parent" | "fork" | "side-chat";
 
 export interface ThreadBannerParentSection {
   threadId: string;
@@ -149,7 +149,7 @@ function isThreadDisplayStatusBannerActive(
   return BANNER_ACTIVE_CHILD_RUNTIME_STATUSES.has(status);
 }
 
-export interface ThreadBannerChildItem {
+interface ThreadBannerChildItem {
   id: string;
   title: string;
   hasPendingInteraction: boolean;
@@ -239,11 +239,11 @@ export function resolveEnvironmentGoneStatus(
 // ---------------------------------------------------------------------------
 // Sections → what the banner renders
 
-export interface ThreadBannerGitSection {
+interface ThreadBannerGitSection {
   changedFiles: WorkspaceChangedFilesSection;
 }
 
-export interface ThreadBannerPullRequestSection {
+interface ThreadBannerPullRequestSection {
   pullRequest: ThreadPullRequest;
 }
 

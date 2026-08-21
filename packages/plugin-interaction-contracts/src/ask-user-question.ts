@@ -17,8 +17,8 @@ export const ASK_USER_QUESTION_RENDERER_ID = "ask-user-question";
 
 export const MAX_QUESTIONS = 4;
 export const MAX_OPTIONS = 4;
-export const MAX_SELECTED = MAX_OPTIONS;
-export const MAX_FREE_TEXT_LENGTH = 4096;
+const MAX_SELECTED = MAX_OPTIONS;
+const MAX_FREE_TEXT_LENGTH = 4096;
 /**
  * Per-option preview cap. Previews are freeform (mockups, diffs, snippets) and
  * every one of them rides the 64 KiB `bb.ui.requestInput` payload, so the cap
@@ -32,7 +32,7 @@ const nonBlank = (value: string) => value.trim().length > 0;
 // Interaction payload — server → the form.
 // ---------------------------------------------------------------------------
 
-export const interactionOptionSchema = z.object({
+const interactionOptionSchema = z.object({
   value: z.string().min(1),
   label: z.string().min(1),
   description: z.string().min(1).optional(),
@@ -40,7 +40,7 @@ export const interactionOptionSchema = z.object({
 });
 export type InteractionOption = z.infer<typeof interactionOptionSchema>;
 
-export const interactionQuestionSchema = z.object({
+const interactionQuestionSchema = z.object({
   id: z.string().min(1),
   prompt: z.string().min(1),
   shortLabel: z.string().min(1),
@@ -59,7 +59,7 @@ export type InteractionPayload = z.infer<typeof interactionPayloadSchema>;
 // Interaction response — the form → server.
 // ---------------------------------------------------------------------------
 
-export const interactionAnswerSchema = z.object({
+const interactionAnswerSchema = z.object({
   selected: z.array(z.string().min(1)).max(MAX_SELECTED),
   freeText: z
     .string()

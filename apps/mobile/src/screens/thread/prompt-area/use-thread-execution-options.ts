@@ -26,7 +26,7 @@ import {
 import { useSystemExecutionOptions } from "@/data/system";
 import { buildFollowUpExecutionInputSources } from "./follow-up-submission";
 
-export interface UseThreadExecutionOptionsArgs {
+interface UseThreadExecutionOptionsArgs {
   thread: ThreadResponse | undefined;
   /** `useThreadDefaultExecutionOptions` data: undefined while loading, null when unavailable. */
   defaultExecutionOptions: ResolvedThreadExecutionOptions | null | undefined;
@@ -35,7 +35,7 @@ export interface UseThreadExecutionOptionsArgs {
   enabled: boolean;
 }
 
-export interface ThreadExecutionOptionsState {
+interface ThreadExecutionOptionsState {
   /** Footer pills for the follow-up composer; null until the defaults resolve. */
   controls: ExecutionControlsProps | null;
   /** What the next request carries (null while the defaults are unknown). */

@@ -30,25 +30,25 @@ export interface InjectedSkillsLogger {
   warn(context: object, message: string): void;
 }
 
-export interface StageInjectedSkillSourcesArgs {
+interface StageInjectedSkillSourcesArgs {
   dataDir: string;
   fetchSkillTree?: FetchSkillTree;
   injectedSkillSources: readonly HostDaemonInjectedSkillSource[];
   logger?: InjectedSkillsLogger;
 }
 
-export interface CleanupInjectedSkillStagingDirsArgs {
+interface CleanupInjectedSkillStagingDirsArgs {
   dataDir: string;
   keepCatalogHashes: readonly string[];
   logger?: InjectedSkillsLogger;
 }
 
-export interface StagedInjectedSkills {
+interface StagedInjectedSkills {
   catalogHash: string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
-export interface CopyInjectedSkillSourceArgs {
+interface CopyInjectedSkillSourceArgs {
   destinationPath: string;
   name: string;
   sourceRootPath: string;

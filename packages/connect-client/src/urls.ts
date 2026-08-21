@@ -2,7 +2,7 @@
 // credential schema so browser bundles that only need URL math (the connect
 // plugin's settings section) do not pull the validation stack in.
 
-export type ConnectPublicProtocol = "http:" | "https:";
+type ConnectPublicProtocol = "http:" | "https:";
 
 /** Local Cloud is HTTP-only; every non-local Connect gate is HTTPS-only. */
 export function connectPublicProtocol(

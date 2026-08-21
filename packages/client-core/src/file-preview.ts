@@ -36,11 +36,11 @@ interface FilePreviewBase extends FilePreviewTarget {
   mimeType: string;
 }
 
-export interface ImageFilePreview extends FilePreviewBase {
+interface ImageFilePreview extends FilePreviewBase {
   kind: "image";
 }
 
-export interface VideoFilePreview extends FilePreviewBase {
+interface VideoFilePreview extends FilePreviewBase {
   kind: "video";
 }
 
@@ -49,7 +49,7 @@ export interface TextFilePreview extends FilePreviewBase {
   content: string;
 }
 
-export interface UnsupportedFilePreview extends FilePreviewBase {
+interface UnsupportedFilePreview extends FilePreviewBase {
   kind: "unsupported";
 }
 
@@ -71,17 +71,17 @@ export interface FilePreviewLineRange {
   startLineNumber: number;
 }
 
-export interface CreateFilePreviewLineRangeArgs {
+interface CreateFilePreviewLineRangeArgs {
   endLineNumber: number;
   startLineNumber: number;
 }
 
-export interface AreFilePreviewLineRangesEqualArgs {
+interface AreFilePreviewLineRangesEqualArgs {
   a: FilePreviewLineRange | null;
   b: FilePreviewLineRange | null;
 }
 
-export interface GetFilePreviewLineRangeStartArgs {
+interface GetFilePreviewLineRangeStartArgs {
   lineRange: FilePreviewLineRange | null;
 }
 
@@ -162,7 +162,7 @@ export function areEnvironmentFilePreviewSourcesEqual(
   }
 }
 
-export interface BuildFilePreviewArgs extends FilePreviewTarget {
+interface BuildFilePreviewArgs extends FilePreviewTarget {
   contentBytes: Uint8Array;
   mimeType: string;
 }

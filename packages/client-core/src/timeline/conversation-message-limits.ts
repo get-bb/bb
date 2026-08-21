@@ -7,7 +7,7 @@ export const USER_MESSAGE_CHAR_CAP = 4096;
 export const GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP =
   USER_MESSAGE_CHAR_CAP;
 
-export interface BoundedMarkdownPreview {
+interface BoundedMarkdownPreview {
   parseAsMarkdown: boolean;
   text: string;
   wasCapped: boolean;

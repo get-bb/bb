@@ -41,7 +41,7 @@ const DIFF_ROW_GAP = 8;
 /** Any on-screen sliver counts as visible (tall cards fill the viewport). */
 const VIEWABILITY_CONFIG = { itemVisiblePercentThreshold: 1 };
 
-export interface DiffTabContentProps {
+interface DiffTabContentProps {
   /** The thread's environment; null shows the "no workspace" state. */
   environmentId: string | null;
   /**

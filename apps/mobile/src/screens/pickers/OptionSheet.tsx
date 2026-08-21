@@ -83,7 +83,7 @@ function OptionRow<T extends string>({
   );
 }
 
-export interface OptionSheetProps<T extends string> {
+interface OptionSheetProps<T extends string> {
   controller: SheetController;
   title: string;
   options: readonly PickerOption<T>[];

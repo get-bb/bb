@@ -24,7 +24,7 @@ import {
  * (which writes it) and the server test suite (which verifies the scaffold
  * actually loads through the plugin service) consume it.
  */
-export interface ScaffoldPluginArgs {
+interface ScaffoldPluginArgs {
   /** Directory to create; scaffolding fails if it already exists. */
   targetDir: string;
   /** Full package name, e.g. "bb-plugin-hello". */
@@ -39,7 +39,7 @@ export interface ScaffoldPluginArgs {
 }
 
 /** Arguments for {@link syncPluginTypes}. */
-export interface SyncPluginTypesArgs {
+interface SyncPluginTypesArgs {
   /** Plugin root directory (the one holding `package.json`). */
   rootDir: string;
   /**
@@ -56,7 +56,7 @@ export interface SyncPluginTypesArgs {
 }
 
 /** One declaration file considered by {@link syncPluginTypes}. */
-export interface SyncedPluginTypeFile {
+interface SyncedPluginTypeFile {
   /** Path relative to the plugin root, e.g. `types/bb-plugin-sdk.d.ts`. */
   path: string;
   /**
@@ -129,7 +129,7 @@ export async function syncPluginTypes(
  *   exact `@get-bb/plugin-sdk` pin in the manifest whose installed
  *   `bundled-types/*.d.ts` are the surface. Nothing is written into these.
  */
-export interface PluginSdkLayout {
+interface PluginSdkLayout {
   kind: "vendored" | "package";
   /**
    * Exact version the manifest pins `@get-bb/plugin-sdk` to (dev or runtime
@@ -204,7 +204,7 @@ const UNSCANNED_DIRECTORIES = new Set([
 const MAX_SOURCE_SCAN_DEPTH = 12;
 
 /** Arguments for {@link migratePluginToPackageLayout}. */
-export interface MigratePluginArgs {
+interface MigratePluginArgs {
   /** Plugin root directory (the one holding `package.json`). */
   rootDir: string;
   /** SDK version to pin exactly and to raise the engines floor to. */
@@ -258,7 +258,7 @@ export interface PluginPackageLayoutMigration {
 }
 
 /** One source file the migration rewrites off the pre-rename SDK name. */
-export interface RewrittenSdkImportFile {
+interface RewrittenSdkImportFile {
   /** Path relative to the plugin root, `/`-separated (e.g. `lib/rpc.ts`). */
   path: string;
   /** How many quoted `@bb/plugin-sdk` specifiers the file carries. */
@@ -501,7 +501,7 @@ async function assertInsidePlugin(
 }
 
 /** Arguments for {@link setPluginSdkPin}. */
-export interface SetPluginSdkPinArgs {
+interface SetPluginSdkPinArgs {
   /** Plugin root directory (the one holding `package.json`). */
   rootDir: string;
   /** Exact version to pin `@get-bb/plugin-sdk` to. */
@@ -511,7 +511,7 @@ export interface SetPluginSdkPinArgs {
 }
 
 /** What {@link setPluginSdkPin} changed. */
-export interface PluginSdkPinChange {
+interface PluginSdkPinChange {
   /**
    * The version change, or null when the manifest already declared this exact
    * version and only the section it lived in was wrong.

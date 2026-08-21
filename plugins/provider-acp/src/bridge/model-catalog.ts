@@ -39,7 +39,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { AcpConfigOption, AcpSessionModels } from "../wire.js";
 
-export interface RawAgentModel {
+interface RawAgentModel {
   id: string;
   displayName: string;
 }
@@ -554,7 +554,7 @@ export function buildAgentModelCatalog(
   };
 }
 
-export interface SplitPrimaryModelsResult {
+interface SplitPrimaryModelsResult {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }

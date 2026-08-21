@@ -4,7 +4,7 @@ import path from "node:path";
 import { WORKTREE_INCLUDE_FILE_NAME } from "@bb/domain";
 import { runGit, WorkspaceError } from "./git.js";
 
-export interface CopyWorktreeIncludeFilesArgs {
+interface CopyWorktreeIncludeFilesArgs {
   /** Existing checkout that owns the `.worktreeinclude` file. */
   sourcePath: string;
   /** Freshly created worktree that receives the copies. */

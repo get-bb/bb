@@ -23,7 +23,7 @@ import { newProjectHref } from "../shell/hrefs";
 import { composeExecutionControls } from "./ExecutionControlsRow";
 import type { ComposeController } from "./useComposeController";
 
-export interface ComposeDockProps {
+interface ComposeDockProps {
   controller: ComposeController;
   /** Pill ↔ card transitions (the home screen drives its scrim). */
   onExpandedChange?: (expanded: boolean) => void;

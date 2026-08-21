@@ -54,7 +54,7 @@ function createInProcessBackend(): ParcelWatcherBackend {
   };
 }
 
-export type ParcelWatcherBackendLogLevel = "info" | "warn" | "error";
+type ParcelWatcherBackendLogLevel = "info" | "warn" | "error";
 export type ParcelWatcherBackendLogger = (
   level: ParcelWatcherBackendLogLevel,
   message: string,

@@ -11,7 +11,7 @@ export type TimelineListEntry =
 
 const UNREAD_DIVIDER_ENTRY_KEY = "thread-unread-divider";
 
-export interface TimelineListEntries {
+interface TimelineListEntries {
   entries: TimelineListEntry[];
   /** Index of the divider entry in `entries`, or -1. */
   unreadDividerIndex: number;

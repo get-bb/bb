@@ -2,13 +2,13 @@ import { z } from "zod";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
-export const bbDesktopVersionFeedFileSchema = z.object({
+const bbDesktopVersionFeedFileSchema = z.object({
   url: z.string().min(1),
   sha512: z.string().min(1),
   size: z.number().int().nonnegative(),
 });
 
-export const bbDesktopVersionFeedPlatformSchema = z.enum(["macos", "linux"]);
+const bbDesktopVersionFeedPlatformSchema = z.enum(["macos", "linux"]);
 export type BbDesktopVersionFeedPlatform = z.infer<
   typeof bbDesktopVersionFeedPlatformSchema
 >;
@@ -35,7 +35,7 @@ export type BbDesktopVersionFeed = z.infer<typeof bbDesktopVersionFeedSchema>;
  * the original unsuffixed name: shipped macOS builds already request it, and
  * renaming it would strand every installed app on its current version.
  */
-export const BB_DESKTOP_VERSION_FEED_FILE_NAMES = {
+const BB_DESKTOP_VERSION_FEED_FILE_NAMES = {
   linux: "desktop-version-linux.json",
   macos: "desktop-version.json",
 } as const satisfies Record<BbDesktopVersionFeedPlatform, string>;

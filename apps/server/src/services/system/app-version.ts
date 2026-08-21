@@ -20,11 +20,11 @@ export interface AppVersionService {
   ): Promise<SystemVersionResponse>;
 }
 
-export interface AppVersionGetSystemVersionArgs {
+interface AppVersionGetSystemVersionArgs {
   forceRefresh?: boolean;
 }
 
-export interface CreateAppVersionServiceArgs {
+interface CreateAppVersionServiceArgs {
   config: Pick<ServerRuntimeConfig, "appVersion" | "isDevelopment">;
   fetchImpl?: typeof fetch;
   logger: ServerLogger;

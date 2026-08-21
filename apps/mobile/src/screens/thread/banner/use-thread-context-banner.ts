@@ -45,7 +45,7 @@ import {
 import type { MergeBasePickerSheetProps } from "./MergeBasePickerSheet";
 import type { ThreadContextBannerProps } from "./ThreadContextBanner";
 
-export interface UseThreadContextBannerArgs {
+interface UseThreadContextBannerArgs {
   threadId: string;
   /** The open thread; undefined while it loads. */
   thread: ThreadResponse | undefined;
@@ -57,7 +57,7 @@ export interface UseThreadContextBannerArgs {
   openDiff: ((path?: string) => void) | null;
 }
 
-export interface ThreadContextBannerState {
+interface ThreadContextBannerState {
   /** Props for `<ThreadContextBanner>`. */
   banner: ThreadContextBannerProps;
   /** Props for the `<MergeBasePickerSheet>` the banner / git sheet open. */

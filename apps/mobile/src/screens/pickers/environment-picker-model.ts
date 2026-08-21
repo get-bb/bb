@@ -4,7 +4,7 @@ import type {
   ThreadEnvironmentSelection,
 } from "@/data/compose";
 
-export interface EnvironmentSelectionSummary {
+interface EnvironmentSelectionSummary {
   label: string;
   icon: "Laptop" | "FolderGit" | "Folder";
   tone: "default" | "warning";

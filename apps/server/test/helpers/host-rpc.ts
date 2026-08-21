@@ -24,7 +24,7 @@ interface ProviderModelError {
   errorMessage: string;
 }
 
-export interface RegisterProviderHostRpcArgs {
+interface RegisterProviderHostRpcArgs {
   hostId: string;
   modelErrorsByProviderId?: Record<string, ProviderModelError>;
   modelsByProviderId?: Record<string, ProviderModelResponse>;
@@ -32,7 +32,7 @@ export interface RegisterProviderHostRpcArgs {
   restoreCommandCaptureAfterResponse?: boolean;
 }
 
-export interface ProviderHostRpcResponder {
+interface ProviderHostRpcResponder {
   requests: HostDaemonOnlineRpcRequestMessage[];
   unregister(): void;
 }

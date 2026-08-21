@@ -82,7 +82,7 @@ async function compressFile(filePath) {
   };
 }
 
-export async function precompressDirectory(args) {
+async function precompressDirectory(args) {
   const candidateFiles = [];
   for (const filePath of await walkFiles(args.distDir)) {
     if (!shouldPrecompress(filePath)) {

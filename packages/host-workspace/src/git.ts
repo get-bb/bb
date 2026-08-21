@@ -36,28 +36,28 @@ interface ResolveGitProcessEnvArgs {
   env: NodeJS.ProcessEnv | undefined;
 }
 
-export interface GitTimeoutOptions {
+interface GitTimeoutOptions {
   timeoutMs?: number;
 }
 
-export interface FetchRemoteBranchesResult {
+interface FetchRemoteBranchesResult {
   status: "fetched" | "failed" | "skipped";
 }
 
-export interface DefaultBranchRefs {
+interface DefaultBranchRefs {
   defaultBranch: string | undefined;
   defaultBranchRelation: DefaultBranchRelation | undefined;
   originDefaultBranch: string | undefined;
 }
 
-export interface BranchRefsWithDefaults {
+interface BranchRefsWithDefaults {
   branches: string[];
   defaultBranch: string | undefined;
   originDefaultBranch: string | undefined;
   remoteBranches: string[];
 }
 
-export interface RunShellPipelineOptions extends GitTimeoutOptions {
+interface RunShellPipelineOptions extends GitTimeoutOptions {
   cwd: string;
   allowFailure?: boolean;
   signal?: AbortSignal;
@@ -83,7 +83,7 @@ type ActiveWorkspaceGitOperationKind = Exclude<
   "none" | "unknown"
 >;
 
-export interface PorcelainEntry {
+interface PorcelainEntry {
   path: string;
   status: string;
   indexStatus: string;
@@ -614,7 +614,7 @@ export async function ensureGitRepo(
   );
 }
 
-export type GitRepositoryState = "not_git" | "no_commits" | "has_commits";
+type GitRepositoryState = "not_git" | "no_commits" | "has_commits";
 
 export async function readGitRepositoryState(
   cwd: string,
@@ -871,7 +871,7 @@ export async function getWorkspaceGitOperation(
   return buildActiveWorkspaceGitOperation(marker.kind, hasConflicts);
 }
 
-export interface NameStatusEntry {
+interface NameStatusEntry {
   path: string;
   /** Raw status letter from `git diff --name-status` (M, A, D, R, C, T, U). */
   status: string;
@@ -1310,7 +1310,7 @@ export async function revParse(cwd: string, ref: string): Promise<string> {
   return trimOutput(result.stdout);
 }
 
-export interface ReadGitBlobResult {
+interface ReadGitBlobResult {
   /** Object bytes, or `null` if no blob exists at `<ref>:<relativePath>`. */
   contents: Buffer | null;
   /** Git blob byte size; equals `contents.byteLength`, or 0 when missing. */
@@ -1322,7 +1322,7 @@ export interface ReadGitBlobResult {
  * `undefined` only when git reports the ref/path/object target is absent.
  * Non-blob objects and other git failures surface as `git_command_failed`.
  */
-export async function gitBlobSize(
+async function gitBlobSize(
   cwd: string,
   ref: string,
   relativePath: string,

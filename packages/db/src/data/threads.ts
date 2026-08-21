@@ -237,7 +237,7 @@ export function upsertThreadSearchSegments(
   }
 }
 
-export function upsertThreadTitleSearchSegments(
+function upsertThreadTitleSearchSegments(
   db: ThreadWriteConnection,
   args: UpsertThreadTitleSearchSegmentsArgs,
 ): void {

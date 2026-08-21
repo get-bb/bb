@@ -58,7 +58,7 @@ export interface TimelineMessageActionHandlers {
   sendToMainThread?: (target: { messageText: string }) => void;
 }
 
-export type MessageActionKey =
+type MessageActionKey =
   | "copy"
   | "quote-paragraph"
   | "add-to-chat"
@@ -72,7 +72,7 @@ export interface MessageActionItem {
   icon: IconName;
 }
 
-export interface MessageActionCapabilities {
+interface MessageActionCapabilities {
   canQuote: boolean;
   canEdit: boolean;
   canFork: boolean;

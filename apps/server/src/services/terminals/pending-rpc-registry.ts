@@ -18,7 +18,7 @@ type PendingRpcRegistryOptions<TKey, TResult> = (
   onSettle?: (key: TKey, result: TResult) => void;
 };
 
-export interface PendingRpcClaim<TResult> {
+interface PendingRpcClaim<TResult> {
   created: boolean;
   promise: Promise<TResult>;
 }

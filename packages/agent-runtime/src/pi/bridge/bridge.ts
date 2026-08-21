@@ -139,7 +139,7 @@ const piCommandSchema = z.discriminatedUnion("method", [
   }),
 ]);
 
-export type PiCommand = z.infer<typeof piCommandSchema>;
+type PiCommand = z.infer<typeof piCommandSchema>;
 
 /**
  * The known-method set, derived from the schema union so it cannot drift

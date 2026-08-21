@@ -16,7 +16,7 @@ export const BB_MOBILE_ANDROID_PACKAGE = "app.getbb.mobile";
  * `associatedDomains`, Android `intentFilters`). Everything else stays in
  * the browser.
  */
-export const BB_MOBILE_APP_LINK_PATHS: readonly string[] = [
+const BB_MOBILE_APP_LINK_PATHS: readonly string[] = [
   "/threads/*",
   "/projects/*",
   "/settings/*",
@@ -33,7 +33,7 @@ export const ANDROID_ASSET_LINKS_PATH = "/.well-known/assetlinks.json";
  * behaviour), and the app's minimum iOS is well past 13.5 where the legacy
  * keys mattered. Served as `application/json` with no redirects.
  */
-export function buildAppleAppSiteAssociation(): Record<string, unknown> {
+function buildAppleAppSiteAssociation(): Record<string, unknown> {
   return {
     applinks: {
       details: [
@@ -65,7 +65,7 @@ export function parseAssetLinksFingerprints(
 }
 
 /** `https://developers.google.com/digital-asset-links/v1/getting-started` */
-export function buildAndroidAssetLinks(
+function buildAndroidAssetLinks(
   sha256CertFingerprints: readonly string[],
 ): unknown[] {
   return [

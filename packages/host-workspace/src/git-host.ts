@@ -50,7 +50,7 @@ interface GetPullRequestForCurrentBranchArgs {
   localBranch: string;
 }
 
-export type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
+type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
 
 export type GitHostPullRequestAction =
   | { operation: "ready" }

@@ -13,7 +13,7 @@ import {
 import { DiffFileCard, parseUnifiedDiff, type DiffFile } from "@/diff";
 import { Skeleton, Text } from "@/ui";
 
-export interface DiffTabFileCardProps {
+interface DiffTabFileCardProps {
   entry: DiffFileEntry;
   /** The active (environment, target, merge-base sha) slice; scopes collapse state. */
   diffIdentity: string;

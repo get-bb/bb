@@ -17,29 +17,29 @@ import { validateOptionalUrl } from "@bb/config/public-url";
 import type { ServerLogger, ServerRuntimeConfig } from "../../types.js";
 import type { NotificationHub } from "../../ws/hub.js";
 
-export interface ApplyBbAppManagedConfigArgs {
+interface ApplyBbAppManagedConfigArgs {
   baseConfig: ServerRuntimeConfig;
   managedConfig: BbAppManagedConfig;
   managedEnvFile: BbAppManagedEnvFile;
   targetConfig: ServerRuntimeConfig;
 }
 
-export interface ReadBbAppManagedConfigArgs {
+interface ReadBbAppManagedConfigArgs {
   configPath: string;
   logger?: ServerLogger;
 }
 
-export interface ReadBbAppManagedEnvArgs {
+interface ReadBbAppManagedEnvArgs {
   envPath: string;
 }
 
-export interface CreateBbAppManagedConfigReloaderArgs {
+interface CreateBbAppManagedConfigReloaderArgs {
   config: ServerRuntimeConfig;
   hub: NotificationHub;
   logger: ServerLogger;
 }
 
-export interface ReloadBbAppManagedConfigArgs {
+interface ReloadBbAppManagedConfigArgs {
   notify: boolean;
 }
 

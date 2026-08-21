@@ -6,7 +6,7 @@ const semverPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/u;
 const numericIdentifierPattern = /^\d+$/u;
 
-export function parseSemver(version) {
+function parseSemver(version) {
   const match = semverPattern.exec(version);
 
   if (match === null) {
@@ -125,7 +125,7 @@ export function compareSemver(leftVersion, rightVersion) {
   return comparePrereleaseVersions(left, right);
 }
 
-export function deriveVersion(currentVersion, bumpType) {
+function deriveVersion(currentVersion, bumpType) {
   const current = parseSemver(currentVersion);
 
   if (current === null) {

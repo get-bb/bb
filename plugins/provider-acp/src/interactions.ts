@@ -29,11 +29,11 @@ import type { AcpPermissionOptionKind } from "./wire.js";
  * The bridge maps the user's decision back onto the ACP options it kept for
  * the pending permission request.
  */
-export interface AcpPermissionResponse {
+interface AcpPermissionResponse {
   decision: "allow_once" | "allow_for_session" | "deny";
 }
 
-export interface AcpPermissionToolCall extends AcpToolCallOperationInput {
+interface AcpPermissionToolCall extends AcpToolCallOperationInput {
   toolCallId: string;
   /**
    * The in-flight `tool_call` with the same id, when the agent started one

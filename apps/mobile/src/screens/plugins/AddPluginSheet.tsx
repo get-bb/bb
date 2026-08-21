@@ -36,11 +36,11 @@ import { PluginIcon } from "./ServerSvgIcon";
  * enables, and that resolution rides the install as `confirmedSource`.
  */
 
-export type AddPluginTarget =
+type AddPluginTarget =
   | { kind: "source" }
   | { kind: "catalog"; entry: PluginCatalogSearchResult };
 
-export interface AddPluginSheetProps {
+interface AddPluginSheetProps {
   controller: SheetController;
   /** Null keeps the (always mounted) sheet inert until a target is picked. */
   target: AddPluginTarget | null;

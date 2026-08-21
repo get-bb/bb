@@ -23,7 +23,7 @@ type HostDaemonHealthMonitorIntervalFn = (
   intervalMs: number,
 ) => HostDaemonHealthMonitorTimer;
 
-export interface HostDaemonWatchCounts {
+interface HostDaemonWatchCounts {
   workspaceWatches: number;
   threadStorageTargets: number;
 }

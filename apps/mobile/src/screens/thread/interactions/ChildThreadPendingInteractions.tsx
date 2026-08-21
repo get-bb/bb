@@ -5,7 +5,7 @@ import type { ChildThreadPendingAttention } from "@/data/interactions";
 import { ListRow } from "@/ui";
 import { threadHref } from "../../shell/hrefs";
 
-export interface ChildThreadPendingInteractionsProps {
+interface ChildThreadPendingInteractionsProps {
   items: readonly ChildThreadPendingAttention[];
 }
 

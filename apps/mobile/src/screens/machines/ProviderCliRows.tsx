@@ -32,7 +32,7 @@ import {
  * View log actions backed by the app-wide install runner.
  */
 
-export interface ProviderCliRowsProps {
+interface ProviderCliRowsProps {
   host: Host;
   status: ProviderCliStatusResponse | null;
   statusPending: boolean;
@@ -222,7 +222,7 @@ export function ProviderCliRows({
   );
 }
 
-export interface ProviderCliInstallLogSheetProps {
+interface ProviderCliInstallLogSheetProps {
   controller: SheetController;
   record: ProviderCliInstallRecord | null;
 }

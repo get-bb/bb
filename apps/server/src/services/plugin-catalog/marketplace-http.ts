@@ -92,7 +92,7 @@ export function assertPublicMarketplaceUrl(input: string): URL {
   return url;
 }
 
-export interface MarketplaceDnsResolver {
+interface MarketplaceDnsResolver {
   (
     hostname: string,
     callback: (

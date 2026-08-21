@@ -20,13 +20,13 @@ import {
 
 export const ULTRACODE_HIGHLIGHT_CLASS = "prompt-ultracode-highlight";
 
-export interface PromptDecorationRange {
+interface PromptDecorationRange {
   from: number;
   to: number;
 }
 
 /** One public ComposerRichTextSpec content-derived effect entry. */
-export type PromptDecorationRule = NonNullable<
+type PromptDecorationRule = NonNullable<
   ComposerRichTextSpec["effects"]
 >[number];
 

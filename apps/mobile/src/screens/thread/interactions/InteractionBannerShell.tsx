@@ -10,7 +10,7 @@ export interface InteractionSourceThread {
   title: string;
 }
 
-export interface InteractionBannerShellProps {
+interface InteractionBannerShellProps {
   /** Heading line. Omitted when the body supplies its own (question forms). */
   title?: string;
   /** Secondary line under the title ("Requested by secrets"). */

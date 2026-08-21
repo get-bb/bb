@@ -30,11 +30,11 @@ export interface PromptEditorOffsetSegment {
   kind: "text" | "mention";
 }
 
-export interface PromptEditorSerialization extends PromptEditorValue {
+interface PromptEditorSerialization extends PromptEditorValue {
   offsetMapping: PromptEditorOffsetSegment[];
 }
 
-export interface PromptEditorContentOptions {
+interface PromptEditorContentOptions {
   /**
    * Parse the Markdown surface forms emitted by promptEditorValueFromDoc back
    * into rich editor nodes. Blockquotes stay enabled regardless of this option.
@@ -47,7 +47,7 @@ interface PromptEditorContentValue {
   mentions: readonly PromptTextMention[];
 }
 
-export interface PromptEditorMentionAttrs {
+interface PromptEditorMentionAttrs {
   resource: PromptMentionResource;
   serializedText: string;
 }

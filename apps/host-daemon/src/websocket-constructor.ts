@@ -1,6 +1,6 @@
 import { WebSocket as NodeWebSocket } from "ws";
 
-export interface NodeWebSocketConstructor {
+interface NodeWebSocketConstructor {
   new (address: string | URL, protocols?: string | string[]): object;
 }
 

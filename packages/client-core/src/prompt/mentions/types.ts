@@ -9,8 +9,8 @@ import {
 import type { PromptMentionCommandTrigger } from "@bb/domain";
 import type { PluginMentionTrigger } from "./plugin-mention-triggers.js";
 
-export type PromptPathMentionSource = "workspace" | "thread-storage";
-export type PromptPathMentionEntryKind = "file" | "directory";
+type PromptPathMentionSource = "workspace" | "thread-storage";
+type PromptPathMentionEntryKind = "file" | "directory";
 
 /**
  * One row in the mention menu. The `replacement` field is the literal text
@@ -164,7 +164,7 @@ function commandSuggestionMatchRank(
  * order, so an empty query — which prefix-matches every row — leaves pure
  * section order.
  */
-export function compareCommandSuggestions(
+function compareCommandSuggestions(
   left: ComposerCommandSuggestion,
   right: ComposerCommandSuggestion,
   normalizedQuery: string,

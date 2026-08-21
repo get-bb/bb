@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
  * The @get-bb/plugin-sdk declaration bundles `bb plugin types|build|dev` write
  * into a vendored-layout plugin's `types/` dir.
  */
-export interface PluginSdkDeclarations {
+interface PluginSdkDeclarations {
   /** bundled-types/bb-plugin-sdk.d.ts */
   root: string;
   /** bundled-types/bb-plugin-sdk-app.d.ts */

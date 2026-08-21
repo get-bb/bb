@@ -18,7 +18,7 @@ interface RecordDaemonEnvironmentMetadataChangeArgs extends HostDaemonEnvironmen
   hostId: string;
 }
 
-export interface NotifyWorkspaceMutationResultArgs {
+interface NotifyWorkspaceMutationResultArgs {
   environmentId: string;
   ok: boolean;
 }

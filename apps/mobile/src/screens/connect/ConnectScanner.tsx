@@ -7,7 +7,7 @@ import {
 } from "@/data/connect";
 import { Button, Text } from "@/ui";
 
-export interface ConnectScannerProps {
+interface ConnectScannerProps {
   /** Called once per recognized pairing payload; the scanner then pauses. */
   onScanned: (input: ConnectPairingInput) => void;
   /** Re-arm the scanner after the caller handled a payload. */

@@ -16,7 +16,7 @@ interface CompletedEventLoopWork {
   label: string;
 }
 
-export interface EventLoopWorkSnapshot {
+interface EventLoopWorkSnapshot {
   currentWork: string | null;
   lastWork: string | null;
   lastWorkMs: number | null;

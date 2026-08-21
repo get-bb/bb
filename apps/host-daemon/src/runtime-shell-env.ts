@@ -11,7 +11,7 @@ interface ResolveLocalBbExecutablePathOptions {
   cliRuntimePath?: string;
 }
 
-export interface PrepareRuntimeShellEnvOptions {
+interface PrepareRuntimeShellEnvOptions {
   bbExecutableDirectory: string;
   /**
    * Absolute path to the daemon-managed `bb` executable. Defaults to
@@ -24,7 +24,7 @@ export interface PrepareRuntimeShellEnvOptions {
   inheritedPath?: string;
 }
 
-export interface ResolveUserShellPathOptions {
+interface ResolveUserShellPathOptions {
   env?: NodeJS.ProcessEnv;
   platform?: NodeJS.Platform;
   spawnUserShellEnv?: SpawnUserShellEnv;

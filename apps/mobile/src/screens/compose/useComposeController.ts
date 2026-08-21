@@ -89,9 +89,9 @@ export interface ComposeParams extends ComposeSeedParams {
   initialPrompt?: string;
 }
 
-export type ComposeHostMode = "local" | "worktree" | "personal" | null;
+type ComposeHostMode = "local" | "worktree" | "personal" | null;
 
-export interface ComposeBranchState {
+interface ComposeBranchState {
   mode: "local" | "worktree";
   branches: string[];
   remoteBranches: string[];

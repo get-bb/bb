@@ -7,7 +7,7 @@ import { describeDiffTarget } from "@/data/diff";
 import { useTheme } from "@/theme";
 import { cn, Icon, Spinner, Text, type IconName } from "@/ui";
 
-export interface DiffTabHeaderProps {
+interface DiffTabHeaderProps {
   files: readonly DiffFileEntry[];
   /** The TOC holds only the leading slice of a larger diff. */
   truncated: boolean;

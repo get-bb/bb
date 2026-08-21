@@ -12,7 +12,7 @@ import { newThreadHref } from "../../shell/hrefs";
 import type { TimelineMessageActionHandlers } from "./message-actions-model";
 import { useSendMessageToMainThread } from "./use-send-to-main-thread";
 
-export interface UseMessageActionHandlersArgs {
+interface UseMessageActionHandlersArgs {
   /** The open thread; undefined until it loads (every action stays hidden). */
   thread: ThreadResponse | undefined;
   /**

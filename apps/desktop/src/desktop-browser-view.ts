@@ -57,7 +57,7 @@ function truncate(value: string, max: number): string {
  * Isolated, persistent partition for the in-app browser. Cookies/storage never
  * touch the bb app session (`defaultSession`) or the user's real browser.
  */
-export const BB_BROWSER_PARTITION = "persist:bb-browser";
+const BB_BROWSER_PARTITION = "persist:bb-browser";
 
 /**
  * `did-fail-load` reports aborted main-frame loads (a user navigating away, a
@@ -123,7 +123,7 @@ export interface DesktopBrowserHostWindow {
   webContents: DesktopBrowserHostWebContents;
 }
 
-export interface DispatchDesktopBrowserAppCommandArgs {
+interface DispatchDesktopBrowserAppCommandArgs {
   command: AppCommandId;
   hostWebContentsId: number;
 }

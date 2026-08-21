@@ -23,7 +23,7 @@ interface UpdateAttempt {
   protocolVersion: number;
 }
 
-export type ProtocolSelfUpdateResult = "failed" | "skipped" | "updated";
+type ProtocolSelfUpdateResult = "failed" | "skipped" | "updated";
 
 export interface ProtocolSelfUpdater {
   handleProtocolMismatch(options?: {
@@ -31,7 +31,7 @@ export interface ProtocolSelfUpdater {
   }): Promise<ProtocolSelfUpdateResult>;
 }
 
-export interface ProtocolSelfUpdateInstaller {
+interface ProtocolSelfUpdateInstaller {
   (tarballPath: string): Promise<void>;
 }
 

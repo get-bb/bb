@@ -47,7 +47,7 @@ export function ThreadRenameDialog({
   );
 }
 
-export interface ThreadRenameDialogContentProps {
+interface ThreadRenameDialogContentProps {
   target: ThreadRenameDialogTarget;
   pending: boolean;
   onRename: (threadId: string, payload: ThreadRenameDialogPayload) => void;

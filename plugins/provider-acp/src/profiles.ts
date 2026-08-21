@@ -8,7 +8,7 @@ import {
  * how to pin one at launch. The bridge parses the listed ids into model
  * families with reasoning-effort variants (see `bridge/model-catalog.ts`).
  */
-export type AcpAgentModelCli = NonNullable<HostDaemonAcpLaunchSpec["modelCli"]>;
+type AcpAgentModelCli = NonNullable<HostDaemonAcpLaunchSpec["modelCli"]>;
 export type AcpAgentReasoningCli = NonNullable<
   HostDaemonAcpLaunchSpec["reasoningCli"]
 >;

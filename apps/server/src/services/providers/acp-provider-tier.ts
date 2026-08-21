@@ -83,7 +83,7 @@ function requireAcpProviderId(providerId: string): void {
   }
 }
 
-export interface BuildAcpProviderInfoArgs {
+interface BuildAcpProviderInfoArgs {
   id: string;
   displayName: string;
   logoUrl: string | null;

@@ -11,7 +11,7 @@ import {
 } from "@/ui";
 import type { PanelStripEntry, PanelStripTarget } from "./panel-model";
 
-export interface PanelTabStripProps {
+interface PanelTabStripProps {
   entries: readonly PanelStripEntry[];
   onActivate: (target: PanelStripTarget) => void;
   onCloseTab: (tabId: string) => void;

@@ -12,7 +12,7 @@ import {
 import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
 
-export interface HostPickerProps {
+interface HostPickerProps {
   hosts: readonly Host[];
   /** Selected machine, or null when the server picks (project default). */
   value: string | null;

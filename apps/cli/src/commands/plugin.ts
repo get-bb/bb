@@ -44,7 +44,7 @@ import { resolveBbCliVersion } from "../version.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 import { renderBorderlessTable } from "../table.js";
 
-export interface NewPluginTarget {
+interface NewPluginTarget {
   packageName: string;
   directoryName: string;
 }

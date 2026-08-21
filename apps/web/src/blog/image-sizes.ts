@@ -5,7 +5,7 @@
  * Markdown carries no size, so record the sizes here. Update this map when you
  * add or replace an image.
  */
-export type ImageSize = { width: number; height: number };
+type ImageSize = { width: number; height: number };
 
 const IMAGE_SIZES: Record<string, ImageSize> = {
   "/blog/an-agentic-ide-that-builds-itself/header.png": {

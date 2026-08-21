@@ -6,7 +6,7 @@ import {
 } from "@bb/connect-client";
 
 /** POST /api/v1/plugins/connect/rpc/listAccountServers result body. */
-export const connectAccountServerSchema = z
+const connectAccountServerSchema = z
   .object({
     handle: z.string().min(1),
     name: z.string().min(1),
@@ -16,14 +16,14 @@ export const connectAccountServerSchema = z
   .strict();
 export type ConnectAccountServer = z.infer<typeof connectAccountServerSchema>;
 
-export const connectListAccountServersResultSchema = z
+const connectListAccountServersResultSchema = z
   .object({
     servers: z.array(connectAccountServerSchema),
     selfHandle: z.string().min(1),
   })
   .strict();
 
-export type ConnectListAccountServersResult = z.infer<
+type ConnectListAccountServersResult = z.infer<
   typeof connectListAccountServersResultSchema
 >;
 
@@ -41,19 +41,19 @@ const rpcFailureSchema = z
   })
   .passthrough();
 
-export const CONNECT_PLUGIN_ID = "connect";
-export const LIST_ACCOUNT_SERVERS_RPC = "listAccountServers";
-export const CONNECT_SERVER_SYNC_INTERVAL_MS = 10 * 60 * 1000;
-export const CONNECT_SERVER_SYNC_MIN_INTERVAL_MS = 60 * 1000;
+const CONNECT_PLUGIN_ID = "connect";
+const LIST_ACCOUNT_SERVERS_RPC = "listAccountServers";
+const CONNECT_SERVER_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+const CONNECT_SERVER_SYNC_MIN_INTERVAL_MS = 60 * 1000;
 
-export type ConnectServerSyncFetch = (
+type ConnectServerSyncFetch = (
   input: string,
   init?: RequestInit,
 ) => Promise<Pick<Response, "ok" | "status" | "json" | "text">>;
 
-export type ConnectServerSyncLog = (message: string) => void;
+type ConnectServerSyncLog = (message: string) => void;
 
-export interface FetchConnectAccountServersArgs {
+interface FetchConnectAccountServersArgs {
   /** Local builtin server origin, e.g. `http://127.0.0.1:38886`. */
   serverUrl: string;
   fetchImpl?: ConnectServerSyncFetch;
@@ -113,7 +113,7 @@ export function selectTargetableConnectServers(
   return result.servers.filter((server) => server.handle !== result.selfHandle);
 }
 
-export interface CreateConnectServerSyncArgs {
+interface CreateConnectServerSyncArgs {
   /**
    * The app's own cached machine credential, or null when it has none. Used
    * when no local runtime is up, so a remote target still lists servers.

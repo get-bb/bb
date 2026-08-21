@@ -58,7 +58,7 @@ function plugin(
   };
 }
 
-export interface InteractionFixture {
+interface InteractionFixture {
   title: string;
   interaction: PendingInteraction;
 }

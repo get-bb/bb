@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface AnimatedBodyProps {
+interface AnimatedBodyProps {
   id: string;
   labelledBy: string;
   isExpanded: boolean;

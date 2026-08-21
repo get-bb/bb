@@ -11,7 +11,7 @@ const SCHEDULE_RUN_FORMATTER = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-export interface FormatScheduleStatusLabelArgs {
+interface FormatScheduleStatusLabelArgs {
   enabled: boolean;
   nextRunAt: number | null;
   trigger?: AutomationTrigger;
@@ -27,7 +27,7 @@ interface OverviewScheduleMetadata {
 
 export type AutomationStatusFilter = "active" | "paused";
 
-export interface OneShotLifecycleArgs {
+interface OneShotLifecycleArgs {
   enabled: boolean;
   trigger: AutomationTrigger;
   runCount: number;
@@ -35,7 +35,7 @@ export interface OneShotLifecycleArgs {
   now?: number;
 }
 
-export type OneShotLifecycle =
+type OneShotLifecycle =
   | "scheduled"
   | "paused"
   | "expired"

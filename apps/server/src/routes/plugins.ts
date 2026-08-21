@@ -28,7 +28,7 @@ import {
 } from "@bb/server-contract";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
-export interface PluginRoutesDeps {
+interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
   db: import("@bb/db").DbConnection;
 }

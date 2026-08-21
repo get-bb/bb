@@ -88,7 +88,7 @@ interface ActiveCallAdmission {
   inputByteLength: number;
 }
 
-export interface PluginHostManagerOptions {
+interface PluginHostManagerOptions {
   dataDir: string;
   logger: Pick<HostDaemonLogger, "debug" | "info" | "warn">;
   fetchArtifact: (args: {

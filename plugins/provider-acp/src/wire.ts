@@ -44,7 +44,7 @@ export function extractAcpContentText(
 // Tool calls
 // ---------------------------------------------------------------------------
 
-export const acpToolKindSchema = z.enum([
+const acpToolKindSchema = z.enum([
   "read",
   "edit",
   "delete",
@@ -385,7 +385,7 @@ export type AcpPermissionOptionKind = z.infer<
   typeof acpPermissionOptionKindSchema
 >;
 
-export const acpPermissionOptionSchema = z
+const acpPermissionOptionSchema = z
   .object({
     optionId: z.string(),
     name: z.string(),

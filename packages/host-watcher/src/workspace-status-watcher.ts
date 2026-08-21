@@ -182,7 +182,7 @@ function isPathInsideDotGit(cwd: string, candidatePath: string): boolean {
   return relativePath === ".git" || relativePath.startsWith(`.git${path.sep}`);
 }
 
-export class WorkspaceStatusWatcher {
+class WorkspaceStatusWatcher {
   private readonly changedPaths = new Set<string>();
   private readonly changeKinds = new Set<WorkspaceStatusWatchChangeKind>();
   private disposed = false;

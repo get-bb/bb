@@ -102,7 +102,7 @@ const REASONING_EFFORTS = [
 
 export const DEFAULT_MODEL = "gpt-5.6-sol";
 
-export const MODELS: readonly AvailableModel[] = [
+const MODELS: readonly AvailableModel[] = [
   {
     id: DEFAULT_MODEL,
     model: DEFAULT_MODEL,

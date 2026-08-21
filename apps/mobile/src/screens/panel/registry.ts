@@ -14,7 +14,7 @@ import type {
  * render a placeholder. See README.md in this folder for the contract.
  */
 
-export type PanelTabKind = FixedPanelTab["kind"];
+type PanelTabKind = FixedPanelTab["kind"];
 
 export type PanelTabOfKind<K extends PanelTabKind> = Extract<
   FixedPanelTab,
@@ -43,7 +43,7 @@ export interface PanelLauncherContentProps {
   filesParams: FilesLauncherParams | null;
 }
 
-export interface PanelContentOptions {
+interface PanelContentOptions {
   /**
    * Keep the content mounted (hidden) while another tab is active, so
    * sockets / scroll positions / WebViews survive tab switches. Default off:

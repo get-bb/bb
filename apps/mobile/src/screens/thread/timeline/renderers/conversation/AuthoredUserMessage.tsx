@@ -22,7 +22,7 @@ import {
   useConversationMarkdownHandlers,
 } from "./conversation-shared";
 
-export interface AuthoredUserMessageProps {
+interface AuthoredUserMessageProps {
   row: TimelineUserConversationRow;
   depth: number;
   projectId: string;

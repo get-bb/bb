@@ -6,7 +6,7 @@ const modelListResultSchema = z.object({
   selectedOnlyModels: z.array(availableModelSchema),
 });
 
-export interface ParsedModelListResult {
+interface ParsedModelListResult {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
 }

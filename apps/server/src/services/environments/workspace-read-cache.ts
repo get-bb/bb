@@ -50,7 +50,7 @@ interface InFlightEntry<TValue> {
   promise: Promise<TValue>;
 }
 
-export interface EnvironmentReadCacheReadArgs<TValue> {
+interface EnvironmentReadCacheReadArgs<TValue> {
   environmentId: string;
   hostId: string;
   /** Distinguishes reads of the same environment with different inputs. */

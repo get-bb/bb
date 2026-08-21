@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 
-export interface RenameDialogAutoFocus {
+interface RenameDialogAutoFocus {
   /** Attach to the rename `Input`. */
   inputRef: React.RefObject<HTMLInputElement | null>;
   /** Pass to `DialogContent`'s `onOpenAutoFocus`. */

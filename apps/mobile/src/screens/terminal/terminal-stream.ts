@@ -27,7 +27,7 @@ export interface TerminalStreamSink {
   onSession(session: TerminalSession): void;
 }
 
-export interface TerminalStreamControllerOptions {
+interface TerminalStreamControllerOptions {
   sink: TerminalStreamSink;
   /** `GET /terminals/:id/output?sinceSeq=`; null disables the gap fill. */
   fetchOutput: ((sinceSeq: number) => Promise<TerminalOutputResponse>) | null;

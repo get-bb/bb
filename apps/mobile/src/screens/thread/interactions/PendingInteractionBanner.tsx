@@ -43,7 +43,7 @@ import { SecretRequestForm } from "./SecretRequestForm";
 
 const DETAIL_SCROLL_MAX_HEIGHT = 220;
 
-export interface PendingInteractionBannerProps {
+interface PendingInteractionBannerProps {
   interaction: PendingInteraction;
   /** The thread the interaction belongs to (a child's id for child banners). */
   threadId: string;

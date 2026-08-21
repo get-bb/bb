@@ -7,7 +7,7 @@ import {
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
 
-export type ComposerEditorLayout = "thread" | "root-compose";
+type ComposerEditorLayout = "thread" | "root-compose";
 
 const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   ComposerEditorLayout,

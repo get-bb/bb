@@ -25,14 +25,14 @@ import {
 } from "./PullRequestStatusPill";
 import { WorkspaceChangesList } from "./WorkspaceChangesList";
 
-export interface ThreadContextBannerPullRequestActions {
+interface ThreadContextBannerPullRequestActions {
   isPending: boolean;
   onMarkReady: () => void;
   onMerge: (method: PullRequestMergeMethod) => void;
   onConvertToDraft: () => void;
 }
 
-export interface ThreadContextBannerMergeBase {
+interface ThreadContextBannerMergeBase {
   branch: string;
   /** Opens the merge-base picker. */
   onPress: () => void;

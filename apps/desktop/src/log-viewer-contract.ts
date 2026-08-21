@@ -6,7 +6,7 @@ export const LOG_VIEWER_SNAPSHOT_CHANNEL = "bb:log-viewer:snapshot";
 export const LOG_VIEWER_VISIBLE_LINE_LIMIT = 10_000;
 
 export type LogViewerComponent = "host-daemon" | "server";
-export type LogViewerLineSource = LogViewerComponent | "system";
+type LogViewerLineSource = LogViewerComponent | "system";
 
 export interface LogViewerLine {
   source: LogViewerLineSource;

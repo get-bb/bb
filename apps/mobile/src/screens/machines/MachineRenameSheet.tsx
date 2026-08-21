@@ -5,7 +5,7 @@ import { useRenameHost } from "@/data/hosts";
 import { Button, Sheet, Text, toast, type SheetController } from "@/ui";
 import { SheetInput } from "../pickers";
 
-export interface MachineRenameSheetProps {
+interface MachineRenameSheetProps {
   controller: SheetController;
   /** The machine being renamed; null keeps the sheet empty. */
   host: Host | null;

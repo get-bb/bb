@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 
-export interface WaitForSetupMarkerCountArgs {
+interface WaitForSetupMarkerCountArgs {
   expectedCount: number;
   markerDir: string;
   timeoutMs: number;

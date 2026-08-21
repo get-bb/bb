@@ -13,7 +13,7 @@ import {
   type TimelineTurnChildrenState,
 } from "./rows";
 
-export interface UseTimelineListItemsArgs {
+interface UseTimelineListItemsArgs {
   rows: readonly TimelineRow[];
   /** Thread runtime is running. */
   scopeActive: boolean;
@@ -23,7 +23,7 @@ export interface UseTimelineListItemsArgs {
   resetKey: string;
 }
 
-export interface UseTimelineListItemsResult {
+interface UseTimelineListItemsResult {
   /** Flat list items; each carries its own `expanded` flag. */
   items: TimelineListItem[];
   /** Stable across renders (safe to hand to memoized cells). */

@@ -91,7 +91,7 @@ export function ProjectPathDialog({
   );
 }
 
-export interface ProjectPathDialogContentProps {
+interface ProjectPathDialogContentProps {
   target: ProjectPathDialogTarget;
   pending: boolean;
   platform: HostPlatform | null;

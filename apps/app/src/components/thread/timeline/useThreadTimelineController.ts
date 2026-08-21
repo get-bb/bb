@@ -13,7 +13,7 @@ import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { useThreadTimeline } from "@/hooks/queries/thread-queries";
 import { BbHttpError, sdk } from "@/lib/sdk";
 
-export interface UseThreadTimelineControllerArgs {
+interface UseThreadTimelineControllerArgs {
   enabled?: boolean;
   surfaceKey?: string;
   threadId: string;

@@ -39,7 +39,7 @@ export interface Env {
 export { DemoStateDO };
 
 /** The Durable Object name for a request: its client address, or one shared fallback when none is known (local dev). */
-export function demoStateName(request: Request): string {
+function demoStateName(request: Request): string {
   return request.headers.get("cf-connecting-ip") ?? "local";
 }
 

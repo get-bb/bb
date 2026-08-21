@@ -169,7 +169,7 @@ export async function storeAttachment(
   };
 }
 
-export interface StoredAttachmentContent {
+interface StoredAttachmentContent {
   content: Buffer;
   /**
    * Strong validator for the stored bytes. Stored names embed a timestamp and

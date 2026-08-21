@@ -3,7 +3,7 @@ import { tasksRpcContract, type Task } from "../shared/contract";
 
 type TasksDomain = ReturnType<typeof registerHandlers>;
 
-export interface SeedDemoResult {
+interface SeedDemoResult {
   foldersCreated: number;
   projectsCreated: number;
   labelsCreated: number;

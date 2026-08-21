@@ -82,7 +82,7 @@ export type SidebarRowSubtitle =
   | { kind: "project"; name: string }
   | { kind: "snippet"; text: string };
 
-export interface SidebarThreadRowViewProps {
+interface SidebarThreadRowViewProps {
   row: SidebarThreadRow;
   /**
    * Optional second line. The home list passes null (one line per row, like
@@ -184,7 +184,7 @@ function subtitleText(subtitle: SidebarRowSubtitle | null): string | undefined {
   return subtitle.kind === "project" ? subtitle.name : subtitle.text;
 }
 
-export interface SidebarHeaderRowViewProps {
+interface SidebarHeaderRowViewProps {
   row: SidebarHeaderRow;
   onToggleCollapsed: (row: SidebarHeaderRow) => void;
   onLongPress: (row: SidebarHeaderRow) => void;
@@ -273,7 +273,7 @@ export const SidebarHeaderRowView = memo(function SidebarHeaderRowView({
   );
 });
 
-export interface SidebarEnvironmentRowViewProps {
+interface SidebarEnvironmentRowViewProps {
   row: SidebarEnvironmentRow;
   onToggleCollapsed: (environmentId: string) => void;
 }

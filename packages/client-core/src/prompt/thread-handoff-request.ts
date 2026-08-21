@@ -11,7 +11,7 @@ export interface ThreadHandoffCreateSeed {
   sourceThreadTitle: string;
 }
 
-export interface ThreadHandoffLocationState {
+interface ThreadHandoffLocationState {
   focusPrompt: true;
   reuseEnvironmentId?: string;
   [THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY]: ThreadHandoffCreateSeed;

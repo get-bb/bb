@@ -19,7 +19,7 @@ import { resolveDevEmailPasswordEnabled } from "./local-auth.js";
 // createServerFn, so the client receives RPC stubs and none of the server-only
 // imports (D1, better-auth, cloudflare:workers) land in the client bundle.
 
-export type DashboardState =
+type DashboardState =
   | { authed: false; emailPasswordEnabled: boolean }
   | ({ authed: true } & AccountState);
 

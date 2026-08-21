@@ -4,7 +4,7 @@ import type { Host, ThreadListEntry } from "@bb/domain";
 // are prefixed (e.g. "host_…"), so the sentinel cannot collide with one.
 export const NO_MACHINE_GROUP_KEY = "no-machine";
 
-export interface MachineThreadGroup {
+interface MachineThreadGroup {
   /** Host id, or {@link NO_MACHINE_GROUP_KEY}. */
   key: string;
   label: string;

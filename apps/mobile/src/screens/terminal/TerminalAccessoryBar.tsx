@@ -10,7 +10,7 @@ import type { TerminalAccessoryKey } from "./terminal-bridge";
  * terminal so the arrows work without the keyboard too.
  */
 
-export interface TerminalAccessoryBarProps {
+interface TerminalAccessoryBarProps {
   ctrlActive: boolean;
   onToggleCtrl: () => void;
   onKey: (key: TerminalAccessoryKey) => void;

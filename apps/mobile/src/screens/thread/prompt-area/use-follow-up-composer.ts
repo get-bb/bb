@@ -53,7 +53,7 @@ import {
 } from "./follow-up-submission";
 import { useThreadExecutionOptions } from "./use-thread-execution-options";
 
-export interface UseFollowUpComposerArgs {
+interface UseFollowUpComposerArgs {
   threadId: string;
   /**
    * The open thread; undefined while it loads. ThreadPromptArea mounts the

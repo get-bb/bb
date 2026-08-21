@@ -4,7 +4,7 @@ import { resolveFont } from "@/theme/fonts";
 import { useTheme } from "@/theme";
 import { Button, SheetTextInput, Text } from "@/ui";
 
-export interface SheetNameFormProps {
+interface SheetNameFormProps {
   title: string;
   message?: string;
   initialValue: string;

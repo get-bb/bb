@@ -40,14 +40,14 @@ import {
 } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
 
-export type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
+type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
 
 interface BuildModelLoadErrorArgs {
   error: ApiError;
   provider: ProviderInfo;
 }
 
-export interface ResolveSystemProviderModelsArgs {
+interface ResolveSystemProviderModelsArgs {
   cwd?: string;
   hostId: string;
   providerId: string;

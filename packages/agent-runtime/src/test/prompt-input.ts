@@ -1,6 +1,6 @@
 import type { PromptInput } from "@bb/domain";
 
-export interface PromptTextInputArgs {
+interface PromptTextInputArgs {
   text: string;
 }
 

@@ -7,7 +7,7 @@ import { resolveItalicFont, useTheme } from "@/theme";
 import { Icon, ShimmerText, Text } from "@/ui";
 import { TimelineTitleView } from "./TimelineTitleView";
 
-export interface WorkingIndicatorRowProps {
+interface WorkingIndicatorRowProps {
   /** "Working…" / "Thinking…" or an override (host reconnecting). */
   label: string;
   /** Streamed reasoning text; tap the row to read it. */

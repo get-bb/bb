@@ -43,7 +43,7 @@ import {
 const NO_FOLDER = "__none__";
 const NEW_FOLDER = "__new__";
 
-export interface NewProjectDialogProps {
+interface NewProjectDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }

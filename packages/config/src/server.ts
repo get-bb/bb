@@ -62,7 +62,7 @@ export interface ServerConfig
   featureFlags: FeatureFlags;
 }
 
-export type LoadServerConfigArgs = LoadCommonConfigArgs;
+type LoadServerConfigArgs = LoadCommonConfigArgs;
 
 export { parseServerBindHost };
 export type { ServerBindHost };

@@ -3,12 +3,11 @@ import { join, resolve } from "node:path";
 
 export const PI_BRIDGE_SESSION_DIR_ENV = "BB_PI_BRIDGE_SESSION_DIR";
 
-export interface ResolvePiBridgeSessionDirArgs {
+interface ResolvePiBridgeSessionDirArgs {
   env: NodeJS.ProcessEnv;
 }
 
-export interface ResolvePiSessionFilePathArgs
-  extends ResolvePiBridgeSessionDirArgs {
+interface ResolvePiSessionFilePathArgs extends ResolvePiBridgeSessionDirArgs {
   threadId: string;
 }
 

@@ -79,7 +79,7 @@ export interface TelemetryService {
   capture(event: TelemetryEvent): void;
 }
 
-export interface CreateTelemetryServiceArgs {
+interface CreateTelemetryServiceArgs {
   apiKey: string;
   appSurface: AppSurface;
   appVersion: string;

@@ -33,7 +33,7 @@ export function listInstallableMachineIds(
   return listHosts(deps.db).map((host) => host.id);
 }
 
-export type InstallGlobalCliSkillsResult = SystemInstallCliSkillsResponse;
+type InstallGlobalCliSkillsResult = SystemInstallCliSkillsResponse;
 
 type GlobalSkillInstallDeps = Pick<
   AppDeps,
@@ -49,7 +49,7 @@ type GlobalSkillInstallDeps = Pick<
   | "telemetry"
 >;
 
-export interface InstallGlobalCliSkillsArgs {
+interface InstallGlobalCliSkillsArgs {
   hostIds: readonly string[];
 }
 

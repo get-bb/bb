@@ -9,12 +9,12 @@ export type ProcessLocalQueuedLockSpec = {
   timeoutMs?: number;
 };
 
-export interface ProcessLocalQueuedLockTimeoutArgs {
+interface ProcessLocalQueuedLockTimeoutArgs {
   key: string;
   timeoutMs: number;
 }
 
-export type WithProcessLocalQueuedLocksArgs<T> = {
+type WithProcessLocalQueuedLocksArgs<T> = {
   locks: ProcessLocalQueuedLockSpec[];
   signal?: AbortSignal;
   work: ProcessLocalQueuedLockWork<T>;
