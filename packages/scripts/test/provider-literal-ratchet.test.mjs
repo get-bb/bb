@@ -100,11 +100,13 @@ describe("scanTree (pure)", () => {
 });
 
 describe("ratchet CLI (against the real repo baseline)", () => {
+  // These two scan the whole repo tree: ~0.3s locally, ~6s on a slow CI
+  // runner, so vitest's 5s default is not enough headroom.
   it("passes against the committed baseline", () => {
     const r = run();
     expect(r.code, r.out).toBe(0);
     expect(r.out).toMatch(/ratchet OK/);
-  });
+  }, 30_000);
 
   it("--write refuses to raise the total without the override", () => {
     // The live tree already matches the baseline, so we cannot force an
@@ -113,5 +115,5 @@ describe("ratchet CLI (against the real repo baseline)", () => {
     // out of scope here; the pure fixture tests above cover counting. This
     // asserts the OK path only.
     expect(run().code).toBe(0);
-  });
+  }, 30_000);
 });
