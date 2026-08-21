@@ -47,7 +47,6 @@ import {
 import {
   extractAcpContentText,
   type AcpToolCallUpdateEvent,
-  type AcpToolKind,
 } from "./wire.js";
 
 /** A tool call's item shape plus the presentation that rides its lifecycle. */
@@ -315,13 +314,18 @@ function reasoningItem(event: AcpToolCallUpdateEvent): AcpClassifiedToolCall {
   };
 }
 
+/**
+ * A generic tool names itself by its kind; a kind the wire schema did not
+ * know keeps the agent's own word (`rawKind`) in the tool slot and presents
+ * as `other`.
+ */
 function genericToolItem(
-  kind: AcpToolKind | undefined,
+  event: Pick<AcpToolCallUpdateEvent, "kind" | "rawKind">,
   title: string | undefined,
 ): AcpClassifiedToolCall {
   return {
-    item: { type: "tool", tool: kind ?? "tool" },
-    presentation: toolKindPresentation({ kind, title }),
+    item: { type: "tool", tool: event.rawKind ?? event.kind ?? "tool" },
+    presentation: toolKindPresentation({ kind: event.kind, title }),
   };
 }
 
@@ -368,19 +372,20 @@ export function classifyAcpToolCall(
   const title = toOptionalString(event.title);
   switch (event.kind) {
     case "read":
-      return fileReadItem(event, title) ?? genericToolItem(event.kind, title);
+      return fileReadItem(event, title) ?? genericToolItem(event, title);
     case "search":
-      return searchItem(event) ?? genericToolItem(event.kind, title);
+      return searchItem(event) ?? genericToolItem(event, title);
     case "fetch":
-      return webFetchItem(event, title) ?? genericToolItem(event.kind, title);
+      return webFetchItem(event, title) ?? genericToolItem(event, title);
     case "think":
       return reasoningItem(event);
     case "execute":
     case "edit":
     case "delete":
     case "move":
+    case "switch_mode":
     case "other":
     case undefined:
-      return genericToolItem(event.kind, title);
+      return genericToolItem(event, title);
   }
 }

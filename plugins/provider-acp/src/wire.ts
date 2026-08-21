@@ -44,8 +44,11 @@ export function extractAcpContentText(
 // Tool calls
 // ---------------------------------------------------------------------------
 
-/** The ACP tool-call kind vocabulary; an absent kind reads as `other`. */
-export const acpToolKindSchema = z.enum([
+/**
+ * The ACP tool-call kind vocabulary (protocol v1 `ToolKind`); an absent kind
+ * reads as `other`.
+ */
+export const ACP_TOOL_KINDS = [
   "read",
   "edit",
   "delete",
@@ -54,16 +57,29 @@ export const acpToolKindSchema = z.enum([
   "execute",
   "think",
   "fetch",
+  "switch_mode",
   "other",
-]);
+] as const;
+export const acpToolKindSchema = z.enum(ACP_TOOL_KINDS);
 export type AcpToolKind = z.infer<typeof acpToolKindSchema>;
+const ACP_TOOL_KIND_SET: ReadonlySet<string> = new Set(ACP_TOOL_KINDS);
 
-const acpToolCallStatusSchema = z.enum([
+/**
+ * The tool-call status vocabulary: the four v1 statuses plus the v2 draft's
+ * `cancelled`, which settles the call as interrupted.
+ */
+export const ACP_TOOL_CALL_STATUSES = [
   "pending",
   "in_progress",
   "completed",
   "failed",
-]);
+  "cancelled",
+] as const;
+const acpToolCallStatusSchema = z.enum(ACP_TOOL_CALL_STATUSES);
+export type AcpToolCallStatus = z.infer<typeof acpToolCallStatusSchema>;
+const ACP_TOOL_CALL_STATUS_SET: ReadonlySet<string> = new Set(
+  ACP_TOOL_CALL_STATUSES,
+);
 
 const acpToolCallContentSchema = z.union([
   z
@@ -89,6 +105,21 @@ const acpToolCallContentSchema = z.union([
 ]);
 export type AcpToolCallContent = z.infer<typeof acpToolCallContentSchema>;
 
+/**
+ * A tool call's content list, one entry at a time: an entry of a type this
+ * schema does not know (the v2 draft adds an open `Other` content variant)
+ * is skipped, and the call keeps the entries it does know. A closed list
+ * here would drop the whole call for one foreign entry.
+ */
+const acpToolCallContentListSchema = z
+  .array(z.unknown())
+  .transform((entries) =>
+    entries.flatMap((entry) => {
+      const parsed = acpToolCallContentSchema.safeParse(entry);
+      return parsed.success ? [parsed.data] : [];
+    }),
+  );
+
 const acpToolCallLocationSchema = z
   .object({
     path: z.string(),
@@ -96,16 +127,59 @@ const acpToolCallLocationSchema = z
   })
   .passthrough();
 
+/**
+ * The parsed tool-call fields. `kind` and `status` are the normalized
+ * vocabularies above; `rawKind` is the agent's own kind when it was not one
+ * of them (see `openAcpToolCallEnums`).
+ */
 const acpToolCallFieldsSchema = z.object({
   toolCallId: z.string(),
   title: z.string().optional(),
   kind: acpToolKindSchema.optional(),
+  rawKind: z.string().optional(),
   status: acpToolCallStatusSchema.optional(),
-  content: z.array(acpToolCallContentSchema).optional(),
+  content: acpToolCallContentListSchema.optional(),
   locations: z.array(acpToolCallLocationSchema).optional(),
   rawInput: z.unknown().optional(),
   rawOutput: z.unknown().optional(),
 });
+
+/**
+ * Open the tool-call enums at the wire boundary. ACP's `ToolKind` is an open
+ * enum upstream (`#[serde(other)]`; the v2 draft adds `Unknown(String)` and
+ * an open status), so an agent may send a `kind` or `status` this schema has
+ * never seen, and some agents serialize an absent optional as `null`. A
+ * closed enum here rejected the whole `tool_call`, so the call never opened
+ * and its later `completed` update merged into nothing — the row was lost.
+ * Now an unknown kind parses as `other` with the raw value kept on
+ * `rawKind` (it names the generic tool slot), an unknown status parses as
+ * `pending`, and a `null` reads as absent.
+ */
+function openAcpToolCallEnums(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return value;
+  }
+  // Freeform agent traffic: narrowed field by field below.
+  const fields = value as Record<string, unknown>;
+  const { kind, status, ...rest } = fields;
+  const next: Record<string, unknown> = rest;
+  if (typeof kind === "string") {
+    if (ACP_TOOL_KIND_SET.has(kind)) {
+      next["kind"] = kind;
+    } else {
+      next["kind"] = "other";
+      next["rawKind"] = kind;
+    }
+  } else if (kind !== undefined && kind !== null) {
+    next["kind"] = kind;
+  }
+  if (typeof status === "string") {
+    next["status"] = ACP_TOOL_CALL_STATUS_SET.has(status) ? status : "pending";
+  } else if (status !== undefined && status !== null) {
+    next["status"] = status;
+  }
+  return next;
+}
 
 // ---------------------------------------------------------------------------
 // Session updates (`session/update` notification payloads)
@@ -125,11 +199,14 @@ export const acpAgentThoughtChunkUpdateSchema = z
   })
   .passthrough();
 
-export const acpToolCallUpdateEventSchema = acpToolCallFieldsSchema
-  .extend({
-    sessionUpdate: z.enum(["tool_call", "tool_call_update"]),
-  })
-  .passthrough();
+export const acpToolCallUpdateEventSchema = z.preprocess(
+  openAcpToolCallEnums,
+  acpToolCallFieldsSchema
+    .extend({
+      sessionUpdate: z.enum(["tool_call", "tool_call_update"]),
+    })
+    .passthrough(),
+);
 export type AcpToolCallUpdateEvent = z.infer<
   typeof acpToolCallUpdateEventSchema
 >;
@@ -399,7 +476,12 @@ export type AcpPermissionOption = z.infer<typeof acpPermissionOptionSchema>;
 export const acpRequestPermissionParamsSchema = z
   .object({
     sessionId: z.string(),
-    toolCall: acpToolCallFieldsSchema.partial().passthrough().optional(),
+    toolCall: z
+      .preprocess(
+        openAcpToolCallEnums,
+        acpToolCallFieldsSchema.partial().passthrough(),
+      )
+      .optional(),
     options: z.array(acpPermissionOptionSchema).min(1),
   })
   .passthrough();

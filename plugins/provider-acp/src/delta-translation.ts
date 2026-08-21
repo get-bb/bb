@@ -96,7 +96,9 @@ const PLAN_STEPS_CHANNEL = "planSteps";
 function isTerminalAcpStatus(
   status: AcpToolCallUpdateEvent["status"],
 ): boolean {
-  return status === "completed" || status === "failed";
+  return (
+    status === "completed" || status === "failed" || status === "cancelled"
+  );
 }
 
 function mapAcpToolCallStatus(
@@ -107,6 +109,8 @@ function mapAcpToolCallStatus(
       return "completed";
     case "failed":
       return "failed";
+    case "cancelled":
+      return "interrupted";
     default:
       return "pending";
   }
@@ -124,10 +128,23 @@ function mergeAcpToolCallEvents(
   if (!started) {
     return update;
   }
+  // A kind on the update replaces the started kind together with its raw
+  // form: a known kind clears a stale `rawKind`, an unknown one carries its
+  // own.
+  const { rawKind: startedRawKind, ...startedRest } = started;
+  const kindFields =
+    update.kind !== undefined
+      ? {
+          kind: update.kind,
+          ...(update.rawKind !== undefined ? { rawKind: update.rawKind } : {}),
+        }
+      : startedRawKind !== undefined
+        ? { rawKind: startedRawKind }
+        : {};
   return {
-    ...started,
+    ...startedRest,
+    ...kindFields,
     ...(update.title !== undefined ? { title: update.title } : {}),
-    ...(update.kind !== undefined ? { kind: update.kind } : {}),
     ...(update.status !== undefined ? { status: update.status } : {}),
     ...(update.content !== undefined ? { content: update.content } : {}),
     ...(update.locations !== undefined ? { locations: update.locations } : {}),

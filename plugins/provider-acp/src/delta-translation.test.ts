@@ -1185,6 +1185,95 @@ describe("acp delta translation (native kinds → core kinds)", () => {
     });
   });
 
+  // The live data-loss case: one unseen `kind` used to fail the wire parse,
+  // so the tool_call never opened and its `completed` update closed a bare
+  // untitled generic row. The call now opens under the agent's own kind word
+  // and closes on the same item.
+  it("keeps a call whose kind the schema does not know", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const opened = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-deploy",
+        title: "Deploy preview",
+        kind: "deploy",
+        status: "in_progress",
+      }),
+    );
+    expect(opened).toHaveLength(1);
+    expect(opened[0]).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "toolCall",
+        tool: "deploy",
+        status: "pending",
+        presentation: {
+          label: { pending: "Running tool", completed: "Ran tool" },
+          icon: { glyph: "Toolbox" },
+          title: "Deploy preview",
+        },
+      },
+    });
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+
+    const closed = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-deploy",
+        status: "completed",
+        rawOutput: { url: "https://preview.example" },
+      }),
+    );
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "toolCall",
+        id: openedId,
+        tool: "deploy",
+        status: "completed",
+        presentation: { title: "Deploy preview" },
+      },
+    });
+  });
+
+  it("settles a cancelled call as interrupted and a switch_mode call as its own kind", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-mode",
+        title: "Switch to plan mode",
+        kind: "switch_mode",
+        status: "pending",
+      }),
+    );
+    const closed = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-mode",
+        status: "cancelled",
+      }),
+    );
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "toolCall",
+        tool: "switch_mode",
+        status: "interrupted",
+        presentation: {
+          label: { pending: "Switching mode", completed: "Switched mode" },
+          icon: { glyph: "SlidersHorizontal" },
+          title: "Switch to plan mode",
+        },
+      },
+    });
+  });
+
   it("names a generic call by its kind and keeps the title as the headline", () => {
     expect(
       openItem({ toolCallId: "other-1", title: "MCP: tool", kind: "other" }),

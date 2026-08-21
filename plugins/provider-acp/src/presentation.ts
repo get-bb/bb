@@ -228,6 +228,10 @@ const KIND_PRESENTATIONS: Readonly<Record<AcpToolKind, KindPresentationSpec>> =
       label: { pending: "Fetching", completed: "Fetched" },
       glyph: "Globe",
     },
+    switch_mode: {
+      label: { pending: "Switching mode", completed: "Switched mode" },
+      glyph: "SlidersHorizontal",
+    },
     other: {
       label: { pending: "Running tool", completed: "Ran tool" },
       glyph: "Toolbox",
