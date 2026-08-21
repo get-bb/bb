@@ -181,7 +181,11 @@ entry from `~/.bb/config.json` in all model lists: the web and mobile pickers,
 `bb provider models`, and `sdk.providers.models`. Turn it on before a screen
 share so a private or early-access model id does not appear. It defaults to
 off. The entries stay in `config.json`, and a thread that names a hidden model
-explicitly still runs with it. Set it with
+explicitly still runs with it. Default model resolution for a new thread also
+keeps the full list, so a provider whose only models are custom still starts.
+A composer whose stored selection is a hidden model treats it as unavailable
+and falls back to the provider default; the next send records that default, so
+select the custom model again after you turn streamer mode off. Set it with
 `bb settings general streamerMode <true|false>`.
 
 Outside an open typeahead menu, Shift+Enter inserts a newline. In zen mode,

@@ -5,12 +5,17 @@ import {
   type AppThemeSelection,
   type Experiments,
 } from "@bb/domain";
-import type { SystemInstallCliSkillsRequest } from "@bb/server-contract";
+import type {
+  SystemConfigResponse,
+  SystemInstallCliSkillsRequest,
+} from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import {
   invalidateGeneralSettingsDependencies,
   invalidateSystemConfig,
+  resetModelCatalogsAfterStreamerModeChange,
 } from "../cache-owners/system-cache-effects";
+import { systemConfigQueryKey } from "../queries/query-keys";
 import {
   beginKeyboardSettingsCacheTransaction,
   rollbackKeyboardSettingsCacheTransaction,
@@ -50,8 +55,16 @@ export function useUpdateGeneralSettings() {
     },
     mutationFn: (settings: AppSettings) =>
       sdk.system.updateGeneralSettings(settings),
-    onSuccess: () => {
+    onSuccess: (_settings, written) => {
+      // Read the previous value before the config invalidation replaces it.
+      const previous = queryClient.getQueryData<SystemConfigResponse>(
+        systemConfigQueryKey(),
+      )?.generalSettings.streamerMode;
       invalidateGeneralSettingsDependencies({ queryClient });
+      // An unknown previous value also resets: a stale preload is the risk.
+      if (previous !== written.streamerMode) {
+        void resetModelCatalogsAfterStreamerModeChange({ queryClient });
+      }
     },
   });
 }
@@ -107,8 +120,7 @@ export function useUpdateAppearance() {
     meta: {
       errorMessage: "Failed to update appearance.",
     },
-    mutationFn: (selection: AppThemeSelection) =>
-      sdk.theme.set(selection),
+    mutationFn: (selection: AppThemeSelection) => sdk.theme.set(selection),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

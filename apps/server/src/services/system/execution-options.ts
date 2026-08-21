@@ -343,7 +343,10 @@ function findCustomAcpAgentForProviderId(
  * Load one provider's model catalog on an already-resolved host. Unlike the
  * full execution-options response, this does not probe for other installed ACP
  * agents, so thread creation can resolve an omitted model with one targeted
- * daemon request.
+ * daemon request. This is execution policy, not a public list, so it keeps
+ * every custom model: streamer mode must not change which default model a
+ * thread resolves to, and a provider whose only models come from config.json
+ * must still be able to start a thread.
  */
 export async function resolveSystemProviderModels(
   deps: LoggedWorkSessionDeps,
@@ -371,7 +374,7 @@ export async function resolveSystemProviderModels(
   const { models, selectedOnlyModels } = appendCustomModels(
     deps.providerRegistry,
     {
-      customModels: listVisibleCustomModels(deps),
+      customModels: deps.config.customModels,
       models: result.models,
       providerId: provider.id,
       selectedOnlyModels: result.selectedOnlyModels,
@@ -385,11 +388,12 @@ export async function resolveSystemProviderModels(
 }
 
 /**
- * The config.json custom models that model lists may show. Streamer mode hides
- * all of them: a custom entry is often a private or early-access model id, and
- * this is the one place every picker, the CLI, and the SDK read them from. An
- * explicit thread model request bypasses the catalog, so a hidden model still
- * runs when a caller names it directly.
+ * The config.json custom models that public model lists may show. Streamer
+ * mode hides all of them: a custom entry is often a private or early-access
+ * model id, and the execution-options response is where every picker, the CLI,
+ * and the SDK read them from. Execution policy is unaffected: an explicit
+ * thread model request bypasses the catalog, and `resolveSystemProviderModels`
+ * keeps the full list for default resolution.
  */
 export function listVisibleCustomModels(
   deps: Pick<LoggedWorkSessionDeps, "config" | "db">,

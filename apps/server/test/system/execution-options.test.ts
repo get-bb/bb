@@ -8,6 +8,7 @@ import {
   appendCustomModels,
   listSystemProviderInfos,
   resolveSystemExecutionOptions,
+  resolveSystemProviderModels,
 } from "../../src/services/system/execution-options.js";
 import { ApiError } from "../../src/errors.js";
 import { availableModelFixture } from "../helpers/available-models.js";
@@ -916,6 +917,43 @@ describe("resolveSystemExecutionOptions", () => {
             (request) => request.command.type === "provider.list_models",
           ),
         ).toHaveLength(1);
+      },
+    );
+  });
+
+  it("keeps custom models in the thread-create default catalog while streamer mode is on", async () => {
+    await withTestHarness(
+      {
+        customModels: [
+          { providerId: "claude-code", model: "claude-example-preview" },
+        ],
+      },
+      async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-provider-models-streamer-mode",
+        });
+        // A provider whose only models come from config.json must still
+        // resolve a default for a thread created without an explicit model.
+        registerProviderHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          modelsByProviderId: {
+            "claude-code": { models: [], selectedOnlyModels: [] },
+          },
+        });
+        setAppSettings(harness.db, {
+          ...getAppSettings(harness.db),
+          streamerMode: true,
+        });
+
+        const catalog = await resolveSystemProviderModels(harness.deps, {
+          hostId: host.id,
+          providerId: "claude-code",
+        });
+
+        expect(catalog.models.map((model) => model.model)).toEqual([
+          "claude-example-preview",
+        ]);
       },
     );
   });

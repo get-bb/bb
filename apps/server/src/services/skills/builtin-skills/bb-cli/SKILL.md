@@ -363,6 +363,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
   and bb discovers it automatically. An OpenCode agent is a session mode, not
   a model, and cannot be selected through bb. This list also has no set/unset
   CLI surface; edit the JSON and run `bb-app config refresh` or restart bb.
+  The `streamerMode` General preference hides every entry from model lists.
 - Top-level `sharedSkillRoots` uses the same relative `user` and `project`
   paths. bb lists these skills as read-only. bb injects them into each provider,
   so one physical skill collection can support bb and standalone provider CLIs.

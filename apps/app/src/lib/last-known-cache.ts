@@ -11,6 +11,11 @@ export interface LastKnownCache<T> {
   read(key: string): T | null;
   /** Best-effort: storage failures (quota, privacy modes) are swallowed. */
   write(key: string, value: T): void;
+  /**
+   * Forget every scope of this cache's current version. Use it when a policy
+   * change makes every remembered answer wrong to replay, not merely stale.
+   */
+  clear(): void;
 }
 
 /**
@@ -94,6 +99,23 @@ export function createLastKnownCache<T>({
         storage.setItem(key, value);
       } catch {
         // Best-effort by contract; see above.
+      }
+    },
+    clear: () => {
+      try {
+        const owned: string[] = [];
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+          const stored = window.localStorage.key(index);
+          if (
+            stored !== null &&
+            (stored === zeroScopeKey || stored.startsWith(versionPrefix))
+          ) {
+            owned.push(stored);
+          }
+        }
+        for (const key of owned) window.localStorage.removeItem(key);
+      } catch {
+        // No storage, or none we may enumerate: nothing to clear.
       }
     },
   };

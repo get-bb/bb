@@ -38,3 +38,8 @@ export function modelCatalogCacheKey({
 
 export const readCachedModelCatalog = modelCatalogCache.read;
 export const writeCachedModelCatalog = modelCatalogCache.write;
+/**
+ * Drop every remembered catalog. Streamer mode changes which models the server
+ * lists, so a catalog cached before the toggle must not preload the picker.
+ */
+export const clearCachedModelCatalogs = modelCatalogCache.clear;
