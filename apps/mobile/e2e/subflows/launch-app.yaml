@@ -20,6 +20,13 @@ appId: app.getbb.mobile
       true: ${typeof BB_E2E_EMBEDDED_BUNDLE !== "undefined" && BB_E2E_EMBEDDED_BUNDLE === "1"}
     commands:
       - launchApp
+      # `launchApp` returns when the process starts, before the embedded JS
+      # bundle and Expo Router necessarily mount. Wait for the first React
+      # screen so callers can safely deliver a live custom-scheme link.
+      - extendedWaitUntil:
+          visible:
+            id: "add-server-screen"
+          timeout: 30000
 - runFlow:
     when:
       true: ${typeof BB_E2E_EMBEDDED_BUNDLE === "undefined" || BB_E2E_EMBEDDED_BUNDLE !== "1"}
