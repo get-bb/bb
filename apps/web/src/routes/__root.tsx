@@ -49,10 +49,16 @@ export const Route = createRootRoute({
 });
 
 // Set the dark class before first paint so a stored/system dark preference
-// doesn't flash light on the dashboard (mirrors the bb app's pre-paint
-// script). The marketing page is light-only and has no .dark rules, so the
-// class is inert there.
-const THEME_INIT = `try{var t=localStorage.getItem("bb.theme");if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`;
+// doesn't flash light anywhere (mirrors the bb app's pre-paint script). The
+// dashboard's theme.css and the marketing pages' landing.css both key their
+// dark tokens off this class; the marketing nav's theme toggle writes the
+// same bb.theme key (see landing/site-chrome.tsx).
+// The routes ship a light theme-color meta; when the resolved theme is dark,
+// retint it to landing.css's dark --bg (oklch(0.195 0 0) ≈ #151515) once the
+// head has parsed. Two media-scoped metas would be the declarative fix, but
+// the router dedupes meta tags by name, so only one can survive. The nav's
+// theme toggle re-syncs the meta on every explicit flip.
+const THEME_INIT = `try{var t=localStorage.getItem("bb.theme");if(t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark");document.addEventListener("DOMContentLoaded",function(){var m=document.querySelector('meta[name="theme-color"]');if(m)m.content="#151515"})}}catch(e){}`;
 
 // Mark JS as available before first paint so the marketing page's app mock can
 // start hidden and construct itself in. No-JS keeps it visible.

@@ -26,6 +26,7 @@ import {
 } from "@/server/fns";
 import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
 import bbIcon from "../assets/bb-icon.png";
+import bbIconDark from "../assets/bb-icon-dark.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 import {
   dashboardRefreshIntervalMs,
@@ -75,7 +76,18 @@ type ServerState = Extract<
 function BrandRow() {
   return (
     <div className="mb-[18px] flex items-center gap-2.5">
-      <img src={bbIcon} alt="bb" className="h-[30px] w-[30px] rounded-lg" />
+      {/* The light asset is the white app-icon tile, which glares in dark;
+          the dark asset is the brand's white glyph on transparent. */}
+      <img
+        src={bbIcon}
+        alt="bb"
+        className="h-[30px] w-[30px] rounded-lg dark:hidden"
+      />
+      <img
+        src={bbIconDark}
+        alt="bb"
+        className="hidden h-[30px] w-[30px] dark:block"
+      />
       <div className="leading-tight">
         <b className="block text-sm font-semibold">bb connect</b>
         <span className="text-xs text-muted-foreground">
