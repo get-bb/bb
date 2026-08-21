@@ -107,6 +107,58 @@ export function normalizeCalibrationEvents(
   return list.map((event) => normalizeValue(event, interner, idFields));
 }
 
+export interface CalibrationStreamDiff {
+  /** Events present only in the bridge stream, in bridge order. */
+  onlyInBridge: unknown[];
+  /** Events present only in the legacy stream, in legacy order. */
+  onlyInLegacy: unknown[];
+}
+
+/**
+ * Longest-common-subsequence diff over the two normalized streams. Streams are
+ * tens of events, so the quadratic table is free, and unlike a positional
+ * comparison it reports one inserted event as one insertion rather than
+ * desynchronizing everything after it.
+ */
+export function diffCalibrationStreams(
+  legacy: readonly unknown[],
+  bridge: readonly unknown[],
+): CalibrationStreamDiff {
+  const left = legacy.map((event) => JSON.stringify(event));
+  const right = bridge.map((event) => JSON.stringify(event));
+  const lengths: number[][] = Array.from({ length: left.length + 1 }, () =>
+    new Array<number>(right.length + 1).fill(0),
+  );
+  for (let i = left.length - 1; i >= 0; i -= 1) {
+    for (let j = right.length - 1; j >= 0; j -= 1) {
+      lengths[i][j] =
+        left[i] === right[j]
+          ? lengths[i + 1][j + 1] + 1
+          : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+    }
+  }
+
+  const onlyInLegacy: unknown[] = [];
+  const onlyInBridge: unknown[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < left.length && j < right.length) {
+    if (left[i] === right[j]) {
+      i += 1;
+      j += 1;
+    } else if (lengths[i + 1][j] >= lengths[i][j + 1]) {
+      onlyInLegacy.push(legacy[i]);
+      i += 1;
+    } else {
+      onlyInBridge.push(bridge[j]);
+      j += 1;
+    }
+  }
+  onlyInLegacy.push(...legacy.slice(i));
+  onlyInBridge.push(...bridge.slice(j));
+  return { onlyInLegacy, onlyInBridge };
+}
+
 /** Compact `type` (+ item type) rendering for asserting a known-divergence list. */
 export function describeCalibrationEvents(
   events: readonly unknown[],
