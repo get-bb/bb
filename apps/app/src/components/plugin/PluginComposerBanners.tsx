@@ -14,18 +14,26 @@ export function ComposerBannersSlot({
   view,
   children,
   ownerPlacement = "after",
+  includePluginContributions = true,
 }: {
   view?: ComposerView;
   children?: ReactNode;
   ownerPlacement?: "before" | "after";
+  includePluginContributions?: boolean;
 }) {
   return view === undefined ? (
-    <ComposerBannerRows ownerPlacement={ownerPlacement}>
+    <ComposerBannerRows
+      ownerPlacement={ownerPlacement}
+      includePluginContributions={includePluginContributions}
+    >
       {children}
     </ComposerBannerRows>
   ) : (
     <PluginComposerViewProvider value={view}>
-      <ComposerBannerRows ownerPlacement={ownerPlacement}>
+      <ComposerBannerRows
+        ownerPlacement={ownerPlacement}
+        includePluginContributions={includePluginContributions}
+      >
         {children}
       </ComposerBannerRows>
     </PluginComposerViewProvider>
@@ -35,15 +43,17 @@ export function ComposerBannersSlot({
 function ComposerBannerRows({
   children,
   ownerPlacement,
+  includePluginContributions,
 }: {
   children?: ReactNode;
   ownerPlacement: "before" | "after";
+  includePluginContributions: boolean;
 }) {
   const view = useOptionalPluginComposerView();
   const banners = useResolvedComposerBanners(view?.scope.kind ?? null);
   const scopeKey =
     view === undefined ? null : composerScopeIdentity(view.scope);
-  const pluginRows = banners.map(
+  const pluginRows = (includePluginContributions ? banners : []).map(
     ({ key, pluginId, customizationId, banner }) => {
       const slotId = `${customizationId}/${banner.id}`;
       return (

@@ -109,7 +109,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
             // Illustration, not a working surface: another plugin's composer
             // UI (an inline action, a banner) must not land inside the
             // diagram, and nothing must rewrite the seeded example draft.
-            experimental_suppressPluginUi
+            experimental_pluginCustomizations="none"
             // A docs page should never create threads; the draft is kept.
             onSubmit={() => {
               throw new Error("Submitting is disabled in the docs preview.");
@@ -124,7 +124,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
             // what gets typed into the Home slide's live copy.
             draftKey="composer-anatomy-2"
             initialPrompt="Summarize @release-notes and fix the TODO in checkout."
-            experimental_suppressPluginUi
+            experimental_pluginCustomizations="none"
             onSubmit={() => {
               throw new Error("Submitting is disabled in the docs preview.");
             }}

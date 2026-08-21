@@ -1625,12 +1625,13 @@ export interface NewThreadComposerProps {
    */
   onSubmit: (request: NewThreadRequest) => void | Promise<void>;
   /**
-   * Render only bb's own composer: no banners, inline actions, + menu rows,
-   * or draft highlighting from other plugins. For embeds that draw the
-   * composer as an illustration rather than use it, so another plugin's UI
-   * cannot land inside the picture. Experimental: see docs/api_to_audit.md.
+   * Which globally registered plugin composer customizations render in this
+   * embedded composer. `"all"` (the default) preserves the ordinary composed
+   * experience; `"none"` renders only bb's composer, without plugin banners,
+   * actions, + menu rows, draft highlighting, or draft observers.
+   * Experimental: see docs/api_to_audit.md.
    */
-  experimental_suppressPluginUi?: boolean;
+  experimental_pluginCustomizations?: "all" | "none";
 }
 
 /**

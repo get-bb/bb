@@ -797,16 +797,17 @@ Implementation: the shared workflow is
    stabilizing, confirm unconditional project switching is right for embedded
    plugin workflows, rather than adding an explicit project-locking policy.
 
-7. **`experimental_suppressPluginUi`.** Renders the embedded composer without
-   any other plugin's customizations (banners, inline actions, + menu rows,
-   draft highlighting), through the host's existing
-   `suppressPluginComposerCustomizations` flag. Added for the Plugin Guide,
-   whose diagrams embed the real composer as an illustration: without it, any
-   installed composer plugin (e.g. a prompt improver's inline action) renders
-   inside the picture, and its actions can rewrite the guide's persisted
-   example draft. Before stabilizing, decide whether "illustration mode" is
-   the right abstraction (it also implies inert), or whether embeds should
-   instead declare which plugins' UI they accept.
+7. **`experimental_pluginCustomizations`.** Selects whether an embedded
+   composer includes `"all"` globally registered plugin customizations or
+   `"none"`. Omission defaults to `"all"`, preserving the behavior shipped by
+   the original composer API. `"none"` provides cross-plugin isolation for a
+   plugin-owned embed: no plugin banners, inline actions, + menu rows, draft
+   highlighting, or draft observers render there. The Plugin Guide uses this
+   for its real-composer diagrams so installed plugins cannot alter the
+   illustration or its persisted example draft. Before stabilizing, confirm
+   the all-or-none policy covers real embedded workflows; add a narrower
+   owner-only mode only when a concrete consumer needs it rather than turning
+   this into a plugin allowlist or permissions model.
 
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 

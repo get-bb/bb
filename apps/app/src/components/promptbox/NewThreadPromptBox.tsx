@@ -393,7 +393,10 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
       className="w-full"
     >
       <div className="mb-2 grid gap-2 empty:hidden">
-        <ComposerBannersSlot ownerPlacement="before">
+        <ComposerBannersSlot
+          ownerPlacement="before"
+          includePluginContributions={!suppressPluginComposerCustomizations}
+        >
           {modeConfig.banner}
         </ComposerBannersSlot>
       </div>

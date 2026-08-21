@@ -232,4 +232,27 @@ describe("ComposerBannersSlot", () => {
     );
     expect(view.container.textContent).toBe("Plugin rowBB row");
   });
+
+  it("preserves BB-owned rows when plugin contributions are excluded", () => {
+    setPluginSlotRegistrations(
+      "excluded-plugin",
+      registrations([
+        {
+          id: "excluded",
+          banners: [{ id: "plugin", component: () => <div>Plugin row</div> }],
+        },
+      ]),
+    );
+
+    const view = render(
+      <ComposerBannersSlot
+        view={composerView("t1")}
+        includePluginContributions={false}
+      >
+        <div>BB row</div>
+      </ComposerBannersSlot>,
+    );
+
+    expect(view.container.textContent).toBe("BB row");
+  });
 });
