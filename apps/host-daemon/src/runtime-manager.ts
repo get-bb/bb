@@ -295,9 +295,13 @@ function providerProcessEnvFromShellEnv(
   if (shellEnv.BB_CLAUDE_CODE_EXECUTABLE) {
     env.BB_CLAUDE_CODE_EXECUTABLE = shellEnv.BB_CLAUDE_CODE_EXECUTABLE;
   }
-  // Bridge record mode: the runtime scopes the root per provider process.
-  if (shellEnv.BB_PROVIDER_BRIDGE_RECORD_DIR) {
-    env.BB_PROVIDER_BRIDGE_RECORD_DIR = shellEnv.BB_PROVIDER_BRIDGE_RECORD_DIR;
+  // Bridge record mode (docs/provider-bridge-protocol.md) rides the same
+  // forward, from the daemon's own env rather than the shell env: the shell
+  // env doubles as the agent's shell environment, and the variable must reach
+  // the bridge process only, never the provider child or its shells.
+  const recordDir = process.env.BB_PROVIDER_BRIDGE_RECORD_DIR;
+  if (recordDir) {
+    env.BB_PROVIDER_BRIDGE_RECORD_DIR = recordDir;
   }
   return Object.keys(env).length > 0 ? env : null;
 }

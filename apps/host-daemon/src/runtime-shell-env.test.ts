@@ -407,20 +407,6 @@ describe("prepareRuntimeShellEnv", () => {
     });
   });
 
-  it("forwards the bridge record-mode directory past the BB_* spawn sanitization", () => {
-    vi.stubEnv("BB_PROVIDER_BRIDGE_RECORD_DIR", "/tmp/provider-recordings/raw");
-
-    expect(
-      prepareRuntimeShellEnv({
-        bbExecutableDirectory: "/tmp/bb-bin",
-        inheritedPath: "/usr/bin",
-        serverUrl: "http://127.0.0.1:3334",
-      }),
-    ).toMatchObject({
-      BB_PROVIDER_BRIDGE_RECORD_DIR: "/tmp/provider-recordings/raw",
-    });
-  });
-
   it("uses an explicit bbExecutablePath for BB_CLI", () => {
     expect(
       prepareRuntimeShellEnv({

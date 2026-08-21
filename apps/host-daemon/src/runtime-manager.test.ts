@@ -127,6 +127,7 @@ async function writeInjectedSkillSource(
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     tempDirs
       .splice(0)
@@ -1179,6 +1180,34 @@ describe("RuntimeManager", () => {
           PATH: "/tmp/bb-bin:/usr/bin",
           BB_SERVER_URL: "http://127.0.0.1:3334",
         },
+      }),
+    );
+  });
+
+  it("forwards the bridge record-mode directory to provider processes but not the shell env", async () => {
+    vi.stubEnv("BB_PROVIDER_BRIDGE_RECORD_DIR", "/tmp/provider-recordings/raw");
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const createRuntime = vi.fn(() => createFakeRuntime());
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime,
+      shellEnv: {
+        PATH: "/tmp/bb-bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(createRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: {
+          PATH: "/tmp/bb-bin:/usr/bin",
+          BB_PROVIDER_BRIDGE_RECORD_DIR: "/tmp/provider-recordings/raw",
+        },
+        shellEnv: { PATH: "/tmp/bb-bin:/usr/bin" },
       }),
     );
   });
