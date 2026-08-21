@@ -722,7 +722,14 @@ branding, and model-projection policy, and renders the same
 `ModelReasoningPicker` used by first-party composers. A provider tab is a
 preview until its authoritative catalog resolves; the component then emits the
 provider, default model, reconciled reasoning, and supported service tier as
-one value. `hostId` optionally routes discovery through one enrolled machine.
+one value. `routing` can target one enrolled host or an existing environment;
+omitting it uses primary-machine routing. `disabled` renders the same summary
+without opening the picker. Verified catalogs also normalize an empty or stale
+controlled selection; placeholder, failed, and empty catalogs do not.
+
+Tasks delegation presets and Automations agent execution both use this
+component end to end. They persist the same tuple and pass it to
+`bb.sdk.threads.spawn`; neither plugin exposes a parallel catalog RPC.
 
 Implementation: `apps/app/src/components/plugin/PluginProviderModelPicker.tsx`,
 bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
@@ -732,17 +739,21 @@ bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
 1. **Atomic controlled contract.** Confirm the four execution fields should
    remain one value and that selecting a provider should immediately choose its
    verified default rather than wait for an explicit model click.
-2. **Routing.** Omitted `hostId` follows the server's primary-machine routing.
-   Confirm plugins do not need environment/workspace-scoped discovery before
-   stabilizing the prop shape.
+2. **Routing.** Omitted `routing` follows the server's primary-machine routing;
+   `{ kind: "host", hostId }` and `{ kind: "environment", environmentId }`
+   cover machine- and workspace-dependent catalogs. Confirm those two routes
+   are sufficient before stabilizing the discriminated union.
 3. **Capability policy.** Confirm an unsupported provider should omit
    `serviceTier` while supported providers retain the controlled tier, and that
    reasoning should continue using the composer's closest-supported policy.
-4. **Catalog failure policy.** Placeholder, failed, and empty catalogs never
-   change the controlled value. Confirm silent retention is preferable to an
-   explicit error callback.
+4. **Catalog failure and normalization policy.** Placeholder, failed, and empty
+   catalogs never change the controlled value. A verified catalog normalizes
+   stale values while selected-only retired models survive. Confirm silent
+   retention on failure and automatic correction on success are preferable to
+   explicit callbacks.
 5. **Scope.** Validate settings and compact-form usage in external plugins,
-   especially whether they need an explicit loading/error callback. Permission,
+   especially whether they need an explicit loading/error callback. Tasks and
+   Automations currently rely on the picker-owned loading/error UI. Permission,
    environment, and prompt submission stay intentionally outside this control.
 
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)

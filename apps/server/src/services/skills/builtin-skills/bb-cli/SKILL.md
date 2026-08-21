@@ -595,7 +595,7 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - Script automations may be disabled by the plugin setting; fall back to an
   `agent` automation if script creation is rejected.
 - Create an agent automation with
-  `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --prompt "..."`.
+  `bb automation create --project <id> --name "..." --cron "0 9 * * 1-5" --timezone "America/New_York" --provider <id> --model <model> --reasoning <level> --service-tier <default|fast> --prompt "..."`.
 - Create a one-shot agent automation with
   `bb automation create --project <id> --name "..." --in "30m" --provider <id> --model <model> --prompt "..."`,
   or use `--at "2026-07-03T09:00:00-07:00"` for an absolute run time.
@@ -627,20 +627,24 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
 - Use `bb automation list`, `bb automation show <id>`, and
   `bb automation runs <id>` to inspect; `--output <run-id>` prints a script
   run's captured stdout.
-- Partially update an existing agent automation in place by omitting
-  `--provider` and `--model` and using `bb automation update <id> --project <id>
---prompt "..."`, `--permission-mode accept-edits|auto|full`, or exactly one
+- Partially update an existing agent automation in place with any of
+  `--prompt`, `--provider`, `--model`, `--reasoning`,
+  `--service-tier default|fast|none`, `--permission-mode accept-edits|auto|full`,
+  or exactly one
   target option:
   `--target-thread <id>`, `--environment <id-or-path>`, or
   `--new-environment worktree [--base-branch <branch>]`. Omitted execution
   fields are preserved; target options are mutually exclusive.
+  Pass provider, model, reasoning, service tier, and permission together when
+  switching providers.
 - Use `bb automation pause <id>` / `bb automation resume <id>` to toggle,
   `bb automation run <id>` to trigger now, and `bb automation delete <id> --yes`
   to remove.
 - Use `bb automation update <id> --project <id>` with `--name` or schedule
   flags for metadata changes. To change what runs, provide a complete
   replacement execution: `--prompt` + `--provider` + `--model` for an agent,
-  or `--script`/`--script-file` for a script. Script replacements also accept
+  with optional `--reasoning` and `--service-tier`, or
+  `--script`/`--script-file` for a script. Script replacements also accept
   `--interpreter`, `--timeout`, and `--env-json '{"KEY":"value"}'`.
 - Use `bb plugin list` if `bb automation ...` is unavailable; the builtin
   automations plugin should be installed and running.

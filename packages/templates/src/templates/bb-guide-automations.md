@@ -25,6 +25,8 @@ Schedules:
 Agent execution:
 
   --prompt <text> --provider <id> --model <model>
+  [--reasoning <none|low|medium|high|xhigh|ultracode|max|ultra>]
+  [--service-tier <default|fast>]
   [--permission-mode <accept-edits|auto|full>]
   [--environment <environment-id|path> | --new-environment worktree]
   [--base-branch <branch>] [--target-thread <thread-id>]
@@ -44,10 +46,13 @@ apply until you run `update <automationId> --script-file <path>` again;
 print the stored copy path on the `Script:` line (`execution.storedScriptPath`
 with `--json`).
 
-`update` can combine name, schedule, and execution changes. Execution changes
-replace the previous execution completely: provide all required agent fields or
-a complete script source. This makes mode changes explicit and prevents stale
-settings from the previous mode from surviving.
+`update` can combine name, schedule, and execution changes. A complete agent
+replacement supplies `--prompt`, `--provider`, and `--model`; a script
+replacement supplies a complete script source. Partial updates to an existing
+agent preserve omitted fields and accept `--prompt`, `--provider`, `--model`,
+`--reasoning`, `--service-tier default|fast|none`, `--permission-mode`, or one
+target option. Pass provider, model, reasoning, service tier, and permission
+together when switching providers.
 
 Add `--json` for machine-readable output. Use `runs --output <runId>` to print a
 script run's captured output.
