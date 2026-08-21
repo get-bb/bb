@@ -1,5 +1,7 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
 
+import { THEME_INIT } from "../lib/theme";
+
 // Route-level stylesheets are deliberate: the marketing page (/) imports
 // landing.css and the dashboard (/dashboard) imports styles.css (Tailwind +
 // theme.css). Both define :root tokens (e.g. --ink), so they must never load
@@ -42,28 +44,15 @@ export const Route = createRootRoute({
         href: "/favicon-16x16-dark.png",
         media: "(prefers-color-scheme: dark)",
       },
-      { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
+      {
+        rel: "apple-touch-icon",
+        sizes: "180x180",
+        href: "/apple-touch-icon.png",
+      },
     ],
   }),
   shellComponent: RootDocument,
 });
-
-// Resolve the bb.theme preference ("light" | "dark" | "system", default
-// system — the same key and model as the bb app) before first paint so a dark
-// result doesn't flash light anywhere. Two things are stamped on <html>:
-// - the dark class, which the dashboard's theme.css and the marketing pages'
-//   landing.css both key their dark tokens off;
-// - data-theme-preference, which the marketing nav's theme control keys its
-//   button glyph off (sun / moon / monitor for light / dark / system), so the
-//   glyph is right from the first paint and hydration has nothing to guess.
-// The marketing theme control (landing/site-chrome.tsx) keeps both in sync on
-// every change after load.
-// The routes ship a light theme-color meta; when the resolved theme is dark,
-// retint it to landing.css's dark --bg (oklch(0.195 0 0) ≈ #151515) once the
-// head has parsed. Two media-scoped metas would be the declarative fix, but
-// the router dedupes meta tags by name, so only one can survive. The theme
-// control re-syncs the meta on every explicit change.
-const THEME_INIT = `try{var t=localStorage.getItem("bb.theme");var p=(t==="dark"||t==="light")?t:"system";var h=document.documentElement;h.setAttribute("data-theme-preference",p);if(p==="dark"||(p==="system"&&matchMedia("(prefers-color-scheme: dark)").matches)){h.classList.add("dark");document.addEventListener("DOMContentLoaded",function(){var m=document.querySelector('meta[name="theme-color"]');if(m)m.content="#151515"})}}catch(e){}`;
 
 // Mark JS as available before first paint so the marketing page's app mock can
 // start hidden and construct itself in. No-JS keeps it visible.
@@ -73,8 +62,32 @@ function RootDocument({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Resolve the bb.theme preference before first paint so a dark result
+            doesn't flash light. THEME_INIT (lib/theme.ts) stamps the dark class
+            that landing.css and theme.css key their dark tokens off, plus
+            data-theme-preference, which the marketing nav's theme control keys
+            its button glyph off — so the glyph is right from the first paint
+            and hydration has nothing to guess. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
         <script dangerouslySetInnerHTML={{ __html: JS_INIT }} />
+        {/* One theme-color per scheme, so browser chrome follows the page with
+            no JS at all; THEME_INIT narrows the pair with `media` when a stored
+            preference overrides the OS. These live here rather than in a route
+            head() because the router dedupes metas by name, which would drop
+            one of the two. The values mirror landing.css's --bg and theme.css's
+            --canvas, which agree in both schemes. */}
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: light)"
+          content="#ffffff"
+          data-scheme="light"
+        />
+        <meta
+          name="theme-color"
+          media="(prefers-color-scheme: dark)"
+          content="#151515"
+          data-scheme="dark"
+        />
         <HeadContent />
       </head>
       <body>

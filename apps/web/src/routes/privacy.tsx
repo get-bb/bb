@@ -30,7 +30,6 @@ export const Route = createFileRoute("/privacy")({
       { title: PAGE_TITLE },
       { name: "description", content: PAGE_DESCRIPTION },
       ...unfurlMeta(PAGE_TITLE, PAGE_DESCRIPTION, "/privacy"),
-      { name: "theme-color", content: "#ffffff" },
     ],
     links: [
       {

@@ -7,24 +7,23 @@ import {
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 
-import bbIcon from "../assets/bb-icon.png";
-import bbIconDark from "../assets/bb-icon-dark.png";
 import { DASHBOARD_PATH } from "../lib/connect-return-to";
+import {
+  DARK_SCHEME_QUERY,
+  THEME_STORAGE_KEY,
+  type ThemePreference,
+  applyThemePreference,
+  readThemePreference,
+  setThemePreference,
+} from "../lib/theme";
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 
 type SiteNavPage = "blog" | "changelog";
 
 /* ── Theme ─────────────────────────────────────────────────────────
-   Same model as the app's useTheme: a preference of "light" | "dark" |
-   "system" (default "system") stored under bb.theme, resolved against the
-   OS scheme, and re-applied whenever the OS scheme changes. The html.dark
-   class is the one THEME_INIT (__root.tsx) sets pre-paint and the one
-   landing.css keys its dark tokens off. */
-
-type ThemePreference = "light" | "dark" | "system";
-
-const THEME_STORAGE_KEY = "bb.theme";
-const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
+   The preference model itself lives in lib/theme.ts, shared with the
+   pre-paint script in __root.tsx so there is one implementation of the rule.
+   This file only owns the control. */
 
 const THEME_OPTIONS: ReadonlyArray<{
   value: ThemePreference;
@@ -36,56 +35,12 @@ const THEME_OPTIONS: ReadonlyArray<{
   { value: "system", label: "System", icon: ComputerIcon },
 ];
 
-function readThemePreference(): ThemePreference {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored === "light" || stored === "dark") return stored;
-  } catch {
-    // Storage can be unavailable (private mode); fall through to system.
-  }
-  return "system";
-}
-
-// Mirror the resolved background onto the theme-color meta so browser chrome
-// follows the page even when the choice disagrees with the OS scheme (same
-// approach as the app's useTheme syncThemeColorMeta).
-function syncThemeColorMeta() {
-  const background = getComputedStyle(document.body).backgroundColor;
-  if (!background || background === "rgba(0, 0, 0, 0)") return;
-  for (const meta of document.querySelectorAll<HTMLMetaElement>(
-    'meta[name="theme-color"]',
-  )) {
-    meta.content = background;
-  }
-}
-
-function applyThemePreference(preference: ThemePreference) {
-  const dark =
-    preference === "dark" ||
-    (preference === "system" && matchMedia(DARK_SCHEME_QUERY).matches);
-  const root = document.documentElement;
-  root.classList.toggle("dark", dark);
-  // The button glyph keys off the preference (not the resolved theme), via
-  // the same attribute THEME_INIT stamps pre-paint.
-  root.setAttribute("data-theme-preference", preference);
-  syncThemeColorMeta();
-}
-
-function setThemePreference(preference: ThemePreference) {
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, preference);
-  } catch {
-    // The in-page change still applies for this visit.
-  }
-  applyThemePreference(preference);
-}
-
 // Preference button (sun / moon / monitor for Light / Dark / System — all
 // three glyphs render and CSS keyed off html[data-theme-preference] picks
 // one, so SSR output is preference-independent and hydration can't
 // mismatch) that opens a Light / Dark / System menu. The menu only exists
-// while open, so its checked state is read from storage at open time and
-// never has to agree with the server render.
+// while open, and its checked state comes from the effect below rather than
+// the server render, so it never has to agree with SSR.
 function ThemeMenu() {
   const [open, setOpen] = useState(false);
   const [preference, setPreference] = useState<ThemePreference>("system");
@@ -93,16 +48,25 @@ function ThemeMenu() {
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   // Follow the OS while the preference is "system" (live, not just at load),
-  // and pick up a choice made in another tab or in the app.
+  // and pick up a choice made in another tab. Both the document and this
+  // component's copy of the preference are refreshed together, so an open menu
+  // can't keep showing a checkmark the page no longer agrees with.
   useEffect(() => {
     const media = matchMedia(DARK_SCHEME_QUERY);
+    const sync = () => {
+      const next = readThemePreference();
+      setPreference(next);
+      applyThemePreference(next);
+    };
+    // THEME_INIT normally did this pre-paint, but it gives up when storage
+    // access throws, which would otherwise leave the page light while this
+    // control reported "System".
+    sync();
     const onScheme = () => {
       if (readThemePreference() === "system") applyThemePreference("system");
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === THEME_STORAGE_KEY || event.key === null) {
-        applyThemePreference(readThemePreference());
-      }
+      if (event.key === THEME_STORAGE_KEY || event.key === null) sync();
     };
     media.addEventListener("change", onScheme);
     window.addEventListener("storage", onStorage);
@@ -132,6 +96,7 @@ function ThemeMenu() {
     };
   }, [open]);
 
+  // A same-tab write fires no storage event, so this tab's copy is set here.
   const choose = (next: ThemePreference) => {
     setThemePreference(next);
     setPreference(next);
@@ -148,10 +113,7 @@ function ThemeMenu() {
         aria-label="Theme"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => {
-          if (!open) setPreference(readThemePreference());
-          setOpen((value) => !value);
-        }}
+        onClick={() => setOpen((value) => !value)}
       >
         <HugeiconsIcon icon={Sun03Icon} className="theme-ic-sun" />
         <HugeiconsIcon icon={Moon02Icon} className="theme-ic-moon" />
@@ -184,13 +146,10 @@ function ThemeMenu() {
 export function SiteNav({ current }: { current?: SiteNavPage }) {
   return (
     <nav className="nav">
-      {/* Both logo variants ship in the DOM and CSS keyed off html.dark picks
-          one — the same hydration-safe pattern as the theme toggle glyphs.
-          The dark asset is the brand's white glyph (assets/bb-logo-white.png)
-          scaled so its glyph optically matches the light tile's. */}
-      <a className="logo" href="/">
-        <img className="logo-light" src={bbIcon} alt="bb" width={36} height={36} />
-        <img className="logo-dark" src={bbIconDark} alt="bb" width={36} height={36} />
+      {/* One element; landing.css picks the asset off html.dark, so only the
+          variant in use is ever downloaded (see .bb-mark). */}
+      <a className="logo" href="/" aria-label="bb">
+        <span className="bb-mark logo-mark" />
       </a>
       <div className="nav-links">
         <a

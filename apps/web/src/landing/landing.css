@@ -68,7 +68,10 @@
 /* Dark theme: the two anchors flip (canvas and ink values match the app's
    dark theme) and every derived mix re-resolves. Mix percentages step up like
    the app's dark ramp — the same 8–14% that reads on white is near-invisible
-   on the dark canvas. Chromatic tokens are the app's dark values. */
+   on the dark canvas. Chromatic tokens are the app's dark values.
+   The achromatic text steps stay explicit rather than mixes of the anchors,
+   matching :root above: --heading, --heading-sub and --ink-strong are lighter
+   than --ink, so no ink-to-canvas mix can express them. */
 .dark {
   color-scheme: dark;
   --bg: oklch(0.195 0 0);
@@ -163,23 +166,26 @@ code,
   }
 }
 
-.logo img {
+/* The bb mark ships as two files: the light one is the app-icon tile (white,
+   baked into the PNG) which would glare on the dark canvas, the dark one is
+   the brand's white glyph on transparent, matching the dark favicons. Naming
+   them from two declarations means the browser only fetches the one the
+   winning rule needs — a pair of <img> toggled with display:none downloads
+   both, on every page, for one visible mark. */
+.bb-mark {
   display: block;
+  flex-shrink: 0;
+  background-image: url("../assets/bb-icon.png");
+  background-size: 100% 100%;
 }
 
-/* The light logo is the app-icon tile (white, baked into the PNG) and would
-   glare on the dark canvas; the dark logo is the brand's white glyph on
-   transparent, matching the dark favicons. html.dark picks the variant. */
-.logo .logo-dark {
-  display: none;
+.dark .bb-mark {
+  background-image: url("../assets/bb-icon-dark.png");
 }
 
-.dark .logo .logo-light {
-  display: none;
-}
-
-.dark .logo .logo-dark {
-  display: block;
+.logo-mark {
+  width: 36px;
+  height: 36px;
 }
 
 .nav-links {
@@ -906,10 +912,17 @@ html[data-theme-preference="dark"] .theme-toggle .theme-ic-system {
 }
 
 /* Dark: invert after the grayscale so near-black marks flip light instead of
-   sinking into the canvas; grayscale-first keeps the invert luminance-only. */
+   sinking into the canvas; grayscale-first keeps the invert luminance-only.
+   Marks that carry their own tile background are excluded — inverting one of
+   those flips the tile rather than the glyph, so Blackstone's black square
+   would come out white and Notion's white square black. They keep their own
+   contrast, which already reads on either canvas. */
 .dark .company-proof-company img {
-  filter: grayscale(1) invert(1);
   opacity: 0.6;
+}
+
+.dark .company-proof-company img:not(.company-proof-tile) {
+  filter: grayscale(1) invert(1);
 }
 
 /* One cycle travels exactly one logo-list copy. The track holds
@@ -2020,7 +2033,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 18px;
   overflow: hidden;
   background: var(--bg);
-  box-shadow: 0 18px 50px -26px color-mix(in oklab, var(--shade) 32%, transparent);
+  box-shadow: 0 18px 50px -26px
+    color-mix(in oklab, var(--shade) 32%, transparent);
 }
 
 /* contact bar */
@@ -2078,8 +2092,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   object-fit: cover;
 }
 
-/* wallpaper + messages */
+/* wallpaper + messages. --tg-card is Telegram's own surface colour, not a bb
+   token: the mock imitates a foreign app, so its values are deliberately
+   literal in both schemes, like the wallpaper and the outgoing green bubble. */
 .tg-feed {
+  --tg-card: #fff;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2139,7 +2156,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .tg-in .tg-bubble {
-  background: #fff;
+  background: var(--tg-card);
   color: var(--ink-strong);
   border-bottom-left-radius: 5px;
 }
@@ -2174,7 +2191,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 /* the bb thread card the bot spawns */
 .tg-thread {
   width: 100%;
-  background: #fff;
+  background: var(--tg-card);
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   border-bottom-left-radius: 5px;
@@ -2335,6 +2352,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
    foreign app stays recognizable instead of glaring white on the dark page.
    The outgoing green bubble is Telegram's in both schemes and stays put. */
 .dark .tg-feed {
+  --tg-card: oklch(0.28 0 0);
   background-color: oklch(0.24 0.02 150);
   background-image:
     radial-gradient(
@@ -2342,11 +2360,6 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
       transparent 1.5px
     ),
     linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
-}
-
-.dark .tg-in .tg-bubble,
-.dark .tg-thread {
-  background: oklch(0.28 0 0);
 }
 
 /* ── Band 3 visual: mobile bb app mock ──────────────────────────── */
