@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
 import {
   createReadStream,
@@ -324,6 +325,15 @@ const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
 
+/** One run of a background service, from runService to its settlement. */
+interface ServiceInstance {
+  id: string;
+  service: ServiceRuntime;
+  controller: AbortController;
+  /** Set once an uncaught exception from this run has been claimed. */
+  uncaughtError: { error: unknown } | undefined;
+}
+
 export interface PluginRuntimeContext {
   deps: PluginServiceDeps;
   nextCronRunAt: (cron: string, now: number) => number;
@@ -553,22 +563,94 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return undefined;
   }
 
+  /**
+   * The service instance whose async context is executing. Plugins run
+   * in-process, so an error a service raises outside its start() promise
+   * (an unlistened EventEmitter 'error', a throw in a timer callback, a
+   * detached rejection) reaches the process as an uncaught exception, not
+   * the promise chain runService watches. The store follows every timer,
+   * socket callback, and promise the service creates, so
+   * handleUncaughtException can hand the error back to the supervisor.
+   */
+  const serviceContext = new AsyncLocalStorage<ServiceInstance>();
+
   /** Start (or restart) one background service instance. */
   function runService(id: string, service: ServiceRuntime): void {
     const controller = new AbortController();
     service.controller = controller;
     service.state = "running";
     service.startedAt = Date.now();
+    const instance: ServiceInstance = {
+      id,
+      service,
+      controller,
+      uncaughtError: undefined,
+    };
     // The async wrapper normalizes sync throws from start() into rejections.
-    const current = (async () => {
+    const current = serviceContext.run(instance, async () => {
       await service.record.start(controller.signal);
-    })();
+    });
     service.current = current;
     current.then(
-      () => onServiceSettled(id, service, { crashed: false }),
+      () =>
+        instance.uncaughtError === undefined
+          ? onServiceSettled(id, service, { crashed: false })
+          : onServiceSettled(id, service, {
+              crashed: true,
+              error: instance.uncaughtError.error,
+            }),
       (error: unknown) =>
-        onServiceSettled(id, service, { crashed: true, error }),
+        onServiceSettled(id, service, {
+          crashed: true,
+          // The out-of-band error came first; a rejection after the abort
+          // is its consequence.
+          error: instance.uncaughtError?.error ?? error,
+        }),
     );
+  }
+
+  /**
+   * Claims an uncaught exception raised from a service's async context.
+   * Returns false when no service owns it, so the caller keeps Node's
+   * default and exits. A live instance is aborted; its settlement then
+   * takes the crash path (backoff + restart) with this error as the cause.
+   */
+  function handleUncaughtException(error: unknown): boolean {
+    const instance = serviceContext.getStore();
+    if (instance === undefined) return false;
+    const { id, service, controller } = instance;
+    const name = service.record.name;
+    const message = error instanceof Error ? error.message : String(error);
+    if (service.controller !== controller || service.disposed) {
+      // A previous run (restarted or disposed) left a timer or emitter behind.
+      logger.warn(
+        `[plugin:${id}] service ${name} raised an uncaught exception from a stopped run: ${message}`,
+      );
+      return true;
+    }
+    if (instance.uncaughtError !== undefined) return true;
+    instance.uncaughtError = { error };
+    logger.warn(
+      { err: error },
+      `[plugin:${id}] service ${name} raised an uncaught exception outside start(): ${message} — aborting it`,
+    );
+    const current = service.current;
+    controller.abort();
+    if (current === null) return true;
+    void settledWithin(current, serviceStopTimeoutMs).then((settled) => {
+      if (settled || service.controller !== controller || service.disposed) {
+        return;
+      }
+      setStatus(
+        id,
+        "degraded",
+        `service ${name} did not stop after an uncaught exception`,
+      );
+      logger.warn(
+        `[plugin:${id}] service ${name} did not stop within ${serviceStopTimeoutMs}ms of its uncaught exception — plugin degraded until it does`,
+      );
+    });
+    return true;
   }
 
   function onServiceSettled(
@@ -1789,6 +1871,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     disposeOne,
     emitThreadEvent,
     handlerStats,
+    handleUncaughtException,
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,

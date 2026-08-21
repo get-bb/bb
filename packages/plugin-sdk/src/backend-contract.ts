@@ -226,7 +226,10 @@ export interface PluginBackground {
    * factory completes and should resolve when `signal` aborts
    * (dispose/reload/disable/shutdown). A crash restarts it with capped
    * exponential backoff; throwing NeedsConfigurationError marks the plugin
-   * `needs-configuration` and stops restarting until the next load.
+   * `needs-configuration` and stops restarting until the next load. An
+   * error raised outside the `start` promise (an unlistened EventEmitter
+   * 'error', a throw in a timer callback, a detached rejection) counts as
+   * a crash too: the run is aborted and restarted the same way.
    */
   service(
     name: string,

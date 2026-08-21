@@ -291,6 +291,21 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     return shutdownPromise;
   };
 
+  // Plugins run in-process. An error a plugin service raises outside its
+  // start() promise (an unlistened EventEmitter 'error', a throw in a timer
+  // callback, a detached rejection) arrives here, not in the service
+  // supervisor; without this listener Node exits, the process manager
+  // restarts the server, the plugin reloads, and the crash loops. A claimed
+  // error restarts that one service. Anything else keeps Node's default:
+  // the diagnostics monitor in index.ts has already written its report.
+  process.on("uncaughtException", (error: unknown) => {
+    if (pluginService.handleUncaughtException(error)) return;
+    const message =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exit(1);
+  });
+
   process.once("SIGINT", () => {
     void runShutdown().finally(() => process.exit(0));
   });

@@ -186,6 +186,14 @@ export interface PluginService {
   start(): Promise<void>;
   /** Dispose all loaded plugins (server shutdown). */
   stop(): Promise<void>;
+  /**
+   * Route a process-level uncaught exception raised from a background
+   * service's async context (an unlistened EventEmitter 'error', a timer
+   * throw, a detached rejection) back to that service's supervisor, which
+   * aborts and restarts it with backoff. Returns false when no service owns
+   * the error; the caller then keeps Node's default and exits.
+   */
+  handleUncaughtException(error: unknown): boolean;
   list(): PluginListEntry[];
   /** Palettes declared by currently loaded plugins, ordered by plugin id. */
   listThemes(): PluginThemeMeta[];
@@ -1003,6 +1011,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     disposeOne,
     emitThreadEvent,
     handlerStats,
+    handleUncaughtException,
     hungServices,
     hostArtifacts,
     identities,
@@ -1602,6 +1611,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await syncCliSkill();
       notifyPluginsChanged();
     },
+
+    handleUncaughtException,
 
     list,
 
