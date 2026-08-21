@@ -1544,6 +1544,23 @@ describe("PromptBoxInternal submit shortcuts", () => {
 });
 
 describe("PromptBoxInternal escape", () => {
+  it("blurs the editor when no host Escape action is provided", async () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({ value: "Follow-up message" })}
+        promptBoxRef={promptBoxRef}
+      />,
+    );
+    await focusPromptEnd(promptBoxRef);
+    const editor = getPromptEditorElement();
+
+    const wasNotCanceled = fireEvent.keyDown(editor, { key: "Escape" });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(document.activeElement).not.toBe(editor);
+  });
+
   it("routes Escape to onEscape instead of blurring the editor", async () => {
     const onEscape = vi.fn();
     const promptBoxRef = createRef<PromptBoxHandle>();

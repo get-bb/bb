@@ -146,8 +146,8 @@ export interface FollowUpComposerProps {
   onSubmit: () => void;
   /**
    * Escape pressed in the editor with no higher-priority consumer open.
-   * Inline message editors pass their cancel action; when omitted, Escape
-   * blurs the editor (the bottom composer's behavior).
+   * The sent-message editor passes its cancel action; when omitted, Escape
+   * blurs the editor (the bottom and queued-message composers' behavior).
    */
   onEscape?: () => void;
   /** Accessible label and tooltip for the primary submit action. */

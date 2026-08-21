@@ -407,8 +407,8 @@ interface PromptBoxInternalProps {
   onChange: (value: string, mentionRanges: PromptTextMention[]) => void;
   onSubmit: () => void;
   /**
-   * Replaces the default Escape behavior (blurring the editor). Inline
-   * message editors pass their cancel action so Escape closes the editor.
+   * Replaces the default Escape behavior (blurring the editor). The
+   * sent-message editor passes its cancel action so Escape closes the editor.
    * Higher-priority Escape consumers (typeahead dismissal, voice-recording
    * cancel) still run first.
    */
@@ -2949,12 +2949,11 @@ export function PromptBoxInternal({
       }
 
       // Escape releases the composer so the keyboard can reach the rest of the
-      // app — or cancels the hosting editor when `onEscape` is provided (the
-      // inline message editors). Higher-priority Escape behavior still runs
-      // first: the typeahead menu above dismisses itself, and voice recording
-      // cancels from a window capture listener that stops the event before the
-      // editor sees it. A locked editor never reaches here — see the editor
-      // container below.
+      // app — or cancels the sent-message editor when `onEscape` is provided.
+      // Higher-priority Escape behavior still runs first: the typeahead menu
+      // above dismisses itself, and voice recording cancels from a window
+      // capture listener that stops the event before the editor sees it. A
+      // locked editor never reaches here — see the editor container below.
       if (event.key === "Escape") {
         if (onEscape) {
           onEscape();

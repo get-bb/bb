@@ -56,6 +56,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
     footerStart,
     compact,
     onSubmit,
+    onEscape,
     blurOnPointerSubmit,
     promptBoxRef,
     submission,
@@ -71,6 +72,7 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       placeholder?: string;
     };
     onSubmit: () => void;
+    onEscape?: () => void;
     blurOnPointerSubmit?: boolean;
     promptBoxRef?: {
       current: {
@@ -133,6 +135,11 @@ vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
       {onCollapse ? (
         <button type="button" onClick={onCollapse}>
           Collapse prompt box
+        </button>
+      ) : null}
+      {onEscape ? (
+        <button type="button" onClick={onEscape}>
+          Escape
         </button>
       ) : null}
     </div>
@@ -654,6 +661,18 @@ describe("FollowUpPromptBox", () => {
 
     expect(props.composer?.onSubmit).toHaveBeenCalledOnce();
     expect(mocks.scrollToBottom).toHaveBeenCalledOnce();
+  });
+
+  it("forwards the composer's host Escape action", () => {
+    const props = createFollowUpPromptBoxProps({ kind: "ready" });
+    const onEscape = vi.fn();
+    if (!props.composer) throw new Error("Expected follow-up composer props");
+    props.composer.onEscape = onEscape;
+
+    render(<FollowUpPromptBox {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "Escape" }));
+
+    expect(onEscape).toHaveBeenCalledOnce();
   });
 
   it.each([
