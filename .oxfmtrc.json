@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "build/",
+    "coverage/",
+    ".next/",
+    "out/",
+    ".turbo/",
+    "data/",
+    "output.txt",
+    ".codex/",
+    ".claude/",
+    "pnpm-lock.yaml",
+    "packages/agent-runtime/src/codex/generated/",
+    "packages/templates/src/generated/",
+    "packages/db/drizzle/meta/",
+    "packages/templates/src/templates/"
+  ]
+}
