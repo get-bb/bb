@@ -63,6 +63,7 @@ import {
   type ExperimentalOpenFixedTabOptions,
   type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type ExperimentalProviderModelPickerProps,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -496,6 +497,85 @@ function TestNewThreadComposer({
   );
 }
 
+function TestProviderModelPicker({
+  value,
+  onChange,
+  hostId,
+  className,
+}: ExperimentalProviderModelPickerProps) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const reasoningLevels = [
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "ultracode",
+    "max",
+    "ultra",
+  ] as const;
+
+  return (
+    <div
+      data-testid="bb-provider-model-picker"
+      data-host-id={hostId ?? ""}
+      className={className}
+    >
+      <input
+        aria-label="Provider ID"
+        value={draft.providerId}
+        onChange={(event) =>
+          setDraft((current) => ({
+            ...current,
+            providerId: event.target.value,
+          }))
+        }
+      />
+      <input
+        aria-label="Model"
+        value={draft.model}
+        onChange={(event) =>
+          setDraft((current) => ({ ...current, model: event.target.value }))
+        }
+      />
+      <input
+        aria-label="Reasoning level"
+        value={draft.reasoningLevel}
+        onChange={(event) => {
+          const reasoningLevel = reasoningLevels.find(
+            (candidate) => candidate === event.target.value,
+          );
+          if (reasoningLevel === undefined) return;
+          setDraft((current) => ({ ...current, reasoningLevel }));
+        }}
+      />
+      <select
+        aria-label="Service tier"
+        value={draft.serviceTier ?? ""}
+        onChange={(event) =>
+          setDraft((current) => {
+            const serviceTier = event.target.value;
+            if (serviceTier !== "fast" && serviceTier !== "default") {
+              const next = { ...current };
+              delete next.serviceTier;
+              return next;
+            }
+            return { ...current, serviceTier };
+          })
+        }
+      >
+        <option value="">Unsupported</option>
+        <option value="default">Default</option>
+        <option value="fast">Fast</option>
+      </select>
+      <button type="button" onClick={() => onChange(draft)}>
+        Apply execution selection
+      </button>
+    </div>
+  );
+}
+
 /**
  * Stand-in for the host-owned source viewer: emits the raw source in a
  * recognizable wrapper carrying the resolved presentation, so plugin tests can
@@ -653,6 +733,7 @@ const testPluginSdkApp = {
   experimental_FileLink: TestFileLink,
   experimental_UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_ProviderModelPicker: TestProviderModelPicker,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {

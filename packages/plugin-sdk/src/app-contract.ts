@@ -1480,6 +1480,34 @@ export interface ThreadChatProps {
 }
 
 // ---------------------------------------------------------------------------
+// experimental_ProviderModelPicker — host-owned execution selection.
+// ---------------------------------------------------------------------------
+
+/** The controlled execution selection resolved by the picker. */
+export interface ExperimentalProviderModelPickerValue {
+  providerId: string;
+  model: string;
+  reasoningLevel: ReasoningLevel;
+  /** Present only when the selected provider supports service tiers. */
+  serviceTier?: ServiceTier;
+}
+
+/**
+ * Props of the host-owned `experimental_ProviderModelPicker` component.
+ * Provider switches emit one coherent value after the live catalog resolves
+ * its default model, reasoning level, and service-tier capability. Failed or
+ * empty catalogs leave `value` unchanged. Omit `hostId` to use bb's
+ * primary-machine routing.
+ */
+export interface ExperimentalProviderModelPickerProps {
+  value: ExperimentalProviderModelPickerValue;
+  onChange(value: ExperimentalProviderModelPickerValue): void;
+  /** Route provider, model, and capability discovery through this machine. */
+  hostId?: string;
+  className?: string;
+}
+
+// ---------------------------------------------------------------------------
 // experimental_NewThreadComposer — the host-owned new-thread compose surface.
 // ---------------------------------------------------------------------------
 
@@ -1873,6 +1901,13 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md for what to audit before the prefix drops.
    */
   experimental_NewThreadComposer: ComponentType<NewThreadComposerProps>;
+  /**
+   * BB's controlled provider/model/reasoning picker. Provider changes emit
+   * only after the new provider's verified defaults and capabilities resolve,
+   * so `onChange` always receives one coherent value. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_ProviderModelPicker: ComponentType<ExperimentalProviderModelPickerProps>;
   /**
    * The host-owned source viewer (see {@link SourceCodeProps}). Renders
    * supplied source text with BB's syntax highlighting, gutters, and live code

@@ -712,6 +712,39 @@ fetches and four icon remounts at every boot.
    the accessible label story: the host derives `ariaLabel` from its own
    provider data, falling back to the provider id, and the slot supplies none.
 
+## `experimental_ProviderModelPicker` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Exposes bb's execution picker as a controlled
+`{ providerId, model, reasoningLevel, serviceTier? }` component for plugin
+frontends. The host adapter reuses `useThreadCreationOptions` for catalog,
+fallback, reasoning reconciliation, service-tier capability, retired-model,
+branding, and model-projection policy, and renders the same
+`ModelReasoningPicker` used by first-party composers. A provider tab is a
+preview until its authoritative catalog resolves; the component then emits the
+provider, default model, reconciled reasoning, and supported service tier as
+one value. `hostId` optionally routes discovery through one enrolled machine.
+
+Implementation: `apps/app/src/components/plugin/PluginProviderModelPicker.tsx`,
+bound in `apps/app/src/lib/plugin-sdk-app-impl.tsx`.
+
+**Audit before stabilizing.**
+
+1. **Atomic controlled contract.** Confirm the four execution fields should
+   remain one value and that selecting a provider should immediately choose its
+   verified default rather than wait for an explicit model click.
+2. **Routing.** Omitted `hostId` follows the server's primary-machine routing.
+   Confirm plugins do not need environment/workspace-scoped discovery before
+   stabilizing the prop shape.
+3. **Capability policy.** Confirm an unsupported provider should omit
+   `serviceTier` while supported providers retain the controlled tier, and that
+   reasoning should continue using the composer's closest-supported policy.
+4. **Catalog failure policy.** Placeholder, failed, and empty catalogs never
+   change the controlled value. Confirm silent retention is preferable to an
+   explicit error callback.
+5. **Scope.** Validate settings and compact-form usage in external plugins,
+   especially whether they need an explicit loading/error callback. Permission,
+   environment, and prompt submission stay intentionally outside this control.
+
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **What it does.** The host-owned new-thread compose surface, the create-side

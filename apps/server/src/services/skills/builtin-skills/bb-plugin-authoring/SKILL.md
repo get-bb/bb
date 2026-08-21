@@ -1915,6 +1915,34 @@ className?, leadingContent?, messageActions? }` —
   host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
+- `experimental_ProviderModelPicker` — bb's controlled provider, model, and
+  reasoning picker. Props:
+  `{ value: { providerId, model, reasoningLevel, serviceTier? }, onChange,
+  hostId?, className? }`. It uses the same live catalog, defaults, capability
+  reconciliation, retired-model handling, search, and provider branding as
+  bb's composers. Provider switches wait for the target provider's verified
+  catalog, then emit one coherent value with its default model and resolved
+  reasoning; `serviceTier` is retained only when that provider supports it.
+  Failed or empty catalogs leave `value` unchanged. Alias it on import for JSX:
+
+  ```tsx
+  import { experimental_ProviderModelPicker as ProviderModelPicker } from "@get-bb/plugin-sdk/app";
+
+  const [selection, setSelection] = useState({
+    providerId: "codex",
+    model: "gpt-5.5",
+    reasoningLevel: "high" as const,
+    serviceTier: "default" as const,
+  });
+
+  <ProviderModelPicker value={selection} onChange={setSelection} />;
+  ```
+
+  Pass `hostId` only when discovery must target a particular enrolled machine.
+  This is intended for settings and other compact forms that need an execution
+  preference without a composer; do not fetch and reconcile provider catalogs
+  again in plugin RPC. Experimental: see `docs/api_to_audit.md`.
+
 - `experimental_SourceCode` — bb's source viewer. Props:
   `{ content, path, overflow?, highlightedLines?, className? }` — `path`
   drives language detection, `overflow` is `"scroll"` (default) or `"wrap"`,

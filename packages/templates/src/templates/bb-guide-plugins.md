@@ -566,6 +566,10 @@ encoded, scheme-safe href; traversal paths, ill-formed Unicode, and other
 malformed runtime targets are inert in both the app and SDK test harness. Its
 lazy context menu adds Open with, preferred-external, installed-app, and copy
 actions without reading the file or discovering editors on mount.
+experimental_ProviderModelPicker is the controlled
+`{ providerId, model, reasoningLevel, serviceTier? }` selector backed by the
+same catalog and picker as bb's composers; provider switches emit only after
+the target provider's verified defaults and capabilities resolve.
 Every `experimental_fixedTabs` registration must include `panelId` equal to its
 containing nav panel's `id`; it is also an owner-scoped reference. Add
 `experimental_target: { validate }` for a typed JSON-safe transient target,
