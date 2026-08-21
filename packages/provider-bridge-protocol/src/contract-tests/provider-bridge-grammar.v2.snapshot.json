@@ -33,6 +33,11 @@
       "clientRequestId": "required",
       "providerTurnId": "optional"
     },
+    "input.provider": {
+      "kind": "required",
+      "text": "required",
+      "parentRef": "optional"
+    },
     "item.close": {
       "kind": "required",
       "key": "required",

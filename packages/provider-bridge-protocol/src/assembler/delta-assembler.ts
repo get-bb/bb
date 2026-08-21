@@ -1490,6 +1490,26 @@ export function createDeltaAssembler(
         return;
       }
 
+      case "input.provider": {
+        if (state.currentTurnId === undefined) {
+          return;
+        }
+        const parentToolCallId = mapParentRef(state, delta.parentRef);
+        events.push({
+          type: "item/completed",
+          threadId: UNSTAMPED_THREAD_ID,
+          providerThreadId: "",
+          scope: turnScope(state.currentTurnId),
+          item: {
+            type: "userMessage",
+            id: mintItemId(),
+            content: [{ type: "text", text: delta.text }],
+            ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
+          },
+        });
+        return;
+      }
+
       case "turn.open": {
         if (delta.providerTurnId !== undefined) {
           // Keyed turn space: several provider turns may be open at once

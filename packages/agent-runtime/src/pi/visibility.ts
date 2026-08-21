@@ -22,7 +22,12 @@ type PiAssistantEventType =
   | "toolcall_start"
   | "unknown";
 
-type PiMessageBoundaryRole = "assistant" | "toolResult" | "user" | "unknown";
+type PiMessageBoundaryRole =
+  | "assistant"
+  | "custom"
+  | "toolResult"
+  | "user"
+  | "unknown";
 
 type PiSdkEventType =
   | "agent_end"
@@ -134,6 +139,7 @@ function toPiMessageBoundaryRole(
 ): PiMessageBoundaryRole {
   switch (role) {
     case "assistant":
+    case "custom":
     case "toolResult":
     case "user":
       return role;
@@ -318,6 +324,11 @@ function describeParsedPiRawEvent(
         );
       switch (event.role) {
         case "assistant":
+          return { kind, coverage: "noise" };
+        // Extension-injected messages: the translator records a displayed
+        // `message_start` as provider input; every other custom boundary
+        // (its `message_end`, hidden messages) carries nothing for bb.
+        case "custom":
           return { kind, coverage: "noise" };
         case "toolResult":
         case "user":
