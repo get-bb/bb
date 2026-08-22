@@ -35,8 +35,10 @@ The recommended way to start using bb is the desktop app:
 **[Download the latest desktop app](https://github.com/get-bb/bb/releases/tag/desktop-latest)**
 
 The desktop app supports macOS on Apple Silicon (arm64). The Linux x64 AppImage
-is alpha: expect problems, and please report them. Intel Mac users should run bb
-with `npx` instead. On Windows, run bb inside
+is alpha: expect problems, and please report them. Linux users should see the
+[Linux setup guide](docs/linux.md) for AppImage launchers, FUSE requirements,
+and the difference between installing the UI and enrolling an execution
+machine. Intel Mac users should run bb with `npx` instead. On Windows, run bb inside
 [WSL2 (Windows Subsystem for Linux)](https://learn.microsoft.com/windows/wsl/install):
 install WSL2 first, then run the same `npx` command below from your WSL2 (Linux)
 shell. Native Windows PowerShell and CMD are not supported.
@@ -216,6 +218,7 @@ See [System overview](docs/system-overview.md) for runtime architecture, data mo
 
 - [Vision](docs/VISION.md)
 - [Platform support](docs/platform-support.md)
+- [Using bb on Linux](docs/linux.md)
 - [Configuration](docs/configuration.md)
 - [Using bb on multiple devices](docs/multiple-devices.md)
 - [Worktrees and setup scripts](docs/worktrees.md)

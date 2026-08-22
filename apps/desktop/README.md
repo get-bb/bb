@@ -85,6 +85,10 @@ macOS shows the normal Gatekeeper warning on first launch.
 
 ### Linux (AppImage, x64)
 
+For end-user installation, FUSE troubleshooting, and application-menu setup,
+see [Using bb on Linux](../../docs/linux.md). This section covers building and
+publishing the desktop artifact.
+
 Linux packaging targets x64 glibc-based distributions. Install `python3`,
 `make`, and `g++` so node-gyp can build node-pty during dependency installation.
 

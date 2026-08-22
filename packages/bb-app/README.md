@@ -38,6 +38,10 @@ credentials. If you use multiple providers, you can mix and match per task.
 - macOS
 - Linux
 
+For Linux desktop installation, AppImage launcher setup, FUSE troubleshooting,
+and execution-machine enrollment, see [Using bb on
+Linux](../../docs/linux.md).
+
 <details>
 <summary>Windows via Ubuntu on WSL2</summary>
 
