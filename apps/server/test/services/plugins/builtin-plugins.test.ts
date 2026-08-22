@@ -217,6 +217,7 @@ describe("builtin plugin reconciliation", () => {
       ["keep-awake", "Coffee"],
       ["pdf-preview", "FileText"],
       ["provider-acp", "./icons/acp.svg"],
+      ["plugin-api-docs", "./icons/ai-generative.svg"],
       ["provider-claude-code", "./icons/claude-code.svg"],
       ["provider-codex", "./icons/codex.svg"],
       ["provider-pi", "./icons/pi.svg"],
