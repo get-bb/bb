@@ -686,6 +686,19 @@ export function BottomAnchoredScrollBody({
     [markUserScrollIntent],
   );
 
+  // Resume following the bottom. Shared by the scroll handler (a scroll event
+  // landing near the bottom) and the resize path (a content shrink clamping a
+  // detached viewport onto the bottom).
+  const attachToBottom = useCallback(() => {
+    userDetachedFromBottomRef.current = false;
+    shouldStickToBottomRef.current = true;
+    userScrollIntentUntilRef.current = 0;
+    setIsAtBottom(true);
+    // A deliberate arrival at the bottom during the restore settle window means
+    // the user no longer wants the saved row; stop re-applying it.
+    pendingScrollRestoreRef.current = null;
+  }, []);
+
   const syncBottomStateFromScroll = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
@@ -733,13 +746,7 @@ export function BottomAnchoredScrollBody({
     }
 
     if (nearBottom) {
-      userDetachedFromBottomRef.current = false;
-      shouldStickToBottomRef.current = true;
-      userScrollIntentUntilRef.current = 0;
-      setIsAtBottom(true);
-      // A deliberate scroll to the bottom during the restore settle window means
-      // the user no longer wants the saved row; stop re-applying it.
-      pendingScrollRestoreRef.current = null;
+      attachToBottom();
       return;
     }
 
@@ -752,6 +759,7 @@ export function BottomAnchoredScrollBody({
     // The user is scrolling on their own; don't yank them back to the anchor.
     pendingScrollRestoreRef.current = null;
   }, [
+    attachToBottom,
     cancelQueuedRestore,
     hasRecentUserScrollIntent,
     readMaxScrollOffset,
@@ -799,20 +807,46 @@ export function BottomAnchoredScrollBody({
 
   const handleScrollAreaResize = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
+    let shrankOntoBottomWhileDetached = false;
     if (scrollArea) {
       // The steady-state cache refresh: the observer watches both the scroll
       // port and the content wrapper, so every legitimate
       // scrollHeight/clientHeight change passes through here. The first
       // delivery is also what makes the cache authoritative for hot-path
       // reads (see resizeObserverHasDeliveredRef).
-      refreshMaxScrollOffset(scrollArea);
+      const previousMaxScrollOffset = maxScrollOffsetRef.current;
+      const cacheWasAuthoritative = resizeObserverHasDeliveredRef.current;
+      const maxScrollOffset = refreshMaxScrollOffset(scrollArea);
       resizeObserverHasDeliveredRef.current = true;
+      shrankOntoBottomWhileDetached =
+        cacheWasAuthoritative &&
+        !shouldStickToBottomRef.current &&
+        maxScrollOffset < previousMaxScrollOffset &&
+        isScrolledNearBottom(maxScrollOffset, scrollArea.scrollTop);
     }
     // While a restore is pending, the ResizeObserver is the settle signal; the
     // bottom-restore is suppressed (stick-to-bottom is false) anyway.
     if (advancePendingScrollRestore()) return;
+    if (shrankOntoBottomWhileDetached && scrollArea) {
+      // The detached mirror of the attach->detach edge in
+      // syncBottomStateFromScroll: a content shrink (collapsing a long tool
+      // output near the end) clamped a detached viewport onto the new,
+      // smaller maximum. The browser delivered that clamp's scroll event
+      // before this refresh, so the scroll handler classified it against the
+      // stale, larger cache and left the viewport detached. A live read used
+      // to re-attach on that very scroll event; do the same here, against
+      // fresh geometry, so streaming content keeps following the bottom.
+      attachToBottom();
+      writeScrollAnchor(scrollArea);
+    }
     queueBottomRestore();
-  }, [advancePendingScrollRestore, queueBottomRestore, refreshMaxScrollOffset]);
+  }, [
+    advancePendingScrollRestore,
+    attachToBottom,
+    queueBottomRestore,
+    refreshMaxScrollOffset,
+    writeScrollAnchor,
+  ]);
 
   // Begin restoring the saved scroll position on mount, before the listener
   // effect's `queueBottomRestore()` runs (a useEffect, which runs after layout

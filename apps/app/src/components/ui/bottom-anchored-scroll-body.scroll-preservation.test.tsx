@@ -924,4 +924,114 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     getLatestResizeObserver().trigger();
     expect(scrollArea.scrollTop).toBe(900);
   });
+
+  it("re-attaches a detached viewport that a content shrink clamps onto the bottom", () => {
+    const { scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -120,
+      bottom: -20,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+      top: -20,
+      bottom: 80,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+
+    // The user scrolls up to read: detached mid-timeline.
+    scrollArea.scrollTop = 150;
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+
+    // Tap-collapsing a long tool output below the viewport shrinks the content
+    // past the viewport's position: the browser clamps scrollTop onto the new
+    // maximum (100) and delivers that scroll event BEFORE the ResizeObserver
+    // refresh, so the scroll handler still classifies against the stale cache
+    // (300) and cannot see that the viewport now sits on the bottom.
+    fireEvent.touchStart(scrollArea);
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 200,
+      clientHeight: 100,
+      scrollTop: 100,
+    });
+    fireEvent.scroll(scrollArea);
+
+    // The late resize delivery finds a detached viewport on the fresh bottom
+    // after a shrink and re-attaches it, exactly as the live read did before
+    // the cache: the anchor records at-bottom...
+    getLatestResizeObserver().trigger();
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "",
+      offsetWithinRow: 0,
+      atBottom: true,
+    });
+
+    // ...and further content growth follows the bottom again.
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 250,
+      clientHeight: 100,
+      scrollTop: 100,
+    });
+    getLatestResizeObserver().trigger();
+    expect(scrollArea.scrollTop).toBe(150);
+  });
+
+  it("leaves a detached viewport alone when content shrinks without reaching it", () => {
+    const { scrollArea, rowElements } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+    });
+    mockScrollAreaRect(scrollArea);
+    mockRowRect(requireHTMLElement(rowElements.get("row-a")!), {
+      top: -120,
+      bottom: -20,
+    });
+    mockRowRect(requireHTMLElement(rowElements.get("row-b")!), {
+      top: -20,
+      bottom: 80,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 1_000,
+      clientHeight: 100,
+      scrollTop: 900,
+    });
+    getLatestResizeObserver().trigger();
+
+    scrollArea.scrollTop = 200;
+    fireEvent.wheel(scrollArea);
+    fireEvent.scroll(scrollArea);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+
+    // A collapse far below the viewport: no clamp, no scroll event, and the
+    // viewport (200 of a new max 500) is still well off the bottom.
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 600,
+      clientHeight: 100,
+      scrollTop: 200,
+    });
+    getLatestResizeObserver().trigger();
+    expect(scrollArea.scrollTop).toBe(200);
+    expect(readAnchor("thread-a")).toEqual({
+      rowId: "row-b",
+      offsetWithinRow: 20,
+      atBottom: false,
+    });
+  });
 });
