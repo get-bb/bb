@@ -10,6 +10,7 @@ export {
   KeyboardPaddingView,
 } from "./KeyboardPaddingView";
 export { ListRow } from "./ListRow";
+export { LONG_PRESS_DELAY_MS } from "./long-press";
 export { OverlayBounds, useOverlayBounds } from "./OverlayBounds";
 export { Pill } from "./Pill";
 export { Separator } from "./Separator";

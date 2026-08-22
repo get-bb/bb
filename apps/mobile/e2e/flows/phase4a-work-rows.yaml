@@ -219,3 +219,40 @@ env:
 - assertVisible:
     id: "timeline-workflow-usage"
 - takeScreenshot: phase4a-work-rows-workflow-failed
+# The closing assistant message carries a table wider than the screen. It
+# must scroll sideways under the message's long-press Pressables (new
+# architecture: a ScrollView will not scroll while an ancestor is the JS
+# responder), and a long-press on it must still open the message actions.
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Summary of the changes.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+# The table is the last content on the page: bottom the list out so the
+# whole table is on screen on any device height. (Cells inside the nested
+# horizontal ScrollView report as visible before they are, so they are not
+# reliable scroll targets.)
+- scroll
+- scroll
+- scroll
+- assertNotVisible: "(?s).*scroll sideways inside the timeline.*"
+- swipe:
+    from:
+      text: ".*horizontal scroll.*"
+    direction: LEFT
+    duration: 600
+- extendedWaitUntil:
+    visible: "(?s).*scroll sideways inside the timeline.*"
+    timeout: 10000
+- takeScreenshot: phase4a-work-rows-table-scrolled
+# The Reviewer column is fully on screen after the swipe; long-press lands
+# inside the table regardless of how far the fling carried it.
+- longPressOn: "sawyer"
+- extendedWaitUntil:
+    visible: "Copy text"
+    timeout: 10000
+- tapOn: "Copy text"
+- extendedWaitUntil:
+    visible: "Copied"
+    timeout: 10000

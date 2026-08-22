@@ -808,7 +808,17 @@ export function buildWorkRowFixtureSections(): WorkRowFixtureSection[] {
           taskStatus: "stopped",
           completedAt: T0 + 9_000,
         }),
-        assistant("a-done", "All done."),
+        assistant(
+          "a-done",
+          [
+            "All done. Summary of the changes:",
+            "",
+            "| File | Change | Lines | Reviewer | Notes |",
+            "| --- | --- | ---: | --- | --- |",
+            "| src/markdown/MarkdownTable.tsx | horizontal scroll | 12 | sawyer | wide tables scroll sideways inside the timeline |",
+            "| src/markdown/CodeBlock.tsx | inner press target | 8 | bee | code bodies scroll sideways too |",
+          ].join("\n"),
+        ),
       ],
     },
   ];

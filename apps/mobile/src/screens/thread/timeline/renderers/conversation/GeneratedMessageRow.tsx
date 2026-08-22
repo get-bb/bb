@@ -313,6 +313,7 @@ export function GeneratedMessageRow({
               onImagePress={onImagePress}
               onFilePress={onFilePress}
               onLinkPress={onLinkPress}
+              onLongPress={onLongPress}
               resolveImageSource={
                 suppressImages ? resolveImageSource : undefined
               }
