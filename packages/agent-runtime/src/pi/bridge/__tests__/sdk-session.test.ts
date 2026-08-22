@@ -1003,37 +1003,66 @@ describe("PiSdkSession", () => {
     );
   });
 
+  /**
+   * Each transient auth miss waits a real 250ms before the retry; drive the
+   * clock instead of sleeping through eight of them per test.
+   */
+  async function settleThroughTransientAuthRetries<T>(
+    pending: Promise<T>,
+    retries: number,
+  ): Promise<T> {
+    for (let i = 0; i < retries; i += 1) {
+      await vi.advanceTimersByTimeAsync(250);
+    }
+    return pending;
+  }
+
   it("allows eight transient Pi auth storage misses before succeeding", async () => {
-    const authError = new Error("No API key found for anthropic.");
-    rejectPromptWithTransientAuthError(8, authError);
-    mockPrompt.mockResolvedValueOnce(undefined);
-    const onDone = vi.fn();
-    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), onDone);
+    vi.useFakeTimers();
+    try {
+      const authError = new Error("No API key found for anthropic.");
+      rejectPromptWithTransientAuthError(8, authError);
+      mockPrompt.mockResolvedValueOnce(undefined);
+      const onDone = vi.fn();
+      const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), onDone);
 
-    await session.start();
-    await session.prompt("retry after auth storage miss").settled;
+      await session.start();
+      await settleThroughTransientAuthRetries(
+        session.prompt("retry after auth storage miss").settled,
+        8,
+      );
 
-    expect(mockPrompt).toHaveBeenCalledTimes(9);
-    expect(onDone).not.toHaveBeenCalled();
+      expect(mockPrompt).toHaveBeenCalledTimes(9);
+      expect(onDone).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fails after nine transient Pi auth storage misses", async () => {
-    const authError = new Error("No API key found for anthropic.");
-    rejectPromptWithTransientAuthError(9, authError);
-    const onDone = vi.fn();
-    const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), onDone);
+    vi.useFakeTimers();
+    try {
+      const authError = new Error("No API key found for anthropic.");
+      rejectPromptWithTransientAuthError(9, authError);
+      const onDone = vi.fn();
+      const session = new PiSdkSession({ cwd: "/tmp/project" }, vi.fn(), onDone);
 
-    await session.start();
-    const dispatch = session.prompt("fail after retry budget");
-    void dispatch.consumed.catch(() => undefined);
-    await expect(dispatch.settled).resolves.toEqual({ error: authError });
-    await expect(dispatch.consumed).rejects.toThrow(
-      "No API key found for anthropic.",
-    );
+      await session.start();
+      const dispatch = session.prompt("fail after retry budget");
+      void dispatch.consumed.catch(() => undefined);
+      await expect(
+        settleThroughTransientAuthRetries(dispatch.settled, 8),
+      ).resolves.toEqual({ error: authError });
+      await expect(dispatch.consumed).rejects.toThrow(
+        "No API key found for anthropic.",
+      );
 
-    expect(mockPrompt).toHaveBeenCalledTimes(9);
-    expect(onDone).toHaveBeenCalledTimes(1);
-    expect(onDone).toHaveBeenCalledWith(authError);
+      expect(mockPrompt).toHaveBeenCalledTimes(9);
+      expect(onDone).toHaveBeenCalledTimes(1);
+      expect(onDone).toHaveBeenCalledWith(authError);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("stays processing across retryable agent-end events", async () => {

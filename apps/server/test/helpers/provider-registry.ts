@@ -177,34 +177,55 @@ export function stubHostArtifact(pluginId: string): PluginHostArtifactSnapshot {
   };
 }
 
+const firstPartyBridgeArtifactBuilds = new Map<
+  string,
+  Promise<PluginHostArtifactSnapshot | null>
+>();
+
+async function buildFirstPartyBridgeArtifact(
+  pluginId: string,
+): Promise<PluginHostArtifactSnapshot | null> {
+  const rootDir = pluginRootDir(pluginId);
+  // Pi has no `bb.host`: its bridge stays in the daemon bundle.
+  if (!(await hasHostEntry(rootDir))) {
+    return null;
+  }
+  const toolchain = await resolvePluginBuildToolchain(
+    join(tmpdir(), "bb-plugin-build-toolchain"),
+  );
+  const build = await buildPluginHost(rootDir, "0.0.0-test", toolchain);
+  const bytes = await readFile(build.jsPath);
+  return {
+    digest: build.artifactDigest,
+    byteLength: bytes.byteLength,
+    path: build.jsPath,
+    generation: `test-${pluginId}`,
+  };
+}
+
 /**
  * Builds and records the first-party provider bridge artifacts, exactly as the
  * plugin runtime does on load. Without this a graduated provider has no
  * `bridgeLaunch`, so the daemon has no bridge for it at all — which is the
  * whole point of the artifact route and therefore worth exercising rather
  * than stubbing. Bridges are rebuilt from source so a stale `dist/` cannot
- * make a test pass against yesterday's bridge.
+ * make a test pass against yesterday's bridge — once per worker process:
+ * the sources do not change during a run, and the ~0.6s esbuild pass was
+ * paid by every integration harness, one per test.
  */
 export async function recordFirstPartyProviderBridgeArtifacts(
   artifacts: PluginHostArtifactRegistry,
 ): Promise<void> {
-  const toolchain = await resolvePluginBuildToolchain(
-    join(tmpdir(), "bb-plugin-build-toolchain"),
-  );
   for (const pluginId of FIRST_PARTY_PROVIDER_PLUGIN_IDS) {
-    const rootDir = pluginRootDir(pluginId);
-    // Pi has no `bb.host`: its bridge stays in the daemon bundle.
-    if (!(await hasHostEntry(rootDir))) {
-      continue;
+    let build = firstPartyBridgeArtifactBuilds.get(pluginId);
+    if (!build) {
+      build = buildFirstPartyBridgeArtifact(pluginId);
+      firstPartyBridgeArtifactBuilds.set(pluginId, build);
     }
-    const build = await buildPluginHost(rootDir, "0.0.0-test", toolchain);
-    const bytes = await readFile(build.jsPath);
-    artifacts.set(pluginId, {
-      digest: build.artifactDigest,
-      byteLength: bytes.byteLength,
-      path: build.jsPath,
-      generation: `test-${pluginId}`,
-    });
+    const snapshot = await build;
+    if (snapshot !== null) {
+      artifacts.set(pluginId, snapshot);
+    }
   }
 }
 

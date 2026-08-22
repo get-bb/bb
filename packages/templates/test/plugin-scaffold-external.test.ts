@@ -268,6 +268,11 @@ async function installPackedSdk(
       "--legacy-peer-deps",
       "--no-package-lock",
       "--no-save",
+      // Registry round trips the install does not need: the audit and the
+      // funding banner, and a metadata refresh for packages the cache holds.
+      "--no-audit",
+      "--no-fund",
+      "--prefer-offline",
       tarball,
     ],
     { cwd: targetDir },
@@ -327,10 +332,33 @@ describe("external plugin scaffold types", () => {
   let workDir: string;
   let packRoot: string;
   let tarball: string;
+  let installedNodeModules: string;
+
+  /**
+   * Point a scaffold's `node_modules` at the one real install made in
+   * `beforeAll`: the packed SDK, its registry dependencies, and the linked
+   * workspace copies. Each of the installs this file used to run cost
+   * ~13s cold, and every scaffold here resolves the same packages.
+   */
+  async function useInstalledNodeModules(targetDir: string): Promise<void> {
+    await symlink(installedNodeModules, join(targetDir, "node_modules"), "dir");
+  }
 
   beforeAll(async () => {
     packRoot = await mkdtemp(join(tmpdir(), "bb-external-pack-"));
     tarball = await packPluginSdk(join(packRoot, "pack"));
+    // The app scaffold declares the superset of the backend scaffold's
+    // dependencies, so its install serves both.
+    const templateDir = join(packRoot, "template");
+    await scaffoldPlugin({
+      targetDir: templateDir,
+      packageName: "bb-plugin-external-template",
+      bbVersion: "0.9.0",
+      app: true,
+    });
+    await installPackedSdk(templateDir, tarball);
+    await linkExternalDependencies(templateDir);
+    installedNodeModules = join(templateDir, "node_modules");
   }, 180_000);
 
   afterAll(async () => {
@@ -357,8 +385,7 @@ describe("external plugin scaffold types", () => {
     await writeFile(join(targetDir, "app.tsx"), REPRESENTATIVE_APP);
     // The scaffold's own pin, satisfied by the packed artifact.
     expect(await scaffoldSdkPin(targetDir)).toBe(PLUGIN_SDK_VERSION);
-    await installPackedSdk(targetDir, tarball);
-    await linkExternalDependencies(targetDir);
+    await useInstalledNodeModules(targetDir);
 
     const tsconfig = JSON.parse(
       await readFile(join(targetDir, "tsconfig.json"), "utf8"),
@@ -416,8 +443,7 @@ describe("external plugin scaffold types", () => {
       packageName: "bb-plugin-external-backend",
       bbVersion: "0.9.0",
     });
-    await installPackedSdk(backendDir, tarball);
-    await linkExternalDependencies(backendDir);
+    await useInstalledNodeModules(backendDir);
     await writeFile(join(backendDir, "server.test.ts"), BACKEND_TEST);
     await includeTestsInTypecheck(backendDir);
 
@@ -490,8 +516,6 @@ describe("external plugin scaffold types", () => {
     // No mapping to fall back on: the testing declarations import the package
     // root, which has to resolve through the install alone.
     expect(backendTsconfig.compilerOptions.paths).toBeUndefined();
-    await runTypecheck(backendDir);
-    await runVitest(backendDir);
 
     const frontendDir = join(workDir, "bb-plugin-external-frontend");
     await scaffoldPlugin({
@@ -500,19 +524,18 @@ describe("external plugin scaffold types", () => {
       bbVersion: "0.9.0",
       app: true,
     });
-    const frontendSdk = join(
-      frontendDir,
-      "node_modules",
-      "@get-bb",
-      "plugin-sdk",
-    );
-    await mkdir(dirname(frontendSdk), { recursive: true });
-    await symlink(installedSdk, frontendSdk, "dir");
-    await linkExternalDependencies(frontendDir);
+    await useInstalledNodeModules(frontendDir);
     await writeFile(join(frontendDir, "app.test.tsx"), FRONTEND_TEST);
     await writeFile(join(frontendDir, "vitest.config.ts"), VITEST_CONFIG);
     await includeTestsInTypecheck(frontendDir);
-    await runTypecheck(frontendDir);
-    await runVitest(frontendDir);
+
+    // The two scaffolds are independent; their typechecks (~3.5s each) and
+    // test runs overlap.
+    await Promise.all(
+      [backendDir, frontendDir].map(async (dir) => {
+        await runTypecheck(dir);
+        await runVitest(dir);
+      }),
+    );
   }, 300_000);
 });
