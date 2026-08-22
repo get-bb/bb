@@ -96,6 +96,15 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     ).toEqual({
       providerId: "codex",
       executionDefaults: null,
+      providerFallbackCandidates: [
+        "claude-code",
+        "pi",
+        "acp-cursor",
+        "acp-opencode",
+        "acp-omp",
+        "acp-grok",
+        "acp-hermes-agent",
+      ],
     });
   });
 
@@ -139,6 +148,48 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     ).toBe("pi");
   });
 
+  it("orders fallback candidates behind the chosen default, preferred provider first", async () => {
+    const preferences = {
+      providerOrder: ["pi", "claude-code"],
+      defaultProviderId: "codex" as string | null,
+    };
+    const userRegistry = createProviderRegistryService({
+      readUserProviderPreferences: () => preferences,
+    });
+    await registerFirstPartyProviders(userRegistry);
+
+    expect(
+      resolveCreateThreadExecutionDefaults(userRegistry, {
+        storedDefaults: null,
+      }).providerFallbackCandidates,
+    ).toEqual([
+      "pi",
+      "claude-code",
+      "acp-cursor",
+      "acp-opencode",
+      "acp-omp",
+      "acp-grok",
+      "acp-hermes-agent",
+    ]);
+  });
+
+  it("has no fallback candidates when a provider was explicitly requested", () => {
+    expect(
+      resolveCreateThreadExecutionDefaults(registry, {
+        requestedProviderId: "codex",
+        storedDefaults: null,
+      }).providerFallbackCandidates,
+    ).toEqual([]);
+  });
+
+  it("has no fallback candidates when a stored default provider is used", () => {
+    expect(
+      resolveCreateThreadExecutionDefaults(registry, {
+        storedDefaults: makeDefaults({ providerId: "codex" }),
+      }).providerFallbackCandidates,
+    ).toEqual([]);
+  });
+
   it("discards stored defaults when the resolved provider changes", () => {
     expect(
       resolveCreateThreadExecutionDefaults(registry, {
@@ -151,6 +202,7 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     ).toEqual({
       providerId: "pi",
       executionDefaults: null,
+      providerFallbackCandidates: [],
     });
   });
 
@@ -167,6 +219,7 @@ describe("resolveCreateThreadExecutionDefaults", () => {
     ).toEqual({
       providerId: "codex",
       executionDefaults: storedDefaults,
+      providerFallbackCandidates: [],
     });
   });
 
@@ -180,7 +233,18 @@ describe("resolveCreateThreadExecutionDefaults", () => {
       resolveCreateThreadExecutionDefaults(degradedRegistry, {
         storedDefaults: null,
       }),
-    ).toEqual({ providerId: "claude-code", executionDefaults: null });
+    ).toEqual({
+      providerId: "claude-code",
+      executionDefaults: null,
+      providerFallbackCandidates: [
+        "pi",
+        "acp-cursor",
+        "acp-opencode",
+        "acp-omp",
+        "acp-grok",
+        "acp-hermes-agent",
+      ],
+    });
   });
 
   it("rejects an explicitly selected unavailable provider", async () => {

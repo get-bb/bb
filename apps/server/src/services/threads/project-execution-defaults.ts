@@ -28,6 +28,7 @@ interface ResolveProjectExecutionDefaultsForCreateArgs {
 interface ResolvedProjectExecutionDefaultsForCreate {
   executionDefaults: ProjectExecutionDefaults | null;
   providerId: string;
+  providerFallbackCandidates: readonly string[];
   requestedModel: string | null;
 }
 
@@ -98,11 +99,13 @@ export function resolveProjectExecutionDefaultsForCreate(
       storedDefaults,
     },
   );
-  const { executionDefaults, providerId } = resolution;
+  const { executionDefaults, providerId, providerFallbackCandidates } =
+    resolution;
 
   return {
     executionDefaults,
     providerId,
+    providerFallbackCandidates,
     requestedModel: requestedModel ?? null,
   };
 }
