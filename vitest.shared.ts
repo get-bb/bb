@@ -326,10 +326,15 @@ export function sharedWorkerProjects(
   args: SharedWorkerProjectsArgs,
 ): TestProjects {
   const exclude = args.exclude ?? ["dist/**", "node_modules/**"];
+  const options: PartitionOptions = {};
+  if (args.aliases !== undefined) options.aliases = args.aliases;
+  if (args.defaultEnvironment !== undefined) {
+    options.defaultEnvironment = args.defaultEnvironment;
+  }
   const partition = partitionTestFiles(
     args.pkgDir,
     args.include.map(globRoot),
-    { aliases: args.aliases, defaultEnvironment: args.defaultEnvironment },
+    options,
   );
   const allFiles = [
     ...partition.shared.flatMap((group) => group.files),
