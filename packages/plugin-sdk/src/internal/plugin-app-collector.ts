@@ -5,6 +5,7 @@ import type {
   PluginDiffRendererRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
+  PluginCommandPaletteActionRegistration,
   PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -51,6 +52,7 @@ export interface CollectedPluginAppRegistrations {
   diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
+  commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
@@ -82,6 +84,7 @@ export function collectPluginAppRegistrations(
     diffRenderers: [],
     messageDirectives: [],
     messageActions: [],
+    commandPaletteActions: [],
     providerIcons: [],
     contentScripts: [],
   };
@@ -101,6 +104,7 @@ export function collectPluginAppRegistrations(
     diffRenderer: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
+    commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
     contentScript: new Set<string>(),
   };
@@ -446,6 +450,28 @@ export function collectPluginAppRegistrations(
             ? {
                 icon: requireNonEmptyString(kind, "icon", registration.icon),
               }
+            : {}),
+          run: registration.run,
+        });
+      },
+      commandPaletteAction(registration) {
+        const kind = "slots.commandPaletteAction";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.commandPaletteAction, id);
+        if (typeof registration.run !== "function") {
+          throw new Error(`${kind}: "run" must be a function`);
+        }
+        if (
+          registration.isAvailable !== undefined &&
+          typeof registration.isAvailable !== "function"
+        ) {
+          throw new Error(`${kind}: "isAvailable" must be a function`);
+        }
+        collected.commandPaletteActions.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(registration.isAvailable !== undefined
+            ? { isAvailable: registration.isAvailable }
             : {}),
           run: registration.run,
         });

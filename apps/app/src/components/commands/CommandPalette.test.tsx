@@ -16,6 +16,10 @@ import {
   type AppKeybinding,
 } from "@bb/domain";
 import { AppCommandProvider, useAppCommandHandler } from "./AppCommandProvider";
+import {
+  removePluginSlotRegistrations,
+  setPluginSlotRegistrations,
+} from "@/lib/plugin-slots";
 import { CommandPalette } from "./CommandPalette";
 
 const PALETTE_SHORTCUT = {
@@ -106,7 +110,7 @@ function renderPalette() {
         <Handler command="thread.next" />
         <Handler command="panel.toggle" />
         <Handler command="terminal.open" />
-        <CommandPalette />
+        <CommandPalette threadId={null} projectId={null} />
       </AppCommandProvider>
     </MemoryRouter>,
   );
@@ -136,6 +140,7 @@ const selectedOption = () =>
 
 afterEach(() => {
   cleanup();
+  removePluginSlotRegistrations("linear");
   testState.calls.length = 0;
   window.localStorage.clear();
 });
@@ -270,6 +275,37 @@ describe("CommandPalette", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
 
     scrollIntoView.mockRestore();
+  });
+
+  it("lists a plugin's commandPaletteAction and runs it", async () => {
+    setPluginSlotRegistrations("linear", {
+      homepageSections: [],
+      settingsSections: [],
+      navPanels: [],
+      threadPanelActions: [],
+      sidebarFooterActions: [],
+      fileOpeners: [],
+      messageDirectives: [],
+      commandPaletteActions: [
+        {
+          id: "open-issue",
+          title: "Linear: open issue",
+          run: () => {
+            testState.calls.push("plugin-ran");
+          },
+        },
+      ],
+    });
+    renderPalette();
+    openPalette();
+    await waitFor(() => expect(searchField()).toBeTruthy());
+
+    fireEvent.change(searchField(), { target: { value: "linear" } });
+    await waitFor(() => expect(optionTitles()).toHaveLength(1));
+    expect(optionTitles()?.[0]).toContain("Linear: open issue");
+    fireEvent.keyDown(searchField(), { key: "Enter" });
+
+    await waitFor(() => expect(testState.calls).toEqual(["plugin-ran"]));
   });
 
   it("says so when nothing matches", async () => {

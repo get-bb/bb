@@ -69,5 +69,5 @@ for (const name of readdirSync(dir).sort()) {
 writeFileSync(target, `${JSON.stringify(manifest, null, 2)}\n`);
 EOF
 
-(cd "$repo" && pnpm exec prettier --write "$out/manifest.json" >/dev/null)
+(cd "$repo" && pnpm exec oxfmt "$out/manifest.json" >/dev/null)
 du -sh "$out"

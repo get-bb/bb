@@ -298,7 +298,7 @@ export function useEnvironmentDiffPatches(
         inFlight,
         path,
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cacheVersion invalidates the cache reads
+    // oxlint-disable-next-line react/exhaustive-deps -- cacheVersion invalidates the cache reads
     [cacheVersion, identity, inFlight, queryClient],
   );
 

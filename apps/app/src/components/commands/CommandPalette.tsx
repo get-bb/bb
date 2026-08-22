@@ -31,14 +31,23 @@ import {
   readPaletteRecents,
   recordPaletteRecent,
 } from "@/lib/command-palette/palette-recents";
+import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
+import { getPluginSlotSnapshot } from "@/lib/plugin-slots";
+import { getActiveThreadPanelOpener } from "@/components/plugin/plugin-thread-panel-navigation";
 
 const PALETTE_PLACEHOLDER = "Search commands";
+
+export interface CommandPaletteProps {
+  /** The surface's thread and project, handed to plugin rows. */
+  threadId: string | null;
+  projectId: string | null;
+}
 
 /**
  * Type to filter the commands that apply right now, then run one with Enter.
  * Mounted once by `AppLayout` and opened by `palette.open`.
  */
-export function CommandPalette() {
+export function CommandPalette({ threadId, projectId }: CommandPaletteProps) {
   const runner = useAppCommandRunner();
   const shortcuts = useAppCommandShortcuts(PALETTE_COMMAND_IDS);
   const listId = useId();
@@ -61,14 +70,20 @@ export function CommandPalette() {
       invocation.target ??
       (typeof document === "undefined" ? null : document.activeElement);
     openTargetRef.current = target;
-    setActions(
-      buildAppCommandActions({
+    setActions([
+      ...buildAppCommandActions({
         target,
         isCommandAvailable: runner.isCommandAvailable,
         dispatch: runner.dispatch,
         shortcuts,
       }),
-    );
+      ...buildPluginPaletteActions({
+        slots: getPluginSlotSnapshot().commandPaletteActions,
+        threadId,
+        projectId,
+        openThreadPanel: getActiveThreadPanelOpener(),
+      }),
+    ]);
     setQuery("");
     setHighlightedIndex(0);
     setOpen(true);

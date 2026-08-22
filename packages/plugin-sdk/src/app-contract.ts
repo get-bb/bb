@@ -1038,6 +1038,47 @@ export interface PluginMessageActionRegistration {
   run(context: PluginMessageActionContext): void | Promise<void>;
 }
 
+/** Context handed to a `commandPaletteAction`'s `isAvailable` and `run`. */
+export interface PluginCommandPaletteActionContext {
+  /** The thread in view, or null on a surface without one. */
+  threadId: string | null;
+  projectId: string | null;
+  /**
+   * Open one of this plugin's `threadPanelAction` components in the current
+   * thread's side panel, exactly as `messageAction`'s `openPanel` does.
+   *
+   * Returns true when the host accepted the open; false when it declined —
+   * `params` was not a JSON value, the action id names no `threadPanelAction`
+   * of this plugin, or the surface has no side panel. Only the main thread
+   * view has one, and the palette opens anywhere, so guard with `isAvailable`
+   * rather than assuming.
+   */
+  openPanel(options: PluginTargetedPanelActionOpenOptions): boolean;
+}
+
+/**
+ * A row in bb's quick palette (Mod+Shift+P), listed under the plugin's name
+ * beside bb's own commands. Host-rendered: the plugin supplies a title and
+ * `run`, and the host owns matching, ordering, and recency.
+ */
+export interface PluginCommandPaletteActionRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** The row's label, e.g. "Linear: open issue for this thread". */
+  title: string;
+  /**
+   * Hide the row when it cannot do anything — typically when it needs a thread
+   * and there is none. Called while the palette is open; keep it cheap and
+   * synchronous. Omitted means always listed.
+   */
+  isAvailable?(context: PluginCommandPaletteActionContext): boolean;
+  /**
+   * Runs after the palette closes and focus is restored. Errors (sync or
+   * async) are contained and logged; they never break the palette.
+   */
+  run(context: PluginCommandPaletteActionContext): void | Promise<void>;
+}
+
 /**
  * Supply the inline React mark bb draws for one agent provider.
  *
@@ -1119,6 +1160,13 @@ export interface PluginAppSlots {
   experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
+  /**
+   * Add a row to the quick palette (see
+   * {@link PluginCommandPaletteActionRegistration}).
+   */
+  commandPaletteAction(
+    registration: PluginCommandPaletteActionRegistration,
+  ): void;
   /**
    * Draw one agent provider's icon with an inline React component instead of
    * its `<img>`-rendered logo file (see

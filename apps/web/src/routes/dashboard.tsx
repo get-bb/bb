@@ -611,7 +611,7 @@ function ClaimField({
   return (
     <div>
       <div className="flex items-center overflow-hidden rounded-lg border border-border bg-card focus-within:ring-1 focus-within:ring-ring">
-        {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+        {/* oxlint-disable-next-line jsx-a11y/no-autofocus */}
         <input
           value={value}
           autoFocus={autoFocus}

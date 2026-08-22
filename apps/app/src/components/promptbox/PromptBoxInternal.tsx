@@ -1700,7 +1700,7 @@ export function PromptBoxInternal({
         richTextMarkdown: richTextEditing,
       }),
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
+    // oxlint-disable-next-line react/exhaustive-deps -- value/mentionRanges are read once per editor instance on purpose (see above).
   }, [richTextEditing]);
 
   const editor = useEditor(

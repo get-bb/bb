@@ -672,7 +672,7 @@ export function buildNativeThemeModel(
 }
 
 // ---------------------------------------------------------------------------
-// Emission (prettier-canonical so `prettier --write` is a no-op).
+// Emission (Oxfmt-canonical so `oxfmt` is a no-op).
 // ---------------------------------------------------------------------------
 
 function quoteKey(key: string): string {

@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "printWidth": 80,
+  "sortPackageJson": false,
+  "ignorePatterns": [
+    "node_modules/",
+    "dist/",
+    "build/",
+    "coverage/",
+    ".next/",
+    "out/",
+    ".turbo/",
+    "data/",
+    "!apps/mobile/src/data/",
+    "output.txt",
+    ".codex/",
+    ".claude/",
+    "pnpm-lock.yaml",
+    "plugins/provider-codex/src/generated/",
+    "packages/templates/src/generated/",
+    "packages/plugin-sdk/bundled-types/",
+    "packages/plugin-build/src/generated/",
+    "packages/db/drizzle/meta/",
+    "apps/mobile/assets/terminal/",
+    "*.snapshot.json",
+    "apps/mobile/ios/",
+    "apps/mobile/android/",
+    "apps/mobile/.expo/",
+    "apps/mobile/expo-env.d.ts",
+    "apps/mobile/build-output/",
+    "packages/templates/src/templates/"
+  ]
+}

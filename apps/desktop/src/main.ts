@@ -384,7 +384,7 @@ function canReplaceAppImage(appImagePath: string): boolean {
   try {
     accessSync(
       dirname(appImagePath),
-      // eslint-disable-next-line no-bitwise
+      // oxlint-disable-next-line no-bitwise
       fsConstants.W_OK | fsConstants.X_OK,
     );
     return true;

@@ -198,7 +198,7 @@ export function ShowcaseHeroCarousel({
     // setState — during render. A request carrying a seed is an explicit
     // choice (a card, a menu example), so it replaces the stored draft; a
     // seedless request behaves like the blank CTA and restores it.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // oxlint-disable-next-line react/set-state-in-effect
     setSeedAndNotify(
       openRequest.close === true
         ? null

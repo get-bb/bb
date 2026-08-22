@@ -215,7 +215,7 @@ describe("generate-native-theme", () => {
     ).toThrow(/Palette "nord" declares --primary-fg/);
   });
 
-  it("emits prettier-stable, sorted output", () => {
+  it("emits Oxfmt-stable, sorted output", () => {
     const source = renderNativeThemeSource(buildNativeThemeModel());
     const keys = [...source.matchAll(/^  ([A-Za-z0-9]+): string;$/gm)].map(
       (match) => match[1],
