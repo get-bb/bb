@@ -99,6 +99,7 @@ describe("official plugin registry invariants", () => {
       "keep-awake": "Host access",
       memory: "Context & knowledge",
       "pdf-preview": "Interface",
+      "plugin-api-docs": "Developer tools",
       "provider-acp": "Agent interaction",
       "provider-claude-code": "Agent interaction",
       "provider-codex": "Agent interaction",
