@@ -111,6 +111,7 @@ export const APP_SHELL_MARKS = [
   "file-opener",
   "code-renderers",
   "content-scripts",
+  "command-palette-actions",
 ] as const;
 
 export const COMPOSER_MARKS = [
@@ -540,7 +541,26 @@ export function AppShellWireframe() {
 
 function AppShellWireframeBody() {
   return (
-    <WindowFrame>
+    <WindowFrame className="relative">
+      <RegionMark
+        id="command-palette-actions"
+        label="Plugin actions in bb's quick command palette"
+        className="absolute left-1/2 top-14 z-10 w-56 -translate-x-1/2 rounded-lg border border-border bg-popover p-1 shadow-md"
+        chipClassName="-right-2 -top-2"
+      >
+        <div data-guide-fixture="command-palette-action">
+          <div className="px-2 py-1 text-[9px] text-subtle-foreground">
+            Commands
+          </div>
+          <div className="flex items-center gap-1.5 rounded-md bg-state-hover px-2 py-2 text-foreground">
+            <PluginGlyph className="size-3.5" />
+            Your plugin: run action
+            <span className="ml-auto text-[9px] text-subtle-foreground">
+              Plugins
+            </span>
+          </div>
+        </div>
+      </RegionMark>
       {/* Sized to the real window's aspect: at the diagram's 832px width, a
           ~523px frame matches the ~1.6:1 footprint of an actual bb window.
           The thread list and timeline are flex-1, so the height lands there

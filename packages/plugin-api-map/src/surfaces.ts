@@ -237,6 +237,21 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginContentScriptContext",
         ],
       },
+      {
+        id: "command-palette-actions",
+        title: "Command palette actions",
+        summary:
+          "Adds a row under Plugins in bb's quick command palette. With this, a plugin can:",
+        bullets: [
+          "Supply the row's label and run behavior; bb owns matching, ordering, and recency",
+          "Read the current thread and project, and hide the row when it is unavailable",
+          "Open one of the plugin's own thread side-panel tabs when a thread is on screen",
+        ],
+        apiSymbols: [
+          "PluginCommandPaletteActionRegistration",
+          "PluginCommandPaletteActionContext",
+        ],
+      },
     ],
   },
   {
