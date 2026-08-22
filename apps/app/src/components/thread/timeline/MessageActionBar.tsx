@@ -518,6 +518,15 @@ export function MessageActionBar({
       setExpanded(false);
     }
   };
+  // Copying from the expanded row collapses it, which unmounts the button
+  // before its own check can appear. Confirm on the trigger that replaces it,
+  // the same way the popover confirms on its trigger.
+  const [copiedFromRow, setCopiedFromRow] = useState(false);
+  useEffect(() => {
+    if (!copiedFromRow) return;
+    const timeoutId = window.setTimeout(() => setCopiedFromRow(false), 2000);
+    return () => window.clearTimeout(timeoutId);
+  }, [copiedFromRow]);
   const mobileDirectActionClass =
     mobileActionDisplay === "inline"
       ? MOBILE_INLINE_ACTION_CLASS
@@ -645,7 +654,10 @@ export function MessageActionBar({
             )}
             onClick={handleExpandedRowClick}
           >
-            <MobileInlineActions actions={actions} />
+            <MobileInlineActions
+              actions={actions}
+              onCopied={() => setCopiedFromRow(true)}
+            />
           </div>
         </div>
       );
@@ -671,7 +683,13 @@ export function MessageActionBar({
                 data-no-sidebar-swipe=""
                 onClick={() => setExpanded(true)}
               >
-                <Icon name="MoreHorizontal" className="size-3" />
+                <Icon
+                  name={copiedFromRow ? "Check" : "MoreHorizontal"}
+                  className={cn(
+                    "size-3",
+                    copiedFromRow && "animate-in zoom-in-50 duration-150",
+                  )}
+                />
               </button>
             ) : (
               <MobileMessageOverflowPopover
@@ -777,17 +795,46 @@ export function MessageActionBar({
  */
 function MobileInlineActions({
   actions,
+  onCopied,
 }: {
   actions: readonly MessageOverflowAction[];
+  /**
+   * Set when this row is about to be unmounted by the copy click itself, so
+   * `CopyButton`'s own check would never be seen; the caller confirms instead.
+   */
+  onCopied?: () => void;
 }) {
   return actions.map((action) =>
     action.kind === "copy" ? (
-      <CopyButton
-        key={action.key ?? action.label}
-        text={action.copyText ?? ""}
-        label={action.label}
-        className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
-      />
+      onCopied ? (
+        <button
+          key={action.key ?? action.label}
+          type="button"
+          className={cn(
+            ACTION_BUTTON_CLASS,
+            HOVER_REVEAL_CLASS,
+            MOBILE_INLINE_ACTION_CLASS,
+          )}
+          onClick={() => {
+            void copyToClipboardWithToast(action.copyText ?? "", {
+              successMessage: null,
+              errorMessage: "Failed to copy",
+            }).then((didCopy) => {
+              if (didCopy) onCopied();
+            });
+          }}
+          aria-label={action.label}
+        >
+          <Icon name="Copy" className="size-3" />
+        </button>
+      ) : (
+        <CopyButton
+          key={action.key ?? action.label}
+          text={action.copyText ?? ""}
+          label={action.label}
+          className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
+        />
+      )
     ) : (
       <button
         key={action.key ?? action.label}

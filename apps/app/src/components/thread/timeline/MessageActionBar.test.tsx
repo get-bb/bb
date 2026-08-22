@@ -559,6 +559,42 @@ describe("MessageActionBar", () => {
     ).toBeTruthy();
   });
 
+  it("confirms a copy made from the revealed touch row on the trigger", async () => {
+    mockMobileCoarsePointer();
+    const resizeObserver = installControlledResizeObserver();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    render(
+      <div data-message-column="">
+        <MessageActionBar
+          messageText="Copy this answer."
+          alignment="end"
+          mobileActionDisplay="overflow"
+          onAddToChat={vi.fn()}
+          onFork={vi.fn()}
+        />
+      </div>,
+    );
+    // Nothing fits the bubble, so the row is just the trigger; the column has
+    // room, so tapping it reveals the actions in place.
+    resizeObserver.reportWidths({ slot: 54, column: 358 });
+
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy message" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith("Copy this answer."),
+    );
+    // The row collapsed on the tap, so the check has to land on the trigger
+    // that replaced it — otherwise the copy is silent.
+    const trigger = await screen.findByRole("button", {
+      name: "Message actions",
+    });
+    await waitFor(() =>
+      expect(trigger.querySelector('[data-icon="Check"]')).not.toBeNull(),
+    );
+  });
+
   it("keeps the popover when the column cannot fit the actions comfortably", () => {
     mockMobileCoarsePointer();
     const resizeObserver = installControlledResizeObserver();
