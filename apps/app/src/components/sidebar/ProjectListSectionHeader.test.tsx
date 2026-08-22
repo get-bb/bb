@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
+import {
+  resetPluginThreadRowStatusesForTest,
+  setPluginThreadRowStatus,
+} from "@/lib/plugin-thread-row-status";
 import {
   ProjectListSectionIconButton,
   TopLevelSidebarSection,
@@ -15,6 +25,7 @@ import {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  resetPluginThreadRowStatusesForTest();
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
@@ -181,5 +192,36 @@ describe("TopLevelSidebarSection", () => {
       }),
     ).not.toBeNull();
     expect(screen.queryByText("Pinned thread")).toBeNull();
+  });
+
+  it("rolls up a hidden plugin status only while the section is collapsed", () => {
+    const renderSection = (isCollapsed: boolean) => (
+      <TopLevelSidebarSection
+        label="Building"
+        collapsedActivity={NO_COLLAPSED_CHILD_ACTIVITY}
+        collapsedThreads={[{ id: "thread-one", projectId: "project-one" }]}
+        collapseControl={{ isCollapsed, onToggleCollapsed: vi.fn() }}
+      >
+        <div>Draft thread</div>
+      </TopLevelSidebarSection>
+    );
+    const result = render(renderSection(true));
+
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    act(() => {
+      setPluginThreadRowStatus("thread-one", "prompt-shaper", {
+        icon: "AiContentGenerator01",
+        label: "Plugin improving draft",
+        tone: "running",
+      });
+    });
+
+    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
+    expect(screen.queryByText("Draft thread")).toBeNull();
+
+    result.rerender(renderSection(false));
+
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(screen.getByText("Draft thread")).not.toBeNull();
   });
 });

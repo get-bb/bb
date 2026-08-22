@@ -6,10 +6,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
+import {
+  resetPluginThreadRowStatusesForTest,
+  setPluginThreadRowStatus,
+} from "@/lib/plugin-thread-row-status";
 import { SidebarSectionRow } from "./SidebarSectionRow";
 
 afterEach(() => {
   cleanup();
+  resetPluginThreadRowStatusesForTest();
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
@@ -112,5 +117,29 @@ describe("SidebarSectionRow", () => {
     expect(slots[1]?.getAttribute("class")).toContain("fill-none");
     expect(slots[2]?.getAttribute("class")).toContain("fill-primary");
     expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
+  });
+
+  it("rolls a hidden plugin status up to the collapsed section row", () => {
+    setPluginThreadRowStatus("thread-one", "prompt-shaper", {
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      tone: "running",
+    });
+
+    render(
+      <SidebarSectionRow
+        name="Building"
+        label="Work / Building"
+        depth={1}
+        activity={NO_COLLAPSED_CHILD_ACTIVITY}
+        collapsedThreads={[{ id: "thread-one", projectId: "project-one" }]}
+        isCollapsed
+        onToggleCollapsed={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByLabelText("Plugin improving draft")).not.toHaveLength(
+      0,
+    );
   });
 });

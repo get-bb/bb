@@ -418,25 +418,35 @@ export function ThreadStatusGlyph({
 
 interface CollapsedThreadStatusGlyphProps {
   activity: CollapsedChildActivity;
+  pluginStatus?: PluginComposerThreadRowStatus | null;
 }
 
 export function CollapsedThreadStatusGlyph({
   activity,
+  pluginStatus = null,
 }: CollapsedThreadStatusGlyphProps) {
-  return (
-    <ThreadStatusGlyph
-      hasPendingInteraction={activity.pending}
-      hasUnsubmittedDraft={activity.hasUnsubmittedDraft}
-      hasUnreadError={activity.unreadError}
-      hasUnreadSuccess={activity.unread}
-      isBackgroundAgentActive={activity.backgroundAgent}
-      isBackgroundCommandActive={activity.backgroundCommand}
-      isGoalActive={activity.goal}
-      isPlanModeActive={activity.planMode}
-      isRuntimeActive={activity.runtimeWorking}
-      isWorkflowActive={activity.workflow}
-    />
+  const statusProps: ThreadListIndicatorState = {
+    hasPendingInteraction: activity.pending,
+    hasUnsubmittedDraft: activity.hasUnsubmittedDraft,
+    hasUnreadError: activity.unreadError,
+    hasUnreadSuccess: activity.unread,
+    isBackgroundAgentActive: activity.backgroundAgent,
+    isBackgroundCommandActive: activity.backgroundCommand,
+    isGoalActive: activity.goal,
+    isPlanModeActive: activity.planMode,
+    isRuntimeActive: activity.runtimeWorking,
+    isWorkflowActive: activity.workflow,
+  };
+  const { pluginStatusIsVisible } = resolveThreadTrailingIndicatorStatus(
+    statusProps,
+    pluginStatus,
   );
+
+  if (pluginStatusIsVisible && pluginStatus) {
+    return <PluginThreadRowStatusIndicator status={pluginStatus} />;
+  }
+
+  return <ThreadStatusGlyph {...statusProps} />;
 }
 type ThreadTrailingIndicatorProps = ThreadStatusGlyphProps & {
   pluginStatus: PluginComposerThreadRowStatus | null;

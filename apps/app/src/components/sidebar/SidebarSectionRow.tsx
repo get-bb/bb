@@ -46,6 +46,7 @@ import {
   type ThreadSplitIndicatorTarget,
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
+import { usePluginThreadRowStatusForThreads } from "@/lib/plugin-thread-row-status";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
@@ -97,6 +98,7 @@ function SidebarSectionRowComponent({
     collapsedThreads,
     isCollapsed,
   );
+  const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
   const hasMenuActions = Boolean(onRename || onRemove);
   const hasActions = Boolean(onCreateThread || hasMenuActions);
   // Collapsed: the header speaks for its hidden descendants through one
@@ -109,16 +111,20 @@ function SidebarSectionRowComponent({
       activity.working ||
       activity.hasUnsubmittedDraft ||
       activity.unread ||
-      activity.unreadError);
+      activity.unreadError ||
+      pluginStatus !== null);
   const renderRollupIndicator = () =>
     collapsedSplitIndicator.miniMap ? (
       <SplitPaneMiniMap
         slots={collapsedSplitIndicator.miniMap}
         label={`${label} — contains a thread open in split`}
-        isWorking={activity.working}
+        isWorking={activity.working || pluginStatus?.tone === "running"}
       />
     ) : (
-      <CollapsedThreadStatusGlyph activity={activity} />
+      <CollapsedThreadStatusGlyph
+        activity={activity}
+        pluginStatus={pluginStatus}
+      />
     );
   const className = cn(
     SIDEBAR_HOVER_ACTIONS_ROW_CLASS,
