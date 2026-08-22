@@ -294,7 +294,8 @@ export function extractClaudeContextWindowUsage(
     args.message.modelUsage,
   );
   const modelContextWindow = parsedModelUsage.success
-    ? extractModelContextWindow(parsedModelUsage.data)
+    ? (extractModelContextWindow(parsedModelUsage.data) ??
+      args.fallbackModelContextWindow)
     : args.fallbackModelContextWindow;
   const usedTokens = args.latestRequestContextTokens ?? null;
 
@@ -356,9 +357,17 @@ function extractModelContextWindow(
   if (!modelUsage) return null;
 
   let largestContextWindow: number | null = null;
-  for (const usage of Object.values(modelUsage)) {
-    const contextWindow = toPositiveNumber(usage.contextWindow);
-    if (contextWindow === undefined) continue;
+  for (const [model, usage] of Object.entries(modelUsage)) {
+    const reportedContextWindow = toPositiveNumber(usage.contextWindow);
+    if (reportedContextWindow === undefined) continue;
+
+    // The SDK's 200k custom-endpoint value is a legacy BYOK fallback. Current
+    // Fable providers, including Bedrock, support 1M.
+    const modelContextWindow = resolveClaudeModelContextWindowHint(model);
+    const contextWindow =
+      modelContextWindow === null
+        ? reportedContextWindow
+        : Math.max(reportedContextWindow, modelContextWindow);
     if (largestContextWindow === null || contextWindow > largestContextWindow) {
       largestContextWindow = contextWindow;
     }

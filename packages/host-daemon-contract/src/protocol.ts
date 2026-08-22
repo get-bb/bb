@@ -331,9 +331,13 @@
 // replaces the owning turn retains it. The wire shape is unchanged, but the
 // server-to-daemon payload semantics differ.
 //
+// Version 171 normalizes Claude model context-window reports against the
+// capacity implied by each model id. The usage event meaning changed across
+// the daemon boundary, so enrolled daemons must update with the server.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 170 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 171 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

@@ -4611,13 +4611,7 @@ describe("canonical model context-window hint", () => {
     permissionEscalation: null,
   };
 
-  // Claude reports `modelUsage.contextWindow` on some results and omits it on
-  // others. The legacy adapter seeded a model-derived fallback on every
-  // command plan that carried a model; the canonical bridge has no command
-  // plan, so it seeds the translator at session construction instead. Without
-  // that seeding, capacity read as unknown for every result Claude sent
-  // without the field — notably the 1M `[1m]` aliases.
-  it("seeds the model-derived context window for canonical sessions", async () => {
+  it("uses Fable's Claude Code capacity through a custom API endpoint", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const queries: ControlledClaudeQuery[] = [];
     queryMock.mockImplementation(() => {
@@ -4631,22 +4625,32 @@ describe("canonical model context-window hint", () => {
         threadId: "thread-context-hint",
         cwd: "/tmp/worktree",
         instructionMode: "append",
-        options: { ...canonicalOptions, model: "claude-opus-4-7[1m]" },
+        options: {
+          ...canonicalOptions,
+          model: "claude-fable-5",
+          envVars: {
+            ANTHROPIC_BASE_URL: "http://127.0.0.1:8317",
+          },
+        },
       });
       await bridge.waitForResponse(1);
+
+      expect(getLatestQueryOptions().env?.ANTHROPIC_BASE_URL).toBe(
+        "http://127.0.0.1:8317",
+      );
 
       bridge.sendRequest(2, "turn/start", {
         threadId: "thread-context-hint",
         providerThreadId: "thread-context-hint",
         clientRequestId: "creq_23456789ab",
         input: [{ type: "text", text: "hello", mentions: [] }],
-        options: { ...canonicalOptions, model: "claude-opus-4-7[1m]" },
+        options: { ...canonicalOptions, model: "claude-fable-5" },
       });
       await readNextPrompt(getLatestQueryCall());
       await bridge.waitForResponse(2);
 
-      // A result with token usage but no `modelUsage`: the only capacity
-      // source left is the seeded hint.
+      // The SDK reports its legacy 200k BYOK fallback through a custom endpoint,
+      // although current Fable providers support 1M.
       queries[0]?.emit({
         type: "result",
         subtype: "success",
@@ -4662,6 +4666,11 @@ describe("canonical model context-window hint", () => {
           output_tokens: 20,
           cache_creation_input_tokens: 30,
           cache_read_input_tokens: 40,
+        },
+        modelUsage: {
+          "claude-fable-5": {
+            contextWindow: 200_000,
+          },
         },
         session_id: "session-1",
       } as unknown as SDKMessage);
@@ -4680,6 +4689,21 @@ describe("canonical model context-window hint", () => {
       );
 
       expect(contextWindowEvents.at(-1)?.contextWindowUsage).toMatchObject({
+        modelContextWindow: 1_000_000,
+      });
+
+      const tokenUsageEvents = assembleCapturedThreadEvents(
+        bridge.messages,
+        "claude-code",
+      ).filter(
+        (
+          event,
+        ): event is Extract<
+          ThreadEvent,
+          { type: "thread/tokenUsage/updated" }
+        > => event.type === "thread/tokenUsage/updated",
+      );
+      expect(tokenUsageEvents.at(-1)?.tokenUsage).toMatchObject({
         modelContextWindow: 1_000_000,
       });
     } finally {

@@ -375,7 +375,7 @@ describe("claude usage and fixture translation (delta path)", () => {
     );
   });
 
-  // The four cases below pin the translator's use of sdk-extraction.ts's
+  // The cases below pin the translator's use of sdk-extraction.ts's
   // resolveClaudeModelContextWindowHint. The canonical bridge calls
   // setClaudeModelContextWindowHint from session construction and from the
   // live model change; that the bridge really calls it is pinned separately

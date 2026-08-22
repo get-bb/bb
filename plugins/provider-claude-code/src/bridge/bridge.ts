@@ -969,13 +969,10 @@ function withTrackedPermissionEscalation(
 }
 
 /**
- * Seed the translator's context-window fallback from the selected model.
+ * Seed the translator's context-window hint from the selected model.
  *
- * Claude reports `modelUsage.contextWindow` on some results and omits it on
- * others; when it is missing the translator falls back to the capacity implied
- * by the model id (notably the 1M `[1m]` aliases). The bridge seeds the hint
- * here, on every session construction and every turn that carries a model —
- * without it, capacity reads as unknown whenever Claude omits the field.
+ * Claude can omit `modelUsage.contextWindow`. Seed the selected model as its
+ * fallback; reported model entries normalize their own known capacity.
  */
 function seedModelContextWindowHint(
   threadSession: ThreadSession,

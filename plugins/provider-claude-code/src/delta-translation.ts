@@ -1495,10 +1495,10 @@ export function createClaudeDeltaTranslator(
   }
 
   /**
-   * Seed the context-window fallback from the selected model. Claude reports
-   * `modelUsage.contextWindow` on some results and omits it on others; when
-   * missing, capacity falls back to what the model id implies (notably the 1M
-   * `[1m]` aliases). Called at session construction and live model changes.
+   * Seed the context-window hint from the selected model. The model's known
+   * Claude Code capacity is a floor for `modelUsage.contextWindow`, which can
+   * report the generic 200k window through custom Anthropic endpoints. Called
+   * at session construction and live model changes.
    */
   function setClaudeModelContextWindowHint(
     threadId: string,
