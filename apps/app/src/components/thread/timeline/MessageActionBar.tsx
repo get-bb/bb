@@ -351,6 +351,22 @@ const ACTION_ROW_CLASS =
 // neighbouring rows while it does.
 const ACTION_ROW_EXPANDED_CLASS = "absolute top-0 z-10 flex items-center gap-2";
 
+// Optical alignment: the row lines up with the message's *text*, not its
+// border box. A bubble insets its text by 16px padding + 1px border, and each
+// icon carries slack inside its larger hit box (a 20px box around a 12px glyph
+// on desktop, 28px around 16px on touch), so the row is inset by the
+// difference and the outer glyph edge lands on the text edge. Without it the
+// glyph sits 4px from the bubble's edge — inside its 12px corner radius, so it
+// reads as hanging off the message.
+const BUBBLE_ALIGN_INSET_CLASS = "pr-[13px] max-md:pointer-coarse:pr-[11px]";
+// The row is absolutely positioned, so it resolves `right` against the slot's
+// padding box — the padding above shrinks the measured budget but cannot move
+// the row. Offset it by the same amount to place it.
+const BUBBLE_ALIGN_OFFSET_CLASS =
+  "right-[13px] max-md:pointer-coarse:right-[11px]";
+// Prose rows have no bubble padding, so only the hit-box slack is corrected.
+const PROSE_ALIGN_INSET_CLASS = "-ml-1 max-md:pointer-coarse:-ml-1.5";
+
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,
 ): HTMLElement | undefined {
@@ -584,7 +600,15 @@ export function MessageActionBar({
 
   const rowClass = cn(
     ACTION_ROW_CLASS,
-    alignment === "end" ? "right-0" : "left-0",
+    alignment === "end"
+      ? BUBBLE_ALIGN_OFFSET_CLASS
+      : cn("left-0", PROSE_ALIGN_INSET_CLASS),
+  );
+  // Padding on the slot, so the measured width is the text width the row has
+  // to fit into rather than the bubble's full border box.
+  const slotClass = cn(
+    "relative w-full",
+    alignment === "end" && BUBBLE_ALIGN_INSET_CLASS,
   );
 
   if (useMobileOverflowPopover) {
@@ -610,12 +634,14 @@ export function MessageActionBar({
         columnWidth - EXPANDED_ROW_COMFORT_PX;
     if (expanded && canExpandInline) {
       return (
-        <div ref={slotRef} className="relative h-7 w-full">
+        <div ref={slotRef} className={cn(slotClass, "h-7")}>
           <div
             ref={expandedRowRef}
             className={cn(
               ACTION_ROW_EXPANDED_CLASS,
-              alignment === "end" ? "right-0" : "left-0",
+              alignment === "end"
+                ? BUBBLE_ALIGN_OFFSET_CLASS
+                : cn("left-0", PROSE_ALIGN_INSET_CLASS),
             )}
             onClick={handleExpandedRowClick}
           >
@@ -625,7 +651,7 @@ export function MessageActionBar({
       );
     }
     return (
-      <div ref={slotRef} className="relative h-7 w-full">
+      <div ref={slotRef} className={cn(slotClass, "h-7")}>
         <div className={rowClass}>
           {layout.inlineCount > 0 ? (
             <MobileInlineActions
@@ -675,7 +701,7 @@ export function MessageActionBar({
     <TooltipProvider delayDuration={300}>
       <div
         ref={desktopSlotRef}
-        className="relative h-5 w-full max-md:pointer-coarse:h-7"
+        className={cn(slotClass, "h-5 max-md:pointer-coarse:h-7")}
       >
         <div className={rowClass}>
           {actions.slice(0, layout.inlineCount).map((action) => (
