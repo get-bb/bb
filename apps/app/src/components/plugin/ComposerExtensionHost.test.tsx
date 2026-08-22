@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import {
   usePluginComposerHost,
+  usePluginComposerHostDraft,
   useOptionalPluginComposerView,
   type PluginComposerHost,
 } from "./plugin-composer-host";
@@ -52,11 +53,12 @@ const draft = { text: "hello", mentions: [], attachments: [] };
 
 function RendererProbe() {
   const host = usePluginComposerHost();
+  const hostDraft = usePluginComposerHostDraft(host);
   const view = useOptionalPluginComposerView();
   return (
     <div
       data-testid="renderer"
-      data-host-text={host?.draft.text}
+      data-host-text={hostDraft?.text}
       data-scope={view?.scope.kind}
     />
   );
@@ -74,9 +76,9 @@ function Harness({
   const host = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "thread", threadId: "thr_test" },
-      draft,
       textEffectKey: "thread/thr_test",
       getCurrent: () => draft,
+      subscribeDraft: () => () => {},
       setDraft: () => undefined,
       focus: mocks.focusHost,
     }),

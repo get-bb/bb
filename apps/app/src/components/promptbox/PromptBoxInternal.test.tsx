@@ -827,9 +827,9 @@ describe("PromptBoxInternal controlled value sync", () => {
         threadId: "thread-1",
         queuedMessageId,
       },
-      draft,
       textEffectKey: `queued-message:${queuedMessageId}`,
       getCurrent: () => draft,
+      subscribeDraft: () => () => {},
       setDraft: vi.fn(),
       focus: vi.fn(),
     });
@@ -1754,9 +1754,9 @@ describe("PromptBoxInternal plugin composer actions", () => {
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
       scope: { kind: "thread", threadId: "crashing-action-thread" },
-      draft,
       textEffectKey: "crashing-action-composer",
       getCurrent: () => draft,
+      subscribeDraft: () => () => {},
       setDraft: vi.fn(),
       focus: vi.fn(),
     };
@@ -1841,9 +1841,9 @@ describe("PromptBoxInternal plugin composer actions", () => {
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
       scope: { kind: "thread", threadId: "thread-1" },
-      draft,
       textEffectKey: "promptbox-lock-test",
       getCurrent: () => draft,
+      subscribeDraft: () => () => {},
       setDraft: vi.fn(),
       focus: vi.fn(),
     };
@@ -1930,9 +1930,9 @@ describe("PromptBoxInternal plugin composer actions", () => {
     const draft = emptyPromptDraftState();
     const host = (threadId: string): PluginComposerHost => ({
       scope: { kind: "thread", threadId },
-      draft,
       textEffectKey: `scope-action:${threadId}`,
       getCurrent: () => draft,
+      subscribeDraft: () => () => {},
       setDraft: vi.fn(),
       focus: vi.fn(),
     });

@@ -20,7 +20,10 @@ import {
   FollowUpPromptBox,
   type FollowUpComposerProps,
 } from "@/components/promptbox/FollowUpPromptBox";
-import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import {
+  useComposerHostDraftNotifier,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
 import {
   QueuedMessagesList,
@@ -667,6 +670,16 @@ function EmbeddedThreadChatWithComposer({
       }
     };
   }, [queuedComposerHostIdentity]);
+  // subscribeDraft sources for the two hosts below. The notifiers MUST be
+  // declared after every ref-sync layout effect above (hook order = effect
+  // order): a thread switch changes the host identity and the draft in one
+  // commit, and `getCurrent` gates on the active-identity refs. Notifying
+  // before the identity sync would hand subscribers the stale pre-switch
+  // draft with no later notification to correct it.
+  const subscribeBottomDraft = useComposerHostDraftNotifier(currentPromptDraft);
+  const subscribeQueuedDraft = useComposerHostDraftNotifier(
+    inlineEditingQueuedMessage?.draft ?? null,
+  );
   const setStoredPromptDraft = promptDraft.setDraft;
   const bottomPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
     if (bottomScope === null) return null;
@@ -675,11 +688,11 @@ function EmbeddedThreadChatWithComposer({
     return {
       scope: bottomScope,
       textEffectKey: identity,
-      draft: currentPromptDraftRef.current,
       getCurrent: () =>
         activeBottomComposerIdentityRef.current === identity
           ? currentPromptDraftRef.current
           : initialDraft,
+      subscribeDraft: subscribeBottomDraft,
       setDraft: (draft) => {
         if (activeBottomComposerIdentityRef.current === identity) {
           setStoredPromptDraft(draft);
@@ -691,7 +704,12 @@ function EmbeddedThreadChatWithComposer({
         }
       },
     };
-  }, [bottomComposerHostIdentity, bottomScope, setStoredPromptDraft]);
+  }, [
+    bottomComposerHostIdentity,
+    bottomScope,
+    setStoredPromptDraft,
+    subscribeBottomDraft,
+  ]);
   const queuedPluginComposerHost = useMemo<PluginComposerHost | null>(() => {
     if (
       queuedComposerIdentity === null ||
@@ -720,7 +738,6 @@ function EmbeddedThreadChatWithComposer({
         queuedMessageId: queuedEdit.queuedMessageId,
       },
       textEffectKey: identity,
-      draft: initialDraft,
       getCurrent: () => {
         if (activeQueuedComposerIdentityRef.current !== identity) {
           return initialDraft;
@@ -730,6 +747,7 @@ function EmbeddedThreadChatWithComposer({
           ? currentQueuedEdit.draft
           : initialDraft;
       },
+      subscribeDraft: subscribeQueuedDraft,
       setDraft: (draft) => {
         if (activeQueuedComposerIdentityRef.current !== identity) {
           return;
@@ -748,24 +766,11 @@ function EmbeddedThreadChatWithComposer({
     inlineEditingQueuedMessageRef,
     queuedComposerIdentity,
     queuedComposerHostIdentity,
+    subscribeQueuedDraft,
     updateInlineQueuedMessage,
   ]);
-  const bottomPluginComposerHostWithDraft = useMemo<PluginComposerHost | null>(
-    () =>
-      bottomPluginComposerHost === null
-        ? null
-        : { ...bottomPluginComposerHost, draft: currentPromptDraft },
-    [bottomPluginComposerHost, currentPromptDraft],
-  );
-  const queuedPluginComposerHostWithDraft = useMemo<PluginComposerHost | null>(
-    () =>
-      queuedPluginComposerHost === null
-        ? null
-        : { ...queuedPluginComposerHost, draft: activeComposerDraft },
-    [activeComposerDraft, queuedPluginComposerHost],
-  );
-  const activeBottomPluginComposerHost = bottomPluginComposerHostWithDraft;
-  const activeQueuedPluginComposerHost = queuedPluginComposerHostWithDraft;
+  const activeBottomPluginComposerHost = bottomPluginComposerHost;
+  const activeQueuedPluginComposerHost = queuedPluginComposerHost;
   const bottomComposerTextEffects = useComposerTextEffects(
     activeBottomPluginComposerHost?.textEffectKey ?? null,
   );

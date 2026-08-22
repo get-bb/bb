@@ -56,6 +56,7 @@ const mocks = vi.hoisted(() => ({
     setDraft: vi.fn(),
     setTextAndMentions: vi.fn(),
     storageKey: "bb.promptbox.contents-proj_1-thr_1-3",
+    subscribe: vi.fn(() => () => {}),
     text: "",
   },
   queuedMessages: [] as ThreadQueuedMessage[],
@@ -206,7 +207,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
               type="button"
               onClick={() =>
                 pluginComposerHost.setDraft({
-                  ...pluginComposerHost.draft,
+                  ...pluginComposerHost.getCurrent(),
                   text: "Plugin-enhanced queued message",
                 })
               }

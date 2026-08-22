@@ -289,6 +289,7 @@ function getPromptDraftStorageKey(scope: PromptDraftScope): string {
 export function getPromptDraftAccessor(scope: PromptDraftScope): {
   storageKey: string;
   getCurrent: () => PromptDraftState;
+  subscribe: (listener: () => void) => () => void;
   setDraft: (draft: PromptDraftState) => void;
   addQuote: (
     text: string,
@@ -299,6 +300,7 @@ export function getPromptDraftAccessor(scope: PromptDraftScope): {
   return {
     storageKey,
     getCurrent: () => readPromptDraft(storageKey),
+    subscribe: (listener) => subscribePromptDraft(storageKey, listener),
     setDraft: (draft) => writePromptDraft(storageKey, draft),
     addQuote: (text, attachments) =>
       addQuoteToPromptDraft(storageKey, text, attachments),
@@ -326,6 +328,13 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
   const getCurrent = useCallback((): PromptDraftState => {
     return readPromptDraft(storageKey);
   }, [storageKey]);
+
+  // Stable per storage key, so a plugin composer host built over this draft
+  // can expose the store subscription without re-creating the host per write.
+  const subscribe = useCallback(
+    (listener: () => void) => subscribePromptDraft(storageKey, listener),
+    [storageKey],
+  );
 
   const setTextAndMentions = useCallback(
     (nextText: string, nextMentions: PromptTextMention[]) => {
@@ -421,6 +430,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
     () => ({
       storageKey,
       getCurrent,
+      subscribe,
       value: draft.text,
       text: draft.text,
       mentions: draft.mentions,
@@ -450,6 +460,7 @@ export function usePromptDraftStorage(scope: PromptDraftScope) {
       setDraftAndPersist,
       setTextAndMentions,
       storageKey,
+      subscribe,
     ],
   );
 }

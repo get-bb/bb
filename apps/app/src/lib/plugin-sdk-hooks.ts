@@ -34,6 +34,7 @@ import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thre
 import {
   PluginComposerViewContext,
   usePluginComposerHost,
+  usePluginComposerHostDraft,
 } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
@@ -622,7 +623,8 @@ export function useComposerView(): ComposerView {
     [projectId, threadId],
   );
   const routeDraft = usePromptDraftStorage(routeScope);
-  const draft = composerHost?.draft ?? routeDraft;
+  const hostDraft = usePluginComposerHostDraft(composerHost);
+  const draft = hostDraft ?? routeDraft;
   const fallback = useMemo<ComposerView>(
     () => ({
       scope:
@@ -656,6 +658,7 @@ export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
   const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
+  const composerHostDraft = usePluginComposerHostDraft(composerHost);
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
     () =>
@@ -852,7 +855,7 @@ export function useComposer(): PluginComposerApi {
   );
 
   const focus = focusActiveComposer;
-  const composerText = composerHost?.draft.text ?? routeDraft.text;
+  const composerText = composerHostDraft?.text ?? routeDraft.text;
 
   return useMemo(
     () => ({
