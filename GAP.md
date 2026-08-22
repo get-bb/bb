@@ -1,13 +1,13 @@
 # gap-bb
 
-Private fork of [get-bb/bb](https://github.com/get-bb/bb). Product name in this checkout: **gap-bb**.
+Public GitHub fork of [get-bb/bb](https://github.com/get-bb/bb). Product name in this checkout: **gap-bb**.
 
 ## Remotes
 
 | Remote | URL | Role |
 | --- | --- | --- |
-| `origin` | `https://github.com/kr3t3n/gap-bb.git` | Private gap-bb |
-| `upstream` | `https://github.com/get-bb/bb.git` | Public bb |
+| `origin` | `https://github.com/kr3t3n/gap-bb.git` | Public fork (`kr3t3n/gap-bb`) |
+| `upstream` | `https://github.com/get-bb/bb.git` | Upstream bb |
 
 Keep package and CLI names as `bb` / `bb-app` so upstream merges stay clean. Brand as gap-bb in docs and companion apps only until a deliberate rename.
 
