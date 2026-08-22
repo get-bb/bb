@@ -15,6 +15,7 @@ import {
   installAppQueryClientBrowserEvents,
 } from "./lib/query-client";
 import { applyCachedAppThemeCss } from "./lib/themes";
+import { wsManager } from "./lib/ws";
 import "./app.css";
 
 // Before anything renders: a content script that moves a React-owned node out
@@ -28,7 +29,13 @@ installForeignDomMutationGuard();
 // costs anything when an Error is actually constructed.
 Error.stackTraceLimit = 50;
 
-const queryClient = createAppQueryClient();
+const queryClient = createAppQueryClient({
+  // While the realtime socket is connected, change events and the reconnect
+  // watermark own cache freshness; a focus refetch on top would re-request
+  // every active query on each phone unlock and app switch.
+  shouldRefetchOnWindowFocus: () =>
+    wsManager.getConnectionState() !== "connected",
+});
 installAppQueryClientBrowserEvents(queryClient);
 // The provider CLI install store outlives every component, so it takes the
 // client here rather than reading it from context when an install finishes.
