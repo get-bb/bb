@@ -413,7 +413,7 @@ describe("public thread default routes", () => {
     });
   });
 
-  it("returns an actionable error when the default model catalog cannot be loaded", async () => {
+  it("returns an actionable error when an explicitly requested provider's model catalog cannot be loaded", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps);
       registerProviderHostRpcResponder(harness, {
@@ -442,6 +442,9 @@ describe("public thread default routes", () => {
         body: JSON.stringify({
           origin: "cli",
           projectId: project.id,
+          // An explicit provider request must not silently fall through to
+          // another provider when its catalog fails.
+          providerId: "codex",
           input: [{ type: "text", text: "Create without defaults" }],
           environment: {
             type: "reuse",
@@ -460,6 +463,67 @@ describe("public thread default routes", () => {
       expect(listThreads(harness.db, { projectId: project.id })).toHaveLength(
         0,
       );
+    });
+  });
+
+  it("falls back to another available provider when the product default's model catalog cannot be loaded", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps);
+      registerProviderHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        // Only the first provider.list_models call (codex) needs a custom
+        // response; restoring the default capture afterward lets the
+        // fallback call (claude-code) succeed via the harness's generic
+        // model-list stub and lets thread.start get captured normally.
+        restoreCommandCaptureAfterResponse: true,
+        modelErrorsByProviderId: {
+          // Codex (the product default: first in install order) is
+          // registered but has no usable models on this host, exactly like
+          // an installed-but-unconfigured provider plugin.
+          codex: {
+            errorCode: "command_failed",
+            errorMessage: "Codex model discovery failed",
+          },
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/thread-defaults-catalog-fallback",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/thread-defaults-catalog-fallback",
+      });
+
+      const response = await harness.app.request("/api/v1/threads", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          origin: "cli",
+          projectId: project.id,
+          input: [{ type: "text", text: "Create without defaults" }],
+          environment: {
+            type: "reuse",
+            environmentId: environment.id,
+          },
+        }),
+      });
+
+      expect(response.status).toBe(201);
+      const createdThread = threadSchema.parse(await readJson(response));
+      expect(createdThread.providerId).toBe("claude-code");
+      const queuedStart = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" &&
+          command.threadId === createdThread.id,
+      );
+      expect(queuedStart.command).toMatchObject({
+        providerId: "claude-code",
+        options: { model: "test-provider-default" },
+      });
     });
   });
 

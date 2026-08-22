@@ -24,25 +24,30 @@ export const DEFAULT_REASONING_LEVEL: ReasoningLevel = "medium";
 const DEFAULT_PERMISSION_MODE: PermissionMode = "auto";
 
 /**
- * The default provider, used when neither the caller nor the project has
- * chosen one: the user's `defaultProviderId` setting when it names an
- * available provider, else the first available entry of the registry listing
- * (the user's `providerOrder`, then plugin install order). Providers come only
- * from plugin declarations, so an install with every provider plugin disabled
- * has no default at all.
+ * Ordered candidates for the default provider, used when neither the caller
+ * nor the project has chosen one: the user's `defaultProviderId` setting
+ * leads when it names an available provider, then every other available
+ * entry of the registry listing (the user's `providerOrder`, then plugin
+ * install order). Exposed as a list (not just a single id) so a caller whose
+ * chosen candidate turns out to have no usable model catalog can retry the
+ * next one instead of failing outright.
  */
-function requireDefaultProviderId(registry: ProviderRegistryService): string {
-  const listed = registry.list();
+function listDefaultProviderIdCandidates(
+  registry: ProviderRegistryService,
+): string[] {
+  const available = registry
+    .list()
+    .filter((registration) => registration.info.available)
+    .map((registration) => registration.info.id);
   const preferred = registry.getUserDefaultProviderId();
-  const providerId =
-    (preferred !== null
-      ? listed.find(
-          (registration) =>
-            registration.info.id === preferred && registration.info.available,
-        )
-      : undefined
-    )?.info.id ??
-    listed.find((registration) => registration.info.available)?.info.id;
+  if (preferred !== null && available.includes(preferred)) {
+    return [preferred, ...available.filter((id) => id !== preferred)];
+  }
+  return available;
+}
+
+function requireDefaultProviderId(registry: ProviderRegistryService): string {
+  const providerId = listDefaultProviderIdCandidates(registry)[0];
   if (providerId === undefined) {
     // Reachable for real now that providers are plugin-only: disabling every
     // provider plugin leaves nothing to start a thread with. Say so, instead
@@ -64,6 +69,14 @@ interface ResolveCreateThreadExecutionDefaultsArgs {
 interface CreateThreadExecutionDefaultsResolved {
   executionDefaults: ProjectExecutionDefaults | null;
   providerId: string;
+  /**
+   * Other available providers to try, in order, if `providerId`'s model
+   * catalog turns out to be unusable (empty or failing to load). Populated
+   * only when `providerId` itself came from the product default (no explicit
+   * request and no stored project default) — an explicit choice is never
+   * silently overridden.
+   */
+  providerFallbackCandidates: readonly string[];
 }
 
 interface IsManagedChildThreadArgs {
@@ -172,6 +185,12 @@ export function resolveCreateThreadExecutionDefaults(
   registry: ProviderRegistryService,
   args: ResolveCreateThreadExecutionDefaultsArgs,
 ): CreateThreadExecutionDefaultsResolved {
+  const isProductDefault =
+    args.requestedProviderId === undefined &&
+    args.storedDefaults?.providerId === undefined;
+  const defaultCandidates = isProductDefault
+    ? listDefaultProviderIdCandidates(registry)
+    : [];
   const providerId =
     args.requestedProviderId ??
     args.storedDefaults?.providerId ??
@@ -187,7 +206,13 @@ export function resolveCreateThreadExecutionDefaults(
 
   const storedDefaults =
     args.storedDefaults?.providerId === providerId ? args.storedDefaults : null;
-  return { executionDefaults: storedDefaults, providerId };
+  return {
+    executionDefaults: storedDefaults,
+    providerId,
+    providerFallbackCandidates: defaultCandidates.filter(
+      (id) => id !== providerId,
+    ),
+  };
 }
 
 export function buildProviderThreadExecutionDefaults(

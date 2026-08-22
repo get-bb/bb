@@ -108,24 +108,27 @@ interface ResolveCatalogExecutionDefaultsArgs {
   executionDefaults: ProjectExecutionDefaults | null;
   hostId: string;
   providerId: string;
+  /**
+   * Other available providers to try, in order, if `providerId`'s catalog is
+   * unusable. Only non-empty when `providerId` itself came from the product
+   * default rather than an explicit request or a stored project default — an
+   * explicit choice never silently falls through to a different provider.
+   */
+  providerFallbackCandidates?: readonly string[];
   requestedModel: string | null;
 }
 
-async function resolveCatalogExecutionDefaults(
+async function loadCatalogDefaultForProvider(
   deps: ThreadCreateDeps,
-  args: ResolveCatalogExecutionDefaultsArgs,
-): Promise<ProjectExecutionDefaults | null> {
-  if (args.executionDefaults !== null || args.requestedModel !== null) {
-    return args.executionDefaults;
-  }
-
+  args: { cwd?: string; hostId: string; providerId: string },
+): Promise<ProjectExecutionDefaults | ApiError> {
   const catalog = await resolveSystemProviderModels(deps, {
     ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
     hostId: args.hostId,
     providerId: args.providerId,
   });
   if (catalog.modelLoadError !== null) {
-    throw new ApiError(
+    return new ApiError(
       503,
       "model_catalog_unavailable",
       `Unable to load ${args.providerId} models to resolve the default. Try again once the host is connected and the provider is ready.`,
@@ -138,7 +141,7 @@ async function resolveCatalogExecutionDefaults(
   const defaultModel =
     catalog.models.find((model) => model.isDefault) ?? catalog.models[0];
   if (defaultModel === undefined) {
-    throw new ApiError(
+    return new ApiError(
       503,
       "model_catalog_unavailable",
       `The ${args.providerId} model catalog is empty, so no default model can be resolved.`,
@@ -149,6 +152,30 @@ async function resolveCatalogExecutionDefaults(
     providerId: args.providerId,
     model: defaultModel.model,
   });
+}
+
+async function resolveCatalogExecutionDefaults(
+  deps: ThreadCreateDeps,
+  args: ResolveCatalogExecutionDefaultsArgs,
+): Promise<ProjectExecutionDefaults | null> {
+  if (args.executionDefaults !== null || args.requestedModel !== null) {
+    return args.executionDefaults;
+  }
+
+  const candidates = [args.providerId, ...(args.providerFallbackCandidates ?? [])];
+  let lastError: ApiError | null = null;
+  for (const providerId of candidates) {
+    const result = await loadCatalogDefaultForProvider(deps, {
+      ...(args.cwd !== undefined ? { cwd: args.cwd } : {}),
+      hostId: args.hostId,
+      providerId,
+    });
+    if (!(result instanceof ApiError)) {
+      return result;
+    }
+    lastError = result;
+  }
+  throw lastError;
 }
 
 /**
@@ -705,13 +732,17 @@ export async function createThreadFromRequest(
   // for: without this, a thread created on boot sees an empty registry and
   // fails with "no provider available".
   await deps.providerRegistry.whenRegistrationsSettled();
-  const { executionDefaults, providerId, requestedModel } =
-    resolveProjectExecutionDefaultsForCreate(deps, {
-      executionInputSources: requestInput.executionInputSources,
-      model: requestInput.model,
-      projectId: requestInput.projectId,
-      providerId: requestInput.providerId,
-    });
+  const {
+    executionDefaults,
+    providerId,
+    providerFallbackCandidates,
+    requestedModel,
+  } = resolveProjectExecutionDefaultsForCreate(deps, {
+    executionInputSources: requestInput.executionInputSources,
+    model: requestInput.model,
+    projectId: requestInput.projectId,
+    providerId: requestInput.providerId,
+  });
   const {
     originKind: _requestedOriginKind,
     parentThreadId: _requestedParentThreadId,
@@ -761,9 +792,19 @@ export async function createThreadFromRequest(
       executionDefaults,
       hostId: childHostId,
       providerId,
+      providerFallbackCandidates,
       requestedModel,
     },
   );
+  // A fallback candidate's catalog can win over the product default's own
+  // (empty or failing) catalog; the thread must record whichever provider
+  // actually resolved a model rather than the one first guessed above.
+  if (
+    resolvedExecutionDefaults !== null &&
+    resolvedExecutionDefaults.providerId !== request.providerId
+  ) {
+    request.providerId = resolvedExecutionDefaults.providerId;
+  }
 
   let environmentId: string | null = null;
   let environmentIntent: ThreadProvisionEnvironmentIntent;
