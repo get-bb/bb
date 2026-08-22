@@ -1,4 +1,7 @@
-import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
+import {
+  defineWorkspaceTestConfig,
+  sharedWorkerProjects,
+} from "../../vitest.shared.js";
 
 export default defineWorkspaceTestConfig({
   resolve: {
@@ -10,13 +13,10 @@ export default defineWorkspaceTestConfig({
   },
   test: {
     silent: "passed-only",
-    name: "bb-plugin-tasks",
     // CI runners are slow enough that testing-library's default 1s findBy*/
     // waitFor timeout flakes on the heavier UI suites (pager, manage, rail).
     testTimeout: 20_000,
     setupFiles: ["./vitest.setup.ts"],
-    include: ["**/*.test.{ts,tsx}"],
-    exclude: ["node_modules/**"],
     server: {
       deps: {
         // Inlined so the tippy.js alias above applies to its import; left
@@ -25,5 +25,11 @@ export default defineWorkspaceTestConfig({
         inline: ["@tiptap/extension-bubble-menu"],
       },
     },
+    projects: sharedWorkerProjects({
+      pkgDir: __dirname,
+      name: "bb-plugin-tasks",
+      include: ["**/*.test.{ts,tsx}"],
+      exclude: ["node_modules/**"],
+    }),
   },
 });

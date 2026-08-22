@@ -161,11 +161,17 @@ function instrumentSqliteClient(
   });
 }
 
+/**
+ * Opens the database at `source`. A path (or `:memory:`) opens a file or a
+ * fresh in-memory database; a `Buffer` opens an in-memory copy of a
+ * serialized database image (`db.$client.serialize()`), which is how the test
+ * harnesses clone a migrated template instead of replaying every migration.
+ */
 export function createConnection(
-  dbPath: string = "bb.db",
+  source: string | Buffer = "bb.db",
   options: CreateConnectionOptions = {},
 ) {
-  const sqlite = new Database(dbPath);
+  const sqlite = new Database(source);
 
   // Reclaim freed pages incrementally (via PRAGMA incremental_vacuum in the
   // periodic maintenance sweep) instead of relying on a full-file VACUUM. This

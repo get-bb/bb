@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
-import type { DbConnection } from "@bb/db";
+import { createConnection, type DbConnection } from "@bb/db";
 import { defaultFeatureFlags, type HostType } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
@@ -119,6 +119,22 @@ export function createTestDaemonHostKey(
   });
 }
 
+let migratedTemplate: Buffer | null = null;
+
+/**
+ * A fresh in-memory database with every migration applied and the personal
+ * project seeded, exactly as `initDb` leaves it. The first call migrates for
+ * real and keeps the serialized image; every later call opens an independent
+ * copy of that image. Replaying the 100+ migrations was ~57ms of the ~61ms a
+ * harness cost, paid by nearly two thousand tests.
+ */
+export function createTestDb(): DbConnection {
+  if (migratedTemplate === null) {
+    migratedTemplate = initDb(":memory:").$client.serialize();
+  }
+  return createConnection(migratedTemplate);
+}
+
 export async function createTestAppHarness(
   overrides: TestAppHarnessConfigOverrides = {},
 ): Promise<TestAppHarness> {
@@ -129,7 +145,7 @@ export async function createTestAppHarness(
     ...configOverrides
   } = overrides;
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
-  const db = initDb(":memory:");
+  const db = createTestDb();
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });

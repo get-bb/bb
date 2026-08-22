@@ -1,9 +1,7 @@
 import {
   defineWorkspaceTestConfig,
-  findIsolationRequiringTests,
+  sharedWorkerProjects,
 } from "../../vitest.shared.js";
-
-const isolationTests = findIsolationRequiringTests(__dirname, ["src", "test"]);
 
 export default defineWorkspaceTestConfig({
   test: {
@@ -13,23 +11,10 @@ export default defineWorkspaceTestConfig({
       BB_SERVER_PORT: "49161",
       BB_HOST_DAEMON_PORT: "49162",
     },
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: "@bb/server",
-          include: ["src/**/*.test.ts", "test/**/*.test.ts"],
-          exclude: ["dist/**", "node_modules/**", ...isolationTests],
-          isolate: false,
-        },
-      },
-      {
-        extends: true,
-        test: {
-          name: "@bb/server:isolated",
-          include: isolationTests,
-        },
-      },
-    ],
+    projects: sharedWorkerProjects({
+      pkgDir: __dirname,
+      name: "@bb/server",
+      include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+    }),
   },
 });
