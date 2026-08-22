@@ -1,0 +1,161 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "jsPlugins": ["./scripts/oxlint-plugin.mjs"],
+  "categories": {
+    "correctness": "off"
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/routeTree.gen.ts",
+    "packages/core/src/generated/**",
+    "apps/mobile/ios/**",
+    "apps/mobile/android/**",
+    "apps/mobile/.expo/**",
+    "packages/templates/src/generated/**",
+    "packages/plugin-build/src/generated/**",
+    "packages/plugin-sdk/bundled-types/**"
+  ],
+  "overrides": [
+    {
+      "files": ["**/*.{ts,tsx}"],
+      "plugins": ["react"],
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "error",
+        "react/static-components": "error",
+        "react/use-memo": "error",
+        "react/void-use-memo": "error",
+        // Oxlint's native analyzer finds additional existing adoption issues;
+        // keep them visible without making the tooling migration blocking.
+        "react/preserve-manual-memoization": "warn",
+        "react/incompatible-library": "warn",
+        "react/immutability": "warn",
+        "react/globals": "error",
+        "react/refs": "warn",
+        "react/set-state-in-effect": "warn",
+        "react/error-boundaries": "error",
+        "react/purity": "warn",
+        "react/set-state-in-render": "error",
+        "react/unsupported-syntax": "warn"
+      }
+    },
+    {
+      "files": ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "node:child_process",
+                "importNames": ["spawnSync", "execSync", "execFileSync"],
+                "message": "Use async child_process APIs instead of blocking sync variants."
+              },
+              {
+                "name": "child_process",
+                "importNames": ["spawnSync", "execSync", "execFileSync"],
+                "message": "Use async child_process APIs instead of blocking sync variants."
+              }
+            ]
+          }
+        ],
+        "bb/no-blocking-child-process-call": "error"
+      }
+    },
+    {
+      "files": [
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/scripts/**"
+      ],
+      "rules": {
+        "no-restricted-imports": "off",
+        "bb/no-blocking-child-process-call": "off"
+      }
+    },
+    {
+      "files": ["apps/server/src/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@bb/host-workspace",
+                "message": "Server must not access workspaces directly. Use daemon commands instead."
+              },
+              {
+                "name": "@bb/host-watcher",
+                "message": "Server must not access host watchers directly. Use daemon commands instead."
+              },
+              {
+                "name": "node:fs",
+                "message": "Server must not use node:fs. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)"
+              },
+              {
+                "name": "node:fs/promises",
+                "message": "Server must not use node:fs/promises. Use daemon commands for workspace access. (attachments.ts is the only exception — it manages server-local storage.)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": [
+        "apps/server/src/**/__tests__/**",
+        "apps/server/src/**/*.test.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["apps/mobile/**/*.{ts,tsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@bb/sdk",
+                "message": "Import @bb/sdk/browser: the root entry resolves to the Node SDK under Metro's source condition."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["@bb/shared-ui", "@bb/shared-ui/*"],
+                "message": "@bb/shared-ui is React DOM + Radix. Use the mobile primitives instead."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/app/src/**/*.{ts,tsx}"],
+      "rules": {
+        "bb/no-native-title-with-aria-label": "error",
+        "bb/no-native-title-on-button": "error"
+      }
+    },
+    {
+      "files": [
+        "apps/app/src/**/*.test.ts",
+        "apps/app/src/**/*.test.tsx",
+        "apps/app/src/**/*.stories.tsx"
+      ],
+      "rules": {
+        "bb/no-native-title-with-aria-label": "off",
+        "bb/no-native-title-on-button": "off"
+      }
+    }
+  ]
+}

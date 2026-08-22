@@ -16,7 +16,7 @@ export function useLatestRef<T>(value: T): RefObject<T> {
   const ref = useRef(value);
   // Deliberate render-time write: this hook exists to keep that write (and the
   // compiler bailout it costs) out of the calling component.
-  // eslint-disable-next-line react-hooks/refs
+  // oxlint-disable-next-line react/refs
   ref.current = value;
   return ref;
 }

@@ -183,7 +183,7 @@ export function SecondaryPanelLayout({
     cancelCompactDrawerContentSettleFrame();
     // Native browser visibility is external to React and must be revoked
     // before paint when the drawer identity changes.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // oxlint-disable-next-line react/set-state-in-effect
     setIsCompactDrawerContentSettled(false);
   }, [cancelCompactDrawerContentSettleFrame, open, renderAsDrawer, resetKey]);
 

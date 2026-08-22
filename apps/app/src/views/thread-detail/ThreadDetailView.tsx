@@ -187,7 +187,10 @@ import {
   usePluginPanelActions,
 } from "@/components/plugin/PluginPanelActions";
 import { createFileOpenerOriginalTab } from "@/components/plugin/file-opener-tabs";
-import { PluginThreadPanelNavigationProvider } from "@/components/plugin/plugin-thread-panel-navigation";
+import {
+  PluginThreadPanelNavigationProvider,
+  usePublishThreadPanelOpener,
+} from "@/components/plugin/plugin-thread-panel-navigation";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
@@ -2245,6 +2248,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     environment,
     hasWorkspaceOpenTargets: directoryOpenTargets.length > 0,
   });
+  // The quick palette is mounted outside this view's provider, so publish the
+  // opener for it. Focused pane only: a split has one per pane.
+  usePublishThreadPanelOpener(handleOpenTimelinePluginPanel, isFocused);
   useAppCommandHandler("workspace.openPreferred", () => {
     if (!isFocused) return false;
     if (activeWorkspaceFilePath && handleOpenFileInEditor) {

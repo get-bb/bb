@@ -389,7 +389,7 @@ export function SidebarSplitContainer({
     const group = getSidebarGroupForPane(state, firstPane.paneId);
     if (group === null) return null;
     // renderPane is a synchronous React render callback; its handlers read refs only after pointer events.
-    // eslint-disable-next-line react-hooks/refs
+    // oxlint-disable-next-line react/refs
     return renderPane({
       group,
       isFocused: true,

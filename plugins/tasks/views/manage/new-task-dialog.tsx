@@ -116,7 +116,7 @@ export function NewTaskDialog({
     setPendingFiles([]);
     setCreatedTask(null);
     setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [open]);
 
   const projectList = projects.data ?? [];
@@ -247,7 +247,7 @@ export function NewTaskDialog({
   // explicitly removed, the created task opens like a normal success.
   useEffect(() => {
     if (createdTask && pendingFiles.length === 0) finish(createdTask);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [createdTask, pendingFiles.length]);
 
   // Oversized chips must be removed first — creating around them would

@@ -236,7 +236,7 @@ export function useComposeController(params: ComposeParams): ComposeController {
   // --- Seeds (fork / handoff) --------------------------------------------
   const forkSeed = useMemo(
     () => readForkSeedFromComposeParams(params),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- route params are stable per screen instance
+    // oxlint-disable-next-line react/exhaustive-deps -- route params are stable per screen instance
     [
       params.forkSourceThreadId,
       params.forkSourceSeqEnd,
@@ -247,7 +247,7 @@ export function useComposeController(params: ComposeParams): ComposeController {
   );
   const handoffSeed = useMemo(
     () => readHandoffSeedFromComposeParams(params),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- route params are stable per screen instance
+    // oxlint-disable-next-line react/exhaustive-deps -- route params are stable per screen instance
     [
       params.handoffSourceThreadId,
       params.handoffSourceThreadTitle,
@@ -400,7 +400,7 @@ export function useComposeController(params: ComposeParams): ComposeController {
   // Revision-dependent read: the store bumps `revision` on every write.
   const storedEnvironment = useMemo(
     () => prefStore.getProjectEnvironment(projectId),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revision is the cache key
+    // oxlint-disable-next-line react/exhaustive-deps -- revision is the cache key
     [prefStore, projectId, prefs.revision],
   );
   const seededEnvironment = useMemo((): ThreadEnvironmentSelection => {
@@ -622,7 +622,7 @@ export function useComposeController(params: ComposeParams): ComposeController {
   const providerInfo = providers.find((provider) => provider.id === providerId);
   const storedProviderSelection = useMemo(
     () => prefStore.getProviderSelection(providerId),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- revision is the cache key
+    // oxlint-disable-next-line react/exhaustive-deps -- revision is the cache key
     [prefStore, providerId, prefs.revision],
   );
   const providerMatchesDefaults =

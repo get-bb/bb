@@ -1871,6 +1871,18 @@ openWorkspaceFile }` — register a leaf
   `useBbNavigate().openThreadPanel`. Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
+- `commandPaletteAction` → a row in bb's quick palette (Mod+Shift+P), listed
+  under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
+  component — registration: `{ id, title, isAvailable?, run }`. Both callbacks
+  receive `{ threadId, projectId, openPanel }`, where `threadId` and
+  `projectId` are null on surfaces without one and `openPanel` matches
+  `messageAction`'s. `isAvailable` is called while the palette is open — keep
+  it cheap and synchronous — and hides the row when it returns false; a row
+  that needs a thread should use it, because the palette opens anywhere and
+  `openPanel` declines (returning false) unless a thread view is focused.
+  Errors from either callback are contained and logged, never breaking the
+  palette. Write self-identifying titles ("Linear: open issue for this
+  thread"): the palette matches the query against the title.
 - `experimental_providerIcon` → the React component bb draws as one agent
   provider's icon. Registration: `{ providerId, icon }`, where `providerId` is
   the provider's id (`"codex"`, `"acp-cursor"`) — not the plugin id — and

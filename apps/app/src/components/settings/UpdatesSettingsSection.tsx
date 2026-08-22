@@ -1463,7 +1463,7 @@ export function UpdatesSettingsSection({
     handleCheckForUpdates();
     // Deliberately runs once per mount; `handleCheckForUpdates` closes over the
     // host snapshot taken at that moment, which is what the check should use.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [hostsSettled]);
 
   const appUpdateVisible =

@@ -187,7 +187,7 @@ export function useSidebarThreadTitleMentionResources(
     navigation: ThreadTitleMentionNavigationSource | undefined;
     resources: ThreadTitleMentionResources;
   } | null>(null);
-  /* eslint-disable react-hooks/refs -- render-time cache, see above */
+  /* oxlint-disable react/refs -- render-time cache, see above */
   const cached = cacheRef.current;
   if (cached !== null && cached.navigation === navigation) {
     return cached.resources;
@@ -197,7 +197,7 @@ export function useSidebarThreadTitleMentionResources(
     cached?.resources ?? EMPTY_TITLE_MENTION_RESOURCES,
   );
   cacheRef.current = { navigation, resources };
-  /* eslint-enable react-hooks/refs */
+  /* oxlint-enable react/refs */
   return resources;
 }
 

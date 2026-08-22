@@ -21,7 +21,7 @@ export type LabelClaim = typeof labelClaim.$inferSelect;
 // The relational-query schema generics are irrelevant here — this helper only
 // uses the core `.select()` surface — so they are widened to accept any Drizzle
 // SQLite database (D1 or better-sqlite3, with or without a bound schema).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any
 export type ConnectDb = BaseSQLiteDatabase<
   "sync" | "async",
   unknown,

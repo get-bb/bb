@@ -5,6 +5,7 @@ import type {
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
+  PluginCommandPaletteActionRegistration,
   PluginMessageActionRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -54,6 +55,8 @@ export interface PluginRegistrationSet {
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   messageActions?: readonly PluginMessageActionRegistration[];
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
+  commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
+  /** Optional for the same reason as `threadLists`: bundles built earlier. */
   providerIcons?: readonly PluginProviderIconRegistration[];
 }
 
@@ -98,6 +101,8 @@ export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginMessageActionSlot
   extends PluginMessageActionRegistration, PluginSlotBase {}
+export interface PluginCommandPaletteActionSlot
+  extends PluginCommandPaletteActionRegistration, PluginSlotBase {}
 interface PluginProviderIconSlot
   extends PluginProviderIconRegistration, PluginSlotBase {}
 
@@ -118,6 +123,7 @@ export interface PluginSlotSnapshot {
   diffRenderers: readonly PluginDiffRendererSlot[];
   messageDirectives: readonly PluginMessageDirectiveSlot[];
   messageActions: readonly PluginMessageActionSlot[];
+  commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
 }
 
@@ -137,6 +143,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   diffRenderers: [],
   messageDirectives: [],
   messageActions: [],
+  commandPaletteActions: [],
   providerIcons: [],
 };
 
@@ -163,6 +170,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "diffRenderers",
   "messageDirectives",
   "messageActions",
+  "commandPaletteActions",
   "providerIcons",
 ];
 
@@ -210,6 +218,7 @@ function flattenRegistrations(
     diffRenderers: stamp(set.diffRenderers),
     messageDirectives: stamp(set.messageDirectives),
     messageActions: stamp(set.messageActions),
+    commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
   };
 }

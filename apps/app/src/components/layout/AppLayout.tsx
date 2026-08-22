@@ -849,7 +849,10 @@ export function AppLayout({ children }: AppLayoutProps) {
             active={isSidebarResizing}
             cursor="col-resize"
           />
-          <CommandPalette />
+          <CommandPalette
+            threadId={threadId ?? null}
+            projectId={projectId ?? null}
+          />
           <ProjectPathDialog
             target={quickCreateProject.projectPathDialog.target}
             pending={quickCreateProject.isCreating}

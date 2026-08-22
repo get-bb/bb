@@ -475,7 +475,7 @@ function AskUserQuestionInteraction({
     // handleToggleOption/handleSelectOther only close over the stable
     // setFormState and their question argument, so the current question and
     // busy flag are the whole dependency set.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [busy, currentQuestion]);
 
   if (!parsed.success) {

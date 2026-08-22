@@ -180,7 +180,7 @@ export function DiffFilesPanel({
     // refetches (`filesUpdatedAt` bumps): a content-only edit produces the same
     // paths but evicts the patch cache, so the same visible set must be
     // re-requested to fetch the fresh patch.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [isPanelOpen, requestPaths, visibleKey, overscanKey, filesUpdatedAt]);
 
   // Scroll a file requested from the info tab / prompt banner to the top of the

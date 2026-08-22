@@ -224,7 +224,7 @@ above for a connected Magic Keyboard.
 Enter. It lists only commands that apply on the current surface, shows each
 one's shortcut, and offers recently run commands first. The numbered
 accelerator families and the relative cycle commands stay rebindable but
-unlisted.
+unlisted. Plugins can add their own rows, listed under "Plugins".
 
 Settings → Keyboard edits app command shortcuts. Overrides are stored in the
 server database, applied live to every connected window, and kept across
