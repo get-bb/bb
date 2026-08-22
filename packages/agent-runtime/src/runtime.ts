@@ -926,6 +926,17 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
   }
 
+  function assertThreadCanStartTurn(threadId: string): void {
+    if (
+      turnState.getActiveTurnId(threadId) !== null ||
+      pendingTurnStarts.has(threadId)
+    ) {
+      throw new Error(
+        `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`,
+      );
+    }
+  }
+
   function recordProviderThreadIdentity(
     proc: ProviderProcess,
     threadId: string,
@@ -2133,6 +2144,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
         work: async () => {
           const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
           requireProviderProcessForThread(threadId);
+          assertThreadCanStartTurn(threadId);
           await restartThreadBridgeIfRecommended({
             threadId,
             options: execOpts,
@@ -2169,6 +2181,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             plan: proc.adapter.buildCommandPlan(adapterCommand),
             providerId: pid,
           });
+          assertThreadCanStartTurn(threadId);
           pendingTurnStarts.set(threadId, {
             sinceMs: Date.now(),
             watchdogFired: false,

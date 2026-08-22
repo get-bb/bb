@@ -420,7 +420,10 @@ describe("createAgentRuntime lifecycle", () => {
           permissionEscalation: "ask",
           // The plugin-derived bag rides the command as-is; only the owning
           // bridge reads its keys.
-          providerOptions: { memoryEnabled: true, providerSubagentsEnabled: true },
+          providerOptions: {
+            memoryEnabled: true,
+            providerSubagentsEnabled: true,
+          },
         },
       });
 
@@ -943,11 +946,13 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
-    it("resolves waitForActiveTurn from the turn/started observation", async () => {
+    it("resolves waitForActiveTurn and rejects a competing start while active", async () => {
       const events: ThreadEvent[] = [];
+      const record = createScriptedEchoRequestRecord();
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
+          env: record.env,
           onEvent: (event) => events.push(event),
         },
       });
@@ -980,13 +985,26 @@ describe("createAgentRuntime lifecycle", () => {
       await expect(pendingTurnId).resolves.toBe(turnId);
       expect(runtime.getActiveTurnId("t1")).toBe(turnId);
       expect(runtime.getLiveThreadIds()).toEqual(["t1"]);
+      await expect(
+        runtime.runTurn({
+          clientRequestId: "creq_222222224a",
+          threadId: "t1",
+          input: [promptTextInput({ text: "competing active turn" })],
+          options: fullRuntimeOptions,
+        }),
+      ).rejects.toThrow(/active or starting/);
+      expect(
+        recordedMethods(record).filter((method) => method === "turn/start"),
+      ).toHaveLength(1);
       await runtime.shutdown();
     });
 
-    it("reports pending work before an accepted turn emits its first event", async () => {
+    it("reports pending work and rejects a competing start before the first event", async () => {
+      const record = createScriptedEchoRequestRecord();
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
+          env: record.env,
           onEvent: () => {},
         },
         // The bridge accepts turn/start and never opens the turn.
@@ -1010,6 +1028,17 @@ describe("createAgentRuntime lifecycle", () => {
 
         expect(runtime.getActiveTurnId("t1")).toBeNull();
         expect(runtime.getLiveThreadIds()).toEqual(["t1"]);
+        await expect(
+          runtime.runTurn({
+            clientRequestId: "creq_222222224b",
+            threadId: "t1",
+            input: [promptTextInput({ text: "competing pending turn" })],
+            options: fullRuntimeOptions,
+          }),
+        ).rejects.toThrow(/active or starting/);
+        expect(
+          recordedMethods(record).filter((method) => method === "turn/start"),
+        ).toHaveLength(1);
       } finally {
         await runtime.shutdown();
       }

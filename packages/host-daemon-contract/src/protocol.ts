@@ -303,9 +303,13 @@
 // websocket and reconnect instead of remaining registered but unable to
 // receive host RPC commands.
 //
+// Version 166 makes turn admission single-owner across the shared runtime and
+// lets turn submission recover a stale target by re-steering the live turn.
+// An old daemon can still start a competing provider turn in that race.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 165 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 166 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
