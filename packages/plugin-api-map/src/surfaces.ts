@@ -204,7 +204,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
       },
       {
         id: "code-renderers",
-        title: "Source & diff renderers",
+        title: "Code & diff renderers",
         summary:
           "Replaces bb's source-code or diff renderer everywhere that kind of content appears. With this, a plugin can:",
         bullets: [

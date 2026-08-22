@@ -227,6 +227,81 @@ function Mark({
   );
 }
 
+/**
+ * An annotation whose boundary is the fixture element it describes.
+ *
+ * Unlike OverlayMark, this component does not measure a rectangle against a
+ * slide. Its interactive layer fills the content wrapper, so the outline and
+ * marker move with that content. The overlay is a sibling of `children`, so
+ * fixture content does not have to become part of the interactive anchor.
+ */
+function RegionMark({
+  id,
+  label,
+  className,
+  chipClassName,
+  children,
+}: {
+  id: string;
+  label: string;
+  className?: string;
+  chipClassName?: string;
+  children: ReactNode;
+}) {
+  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
+    useSurfaceMap();
+  const active = activeId === id || expandedId === id || spotlightId === id;
+  const outlined =
+    activeId !== null
+      ? activeId === id
+      : expandedId === id || spotlightId === id;
+  const dimmed = Boolean(spotlightId) && spotlightId !== id;
+
+  return (
+    <div
+      data-guide-region={id}
+      className={cn("relative", dimmed && "opacity-25", className)}
+    >
+      <a
+        href={`#surface-${id}`}
+        aria-label={`${label} — jump to details`}
+        onClick={
+          onSelect
+            ? (event) => {
+                event.preventDefault();
+                onSelect(id);
+              }
+            : undefined
+        }
+        onMouseEnter={() => setActiveId(id)}
+        onMouseLeave={() => setActiveId(null)}
+        onFocus={() => setActiveId(id)}
+        onBlur={() => setActiveId(null)}
+        className={cn(
+          "absolute inset-0 z-[1] rounded-md ring-1 ring-inset transition-all",
+          outlined
+            ? "bg-surface-selected/30 ring-surface-selected-border"
+            : "ring-transparent hover:bg-state-hover",
+        )}
+      >
+        <span
+          aria-hidden
+          className={annotationChipClass(
+            active,
+            cn(
+              "absolute z-10 ring-2 ring-card",
+              chipClassName ?? "-right-2 -top-2",
+            ),
+          )}
+        >
+          {numberOf(id)}
+        </span>
+      </a>
+      {children}
+    </div>
+  );
+}
+
 function MiniIcon({
   icon,
   className,
@@ -532,31 +607,37 @@ function AppShellWireframeBody() {
                   ::your-directive
                 </span>
               </Mark>
-              <Mark
+              <RegionMark
                 id="code-renderers"
-                label="A plugin renderer replacing BB's source or diff presentation"
+                label="A plugin renderer replacing bb's code or diff presentation"
                 className="block w-4/5 space-y-1.5 px-2.5 py-2"
-                chipClassName="-right-2 top-0"
+                chipClassName="-right-2 top-1/2 -translate-y-1/2"
               >
-                <span aria-hidden className="flex gap-2">
-                  <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                    1
+                <div
+                  aria-hidden
+                  data-guide-fixture="code-renderer"
+                  className="space-y-1.5"
+                >
+                  <span className="flex gap-2">
+                    <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                      1
+                    </span>
+                    <span className="h-2 w-4/5 rounded-sm bg-muted/60" />
                   </span>
-                  <span className="h-2 w-4/5 rounded-sm bg-muted/60" />
-                </span>
-                <span aria-hidden className="flex gap-2">
-                  <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                    2
+                  <span className="flex gap-2">
+                    <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                      2
+                    </span>
+                    <span className="h-2 w-3/5 rounded-sm bg-muted/60" />
                   </span>
-                  <span className="h-2 w-3/5 rounded-sm bg-muted/60" />
-                </span>
-                <span aria-hidden className="flex gap-2">
-                  <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                    3
+                  <span className="flex gap-2">
+                    <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                      3
+                    </span>
+                    <span className="h-2 w-2/3 rounded-sm bg-muted/60" />
                   </span>
-                  <span className="h-2 w-2/3 rounded-sm bg-muted/60" />
-                </span>
-              </Mark>
+                </div>
+              </RegionMark>
               <p className="leading-relaxed">
                 Fixed by isolating the Stripe mock per test.
               </p>
@@ -640,22 +721,25 @@ function AppShellWireframeBody() {
           {/* body: a plugin-owned file preview, separate from the source and
               diff renderer shown in the timeline */}
           <div className="m-2 flex-1 p-2.5">
-            <Mark
+            <RegionMark
               id="file-opener"
               label="A plugin file viewer, opened for a matching extension"
-              className="flex items-center gap-1.5 pb-2 text-foreground"
-              edge
-              chipClassName="right-1 top-[96px]"
+              className="p-1"
+              chipClassName="left-1/2 -top-4 -translate-x-1/2"
             >
-              <MiniIcon icon={File01Icon} className="size-3.5" />
-              notes.md
-              <PluginGlyph className="ml-auto size-3.5" />
-            </Mark>
-            <p className="pb-2 text-foreground">Checkout retry notes</p>
-            <p className="leading-relaxed text-subtle-foreground">
-              Flakes cluster around shared test state. Reset each mock between
-              cases before rerunning the suite.
-            </p>
+              <div data-guide-fixture="file-viewer">
+                <div className="flex items-center gap-1.5 pb-2 text-foreground">
+                  <MiniIcon icon={File01Icon} className="size-3.5" />
+                  notes.md
+                  <PluginGlyph className="ml-auto size-3.5" />
+                </div>
+                <p className="pb-2 text-foreground">Checkout retry notes</p>
+                <p className="leading-relaxed text-subtle-foreground">
+                  Flakes cluster around shared test state. Reset each mock
+                  between cases before rerunning the suite.
+                </p>
+              </div>
+            </RegionMark>
           </div>
         </div>
       </div>
@@ -967,19 +1051,34 @@ export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
                   mention pill and a plugin-painted range. Its fill matches
                   the prompt box's own background, so it disappears into the
                   product chrome instead of reading as a pasted-on strip. */}
-                  <div
-                    aria-hidden
-                    className="absolute left-4 right-12 top-[13px] flex h-7 items-center bg-[var(--background)] text-sm leading-none text-foreground"
-                  >
-                    <span className="whitespace-pre">Summarize </span>
-                    <span className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5">
-                      @release-notes
+                  <div className="absolute left-4 right-12 top-[13px] flex h-7 items-center bg-[var(--background)] text-sm leading-none text-foreground">
+                    <span aria-hidden className="whitespace-pre">
+                      Summarize{" "}
                     </span>
-                    <span className="whitespace-pre"> and fix the </span>
-                    <span className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40">
-                      TODO
+                    <RegionMark
+                      id="mention-provider"
+                      label="Plugin mention results in the @ typeahead"
+                      className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+                      chipClassName="left-1/2 -top-4 -translate-x-1/2"
+                    >
+                      <span aria-hidden>@release-notes</span>
+                    </RegionMark>
+                    <span aria-hidden className="whitespace-pre">
+                      {" "}
+                      and fix the{" "}
                     </span>
-                    <span className="whitespace-pre"> in checkout.</span>
+                    <RegionMark
+                      id="composer-rich-text"
+                      label="Plugin highlighting, painted over the draft prompt"
+                      className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
+                      chipClassName="left-1/2 -top-4 -translate-x-1/2"
+                    >
+                      <span aria-hidden>TODO</span>
+                    </RegionMark>
+                    <span aria-hidden className="whitespace-pre">
+                      {" "}
+                      in checkout.
+                    </span>
                   </div>
 
                   {/* the draft itself: what useComposer reads and locks */}
@@ -989,20 +1088,9 @@ export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
                     className="-left-2 top-4"
                     region="left-[12px] right-[40px] top-[9px] h-9"
                   />
-                  {/* the painted range: chip rides the ring's corner */}
-                  <OverlayMark
-                    id="composer-rich-text"
-                    label="Plugin highlighting, painted over the draft prompt"
-                    className="left-[296px] -top-3"
-                    region="left-[252px] top-[12px] h-[30px] w-[53px]"
-                  />
-                  {/* the mention pill; the typeahead expands under it on engage */}
-                  <OverlayMark
-                    id="mention-provider"
-                    label="Plugin mention results in the @ typeahead"
-                    className="left-[182px] -top-3"
-                    region="left-[81px] top-[12px] h-[30px] w-[111px]"
-                  />
+                  {/* The mention pill and highlighted range carry their own
+                      RegionMarks above, so their boundaries follow the
+                      rendered fixture text rather than slide coordinates. */}
                   {engaged("mention-provider") ? (
                     <div
                       aria-hidden
@@ -1070,13 +1158,24 @@ export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
                     className="left-[184px] top-[71px]"
                     region="left-[41px] top-[85px] h-10 w-[157px]"
                   />
-                  {/* inline actions: only the plugin slot, left of voice/send */}
-                  <OverlayMark
+                  {/* The real composer intentionally suppresses globally
+                      installed plugin controls. Draw this fixture-owned icon
+                      in the documented slot so the annotation still points
+                      at a recognizable plugin action. */}
+                  <RegionMark
                     id="composer-actions"
                     label="Plugin composer actions, before voice and send"
-                    className="right-[75px] top-[71px]"
-                    region="right-[81px] top-[87px] size-9"
-                  />
+                    className="absolute right-[81px] top-[87px] z-[5] flex size-9 items-center justify-center"
+                    chipClassName="left-1/2 -top-4 -translate-x-1/2"
+                  >
+                    <span
+                      aria-hidden
+                      data-guide-fixture="plugin-composer-action"
+                      className="flex size-7 items-center justify-center rounded-md bg-state-hover"
+                    >
+                      <PluginGlyph className="size-3.5" />
+                    </span>
+                  </RegionMark>
                 </div>
               </div>
             </div>
