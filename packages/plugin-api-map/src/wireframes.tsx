@@ -532,6 +532,31 @@ function AppShellWireframeBody() {
                   ::your-directive
                 </span>
               </Mark>
+              <Mark
+                id="code-renderers"
+                label="A plugin renderer replacing BB's source or diff presentation"
+                className="block w-4/5 space-y-1.5 px-2.5 py-2"
+                chipClassName="-right-2 top-0"
+              >
+                <span aria-hidden className="flex gap-2">
+                  <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                    1
+                  </span>
+                  <span className="h-2 w-4/5 rounded-sm bg-muted/60" />
+                </span>
+                <span aria-hidden className="flex gap-2">
+                  <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                    2
+                  </span>
+                  <span className="h-2 w-3/5 rounded-sm bg-muted/60" />
+                </span>
+                <span aria-hidden className="flex gap-2">
+                  <span className="w-3 text-right text-[8px] text-subtle-foreground">
+                    3
+                  </span>
+                  <span className="h-2 w-2/3 rounded-sm bg-muted/60" />
+                </span>
+              </Mark>
               <p className="leading-relaxed">
                 Fixed by isolating the Stripe mock per test.
               </p>
@@ -612,8 +637,8 @@ function AppShellWireframeBody() {
             <span className="flex-1" />
             <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
           </div>
-          {/* body: a plugin-owned file preview whose supplied source content
-              uses the independently replaceable host renderer */}
+          {/* body: a plugin-owned file preview, separate from the source and
+              diff renderer shown in the timeline */}
           <div className="m-2 flex-1 p-2.5">
             <Mark
               id="file-opener"
@@ -626,32 +651,11 @@ function AppShellWireframeBody() {
               notes.md
               <PluginGlyph className="ml-auto size-3.5" />
             </Mark>
-            <Mark
-              id="code-renderers"
-              label="A plugin renderer replacing BB's source or diff presentation"
-              className="block space-y-1.5"
-              edge
-              chipClassName="right-1 top-[145px]"
-            >
-              <span aria-hidden className="flex gap-2">
-                <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                  1
-                </span>
-                <span className="h-2 w-4/5 rounded-sm bg-muted/60" />
-              </span>
-              <span aria-hidden className="flex gap-2">
-                <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                  2
-                </span>
-                <span className="h-2 w-3/5 rounded-sm bg-muted/60" />
-              </span>
-              <span aria-hidden className="flex gap-2">
-                <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                  3
-                </span>
-                <span className="h-2 w-2/3 rounded-sm bg-muted/60" />
-              </span>
-            </Mark>
+            <p className="pb-2 text-foreground">Checkout retry notes</p>
+            <p className="leading-relaxed text-subtle-foreground">
+              Flakes cluster around shared test state. Reset each mock between
+              cases before rerunning the suite.
+            </p>
           </div>
         </div>
       </div>
