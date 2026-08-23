@@ -8,7 +8,7 @@ import {
 } from "@bb/desktop-contract";
 
 export { createDesktopUpdateFeedUrl } from "./desktop-update-provider.js";
-export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+export const DESKTOP_UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 export const DESKTOP_UPDATE_CHECK_TIMEOUT_MS = 5_000;
 export const DESKTOP_UPDATE_ACTIVE_MIN_INTERVAL_MS = 15 * 60 * 1000;
 
