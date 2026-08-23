@@ -41,6 +41,11 @@ import {
   prepareTurnSubmitCommandPayload,
 } from "./thread-commands.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import {
+  prependDeferredFirstTurnContext,
+  requireDeferredFirstTurnContextCurrent,
+  resolveDeferredFirstTurnContext,
+} from "./deferred-first-turn-context.js";
 import { appendClientTurnEventInTransaction } from "./thread-events.js";
 import {
   getLastProviderThreadId,
@@ -297,6 +302,14 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
       [...lastGroup, ...pluginMentionContext],
     ];
   }
+  const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
+    deps.db,
+    thread.id,
+  );
+  ({ input, inputGroups } = prependDeferredFirstTurnContext(
+    { input, inputGroups },
+    deferredFirstTurnContext,
+  ));
   const payload = sendQueuedMessagePayload(
     { ...queuedMessage, content: input },
     args.mode,
@@ -333,6 +346,12 @@ async function sendClaimedQueuedMessageForIdleProviderThread(
 
   const { activeThread, command } = deps.db.transaction(
     (tx) => {
+      if (deferredFirstTurnContext) {
+        requireDeferredFirstTurnContextCurrent(tx, {
+          requestSequence: deferredFirstTurnContext.requestSequence,
+          threadId: thread.id,
+        });
+      }
       const consumed = deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
         queuedMessages: args.queuedMessages,
       });
