@@ -1176,6 +1176,45 @@ describe("generated managed branch names", () => {
     });
   });
 
+  it("generates titles for short prompts using the full initial text", async () => {
+    mockThreadMetadata({ title: "Generated concise title" });
+    await withTestHarness(async (harness) => {
+      await expect(
+        generateThreadMetadataWithOutcome(harness.deps, {
+          input: textInput("fix"),
+          threadId: "thr_short_title",
+        }),
+      ).resolves.toMatchObject({
+        metadata: {
+          branchSlug: "generated-concise-title",
+          title: "Generated concise title",
+        },
+      });
+
+      const tail = "SEARCHABLE_PROMPT_TAIL";
+      const longPrompt = `${"context ".repeat(20)}${tail}`;
+      await generateThreadMetadataWithOutcome(harness.deps, {
+        input: textInput(longPrompt),
+        threadId: "thr_full_title_prompt",
+      });
+
+      expect(piAiMocks.complete).toHaveBeenCalledTimes(2);
+      expect(piAiMocks.complete).toHaveBeenNthCalledWith(
+        2,
+        { provider: "test" },
+        expect.objectContaining({
+          messages: [
+            expect.objectContaining({
+              content: expect.stringContaining(tail),
+            }),
+          ],
+          systemPrompt: "Call the `result` tool with your answer.",
+        }),
+        expect.anything(),
+      );
+    });
+  });
+
   it("returns no metadata when inference times out", async () => {
     piAiMocks.getModel.mockReturnValue({ provider: "test" });
     piAiMocks.complete.mockReturnValue(new Promise(() => undefined));
