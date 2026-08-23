@@ -618,7 +618,6 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   return (
     <>
       {commandHandlers}
-      {}
       <div
         ref={preservedScrollWorkspaceRef}
         className="relative -m-4 flex min-h-0 min-w-0 flex-1 overflow-hidden md:-m-5"
@@ -750,7 +749,6 @@ function SplitTree(props: SplitTreeProps) {
         data-focused={isFocused ? "true" : "false"}
         data-maximized={isMaximized ? "true" : undefined}
       >
-        {}
         {node.content.kind === "thread" ? (
           <PaneStaleWatcher
             threadId={node.content.threadId}
@@ -778,7 +776,6 @@ function SplitTree(props: SplitTreeProps) {
           onNavigateInPane={props.onNavigateInPane}
           onBeginPaneDrag={props.onBeginPaneDrag}
         />
-        {}
         <div
           aria-hidden
           data-pane-focus-scrim=""
@@ -1037,7 +1034,8 @@ function NonThreadPaneContent({
     isFocused: true,
   };
   const hostLayout = useContext(SecondaryPanelHostLayoutContext);
-  const showsWindowPanelToggle = hostLayout?.pinsCornerToggle === true;
+  const reservesWindowPanelToggleSlot =
+    hostLayout?.pinsCornerToggle === true && hostLayout.isOpen === false;
   const [desktopInfo] = useState(getBbDesktopInfo);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const panelEntry =
@@ -1099,7 +1097,7 @@ function NonThreadPaneContent({
           />
         </Button>
       ) : null}
-      {reservesWindowPanelToggle && showsWindowPanelToggle ? (
+      {reservesWindowPanelToggle && reservesWindowPanelToggleSlot ? (
         <span aria-hidden className={HEADER_ICON_BUTTON_CLASS} />
       ) : null}
     </>

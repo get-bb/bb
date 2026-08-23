@@ -329,7 +329,13 @@ describe("SecondaryPanelLayout", () => {
     const panelGroup = screen.getByTestId("panel-group");
     const mainContent = screen.getByTestId("main-content");
     expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
+      "500ms",
+    );
+    expect(
+      panelGroup.style.getPropertyValue("--panel-collapse-easing"),
+    ).toMatch(/^linear\(/u);
+    expect(mainContent.parentElement?.className).toContain(
+      "motion-reduce:duration-0",
     );
 
     view.rerenderWith({ resetKey: "plugin-page-b" });
@@ -363,7 +369,7 @@ describe("SecondaryPanelLayout", () => {
 
     act(() => frames.flushAll());
     expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
+      "500ms",
     );
   });
 
@@ -386,7 +392,7 @@ describe("SecondaryPanelLayout", () => {
     expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
   });
 
-  it("owns the desktop open, closed, and conversation-collapse layouts", () => {
+  it("owns the animated desktop open, closed, and conversation layouts", () => {
     const renderPanel = createPanelRenderer();
     const view = renderLayout({
       collapseActive: false,
@@ -454,6 +460,7 @@ describe("SecondaryPanelLayout", () => {
       expect.objectContaining({
         presentation: "inline",
         canShowNativeBrowserView: true,
+        inlinePanelToggle: "reserved",
         isMainCollapsed: true,
         resizablePanelId: "thread-detail-secondary-panel-pane-test",
       }),
