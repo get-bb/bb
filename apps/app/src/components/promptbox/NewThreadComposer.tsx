@@ -991,6 +991,12 @@ export function NewThreadComposer({
     () => ({
       scope: { kind: "new-thread", projectId },
       textEffectKey: promptDraft.storageKey,
+      newThreadMentionContext: {
+        projectId,
+        environmentId: reuseEnvironmentId,
+        hostId: projectHostId,
+        threadStorageThreadId: panelThreadId,
+      },
       getCurrent: promptDraft.getCurrent,
       subscribeDraft: promptDraft.subscribe,
       setDraft: promptDraft.setDraft,
@@ -998,10 +1004,13 @@ export function NewThreadComposer({
     }),
     [
       projectId,
+      projectHostId,
       promptDraft.getCurrent,
       promptDraft.setDraft,
       promptDraft.storageKey,
       promptDraft.subscribe,
+      panelThreadId,
+      reuseEnvironmentId,
     ],
   );
 

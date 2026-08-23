@@ -15,15 +15,22 @@ import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 export type ThreadSectionCreateResult = ThreadSectionResponse;
 export type ThreadSectionUpdateResult = ThreadSectionMutationResponse;
 export type ThreadSectionDeleteResult = ThreadSectionMutationResponse;
+export type ThreadSectionGetResult = ThreadSectionResponse;
 export type ThreadSectionListResult = ThreadSectionResponse[];
 
 export interface ThreadSectionListArgs {
   signal?: AbortSignal;
 }
 
+export interface ThreadSectionGetArgs {
+  sectionId: string;
+  signal?: AbortSignal;
+}
+
 export interface ThreadSectionsArea {
   create(args: CreateThreadSectionRequest): Promise<ThreadSectionCreateResult>;
   delete(args: DeleteThreadSectionRequest): Promise<ThreadSectionDeleteResult>;
+  get(args: ThreadSectionGetArgs): Promise<ThreadSectionGetResult>;
   list(args?: ThreadSectionListArgs): Promise<ThreadSectionListResult>;
   update(args: UpdateThreadSectionRequest): Promise<ThreadSectionUpdateResult>;
 }
@@ -44,6 +51,15 @@ export function createThreadSectionsArea(
         transport.api.v1["thread-sections"].$delete({ json: input }),
       );
       return threadSectionMutationResponseSchema.parse(body);
+    },
+    async get(input) {
+      const body = await transport.readJson(
+        transport.api.v1["thread-sections"][":id"].$get(
+          { param: { id: input.sectionId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return threadSectionSchema.parse(body);
     },
     async list(input) {
       const body = await transport.readJson(

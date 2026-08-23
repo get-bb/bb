@@ -67,6 +67,7 @@ import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
 } from "@/lib/app-fixed-tab-navigation";
+import { resolveBuiltInComposerMention } from "@/lib/plugin-composer-mentions";
 
 type FetchLike = (
   input: string,
@@ -773,42 +774,70 @@ export function useComposer(): PluginComposerApi {
     [focusActiveComposer, getCurrent, setDraft],
   );
 
+  const resolvedScope = useMemo<PluginComposerApi["scope"]>(
+    () =>
+      composerScope ??
+      (threadId !== undefined
+        ? { kind: "thread", threadId }
+        : { kind: "new-thread", projectId: projectId ?? null }),
+    [composerScope, projectId, threadId],
+  );
+  const newThreadMentionContext = composerHost?.newThreadMentionContext;
+
   const insertMention = useCallback(
-    (mention: PluginComposerMention) => {
-      const provider = mention.provider.trim();
-      const label = mention.label.trim() || mention.id;
-      if (provider.length === 0 || provider.includes(":")) {
-        console.warn(
-          `[plugin:${pluginId}] useComposer().insertMention: invalid provider id "${mention.provider}"`,
+    async (mention: PluginComposerMention) => {
+      let resource: PromptTextMention["resource"];
+      if ("provider" in mention) {
+        const provider = mention.provider.trim();
+        const label = mention.label.trim() || mention.id;
+        if (provider.length === 0 || provider.includes(":")) {
+          console.warn(
+            `[plugin:${pluginId}] useComposer().insertMention: invalid provider id "${mention.provider}"`,
+          );
+          return;
+        }
+        resource = {
+          kind: "plugin",
+          pluginId,
+          icon: null,
+          itemId: `${provider}:${mention.id}`,
+          label,
+        };
+      } else {
+        resource = await resolveBuiltInComposerMention(
+          mention,
+          resolvedScope,
+          sdk,
+          newThreadMentionContext,
         );
-        return;
       }
       const current = getCurrent();
       const separator =
         current.text.length === 0 || /\s$/u.test(current.text) ? "" : " ";
       const start = current.text.length + separator.length;
-      const end = start + label.length;
+      const end = start + resource.label.length;
       setDraft({
         ...current,
-        text: `${current.text}${separator}${label} `,
+        text: `${current.text}${separator}${resource.label} `,
         mentions: [
           ...current.mentions,
           {
             start,
             end,
-            resource: {
-              kind: "plugin",
-              pluginId,
-              icon: null,
-              itemId: `${provider}:${mention.id}`,
-              label,
-            },
+            resource,
           },
         ],
       });
       focusActiveComposer();
     },
-    [focusActiveComposer, getCurrent, pluginId, setDraft],
+    [
+      focusActiveComposer,
+      getCurrent,
+      newThreadMentionContext,
+      pluginId,
+      resolvedScope,
+      setDraft,
+    ],
   );
 
   const focus = focusActiveComposer;
@@ -816,11 +845,7 @@ export function useComposer(): PluginComposerApi {
 
   return useMemo(
     () => ({
-      scope:
-        composerScope ??
-        (threadId !== undefined
-          ? { kind: "thread", threadId }
-          : { kind: "new-thread", projectId: projectId ?? null }),
+      scope: resolvedScope,
       text: composerText,
       setText,
       updateText,
@@ -835,15 +860,13 @@ export function useComposer(): PluginComposerApi {
     [
       addQuote,
       clear,
-      composerScope,
       composerText,
       focus,
       insertMention,
-      projectId,
+      resolvedScope,
       setText,
       setTextEffect,
       setInputLock,
-      threadId,
       updateText,
     ],
   );

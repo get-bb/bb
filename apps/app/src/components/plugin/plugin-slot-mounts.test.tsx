@@ -62,6 +62,7 @@ import {
 import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
 import { getComposerTextEffects } from "@/lib/composer-text-effects";
 import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+import { sdk } from "@/lib/sdk";
 import {
   PluginPanelTabContent,
   usePluginNewThreadPanelActions,
@@ -311,7 +312,7 @@ describe("useComposer", () => {
           <button
             type="button"
             onClick={() =>
-              composer.insertMention({
+              void composer.insertMention({
                 provider: "notes",
                 id: "work/ideas.md",
                 label: "ideas.md",
@@ -323,7 +324,7 @@ describe("useComposer", () => {
           <button
             type="button"
             onClick={() =>
-              composer.insertMention({
+              void composer.insertMention({
                 provider: "bad:colon",
                 id: "x",
                 label: "x",
@@ -1235,6 +1236,52 @@ describe("useComposer", () => {
     expect(screen.getByTestId("draft-text").textContent).toBe(
       "ideas.md ideas.md ",
     );
+  });
+
+  it("resolves and inserts BB-owned mention resources", async () => {
+    vi.spyOn(sdk.threads, "resolveMentions").mockResolvedValue([
+      {
+        threadId: "thr_target",
+        projectId: "proj_target",
+        label: "Canonical thread title",
+      },
+    ]);
+    let composer: PluginComposerApi | null = null;
+    registerComposerProbe("built-in", (nextComposer) => {
+      composer = nextComposer;
+    });
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <ComposerCustomizationMount />
+        <NewThreadDraftViewer />
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      if (composer === null) throw new Error("Composer did not render");
+      await composer.insertMention({
+        kind: "thread",
+        threadId: "thr_target",
+      });
+    });
+
+    expect(screen.getByTestId("draft-text").textContent).toBe(
+      "Canonical thread title ",
+    );
+    expect(
+      JSON.parse(screen.getByTestId("draft-mentions").textContent ?? "[]"),
+    ).toEqual([
+      {
+        start: 0,
+        end: 22,
+        resource: {
+          kind: "thread",
+          threadId: "thr_target",
+          projectId: "proj_target",
+          label: "Canonical thread title",
+        },
+      },
+    ]);
   });
 
   it("rejects provider ids containing ':' without touching the draft", () => {

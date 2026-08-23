@@ -1257,8 +1257,16 @@ describe("@bb/sdk", () => {
     });
   });
 
-  it("exposes thread section mutations", async () => {
+  it("exposes thread section reads and mutations", async () => {
     const queue = createFetchQueue([
+      {
+        body: {
+          id: "sec_123",
+          name: "Review",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
       {
         body: {
           id: "sec_123",
@@ -1278,9 +1286,17 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
+      sdk.threadSections.get({ sectionId: "sec_123" }),
+    ).resolves.toMatchObject({ id: "sec_123", name: "Review" });
+    await expect(
       sdk.threadSections.create({ name: "Review" }),
     ).resolves.toMatchObject({ id: "sec_123", name: "Review" });
     expect(queue.requests[0]).toEqual({
+      bodyText: undefined,
+      method: "GET",
+      url: "http://bb.test/api/v1/thread-sections/sec_123",
+    });
+    expect(queue.requests[1]).toEqual({
       bodyText: JSON.stringify({ name: "Review" }),
       method: "POST",
       url: "http://bb.test/api/v1/thread-sections",
