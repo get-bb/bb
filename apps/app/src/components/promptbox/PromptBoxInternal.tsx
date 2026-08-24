@@ -43,12 +43,6 @@ import {
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@bb/shared-ui/tooltip";
 import { ComposerActionsSlot } from "@/components/plugin/PluginComposerActions";
 import { useResolvedComposerEditor } from "@/components/plugin/composer-slot-hooks";
 import {
@@ -118,11 +112,24 @@ import { MentionMenu, type TypeaheadSuggestion } from "./mentions/MentionMenu";
 import { parsePromptMentionClipboardElement } from "./mentions/prompt-mention-clipboard";
 import { ComposerEditorSlot } from "./ComposerEditorSlot";
 import { QueuedEditorTypeaheadLayoutContext } from "./queued-editor-typeahead-layout";
+import {
+  COLLAPSING_GRID_CLASS,
+  COMPACT_PROMPT_ACTION_BUTTON_CLASS,
+  DEFAULT_PROMPTBOX_PLACEHOLDER,
+  isPromptBoxChromeTarget,
+  PROMPTBOX_MIN_HEIGHT,
+  PromptSubmitButton,
+  type PromptBoxCompactConfig,
+  type PromptBoxEditorLayout,
+} from "./PromptBoxShell";
+import {
+  appendPromptActionToDraft,
+  promptActionCommandFromAction,
+  promptActionCommandSerializedText,
+  type PromptActionCommand,
+} from "./prompt-action-draft";
 
-const PROMPTBOX_MIN_HEIGHT = 68;
 const PROMPTBOX_SELECTION_REVEAL_MARGIN = 12;
-const COMPACT_PROMPT_ACTION_BUTTON_CLASS =
-  "size-8 p-0 transition-all [&_svg]:size-4";
 const RICH_PASTE_BLOCK_TAGS = new Set([
   "ADDRESS",
   "ARTICLE",
@@ -180,10 +187,6 @@ function hasWhitespaceAfterPosition(
   return nextNode.type.name === "hardBreak";
 }
 
-type PromptBoxEditorLayout = "thread" | "root-compose";
-
-const COLLAPSING_GRID_CLASS =
-  "grid transition-[grid-template-rows] duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none";
 const VOICE_ACTION_TRANSITION_MS = 180;
 type VoiceActionTransition = "entering" | "active" | "exiting";
 
@@ -211,66 +214,6 @@ export interface PromptBoxSubmissionConfig {
   isRunning?: boolean;
   onStop?: () => void;
   onModifierSubmit?: () => void;
-}
-
-interface PromptSubmitButtonProps {
-  canSubmit: boolean;
-  className: string;
-  disabledReason: string | undefined;
-  isCompact: boolean;
-  isSubmitting: boolean;
-  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
-  onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  title: string;
-}
-
-function PromptSubmitButton({
-  canSubmit,
-  className,
-  disabledReason,
-  isCompact,
-  isSubmitting,
-  onClick,
-  onPointerDown,
-  title,
-}: PromptSubmitButtonProps) {
-  const button = (
-    <Button
-      data-promptbox-submit-action=""
-      type="submit"
-      size={isCompact ? "icon" : "sm"}
-      variant="default"
-      aria-label={title}
-      disabled={!canSubmit}
-      onPointerDown={onPointerDown}
-      onClick={onClick}
-      className={className}
-    >
-      {isSubmitting ? (
-        <Icon name="Spinner" className="size-4 animate-spin" />
-      ) : (
-        <Icon name="CornerDownLeft" className="size-4" />
-      )}
-    </Button>
-  );
-
-  if (!disabledReason) return button;
-
-  return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-promptbox-submit-disabled-reason=""
-            className="inline-flex shrink-0"
-          >
-            {button}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top">{disabledReason}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
 }
 
 /**
@@ -360,11 +303,6 @@ export interface AttachmentsConfig {
   projectId?: string;
 }
 
-interface PromptBoxCompactConfig {
-  isCompact: boolean;
-  placeholder?: string;
-}
-
 export interface HistoryConfig {
   currentDraft: PromptDraftState;
   entries: readonly PromptDraftState[];
@@ -400,7 +338,7 @@ export type { PromptBoxAction } from "./PromptBoxActionsMenu";
 
 type MentionMenuPlacement = "top" | "bottom";
 
-interface PromptBoxInternalProps {
+export interface PromptBoxInternalProps {
   id?: string;
   value: string;
   mentionRanges: readonly PromptTextMention[];
@@ -475,6 +413,13 @@ interface PromptBoxInternalProps {
    * since it follows a deliberate click.
    */
   focusEndKey?: string | number;
+  /**
+   * Set by PromptBox when the shell's interim surface held the user's focus
+   * at handoff time. Focus the editor at the end as soon as it exists, on any
+   * pointer type: the user's tap already opened the soft keyboard, so this is
+   * a focus transfer from an already-focused input, not a keyboard summon.
+   */
+  takeFocusOnCreate?: boolean;
 }
 
 interface DismissedTriggerRange {
@@ -508,27 +453,6 @@ interface PromptActionInsertionRange {
   from: number;
   to: number;
 }
-
-interface PromptActionCommand {
-  serializedText: string;
-  trailingText: string;
-  trigger: PromptMentionCommandTrigger;
-  suggestion: ProviderCommandSuggestion;
-}
-
-const PROMPTBOX_INTERACTIVE_TARGET_SELECTOR = [
-  "a[href]",
-  "button",
-  "input",
-  "select",
-  "textarea",
-  "[contenteditable='true']",
-  "[data-prompt-mention='true']",
-  "[role='button']",
-  "[role='link']",
-  "[role='menuitem']",
-  "[role='option']",
-].join(",");
 
 /**
  * Structural equality between the last value synced into the editor and the
@@ -905,12 +829,6 @@ function revealPromptEditorSelection({
   }
 }
 
-function isPromptBoxChromeTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false;
-
-  return target.closest(PROMPTBOX_INTERACTIVE_TARGET_SELECTOR) === null;
-}
-
 function promptActionTextImmediatelyBeforeCursor(
   editor: Editor,
   actionText: string,
@@ -926,13 +844,6 @@ function promptActionTextImmediatelyBeforeCursor(
     "\n",
   );
   return before.endsWith(actionText);
-}
-
-function promptActionCommandSerializedText(action: PromptBoxAction): string {
-  if (!action.command) {
-    return action.text;
-  }
-  return `${action.command.trigger}${action.command.name}`;
 }
 
 function isPromptActionCommandMention(
@@ -1084,30 +995,6 @@ function getPromptActionInsertionRange({
   return { from: selection.from, to: selection.to };
 }
 
-function promptActionCommandFromAction(
-  action: PromptBoxAction,
-): PromptActionCommand | null {
-  if (action.kind === "skills" || !action.command) {
-    return null;
-  }
-
-  const { trigger, name, trailingText } = action.command;
-  const serializedText = `${trigger}${name}`;
-  return {
-    serializedText,
-    trailingText,
-    trigger,
-    suggestion: {
-      kind: "command",
-      name,
-      source: "command",
-      origin: "user",
-      description: null,
-      argumentHint: null,
-    },
-  };
-}
-
 function promptActionTriggers(
   triggers: readonly TypeaheadTrigger[],
   commandAction: PromptActionCommand | null,
@@ -1193,7 +1080,7 @@ export function PromptBoxInternal({
   onSubmit,
   onEscape,
   blurOnPointerSubmit = false,
-  placeholder = "Ask anything. @ to mention files, folders, or sections",
+  placeholder = DEFAULT_PROMPTBOX_PLACEHOLDER,
   autoFocus = true,
   className,
   textEffects,
@@ -1216,6 +1103,7 @@ export function PromptBoxInternal({
   voice,
   promptBoxRef,
   focusEndKey,
+  takeFocusOnCreate = false,
 }: PromptBoxInternalProps) {
   const focusComposerShortcut = useAppCommandShortcut("composer.focus");
   const {
@@ -1989,6 +1877,19 @@ export function PromptBoxInternal({
     shouldAvoidSoftKeyboardAutofocus,
   ]);
 
+  // Handoff focus transfer (see the `takeFocusOnCreate` prop doc). Runs once
+  // per mount even if the editor is later rebuilt (rich-text toggle), and on
+  // coarse pointers too — the shell's interim surface already opened the soft
+  // keyboard, so skipping here would close it.
+  const tookHandoffFocusRef = useRef(false);
+  useEffect(() => {
+    if (!takeFocusOnCreate || tookHandoffFocusRef.current) return;
+    if (!editor || editor.isDestroyed) return;
+    tookHandoffFocusRef.current = true;
+    focusEditorAtEnd(editor);
+    scheduleRevealEditorSelection();
+  }, [editor, scheduleRevealEditorSelection, takeFocusOnCreate]);
+
   useEffect(() => {
     mentionRangesRef.current = mentionRanges;
   }, [mentionRanges]);
@@ -2523,26 +2424,13 @@ export function PromptBoxInternal({
 
       const currentEditor = editorRef.current;
       if (!currentEditor || currentEditor.isDestroyed) {
-        const currentValue = valueRef.current;
-        if (currentValue.endsWith(action.text)) return;
-        if (commandAction) {
-          const start = currentValue.length;
-          const nextValue = `${currentValue}${commandAction.serializedText}${commandAction.trailingText}`;
-          onChangeRef.current(nextValue, [
-            ...mentionRangesRef.current,
-            {
-              start,
-              end: start + commandAction.serializedText.length,
-              resource: promptCommandResourceFromSuggestion({
-                suggestion: commandAction.suggestion,
-                trigger: commandAction.trigger,
-              }),
-            },
-          ]);
-        } else {
-          onChangeRef.current(`${currentValue}${action.text}`, [
-            ...mentionRangesRef.current,
-          ]);
+        const appended = appendPromptActionToDraft({
+          action,
+          text: valueRef.current,
+          mentions: mentionRangesRef.current,
+        });
+        if (appended !== null) {
+          onChangeRef.current(appended.text, appended.mentions);
         }
         return;
       }
