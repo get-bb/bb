@@ -9,10 +9,20 @@ import {
   type ReactNode,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import {
+  observedBorderBoxBlockSize,
+  observeSharedResize,
+} from "@/lib/shared-resize-observer";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 
 const EXPANDABLE_PANEL_TRANSITION_MS = 200;
+
+/** Read half of the panel height sync, staged for the shared write phase. */
+interface PanelHeightSync {
+  isToggleAnimating: boolean;
+  heightPx: number;
+}
 const useBrowserLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
@@ -165,22 +175,37 @@ function AnimatedExpandablePanelContent({
       return;
     }
 
-    const syncHeight = () => {
-      const isToggleAnimating =
-        performance.now() < toggleAnimationDeadlineRef.current;
+    const readHeightSync = (
+      entry: ResizeObserverEntry | undefined,
+    ): PanelHeightSync => {
+      // The entry's border box is offsetHeight's metric without the layout
+      // read; the mount sync below has no entry and pays that read once.
+      const observedHeight =
+        entry === undefined ? undefined : observedBorderBoxBlockSize(entry);
+      return {
+        isToggleAnimating:
+          performance.now() < toggleAnimationDeadlineRef.current,
+        heightPx: observedHeight ?? target.offsetHeight,
+      };
+    };
+    const writeHeightSync = ({
+      heightPx,
+      isToggleAnimating,
+    }: PanelHeightSync) => {
       region.style.transitionDuration = isToggleAnimating ? "" : "0s";
-      region.style.height = `${target.offsetHeight}px`;
+      region.style.height = `${heightPx}px`;
     };
 
-    syncHeight();
+    writeHeightSync(readHeightSync(undefined));
 
     if (typeof ResizeObserver === "undefined") {
       return;
     }
 
-    const resizeObserver = new ResizeObserver(syncHeight);
-    resizeObserver.observe(target);
-    return () => resizeObserver.disconnect();
+    return observeSharedResize(target, {
+      read: readHeightSync,
+      write: writeHeightSync,
+    });
   }, [collapsedContent, isExpanded, renderedBody]);
 
   return (
