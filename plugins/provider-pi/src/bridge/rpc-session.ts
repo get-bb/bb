@@ -119,6 +119,38 @@ const CHANNEL_REQUEST_TIMEOUT_MS = 30_000;
 /** How long an `agent_end` waits for the extension's in-process leaf report. */
 const AGENT_END_LEAF_TIMEOUT_MS = 5_000;
 
+type PiSessionConstructionOutcome = { ok: true } | { ok: false; error: Error };
+
+function waitForPiTransientAuthRetry(): Promise<void> {
+  return new Promise((resolve) =>
+    setTimeout(resolve, PI_TRANSIENT_AUTH_RETRY_DELAY_MS),
+  );
+}
+
+/**
+ * Retry the transient model-resolution window without coupling its policy to
+ * child construction. Tests inject synchronous attempts and waits; production
+ * supplies real child construction and teardown.
+ */
+export async function runPiTransientAuthConstruction(args: {
+  attempt: () => Promise<PiSessionConstructionOutcome>;
+  discardFailedAttempt: () => void;
+  isClosed: () => boolean;
+  waitBeforeRetry: () => Promise<void>;
+}): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    const outcome = await args.attempt();
+    if (outcome.ok) {
+      return;
+    }
+    if (attempt >= PI_TRANSIENT_AUTH_MAX_RETRIES || args.isClosed()) {
+      throw outcome.error;
+    }
+    args.discardFailedAttempt();
+    await args.waitBeforeRetry();
+  }
+}
+
 export interface PiRpcSessionState {
   model?: { provider?: string; id?: string; contextWindow?: number };
   thinkingLevel?: string;
@@ -198,30 +230,21 @@ export class PiRpcSession {
    * resolved its model): respawn a few times before failing.
    */
   async start(): Promise<void> {
-    for (let attempt = 0; ; attempt += 1) {
-      const outcome = await this.spawnAndVerify();
-      if (outcome.ok) {
-        return;
-      }
-      if (attempt >= PI_TRANSIENT_AUTH_MAX_RETRIES || this.closed) {
-        throw outcome.error;
-      }
-      // The failed attempt's child is detached before it is killed: its exit
-      // (async, possibly after the next attempt spawned) must neither report
-      // a session error for a thread still under construction nor touch the
-      // next child's readiness, leaf waiter, or processing state.
-      const failed = this.child;
-      this.child = undefined;
-      failed?.kill();
-      await new Promise((resolve) =>
-        setTimeout(resolve, PI_TRANSIENT_AUTH_RETRY_DELAY_MS),
-      );
-    }
+    await runPiTransientAuthConstruction({
+      attempt: () => this.spawnAndVerify(),
+      discardFailedAttempt: () => {
+        // A retried child is detached before it is killed: its late lines and
+        // exit must not touch the next child's state or report a session error.
+        const failed = this.child;
+        this.child = undefined;
+        failed?.kill();
+      },
+      isClosed: () => this.closed,
+      waitBeforeRetry: waitForPiTransientAuthRetry,
+    });
   }
 
-  private async spawnAndVerify(): Promise<
-    { ok: true } | { ok: false; error: Error }
-  > {
+  private async spawnAndVerify(): Promise<PiSessionConstructionOutcome> {
     const toolsFilePath = join(
       this.options.scratchDir,
       `pi-tools-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`,

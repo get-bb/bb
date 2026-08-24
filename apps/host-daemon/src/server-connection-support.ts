@@ -44,6 +44,7 @@ export type CreateReconnectingWebSocket = (
 export type HostDaemonServerTerminalMessage = Exclude<
   HostDaemonServerWsMessage,
   | { type: "session-close" }
+  | { type: "heartbeat-ack" }
   | HostDaemonOnlineRpcRequestMessage
   | HostDaemonWatchSetReplaceMessage
   | HostDaemonConnectSharesReplaceMessage

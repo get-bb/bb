@@ -298,9 +298,14 @@
 // per-provider scan table is gone; an old daemon rejects the new field and an
 // old server's `nativeSkillRoots` fails the new daemon's strict schema.
 //
+// Version 165 adds a server-to-daemon acknowledgement for every daemon
+// heartbeat. The daemon uses the acknowledgement to detect a one-way-stale
+// websocket and reconnect instead of remaining registered but unable to
+// receive host RPC commands.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 164 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 165 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

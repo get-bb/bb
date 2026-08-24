@@ -48,6 +48,8 @@
  * - Fault knobs for the bridge's own tests: FAKE_PI_SPAWN_COUNTER_FILE counts
  *   spawns across processes and FAKE_PI_MISMATCH_FIRST_SPAWN=1 makes only the
  *   first spawn ignore `--model` (a transient model mismatch);
+ *   FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE=1 exits after recording the spawn but
+ *   before importing the extension or reading a command;
  *   FAKE_PI_NO_SESSION_START=1 never emits session_start to the extension (so
  *   no `ready`); FAKE_PI_DROP_STEER_AT_END=1 ends a run with a queued steer
  *   still queued; FAKE_PI_STREAMING_AFTER_END=1 reports isStreaming after a
@@ -136,6 +138,9 @@ process.on("SIGTERM", () => {
   if (hangOnClose) return;
   exit();
 });
+if (process.env.FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE === "1") {
+  exit();
+}
 
 const MODELS = [
   {

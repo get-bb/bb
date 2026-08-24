@@ -131,6 +131,9 @@ interface RegisterTestHostRpcCaptureArgs {
   sessionId: string;
   /** Checkout the fake daemon reports for `host.list_branches`. */
   listBranchesResult?: HostDaemonOnlineRpcResult<"host.list_branches">;
+  onListBranches?: (
+    command: Extract<HostDaemonRpcCommand, { type: "host.list_branches" }>,
+  ) => void;
 }
 
 interface TestHostRpcSocket {
@@ -382,6 +385,7 @@ export function registerTestHostRpcCapture(
         return;
       }
       if (command.type === "host.list_branches") {
+        args.onListBranches?.(command);
         deps.hub.recordHostOnlineRpcResponse({
           message: hostDaemonOnlineRpcResponseMessageSchema.parse({
             type: "host-rpc.response",
