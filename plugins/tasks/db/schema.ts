@@ -239,6 +239,21 @@ const MIGRATIONS = [
     ALTER TABLE presets ADD COLUMN service_tier TEXT
       CHECK (service_tier IN ('default', 'fast'));
   `,
+  `
+    ALTER TABLE comments ADD COLUMN system_event TEXT
+      CHECK (system_event IS NULL OR system_event IN (
+        'status_changed',
+        'priority_changed',
+        'due_changed',
+        'labels_changed',
+        'dispatched',
+        'thread_finished'
+      ));
+
+    ALTER TABLE projects ADD COLUMN sync_store_path TEXT;
+    ALTER TABLE projects ADD COLUMN sync_role TEXT NOT NULL DEFAULT 'source'
+      CHECK (sync_role IN ('source', 'mirror'));
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

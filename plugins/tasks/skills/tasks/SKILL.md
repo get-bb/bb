@@ -155,6 +155,62 @@ shows the live status, title, and priority, opens the task in the thread
 side panel, and links to the full Tasks app. Emit one directive per line;
 each renders its own card.
 
+## Sync a project across bb instances
+
+Each bb instance keeps its own task database, so two hosts running bb hold two
+unrelated boards. `bb tasks sync` converges them through a tracked file in a
+git repository. Each board stays canonical; the file is the convergence point.
+
+1. Configure the store once per project. A relative path resolves against the
+   invoking directory, so keep it inside the repository both instances hold:
+
+   ```sh
+   bb tasks project update AGT --sync-store record/agt.json
+   ```
+
+2. Export on the instance where the work happened, then commit and push the
+   store with the rest of the repository:
+
+   ```sh
+   bb tasks sync export --project AGT
+   ```
+
+   Export writes the JSON store and one `<KEY>.md` per task beside it, and
+   refuses to write an empty board over an existing record.
+
+3. Pull the repository on the other instance and import there. Import is a dry
+   run until `--apply`:
+
+   ```sh
+   bb tasks sync import --project AGT
+   bb tasks sync import --project AGT --apply
+   ```
+
+   Import creates missing tasks with the same keys, updates changed fields, and
+   appends notes this board has not seen. It matches notes by body text, so
+   running it twice changes nothing the second time and it never edits or
+   deletes a note. It refuses a field update when the local task changed after
+   the export and reports it; rerun with `--force` to overwrite.
+
+4. Report drift with `check`, which exits 2 when it finds any:
+
+   ```sh
+   bb tasks sync check --project AGT
+   ```
+
+   `MISSING` and `BEHIND` are fixed by importing here, `AHEAD` and `UNTRACKED`
+   by exporting from here, and `DRIFT` needs a decision about which side is
+   right. Because it exits non-zero, schedule it as an automation instead of
+   reading its output by hand.
+
+An instance that cannot push the record back is a normal configuration: set
+`bb tasks project update AGT --sync-role mirror`. A mirror imports only,
+`export` refuses, and `check` names the local edits that cannot travel back.
+
+The plugin's own audit comments carry a `systemEvent` and never travel; each
+instance keeps its own. Labels, attachments, and sub-task hierarchy are not
+synced.
+
 ## Invariants
 
 - Valid task statuses are `backlog`, `todo`, `in_progress`, `in_review`,

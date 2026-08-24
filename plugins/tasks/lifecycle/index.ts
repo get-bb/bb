@@ -73,6 +73,7 @@ function transitionThread(
         taskId: thread.taskId,
         presetName: thread.presetName,
         threadId: thread.threadId,
+        event: "thread_finished",
         body: terminalCommentBody(thread, liveStatus),
       });
     }

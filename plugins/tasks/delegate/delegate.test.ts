@@ -503,6 +503,8 @@ describe("delegation seed prompt", () => {
       color: "blue",
       folderId: null,
       linkedBbProjectId: "proj_tasks",
+      syncStorePath: null,
+      syncRole: "source",
       createdAt: "2026-07-15T17:00:00.000Z",
     };
     const task: Task = {

@@ -1,6 +1,8 @@
 import type { TaskSort } from "../shared/pagination.js";
 import type {
   PRESET_ENVIRONMENT_KINDS,
+  PROJECT_SYNC_ROLES,
+  SYSTEM_COMMENT_EVENTS,
   PresetPermissionMode,
   PresetReasoningLevel,
   PresetServiceTier,
@@ -12,6 +14,23 @@ import type {
 export type { TaskPriority, TaskStatus };
 
 type CommentKind = "user" | "agent" | "system";
+
+/**
+ * Machine-readable type of a plugin-authored audit comment. It is non-null
+ * exactly when the plugin wrote the comment itself (a status change, a
+ * dispatch, and so on), so a consumer can tell audit rows from content
+ * without parsing the rendered body. Cross-instance sync uses it to keep
+ * per-instance audit trails local.
+ */
+export type SystemCommentEvent = (typeof SYSTEM_COMMENT_EVENTS)[number];
+
+/**
+ * Whether this instance may write the project's sync store. A `mirror`
+ * imports only: the real deployment gives one host a read-only deploy key on
+ * purpose, so its local edits can never travel back and must be reported
+ * rather than silently exported.
+ */
+export type ProjectSyncRole = (typeof PROJECT_SYNC_ROLES)[number];
 
 export type TaskThreadLiveStatus = (typeof TASK_THREAD_LIVE_STATUSES)[number];
 
@@ -32,6 +51,8 @@ export interface Project {
   color: string;
   folderId: string | null;
   linkedBbProjectId: string | null;
+  syncStorePath: string | null;
+  syncRole: ProjectSyncRole;
   createdAt: string;
 }
 
@@ -71,6 +92,7 @@ export interface Comment {
   presetName: string | null;
   threadId: string | null;
   body: string;
+  systemEvent: SystemCommentEvent | null;
   notifiedCount: number;
   createdAt: string;
 }
@@ -144,6 +166,8 @@ export interface CreateProjectInput {
   color: string;
   folderId?: string | null;
   linkedBbProjectId?: string | null;
+  syncStorePath?: string | null;
+  syncRole?: ProjectSyncRole;
 }
 
 export interface UpdateProjectInput {
@@ -152,11 +176,20 @@ export interface UpdateProjectInput {
   color?: string;
   folderId?: string | null;
   linkedBbProjectId?: string | null;
+  syncStorePath?: string | null;
+  syncRole?: ProjectSyncRole;
 }
 
 export interface CreateTaskInput {
   id?: string;
   projectId: string;
+  /**
+   * Task number to insert at, instead of allocating the project's next one.
+   * Sync import passes it so a task keeps the same key on every instance;
+   * omitting it means "allocate the next number", which is what every
+   * interactive create wants.
+   */
+  number?: number;
   title: string;
   description?: string;
   status?: TaskStatus;
@@ -225,6 +258,8 @@ export interface CreateCommentInput {
   presetName?: string | null;
   threadId?: string | null;
   body: string;
+  /** Set only by the plugin's own audit writes; requires `kind: "system"`. */
+  systemEvent?: SystemCommentEvent | null;
   notifiedCount?: number;
 }
 

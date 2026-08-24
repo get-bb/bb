@@ -13,11 +13,14 @@ export interface ParsedArgs {
 
 const VALUELESS_FLAGS = new Set([
   "active",
+  "apply",
+  "force",
   "help",
   "json",
   "no-due",
   "no-folder",
   "no-parent",
+  "no-sync-store",
   "notify",
   "remove-references",
   "unlink-bb-project",

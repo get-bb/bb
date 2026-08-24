@@ -559,6 +559,12 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   opaque `--cursor` returned as `nextCursor` in JSON (or printed after a human
   page). Keep the same filters and sort. A task-list mutation makes the cursor
   stale; restart without it.
+- Converge a project across bb instances with `bb tasks sync export|import|check`.
+  Git is the transport: export where the work happened, commit the store, pull
+  it elsewhere, import there. `import` is a dry run until `--apply` and is
+  idempotent; `check` exits 2 on drift, so schedule it rather than reading it.
+  Configure the path with `bb tasks project update <prefix> --sync-store
+  <path>`, and add `--sync-role mirror` for an instance that imports only.
 
 ## Docs
 

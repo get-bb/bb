@@ -36,6 +36,24 @@ export const PRESET_ENVIRONMENT_KINDS = [
   "new-worktree",
 ] as const;
 
+/**
+ * Audit events the plugin writes as `system` comments. A non-null
+ * `systemEvent` marks a comment as plugin-authored bookkeeping, so consumers
+ * (notably cross-instance sync) can exclude it without matching on the
+ * rendered body text.
+ */
+export const SYSTEM_COMMENT_EVENTS = [
+  "status_changed",
+  "priority_changed",
+  "due_changed",
+  "labels_changed",
+  "dispatched",
+  "thread_finished",
+] as const;
+
+/** Whether this instance may write a project's cross-instance sync store. */
+export const PROJECT_SYNC_ROLES = ["source", "mirror"] as const;
+
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 const PROJECT_PREFIX_PATTERN = /^[A-Z][A-Z0-9]{0,9}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -80,6 +98,8 @@ const dueDateSchema = z
       parsed.toISOString().slice(0, 10) === value
     );
   }, "must be a valid calendar date in YYYY-MM-DD format");
+export const systemCommentEventSchema = z.enum(SYSTEM_COMMENT_EVENTS);
+export const projectSyncRoleSchema = z.enum(PROJECT_SYNC_ROLES);
 const taskStatusSchema = z.enum(TASK_STATUSES);
 const taskPrioritySchema = z.enum(TASK_PRIORITIES);
 const taskSortSchema = z.enum(TASK_SORTS);
@@ -109,6 +129,8 @@ const projectSchema = z
     color: z.string(),
     folderId: idSchema.nullable(),
     linkedBbProjectId: z.string().startsWith("proj_").nullable(),
+    syncStorePath: z.string().nullable(),
+    syncRole: projectSyncRoleSchema,
     createdAt: z.string(),
   })
   .strict();
@@ -150,6 +172,7 @@ const commentSchema = z
     presetName: z.string().nullable(),
     threadId: z.string().startsWith("thr_").nullable(),
     body: z.string(),
+    systemEvent: systemCommentEventSchema.nullable(),
     notifiedCount: z.number().int().nonnegative(),
     createdAt: z.string(),
   })
@@ -341,6 +364,8 @@ const updateProjectInputSchema = z
     color: nonBlankStringSchema.optional(),
     folderId: idSchema.nullable().optional(),
     linkedBbProjectId: z.string().startsWith("proj_").nullable().optional(),
+    syncStorePath: nonBlankStringSchema.nullable().optional(),
+    syncRole: projectSyncRoleSchema.optional(),
   })
   .strict()
   .refine(
@@ -348,7 +373,9 @@ const updateProjectInputSchema = z
       input.name !== undefined ||
       input.color !== undefined ||
       input.folderId !== undefined ||
-      input.linkedBbProjectId !== undefined,
+      input.linkedBbProjectId !== undefined ||
+      input.syncStorePath !== undefined ||
+      input.syncRole !== undefined,
     { message: "at least one project field must be updated" },
   );
 
@@ -467,6 +494,8 @@ export const tasksRpcContract = defineRpcContract({
           .startsWith("proj_")
           .nullable()
           .default(null),
+        syncStorePath: nonBlankStringSchema.nullable().default(null),
+        syncRole: projectSyncRoleSchema.default("source"),
       })
       .strict(),
     output: z.object({ project: projectSchema }).strict(),

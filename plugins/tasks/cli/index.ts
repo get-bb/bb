@@ -47,6 +47,7 @@ import {
 } from "./args";
 import { bytes, detail, table } from "./format";
 import { seedDemo } from "./seed";
+import { runSync, SYNC_HELP, type SyncCliDeps } from "./sync";
 
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 const TASK_KEY_PATTERN = /^([A-Z][A-Z0-9]{0,9})-(\d+)$/;
@@ -72,15 +73,21 @@ Commands:
   attach                         Attach an agent thread to a task
   detach                         Detach an agent thread from a task
   threads                        List threads attached to a task
+  sync export|import|check       Sync a project across bb instances through git
   seed-demo                      Create sample data (requires --yes)
 
 Run bb tasks <command> --help for command usage.`;
 
 const PROJECT_HELP = `Usage:
-  bb tasks project create --name <name> [--prefix X] [--folder <id-or-name>] [--link-bb-project <proj_id>] [--color <color>] [--json]
+  bb tasks project create --name <name> [--prefix X] [--folder <id-or-name>] [--link-bb-project <proj_id>] [--color <color>] [--sync-store <path>] [--sync-role source|mirror] [--json]
   bb tasks project list [--json]
   bb tasks project show <prefix-or-id> [--json]
-  bb tasks project update <prefix-or-id> [--name <name>] [--color <color>] [--folder <id-or-name> | --no-folder] [--link-bb-project <proj_id> | --unlink-bb-project] [--rename-prefix X] [--json]`;
+  bb tasks project update <prefix-or-id> [--name <name>] [--color <color>] [--folder <id-or-name> | --no-folder] [--link-bb-project <proj_id> | --unlink-bb-project] [--rename-prefix X] [--sync-store <path> | --no-sync-store] [--sync-role source|mirror] [--json]
+
+--sync-store names the file bb tasks sync reads and writes for this project;
+a relative path resolves against the invoking directory. --sync-role mirror
+marks an instance that imports only, for a host that holds a read-only deploy
+key and cannot push the record back.`;
 
 const FOLDER_HELP = `Usage:
   bb tasks folder create --name <name> [--parent <id-or-name>] [--json]
@@ -151,10 +158,9 @@ function unwrapTask(result: TaskMutationResult): Task {
 async function resolveClientHostId(
   bb: BbPluginApi,
   domain: TasksDomain,
-  args: ParsedArgs,
+  machine: string | undefined,
   ctx: PluginCliContext,
 ): Promise<string | undefined> {
-  const machine = option(args, "machine");
   if (machine !== undefined) return resolveMachineId(domain, machine);
   if (!ctx.threadId) return undefined;
   const thread = await bb.sdk.threads.get({ threadId: ctx.threadId });
@@ -542,6 +548,63 @@ function taskAuthor(ctx: PluginCliContext): string {
   return ctx.threadId ? `agent (${ctx.threadId})` : "cli";
 }
 
+/**
+ * Wires the sync commands to the same project resolution, invoking-machine
+ * file access, and task-update path the other subcommands use. Sync reads and
+ * writes ordinary files on the invoking machine, so it goes through
+ * bb.sdk.files rather than the server's disk.
+ */
+function syncDeps(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  domain: TasksDomain,
+  ctx: PluginCliContext,
+): SyncCliDeps {
+  return {
+    async resolveProject(address) {
+      const project = await selectedProject(domain, ctx, address, true);
+      if (!project) throw new CliError("project is required");
+      return project;
+    },
+    async resolveHostId(machine) {
+      return resolveClientHostId(bb, domain, machine, ctx);
+    },
+    async readText(hostId, path) {
+      try {
+        const { text } = await readClientFile(bb, hostId, path);
+        if (text === null) {
+          throw new CliError(`could not read ${path}: file is not UTF-8 text`);
+        }
+        return text;
+      } catch (error) {
+        if (error instanceof CliError) throw error;
+        if (isMissingClientFileError(error)) return null;
+        const message = error instanceof Error ? error.message : String(error);
+        throw new CliError(`could not read ${path}: ${message}`);
+      }
+    },
+    async writeText(hostId, path, text) {
+      await writeClientFile(bb, hostId, path, Buffer.from(text, "utf8"));
+    },
+    async updateTask(input) {
+      const result = tasksRpcContract.updateTask.output.parse(
+        await domain.updateTask(
+          tasksRpcContract.updateTask.input.parse({
+            taskId: input.taskId,
+            title: input.title,
+            description: input.description,
+            status: input.status,
+            priority: input.priority,
+            dueDate: input.dueDate,
+            authorName: input.authorName,
+          }),
+        ),
+      );
+      unwrapTask(result);
+    },
+  };
+}
+
 async function runProject(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -560,6 +623,8 @@ async function runProject(
       "folder",
       "link-bb-project",
       "color",
+      "sync-store",
+      "sync-role",
     ]);
     requirePositionals(args, 0, PROJECT_HELP.split("\n")[1]!.trim());
     const name = requireOption(args, "name");
@@ -578,6 +643,8 @@ async function runProject(
           color: option(args, "color") ?? DEFAULT_PROJECT_COLOR,
           folderId: folder?.id ?? null,
           linkedBbProjectId: option(args, "link-bb-project") ?? null,
+          syncStorePath: option(args, "sync-store") ?? null,
+          syncRole: option(args, "sync-role") ?? "source",
         }),
       ),
     );
@@ -616,6 +683,8 @@ async function runProject(
       ["Color", project.color],
       ["Folder", folder?.name ?? "-"],
       ["BB project", project.linkedBbProjectId ?? "-"],
+      ["Sync store", project.syncStorePath ?? "-"],
+      ["Sync role", project.syncRole],
       ["Next task", `${project.prefix}-${project.nextTaskNumber}`],
       ["Created", project.createdAt],
     ]);
@@ -624,8 +693,16 @@ async function runProject(
   if (action === "update") {
     assertAllowed(
       args,
-      ["name", "color", "folder", "link-bb-project", "rename-prefix"],
-      ["no-folder", "unlink-bb-project"],
+      [
+        "name",
+        "color",
+        "folder",
+        "link-bb-project",
+        "rename-prefix",
+        "sync-store",
+        "sync-role",
+      ],
+      ["no-folder", "unlink-bb-project", "no-sync-store"],
     );
     const [address] = requirePositionals(
       args,
@@ -647,6 +724,13 @@ async function runProject(
       "link-bb-project",
       "unlink-bb-project",
     );
+    const syncStorePath = option(args, "sync-store");
+    validateSingleFlagChoice(
+      syncStorePath,
+      args.flags.has("no-sync-store"),
+      "sync-store",
+      "no-sync-store",
+    );
     const folder = folderAddress
       ? await resolveFolder(domain, folderAddress)
       : undefined;
@@ -657,6 +741,8 @@ async function runProject(
       linkedBbProjectId: args.flags.has("unlink-bb-project")
         ? null
         : linkedBbProjectId,
+      syncStorePath: args.flags.has("no-sync-store") ? null : syncStorePath,
+      syncRole: option(args, "sync-role"),
     };
     const renamePrefix = option(args, "rename-prefix");
     if (
@@ -664,7 +750,9 @@ async function runProject(
       changes.name === undefined &&
       changes.color === undefined &&
       changes.folderId === undefined &&
-      changes.linkedBbProjectId === undefined
+      changes.linkedBbProjectId === undefined &&
+      changes.syncStorePath === undefined &&
+      changes.syncRole === undefined
     ) {
       throw new CliError("no project changes were provided");
     }
@@ -679,7 +767,9 @@ async function runProject(
       changes.name !== undefined ||
       changes.color !== undefined ||
       changes.folderId !== undefined ||
-      changes.linkedBbProjectId !== undefined;
+      changes.linkedBbProjectId !== undefined ||
+      changes.syncStorePath !== undefined ||
+      changes.syncRole !== undefined;
     const updateInput = hasFieldChanges
       ? tasksRpcContract.updateProject.input.parse({
           projectId: project.id,
@@ -701,6 +791,8 @@ async function runProject(
         color: updateInput?.color,
         folderId: updateInput?.folderId,
         linkedBbProjectId: updateInput?.linkedBbProjectId,
+        syncStorePath: updateInput?.syncStorePath,
+        syncRole: updateInput?.syncRole,
       }),
     );
     publishProjectsChanged(bb, updated.id);
@@ -899,7 +991,7 @@ async function runCreate(
     throw new CliError("--machine requires --attach or --description-file");
   }
   const clientHostId = usesClientFiles
-    ? await resolveClientHostId(bb, domain, args, ctx)
+    ? await resolveClientHostId(bb, domain, option(args, "machine"), ctx)
     : undefined;
   const attachSources: Array<{ path: string; bytes: Buffer }> = [];
   for (const path of attachPaths) {
@@ -1295,7 +1387,7 @@ async function runUpdate(
   }
   const clientHostId =
     option(args, "description-file") !== undefined
-      ? await resolveClientHostId(bb, domain, args, ctx)
+      ? await resolveClientHostId(bb, domain, option(args, "machine"), ctx)
       : undefined;
   const description = await readFileOption(
     bb,
@@ -1373,7 +1465,7 @@ async function runComment(
   }
   const clientHostId =
     option(args, "body-file") !== undefined
-      ? await resolveClientHostId(bb, domain, args, ctx)
+      ? await resolveClientHostId(bb, domain, option(args, "machine"), ctx)
       : undefined;
   const body = await readFileOption(
     bb,
@@ -1507,7 +1599,12 @@ async function runAttachment(
     const owner = comment
       ? { commentId: comment.id }
       : { taskId: (await resolveTask(domain, ownerAddress!)).id };
-    const clientHostId = await resolveClientHostId(bb, domain, args, ctx);
+    const clientHostId = await resolveClientHostId(
+      bb,
+      domain,
+      option(args, "machine"),
+      ctx,
+    );
     const bytes = await readAttachmentSource(bb, clientHostId, sourcePath);
     const attachment = await saveAttachmentFromBytes(store.tasks, bytes, {
       ...owner,
@@ -1532,7 +1629,12 @@ async function runAttachment(
     );
     const outOption = requireOption(args, "out");
     const outPath = resolve(ctx.cwd ?? process.cwd(), outOption);
-    const clientHostId = await resolveClientHostId(bb, domain, args, ctx);
+    const clientHostId = await resolveClientHostId(
+      bb,
+      domain,
+      option(args, "machine"),
+      ctx,
+    );
     const { attachment, content } = await readAttachmentContent(
       store.tasks,
       attachmentId!,
@@ -2053,6 +2155,12 @@ export function registerTasksCli(
         usage: THREADS_HELP,
       },
       {
+        name: "sync",
+        summary:
+          "Export, import, or check a project's cross-instance sync store",
+        usage: SYNC_HELP,
+      },
+      {
         name: "seed-demo",
         summary: "Create sample folders, projects, labels, tasks, and comments",
         usage: "bb tasks seed-demo --yes [--json]",
@@ -2124,6 +2232,20 @@ export function registerTasksCli(
           case "threads":
             stdout = await runThreads(domain, rest);
             break;
+          case "sync": {
+            const result = await runSync(
+              bb,
+              store,
+              syncDeps(bb, store, domain, ctx),
+              rest,
+              ctx.cwd ?? process.cwd(),
+            );
+            // check and import report drift with a non-zero exit so a
+            // scheduled automation can act on it without reading the text.
+            if (typeof result !== "string") return result;
+            stdout = result;
+            break;
+          }
           case "seed-demo": {
             const args = parseArgs(rest);
             assertAllowed(args, [], ["yes"]);

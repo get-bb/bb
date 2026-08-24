@@ -838,6 +838,29 @@ database, host-managed settings/storage/schedules, secrets, and registration.
 A failed activation restores that snapshot and records the latest failure on
 the plugin so it can be surfaced as needing attention.
 
+### Tasks plugin cross-instance sync
+
+The Tasks plugin stores tasks in each instance's own database, and nothing
+syncs them. `bb tasks sync` converges two instances through a tracked file in
+a git repository: export on the instance where the work happened, commit, pull
+elsewhere, import there. Two per-project knobs configure it:
+
+| Knob            |  Default | Behavior                                                                                        |
+| --------------- | -------: | ----------------------------------------------------------------------------------------------- |
+| `--sync-store`  |   unset  | Path to the project's store file. A relative path resolves against the invoking directory.       |
+| `--sync-role`   | `source` | `mirror` marks an instance that imports only, for a host that cannot push the record back.       |
+
+Set them on `bb tasks project create` or `bb tasks project update`, and clear
+the path with `--no-sync-store`:
+
+```bash
+bb tasks project update AGT --sync-store record/agt.json --sync-role mirror
+```
+
+`bb tasks sync check` exits `2` when it finds drift, so a scheduled automation
+can report without a human reading its output. `bb tasks sync import` is a dry
+run until `--apply`.
+
 ### Provider retry plugin
 
 The builtin Provider retry plugin is enabled on fresh installations. It

@@ -5,6 +5,7 @@ import type {
   Comment,
   Preset,
   Project,
+  SystemCommentEvent,
   Task,
   TasksStore,
   TaskThreadLiveStatus,
@@ -264,6 +265,7 @@ export function createSystemComment(
     taskId: string;
     presetName: string;
     threadId: string;
+    event: SystemCommentEvent;
     body: string;
   },
 ): void {
@@ -274,6 +276,7 @@ export function createSystemComment(
     presetName: input.presetName,
     threadId: input.threadId,
     body: input.body,
+    systemEvent: input.event,
     notifiedCount: 0,
   });
 }
@@ -362,6 +365,7 @@ export function handlers(
             taskId: task.id,
             presetName: preset.name,
             threadId: thread.id,
+            event: "status_changed",
             body: `Status changed to In Progress · dispatched to ${preset.name}`,
           });
         }
@@ -370,6 +374,7 @@ export function handlers(
           taskId: task.id,
           presetName: preset.name,
           threadId: thread.id,
+          event: "dispatched",
           body: `Dispatched to ${preset.name}`,
         });
         return attached;

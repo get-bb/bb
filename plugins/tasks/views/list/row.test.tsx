@@ -40,6 +40,8 @@ const project = {
   color: "blue",
   folderId: null,
   linkedBbProjectId: null,
+  syncStorePath: null,
+  syncRole: "source",
   createdAt: "2026-07-15T00:00:00.000Z",
 };
 

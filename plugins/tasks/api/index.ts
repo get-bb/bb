@@ -3,6 +3,7 @@ import {
   createTasksStore,
   type Attachment as StoredAttachment,
   type Comment as StoredComment,
+  type SystemCommentEvent,
   type Task as StoredTask,
   type TasksStore,
 } from "../db";
@@ -314,18 +315,29 @@ function labelChangeBody(
     : `Labels changed to ${names.join(", ")} by ${authorName}`;
 }
 
+/**
+ * An audit entry the plugin writes about a change it just made. `event` is the
+ * machine-readable type and `body` the rendered sentence; consumers that must
+ * tell bookkeeping from content (cross-instance sync) read `event`.
+ */
+interface SystemCommentEntry {
+  event: SystemCommentEvent;
+  body: string;
+}
+
 function writeSystemComments(
   store: TasksApiStore,
   taskId: string,
   authorName: string,
-  bodies: readonly string[],
+  entries: readonly SystemCommentEntry[],
 ): void {
-  for (const body of bodies) {
+  for (const entry of entries) {
     store.tasks.createComment({
       taskId,
       kind: "system",
       authorName,
-      body,
+      body: entry.body,
+      systemEvent: entry.event,
       notifiedCount: 0,
     });
   }
@@ -788,31 +800,38 @@ export function registerHandlers(
             replaceTaskLabels(store, current.id, input.labelIds);
           }
 
-          const bodies: string[] = [];
+          const entries: SystemCommentEntry[] = [];
           if (updated.status !== current.status) {
-            bodies.push(
-              `Status changed to ${statusName(updated.status)} by ${input.authorName}`,
-            );
+            entries.push({
+              event: "status_changed",
+              body: `Status changed to ${statusName(updated.status)} by ${input.authorName}`,
+            });
           }
           if (updated.priority !== current.priority) {
-            bodies.push(
-              `Priority changed to ${priorityName(updated.priority)} by ${input.authorName}`,
-            );
+            entries.push({
+              event: "priority_changed",
+              body: `Priority changed to ${priorityName(updated.priority)} by ${input.authorName}`,
+            });
           }
           if (updated.dueDate !== current.dueDate) {
-            bodies.push(
-              updated.dueDate === null
-                ? `Due date removed by ${input.authorName}`
-                : `Due date changed to ${updated.dueDate} by ${input.authorName}`,
-            );
+            entries.push({
+              event: "due_changed",
+              body:
+                updated.dueDate === null
+                  ? `Due date removed by ${input.authorName}`
+                  : `Due date changed to ${updated.dueDate} by ${input.authorName}`,
+            });
           }
           if (input.labelIds && labelsChanged(beforeLabelIds, input.labelIds)) {
-            bodies.push(labelChangeBody(store, current.id, input.authorName));
+            entries.push({
+              event: "labels_changed",
+              body: labelChangeBody(store, current.id, input.authorName),
+            });
           }
-          writeSystemComments(store, current.id, input.authorName, bodies);
+          writeSystemComments(store, current.id, input.authorName, entries);
           return {
             task: apiTask(store, updated),
-            systemCommentsWritten: bodies.length,
+            systemCommentsWritten: entries.length,
           };
         });
 
@@ -866,7 +885,10 @@ export function registerHandlers(
         const statusChanged = moved.status !== current.status;
         if (statusChanged) {
           writeSystemComments(store, current.id, input.authorName, [
-            `Status changed to ${statusName(moved.status)} by ${input.authorName}`,
+            {
+              event: "status_changed",
+              body: `Status changed to ${statusName(moved.status)} by ${input.authorName}`,
+            },
           ]);
         }
         return { task: apiTask(store, moved), statusChanged };

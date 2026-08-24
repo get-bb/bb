@@ -141,6 +141,7 @@ and the `bb tasks` command. Common agent operations are:
   bb tasks detach <key-or-id> [--thread <thread-id>] [--json]
   bb tasks update <key-or-id> --status in_review [--json]
   bb tasks update <key-or-id> (--parent <parent-key-or-id> | --no-parent) [--json]
+  bb tasks sync export|import|check [--project <prefix-or-id>] [--store <path>] [--json]
 
 Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
 commands, plus preset management, delegation, and attached-thread inspection.
@@ -152,6 +153,20 @@ threads first, newest first. Task update resolves both task keys and IDs for
 in tasks commands resolve on the invoking machine (the thread's machine inside
 an agent thread, otherwise the server's); pass `--machine <id-or-name>` to
 target another enrolled machine.
+`bb tasks sync` converges the same project across bb instances through a
+tracked file in a git repository: export on the instance where the work
+happened, commit the store, pull it elsewhere, import there. Each board stays
+canonical; the store is the convergence point. `import` is a dry run until
+`--apply`, matches notes by body so a repeat run is a no-op, and refuses a
+field update when the local task changed after the export (`--force`
+overwrites). `check` reports drift as MISSING, DRIFT, AHEAD, BEHIND, and
+UNTRACKED, and exits 2 when it finds any, so it suits a scheduled automation.
+`export` refuses to write an empty board over an existing record. Configure
+the store path per project with `bb tasks project update <prefix>
+--sync-store <path>`; add `--sync-role mirror` for an instance that imports
+only, whose local edits check reports as unsyncable. Labels, attachments, and
+sub-task hierarchy do not travel.
+
 Task lists default to 100 rows. JSON pages include `nextCursor`; human pages
 print the exact continuation option when more rows exist. Cursors are bound to
 the filters, sort, and task-list revision. Any add, removal, reorder, update,

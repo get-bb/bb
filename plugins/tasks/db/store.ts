@@ -11,6 +11,8 @@ import {
   presetPermissionModeSchema,
   presetReasoningLevelSchema,
   presetServiceTierSchema,
+  projectSyncRoleSchema,
+  systemCommentEventSchema,
 } from "../shared/contract.js";
 import type {
   Attachment,
@@ -30,7 +32,9 @@ import type {
   Preset,
   PresetEnvironmentKind,
   Project,
+  ProjectSyncRole,
   SubtaskDoneCounts,
+  SystemCommentEvent,
   Task,
   TaskLabel,
   TaskThread,
@@ -71,6 +75,8 @@ interface ProjectRow {
   color: string;
   folder_id: string | null;
   linked_bb_project_id: string | null;
+  sync_store_path: string | null;
+  sync_role: ProjectSyncRole;
   created_at: string;
 }
 
@@ -124,6 +130,7 @@ interface CommentRow {
   preset_name: string | null;
   thread_id: string | null;
   body: string;
+  system_event: SystemCommentEvent | null;
   notified_count: number;
   created_at: string;
 }
@@ -315,6 +322,30 @@ function validateLinkedBbProjectId(id: string | null): string | null {
   return id;
 }
 
+function validateSyncStorePath(path: string | null): string | null {
+  return path === null ? null : requireNonEmpty(path, "Project syncStorePath");
+}
+
+function validateSyncRole(role: ProjectSyncRole): ProjectSyncRole {
+  return projectSyncRoleSchema.parse(role);
+}
+
+/**
+ * A `systemEvent` names one of the plugin's own audit writes, so it is only
+ * meaningful on a `system` comment. Rejecting the mismatch keeps the field
+ * usable as the "plugin wrote this" predicate that sync depends on.
+ */
+function validateSystemEvent(
+  kind: Comment["kind"],
+  event: SystemCommentEvent | null,
+): SystemCommentEvent | null {
+  if (event === null) return null;
+  if (kind !== "system") {
+    throw new Error('systemEvent requires a comment of kind "system"');
+  }
+  return systemCommentEventSchema.parse(event);
+}
+
 function validateThreadId(id: string): string;
 function validateThreadId(id: null): null;
 function validateThreadId(id: string | null): string | null;
@@ -359,6 +390,8 @@ function projectFromRow(row: ProjectRow): Project {
     color: row.color,
     folderId: row.folder_id,
     linkedBbProjectId: row.linked_bb_project_id,
+    syncStorePath: row.sync_store_path,
+    syncRole: row.sync_role,
     createdAt: row.created_at,
   };
 }
@@ -403,6 +436,7 @@ function commentFromRow(row: CommentRow): Comment {
     presetName: row.preset_name,
     threadId: row.thread_id,
     body: row.body,
+    systemEvent: row.system_event,
     notifiedCount: row.notified_count,
     createdAt: row.created_at,
   };
@@ -646,12 +680,23 @@ export function createTasksStore(db: PluginDatabase) {
     const folderId = input.folderId ?? null;
     if (folderId !== null) requireFolder(folderId);
     db.prepare<
-      [string, string, string, string, string | null, string | null, string]
+      [
+        string,
+        string,
+        string,
+        string,
+        string | null,
+        string | null,
+        string | null,
+        ProjectSyncRole,
+        string,
+      ]
     >(
       `
       INSERT INTO projects
-        (id, name, prefix, next_task_number, color, folder_id, linked_bb_project_id, created_at)
-      VALUES (?, ?, ?, 1, ?, ?, ?, ?)
+        (id, name, prefix, next_task_number, color, folder_id, linked_bb_project_id,
+         sync_store_path, sync_role, created_at)
+      VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       id,
@@ -660,6 +705,8 @@ export function createTasksStore(db: PluginDatabase) {
       requireNonEmpty(input.color, "Project color"),
       folderId,
       validateLinkedBbProjectId(input.linkedBbProjectId ?? null),
+      validateSyncStorePath(input.syncStorePath ?? null),
+      validateSyncRole(input.syncRole ?? "source"),
       nowIso(),
     );
     return requireProject(id);
@@ -697,10 +744,22 @@ export function createTasksStore(db: PluginDatabase) {
     const folderId =
       input.folderId === undefined ? current.folderId : input.folderId;
     if (folderId !== null) requireFolder(folderId);
-    db.prepare<[string, string, string, string | null, string | null, string]>(
+    db.prepare<
+      [
+        string,
+        string,
+        string,
+        string | null,
+        string | null,
+        string | null,
+        ProjectSyncRole,
+        string,
+      ]
+    >(
       `
       UPDATE projects
-      SET name = ?, prefix = ?, color = ?, folder_id = ?, linked_bb_project_id = ?
+      SET name = ?, prefix = ?, color = ?, folder_id = ?, linked_bb_project_id = ?,
+          sync_store_path = ?, sync_role = ?
       WHERE id = ?
     `,
     ).run(
@@ -717,6 +776,12 @@ export function createTasksStore(db: PluginDatabase) {
       input.linkedBbProjectId === undefined
         ? current.linkedBbProjectId
         : validateLinkedBbProjectId(input.linkedBbProjectId),
+      input.syncStorePath === undefined
+        ? current.syncStorePath
+        : validateSyncStorePath(input.syncStorePath),
+      input.syncRole === undefined
+        ? current.syncRole
+        : validateSyncRole(input.syncRole),
       id,
     );
     return requireProject(id);
@@ -804,19 +869,37 @@ export function createTasksStore(db: PluginDatabase) {
           .get(project.id, status)?.position ?? POSITION_STEP;
       const createdAt = nowIso();
 
-      const allocated = db
-        .prepare<[string, number]>(
-          `
+      // Sync import reuses an explicit number so a task keeps its key on
+      // every instance. UNIQUE (project_id, number) rejects a collision, and
+      // the counter only moves forward so later interactive creates cannot
+      // reuse an imported number.
+      const number = input.number ?? project.nextTaskNumber;
+      if (input.number === undefined) {
+        const allocated = db
+          .prepare<[string, number]>(
+            `
         UPDATE projects
         SET next_task_number = next_task_number + 1
         WHERE id = ? AND next_task_number = ?
       `,
-        )
-        .run(project.id, project.nextTaskNumber);
-      if (allocated.changes !== 1) {
-        throw new Error(
-          `Could not allocate the next task number for ${project.id}`,
-        );
+          )
+          .run(project.id, project.nextTaskNumber);
+        if (allocated.changes !== 1) {
+          throw new Error(
+            `Could not allocate the next task number for ${project.id}`,
+          );
+        }
+      } else {
+        if (!Number.isInteger(number) || number < 1) {
+          throw new Error("Task number must be a positive integer");
+        }
+        db.prepare<[number, string, number]>(
+          `
+        UPDATE projects
+        SET next_task_number = ?
+        WHERE id = ? AND next_task_number < ?
+      `,
+        ).run(number + 1, project.id, number + 1);
       }
 
       db.prepare<
@@ -844,7 +927,7 @@ export function createTasksStore(db: PluginDatabase) {
       ).run(
         id,
         project.id,
-        project.nextTaskNumber,
+        number,
         requireNonEmpty(input.title, "Task title"),
         input.description ?? "",
         status,
@@ -1408,6 +1491,7 @@ export function createTasksStore(db: PluginDatabase) {
         string | null,
         string | null,
         string,
+        SystemCommentEvent | null,
         number,
         string,
       ]
@@ -1415,8 +1499,8 @@ export function createTasksStore(db: PluginDatabase) {
       `
       INSERT INTO comments (
         id, task_id, kind, author_name, preset_name, thread_id, body,
-        notified_count, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        system_event, notified_count, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       id,
@@ -1426,6 +1510,7 @@ export function createTasksStore(db: PluginDatabase) {
       input.presetName ?? null,
       validateThreadId(input.threadId ?? null),
       input.body,
+      validateSystemEvent(input.kind, input.systemEvent ?? null),
       input.notifiedCount ?? 0,
       nowIso(),
     );
