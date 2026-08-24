@@ -54,6 +54,7 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import { createPiDeltaTranslator } from "../delta-translation.js";
 import {
   buildPiSessionParams,
+  buildPiTurnOptions,
   type PiSessionParams,
 } from "../session-params.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
@@ -186,6 +187,14 @@ interface ThreadSession {
   providerThreadId: string;
   /** The working directory pi runs this thread in. */
   cwd: string;
+  /**
+   * The params this thread's pi child was constructed from. A turn that
+   * carries a different model or thinking level is reconciled against them
+   * and rebuilds the child from the same base.
+   */
+  construction: PiSessionParams;
+  /** The model the child spawned on, resolved against pi's catalog. */
+  constructionModel: { provider: string; id: string } | undefined;
 }
 
 let sessionSerialCounter = 0;
@@ -732,8 +741,13 @@ async function startPiThreadSession(
     });
   }
   const sessionSerial = nextSessionSerial();
+  const sessionOptions = await buildSessionOptions({
+    params,
+    providerThreadId,
+    threadId,
+  });
   const session = new PiRpcSession(
-    await buildSessionOptions({ params, providerThreadId, threadId }),
+    sessionOptions,
     createForwardToolCall(() => threadId),
     createOnPiEvent({ sessionSerial, threadId }),
     createOnSessionDone({ sessionSerial, threadId }),
@@ -747,6 +761,8 @@ async function startPiThreadSession(
     // pi's SessionManager.open resolves the cwd from the header. A fresh
     // session has no file yet and runs in the requested cwd.
     cwd: persistedSessionCwd(providerThreadId) ?? params.cwd,
+    construction: params,
+    constructionModel: sessionOptions.model,
   };
   sessions.set(threadId, threadSession);
   try {
@@ -766,14 +782,23 @@ async function startPiThreadSession(
   }
 }
 
+/**
+ * The native id-space boundary a newly constructed pi child opens: its turn
+ * and item ids may repeat, so the thread's assembly state is dropped on both
+ * sides of the wire.
+ */
+function sendSessionResetBoundary(threadId: string): void {
+  piDeltaTranslator.resetThread(threadId);
+  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
+}
+
 function sendThreadSessionResult(
   id: string | number,
   threadId: string,
   providerThreadId: string,
 ): void {
   sendThreadIdentity(threadId, providerThreadId);
-  piDeltaTranslator.resetThread(threadId);
-  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
+  sendSessionResetBoundary(threadId);
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
@@ -884,10 +909,103 @@ function recordAcceptedTurnInput(params: TurnStartParams): void {
   ]);
 }
 
+/**
+ * Reconcile the execution options a turn carries with the live session before
+ * its input is dispatched (#2160). The runtime never diffs options: they ride
+ * every turn command and each bridge applies what changed. Model and thinking
+ * level are spawn-time flags for pi, and `set_model` / `set_thinking_level`
+ * write the selection into the user's global pi settings, which bb must not
+ * touch — so a change is applied by rebuilding the child from the thread's
+ * session file, the way the codex bridge rebuilds from its rollout. The
+ * history is on disk, so the conversation survives the replacement.
+ *
+ * Nothing is in flight at this point: the daemon steers an active thread
+ * instead of starting a turn on it, and a steer joins the turn that is
+ * already running on the model it started with. Reconciliation runs ahead of
+ * every dispatch, including manual compaction, so the summarization request
+ * also goes to the selected model. A model that does not resolve fails the
+ * turn instead of silently keeping the old one.
+ */
+async function reconcileTurnOptions(
+  threadId: string,
+  threadSession: ThreadSession,
+  options: TurnStartParams["options"],
+): Promise<ThreadSession> {
+  const turnOptions = buildPiTurnOptions(options);
+  const construction = threadSession.construction;
+  // The request the construction ran with is the cheap comparison: an
+  // unchanged spelling settles the common turn without touching pi's
+  // catalog. Pi clamps a level the model does not support at spawn, so
+  // comparing requests (not the clamped result) also keeps a clamped
+  // session from rebuilding on every turn.
+  const changedModelRequest =
+    turnOptions.model !== undefined && turnOptions.model !== construction.model
+      ? turnOptions.model
+      : undefined;
+  const thinkingLevelChanged =
+    turnOptions.thinkingLevel !== undefined &&
+    turnOptions.thinkingLevel !== construction.thinkingLevel;
+  if (changedModelRequest === undefined && !thinkingLevelChanged) {
+    return threadSession;
+  }
+  // Resolved before anything is torn down: a model that does not resolve
+  // fails the turn with the live session intact, and two spellings of one
+  // model ("fake-model", "fake-provider/fake-model") rebuild nothing.
+  const nextModel =
+    changedModelRequest === undefined
+      ? undefined
+      : await resolvePiModel(changedModelRequest, construction.cwd);
+  const modelChanged =
+    nextModel !== undefined &&
+    (threadSession.constructionModel === undefined ||
+      threadSession.constructionModel.provider !== nextModel.provider ||
+      threadSession.constructionModel.id !== nextModel.id);
+  if (!modelChanged && !thinkingLevelChanged) {
+    return threadSession;
+  }
+  await startPiThreadSession(threadId, threadSession.providerThreadId, {
+    ...construction,
+    ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
+    ...(turnOptions.thinkingLevel === undefined
+      ? {}
+      : { thinkingLevel: turnOptions.thinkingLevel }),
+  });
+  const replacement = sessions.get(threadId);
+  if (!replacement) {
+    throw new Error("No active pi session");
+  }
+  // A replacement session re-reports its identity and restorability, and
+  // its boundary deltas go out before the notification that explains them.
+  sendThreadIdentity(threadId, replacement.providerThreadId);
+  sendSessionResetBoundary(threadId);
+  send({
+    jsonrpc: "2.0",
+    method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
+    params: {
+      threadId,
+      providerThreadId: replacement.providerThreadId,
+      reason: "Execution settings changed; the pi session was rebuilt to apply them.",
+      contextLost: false,
+    },
+  });
+  return replacement;
+}
+
 async function handleTurnStart(id: string | number, params: TurnStartParams): Promise<void> {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
+  const liveSession = sessions.get(params.threadId);
+  if (!liveSession || liveSession.closing) {
     sendError(id, -32000, "No active pi session");
+    return;
+  }
+  let threadSession: ThreadSession;
+  try {
+    threadSession = await reconcileTurnOptions(
+      params.threadId,
+      liveSession,
+      params.options,
+    );
+  } catch (error) {
+    sendError(id, -32000, error instanceof Error ? error.message : String(error));
     return;
   }
   if (isStandaloneBuiltinCompactCommand(params.input)) {
