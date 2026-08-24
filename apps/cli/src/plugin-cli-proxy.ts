@@ -339,21 +339,6 @@ export function findPluginCliCommand(
   return contributions.find((entry) => entry.name === name);
 }
 
-/**
- * The first CLI token is a plugin-proxy candidate only when it looks like a
- * command (not a flag) and no core command claims it. Core commands always
- * win: commander resolved them before this path runs.
- */
-export function pluginProxyCandidate(
-  firstArg: string | undefined,
-  knownCommandNames: ReadonlySet<string>,
-): string | null {
-  if (firstArg === undefined || firstArg.length === 0) return null;
-  if (firstArg.startsWith("-")) return null;
-  if (knownCommandNames.has(firstArg)) return null;
-  return firstArg;
-}
-
 interface PluginCliOutputStream {
   write(chunk: string, callback: (error?: Error | null) => void): boolean;
 }

@@ -2136,6 +2136,9 @@ describe("bb-app launcher", () => {
     expect(metadata.files).toContain(
       "host-daemon/dist/bb-plugin-host-worker.mjs",
     );
+    // The CLI entry imports its command groups from this chunk directory.
+    expect(metadata.files).toContain("host-daemon/dist/bb");
+    expect(metadata.files).toContain("host-daemon/dist/bb-chunks");
     expect(metadata.os).toEqual(["darwin", "linux"]);
   });
 
