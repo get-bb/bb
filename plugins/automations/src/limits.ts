@@ -3,8 +3,10 @@
  *
  * Kept free of imports on purpose: the frontend only needs these numbers,
  * and importing them from `rpc-types.ts` would drag zod and every schema
- * into `dist/app.js`, which the host serves `cache-control: no-store` and
- * re-evaluates at every boot. `frontend-imports.test.ts` guards the split.
+ * into `dist/app.js`, which the app dynamic-imports and evaluates on every
+ * boot (the bundle URL is content-hashed and served immutable, so the
+ * recurring cost is parse/evaluate, not download). `frontend-imports.test.ts`
+ * guards the split.
  */
 export const AUTOMATION_NAME_MAX_LENGTH = 200;
 export const AUTOMATION_PROMPT_MAX_LENGTH = 8_000;

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -7,16 +7,43 @@ import { describe, expect, it } from "vitest";
  * frontend bundle (`app.tsx` and everything it reaches through value
  * imports) must never pull in zod. A single value import of `rpc-types`
  * from a view made esbuild inline the whole schema graph and tripled
- * `dist/app.js`, which the host serves `cache-control: no-store`.
+ * `dist/app.js`, which the app evaluates on every boot (the bundle URL is
+ * content-hashed and served immutable, so the recurring cost is
+ * parse/evaluate, not download).
  *
  * Walks the source graph with a statement scanner rather than esbuild
- * (not a dependency of this plugin). Only relative and `@/` specifiers
- * are followed; bare specifiers are checked against zod.
+ * (not a dependency of this plugin). It follows relative and `@/`
+ * specifiers, and the workspace packages the plugin build bundles from
+ * source (`@bb/domain`, `@bb/shared-ui`) through their `exports` maps into
+ * `packages/<pkg>/src`; the host-provided `@bb/shared-ui/icon` module is
+ * the one subpath left out. Every other bare specifier is only compared
+ * against zod, so zod arriving through a third-party dependency is not
+ * covered.
+ *
+ * The scanner does not tree-shake: a root-barrel `@bb/domain` import
+ * reaches every zod-backed module the barrel re-exports and fails the
+ * guard even where esbuild would drop them as unused. That is deliberate:
+ * import the leaf subpath (`@bb/domain/update-state`) instead.
  */
 
-const PLUGIN_ROOT = resolve(import.meta.dirname, "..");
+const PLUGIN_ROOT = realpathSync(resolve(import.meta.dirname, ".."));
 const FRONTEND_ENTRY = join(PLUGIN_ROOT, "app.tsx");
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+
+/**
+ * Workspace packages the plugin build bundles from source: there is no host
+ * slot for them, so zod reaching one of their modules reaches the bundle.
+ * Captures the package name and the (possibly empty) export subpath.
+ */
+const BUNDLED_WORKSPACE_SPECIFIER = /^(@bb\/(?:domain|shared-ui))((?:\/.*)?)$/;
+
+/**
+ * shared-ui's icon module comes from the host (`RUNTIME_SLOT_BY_SPECIFIER`
+ * in @bb/plugin-build) whether a plugin imports it by package specifier or
+ * a shared-ui component reaches it relatively, so neither form is followed.
+ */
+const HOST_PROVIDED_ICON_MODULE =
+  /\/shared-ui\/src\/components\/ui\/icon\.tsx$/;
 
 /**
  * Top-level `import ... from`, `export ... from`, side-effect `import "x"`,
@@ -66,20 +93,56 @@ function importEdges(source: string): ImportEdge[] {
   return edges;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 /**
- * Resolves a relative or `@/` (plugin root, per tsconfig `paths`) specifier
+ * Resolves `@bb/<pkg>[/<subpath>]` the way the plugin build does: through
+ * the package's `exports` map under the `source` condition, which points
+ * every entry at a `.ts`/`.tsx` file under `packages/<pkg>/src`. The
+ * package directory is realpath'd through the plugin's `node_modules` link
+ * so reached paths are canonical.
+ */
+function workspaceSourceFile(packageName: string, subpath: string): string {
+  const packageDir = realpathSync(
+    join(PLUGIN_ROOT, "node_modules", packageName),
+  );
+  const manifest: unknown = JSON.parse(
+    readFileSync(join(packageDir, "package.json"), "utf8"),
+  );
+  const entry =
+    isRecord(manifest) && isRecord(manifest.exports)
+      ? manifest.exports[`.${subpath}`]
+      : undefined;
+  const source = isRecord(entry) ? entry.source : undefined;
+  if (typeof source !== "string") {
+    throw new Error(
+      `${packageName}${subpath} has no "source" export in its package.json`,
+    );
+  }
+  return resolve(packageDir, source);
+}
+
+/**
+ * Resolves a specifier the bundle inlines from source (relative, `@/` for
+ * the plugin root per tsconfig `paths`, or a bundled workspace package)
  * the way the bundler does: `.js` specifiers name `.ts`/`.tsx` sources.
- * Returns `null` for bare specifiers and for non-script assets.
+ * Returns `null` for everything the bundle does not inline: other bare
+ * specifiers, the host-provided icon module, and non-script assets.
  */
 function resolveLocalModule(
   fromFile: string,
   specifier: string,
 ): string | null {
+  const workspace = BUNDLED_WORKSPACE_SPECIFIER.exec(specifier);
   const base = specifier.startsWith("@/")
     ? join(PLUGIN_ROOT, specifier.slice(2))
     : specifier.startsWith(".")
       ? resolve(dirname(fromFile), specifier)
-      : null;
+      : workspace !== null
+        ? workspaceSourceFile(workspace[1], workspace[2])
+        : null;
   if (base === null) return null;
   const stem = base.replace(/\.js$/, "");
   const candidates = [
@@ -97,10 +160,14 @@ function resolveLocalModule(
       `cannot resolve ${specifier} from ${relative(PLUGIN_ROOT, fromFile)}`,
     );
   }
+  if (HOST_PROVIDED_ICON_MODULE.test(resolved)) return null;
   return SOURCE_EXTENSIONS.has(extname(resolved)) ? resolved : null;
 }
 
-/** Every source file the frontend bundle includes, with its bare specifiers. */
+/**
+ * Every source file the frontend bundle includes, with the specifiers it
+ * imports that are not inlined from source.
+ */
 function collectFrontendModules(entry: string): Map<string, string[]> {
   const reached = new Map<string, string[]>();
   const pending = [entry];
@@ -127,13 +194,16 @@ describe("automations frontend bundle", () => {
 
   it("walks the real frontend graph", () => {
     // Without this the assertions below could pass vacuously after a
-    // resolution bug; these are the files the guard exists to cover.
+    // resolution bug; these are the files the guard exists to cover,
+    // including the workspace sources the bundle inlines from packages/.
     expect(reachedPaths).toEqual(
       expect.arrayContaining([
         "detail-view.tsx",
         "overview-view.tsx",
         "lib/format-schedule.ts",
         "src/limits.ts",
+        "../../packages/domain/src/update-state.ts",
+        "../../packages/shared-ui/src/components/ui/button.tsx",
       ]),
     );
   });
