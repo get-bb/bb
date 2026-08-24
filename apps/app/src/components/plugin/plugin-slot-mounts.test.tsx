@@ -100,6 +100,7 @@ afterEach(() => {
   window.localStorage.clear();
   resetAllCrashedPluginSlotsForTest();
   resetPluginCssForTest();
+  vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
@@ -1319,6 +1320,7 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
   });
 
   it("releases the plugin stylesheet when navigation unmounts the panel route", async () => {
+    vi.useFakeTimers();
     setPluginSlotRegistrations(
       "demo",
       registrationSet({
@@ -1365,6 +1367,14 @@ describe("PluginNavSidebarItems + PluginPanelView", () => {
     fireEvent.click(screen.getByRole("button", { name: "Leave panel" }));
     await act(async () => {});
     expect(screen.getByText("home")).toBeDefined();
+    // The sheet outlives the route through a grace window (a remount across
+    // navigation reuses it); only then does the final release detach it.
+    expect(
+      document.head.querySelector('link[data-bb-plugin-css="demo"]'),
+    ).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
     expect(
       document.head.querySelector('link[data-bb-plugin-css="demo"]'),
     ).toBeNull();
@@ -1594,6 +1604,7 @@ describe("plugin panel shared title bar and full-bleed body", () => {
   });
 
   it("gives headerContent independent CSS ownership without a mounted panel body", async () => {
+    vi.useFakeTimers();
     function Accessory() {
       return <button type="button">Toggle sidebar</button>;
     }
@@ -1616,6 +1627,12 @@ describe("plugin panel shared title bar and full-bleed body", () => {
 
     view.unmount();
     await act(async () => {});
+    expect(
+      document.head.querySelector('link[data-bb-plugin-css="demo"]'),
+    ).not.toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
     expect(
       document.head.querySelector('link[data-bb-plugin-css="demo"]'),
     ).toBeNull();
@@ -2042,9 +2059,7 @@ describe("plugin file opener tabs", () => {
   });
 
   it("lets an opener delegate to the exact native preview node", () => {
-    function DelegatingEditor({
-      Original,
-    }: PluginFileOpenerProps) {
+    function DelegatingEditor({ Original }: PluginFileOpenerProps) {
       return <Original />;
     }
     setPluginSlotRegistrations(

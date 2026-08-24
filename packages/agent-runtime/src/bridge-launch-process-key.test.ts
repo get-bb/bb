@@ -28,7 +28,6 @@ describe("bridgeLaunchProcessKey", () => {
       bridgeLaunchProcessKey({
         ...base,
         providerOptions: { launch: { command: "example" } },
-    envPassthrough: [],
       }),
     );
     expect(bridgeLaunchProcessKey(base)).not.toBe(

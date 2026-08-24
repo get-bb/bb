@@ -76,6 +76,7 @@ export interface CommandRouterOptions {
   providerUsage: CommandDispatchOptions["providerUsage"];
   providerInstallationStatus: CommandDispatchOptions["providerInstallationStatus"];
   providerInstallationRun: CommandDispatchOptions["providerInstallationRun"];
+  refreshShellEnv: CommandDispatchOptions["refreshShellEnv"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];
@@ -300,6 +301,7 @@ export class CommandRouter {
       providerUsage: this.options.providerUsage,
       providerInstallationStatus: this.options.providerInstallationStatus,
       providerInstallationRun: this.options.providerInstallationRun,
+      refreshShellEnv: this.options.refreshShellEnv,
       resolveInteractiveRequest: this.options.resolveInteractiveRequest,
       ensureConnectTunnelIdentity: this.options.ensureConnectTunnelIdentity,
       threadStorageRootPath: this.options.threadStorageRootPath,

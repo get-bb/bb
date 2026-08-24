@@ -3,6 +3,9 @@ import {
   makeWorkspaceStatus,
 } from "@bb/test-helpers";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
@@ -1464,6 +1467,85 @@ describe("server-contract canonical schemas", () => {
 });
 
 describe("server-contract clients", () => {
+  // The browser app and @bb/sdk import createApiClient at boot. The route
+  // table in public-api.ts drags ~85 zod schemas into the boot chunk, so the
+  // client must reach PublicApiRoutes through a type-only import and nothing
+  // else from that module graph. Typecheck cannot tell `import type` from a
+  // value import here, so pin the source form: every module api-client.ts
+  // imports or re-exports from, flagged type-only or not, so a new value
+  // edge (a sibling zod module, a value re-export of the route table) fails
+  // by construction. Walk the TypeScript AST instead of regexing the text: a
+  // `;` inside a comment in a multi-line import block, or a bare
+  // `import "./x.js"` with no `from`, adds a real edge that a statement
+  // regex never sees, and statement order or a trailing comment must not
+  // matter because neither changes the module graph.
+  it("keeps the api client off the route table's value import graph", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/api-client.ts", import.meta.url)),
+      "utf8",
+    );
+    const file = ts.createSourceFile(
+      "api-client.ts",
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const edges = file.statements.flatMap((statement) => {
+      if (
+        ts.isImportDeclaration(statement) &&
+        ts.isStringLiteral(statement.moduleSpecifier)
+      ) {
+        return [
+          {
+            specifier: statement.moduleSpecifier.text,
+            // Only `import type` is type-only: a bare `import "./x.js"` has
+            // no clause, and `import { type X }` keeps a value clause that
+            // verbatimModuleSyntax-style emit preserves as a live edge.
+            typeOnly:
+              statement.importClause?.phaseModifier ===
+              ts.SyntaxKind.TypeKeyword,
+          },
+        ];
+      }
+      if (
+        ts.isExportDeclaration(statement) &&
+        statement.moduleSpecifier !== undefined &&
+        ts.isStringLiteral(statement.moduleSpecifier)
+      ) {
+        return [
+          {
+            specifier: statement.moduleSpecifier.text,
+            typeOnly: statement.isTypeOnly,
+          },
+        ];
+      }
+      return [];
+    });
+
+    const valueSpecifiers = edges
+      .filter((edge) => !edge.typeOnly)
+      .map((edge) => edge.specifier);
+    expect(new Set(valueSpecifiers)).toEqual(new Set(["hono/client"]));
+    expect(
+      edges.filter((edge) => edge.specifier === "./public-api.js"),
+    ).toEqual([{ specifier: "./public-api.js", typeOnly: true }]);
+  });
+
+  // index.ts re-exports public-api.ts with `export *`, which stays a live
+  // module-graph edge no matter how api-client.ts imports it. Bundlers only
+  // drop the route table (and the schema modules behind it) from that edge
+  // because the package declares itself side-effect free; without the flag
+  // the whole table returns to the browser boot chunk while the test above
+  // stays green.
+  it("declares the package side-effect free so the barrel's route-table edge is droppable", () => {
+    const manifest = readFileSync(
+      fileURLToPath(new URL("../package.json", import.meta.url)),
+      "utf8",
+    );
+    expect(JSON.parse(manifest)).toHaveProperty("sideEffects", false);
+  });
+
   it("builds canonical public routes", () => {
     const publicClient = createPublicApiClient("http://localhost:3334");
 

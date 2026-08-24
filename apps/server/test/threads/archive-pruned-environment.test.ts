@@ -5,7 +5,13 @@
 // A pointer-less thread whose setup is still in flight is different: its
 // environment row does not exist yet. Archive keeps refusing that state so setup
 // cannot create an environment for an archived thread.
-import { environments, getThread, pruneDestroyedEnvironments } from "@bb/db";
+import {
+  DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  DESTROYED_ENVIRONMENT_TTL_MS,
+  environments,
+  getThread,
+  pruneDestroyedEnvironments,
+} from "@bb/db";
 import type { ThreadStatus } from "@bb/domain";
 import { apiErrorSchema } from "@bb/server-contract";
 import { eq } from "drizzle-orm";
@@ -44,7 +50,12 @@ function seedThreadWithPrunedEnvironment(
     .set({ status: "destroyed", updatedAt: Date.now() - EIGHT_DAYS_MS })
     .where(eq(environments.id, environment.id))
     .run();
-  expect(pruneDestroyedEnvironments(deps.db, deps.hub).deleted).toBe(1);
+  expect(
+    pruneDestroyedEnvironments(deps.db, deps.hub, {
+      updatedBefore: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+    }).deleted,
+  ).toBe(1);
 
   const threadAfterPrune = getThread(deps.db, thread.id);
   expect(threadAfterPrune?.environmentId).toBeNull();

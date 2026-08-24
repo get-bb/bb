@@ -1,16 +1,27 @@
 import { z } from "zod";
+import {
+  AUTOMATION_IDEMPOTENCY_KEY_MAX_LENGTH,
+  AUTOMATION_NAME_MAX_LENGTH,
+  AUTOMATION_PROMPT_MAX_LENGTH,
+  AUTOMATION_RUNS_LIMIT_DEFAULT,
+  AUTOMATION_RUNS_LIMIT_MAX,
+  AUTOMATION_SCRIPT_FILE_MAX_LENGTH,
+  AUTOMATION_SCRIPT_MAX_LENGTH,
+  AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+  AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
+  SCHEDULE_CRON_MAX_LENGTH,
+  SCHEDULE_TIMEZONE_MAX_LENGTH,
+} from "./limits.js";
 
-const AUTOMATION_NAME_MAX_LENGTH = 200;
-export const AUTOMATION_PROMPT_MAX_LENGTH = 8_000;
-const AUTOMATION_SCRIPT_MAX_LENGTH = 262_144;
-const AUTOMATION_SCRIPT_FILE_MAX_LENGTH = 200;
-const SCHEDULE_CRON_MAX_LENGTH = 100;
-const SCHEDULE_TIMEZONE_MAX_LENGTH = 100;
-const AUTOMATION_IDEMPOTENCY_KEY_MAX_LENGTH = 200;
-export const AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS = 120_000;
-export const AUTOMATION_SCRIPT_TIMEOUT_MAX_MS = 900_000;
-const AUTOMATION_RUNS_LIMIT_DEFAULT = 50;
-export const AUTOMATION_RUNS_LIMIT_MAX = 200;
+// The limits live in the import-free ./limits.js so the frontend can read a
+// number without bundling zod; these re-exports keep the backend's existing
+// imports and the package's `./rpc-types` export map entry unchanged.
+export {
+  AUTOMATION_PROMPT_MAX_LENGTH,
+  AUTOMATION_RUNS_LIMIT_MAX,
+  AUTOMATION_SCRIPT_TIMEOUT_DEFAULT_MS,
+  AUTOMATION_SCRIPT_TIMEOUT_MAX_MS,
+} from "./limits.js";
 
 export const permissionModeSchema = z.enum(["accept-edits", "auto", "full"]);
 export type PermissionMode = z.infer<typeof permissionModeSchema>;

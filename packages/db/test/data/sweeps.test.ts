@@ -8,6 +8,7 @@ import {
   COMPLETED_EVENT_OUTPUT_RETAINED_HEAD_CHARS,
   COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
+  DESTROYED_ENVIRONMENT_TTL_MS,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
   sweepManagedEnvironments,
@@ -22,12 +23,14 @@ import {
 } from "../../src/data/threads.js";
 import {
   createEnvironment,
+  updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
 import { openSession } from "../../src/data/sessions.js";
 import {
   environments,
   events,
   hostDaemonSessions,
+  threads,
 } from "../../src/schema.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
@@ -713,7 +716,10 @@ describe("pruneDestroyedEnvironments", () => {
       notifySystem: vi.fn(),
     };
 
-    const result = pruneDestroyedEnvironments(db, spy, now);
+    const result = pruneDestroyedEnvironments(db, spy, {
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: 10,
+    });
     expect(result.deleted).toBe(1);
     expect(
       db
@@ -753,12 +759,188 @@ describe("pruneDestroyedEnvironments", () => {
       notifySystem: vi.fn(),
     };
 
-    const result = pruneDestroyedEnvironments(db, spy, now);
+    const result = pruneDestroyedEnvironments(db, spy, {
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: 10,
+    });
     expect(result.deleted).toBe(0);
     expect(
       db.select().from(environments).where(eq(environments.id, staleEnvironment.id)).get()
         ?.status,
     ).toBe("destroying");
     expect(spy.notifyEnvironment).not.toHaveBeenCalled();
+  });
+
+  it("a metadata write on a destroyed environment restarts its retention clock", () => {
+    const { db, host, project } = setup();
+    const now = Date.now();
+
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/destroyed-then-renamed",
+      managed: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "destroyed",
+    });
+    db.update(environments)
+      .set({ updatedAt: now - 8 * 24 * 60 * 60_000 })
+      .where(eq(environments.id, environment.id))
+      .run();
+
+    // `updatedBefore` is matched against `updatedAt`, the same clock every
+    // metadata write bumps; there is no destroy timestamp to fall back on.
+    updateEnvironmentMetadata(db, noopNotifier, environment.id, {
+      name: "renamed",
+    });
+
+    const result = pruneDestroyedEnvironments(db, noopNotifier, {
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: 10,
+    });
+    expect(result).toEqual({ deleted: 0 });
+    expect(
+      db
+        .select({ status: environments.status })
+        .from(environments)
+        .where(eq(environments.id, environment.id))
+        .get()?.status,
+    ).toBe("destroyed");
+  });
+
+  it("deletes the oldest stale destroyed environments first and honors the batch limit", () => {
+    const { db, host, project } = setup();
+    const now = Date.now();
+    const day = 24 * 60 * 60_000;
+
+    function createDestroyedEnvironment(path: string, ageMs: number) {
+      const environment = createEnvironment(db, noopNotifier, {
+        projectId: project.id,
+        hostId: host.id,
+        path,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        status: "destroyed",
+      });
+      db.update(environments)
+        .set({ updatedAt: now - ageMs })
+        .where(eq(environments.id, environment.id))
+        .run();
+      return environment;
+    }
+
+    // Insert out of age order so the result can only come from ORDER BY.
+    const nineDaysOld = createDestroyedEnvironment("/tmp/destroyed-9d", 9 * day);
+    const tenDaysOld = createDestroyedEnvironment("/tmp/destroyed-10d", 10 * day);
+    const eightDaysOld = createDestroyedEnvironment("/tmp/destroyed-8d", 8 * day);
+    const fresh = createDestroyedEnvironment("/tmp/destroyed-fresh", 0);
+
+    const spy: DbNotifier = {
+      notifyThread: vi.fn(),
+      notifyEnvironment: vi.fn(),
+      notifyHost: vi.fn(),
+      notifyProject: vi.fn(),
+      notifySystem: vi.fn(),
+    };
+    const args = { updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS, limit: 2 };
+    const remainingIds = () =>
+      db
+        .select({ id: environments.id })
+        .from(environments)
+        .orderBy(environments.updatedAt)
+        .all()
+        .map((row) => row.id);
+
+    expect(pruneDestroyedEnvironments(db, spy, { ...args, limit: 0 })).toEqual({
+      deleted: 0,
+    });
+    expect(spy.notifyEnvironment).not.toHaveBeenCalled();
+    expect(remainingIds()).toHaveLength(4);
+
+    expect(pruneDestroyedEnvironments(db, spy, args)).toEqual({ deleted: 2 });
+    expect(remainingIds()).toEqual([eightDaysOld.id, fresh.id]);
+    expect(vi.mocked(spy.notifyEnvironment).mock.calls).toEqual([
+      [tenDaysOld.id, ["environment-deleted"]],
+      [nineDaysOld.id, ["environment-deleted"]],
+    ]);
+
+    expect(pruneDestroyedEnvironments(db, spy, args)).toEqual({ deleted: 1 });
+    expect(remainingIds()).toEqual([fresh.id]);
+    expect(spy.notifyEnvironment).toHaveBeenCalledTimes(3);
+
+    expect(pruneDestroyedEnvironments(db, spy, args)).toEqual({ deleted: 0 });
+    expect(remainingIds()).toEqual([fresh.id]);
+  });
+
+  it("nulls event and thread environment pointers only for the pruned environment", () => {
+    const { db, host, project } = setup();
+    const now = Date.now();
+
+    function createDestroyedEnvironmentWithThread(path: string, updatedAt: number) {
+      const environment = createEnvironment(db, noopNotifier, {
+        projectId: project.id,
+        hostId: host.id,
+        path,
+        managed: true,
+        workspaceProvisionType: "managed-worktree",
+        status: "destroyed",
+      });
+      db.update(environments)
+        .set({ updatedAt })
+        .where(eq(environments.id, environment.id))
+        .run();
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+        status: "idle",
+        environmentId: environment.id,
+      });
+      const eventId = createEventId();
+      db.insert(events)
+        .values({
+          id: eventId,
+          threadId: thread.id,
+          environmentId: environment.id,
+          scopeKind: "thread",
+          sequence: 1,
+          type: "thread/started",
+          data: JSON.stringify({ type: "thread/started", threadId: thread.id }),
+          createdAt: now,
+        })
+        .run();
+      return { environment, thread, eventId };
+    }
+
+    const stale = createDestroyedEnvironmentWithThread(
+      "/tmp/stale-with-thread",
+      now - 8 * 24 * 60 * 60_000,
+    );
+    const fresh = createDestroyedEnvironmentWithThread(
+      "/tmp/fresh-with-thread",
+      now,
+    );
+
+    const result = pruneDestroyedEnvironments(db, noopNotifier, {
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: 10,
+    });
+    expect(result).toEqual({ deleted: 1 });
+
+    const environmentPointer = (table: typeof threads | typeof events, id: string) =>
+      db
+        .select({ environmentId: table.environmentId })
+        .from(table)
+        .where(eq(table.id, id))
+        .get()?.environmentId;
+
+    // The per-environment DELETE must still fire ON DELETE SET NULL with
+    // foreign_keys=ON; the rows themselves survive.
+    expect(environmentPointer(threads, stale.thread.id)).toBeNull();
+    expect(environmentPointer(events, stale.eventId)).toBeNull();
+    expect(environmentPointer(threads, fresh.thread.id)).toBe(fresh.environment.id);
+    expect(environmentPointer(events, fresh.eventId)).toBe(fresh.environment.id);
+    expect(
+      db.select({ id: environments.id }).from(environments).all().map((row) => row.id),
+    ).toEqual([fresh.environment.id]);
   });
 });

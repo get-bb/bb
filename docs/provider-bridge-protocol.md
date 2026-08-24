@@ -112,6 +112,16 @@ decision. `provider/installation/status` returns that state plus a display-only
 command. A status request may include a typed operation requirement such as
 `thread_rewind`; the bridge owns the minimum provider version needed for that
 operation and reports it through the ordinary installation status. When the
+host daemon gates a thread start or rewind on that status, it remembers the
+answer per provider, bridge launch, and requirement for a few minutes rather
+than probing before every thread, and forgets it after an install or update
+it ran itself or a shell-environment change. An answer with
+`versionUnsupported: true` is never remembered, and neither is one with
+`installed: false` from a bridge that reports a `minimumSupportedVersion`,
+because an install that arrives without a shell-environment change could be
+too old; a not-installed answer from a bridge that reports
+`minimumSupportedVersion: null` is remembered like a supported one, since
+that bridge can never reject the start. When the
 user acts, `provider/installation/run` rechecks the state and
 returns either `available: false` or a typed executable/argument plan with a
 post-run verification rule. The host daemon—not the bridge, server, or browser—

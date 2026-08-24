@@ -14,6 +14,7 @@ import {
   stagePromptAttachmentGroups,
   stagePromptAttachments,
 } from "./prompt-attachments.js";
+import { providerInstallationGateKey } from "../provider-installation-gate.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
@@ -104,17 +105,39 @@ async function requireSupportedProviderCliForThreadStart({
     return;
   }
 
-  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
-    command.bridgeLaunch,
-    options,
+  const requirement =
+    command.type === "thread.rewind.prepare"
+      ? ("thread_rewind" as const)
+      : undefined;
+  // A changed PATH can resolve a different provider binary, and the runtime
+  // manager only learns about one through this refresh: it clears the gate
+  // and evicts idle runtimes so the thread launches against the new env. It
+  // has to run before the memo is consulted, since a hit would otherwise
+  // skip the probe that used to carry the refresh, and before the gate
+  // samples its generation, so the clear does not discard the fresh probe.
+  // The refresh's own short TTL keeps back-to-back starts free.
+  await options.refreshShellEnv();
+  // The probe spawns the provider CLI several times, so a remembered
+  // supported answer is served without touching the maintenance bridge or
+  // re-verifying the bridge artifact.
+  const status = await options.runtimeManager.providerInstallationGate.run(
+    providerInstallationGateKey({
+      providerId: command.providerId,
+      bridgeLaunch: command.bridgeLaunch,
+      requirement,
+    }),
+    async () => {
+      const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+        command.bridgeLaunch,
+        options,
+      );
+      return options.providerInstallationStatus({
+        providerId: command.providerId,
+        bridgeLaunch,
+        ...(requirement !== undefined ? { requirement } : {}),
+      });
+    },
   );
-  const status = await options.providerInstallationStatus({
-    providerId: command.providerId,
-    bridgeLaunch,
-    ...(command.type === "thread.rewind.prepare"
-      ? { requirement: "thread_rewind" as const }
-      : {}),
-  });
   if (!status.versionUnsupported) {
     return;
   }
