@@ -274,7 +274,7 @@ describe("resolveClaudeNativeRoots contract filtering", () => {
     }
   });
 
-  it("keeps the first 256 command roots of 300 plugins and warns once", async () => {
+  it("keeps the first 256 command roots of 260 plugins and warns once", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const fixture = await makeFixture();
     const cacheRoot = path.join(
@@ -283,15 +283,25 @@ describe("resolveClaudeNativeRoots contract filtering", () => {
       "cache",
       "market",
     );
+    // Just past the cap: enough plugins to drop some, few enough that the
+    // fixture (two writes per plugin, issued together) stays well inside the
+    // default test timeout on a slow CI runner.
     const plugins: Record<string, { scope: string; installPath: string }[]> =
       {};
-    for (let index = 0; index < 300; index += 1) {
+    const writes: Promise<void>[] = [];
+    for (let index = 0; index < 260; index += 1) {
       const name = `plugin-${String(index).padStart(3, "0")}`;
       const root = path.join(cacheRoot, name, "1");
       plugins[`${name}@market`] = [{ scope: "user", installPath: root }];
-      await writePlugin(root, { name });
-      await mkdir(path.join(root, "commands"), { recursive: true });
+      writes.push(
+        writePlugin(root, { name }).then(() =>
+          mkdir(path.join(root, "commands"), { recursive: true }).then(
+            () => undefined,
+          ),
+        ),
+      );
     }
+    await Promise.all(writes);
     await writeJson(
       path.join(fixture.claudeDir, "plugins", "installed_plugins.json"),
       { version: 2, plugins },
@@ -307,7 +317,7 @@ describe("resolveClaudeNativeRoots contract filtering", () => {
     expect(roots.commands[255]?.namePrefix).toBe("plugin-254:");
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn).toHaveBeenCalledWith(
-      `resolveNativeRoots: kept the first 256 of 301 commands roots; dropped 45 from "${path.join(cacheRoot, "plugin-255", "1", "commands")}" on`,
+      `resolveNativeRoots: kept the first 256 of 261 commands roots; dropped 5 from "${path.join(cacheRoot, "plugin-255", "1", "commands")}" on`,
     );
   });
 });
