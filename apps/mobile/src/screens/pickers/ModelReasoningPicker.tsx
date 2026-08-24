@@ -18,8 +18,10 @@ import {
   Text,
   useSheet,
 } from "@/ui";
+import { filterModelOptions, showModelSearch } from "./model-picker-model";
 import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
+import { SheetInput } from "./SheetInput";
 
 export interface ModelReasoningPickerProps {
   /** Fresh picker choices (a retired-but-selected model already promoted). */
@@ -66,6 +68,7 @@ export function ModelReasoningPicker({
   const { tokens } = useTheme();
   const maxHeight = usePickerSheetMaxHeight();
   const [showMore, setShowMore] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const selectedModel =
     modelOptions.find((option) => option.value === modelValue) ??
     moreModelOptions.find((option) => option.value === modelValue);
@@ -82,6 +85,27 @@ export function ModelReasoningPicker({
   const showReasoning = reasoningOptions.length > 0;
   const hasModels = modelOptions.length > 0 || moreModelOptions.length > 0;
   const triggerLabel = fastMode?.enabled ? `${modelLabel} · Fast` : modelLabel;
+  // Long catalogs (Pi routing to OpenRouter, local providers, …) get a search
+  // field; short ones stay a plain list. Filtering flattens the retired models
+  // inline so every match stays reachable.
+  const showSearch =
+    hasModels &&
+    !loadErrorMessage &&
+    showModelSearch(modelOptions, moreModelOptions);
+  const filtered = filterModelOptions(
+    modelOptions,
+    moreModelOptions,
+    showSearch ? searchQuery : "",
+  );
+  const visibleMoreOptions = filtered.isSearching
+    ? filtered.moreModelOptions
+    : showMore
+      ? moreModelOptions
+      : [];
+  const noMatches =
+    filtered.isSearching &&
+    filtered.modelOptions.length === 0 &&
+    filtered.moreModelOptions.length === 0;
 
   return (
     <>
@@ -100,8 +124,14 @@ export function ModelReasoningPicker({
         controller={sheet}
         title="Model"
         layout="scroll"
-        maxDynamicContentSize={maxHeight}
-        onDismiss={() => setShowMore(false)}
+        // A searchable sheet keeps a fixed height so the list does not jump
+        // as matches come and go; short lists size to their content.
+        snapPoints={showSearch ? [maxHeight] : undefined}
+        maxDynamicContentSize={showSearch ? undefined : maxHeight}
+        onDismiss={() => {
+          setShowMore(false);
+          setSearchQuery("");
+        }}
       >
         {loadErrorMessage ? (
           <View className="mx-4 my-3 flex-row items-start gap-2 rounded-md border border-border bg-surface-attention px-3 py-2">
@@ -124,7 +154,28 @@ export function ModelReasoningPicker({
             </Text>
           </View>
         ) : null}
-        {modelOptions.map((option) => (
+        {showSearch ? (
+          <View className="px-4 pb-2 pt-3">
+            <SheetInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search models"
+              autoCapitalize="none"
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+              testID="model-picker-search"
+              accessibilityLabel="Search models"
+            />
+          </View>
+        ) : null}
+        {noMatches ? (
+          <View className="px-4 py-6">
+            <Text variant="caption" className="text-center">
+              No models match your search
+            </Text>
+          </View>
+        ) : null}
+        {filtered.modelOptions.map((option) => (
           <ModelRow
             key={option.value}
             option={option}
@@ -133,32 +184,28 @@ export function ModelReasoningPicker({
             testID={`model-picker-option-${option.value}`}
           />
         ))}
-        {moreModelOptions.length > 0 ? (
-          <>
-            <ListRow
-              title={showMore ? "Fewer models" : "More models"}
-              subtitle={
-                showMore
-                  ? undefined
-                  : `${moreModelOptions.length} retired or hidden`
-              }
-              leading={showMore ? "ChevronUp" : "ChevronDown"}
-              onPress={() => setShowMore((current) => !current)}
-              testID="model-picker-more"
-            />
-            {showMore
-              ? moreModelOptions.map((option) => (
-                  <ModelRow
-                    key={option.value}
-                    option={option}
-                    selected={option.value === modelValue}
-                    onSelect={onModelChange}
-                    testID={`model-picker-option-${option.value}`}
-                  />
-                ))
-              : null}
-          </>
+        {moreModelOptions.length > 0 && !filtered.isSearching ? (
+          <ListRow
+            title={showMore ? "Fewer models" : "More models"}
+            subtitle={
+              showMore
+                ? undefined
+                : `${moreModelOptions.length} retired or hidden`
+            }
+            leading={showMore ? "ChevronUp" : "ChevronDown"}
+            onPress={() => setShowMore((current) => !current)}
+            testID="model-picker-more"
+          />
         ) : null}
+        {visibleMoreOptions.map((option) => (
+          <ModelRow
+            key={option.value}
+            option={option}
+            selected={option.value === modelValue}
+            onSelect={onModelChange}
+            testID={`model-picker-option-${option.value}`}
+          />
+        ))}
         {showReasoning ? (
           <>
             <Separator />
