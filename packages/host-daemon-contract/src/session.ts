@@ -592,6 +592,11 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
       reason: hostDaemonSessionCloseReasonSchema,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("heartbeat-ack"),
+    })
+    .strict(),
   hostDaemonOnlineRpcRequestMessageSchema,
   hostDaemonWatchSetReplaceMessageSchema,
   hostDaemonConnectSharesReplaceMessageSchema,

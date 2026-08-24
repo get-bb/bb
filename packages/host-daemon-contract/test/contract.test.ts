@@ -1039,7 +1039,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(164);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(165);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -3519,6 +3519,19 @@ describe("host-daemon session schemas", () => {
       type: "session-close",
       reason: "daemon-disconnect",
     });
+
+    expect(
+      hostDaemonServerWsMessageSchema.parse({
+        type: "heartbeat-ack",
+      }),
+    ).toEqual({ type: "heartbeat-ack" });
+
+    expect(() =>
+      hostDaemonServerWsMessageSchema.parse({
+        type: "heartbeat-ack",
+        sessionId: "session-1",
+      }),
+    ).toThrow();
 
     expect(() =>
       hostDaemonServerWsMessageSchema.parse({

@@ -21,6 +21,7 @@ import { ApiError } from "../../errors.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { getHostPermissionCeiling } from "../hosts/permission-ceiling.js";
 import { requireEnvironment } from "../lib/entity-lookup.js";
+import { createProviderListingBudget } from "../providers/native-roots.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
@@ -170,6 +171,7 @@ async function listInstalledPluginProviderInfos(
         registration.visibility === "installed" &&
         providerMatchesCapability(registration.info, capability),
     );
+  const budget = createProviderListingBudget();
   const results = await mapProviderMaintenanceRequests(
     registrations,
     async (registration) => {
@@ -181,7 +183,7 @@ async function listInstalledPluginProviderInfos(
       try {
         const result = await callHostRetryableOnlineRpc(deps, {
           hostId,
-          timeoutMs: COMMAND_TIMEOUT_MS,
+          timeoutMs: budget.remainingMs(),
           command: {
             type: "provider.health",
             providerId: registration.info.id,

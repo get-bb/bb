@@ -565,6 +565,45 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("spends one command timeout across installed-only provider discovery", async () => {
+    vi.useFakeTimers();
+    try {
+      await withTestHarness({}, async (harness) => {
+        const { host, session } = seedHostSession(harness.deps, {
+          id: "host-execution-options-provider-discovery-budget",
+        });
+        const responder = registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: () => new Promise(() => undefined),
+        });
+
+        let settled = false;
+        const pendingProviders = listSystemProviderInfos(harness.deps, {
+          hostId: host.id,
+        }).then((providers) => {
+          settled = true;
+          return providers;
+        });
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(responder.requests).toHaveLength(3);
+        await vi.advanceTimersByTimeAsync(29_999);
+        expect(settled).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        const providers = await pendingProviders;
+        expect(settled).toBe(true);
+        expect(responder.requests).toHaveLength(3);
+        expect(providers.map((provider) => provider.id)).not.toContain(
+          "acp-opencode",
+        );
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     {
       name: "status returns 502",
