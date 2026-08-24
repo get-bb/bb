@@ -264,6 +264,9 @@ export async function verifySessionCookie(
  * gate. Returns true when the caller must reissue the browser cookie with a
  * fresh Max-Age. The conditional update prevents stale isolate caches from
  * shortening a session another request has already renewed.
+ *
+ * `now` is a test-only wall-clock override. It must remain epoch milliseconds
+ * because the same value also controls expiry in the module-level cache.
  */
 export async function refreshSessionCookie(
   cookieValue: string,

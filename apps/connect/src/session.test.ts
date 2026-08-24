@@ -454,6 +454,58 @@ describe("account session refresh", () => {
       refreshSessionCookie(`${cookie}forged`, secret, db, refreshAt),
     ).resolves.toBe(false);
   });
+
+  it("reissues the cookie without shortening a session another request renewed", async () => {
+    const refreshAt = Date.now();
+    const token = `session-${crypto.randomUUID()}`;
+    const oldExpiresAt = refreshAt + expiresInMs - updateAgeMs;
+    seedSession(token, refreshAt, oldExpiresAt);
+    const cookie = await signedSessionCookie(token, secret);
+
+    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBe(
+      `user-${token}`,
+    );
+    const winnerExpiresAt = refreshAt + expiresInMs;
+    const winnerUpdatedAt = refreshAt - 1;
+    db.update(session)
+      .set({
+        expiresAt: new Date(winnerExpiresAt),
+        updatedAt: new Date(winnerUpdatedAt),
+      })
+      .where(eq(session.token, token))
+      .run();
+
+    await expect(
+      refreshSessionCookie(cookie, secret, db, refreshAt),
+    ).resolves.toBe(true);
+    const current = db
+      .select({
+        expiresAt: session.expiresAt,
+        updatedAt: session.updatedAt,
+      })
+      .from(session)
+      .where(eq(session.token, token))
+      .get();
+    expect(current?.expiresAt.getTime()).toBe(winnerExpiresAt);
+    expect(current?.updatedAt.getTime()).toBe(winnerUpdatedAt);
+  });
+
+  it("does not reissue the cookie when a cached session was deleted", async () => {
+    const refreshAt = Date.now();
+    const token = `session-${crypto.randomUUID()}`;
+    const oldExpiresAt = refreshAt + expiresInMs - updateAgeMs;
+    seedSession(token, refreshAt, oldExpiresAt);
+    const cookie = await signedSessionCookie(token, secret);
+
+    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBe(
+      `user-${token}`,
+    );
+    db.delete(session).where(eq(session.token, token)).run();
+
+    await expect(
+      refreshSessionCookie(cookie, secret, db, refreshAt),
+    ).resolves.toBe(false);
+  });
 });
 
 describe("machine credential presence", () => {

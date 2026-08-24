@@ -57,6 +57,11 @@ function text(body: string, status: number): Response {
   });
 }
 
+/**
+ * Reissue the session cookie on a non-cacheable response. This automatic body
+ * rebuild is correct for direct subrequest and locally produced responses; it
+ * must never wrap a cacheable result, whose hit body may be pre-encoded.
+ */
 function withRefreshedSessionCookie(
   response: Response,
   cookieName: string,
