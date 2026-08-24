@@ -783,6 +783,51 @@ describe("SplitThreadArea", () => {
     await waitFor(() => expect(hiddenScroller.scrollTop).toBe(0));
   });
 
+  it("stops the restore loop once positions settle instead of burning 30 frames", async () => {
+    renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const hiddenScroller = screen.getByTestId("scroll-thr-b");
+    hiddenScroller.scrollTop = 12;
+    fireEvent.scroll(hiddenScroller);
+
+    let scrollTopValue = 12;
+    const writes: number[] = [];
+    Object.defineProperty(hiddenScroller, "scrollTop", {
+      configurable: true,
+      get: () => scrollTopValue,
+      set: (value: number) => {
+        writes.push(value);
+        scrollTopValue = value;
+      },
+    });
+
+    // Maximize: the tracked element already sits at its saved offset, so the
+    // pre-paint restore and the first frame find nothing to correct and the
+    // loop must end without a single scroll write (each write would force
+    // layout every frame for half a second).
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(writes).toHaveLength(0);
+
+    // Restore, with the scroller reporting 0 on every read — an adversary
+    // that keeps normalizing the position. The loop corrects before paint and
+    // on each frame, but gives up at the frame cap instead of running all 30.
+    Object.defineProperty(hiddenScroller, "scrollTop", {
+      configurable: true,
+      get: () => 0,
+      set: (value: number) => {
+        writes.push(value);
+      },
+    });
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(writes.length).toBeGreaterThan(0);
+    // Pre-paint restore + at most 5 frames.
+    expect(writes.length).toBeLessThanOrEqual(6);
+  });
+
   it("toggles the focused pane through the discoverable app command", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-b"),

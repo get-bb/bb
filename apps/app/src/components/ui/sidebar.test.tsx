@@ -8,6 +8,7 @@ import {
   screen,
 } from "@testing-library/react";
 import { memo } from "react";
+import { flushSync } from "react-dom";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -329,6 +330,37 @@ describe("mobile sidebar deferred realization", () => {
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("closed");
     expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+  });
+
+  it("keeps the realize commit out of the open tap's synchronous flush", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+    const trigger = screen.getByRole("button", { name: "Toggle Sidebar" });
+
+    let panelStyledForSlideInTap = false;
+    let realizedInTapFlush = true;
+    act(() => {
+      // flushSync stands in for the tap's discrete event: it flushes only the
+      // urgent lane, so the transition-priority realize commit is still
+      // pending when the samples are taken and lands when act exits.
+      flushSync(() => {
+        trigger.click();
+      });
+      const panel = getMobilePanel();
+      panelStyledForSlideInTap = panel?.style.translate === "0%";
+      realizedInTapFlush =
+        panel?.textContent?.includes("Sidebar content") ?? false;
+    });
+
+    // The tap's own flush only starts the slide (inline drag styles); the
+    // subtree mounts in the interruptible commit that follows, so the first
+    // frame of the slide never waits on the realize commit.
+    expect(panelStyledForSlideInTap).toBe(true);
+    expect(realizedInTapFlush).toBe(false);
+    expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("open");
   });
 
   // The width is an inherited custom property unless registered otherwise
