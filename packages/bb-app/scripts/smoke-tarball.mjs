@@ -1,12 +1,6 @@
 import { fork, spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -444,7 +438,7 @@ async function smokeBridgeModelList({
     "error" in modelListResponse &&
     isRecord(modelListResponse.error) &&
     typeof modelListResponse.error.message === "string" &&
-    /(?:Native CLI binary|Claude Code executable).*not found|could not find the (?:Claude Code|Codex|pi) CLI/ui.test(
+    /(?:Native CLI binary|Claude Code executable).*not found|could not find the (?:Claude Code|Codex|pi) CLI/iu.test(
       modelListResponse.error.message,
     );
   if (!allowUnavailableProvider || !unavailableProviderMessage) {
@@ -693,7 +687,6 @@ const SMOKE_EXECUTION_OPTIONS = {
   permissionEscalation: null,
 };
 
-
 async function smokeHelpCommands(tarballPath) {
   await runCommand({
     args: createNpxArgs(tarballPath, "bb-app", ["--help"]),
@@ -834,7 +827,16 @@ async function smokeBuiltinPluginsRunning({ cliEnv, tarballPath }) {
     });
     const plugins = JSON.parse(stdout).plugins ?? [];
     const byId = new Map(plugins.map((plugin) => [plugin.id, plugin]));
-    const errored = plugins.filter((plugin) => plugin.status === "error");
+    // The server reports an enabled plugin that `loadAll` has not reached yet
+    // as status "error" with the detail "not loaded" (it has no runtime
+    // status at all). Plugins load one at a time after the server starts
+    // listening, so a poll that lands mid-load sees that transient state for
+    // every plugin still queued; only a plugin whose load actually failed
+    // carries the failure as its detail.
+    const errored = plugins.filter(
+      (plugin) =>
+        plugin.status === "error" && plugin.statusDetail !== "not loaded",
+    );
     if (errored.length > 0) {
       throw new Error(
         `Builtin plugins failed to load:\n${errored
