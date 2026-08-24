@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
 import type { ThreadListEntry } from "@bb/domain";
+import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/sidebar/ThreadRow";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@/components/sidebar/sidebarRowClasses";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -117,8 +117,11 @@ function MobileRecentThreadRow({
   );
   return (
     <li>
-      <Link
-        to={getThreadRoutePath({
+      {/* RouteAnchor, not react-router's Link: it navigates through the
+          stable transition-priority navigate, so the tap paints before the
+          thread view's commit instead of stalling on it. */}
+      <RouteAnchor
+        href={getThreadRoutePath({
           projectId: thread.projectId,
           threadId: thread.id,
         })}
@@ -139,7 +142,7 @@ function MobileRecentThreadRow({
         <span className="flex size-6 shrink-0 items-center justify-center">
           <ThreadStatusGlyph {...indicatorState} />
         </span>
-      </Link>
+      </RouteAnchor>
     </li>
   );
 }

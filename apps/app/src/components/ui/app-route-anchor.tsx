@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useTransition,
   type ComponentPropsWithoutRef,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -35,6 +36,23 @@ interface RouteNavigateOptions {
 type RouteNavigate = (path: string, options?: RouteNavigateOptions) => void;
 
 const RouteNavigationContext = createContext<RouteNavigate | null>(null);
+
+// Separate from RouteNavigationContext on purpose: the pending bit flips on
+// every navigation, and folding it into the navigate context would re-render
+// every navigate consumer (sidebar rows, thread actions) per navigation —
+// the exact churn RouteNavigationContext exists to avoid.
+const RouteNavigationPendingContext = createContext(false);
+
+/**
+ * True while a navigation started through {@link useRouteNavigate} or
+ * {@link RouteAnchor} is still rendering the destination route. Navigation
+ * runs at transition priority, so the previous route stays on screen for a
+ * beat; surfaces read this to show a lightweight pending affordance (e.g.
+ * keeping the tapped row's active state) instead of appearing unresponsive.
+ */
+export function useIsRouteNavigationPending(): boolean {
+  return useContext(RouteNavigationPendingContext);
+}
 
 /**
  * A `navigate` whose identity never changes and whose caller does not
@@ -94,13 +112,24 @@ export function RouteNavigationProvider({
   useLayoutEffect(() => {
     navigateRef.current = navigate;
   }, [navigate]);
-  const navigateRoute = useCallback<RouteNavigate>((path, options) => {
-    if (options === undefined) {
-      navigateRef.current(path);
-      return;
-    }
-    navigateRef.current(path, options);
-  }, []);
+  // Navigate at transition priority: a tap's urgent commit (active states,
+  // isNavigationPending) paints first, and the destination route renders in an
+  // interruptible follow-up commit instead of blocking the tap's frame.
+  // `startNavigationTransition` has a stable identity, so `navigateRoute`
+  // keeps the never-changing identity its consumers depend on.
+  const [isNavigationPending, startNavigationTransition] = useTransition();
+  const navigateRoute = useCallback<RouteNavigate>(
+    (path, options) => {
+      startNavigationTransition(() => {
+        if (options === undefined) {
+          navigateRef.current(path);
+          return;
+        }
+        navigateRef.current(path, options);
+      });
+    },
+    [startNavigationTransition],
+  );
   useEffect(() => {
     const browserApi = getDesktopBrowserApi();
     if (browserApi === null) {
@@ -116,7 +145,9 @@ export function RouteNavigationProvider({
 
   return (
     <RouteNavigationContext.Provider value={navigateRoute}>
-      {children}
+      <RouteNavigationPendingContext.Provider value={isNavigationPending}>
+        {children}
+      </RouteNavigationPendingContext.Provider>
     </RouteNavigationContext.Provider>
   );
 }
