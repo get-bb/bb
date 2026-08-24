@@ -33,13 +33,13 @@ import {
   useComposerExtensionController,
 } from "@/components/plugin/ComposerExtensionHost";
 import {
-  PromptBoxInternal,
+  PromptBox,
   type AttachmentsConfig,
   type HistoryConfig,
   type PromptBoxAction,
   type PromptBoxHandle,
   type TypeaheadConfig,
-} from "@/components/promptbox/PromptBoxInternal";
+} from "@/components/promptbox/PromptBox";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
 import {
@@ -61,9 +61,7 @@ import {
   shouldDisablePermissionPickerForActivePromptMode,
 } from "@bb/client-core";
 
-type PromptBoxWithScrollAnchorProps = ComponentProps<
-  typeof PromptBoxInternal
-> & {
+type PromptBoxWithScrollAnchorProps = ComponentProps<typeof PromptBox> & {
   scrollToBottomOnModifierSubmit?: boolean;
   scrollToBottomOnSubmit?: boolean;
 };
@@ -101,7 +99,7 @@ function PromptBoxWithScrollAnchor({
             : {}),
         };
   return (
-    <PromptBoxInternal
+    <PromptBox
       {...promptBoxProps}
       onSubmit={handleSubmit}
       submission={anchoredSubmission}

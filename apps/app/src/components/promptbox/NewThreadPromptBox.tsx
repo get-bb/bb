@@ -27,13 +27,13 @@ import {
   type ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import {
-  PromptBoxInternal,
+  PromptBox,
   type AttachmentsConfig,
   type HistoryConfig,
   type PromptBoxAction,
   type PromptBoxHandle,
   type TypeaheadConfig,
-} from "@/components/promptbox/PromptBoxInternal";
+} from "@/components/promptbox/PromptBox";
 import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
@@ -164,7 +164,7 @@ export interface NewThreadModeConfig {
 }
 
 interface NewThreadPromptBoxUIProps {
-  /** id forwarded to the underlying PromptBoxInternal (used for autofocus targeting). */
+  /** id forwarded to the underlying PromptBox (used for autofocus targeting). */
   id?: string;
 
   // PromptBox passthrough
@@ -390,7 +390,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
           {modeConfig.banner}
         </ComposerBannersSlot>
       </div>
-      <PromptBoxInternal
+      <PromptBox
         id={id}
         promptBoxRef={promptBoxRef}
         value={value}

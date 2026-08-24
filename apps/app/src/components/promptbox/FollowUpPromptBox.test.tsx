@@ -51,8 +51,8 @@ vi.mock("@bb/shared-ui/hooks/use-pointer-coarse", () => ({
   usePointerCoarse: () => mocks.isPointerCoarse,
 }));
 
-vi.mock("@/components/promptbox/PromptBoxInternal", () => ({
-  PromptBoxInternal: ({
+vi.mock("@/components/promptbox/PromptBox", () => ({
+  PromptBox: ({
     footerStart,
     compact,
     onSubmit,
