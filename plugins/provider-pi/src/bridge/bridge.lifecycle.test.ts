@@ -22,9 +22,6 @@ import { FULL_PERMISSION_OPTIONS, type FakePiBridgeHarness, startFakePiBridge } 
  * records each spawn and exit, and the pid is probed afterwards.
  */
 
-/** Nine serial real-child constructions plus time to observe their exits. */
-const FAILED_CONSTRUCTION_RESPONSE_DEADLINE_MS = 90_000;
-const FAILED_CONSTRUCTION_TEST_TIMEOUT_MS = 120_000;
 
 let harness: FakePiBridgeHarness;
 
@@ -136,23 +133,22 @@ it("discard ends the child and removes the session file", async () => {
 }, 90_000);
 
 it("a failed construction leaves no child", async () => {
-  // A provider the catalog does not know passes the up-front check (pi may
-  // serve providers the catalog omits); the fake then starts on its default
-  // model, the bridge sees the mismatch after get_state, retries the spawn
-  // through the transient-auth window, and fails.
+  // Retry policy has deterministic unit coverage. This process-level case
+  // needs one real child to prove the bridge kills a failed construction.
+  vi.stubEnv("FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE", "1");
   const response = await harness.request((nextId += 1), "thread/start", {
     threadId: "thr_lc_failed",
     cwd: harness.workspaceDir,
     instructionMode: "append",
-    options: { ...FULL_PERMISSION_OPTIONS, model: "other-provider/no-such-model" },
-  }, FAILED_CONSTRUCTION_RESPONSE_DEADLINE_MS);
+    options: FULL_PERMISSION_OPTIONS,
+  });
   expect(response.error).toMatchObject({
-    message: expect.stringContaining('did not start with model "other-provider/no-such-model"'),
+    message: expect.stringContaining("pi exited"),
   });
   const log = harness.readProcessLog();
-  expect(log.spawned.length).toBeGreaterThan(1);
-  await expectEveryChildGone(log.spawned.length);
-}, FAILED_CONSTRUCTION_TEST_TIMEOUT_MS);
+  expect(log.spawned).toHaveLength(1);
+  await expectEveryChildGone(1);
+}, 90_000);
 
 it("the fork helper child exits once the fork is done", async () => {
   // The fake's extension runs the real SessionManager fork, so the source
@@ -215,7 +211,7 @@ async function expectScratchFilesGone(): Promise<void> {
   }
 }
 
-it("a child's tool and prompt files go with the child, for a released thread and for every attempt of a failed construction", async () => {
+it("a child's tool and prompt files go with the child after release and failed construction", async () => {
   // The bridge process outlives every pi child it spawns, so a file written
   // for one child must not wait for the bridge's own temp dir to be removed.
   await harness.startThread("thr_lc_scratch", {
@@ -237,20 +233,21 @@ it("a child's tool and prompt files go with the child, for a released thread and
   await expectEveryChildGone(1);
   await expectScratchFilesGone();
 
-  // Every retry of the transient-auth window wrote its own set; each went
-  // with its detached child.
+  // A construction that exits before readiness still owns the files the
+  // bridge prepared for it, and its exit removes them.
+  vi.stubEnv("FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE", "1");
   const failed = await harness.request((nextId += 1), "thread/start", {
     threadId: "thr_lc_scratch_failed",
     cwd: harness.workspaceDir,
     instructionMode: "append",
-    options: { ...FULL_PERMISSION_OPTIONS, instructions: "be brief", model: "other-provider/no-such-model" },
-  }, FAILED_CONSTRUCTION_RESPONSE_DEADLINE_MS);
+    options: { ...FULL_PERMISSION_OPTIONS, instructions: "be brief" },
+  });
   expect(failed.error).toBeDefined();
   const log = harness.readProcessLog();
-  expect(log.spawned.length).toBeGreaterThan(2);
-  await expectEveryChildGone(log.spawned.length);
+  expect(log.spawned).toHaveLength(2);
+  await expectEveryChildGone(2);
   await expectScratchFilesGone();
-}, FAILED_CONSTRUCTION_TEST_TIMEOUT_MS);
+}, 60_000);
 
 it("closing the catalog ends its child", async () => {
   const models = await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
