@@ -1,7 +1,7 @@
 import { getThread } from "@bb/db";
 import { threadSchema, type ProjectSourceCheckout } from "@bb/domain";
 import { threadResponseSchema } from "@bb/server-contract";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   registerTestHostRpcCapture,
   requireManagedWorktreeEnvironmentProvisionLiveCommand,
@@ -44,6 +44,7 @@ async function createNamedBaseBranchThread(
   args: {
     baseBranch: string;
     defaultBranchRelation: ProjectSourceCheckout["defaultBranchRelation"];
+    onListBranches?: () => void;
   },
 ): Promise<string | null> {
   const { host, session } = seedHostSession(harness.deps);
@@ -52,6 +53,7 @@ async function createNamedBaseBranchThread(
     hostId: host.id,
     sessionId: session.id,
     listBranchesResult: buildCheckout(args.defaultBranchRelation),
+    ...(args.onListBranches ? { onListBranches: args.onListBranches } : {}),
   });
   const { project } = seedProjectWithSource(harness.deps, {
     hostId: host.id,
@@ -120,6 +122,20 @@ describe("named managed-worktree base branch", () => {
           defaultBranchRelation: "local-behind",
         }),
       ).resolves.toBe("release/2026-05");
+    });
+  });
+
+  it("does not inspect an origin-qualified branch before provisioning", async () => {
+    await withTestHarness(async (harness) => {
+      const onListBranches = vi.fn();
+      await expect(
+        createNamedBaseBranchThread(harness, {
+          baseBranch: "origin/main",
+          defaultBranchRelation: "local-behind",
+          onListBranches,
+        }),
+      ).resolves.toBe("origin/main");
+      expect(onListBranches).not.toHaveBeenCalled();
     });
   });
 

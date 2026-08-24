@@ -700,7 +700,7 @@ export function NewThreadComposer({
   // Branch data enriches the picker and can downgrade a confirmed non-Git or
   // commitless source, but loading it is not a creation prerequisite. A
   // default worktree request is resolved authoritatively by the server during
-  // thread creation, including another host.list_branches inspection.
+  // thread creation, including a host.list_branches inspection.
   useEffect(() => {
     if (
       !worktreeUnavailable ||
@@ -1127,13 +1127,18 @@ export function NewThreadComposer({
       isSubmittingRef.current = true;
       setIsSubmitting(true);
       setAttachmentError(null);
+      const clearedSubmittedDraft =
+        promptDraft.clearIfCurrentMatches(submittedDraft);
       try {
         await onSubmit(request);
         clearReuseEnvironment();
-        promptDraft.clearIfCurrentMatches(submittedDraft);
       } catch {
-        // The caller owns error presentation. A rejected submission preserves
-        // the exact draft so it can be retried.
+        // The caller owns error presentation. Restore the submitted draft only
+        // when the optimistic clear succeeded and nothing replaced it while the
+        // request was pending.
+        if (clearedSubmittedDraft) {
+          promptDraft.restoreIfEmpty(submittedDraft);
+        }
       } finally {
         isSubmittingRef.current = false;
         setIsSubmitting(false);

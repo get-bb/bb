@@ -1075,14 +1075,21 @@ describe("PluginNewThreadComposer seeding", () => {
       latestPromptBoxProps().onSubmit();
     });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(latestPromptBoxProps().value).toBe("");
 
     await act(async () => {
       finishSubmit?.();
     });
   });
 
-  it("preserves the draft when submission fails", async () => {
-    const onSubmit = vi.fn().mockRejectedValue(new Error("create failed"));
+  it("restores the optimistically cleared draft when submission fails", async () => {
+    let failSubmit: (() => void) | null = null;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failSubmit = () => reject(new Error("create failed"));
+        }),
+    );
     renderComposer(STORED_REQUEST, onSubmit, "failed-submit");
     await waitFor(() => {
       expect(latestPromptBoxProps().disabled).toBe(false);
@@ -1090,10 +1097,41 @@ describe("PluginNewThreadComposer seeding", () => {
 
     act(() => latestPromptBoxProps().onSubmit());
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(latestPromptBoxProps().value).toBe("");
+    await act(async () => {
+      failSubmit?.();
+    });
     await waitFor(() => {
       expect(latestPromptBoxProps().isSubmitting).toBe(false);
     });
     expect(latestPromptBoxProps().value).toBe("review every PR for slop");
+  });
+
+  it("does not replace a new draft when submission fails", async () => {
+    let failSubmit: (() => void) | null = null;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          failSubmit = () => reject(new Error("create failed"));
+        }),
+    );
+    renderComposer(STORED_REQUEST, onSubmit, "failed-submit-new-draft");
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+
+    act(() => latestPromptBoxProps().onSubmit());
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    expect(latestPromptBoxProps().value).toBe("");
+    act(() => latestPromptBoxProps().onChange("next thread", []));
+    await act(async () => {
+      failSubmit?.();
+    });
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().isSubmitting).toBe(false);
+    });
+    expect(latestPromptBoxProps().value).toBe("next thread");
   });
 
   it("keeps the old project when attachment copying fails", async () => {
