@@ -12,11 +12,17 @@ import { type FakePiBridgeHarness, startFakePiBridge } from "./test-support.js";
  * the same seam (`BB_PI_BRIDGE_COMMAND`/`_ARGS`) a live run uses to find pi.
  */
 
+/** A conformance wait may cold-start the real fork-helper process on CI. */
+const CONFORMANCE_WAIT_TIMEOUT_MS = 30_000;
+
 let harness: FakePiBridgeHarness;
 
 beforeEach(async () => {
   // The conformance kit sends the initialize handshake itself.
-  harness = await startFakePiBridge({ prefix: "bb-pi-conformance-ws-", initialize: false });
+  harness = await startFakePiBridge({
+    prefix: "bb-pi-conformance-ws-",
+    initialize: false,
+  });
 });
 
 afterEach(async () => {
@@ -32,7 +38,7 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
       interruptiblePromptInput: [{ type: "text", text: "/hold", mentions: [] }],
     },
-    timeoutMs: 10_000,
+    timeoutMs: CONFORMANCE_WAIT_TIMEOUT_MS,
   });
 
   console.info(`pi bridge conformance:\n${formatConformanceReport(report)}`);
@@ -58,6 +64,8 @@ it("passes the canonical protocol suite against a scripted pi rpc child", async 
     "stop/interrupt-settles-before-result": "pass",
   });
   expect(
-    report.results.filter((result) => result.status !== "pass").map((r) => r.id),
+    report.results
+      .filter((result) => result.status !== "pass")
+      .map((r) => r.id),
   ).toEqual([]);
 }, 60_000);

@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
-import { type FakePiBridgeHarness, fakePiPath, startFakePiBridge } from "./test-support.js";
+import {
+  type FakePiBridgeHarness,
+  fakePiPath,
+  startFakePiBridge,
+} from "./test-support.js";
 
 /**
  * Pi is user-installed (L6): before the bridge talks to pi, `provider/health`
@@ -13,9 +17,20 @@ import { type FakePiBridgeHarness, fakePiPath, startFakePiBridge } from "./test-
  */
 
 let harness: FakePiBridgeHarness;
+// Vitest does not cancel a timed-out body. Keep ids unique across the file so
+// a late response cannot satisfy the next scenario's fresh stdout harness.
+let requestId = 0;
+
+function nextRequestId(): number {
+  requestId += 1;
+  return requestId;
+}
 
 beforeEach(async () => {
-  harness = await startFakePiBridge({ prefix: "bb-pi-install-gate-", initialize: true });
+  harness = await startFakePiBridge({
+    prefix: "bb-pi-install-gate-",
+    initialize: true,
+  });
 });
 
 afterEach(async () => {
@@ -23,7 +38,10 @@ afterEach(async () => {
 });
 
 it("reports ready with the installed version after the get_state probe", async () => {
-  const response = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  const response = await harness.request(nextRequestId(), "provider/health", {
+    providerId: "pi",
+    cwd: harness.workspaceDir,
+  });
   expect(response.result).toMatchObject({
     supported: true,
     health: {
@@ -35,28 +53,40 @@ it("reports ready with the installed version after the get_state probe", async (
       loginCommand: "pi",
     },
   });
-});
+}, 30_000);
 
 it("refuses a pi older than the supported minimum before spawning it", async () => {
   vi.stubEnv("FAKE_PI_VERSION", "0.83.2");
-  const health = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  const health = await harness.request(nextRequestId(), "provider/health", {
+    providerId: "pi",
+    cwd: harness.workspaceDir,
+  });
   expect(health.result).toMatchObject({
     health: { status: "unsupported_version", installedVersion: "0.83.2" },
   });
-  const models = await harness.request(2, "model/list", { cwd: harness.workspaceDir });
+  const models = await harness.request(nextRequestId(), "model/list", {
+    cwd: harness.workspaceDir,
+  });
   expect(models.error).toMatchObject({
-    message: expect.stringContaining("0.83.2 is older than the supported minimum 0.84.0"),
+    message: expect.stringContaining(
+      "0.83.2 is older than the supported minimum 0.84.0",
+    ),
   });
 });
 
 it("reports not_installed when the launch command is missing", async () => {
   vi.stubEnv(PI_BRIDGE_COMMAND_ENV, join(harness.workspaceDir, "no-such-pi"));
   vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
-  const health = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  const health = await harness.request(nextRequestId(), "provider/health", {
+    providerId: "pi",
+    cwd: harness.workspaceDir,
+  });
   expect(health.result).toMatchObject({
     health: { status: "not_installed", canInstall: true, canUpdate: false },
   });
-  const models = await harness.request(2, "model/list", { cwd: harness.workspaceDir });
+  const models = await harness.request(nextRequestId(), "model/list", {
+    cwd: harness.workspaceDir,
+  });
   expect(models.error).toMatchObject({
     message: expect.stringContaining("Could not find the pi CLI"),
   });
@@ -66,7 +96,10 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
   // The crash prints "pi 0.84.0" on stderr and exits 1: a gate that read
   // stderr or treated a failed probe as "no version, pass" would say ready.
   vi.stubEnv("FAKE_PI_VERSION", "crash");
-  const health = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  const health = await harness.request(nextRequestId(), "provider/health", {
+    providerId: "pi",
+    cwd: harness.workspaceDir,
+  });
   expect(health.result).toMatchObject({
     health: {
       status: "unknown",
@@ -76,7 +109,9 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
       ),
     },
   });
-  const models = await harness.request(2, "model/list", { cwd: harness.workspaceDir });
+  const models = await harness.request(nextRequestId(), "model/list", {
+    cwd: harness.workspaceDir,
+  });
   expect(models.error).toMatchObject({
     message: expect.stringContaining("Could not determine the pi version"),
   });
@@ -85,17 +120,33 @@ it("fails closed when pi cannot report its version, with install guidance", asyn
 it("memoizes the install gate per launch path across health polls", async () => {
   const processLog = join(harness.workspaceDir, "process.log");
   vi.stubEnv("FAKE_PI_PROCESS_LOG", processLog);
-  await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
-  await harness.request(2, "model/list", { cwd: harness.workspaceDir });
-  await harness.request(3, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  await harness.request(nextRequestId(), "provider/health", {
+    providerId: "pi",
+    cwd: harness.workspaceDir,
+  });
+  await harness.request(nextRequestId(), "model/list", {
+    cwd: harness.workspaceDir,
+  });
+  await harness.request(nextRequestId(), "provider/health", {
+    providerId: "pi",
+    cwd: harness.workspaceDir,
+  });
   const versionSpawns = readFileSync(processLog, "utf8")
     .split("\n")
     .filter((line) => line.startsWith("version:"));
   expect(versionSpawns).toHaveLength(1);
   // A different launch path is a different install: it probes again.
-  vi.stubEnv(PI_BRIDGE_ARGS_ENV, JSON.stringify([fakePiPath, "--other-launch"]));
-  await harness.request(4, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  vi.stubEnv(
+    PI_BRIDGE_ARGS_ENV,
+    JSON.stringify([fakePiPath, "--other-launch"]),
+  );
+  await harness.request(nextRequestId(), "provider/health", {
+    providerId: "pi",
+    cwd: harness.workspaceDir,
+  });
   expect(
-    readFileSync(processLog, "utf8").split("\n").filter((line) => line.startsWith("version:")),
+    readFileSync(processLog, "utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("version:")),
   ).toHaveLength(2);
-});
+}, 30_000);
