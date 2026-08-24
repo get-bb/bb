@@ -472,6 +472,45 @@
         "$TURBO_ROOT$/examples/plugins/*/icons/**"
       ]
     },
+    // Runtime unit suites restart the scripted echo provider repeatedly. Build
+    // the real bridge worker and bridge artifact once so each child launch
+    // executes JavaScript instead of re-transforming the TypeScript sources.
+    "@bb/agent-runtime#generate:test-bridges": {
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/domain/src/**",
+        "$TURBO_ROOT$/packages/plugin-sdk/src/**",
+        "$TURBO_ROOT$/packages/provider-bridge-protocol/src/**",
+        "$TURBO_ROOT$/scripts/build-utils.mjs",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**"
+      ],
+      "outputs": ["dist/test-bridges/**"]
+    },
+    "@bb/agent-runtime#test": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/agent-runtime#generate:test-bridges",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
+    "@bb/agent-runtime#test:unit": {
+      "dependsOn": [
+        "//#ensure-native-modules",
+        "@bb/agent-runtime#generate:test-bridges",
+        "topo"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
+        "$TURBO_ROOT$/vitest.shared.ts"
+      ]
+    },
     // The live-CLI suite's global setup rebuilds every first-party provider
     // bridge from source, so it needs the SDK dist too.
     "@bb/agent-runtime#test:integration": {

@@ -42,16 +42,19 @@ export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const prebuiltTestBridgeDir = fileURLToPath(
+  new URL("../../dist/test-bridges/", import.meta.url),
+);
+
 /**
- * The scripted echo bridge's TypeScript entry, used as the artifact directly:
- * from source the bridge bootstrap runs under tsx, which imports `.ts`
- * modules, so no build step stands between a test and the bridge.
+ * Turbo builds the bridge worker and scripted echo artifact once before the
+ * unit suite. Keeping the generated path explicit makes a missing Turbo task
+ * fail instead of silently falling back to transforming TypeScript on every
+ * bridge spawn and restart.
  */
-export const scriptedEchoBridgeModulePath = fileURLToPath(
-  new URL(
-    "../../../../tests/scripted-echo-provider/src/provider-bridge.ts",
-    import.meta.url,
-  ),
+export const scriptedEchoBridgeModulePath = join(
+  prebuiltTestBridgeDir,
+  "scripted-echo-provider.mjs",
 );
 
 /**
@@ -249,6 +252,9 @@ export function createScriptedEchoRuntime(
 ): LaunchBoundAgentRuntime {
   const runtime = createAgentRuntime({
     onToolCall: async () => ({ contentItems: [], success: true }),
+    ...(args.launch?.modulePath === undefined
+      ? { bridgeBundleDir: prebuiltTestBridgeDir }
+      : {}),
     ...args.runtime,
   });
   return withBridgeLaunch(runtime, createScriptedEchoLaunch(args.launch));
