@@ -11,6 +11,7 @@ import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { HeightTransition } from "@/components/ui/height-transition.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
@@ -180,8 +181,13 @@ export function ThreadTimelineSurface({
   workspaceRootPath,
 }: ThreadTimelineSurfaceProps) {
   const systemConfigQuery = useSystemConfig();
+  const isCompactViewport = useIsCompactViewport();
+  // Compact viewports default timeline windowing on: phones are where the
+  // unwindowed tree hangs, and the server cannot own this default because it
+  // depends on the viewport. The experiment stays the kill switch — a served
+  // false still disables windowing here; desktop keeps the served value.
   const timelineWindowingEnabled =
-    systemConfigQuery.data?.experiments.timelineWindowing ?? false;
+    systemConfigQuery.data?.experiments.timelineWindowing ?? isCompactViewport;
   const showActiveThinking =
     activeThinking !== null && ongoingIndicatorLabel === undefined;
   const activeThinkingText = activeThinking?.text.trim() ?? "";

@@ -80,7 +80,9 @@ every window and client sees the same value.
 
 ## Timeline windowing
 
-- The `timelineWindowing` experiment defaults to false.
-- Enable it with `bb settings experiment timelineWindowing true`.
+- Compact viewports (phones) window by default; setting the
+  `timelineWindowing` experiment to false is the kill switch there.
+- Desktop defaults to false; enable it with
+  `bb settings experiment timelineWindowing true`.
 - It keeps stable timeline wrappers while mounting only rows near the active
   main or nested detail scrollport.

@@ -642,9 +642,12 @@ turns, commands, agents, workflows, and monitors keep their sessions loaded.
 The experiment does not gate release: BB releases idle Codex sessions with the
 experiment off, which is the behavior it had before this setting.
 
-The `timelineWindowing` experiment is off by default. When enabled, long
-timelines and large expanded timeline details retain stable height-preserving
-wrappers while mounting only rows near their active scrollport. Toggle it with
+The `timelineWindowing` experiment mounts only rows near the active
+scrollport of long timelines and large expanded timeline details, behind
+stable height-preserving wrappers. Compact viewports (phones) window by
+default and treat the experiment as a kill switch: an explicitly `false`
+value disables windowing there too. Desktop keeps the off default until the
+experiment is enabled. Toggle it with
 `bb settings experiment timelineWindowing <true|false>`.
 
 ## Thread Timeline Window
