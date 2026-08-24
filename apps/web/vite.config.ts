@@ -53,7 +53,15 @@ export default defineConfig(({ command }) => {
     plugins: [
       cloudflare(cloudflareConfig),
       tailwindcss(),
-      tanstackStart(),
+      tanstackStart({
+        router: {
+          routeTreeFileHeader: [
+            "/* oxlint-disable */",
+            "// @ts-nocheck",
+            "// noinspection JSUnusedGlobalSymbols",
+          ],
+        },
+      }),
       viteReact(),
     ],
   };
