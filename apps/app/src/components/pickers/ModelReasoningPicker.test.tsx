@@ -69,6 +69,10 @@ const providerOptions: readonly ProviderPickerOption[] = [
   { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
 ];
 
+function ProviderMaskIcon({ className }: { className?: string }) {
+  return <span className={className} data-testid="provider-mask-icon" />;
+}
+
 const codexModels: readonly PickerOption<string>[] = [
   { value: "gpt-5.5", label: "GPT-5.5" },
 ];
@@ -247,6 +251,19 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("gives a non-SVG provider mark the same 16px trigger size as button SVGs", () => {
+    renderPicker({
+      pickerProviderOptions: [
+        { ...providerOptions[0], icon: ProviderMaskIcon },
+        providerOptions[1],
+      ],
+    });
+
+    expect(screen.getByTestId("provider-mask-icon").classList).toContain(
+      "size-4",
+    );
+  });
+
   it("keeps a failed provider tab visible with its provider-plugin error", () => {
     renderPicker({
       modelOptions: [],

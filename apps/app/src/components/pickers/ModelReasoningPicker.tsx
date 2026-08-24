@@ -924,7 +924,7 @@ export function ModelReasoningPicker({
         {modelIsLoading ? (
           <>
             {TriggerIcon ? (
-              <TriggerIcon className="size-3.5 shrink-0" />
+              <TriggerIcon className="size-4 shrink-0" />
             ) : (
               <Icon
                 name="Spinner"
@@ -950,7 +950,7 @@ export function ModelReasoningPicker({
             className="size-3.5 shrink-0 fill-current text-subtle-foreground"
           />
         ) : TriggerIcon ? (
-          <TriggerIcon className="size-3.5 shrink-0" />
+          <TriggerIcon className="size-4 shrink-0" />
         ) : null}
         {modelIsLoading ? null : (
           <>
