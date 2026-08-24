@@ -250,6 +250,83 @@ describe("NotificationHub", () => {
     expect(socket.messages).toEqual([]);
   });
 
+  it("queues app notifications for a socket above high water and flushes on drain", () => {
+    vi.useFakeTimers();
+    const hub = new NotificationHub();
+    const healthy = createMockHubSocket();
+    const wedged = {
+      ...createMockHubSocket(),
+      raw: { bufferedAmount: 2 * 1024 * 1024 },
+    };
+    hub.subscribe(healthy, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(wedged, { kind: "thread-detail", threadId: "thread-1" });
+
+    hub.notifyThread("thread-1", ["status-changed"]);
+
+    expect(healthy.messages).toHaveLength(1);
+    expect(wedged.messages).toHaveLength(0);
+
+    wedged.raw.bufferedAmount = 0;
+    vi.advanceTimersByTime(10);
+    expect(wedged.messages).toHaveLength(1);
+  });
+
+  it("drops a wedged app socket at the queue cap while siblings still receive", () => {
+    const hub = new NotificationHub();
+    const healthy = createMockHubSocket();
+    const wedged = {
+      ...createMockHubSocket(),
+      raw: { bufferedAmount: 2 * 1024 * 1024 },
+    };
+    hub.registerClient(healthy);
+    hub.registerClient(wedged);
+    const bigPayload = "x".repeat(1024 * 1024);
+
+    for (let index = 0; index < 5; index += 1) {
+      hub.notifyPluginSignal("plugin-1", "channel-1", bigPayload);
+    }
+
+    expect(wedged.closed).toContainEqual({
+      code: 1013,
+      reason: "app-backpressure",
+    });
+    expect(wedged.messages).toEqual([]);
+    expect(healthy.messages).toHaveLength(5);
+
+    // The drop unregistered the socket: later broadcasts skip it entirely.
+    const delivered = hub.notifyPluginSignal("plugin-1", "channel-1", "after");
+    expect(delivered).toBe(1);
+    expect(wedged.closed).toHaveLength(1);
+  });
+
+  it("isolates a throwing app socket from healthy subscribers", () => {
+    const hub = new NotificationHub();
+    const healthy = createMockHubSocket();
+    const closed: Array<{ code?: number; reason?: string }> = [];
+    const failing = {
+      close(code?: number, reason?: string) {
+        closed.push({ code, reason });
+      },
+      send() {
+        throw new Error("socket send failed");
+      },
+    };
+    hub.subscribe(failing, { kind: "thread-detail", threadId: "thread-1" });
+    hub.subscribe(healthy, { kind: "thread-detail", threadId: "thread-1" });
+
+    expect(() =>
+      hub.notifyThread("thread-1", ["status-changed"]),
+    ).not.toThrow();
+
+    expect(closed).toEqual([{ code: 1013, reason: "app-send-failed" }]);
+    expect(healthy.messages).toHaveLength(1);
+
+    // The failing socket was unregistered; the next notify skips it.
+    hub.notifyThread("thread-1", ["status-changed"]);
+    expect(closed).toHaveLength(1);
+    expect(healthy.messages).toHaveLength(2);
+  });
+
   it("notifies all clients subscribed to the same thread", () => {
     const hub = new NotificationHub();
     const socket1 = createMockHubSocket();

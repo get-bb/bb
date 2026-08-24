@@ -35,7 +35,14 @@ const TERMINAL_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
 // A 16 MiB raw burst expands to about 21.4 MiB as base64 + JSON. Keep
 // enough bounded headroom for that workload while preventing unbounded growth.
 const TERMINAL_SOCKET_MAX_QUEUE_BYTES = 32 * 1024 * 1024;
-const TERMINAL_SOCKET_DRAIN_POLL_MS = 10;
+// App realtime messages are small invalidation hints and ephemeral signals; a
+// socket that cannot flush 1 MiB of them is wedged (a suspended phone, a dead
+// network), and letting its buffers grow just leaks server memory. Queue a
+// short burst, then drop the socket: clients reconnect and catch up via the
+// watermark.
+const APP_SOCKET_HIGH_WATER_BYTES = 1024 * 1024;
+const APP_SOCKET_MAX_QUEUE_BYTES = 4 * 1024 * 1024;
+const SOCKET_DRAIN_POLL_MS = 10;
 /**
  * A streaming turn appends events ~10 times a second. A client that only
  * subscribes to the thread list (every open app window, for every thread it
@@ -58,10 +65,25 @@ interface HubSocket {
   send(data: string): void;
 }
 
-interface TerminalSocketSendQueue {
+interface SocketSendQueue {
   bytes: number;
   payloads: string[];
   timeout: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * One backpressured send path. The hub runs two: the terminal lane (large
+ * ordered output bursts, generous queue) and the app lane (small realtime
+ * notifications, tight queue). Both share the same mechanics — send directly
+ * below the socket high water, queue and poll-drain above it, and hand the
+ * socket to `drop` when a send throws or the queue budget overflows.
+ */
+interface SocketSendLane {
+  drop: (socket: HubSocket, reason: string) => void;
+  dropReasons: { queueOverflow: string; sendFailed: string };
+  highWaterBytes: number;
+  maxQueueBytes: number;
+  queues: Map<HubSocket, SocketSendQueue>;
 }
 
 type ChangedMessageListener = (message: ChangedMessage) => void;
@@ -225,10 +247,26 @@ export class NotificationHub implements DbNotifier {
     string,
     Set<HubSocket>
   >();
-  private readonly terminalSocketSendQueues = new Map<
-    HubSocket,
-    TerminalSocketSendQueue
-  >();
+  private readonly terminalSendLane: SocketSendLane = {
+    drop: (socket, reason) => this.dropTerminalSocket(socket, reason),
+    dropReasons: {
+      queueOverflow: "terminal-backpressure",
+      sendFailed: "terminal-send-failed",
+    },
+    highWaterBytes: TERMINAL_SOCKET_HIGH_WATER_BYTES,
+    maxQueueBytes: TERMINAL_SOCKET_MAX_QUEUE_BYTES,
+    queues: new Map<HubSocket, SocketSendQueue>(),
+  };
+  private readonly appSendLane: SocketSendLane = {
+    drop: (socket, reason) => this.dropAppSocket(socket, reason),
+    dropReasons: {
+      queueOverflow: "app-backpressure",
+      sendFailed: "app-send-failed",
+    },
+    highWaterBytes: APP_SOCKET_HIGH_WATER_BYTES,
+    maxQueueBytes: APP_SOCKET_MAX_QUEUE_BYTES,
+    queues: new Map<HubSocket, SocketSendQueue>(),
+  };
   private readonly terminalIdsByClientSocket = new Map<
     HubSocket,
     Set<string>
@@ -251,6 +289,7 @@ export class NotificationHub implements DbNotifier {
 
   unregisterClient(socket: HubSocket): void {
     this.unregisterTerminalClientSocket(socket);
+    this.clearSocketSendQueue(this.appSendLane, socket);
     const keys = this.clientKeysBySocket.get(socket);
     if (!keys) {
       return;
@@ -314,7 +353,7 @@ export class NotificationHub implements DbNotifier {
     terminalIds.delete(terminalId);
     if (terminalIds.size === 0) {
       this.terminalIdsByClientSocket.delete(socket);
-      this.clearTerminalSocketSendQueue(socket);
+      this.clearSocketSendQueue(this.terminalSendLane, socket);
     }
   }
 
@@ -337,7 +376,7 @@ export class NotificationHub implements DbNotifier {
     }
 
     this.terminalIdsByClientSocket.delete(socket);
-    this.clearTerminalSocketSendQueue(socket);
+    this.clearSocketSendQueue(this.terminalSendLane, socket);
   }
 
   private releaseTerminalResizeOwnership(
@@ -363,7 +402,8 @@ export class NotificationHub implements DbNotifier {
     socket: HubSocket,
     message: TerminalServerMessage,
   ): void {
-    this.sendOrQueueTerminalPayload(
+    this.sendWithBackpressure(
+      this.terminalSendLane,
       socket,
       JSON.stringify(terminalServerMessageSchema.parse(message)),
     );
@@ -380,22 +420,32 @@ export class NotificationHub implements DbNotifier {
 
     const payload = JSON.stringify(terminalServerMessageSchema.parse(message));
     for (const socket of [...sockets]) {
-      this.sendOrQueueTerminalPayload(socket, payload);
+      this.sendWithBackpressure(this.terminalSendLane, socket, payload);
     }
   }
 
-  private sendOrQueueTerminalPayload(socket: HubSocket, payload: string): void {
-    const existingQueue = this.terminalSocketSendQueues.get(socket);
+  /**
+   * Send on a lane, queueing above the socket high water and dropping the
+   * socket when a send throws or the queue budget overflows — one bad socket
+   * can neither stall the loop nor grow without bound. Returns false when the
+   * socket was dropped instead of sent/queued to.
+   */
+  private sendWithBackpressure(
+    lane: SocketSendLane,
+    socket: HubSocket,
+    payload: string,
+  ): boolean {
+    const existingQueue = lane.queues.get(socket);
     if (
       !existingQueue &&
-      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
+      (socket.raw?.bufferedAmount ?? 0) <= lane.highWaterBytes
     ) {
       try {
         socket.send(payload);
-        return;
+        return true;
       } catch {
-        this.dropTerminalSocket(socket, "terminal-send-failed");
-        return;
+        lane.drop(socket, lane.dropReasons.sendFailed);
+        return false;
       }
     }
 
@@ -405,39 +455,42 @@ export class NotificationHub implements DbNotifier {
       timeout: null,
     };
     const payloadBytes = Buffer.byteLength(payload, "utf8");
-    if (queue.bytes + payloadBytes > TERMINAL_SOCKET_MAX_QUEUE_BYTES) {
-      this.dropTerminalSocket(socket, "terminal-backpressure");
-      return;
+    if (queue.bytes + payloadBytes > lane.maxQueueBytes) {
+      lane.drop(socket, lane.dropReasons.queueOverflow);
+      return false;
     }
     queue.payloads.push(payload);
     queue.bytes += payloadBytes;
-    this.terminalSocketSendQueues.set(socket, queue);
-    this.scheduleTerminalSocketDrain(socket, queue);
+    lane.queues.set(socket, queue);
+    this.scheduleSocketDrain(lane, socket, queue);
+    return true;
   }
 
-  private scheduleTerminalSocketDrain(
+  private scheduleSocketDrain(
+    lane: SocketSendLane,
     socket: HubSocket,
-    queue: TerminalSocketSendQueue,
+    queue: SocketSendQueue,
   ): void {
     if (queue.timeout !== null) {
       return;
     }
     queue.timeout = setTimeout(() => {
       queue.timeout = null;
-      this.flushTerminalSocketQueue(socket, queue);
-    }, TERMINAL_SOCKET_DRAIN_POLL_MS);
+      this.flushSocketQueue(lane, socket, queue);
+    }, SOCKET_DRAIN_POLL_MS);
   }
 
-  private flushTerminalSocketQueue(
+  private flushSocketQueue(
+    lane: SocketSendLane,
     socket: HubSocket,
-    queue: TerminalSocketSendQueue,
+    queue: SocketSendQueue,
   ): void {
-    if (this.terminalSocketSendQueues.get(socket) !== queue) {
+    if (lane.queues.get(socket) !== queue) {
       return;
     }
     while (
       queue.payloads.length > 0 &&
-      (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
+      (socket.raw?.bufferedAmount ?? 0) <= lane.highWaterBytes
     ) {
       const payload = queue.payloads[0];
       if (payload === undefined) {
@@ -446,17 +499,17 @@ export class NotificationHub implements DbNotifier {
       try {
         socket.send(payload);
       } catch {
-        this.dropTerminalSocket(socket, "terminal-send-failed");
+        lane.drop(socket, lane.dropReasons.sendFailed);
         return;
       }
       queue.payloads.shift();
       queue.bytes -= Buffer.byteLength(payload, "utf8");
     }
     if (queue.payloads.length === 0) {
-      this.clearTerminalSocketSendQueue(socket);
+      this.clearSocketSendQueue(lane, socket);
       return;
     }
-    this.scheduleTerminalSocketDrain(socket, queue);
+    this.scheduleSocketDrain(lane, socket, queue);
   }
 
   private dropTerminalSocket(socket: HubSocket, reason: string): void {
@@ -468,15 +521,29 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
-  private clearTerminalSocketSendQueue(socket: HubSocket): void {
-    const queue = this.terminalSocketSendQueues.get(socket);
+  /**
+   * Unregister first (which also clears the socket's queues) so the rest of
+   * the current fan-out and all later ones skip the socket; the client
+   * reconnects and catches up via the watermark.
+   */
+  private dropAppSocket(socket: HubSocket, reason: string): void {
+    this.unregisterClient(socket);
+    try {
+      socket.close(1013, reason);
+    } catch {
+      // The socket is already unusable; registration and queue state are gone.
+    }
+  }
+
+  private clearSocketSendQueue(lane: SocketSendLane, socket: HubSocket): void {
+    const queue = lane.queues.get(socket);
     if (!queue) {
       return;
     }
     if (queue.timeout !== null) {
       clearTimeout(queue.timeout);
     }
-    this.terminalSocketSendQueues.delete(socket);
+    lane.queues.delete(socket);
   }
 
   subscribe(socket: HubSocket, target: RealtimeSubscriptionTarget): void {
@@ -804,12 +871,7 @@ export class NotificationHub implements DbNotifier {
         file: request.file,
       }),
     );
-    let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
-      socket.send(payload);
-      delivered += 1;
-    }
-    return delivered;
+    return this.broadcastToAppSockets(payload);
   }
 
   /** Broadcast an ephemeral pane presentation request to every app client. */
@@ -825,12 +887,7 @@ export class NotificationHub implements DbNotifier {
         action,
       }),
     );
-    let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
-      socket.send(payload);
-      delivered += 1;
-    }
-    return delivered;
+    return this.broadcastToAppSockets(payload);
   }
 
   /**
@@ -852,10 +909,17 @@ export class NotificationHub implements DbNotifier {
         payload,
       }),
     );
+    return this.broadcastToAppSockets(message);
+  }
+
+  /** Ephemeral broadcast to every app socket; returns how many accepted it. */
+  private broadcastToAppSockets(payload: string): number {
     let delivered = 0;
-    for (const socket of this.clientKeysBySocket.keys()) {
-      socket.send(message);
-      delivered += 1;
+    // Snapshot: dropping a socket mutates the live registration map.
+    for (const socket of [...this.clientKeysBySocket.keys()]) {
+      if (this.sendWithBackpressure(this.appSendLane, socket, payload)) {
+        delivered += 1;
+      }
     }
     return delivered;
   }
@@ -1055,11 +1119,11 @@ export class NotificationHub implements DbNotifier {
       return;
     }
     const detailKey = subscriptionKey({ kind: "thread-detail", threadId });
-    for (const socket of listSockets) {
+    for (const socket of [...listSockets]) {
       if (this.clientKeysBySocket.get(socket)?.has(detailKey)) {
         continue;
       }
-      socket.send(payload);
+      this.sendWithBackpressure(this.appSendLane, socket, payload);
     }
   }
 
@@ -1089,8 +1153,9 @@ export class NotificationHub implements DbNotifier {
     sockets: Iterable<HubSocket>,
     payload: string,
   ): void {
-    for (const socket of sockets) {
-      socket.send(payload);
+    // Snapshot: dropping a socket mutates the live subscription sets.
+    for (const socket of [...sockets]) {
+      this.sendWithBackpressure(this.appSendLane, socket, payload);
     }
   }
 
