@@ -17,11 +17,13 @@ const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 /**
  * Every SVG a first-party or example plugin ships under `icons/`: the
  * provider plugins' `bb.branding.icon` files and path-shaped provider icons,
- * plus the echo example's declared icon. Pinned so the list cannot silently
- * go empty; the discovery test checks it against the tree.
+ * plus declared icons from other first-party and example plugins. Pinned so
+ * the list cannot silently go empty; the discovery test checks it against the
+ * tree.
  */
 const FIRST_PARTY_BRANDING_SVGS = [
   "examples/plugins/echo-provider/icons/receipt.svg",
+  "plugins/plugin-api-docs/icons/ai-generative.svg",
   "plugins/provider-acp/icons/acp.svg",
   "plugins/provider-acp/icons/cursor.svg",
   "plugins/provider-acp/icons/grok.svg",
