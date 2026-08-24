@@ -634,6 +634,37 @@ export function createApp(
       ".map": "application/json",
     };
 
+    const serveStaticAppFile = async (args: {
+      acceptEncodingHeader: string | undefined;
+      contentType: string;
+      filePath: string;
+      urlPath: string;
+    }): Promise<Response> => {
+      const precompressedFile = await findPrecompressedStaticFile({
+        acceptEncodingHeader: args.acceptEncodingHeader,
+        contentType: args.contentType,
+        filePath: args.filePath,
+      });
+      if (precompressedFile !== null) {
+        const content = await readFile(precompressedFile.filePath);
+        return new Response(content, {
+          headers: createStaticResponseHeaders({
+            contentEncoding: precompressedFile.encoding,
+            contentLength: precompressedFile.contentLength,
+            contentType: args.contentType,
+            urlPath: args.urlPath,
+          }),
+        });
+      }
+      const content = await readFile(args.filePath);
+      return new Response(content, {
+        headers: createStaticResponseHeaders({
+          contentType: args.contentType,
+          urlPath: args.urlPath,
+        }),
+      });
+    };
+
     app.get("*", async (context) => {
       const root = shippedRoot;
       const urlPath =
@@ -645,27 +676,11 @@ export function createApp(
       try {
         const fileStat = await stat(filePath);
         if (fileStat.isFile()) {
-          const contentType =
-            MIME[extname(filePath)] ?? "application/octet-stream";
-          const precompressedFile = await findPrecompressedStaticFile({
+          return await serveStaticAppFile({
             acceptEncodingHeader: context.req.header("accept-encoding"),
-            contentType,
+            contentType: MIME[extname(filePath)] ?? "application/octet-stream",
             filePath,
-          });
-          if (precompressedFile !== null) {
-            const content = await readFile(precompressedFile.filePath);
-            return new Response(content, {
-              headers: createStaticResponseHeaders({
-                contentEncoding: precompressedFile.encoding,
-                contentLength: precompressedFile.contentLength,
-                contentType,
-                urlPath,
-              }),
-            });
-          }
-          const content = await readFile(filePath);
-          return new Response(content, {
-            headers: createStaticResponseHeaders({ contentType, urlPath }),
+            urlPath,
           });
         }
       } catch {
@@ -679,12 +694,14 @@ export function createApp(
       if (urlPath.startsWith("/assets/")) {
         return context.notFound();
       }
-      const indexHtml = await readFile(join(root, "index.html"), "utf8");
-      return new Response(indexHtml, {
-        headers: createStaticResponseHeaders({
-          contentType: "text/html",
-          urlPath: "/index.html",
-        }),
+      // The SPA fallback is the document response for every client route
+      // (every thread page a phone opens), so it serves the same sidecar as
+      // a direct /index.html hit.
+      return serveStaticAppFile({
+        acceptEncodingHeader: context.req.header("accept-encoding"),
+        contentType: "text/html",
+        filePath: join(root, "index.html"),
+        urlPath: "/index.html",
       });
     });
   }

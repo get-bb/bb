@@ -28,10 +28,14 @@ describe("app asset precompression", () => {
     const distDir = await mkdtemp(resolve(tmpdir(), "bb-precompress-test-"));
     const compressibleBody = Buffer.from("compressible bb asset\n".repeat(400));
     const assetPath = resolve(distDir, "app.js");
+    // The document itself: without a sidecar every cold navigation on the
+    // relayed mobile path ships the shell uncompressed through the tunnel.
+    const documentPath = resolve(distDir, "index.html");
     const smallPath = resolve(distDir, "small.js");
     const binaryPath = resolve(distDir, "image.png");
     await Promise.all([
       writeFile(assetPath, compressibleBody),
+      writeFile(documentPath, compressibleBody),
       writeFile(smallPath, "small"),
       writeFile(binaryPath, compressibleBody),
     ]);
@@ -41,12 +45,15 @@ describe("app asset precompression", () => {
       distDir,
     ]);
 
-    expect(stdout).toContain("precompressed 1 files (1 br, 1 gzip)");
+    expect(stdout).toContain("precompressed 2 files (2 br, 2 gzip)");
     await expect(
       decompressBrotli(await readFile(`${assetPath}.br`)),
     ).resolves.toEqual(compressibleBody);
     await expect(
       decompressGzip(await readFile(`${assetPath}.gz`)),
+    ).resolves.toEqual(compressibleBody);
+    await expect(
+      decompressBrotli(await readFile(`${documentPath}.br`)),
     ).resolves.toEqual(compressibleBody);
     await expect(pathExists(`${smallPath}.br`)).resolves.toBe(false);
     await expect(pathExists(`${binaryPath}.br`)).resolves.toBe(false);

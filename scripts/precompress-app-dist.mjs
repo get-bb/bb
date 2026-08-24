@@ -11,6 +11,7 @@ const DEFAULT_COMPRESSION_CONCURRENCY = 8;
 const MIN_COMPRESS_BYTES = 1024;
 const COMPRESSIBLE_EXTENSIONS = new Set([
   ".css",
+  ".html",
   ".js",
   ".json",
   ".mjs",
