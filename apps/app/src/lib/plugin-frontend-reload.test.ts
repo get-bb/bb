@@ -1111,6 +1111,7 @@ describe("applyPluginCss", () => {
     const releaseFirst = retainPluginCss("hello");
     const first = links("hello")[0];
     expect(first).toBeDefined();
+    first?.dispatchEvent(new Event("load"));
 
     // Thread-to-thread navigation: the old composer releases and the new one
     // retains a moment later. The sheet must never leave the document.
@@ -1123,6 +1124,68 @@ describe("applyPluginCss", () => {
     expect(links("hello")).toHaveLength(1);
     expect(links("hello")[0]).toBe(first);
     expect(preloads("hello")).toHaveLength(0);
+
+    releaseSecond();
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+  });
+
+  it("reattaches the sheet when its load completes during the grace and a consumer retains", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const releaseFirst = retainPluginCss("hello");
+    const first = links("hello")[0];
+    expect(first).toBeDefined();
+
+    // The composer releases while its sheet is still in flight, the response
+    // lands inside the grace, and the next composer retains. The loaded sheet
+    // must be adopted rather than discarded, or the stale pending reference
+    // blocks every later activation while a consumer is mounted.
+    releaseFirst();
+    await vi.advanceTimersByTimeAsync(200);
+    first?.dispatchEvent(new Event("load"));
+    expect(links("hello")[0]).toBe(first);
+    await vi.advanceTimersByTimeAsync(300);
+    const releaseSecond = retainPluginCss("hello");
+    expect(links("hello")).toHaveLength(1);
+    expect(links("hello")[0]).toBe(first);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(links("hello")).toHaveLength(1);
+    expect(preloads("hello")).toHaveLength(0);
+
+    releaseSecond();
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+  });
+
+  it("adopts a changed URL that finishes loading during the grace and reuses it on retain", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const releaseFirst = retainPluginCss("hello");
+    links("hello")[0]?.dispatchEvent(new Event("load"));
+
+    // Live reload publishes a new URL while mounted; the consumer releases
+    // before it lands, it lands inside the grace, then a new consumer retains.
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    const fresh = links("hello")[1];
+    expect(fresh?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
+    releaseFirst();
+    await vi.advanceTimersByTimeAsync(200);
+    fresh?.dispatchEvent(new Event("load"));
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    await vi.advanceTimersByTimeAsync(300);
+    const releaseSecond = retainPluginCss("hello");
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    expect(links("hello")[0]).toBe(fresh);
+    expect(preloads("hello")).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
 
     releaseSecond();
     await vi.advanceTimersByTimeAsync(1_500);

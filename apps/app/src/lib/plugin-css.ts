@@ -103,14 +103,15 @@ function activateStylesheet(
   link.setAttribute(CSS_MARKER, pluginId);
   record.pendingStylesheet = link;
   link.onload = () => {
-    if (
-      record.pendingStylesheet !== link ||
-      record.url !== url ||
-      record.consumers === 0
-    ) {
+    if (record.pendingStylesheet !== link || record.url !== url) {
       link.remove();
       return;
     }
+    // A sheet that lands inside the release grace (consumers === 0) is still
+    // adopted: the grace timer detaches it if nobody retains, and a retain in
+    // the meantime reuses it. Discarding it here would leave pendingStylesheet
+    // pointing at a detached link, and every later activation of this URL
+    // would early-return on that stale reference with no sheet attached.
     previous?.remove();
     record.stylesheet = link;
     record.pendingStylesheet = null;
