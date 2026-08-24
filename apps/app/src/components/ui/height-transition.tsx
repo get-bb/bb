@@ -141,6 +141,14 @@ function cancelIntrinsicHeightRestore(
   resizeState.restoreTimerId = null;
 }
 
+// The observer already measured the inner this frame, so reading the entry
+// costs nothing, and the border box is the same metric as the offsetHeight
+// used by the non-observer paths (initial mount, visibility snap) — the two
+// must agree or a padded inner would get clipped by a content-box height.
+function getObservedInnerHeight(entry: ResizeObserverEntry): number {
+  return entry.borderBoxSize[0]?.blockSize ?? entry.contentRect.height;
+}
+
 interface HeightTransitionProps {
   visible: boolean;
   children: ReactNode;
@@ -171,7 +179,7 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      const { width, height } = entry.contentRect;
+      const { width } = entry.contentRect;
       const widthChanged = lastWidth !== null && width !== lastWidth;
       // While a CSS layout animation (e.g. ExpandablePanel's grid expansion)
       // is in flight, the inner is itself animating its size every frame.
@@ -179,10 +187,11 @@ export function HeightTransition({ visible, children }: HeightTransitionProps) {
       // scrollHeight, which the bottom-anchor sentinel then chases.
       const layoutAnimationActive =
         store.get(layoutAnimationInFlightCountAtom) > 0;
-      const snap = widthChanged || pendingVisibilitySnap || layoutAnimationActive;
+      const snap =
+        widthChanged || pendingVisibilitySnap || layoutAnimationActive;
       pendingVisibilitySnap = false;
       lastWidth = width;
-      const nextHeight = visible ? `${height}px` : "0px";
+      const nextHeight = visible ? `${getObservedInnerHeight(entry)}px` : "0px";
       applyHeight(wrapper, nextHeight, snap, snapState);
     });
     observer.observe(inner);
@@ -334,7 +343,7 @@ export function AutoHeightContainer({
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
-      const { width, height } = entry.contentRect;
+      const { width } = entry.contentRect;
       const widthChanged = lastWidth !== null && width !== lastWidth;
       // While a CSS layout animation (e.g. ExpandablePanel's grid expansion)
       // is in flight, the inner is itself animating its size every frame.
@@ -360,7 +369,12 @@ export function AutoHeightContainer({
         deferInitialSettleComplete();
         return;
       }
-      applyHeight(wrapper, `${height}px`, snap, snapState);
+      applyHeight(
+        wrapper,
+        `${getObservedInnerHeight(entry)}px`,
+        snap,
+        snapState,
+      );
       deferInitialSettleComplete();
     });
     observer.observe(inner);
