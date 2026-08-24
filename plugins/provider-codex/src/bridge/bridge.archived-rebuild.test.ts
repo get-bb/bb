@@ -74,10 +74,43 @@ afterEach(async () => {
     activeTurnId: null,
   });
   await harness.waitForResponse(cleanupId).catch(() => undefined);
+  await waitForAppServerChildrenToExit();
   harness.restore();
   vi.unstubAllEnvs();
   rmSync(workspaceDir, { recursive: true, force: true });
 });
+
+function spawnedAppServerPids(): number[] {
+  return readFileSync(processLogPath, "utf8")
+    .split("\n")
+    .filter((line) => line.startsWith("spawn:"))
+    .map((line) => Number(line.split(":")[1]));
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error instanceof Error && Reflect.get(error, "code") === "ESRCH") {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function waitForAppServerChildrenToExit(): Promise<void> {
+  const childPids = spawnedAppServerPids();
+  const deadline = Date.now() + 15_000;
+  while (childPids.some(processIsAlive)) {
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Timed out waiting for app-server children to exit: ${JSON.stringify(childPids.filter(processIsAlive))}`,
+      );
+    }
+    await new Promise((resolveTick) => setTimeout(resolveTick, 20));
+  }
+}
 
 async function resumeThread(): Promise<void> {
   harness.sendRequest(1, "thread/resume", {
