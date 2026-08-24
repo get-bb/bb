@@ -14,6 +14,7 @@ import {
   stagePromptAttachmentGroups,
   stagePromptAttachments,
 } from "./prompt-attachments.js";
+import { providerInstallationGateKey } from "../provider-installation-gate.js";
 import { requireResolvedWorkspaceForCommand } from "../workspace-resolution.js";
 
 type TurnSubmitCommand = CommandOf<"turn.submit">;
@@ -104,17 +105,31 @@ async function requireSupportedProviderCliForThreadStart({
     return;
   }
 
-  const bridgeLaunch = await resolveRuntimeBridgeLaunch(
-    command.bridgeLaunch,
-    options,
+  const requirement =
+    command.type === "thread.rewind.prepare"
+      ? ("thread_rewind" as const)
+      : undefined;
+  // The probe spawns the provider CLI several times, so a remembered
+  // supported answer is served without touching the maintenance bridge or
+  // re-verifying the bridge artifact.
+  const status = await options.runtimeManager.providerInstallationGate.run(
+    providerInstallationGateKey({
+      providerId: command.providerId,
+      bridgeLaunch: command.bridgeLaunch,
+      requirement,
+    }),
+    async () => {
+      const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+        command.bridgeLaunch,
+        options,
+      );
+      return options.providerInstallationStatus({
+        providerId: command.providerId,
+        bridgeLaunch,
+        ...(requirement !== undefined ? { requirement } : {}),
+      });
+    },
   );
-  const status = await options.providerInstallationStatus({
-    providerId: command.providerId,
-    bridgeLaunch,
-    ...(command.type === "thread.rewind.prepare"
-      ? { requirement: "thread_rewind" as const }
-      : {}),
-  });
   if (!status.versionUnsupported) {
     return;
   }
