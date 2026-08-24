@@ -1,4 +1,5 @@
 import { createNodeWebSocket } from "@hono/node-ws";
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import { extname, join, resolve } from "node:path";
@@ -133,13 +134,21 @@ interface StaticResponseHeadersArgs {
   contentEncoding?: string;
   contentLength?: number;
   contentType: string;
+  /** Present only for the app shell; other static files rely on hashes/TTLs. */
+  etag?: string;
   urlPath: string;
 }
 
-// `no-cache` (not `no-store`): the document is revalidated on every
-// navigation, so a new build is picked up immediately, but WebKit may still
-// keep the page in the back/forward cache and restore it without a reload.
-const STATIC_INDEX_CACHE_CONTROL = "no-cache";
+// The document travels with a build-id ETag (see shellEtag): the browser may
+// reuse it for five minutes, then must revalidate — an If-None-Match answered
+// with a 304, which costs the connect tunnel a handful of header bytes — and
+// the connect worker revalidates its edge copy on every navigation, so a new
+// build still takes effect on the next navigation there. This replaces
+// `no-cache`, whose "new build picked up immediately" property the ETag
+// preserves without re-sending the document each time. Still not `no-store`:
+// WebKit may keep the page in the back/forward cache and restore it without a
+// reload.
+const STATIC_INDEX_CACHE_CONTROL = "max-age=300, must-revalidate";
 const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 // Icons and manifests under public/ are not content-hashed but change only
 // with a release; a day of caching keeps favicon/badge flips and PWA
@@ -188,6 +197,9 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
   const headers = new Headers();
   headers.set("content-type", args.contentType);
   headers.set("cache-control", staticCacheControlForPath(args.urlPath));
+  if (args.etag !== undefined) {
+    headers.set("etag", args.etag);
+  }
   if (args.contentEncoding !== undefined) {
     headers.set("content-encoding", args.contentEncoding);
     headers.set("vary", "Accept-Encoding");
@@ -196,6 +208,178 @@ function createStaticResponseHeaders(args: StaticResponseHeadersArgs): Headers {
     headers.set("content-length", String(args.contentLength));
   }
   return headers;
+}
+
+/**
+ * Build-id ETag for the app shell, derived from the served file's bytes:
+ * index.html embeds every content-hashed asset URL, so its content changes
+ * exactly when a build does. Cached per path and revalidated by (size,
+ * mtime) so an in-place dist swap gets a fresh tag without hashing every
+ * request. Weak, because the precompressed sidecars are equivalent — not
+ * byte-identical — representations of the same document.
+ */
+const shellEtagCache = new Map<
+  string,
+  { etag: string; mtimeMs: number; size: number }
+>();
+
+async function shellEtag(filePath: string): Promise<string | undefined> {
+  try {
+    const fileStat = await stat(filePath);
+    const cached = shellEtagCache.get(filePath);
+    if (
+      cached !== undefined &&
+      cached.size === fileStat.size &&
+      cached.mtimeMs === fileStat.mtimeMs
+    ) {
+      return cached.etag;
+    }
+    const digest = createHash("sha256")
+      .update(await readFile(filePath))
+      .digest("hex");
+    const etag = `W/"${digest.slice(0, 32)}"`;
+    shellEtagCache.set(filePath, {
+      etag,
+      mtimeMs: fileStat.mtimeMs,
+      size: fileStat.size,
+    });
+    return etag;
+  } catch {
+    // Unreadable file: serve without a validator rather than failing the
+    // request here; the read below will surface the real error.
+    return undefined;
+  }
+}
+
+/** RFC 9110 §13.1.2: If-None-Match always compares weakly for GET. */
+export function ifNoneMatchSatisfied(
+  ifNoneMatchHeader: string,
+  etag: string,
+): boolean {
+  if (ifNoneMatchHeader.trim() === "*") return true;
+  const opaque = (tag: string): string => tag.trim().replace(/^W\//u, "");
+  const target = opaque(etag);
+  return ifNoneMatchHeader
+    .split(",")
+    .some((candidate) => opaque(candidate) === target);
+}
+
+const STATIC_MIME_TYPES: Record<string, string> = {
+  ".html": "text/html",
+  ".js": "application/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".webp": "image/webp",
+  ".map": "application/json",
+};
+
+/**
+ * Serves the built app from `staticDir`: content-hashed assets, public files,
+ * and the shell (index.html — directly and as the single-page-app fallback
+ * for every client route). Registered by createApp; exported so tests can
+ * exercise the shell contract (sidecar, ETag, 304) against a bare Hono app.
+ */
+export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
+  const root = resolve(staticDir);
+
+  const serveStaticAppFile = async (args: {
+    acceptEncodingHeader: string | undefined;
+    contentType: string;
+    filePath: string;
+    ifNoneMatchHeader: string | undefined;
+    urlPath: string;
+  }): Promise<Response> => {
+    // Only the shell carries a validator: assets are immutable by hash and
+    // public files by TTL, but the document must revalidate cheaply — a 304
+    // here is what keeps `max-age=300, must-revalidate` as prompt as the old
+    // `no-cache` without resending the document every navigation.
+    const etag =
+      args.contentType === "text/html"
+        ? await shellEtag(args.filePath)
+        : undefined;
+    if (
+      etag !== undefined &&
+      args.ifNoneMatchHeader !== undefined &&
+      ifNoneMatchSatisfied(args.ifNoneMatchHeader, etag)
+    ) {
+      const headers = new Headers();
+      headers.set("cache-control", staticCacheControlForPath(args.urlPath));
+      headers.set("etag", etag);
+      return new Response(null, { status: 304, headers });
+    }
+    const precompressedFile = await findPrecompressedStaticFile({
+      acceptEncodingHeader: args.acceptEncodingHeader,
+      contentType: args.contentType,
+      filePath: args.filePath,
+    });
+    if (precompressedFile !== null) {
+      const content = await readFile(precompressedFile.filePath);
+      return new Response(content, {
+        headers: createStaticResponseHeaders({
+          contentEncoding: precompressedFile.encoding,
+          contentLength: precompressedFile.contentLength,
+          contentType: args.contentType,
+          etag,
+          urlPath: args.urlPath,
+        }),
+      });
+    }
+    const content = await readFile(args.filePath);
+    return new Response(content, {
+      headers: createStaticResponseHeaders({
+        contentType: args.contentType,
+        etag,
+        urlPath: args.urlPath,
+      }),
+    });
+  };
+
+  app.get("*", async (context) => {
+    const urlPath = context.req.path === "/" ? "/index.html" : context.req.path;
+    const filePath = join(root, urlPath);
+    if (!filePath.startsWith(root)) {
+      return context.notFound();
+    }
+    try {
+      const fileStat = await stat(filePath);
+      if (fileStat.isFile()) {
+        return await serveStaticAppFile({
+          acceptEncodingHeader: context.req.header("accept-encoding"),
+          contentType:
+            STATIC_MIME_TYPES[extname(filePath)] ?? "application/octet-stream",
+          filePath,
+          ifNoneMatchHeader: context.req.header("if-none-match"),
+          urlPath,
+        });
+      }
+    } catch {
+      // File not found — fall through to SPA fallback
+    }
+    // /assets/ holds content-hashed build output, never a client route, so
+    // a miss there is a stale reference rather than a page to render. The
+    // single-page-app fallback would answer it with index.html at status
+    // 200, and the browser would report a confusing MIME type error for a
+    // script instead of a plain 404. Mirrors the /api/v1/* guard above.
+    if (urlPath.startsWith("/assets/")) {
+      return context.notFound();
+    }
+    // The SPA fallback is the document response for every client route
+    // (every thread page a phone opens), so it serves the same sidecar and
+    // validator as a direct /index.html hit.
+    return serveStaticAppFile({
+      acceptEncodingHeader: context.req.header("accept-encoding"),
+      contentType: "text/html",
+      filePath: join(root, "index.html"),
+      ifNoneMatchHeader: context.req.header("if-none-match"),
+      urlPath: "/index.html",
+    });
+  });
 }
 
 function canServePrecompressedStaticFile(contentType: string): boolean {
@@ -618,92 +802,7 @@ export function createApp(
   }
 
   if (options?.staticDir) {
-    const shippedRoot = resolve(options.staticDir);
-    const MIME: Record<string, string> = {
-      ".html": "text/html",
-      ".js": "application/javascript",
-      ".css": "text/css",
-      ".json": "application/json",
-      ".webmanifest": "application/manifest+json",
-      ".png": "image/png",
-      ".svg": "image/svg+xml",
-      ".ico": "image/x-icon",
-      ".woff": "font/woff",
-      ".woff2": "font/woff2",
-      ".webp": "image/webp",
-      ".map": "application/json",
-    };
-
-    const serveStaticAppFile = async (args: {
-      acceptEncodingHeader: string | undefined;
-      contentType: string;
-      filePath: string;
-      urlPath: string;
-    }): Promise<Response> => {
-      const precompressedFile = await findPrecompressedStaticFile({
-        acceptEncodingHeader: args.acceptEncodingHeader,
-        contentType: args.contentType,
-        filePath: args.filePath,
-      });
-      if (precompressedFile !== null) {
-        const content = await readFile(precompressedFile.filePath);
-        return new Response(content, {
-          headers: createStaticResponseHeaders({
-            contentEncoding: precompressedFile.encoding,
-            contentLength: precompressedFile.contentLength,
-            contentType: args.contentType,
-            urlPath: args.urlPath,
-          }),
-        });
-      }
-      const content = await readFile(args.filePath);
-      return new Response(content, {
-        headers: createStaticResponseHeaders({
-          contentType: args.contentType,
-          urlPath: args.urlPath,
-        }),
-      });
-    };
-
-    app.get("*", async (context) => {
-      const root = shippedRoot;
-      const urlPath =
-        context.req.path === "/" ? "/index.html" : context.req.path;
-      const filePath = join(root, urlPath);
-      if (!filePath.startsWith(root)) {
-        return context.notFound();
-      }
-      try {
-        const fileStat = await stat(filePath);
-        if (fileStat.isFile()) {
-          return await serveStaticAppFile({
-            acceptEncodingHeader: context.req.header("accept-encoding"),
-            contentType: MIME[extname(filePath)] ?? "application/octet-stream",
-            filePath,
-            urlPath,
-          });
-        }
-      } catch {
-        // File not found — fall through to SPA fallback
-      }
-      // /assets/ holds content-hashed build output, never a client route, so
-      // a miss there is a stale reference rather than a page to render. The
-      // single-page-app fallback would answer it with index.html at status
-      // 200, and the browser would report a confusing MIME type error for a
-      // script instead of a plain 404. Mirrors the /api/v1/* guard above.
-      if (urlPath.startsWith("/assets/")) {
-        return context.notFound();
-      }
-      // The SPA fallback is the document response for every client route
-      // (every thread page a phone opens), so it serves the same sidecar as
-      // a direct /index.html hit.
-      return serveStaticAppFile({
-        acceptEncodingHeader: context.req.header("accept-encoding"),
-        contentType: "text/html",
-        filePath: join(root, "index.html"),
-        urlPath: "/index.html",
-      });
-    });
+    registerStaticAppRoutes(app, options.staticDir);
   }
 
   return {
