@@ -33,6 +33,37 @@ export const sharedViteConfig = {
     // and let the browser fetch only the ones a menu actually renders.
     assetsInlineLimit: (filePath) =>
       filePath.includes("/workspace-open-target-icons/") ? false : undefined,
+    rolldownOptions: {
+      output: {
+        // Merge the boot payload's micro-chunks. Rolldown's automatic
+        // splitting left half the boot-path requests carrying ~2% of the
+        // bytes (sub-4 KB shared chunks, many below the 1 KiB precompress
+        // floor), and on the relayed mobile path every request is a full
+        // worker → DO → tunnel → laptop round trip. The `$initial` tag
+        // captures exactly the entry's static-import closure, so lazy-route
+        // and on-demand facades (and the budget's closure walk and
+        // forbidden-package gates over them) are untouched. Two groups so a
+        // release that only touches app code leaves the vendor chunk's hash
+        // — the bulk of the boot bytes — cacheable across updates.
+        advancedChunks: {
+          groups: [
+            {
+              name: "boot-vendor",
+              test: /node_modules/,
+              tags: ["$initial"],
+              priority: 2,
+              minSize: 12 * 1024,
+            },
+            {
+              name: "boot-app",
+              tags: ["$initial"],
+              priority: 1,
+              minSize: 12 * 1024,
+            },
+          ],
+        },
+      },
+    },
   },
   optimizeDeps: {
     // The terminal imports xterm lazily when the panel mounts. Pre-optimize
