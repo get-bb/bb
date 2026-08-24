@@ -6,19 +6,24 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CONNECT_SESSION_EXPIRES_IN_SECONDS,
+  CONNECT_SESSION_UPDATE_AGE_SECONDS,
   labelClaim,
   machine,
   profile,
   schema,
   server,
+  session,
   user,
 } from "@bb/connect-db";
 
 import {
   MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
   markMachineSeen,
+  refreshSessionCookie,
   resolveLabel,
   verifyMachineCredentialDetails,
+  verifySessionCookie,
 } from "./session.js";
 import { assignMachineLabel } from "./machine-label.js";
 
@@ -111,6 +116,26 @@ function seedMachine(over: {
       .where(eq(labelClaim.label, over.subdomain))
       .run();
   }
+}
+
+async function signedSessionCookie(
+  token: string,
+  secret: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(token),
+  );
+  const encoded = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return encodeURIComponent(`${token}.${encoded}`);
 }
 
 describe("resolveLabel — label → server row (multi-server)", () => {
@@ -344,6 +369,90 @@ describe("resolveLabel — label → server row (multi-server)", () => {
     expect(resolved?.kind).toBe("server");
     if (resolved?.kind !== "server") throw new Error("expected server label");
     expect(resolved.server.id).toBe("srv-collision");
+  });
+});
+
+describe("account session refresh", () => {
+  const secret = "test-better-auth-secret";
+  const expiresInMs = CONNECT_SESSION_EXPIRES_IN_SECONDS * 1000;
+  const updateAgeMs = CONNECT_SESSION_UPDATE_AGE_SECONDS * 1000;
+
+  function seedSession(
+    token: string,
+    refreshAt: number,
+    expiresAt: number,
+  ): void {
+    seedUser(`user-${token}`);
+    db.insert(session)
+      .values({
+        id: `id-${token}`,
+        token,
+        expiresAt: new Date(expiresAt),
+        userId: `user-${token}`,
+        createdAt: new Date(refreshAt - updateAgeMs),
+        updatedAt: new Date(refreshAt - updateAgeMs),
+      })
+      .run();
+  }
+
+  it("renews at Better Auth's update-age boundary and refreshes only once", async () => {
+    const refreshAt = Date.now();
+    const token = `session-${crypto.randomUUID()}`;
+    const oldExpiresAt = refreshAt + expiresInMs - updateAgeMs;
+    seedSession(token, refreshAt, oldExpiresAt);
+    const cookie = await signedSessionCookie(token, secret);
+
+    await expect(
+      refreshSessionCookie(cookie, secret, db, refreshAt),
+    ).resolves.toBe(true);
+    const refreshed = db
+      .select()
+      .from(session)
+      .where(eq(session.token, token))
+      .get();
+    expect(refreshed?.expiresAt.getTime()).toBe(refreshAt + expiresInMs);
+    expect(refreshed?.updatedAt.getTime()).toBe(refreshAt);
+    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBe(
+      `user-${token}`,
+    );
+    await expect(
+      refreshSessionCookie(cookie, secret, db, refreshAt + 1),
+    ).resolves.toBe(false);
+  });
+
+  it("leaves a fresh session unchanged before the update-age boundary", async () => {
+    const refreshAt = Date.now();
+    const token = `session-${crypto.randomUUID()}`;
+    const expiresAt = refreshAt + expiresInMs - updateAgeMs + 1;
+    seedSession(token, refreshAt, expiresAt);
+    const cookie = await signedSessionCookie(token, secret);
+
+    await expect(
+      refreshSessionCookie(cookie, secret, db, refreshAt),
+    ).resolves.toBe(false);
+    expect(
+      db
+        .select({ expiresAt: session.expiresAt })
+        .from(session)
+        .where(eq(session.token, token))
+        .get()
+        ?.expiresAt.getTime(),
+    ).toBe(expiresAt);
+  });
+
+  it("does not revive an expired session or accept a forged signature", async () => {
+    const refreshAt = Date.now();
+    const token = `session-${crypto.randomUUID()}`;
+    seedSession(token, refreshAt, refreshAt);
+    const cookie = await signedSessionCookie(token, secret);
+
+    await expect(
+      refreshSessionCookie(cookie, secret, db, refreshAt),
+    ).resolves.toBe(false);
+    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBeNull();
+    await expect(
+      refreshSessionCookie(`${cookie}forged`, secret, db, refreshAt),
+    ).resolves.toBe(false);
   });
 });
 

@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import {
+  CONNECT_SESSION_EXPIRES_IN_SECONDS,
   RESERVED_HANDLES,
   handleAppLinkAssociationRequest,
   parseVisitorHost,
@@ -9,6 +10,7 @@ import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
   markMachineSeen,
+  refreshSessionCookie,
   resolveLabel,
   verifyMachineCredentialDetails,
   verifySessionCookie,
@@ -52,6 +54,31 @@ function text(body: string, status: number): Response {
   return new Response(body, {
     status,
     headers: { "content-type": "text/plain; charset=utf-8" },
+  });
+}
+
+function withRefreshedSessionCookie(
+  response: Response,
+  cookieName: string,
+  cookieValue: string,
+  baseDomain: string,
+  secure: boolean,
+): Response {
+  const attributes = [
+    `${cookieName}=${cookieValue}`,
+    `Max-Age=${CONNECT_SESSION_EXPIRES_IN_SECONDS}`,
+    `Domain=.${baseDomain}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
+  if (secure) attributes.push("Secure");
+  const headers = new Headers(response.headers);
+  headers.append("set-cookie", attributes.join("; "));
+  return new Response(response.body, {
+    headers,
+    status: response.status,
+    statusText: response.statusText,
   });
 }
 
@@ -475,9 +502,28 @@ export default {
     }
 
     const doRequest = requestForTunnelDo(request, target, "session");
+    const isWebSocketUpgrade =
+      request.headers.get("upgrade")?.toLowerCase() === "websocket";
+    const refreshedSessionCookie =
+      cookie !== null &&
+      sessionUserId === resolved.userId &&
+      !isWebSocketUpgrade &&
+      (await refreshSessionCookie(cookie, env.BETTER_AUTH_SECRET, db))
+        ? cookie
+        : null;
+    const finish = (response: Response): Response =>
+      refreshedSessionCookie !== null
+        ? withRefreshedSessionCookie(
+            response,
+            runtime.sessionCookieName,
+            refreshedSessionCookie,
+            runtime.baseDomain,
+            !runtime.localCloud,
+          )
+        : response;
 
     // WebSocket upgrades (bb's /ws, terminals) can't be cached — proxy directly.
-    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    if (isWebSocketUpgrade) {
       return stub.fetch(doRequest);
     }
     // Everything else: serve from the edge cache when the origin allows it,
@@ -497,13 +543,15 @@ export default {
       response.headers.get(TUNNEL_OFFLINE_HEADER) === "1" &&
       wantsHtml(request)
     ) {
-      return offlinePage(
-        resolved.kind === "server"
-          ? resolved.server.lastSeenAt
-          : resolved.machine.lastSeenAt,
-        resolved.kind,
+      return finish(
+        offlinePage(
+          resolved.kind === "server"
+            ? resolved.server.lastSeenAt
+            : resolved.machine.lastSeenAt,
+          resolved.kind,
+        ),
       );
     }
-    return response;
+    return finish(response);
   },
 } satisfies ExportedHandler<Env>;

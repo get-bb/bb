@@ -130,6 +130,14 @@ export const CONNECT_CODE_TTL_MS = 10 * 60 * 1000;
 /** A server is shown "offline" if no heartbeat within this window. */
 export const SERVER_OFFLINE_AFTER_MS = 90 * 1000;
 
+/**
+ * Account-session lifetime and sliding-refresh cadence. Better Auth creates
+ * the session; the connect gate mirrors its refresh behavior for activity on
+ * `<label>.getbb.app`, which never passes through Better Auth's own routes.
+ */
+export const CONNECT_SESSION_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
+export const CONNECT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;
+
 export type HandleValidationError =
   | "too-short"
   | "too-long"

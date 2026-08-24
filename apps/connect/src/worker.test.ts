@@ -108,6 +108,7 @@ describe("parseClientProtocolVersion", () => {
 vi.mock("./session.js", () => ({
   markMachineSeen: vi.fn(),
   parseCookie: vi.fn(),
+  refreshSessionCookie: vi.fn(),
   resolveLabel: vi.fn(),
   verifyMachineCredentialDetails: vi.fn(),
   verifySessionCookie: vi.fn(),
@@ -149,6 +150,7 @@ import { drizzle } from "drizzle-orm/d1";
 import {
   markMachineSeen,
   parseCookie,
+  refreshSessionCookie,
   resolveLabel,
   verifyMachineCredentialDetails,
   verifySessionCookie,
@@ -166,6 +168,7 @@ import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
 
 const mockParseCookie = vi.mocked(parseCookie);
+const mockRefreshSession = vi.mocked(refreshSessionCookie);
 const mockResolveLabel = vi.mocked(resolveLabel);
 const mockMarkMachineSeen = vi.mocked(markMachineSeen);
 const mockVerifyMachine = vi.mocked(verifyMachineCredentialDetails);
@@ -803,6 +806,7 @@ describe("gate worker share hosts", () => {
     mockResolveLabel.mockResolvedValue(resolvedServer());
     mockParseCookie.mockReturnValue("session-token");
     mockVerifySession.mockResolvedValue(OWNER);
+    mockRefreshSession.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -826,6 +830,49 @@ describe("gate worker share hosts", () => {
       "sawyer--8000",
       ctx,
       expect.any(Function),
+    );
+  });
+
+  it("renews an active owner session on an ordinary HTTP response", async () => {
+    mockRefreshSession.mockResolvedValue(true);
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+      env as never,
+      ctx,
+    );
+
+    expect(mockRefreshSession).toHaveBeenCalledWith(
+      "session-token",
+      "test-secret",
+      expect.anything(),
+    );
+    expect(response.headers.get("set-cookie")).toBe(
+      "__Secure-better-auth.session_token=session-token; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
+    );
+  });
+
+  it("reissues the local Cloud cookie without the Secure attribute", async () => {
+    mockRefreshSession.mockResolvedValue(true);
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    Object.assign(env, {
+      ACCOUNT_APP_URL: "http://bb.localhost:42745",
+      BASE_DOMAIN: "bb.localhost",
+      CLOUD_DEV: "true",
+    });
+    const response = await worker.fetch(
+      new Request("http://127.0.0.1:50743/api/v1/threads", {
+        headers: {
+          host: "127.0.0.1:50743",
+          "x-bb-cloud-dev-host": "sawyer",
+        },
+      }),
+      env as never,
+      ctx,
+    );
+
+    expect(response.headers.get("set-cookie")).toBe(
+      "better-auth.session_token=session-token; Max-Age=604800; Domain=.bb.localhost; Path=/; HttpOnly; SameSite=Lax",
     );
   });
 
@@ -1067,6 +1114,7 @@ describe("gate worker share hosts", () => {
     expect(res.status).toBe(403);
     expect(await res.text()).toContain("not your server");
     expect(captured).toHaveLength(0);
+    expect(mockRefreshSession).not.toHaveBeenCalled();
   });
 
   it("accepts the short-lived desktop cookie for the owning account", async () => {
@@ -1159,6 +1207,7 @@ describe("gate worker share hosts", () => {
     expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
     expect(captured[0].headers.get("upgrade")).toBe("websocket");
     expect(mockServeWithCache).not.toHaveBeenCalled();
+    expect(mockRefreshSession).not.toHaveBeenCalled();
   });
 
   it("does not apply machine-credential branch on share hosts", async () => {
