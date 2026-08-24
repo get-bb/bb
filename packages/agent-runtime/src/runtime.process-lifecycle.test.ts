@@ -914,6 +914,9 @@ describe("createAgentRuntime process lifecycle", () => {
   // runtime.recovery.test.ts.
 
   it("gives a changed declaration its own bridge process at the same artifact hash", async () => {
+    // bridge-launch-process-key.test.ts deterministically covers successive
+    // declaration changes. This lifecycle boundary starts the minimum two
+    // real processes needed to prove reuse and distinction end to end.
     const record = createScriptedEchoRequestRecord();
     const bridgeLaunch: AgentRuntimeBridgeLaunch = createScriptedEchoLaunch({
       pluginId: "provider-declared",
@@ -964,20 +967,6 @@ describe("createAgentRuntime process lifecycle", () => {
       });
       // A changed declaration at the same artifact hash is a new process.
       expect(initializeCount()).toBe(2);
-
-      const rewound: AgentRuntimeBridgeLaunch = {
-        ...updatedDeclaration,
-        capabilities: { ...updatedDeclaration.capabilities, fork: "tip" },
-      };
-      await runtime.startThread({
-        bridgeLaunch: rewound,
-        environmentId: "env-1",
-        threadId: "t4",
-        projectId: "p1",
-        providerId: "declared",
-        options: fullRuntimeOptions,
-      });
-      expect(initializeCount()).toBe(3);
     } finally {
       await runtime.shutdown();
     }
