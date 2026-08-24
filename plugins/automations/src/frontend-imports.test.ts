@@ -13,12 +13,13 @@ import { describe, expect, it } from "vitest";
  *
  * Walks the source graph with a statement scanner rather than esbuild
  * (not a dependency of this plugin). It follows relative and `@/`
- * specifiers, and the workspace packages the plugin build bundles from
- * source (`@bb/domain`, `@bb/shared-ui`) through their `exports` maps into
- * `packages/<pkg>/src`; the host-provided `@bb/shared-ui/icon` module is
- * the one subpath left out. Every other bare specifier is only compared
- * against zod, so zod arriving through a third-party dependency is not
- * covered.
+ * specifiers and every `@bb/*` workspace package through its `exports`
+ * map under the `source` condition into `packages/<pkg>/src`; a package
+ * that is not linked in this plugin's `node_modules` or has no `source`
+ * export throws, so a new workspace import has to be resolved here rather
+ * than slipping past the guard. `@bb/shared-ui/icon` and `@bb/plugin-sdk/app`
+ * are host slots and are left out. Only third-party bare specifiers are
+ * merely compared against zod.
  *
  * The scanner does not tree-shake: a root-barrel `@bb/domain` import
  * reaches every zod-backed module the barrel re-exports and fails the
@@ -31,11 +32,17 @@ const FRONTEND_ENTRY = join(PLUGIN_ROOT, "app.tsx");
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"]);
 
 /**
- * Workspace packages the plugin build bundles from source: there is no host
- * slot for them, so zod reaching one of their modules reaches the bundle.
- * Captures the package name and the (possibly empty) export subpath.
+ * Every `@bb/*` workspace package is bundled from source: the plugin build
+ * (`RUNTIME_SLOT_BY_SPECIFIER` in @bb/plugin-build) has no host slot for
+ * any of them except the legacy `@bb/plugin-sdk/app` SDK alias, which the
+ * lookahead keeps bare, and `@bb/shared-ui/icon`, which is dropped after
+ * resolution. Matching the whole scope rather than a fixed list means an
+ * unknown package is resolved or throws instead of being compared against
+ * zod like a third-party dependency and passing. Captures the package name
+ * and the (possibly empty) export subpath.
  */
-const BUNDLED_WORKSPACE_SPECIFIER = /^(@bb\/(?:domain|shared-ui))((?:\/.*)?)$/;
+const BUNDLED_WORKSPACE_SPECIFIER =
+  /^(@bb\/(?!plugin-sdk(?:\/|$))[^/]+)((?:\/.*)?)$/;
 
 /**
  * shared-ui's icon module comes from the host (`RUNTIME_SLOT_BY_SPECIFIER`
@@ -105,9 +112,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * so reached paths are canonical.
  */
 function workspaceSourceFile(packageName: string, subpath: string): string {
-  const packageDir = realpathSync(
-    join(PLUGIN_ROOT, "node_modules", packageName),
-  );
+  const link = join(PLUGIN_ROOT, "node_modules", packageName);
+  if (!existsSync(link)) {
+    throw new Error(
+      `${packageName} is not a dependency of this plugin (no node_modules link)`,
+    );
+  }
+  const packageDir = realpathSync(link);
   const manifest: unknown = JSON.parse(
     readFileSync(join(packageDir, "package.json"), "utf8"),
   );
@@ -206,6 +217,15 @@ describe("automations frontend bundle", () => {
         "../../packages/shared-ui/src/components/ui/button.tsx",
       ]),
     );
+  });
+
+  it("never treats an unfollowed @bb package as a third-party specifier", () => {
+    // A workspace package the plugin does not depend on yet must surface
+    // loudly when it first appears, not be compared against "zod" and pass:
+    // the build would inline it from source exactly like @bb/domain.
+    expect(() =>
+      resolveLocalModule(FRONTEND_ENTRY, "@bb/plugin-interaction-contracts"),
+    ).toThrow(/plugin-interaction-contracts/);
   });
 
   it("never reaches the zod schema module through a value import", () => {
