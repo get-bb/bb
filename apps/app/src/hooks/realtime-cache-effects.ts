@@ -34,8 +34,40 @@ import {
   partitionThreadChangesByFlushPriority,
 } from "./cache-owners/realtime-cache-registry";
 
-const INVALIDATION_DEBOUNCE_MS = 50;
-const INVALIDATION_MAX_WAIT_MS = 200;
+interface ThreadInvalidationDebounce {
+  debounceMs: number;
+  maxWaitMs: number;
+}
+
+/**
+ * Streaming publishes arrive up to every 50 ms per thread, and each flush
+ * reconciles the whole unwindowed timeline/list state. Desktops absorb the
+ * 50/200 cadence (up to 20 reconciles/s); on coarse-pointer (touch) devices
+ * the same cadence competes with scroll and input handling on a phone core,
+ * so the window widens to 150/400 — still well inside perceived-live
+ * territory. Exported for tests; production reads the pointer class once at
+ * module init (it does not change mid-session).
+ */
+export function resolveThreadInvalidationDebounce(
+  isCoarsePointer: boolean,
+): ThreadInvalidationDebounce {
+  return isCoarsePointer
+    ? { debounceMs: 150, maxWaitMs: 400 }
+    : { debounceMs: 50, maxWaitMs: 200 };
+}
+
+function detectCoarsePointer(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+const {
+  debounceMs: INVALIDATION_DEBOUNCE_MS,
+  maxWaitMs: INVALIDATION_MAX_WAIT_MS,
+} = resolveThreadInvalidationDebounce(detectCoarsePointer());
 const ENVIRONMENT_INVALIDATION_DEBOUNCE_MS = 250;
 const ENVIRONMENT_INVALIDATION_MAX_WAIT_MS = 500;
 
