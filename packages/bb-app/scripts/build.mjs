@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import {
   buildNodeEsmEntry,
   copyDirectory,
+  pruneUnreferencedChunks,
 } from "../../../scripts/build-utils.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -98,5 +99,19 @@ await copyBuildOutput({
   label: "@bb/host-daemon dist",
   to: resolve(packageRoot, "host-daemon", "dist"),
 });
+// The bb CLI is code-split into host-daemon/dist/bb-chunks. A turbo cache hit
+// restores apps/host-daemon/dist without clearing it first, so the copy can
+// carry an earlier build's hashed chunks; ship only the ones `bb` reaches.
+const bbChunkDir = resolve(packageRoot, "host-daemon", "dist", "bb-chunks");
+await assertPathExists(bbChunkDir, "bundled bb CLI chunks");
+const prunedChunks = await pruneUnreferencedChunks({
+  chunkDir: bbChunkDir,
+  entry: resolve(packageRoot, "host-daemon", "dist", "bb"),
+});
+if (prunedChunks.length > 0) {
+  process.stdout.write(
+    `bb-app: pruned ${prunedChunks.length} stale bb CLI chunk file(s)\n`,
+  );
+}
 
 process.stdout.write("bb-app: built package assets\n");

@@ -1,4 +1,4 @@
-import { chmod, cp, rename, rm } from "node:fs/promises";
+import { chmod, cp, readdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { build } from "esbuild";
 
@@ -95,6 +95,69 @@ export async function finalizeSplitOutput(outfile) {
   if (writtenEntry !== outfile) {
     await rename(writtenEntry, outfile);
   }
+}
+
+/**
+ * A quoted relative `./x.js` or `../x.js` specifier. esbuild emits every
+ * chunk reference this way, minified or not: `from"./chunk-X.js"`,
+ * `import("./chunk-X.js")`, `export{}from"./chunk-X.js"`, `import"./chunk-X.js"`.
+ */
+const RELATIVE_JS_SPECIFIER = /["'](\.\.?\/[^"']+\.js)["']/g;
+
+/**
+ * Delete every file in `chunkDir` that the split bundle rooted at `entry`
+ * does not reach through its chunk imports.
+ *
+ * The build removes the chunk directory before writing a new one, but a
+ * turbo cache hit restores `dist/**` over whatever is on disk without
+ * clearing it, so build A -> build B -> cache-hit restore of A leaves both
+ * generations' content-hashed chunks side by side. The entry only references
+ * its own hashes, so the extra files are dead weight, but packaging copies
+ * the directory wholesale and `npm pack` ships everything under it. Pruning
+ * at packaging time makes a locally packed tarball match a clean build.
+ *
+ * Returns the paths that were removed.
+ */
+export async function pruneUnreferencedChunks({ chunkDir, entry }) {
+  const resolvedChunkDir = path.resolve(chunkDir);
+  const chunkFiles = new Set(
+    (await readdir(resolvedChunkDir, { withFileTypes: true }))
+      .filter((dirent) => dirent.isFile())
+      .map((dirent) => path.join(resolvedChunkDir, dirent.name)),
+  );
+
+  const reachable = new Set();
+  const queue = [path.resolve(entry)];
+  while (queue.length > 0) {
+    const file = queue.pop();
+    if (reachable.has(file)) {
+      continue;
+    }
+    reachable.add(file);
+    const source = await readFile(file, "utf8");
+    for (const [, specifier] of source.matchAll(RELATIVE_JS_SPECIFIER)) {
+      // Only chunk files are followed; any other quoted `./x.js` literal in
+      // the bundle (a scaffold template, say) resolves outside the set.
+      const target = path.resolve(path.dirname(file), specifier);
+      if (chunkFiles.has(target) && !reachable.has(target)) {
+        queue.push(target);
+      }
+    }
+  }
+
+  const removed = [];
+  for (const chunkFile of chunkFiles) {
+    // A sourcemap lives or dies with the chunk it describes.
+    const owner = chunkFile.endsWith(".map")
+      ? chunkFile.slice(0, -".map".length)
+      : chunkFile;
+    if (reachable.has(owner)) {
+      continue;
+    }
+    await rm(chunkFile);
+    removed.push(chunkFile);
+  }
+  return removed;
 }
 
 export async function buildNodeEsmEntry({

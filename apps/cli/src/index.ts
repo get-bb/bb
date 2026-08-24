@@ -3,13 +3,13 @@ import { Command } from "commander";
 import { maybeReexecViaBbCli } from "./bb-cli-reexec.js";
 import {
   CORE_COMMAND_GROUPS,
+  type CommandGroupDeps,
   pluginProxyCandidate,
   selectCommandGroups,
 } from "./command-groups.js";
 import { resolveBbCliVersion } from "./version.js";
-// Type-only: the module itself is `import()`-ed in main() so that the config
+// Type-only: context-env itself is `import()`-ed in main() so that the config
 // and domain schemas behind it stay out of the `bb --version` startup graph.
-import type { CommandGroupDeps } from "./command-groups.js";
 import type { CliRuntimeContext } from "./context-env.js";
 
 // Hop to the daemon-managed binary when BB_CLI is set (agent shell env). Must

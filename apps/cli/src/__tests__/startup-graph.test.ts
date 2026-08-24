@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { CORE_COMMAND_GROUPS } from "../command-groups.js";
+import { readBbAppVersion } from "./bb-app-version.js";
 
 /**
  * Guards the mechanism behind `bb` startup time: the entry's static import
@@ -13,13 +15,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * — is `import()`-ed only when that command runs. The built CLI is
  * code-split along those `import()` boundaries, so a single stray static
  * import anywhere on the entry's static path pulls the whole subtree into
- * the entry chunk and every invocation pays for it again. Running the
- * sources under tsx with a resolve hook records which modules Node actually
- * loaded.
+ * the entry chunk and every invocation pays for it again. A resolve hook
+ * records which modules Node actually loaded, once for the sources under
+ * tsx (real module boundaries whatever the build does) and once for the
+ * turbo-built dist/index.js (the split layout itself: a single-file bundle
+ * runs every command correctly but evaluates all of it on each start).
  */
 const execFileAsync = promisify(execFile);
 const cliRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const repoRoot = resolve(cliRoot, "..", "..");
 
 /**
  * The hook appends every resolved module URL to the log file named by the
@@ -49,6 +52,12 @@ register(new URL("./resolve-hooks.mjs", import.meta.url), {
 /** Env the child must not inherit: a re-exec hop or a version override. */
 const STRIPPED_ENV_KEYS = new Set(["BB_CLI", "BB_APP_VERSION"]);
 
+/**
+ * `source` runs src/index.ts under tsx; `dist` runs the dist/index.js that
+ * `@bb/cli#build` wrote (turbo runs it before `@bb/cli#test`).
+ */
+type CliEntry = "source" | "dist";
+
 interface CliRun {
   stdout: string;
   /** Every module URL Node resolved while the command ran. */
@@ -70,8 +79,11 @@ describe("bb startup module graph", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  async function runCli(args: string[]): Promise<CliRun> {
-    const logPath = join(tempDir, `${args.join("_").replace(/\W/g, "_")}.log`);
+  async function runCli(entry: CliEntry, args: string[]): Promise<CliRun> {
+    const logPath = join(
+      tempDir,
+      `${entry}_${args.join("_").replace(/\W/g, "_")}.log`,
+    );
     await writeFile(logPath, "");
     const env: NodeJS.ProcessEnv = Object.fromEntries(
       Object.entries(process.env).filter(
@@ -80,17 +92,20 @@ describe("bb startup module graph", () => {
     );
     env.BB_CLI_REEXEC = "1";
     env.BB_STARTUP_GRAPH_LOG = logPath;
+    const entryArgs =
+      entry === "source"
+        ? [
+            "--conditions=source",
+            "--import",
+            "tsx",
+            "--import",
+            registerHooksPath,
+            "src/index.ts",
+          ]
+        : ["--import", registerHooksPath, "dist/index.js"];
     const { stdout } = await execFileAsync(
       process.execPath,
-      [
-        "--conditions=source",
-        "--import",
-        "tsx",
-        "--import",
-        registerHooksPath,
-        "src/index.ts",
-        ...args,
-      ],
+      [...entryArgs, ...args],
       { cwd: cliRoot, env },
     );
     const urls = (await readFile(logPath, "utf8"))
@@ -103,26 +118,8 @@ describe("bb startup module graph", () => {
     return run.urls.filter((url) => url.includes(fragment));
   }
 
-  async function readBbAppVersion(): Promise<string> {
-    const packageJson: unknown = JSON.parse(
-      await readFile(
-        join(repoRoot, "packages", "bb-app", "package.json"),
-        "utf8",
-      ),
-    );
-    if (
-      typeof packageJson === "object" &&
-      packageJson !== null &&
-      "version" in packageJson &&
-      typeof packageJson.version === "string"
-    ) {
-      return packageJson.version;
-    }
-    throw new Error("packages/bb-app/package.json has no version");
-  }
-
   it("answers --version from commander and node builtins alone", async () => {
-    const run = await runCli(["--version"]);
+    const run = await runCli("source", ["--version"]);
 
     expect(run.stdout.trim()).toBe(await readBbAppVersion());
 
@@ -151,7 +148,7 @@ describe("bb startup module graph", () => {
   }, 30_000);
 
   it("loads only the named command group for `bb thread`", async () => {
-    const run = await runCli(["thread", "--help"]);
+    const run = await runCli("source", ["thread", "--help"]);
 
     expect(run.stdout).toContain("Usage: bb thread");
     expect(loaded(run, "/apps/cli/src/commands/thread/index.ts")).toHaveLength(
@@ -170,4 +167,55 @@ describe("bb startup module graph", () => {
       expect(loaded(run, fragment), fragment).toEqual([]);
     }
   }, 30_000);
+
+  describe("turbo-built dist/index.js", () => {
+    // esbuild names a lazily imported module's chunk `<module>-<hash>.js`
+    // (a group's `index.ts` takes its directory name) and the shared pieces
+    // it hoists `chunk-<hash>.js`.
+    const chunkDir = "/apps/cli/dist/index-chunks/";
+
+    beforeAll(async () => {
+      try {
+        await access(join(cliRoot, "dist", "index.js"));
+      } catch {
+        throw new Error(
+          "apps/cli/dist/index.js is missing: run `pnpm exec turbo run build --filter=@bb/cli` (turbo does this before @bb/cli#test)",
+        );
+      }
+    });
+
+    it("answers --version from the entry and its shared chunks alone", async () => {
+      const run = await runCli("dist", ["--version"]);
+
+      expect(run.stdout.trim()).toBe(await readBbAppVersion());
+      expect(loaded(run, "/apps/cli/dist/index.js")).toHaveLength(1);
+
+      // A build without `--split` resolves no chunk at all: every command
+      // then evaluates the whole bundle again, which is what this layout
+      // exists to avoid.
+      const chunks = loaded(run, chunkDir);
+      expect(chunks).not.toHaveLength(0);
+      // Only the shared chunks (version.ts and esbuild's module runtime): no
+      // command group and no context-env chunk.
+      for (const url of chunks) {
+        expect(url).toMatch(/\/index-chunks\/chunk-[A-Z0-9]+\.js$/);
+      }
+    }, 30_000);
+
+    it("loads only the thread chunk for `bb thread`", async () => {
+      const run = await runCli("dist", ["thread", "--help"]);
+
+      expect(run.stdout).toContain("Usage: bb thread");
+      expect(loaded(run, `${chunkDir}thread-`)).toHaveLength(1);
+
+      // Every other group's chunk, the plugin proxy and mime-types stay on
+      // disk unread. (`plugin-` also covers `plugin-cli-proxy-`.)
+      const otherGroups = CORE_COMMAND_GROUPS.map((group) => group.name).filter(
+        (name) => name !== "thread",
+      );
+      for (const name of [...otherGroups, "plugin-cli-proxy", "mime-types"]) {
+        expect(loaded(run, `${chunkDir}${name}-`), name).toEqual([]);
+      }
+    }, 30_000);
+  });
 });

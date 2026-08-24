@@ -2127,6 +2127,14 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
     { label: "host daemon entry", path: context.daemonEntry },
     { label: "bundled bb CLI", path: join(context.daemonBundleDir, "bb") },
     {
+      // The CLI entry is code-split: it imports its shared chunks statically
+      // and each command group on demand from this directory, so without it
+      // even `bb --version` dies in Node's ESM loader before the CLI's own
+      // error handling runs.
+      label: "bundled bb CLI chunks",
+      path: join(context.daemonBundleDir, "bb-chunks"),
+    },
+    {
       label: "provider bridge worker",
       path: join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
     },
@@ -2142,7 +2150,7 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
   ];
 }
 
-function assertBbAppArtifacts(context: BbAppStartContext): void {
+export function assertBbAppArtifacts(context: BbAppStartContext): void {
   const missingArtifact = requiredArtifactPaths(context).find(
     (artifact) => !existsSync(artifact.path),
   );

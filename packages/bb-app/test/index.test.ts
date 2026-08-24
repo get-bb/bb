@@ -1,5 +1,12 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import {
   createServer,
   type IncomingMessage,
@@ -13,6 +20,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { resolvePortFromEnv } from "@bb/config/runtime";
 import {
+  assertBbAppArtifacts,
   completeFullStackSupervision,
   createDaemonEnv,
   createHostEnrollKeyRequestBody,
@@ -2140,6 +2148,42 @@ describe("bb-app launcher", () => {
     expect(metadata.files).toContain("host-daemon/dist/bb");
     expect(metadata.files).toContain("host-daemon/dist/bb-chunks");
     expect(metadata.os).toEqual(["darwin", "linux"]);
+  });
+
+  it("requires the bundled CLI's chunk directory next to host-daemon/dist/bb", () => {
+    // A packaged layout (entrypoint under <packageRoot>/dist) with every
+    // artifact the launcher checked before the CLI was code-split. Without
+    // bb-chunks the artifact check used to pass and `bb --version` then died
+    // in Node's ESM loader with a raw ERR_MODULE_NOT_FOUND stack.
+    const packageRoot = mkdtempSync(join(tmpdir(), "bb-app-artifacts-"));
+    try {
+      const context = resolveBbAppStartContext({
+        entrypointUrl: pathToFileURL(join(packageRoot, "dist", "bb.js")).href,
+        env: {},
+        homeDir: join(packageRoot, "home"),
+      });
+      for (const artifact of [
+        context.serverEntry,
+        context.daemonEntry,
+        join(context.daemonBundleDir, "bb"),
+        join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
+        join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
+        join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
+        join(context.appDistDir, "index.html"),
+      ]) {
+        mkdirSync(dirname(artifact), { recursive: true });
+        writeFileSync(artifact, "");
+      }
+
+      expect(() => assertBbAppArtifacts(context)).toThrow(
+        /^Missing bundled bb CLI chunks at .*\/host-daemon\/dist\/bb-chunks\. Rebuild bb-app/,
+      );
+
+      mkdirSync(join(context.daemonBundleDir, "bb-chunks"));
+      expect(() => assertBbAppArtifacts(context)).not.toThrow();
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
   });
 
   it("keeps the desktop app surface the desktop shell passes to the server", () => {
