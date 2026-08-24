@@ -58,5 +58,9 @@ describe("CORE_COMMAND_GROUPS", () => {
     expect(program.commands.flatMap((command) => command.aliases())).toEqual(
       [],
     );
-  });
+    // Loading every group is the point of this guard, so it pays the import
+    // cost of all 17 module graphs at once (`plugin` alone pulls the plugin
+    // build toolchain and the scaffold templates). The shipped CLI never does
+    // this; a contended CI runner needs more than the 5s default.
+  }, 30_000);
 });
