@@ -20,6 +20,8 @@ interface BuildThreadMentionSuggestionsArgs {
 interface RankedThreadMentionSuggestion {
   suggestion: ThreadMentionSuggestion;
   relationRank: number;
+  activityRank: number;
+  attentionBucket: number;
   score: number;
 }
 
@@ -35,6 +37,16 @@ const THREAD_RELATION_RANK = {
   sameProject: 2,
   unrelated: 3,
 };
+
+const ATTENTION_BUCKET_MS = 60 * 60 * 1000;
+
+function getThreadActivityRank(thread: Thread): number {
+  return thread.status === "active" ||
+    thread.status === "starting" ||
+    thread.status === "stopping"
+    ? 0
+    : 1;
+}
 
 function getThreadDisplayTitle(thread: Thread): string | undefined {
   const title = thread.title?.trim();
@@ -147,6 +159,12 @@ function compareRankedThreadMentionSuggestions(
   if (left.relationRank !== right.relationRank) {
     return left.relationRank - right.relationRank;
   }
+  if (left.activityRank !== right.activityRank) {
+    return left.activityRank - right.activityRank;
+  }
+  if (left.attentionBucket !== right.attentionBucket) {
+    return right.attentionBucket - left.attentionBucket;
+  }
   const leftTitle = left.suggestion.title ?? "";
   const rightTitle = right.suggestion.title ?? "";
   return (
@@ -182,6 +200,10 @@ export function buildThreadMentionSuggestions(
         args.projectNamesById,
       ),
       relationRank: getThreadRelationRank(match.item, context),
+      activityRank: getThreadActivityRank(match.item),
+      attentionBucket: Math.floor(
+        match.item.latestAttentionAt / ATTENTION_BUCKET_MS,
+      ),
       score: match.score,
     }))
     .sort(compareRankedThreadMentionSuggestions)

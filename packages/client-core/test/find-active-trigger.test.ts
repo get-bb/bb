@@ -86,6 +86,30 @@ describe("findActiveTrigger", () => {
     ).toBeNull();
   });
 
+  it("keeps spaces and whitespace verbatim in a multiword mention query", () => {
+    const text = "Ask @prompt  mention ";
+    expect(
+      findActiveTrigger(editorWithText(text), [{ char: "@", kind: "mention" }]),
+    ).toEqual({
+      char: "@",
+      kind: "mention",
+      query: "prompt  mention ",
+      from: "Ask ".length,
+      to: text.length,
+    });
+  });
+
+  it.each(["!", "?", ",", ";", ")", "]", "}", "\n"])(
+    "ends a mention query at %j",
+    (punctuation) => {
+      expect(
+        findActiveTrigger(editorWithText(`Ask @prompt${punctuation}`), [
+          { char: "@", kind: "mention" },
+        ]),
+      ).toBeNull();
+    },
+  );
+
   it("does not treat dollar as an active command trigger", () => {
     expect(
       findActiveTrigger(editorWithText("$openai-docs"), [

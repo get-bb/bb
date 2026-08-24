@@ -43,7 +43,9 @@ function triggerPattern(
 ): RegExp {
   const escapedChar = escapeRegexLiteral(trigger.char);
   const queryClass =
-    trigger.kind === "mention" ? `[^\\s${escapedChar}]*` : "\\S*";
+    trigger.kind === "mention"
+      ? `[^\\r\\n${escapedChar},!?;\\)\\]\\}]*`
+      : "\\S*";
   // In a windowed scan the window start is not the start of input, so the
   // `^` alternative must not fire there; a real trigger inside the window
   // always carries its boundary char (the window includes one extra char
