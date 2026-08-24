@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -13,7 +14,10 @@ import {
   type Range,
   type Virtualizer,
 } from "@tanstack/react-virtual";
-import type { TimelineWindowedItemsProps } from "./TimelineWindowedItemsLoader.js";
+import {
+  TimelineWindowingGeometryRevisionContext,
+  type TimelineWindowedItemsProps,
+} from "./TimelineWindowedItemsLoader.js";
 
 export type { TimelineWindowedItemRenderState } from "./TimelineWindowedItemsLoader.js";
 
@@ -95,10 +99,12 @@ export function TimelineWindowedItems({
 }: TimelineWindowedItemsProps) {
   const configured =
     enabled && itemKeys.length >= minItemCount && getScrollElement !== null;
+  const geometryRevision = useContext(TimelineWindowingGeometryRevisionContext);
   const [scrollRootUsable, setScrollRootUsable] = useState(true);
   const [scrollMargin, setScrollMargin] = useState(0);
   const [interactionPins, setInteractionPins] = useState<readonly string[]>([]);
   const containerElementRef = useRef<HTMLDivElement>(null);
+  const scrollGeometryTriggersRef = useRef<string | null>(null);
   const scrollSampleRef = useRef<ScrollSample>({
     at: 0,
     fast: false,
@@ -264,8 +270,21 @@ export function TimelineWindowedItems({
   }, [configured, resolvedGetScrollElement, updateScrollGeometry]);
 
   // A nested list's offset can change when its owning row expands or reflows
-  // without resizing the scroll root itself. Re-read after those React commits.
-  useLayoutEffect(updateScrollGeometry);
+  // without resizing the scroll root itself. Expand/collapse paths bump the
+  // geometry revision for those commits, and row count or root usability
+  // changes reposition the container, so re-read after exactly those commits.
+  // The previous depless form re-read after every commit — a forced layout
+  // per streaming delta. The ref guard leaves the mount read (and the
+  // missing-scroll-element retry) to the effect above, keeping one geometry
+  // read per trigger.
+  useLayoutEffect(() => {
+    const triggers = `${geometryRevision}:${itemKeys.length}:${scrollRootUsable}`;
+    if (scrollGeometryTriggersRef.current === triggers) return;
+    const isMountRead = scrollGeometryTriggersRef.current === null;
+    scrollGeometryTriggersRef.current = triggers;
+    if (isMountRead) return;
+    updateScrollGeometry();
+  }, [geometryRevision, itemKeys.length, scrollRootUsable, updateScrollGeometry]);
 
   const retainInteractedItem = useCallback(
     (event: SyntheticEvent<HTMLDivElement>) => {

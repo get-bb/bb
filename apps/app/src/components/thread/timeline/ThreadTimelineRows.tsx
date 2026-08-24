@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -133,6 +134,8 @@ import {
 } from "@/components/ui/markdown-message-directives.js";
 import {
   TimelineWindowedItemsLoader,
+  TimelineWindowingGeometryInvalidateContext,
+  TimelineWindowingGeometryRevisionContext,
   TimelineWindowingMeasurementsContext,
   TimelineWindowingScrollRootContext,
   type TimelineWindowedItemRenderState,
@@ -2234,6 +2237,13 @@ function ThreadTimelineRowsComponent(props: ThreadTimelineRowsProps) {
 function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   const getViewRows = useTimelineViewRowsCache();
   const [windowingMeasurements] = useState(() => new Map<string, number>());
+  // Expand/collapse commits can move a windowed list within its scroll root
+  // without resizing the root; the bumped revision tells every mounted
+  // windowed list (top-level and nested) to re-read scroll geometry.
+  const [windowingGeometryRevision, invalidateWindowingGeometry] = useReducer(
+    (revision: number) => revision + 1,
+    0,
+  );
   const rows = useMemo(
     () => getViewRows(props.timelineRows),
     [getViewRows, props.timelineRows],
@@ -2504,29 +2514,39 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
                     <TimelineWindowingEnabledContext.Provider
                       value={props.timelineWindowingEnabled ?? false}
                     >
-                      <AutoHeightContainer snapRevision={heightSnapRevision}>
-                        <TimelineRowsList
-                          hasOlderTimelineRows={props.hasOlderTimelineRows}
-                          isLoadingOlderTimelineRows={
-                            props.isLoadingOlderTimelineRows
-                          }
-                          navigationTargetRowId={
-                            props.timelineNavigationTargetRowId
-                          }
-                          onLoadOlderRows={props.onLoadOlderRows}
-                          rows={rows}
-                          scopeActive={scopeActive}
-                          showAssistantMessageActions={true}
-                          compactActivityIntents={false}
-                          spacing="top-level"
-                          unreadDividerAutoScroll={
-                            props.unreadDividerAutoScroll ?? true
-                          }
-                          unreadDividerPlacement={
-                            props.unreadDividerPlacement ?? null
-                          }
-                        />
-                      </AutoHeightContainer>
+                      <TimelineWindowingGeometryRevisionContext.Provider
+                        value={windowingGeometryRevision}
+                      >
+                        <TimelineWindowingGeometryInvalidateContext.Provider
+                          value={invalidateWindowingGeometry}
+                        >
+                          <AutoHeightContainer
+                            snapRevision={heightSnapRevision}
+                          >
+                            <TimelineRowsList
+                              hasOlderTimelineRows={props.hasOlderTimelineRows}
+                              isLoadingOlderTimelineRows={
+                                props.isLoadingOlderTimelineRows
+                              }
+                              navigationTargetRowId={
+                                props.timelineNavigationTargetRowId
+                              }
+                              onLoadOlderRows={props.onLoadOlderRows}
+                              rows={rows}
+                              scopeActive={scopeActive}
+                              showAssistantMessageActions={true}
+                              compactActivityIntents={false}
+                              spacing="top-level"
+                              unreadDividerAutoScroll={
+                                props.unreadDividerAutoScroll ?? true
+                              }
+                              unreadDividerPlacement={
+                                props.unreadDividerPlacement ?? null
+                              }
+                            />
+                          </AutoHeightContainer>
+                        </TimelineWindowingGeometryInvalidateContext.Provider>
+                      </TimelineWindowingGeometryRevisionContext.Provider>
                     </TimelineWindowingEnabledContext.Provider>
                   </TimelineWindowingMeasurementsContext.Provider>
                   {hasSelectionActions ? (

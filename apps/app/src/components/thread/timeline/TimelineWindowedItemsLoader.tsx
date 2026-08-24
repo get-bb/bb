@@ -24,6 +24,22 @@ export const TimelineWindowingMeasurementsContext = createContext<Map<
   number
 > | null>(null);
 
+/**
+ * Bumped after a commit that can move a windowed list within its scroll root
+ * without resizing the root (a row above it expanding or collapsing).
+ * Windowed lists re-read their scroll geometry when it changes.
+ */
+export const TimelineWindowingGeometryRevisionContext = createContext(0);
+
+/**
+ * Stable notifier for the revision context above. Expand/collapse paths call
+ * it in the commit that moves content so every mounted windowed list
+ * re-reads geometry before paint.
+ */
+export const TimelineWindowingGeometryInvalidateContext = createContext<
+  () => void
+>(() => {});
+
 export interface TimelineWindowedItemRenderState {
   isRealized: boolean;
   itemIndex: number | undefined;

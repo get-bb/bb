@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -240,6 +240,75 @@ describe("ThreadTimelineRows windowing experiment", () => {
         element: target,
         options: { block: "center" },
       }),
+    );
+  });
+
+  it("re-reads windowing scroll geometry when a row expands", async () => {
+    const scrollElement = document.createElement("div");
+    scrollElement.setAttribute("data-test-main-scroll", "");
+    Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
+    Object.defineProperty(scrollElement, "scrollHeight", { value: 8_000 });
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    const rows = [
+      ...Array.from({ length: 80 }, (_, index) =>
+        conversationRow({
+          id: `message-${index}`,
+          role: index % 2 === 0 ? "user" : "assistant",
+          sourceSeqEnd: index + 1,
+          sourceSeqStart: index + 1,
+          text: `Message ${index}`,
+        }),
+      ),
+      delegationRow({
+        id: "expandable-delegation",
+        output: "Delegation output.",
+        sourceSeqEnd: 81,
+        sourceSeqStart: 81,
+      }),
+    ];
+    const queryClient = new QueryClient();
+    const view = render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <BottomAnchorContext.Provider value={bottomAnchor}>
+            <ThreadTimelineRows
+              timelineRows={rows}
+              timelineWindowingEnabled
+              threadRuntimeDisplayStatus="idle"
+              workspaceRootPath={undefined}
+            />
+          </BottomAnchorContext.Provider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+    const toggle = view.container.querySelector<HTMLButtonElement>(
+      '[data-timeline-row-id="expandable-delegation"] button[aria-expanded]',
+    );
+    expect(toggle).not.toBeNull();
+
+    const boundingRectSpy = vi.mocked(
+      HTMLElement.prototype.getBoundingClientRect,
+    );
+    const scrollElementReads = () =>
+      boundingRectSpy.mock.contexts.filter(
+        (context) => context === scrollElement,
+      ).length;
+    const settledReads = scrollElementReads();
+
+    // Expanding moves every windowed list below the row within the scroll
+    // root without resizing the root; the expansion path must bump the
+    // geometry revision so the windowed list re-reads its scroll margin.
+    fireEvent.click(toggle as HTMLButtonElement);
+
+    await waitFor(() =>
+      expect(scrollElementReads()).toBeGreaterThan(settledReads),
     );
   });
 });

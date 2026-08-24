@@ -1,7 +1,10 @@
 import {
   memo,
   useCallback,
+  useContext,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type CSSProperties,
   type FocusEvent,
@@ -29,6 +32,7 @@ import {
   type TimelineTitleActionResolver,
   type TimelineTitleLinkResolver,
 } from "./TimelineTitleView.js";
+import { TimelineWindowingGeometryInvalidateContext } from "./TimelineWindowedItemsLoader.js";
 
 interface ExpandableTimelineRowProps {
   autoExpanded?: boolean;
@@ -125,6 +129,18 @@ function ExpandableTimelineRowComponent({
       setCollapsedPreviewActive(false);
     }
   }, [isExpanded]);
+  const invalidateWindowingGeometry = useContext(
+    TimelineWindowingGeometryInvalidateContext,
+  );
+  const previousIsExpandedRef = useRef(isExpanded);
+  // Expanding or collapsing this row moves every windowed list below it (and
+  // any nested list inside it) within the shared scroll root without resizing
+  // the root; tell mounted windowed lists to re-read scroll geometry.
+  useLayoutEffect(() => {
+    if (previousIsExpandedRef.current === isExpanded) return;
+    previousIsExpandedRef.current = isExpanded;
+    invalidateWindowingGeometry();
+  }, [invalidateWindowingGeometry, isExpanded]);
   const horizontalPaddingClass =
     timelineRowHorizontalPaddingClassName(horizontalPadding);
   const handleToggle = useCallback((): void => {

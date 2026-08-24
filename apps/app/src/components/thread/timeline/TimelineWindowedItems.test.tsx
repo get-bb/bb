@@ -13,12 +13,17 @@ import {
   TimelineWindowedItems,
   type TimelineWindowedItemRenderState,
 } from "./TimelineWindowedItems.js";
-import { TimelineWindowedItemsLoader } from "./TimelineWindowedItemsLoader.js";
+import {
+  TimelineWindowedItemsLoader,
+  TimelineWindowingGeometryRevisionContext,
+} from "./TimelineWindowedItemsLoader.js";
 
 const ITEM_KEYS = Array.from({ length: 100 }, (_, index) => `row-${index}`);
 
 let scrollElement: HTMLDivElement;
 let itemHeights = new Map<number, number>();
+/** Height of content above the windowed container inside the scroll root. */
+let spacerOffsetTop = 0;
 
 function rect(top: number, height: number): DOMRect {
   return {
@@ -55,42 +60,64 @@ function renderWindowedItems(options?: {
     configurable: true,
     value: options?.clientHeight ?? 96,
   });
-  return {
-    ...render(
+  // Stable identities so a rerender only commits what a test changes.
+  const estimateItemHeight = () => 32;
+  const getScrollElement = () => scrollElement;
+  const renderItem = (
+    index: number,
+    state: TimelineWindowedItemRenderState,
+  ) => (
+    <div
+      key={ITEM_KEYS[index]}
+      ref={state.itemRef}
+      data-index={state.itemIndex}
+      data-testid={`wrapper-${index}`}
+      data-timeline-window-key={ITEM_KEYS[index]}
+      data-timeline-windowed-realized={String(state.isRealized)}
+      style={state.itemStyle}
+    >
+      {state.isRealized ? (
+        <button type="button" data-testid={`content-${index}`}>
+          row {index}
+        </button>
+      ) : null}
+    </div>
+  );
+  const buildElement = (geometryRevision: number) => (
+    <TimelineWindowingGeometryRevisionContext.Provider value={geometryRevision}>
       <TimelineWindowedItems
         enabled={options?.enabled ?? true}
         alwaysMountedKeys={options?.alwaysMountedKeys}
-        estimateItemHeight={() => 32}
+        estimateItemHeight={estimateItemHeight}
         gap={0}
-        getScrollElement={() => scrollElement}
+        getScrollElement={getScrollElement}
         itemKeys={ITEM_KEYS}
         measurements={measurements}
-        renderItem={(index: number, state: TimelineWindowedItemRenderState) => (
-          <div
-            key={ITEM_KEYS[index]}
-            ref={state.itemRef}
-            data-index={state.itemIndex}
-            data-testid={`wrapper-${index}`}
-            data-timeline-window-key={ITEM_KEYS[index]}
-            data-timeline-windowed-realized={String(state.isRealized)}
-            style={state.itemStyle}
-          >
-            {state.isRealized ? (
-              <button type="button" data-testid={`content-${index}`}>
-                row {index}
-              </button>
-            ) : null}
-          </div>
-        )}
-      />,
-      { container: scrollElement },
-    ),
+        renderItem={renderItem}
+      />
+    </TimelineWindowingGeometryRevisionContext.Provider>
+  );
+  let geometryRevision = 0;
+  const view = render(buildElement(geometryRevision), {
+    container: scrollElement,
+  });
+  return {
+    ...view,
     measurements,
+    /** Commit with fresh element identity but no geometry trigger. */
+    rerenderWithoutGeometryTrigger: () => {
+      view.rerender(buildElement(geometryRevision));
+    },
+    rerenderWithGeometryRevision: (revision: number) => {
+      geometryRevision = revision;
+      view.rerender(buildElement(revision));
+    },
   };
 }
 
 beforeEach(() => {
   itemHeights = new Map();
+  spacerOffsetTop = 0;
   scrollElement = document.createElement("div");
   document.body.append(scrollElement);
   Object.defineProperty(scrollElement, "clientWidth", {
@@ -110,7 +137,7 @@ beforeEach(() => {
       if (this === scrollElement) return rect(0, scrollElement.clientHeight);
       if (this.hasAttribute("data-timeline-virtual-spacer")) {
         return rect(
-          -scrollElement.scrollTop,
+          spacerOffsetTop - scrollElement.scrollTop,
           Number.parseFloat(this.style.height) || 0,
         );
       }
@@ -254,5 +281,45 @@ describe("TimelineWindowedItems", () => {
     await waitFor(() =>
       expect(screen.getAllByTestId(/^content-/)).toHaveLength(100),
     );
+  });
+
+  it("re-reads scroll geometry only when a geometry trigger changes", async () => {
+    const view = renderWindowedItems();
+    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
+
+    const boundingRectSpy = vi.mocked(
+      HTMLElement.prototype.getBoundingClientRect,
+    );
+    const scrollElementReads = () =>
+      boundingRectSpy.mock.contexts.filter(
+        (context) => context === scrollElement,
+      ).length;
+    const settledReads = scrollElementReads();
+
+    // A commit without a geometry trigger (a streaming delta that only
+    // mutates row content) must not force a layout read.
+    view.rerenderWithoutGeometryTrigger();
+    expect(scrollElementReads()).toBe(settledReads);
+
+    // An expand/collapse path bumping the geometry revision costs exactly
+    // one read.
+    view.rerenderWithGeometryRevision(1);
+    expect(scrollElementReads()).toBe(settledReads + 1);
+  });
+
+  it("re-reads scroll geometry when the owning row's expansion moves a nested list", async () => {
+    scrollElement.scrollTop = 640;
+    const view = renderWindowedItems();
+
+    await waitFor(() => expect(screen.getByTestId("content-20")).toBeTruthy());
+    expect(screen.queryByTestId("wrapper-2")).toBeNull();
+
+    // The owning row expanded: 320px of content appeared above the nested
+    // list without resizing the scroll root, and the expansion path bumped
+    // the geometry revision.
+    spacerOffsetTop = 320;
+    view.rerenderWithGeometryRevision(1);
+
+    await waitFor(() => expect(screen.getByTestId("wrapper-2")).toBeTruthy());
   });
 });
