@@ -136,7 +136,7 @@ vi.mock("./cache.js", async () => {
         _namespace: string,
         _ctx: ExecutionContext,
         fetchOrigin: () => Promise<Response>,
-      ) => fetchOrigin(),
+      ) => ({ cacheable: false, response: await fetchOrigin() }),
     ),
   };
 });
@@ -851,6 +851,31 @@ describe("gate worker share hosts", () => {
       "__Secure-better-auth.session_token=session-token; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
     );
   });
+
+  it.each(["hit", "miss"] as const)(
+    "does not renew an owner session on an edge-cache %s",
+    async (cacheStatus) => {
+      mockRefreshSession.mockResolvedValue(true);
+      mockServeWithCache.mockResolvedValueOnce({
+        cacheable: true,
+        response: new Response("cached asset", {
+          headers: { "x-bb-cache": cacheStatus },
+        }),
+      });
+      const { env, ctx } = makeEnv(() => new Response("origin"));
+
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", "/assets/app.js"),
+        env as never,
+        ctx,
+      );
+
+      expect(mockRefreshSession).not.toHaveBeenCalled();
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(response.headers.get("x-bb-cache")).toBe(cacheStatus);
+      await expect(response.text()).resolves.toBe("cached asset");
+    },
+  );
 
   it("reissues the local Cloud cookie without the Secure attribute", async () => {
     mockRefreshSession.mockResolvedValue(true);

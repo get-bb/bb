@@ -504,24 +504,6 @@ export default {
     const doRequest = requestForTunnelDo(request, target, "session");
     const isWebSocketUpgrade =
       request.headers.get("upgrade")?.toLowerCase() === "websocket";
-    const refreshedSessionCookie =
-      cookie !== null &&
-      sessionUserId === resolved.userId &&
-      !isWebSocketUpgrade &&
-      (await refreshSessionCookie(cookie, env.BETTER_AUTH_SECRET, db))
-        ? cookie
-        : null;
-    const finish = (response: Response): Response =>
-      refreshedSessionCookie !== null
-        ? withRefreshedSessionCookie(
-            response,
-            runtime.sessionCookieName,
-            refreshedSessionCookie,
-            runtime.baseDomain,
-            !runtime.localCloud,
-          )
-        : response;
-
     // WebSocket upgrades (bb's /ws, terminals) can't be cached — proxy directly.
     if (isWebSocketUpgrade) {
       return stub.fetch(doRequest);
@@ -529,12 +511,13 @@ export default {
     // Everything else: serve from the edge cache when the origin allows it,
     // otherwise proxy through the tunnel. Namespace by full host label so a
     // share response never collides with bare-label app assets.
-    const response = await serveWithCache(
+    const cached = await serveWithCache(
       request,
       cacheNamespace(routingKey, target),
       ctx,
       () => stub.fetch(doRequest),
     );
+    let response = cached.response;
     // Tunnel down + a browser navigation → the styled offline page, using the
     // last_seen_at already resolved for this server. API/asset/fetch requests
     // (no text/html Accept) keep the DO's plain 503 so clients handle it.
@@ -543,15 +526,31 @@ export default {
       response.headers.get(TUNNEL_OFFLINE_HEADER) === "1" &&
       wantsHtml(request)
     ) {
-      return finish(
-        offlinePage(
-          resolved.kind === "server"
-            ? resolved.server.lastSeenAt
-            : resolved.machine.lastSeenAt,
-          resolved.kind,
-        ),
+      response = offlinePage(
+        resolved.kind === "server"
+          ? resolved.server.lastSeenAt
+          : resolved.machine.lastSeenAt,
+        resolved.kind,
       );
     }
-    return finish(response);
+
+    // Edge-cacheable responses do not count as session activity. Refresh both
+    // the D1 row and browser cookie only on a non-cacheable HTTP response so
+    // their expiry stays in sync without rebuilding a pre-encoded cache hit.
+    if (
+      !cached.cacheable &&
+      cookie !== null &&
+      sessionUserId === resolved.userId &&
+      (await refreshSessionCookie(cookie, env.BETTER_AUTH_SECRET, db))
+    ) {
+      return withRefreshedSessionCookie(
+        response,
+        runtime.sessionCookieName,
+        cookie,
+        runtime.baseDomain,
+        !runtime.localCloud,
+      );
+    }
+    return response;
   },
 } satisfies ExportedHandler<Env>;

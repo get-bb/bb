@@ -78,6 +78,8 @@ export default {
       return new Response(cached.body, cached);
     }
 
-    return serveWithCache(request, NAMESPACE, ctx, () => stub.fetch(request));
+    return (
+      await serveWithCache(request, NAMESPACE, ctx, () => stub.fetch(request))
+    ).response;
   },
 };
