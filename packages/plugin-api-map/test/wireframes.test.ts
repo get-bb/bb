@@ -56,6 +56,17 @@ describe("guide fixture boundaries", () => {
     }
   });
 
+  it("keeps tab badges inside the clipped frame on the top Guide layer", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    const codeTab = markup.slice(
+      markup.indexOf('data-guide-region="code-renderers"'),
+      markup.indexOf('data-guide-region="thread-panel"'),
+    );
+
+    expect(codeTab).toContain("absolute z-50");
+    expect(codeTab).toContain("-top-2");
+  });
+
   it.each([
     ["thread-panel", "thread-panel", "Release checklist"],
     ["file-opener", "file-viewer", "Checkout retry notes"],

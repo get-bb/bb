@@ -226,7 +226,7 @@ function Mark({
           // The ring is the only addition: it keeps the chip legible where it
           // overlaps the mockup's own grey bones.
           cn(
-            "absolute z-10 ring-2 ring-card",
+            "absolute z-50 ring-2 ring-card",
             chipClassName ?? "-right-2 -top-2",
           ),
         )}
@@ -300,7 +300,7 @@ function RegionMark({
           className={annotationChipClass(
             active,
             cn(
-              "absolute z-10 ring-2 ring-card",
+              "absolute z-50 ring-2 ring-card",
               chipClassName ?? "-right-2 -top-2",
             ),
           )}
@@ -778,7 +778,7 @@ export function AppShellRightPanel({
           id="code-renderers"
           label="Plugin code and diff renderers on bb's Diff tab"
           className={cn(tabClass("code-renderers"), "px-1.5")}
-          chipClassName="left-1/2 -top-3 -translate-x-1/2"
+          chipClassName="left-1/2 -top-2 -translate-x-1/2"
           onActivate={() => onTabSelect("code-renderers")}
         >
           <span data-guide-tab="code-renderers">
@@ -792,7 +792,7 @@ export function AppShellRightPanel({
             tabClass("thread-panel"),
             "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
           )}
-          chipClassName="left-1/2 -top-3 -translate-x-1/2"
+          chipClassName="left-1/2 -top-2 -translate-x-1/2"
           onActivate={() => onTabSelect("thread-panel")}
         >
           <span data-guide-tab="thread-panel" className="contents">
@@ -1070,9 +1070,10 @@ function OverlayMark({
         onMouseLeave={() => setActiveId(null)}
         onFocus={() => setActiveId(id)}
         onBlur={() => setActiveId(null)}
-        // Below the expanded menus (z-10): an open menu should cover resting
-        // chips behind it, exactly as a real popover would.
-        className={cn("absolute z-[6]", className)}
+        // Annotation badges are the Guide's top visual layer. Menus are
+        // positioned away from them, so neither surface has to cover the
+        // other to remain legible.
+        className={cn("absolute z-50", className)}
       >
         <span
           aria-hidden
