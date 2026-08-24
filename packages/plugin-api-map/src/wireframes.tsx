@@ -441,7 +441,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       id="thread-list"
       label="The thread list, replaceable by one plugin"
       className="mx-1.5 flex-1 px-1.5 py-1.5"
-      chipClassName="-left-3 top-[68px]"
+      chipClassName="left-0 top-[68px]"
     >
       <span className="block px-2 pb-1 pt-1.5 text-xs text-subtle-foreground/75">
         Pinned
@@ -590,8 +590,9 @@ function AppShellWireframeBody({
       {/* Sized to the real window's aspect: at the diagram's 832px width, a
           ~523px frame matches the ~1.6:1 footprint of an actual bb window.
           The thread list and timeline are flex-1, so the height lands there
-          as open canvas. */}
-      <div className="flex min-h-[481px] items-stretch">
+          as open canvas. The timeline's explicit minimum keeps this loaded
+          fixture aligned with the same taller skeleton geometry. */}
+      <div className="flex min-h-[523px] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
         <div className="flex w-[264px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
@@ -622,7 +623,10 @@ function AppShellWireframeBody({
           </div>
 
           {/* timeline */}
-          <div className="flex-1 space-y-3 overflow-hidden px-3 py-2.5">
+          <div
+            data-guide-fixture="app-window-timeline"
+            className="min-h-[400px] flex-1 space-y-5 overflow-hidden px-3 py-4"
+          >
             {/* user message: right-aligned bubble */}
             <div className="flex justify-end">
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">

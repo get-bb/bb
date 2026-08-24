@@ -67,6 +67,29 @@ describe("guide fixture boundaries", () => {
     expect(codeTab).toContain("-top-2");
   });
 
+  it("keeps the thread-list badge inside the sidebar's clipped edge", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    const threadList = markup.slice(
+      markup.indexOf('data-guide-region="thread-list"'),
+      markup.indexOf("Pinned"),
+    );
+
+    expect(threadList).toContain("left-0 top-[68px]");
+    expect(threadList).not.toContain("-left-3");
+  });
+
+  it("gives the app-window timeline taller, looser skeleton geometry", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    const timeline = markup.slice(
+      markup.indexOf('data-guide-fixture="app-window-timeline"'),
+      markup.indexOf("Fix the flaky checkout tests"),
+    );
+
+    expect(markup).toContain("flex min-h-[523px] items-stretch");
+    expect(timeline).toContain("min-h-[400px] flex-1 space-y-5");
+    expect(timeline).toContain("px-3 py-4");
+  });
+
   it.each([
     ["thread-panel", "thread-panel", "Release checklist"],
     ["file-opener", "file-viewer", "Checkout retry notes"],
