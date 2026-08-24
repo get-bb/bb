@@ -1520,7 +1520,7 @@ export function ThreadDetailPromptArea({
           promptPlaceholder: "Edit message",
           submit: handleSentMessageEditSubmit,
           submitMode: sentMessageEditSubmitMode,
-          submitTitle: "Submit edit (Enter)",
+          submitTitle: "Submit edit (Cmd/Ctrl+Enter)",
           suppressPluginComposerCustomizations: true,
           textEffects: sentMessageComposerTextEffects,
           threadRuntimeDisplayStatus: runtimeDisplayStatus,

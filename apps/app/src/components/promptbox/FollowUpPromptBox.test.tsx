@@ -687,7 +687,7 @@ describe("FollowUpPromptBox", () => {
       modifierAction: "queue",
     },
   ] as const)(
-    "routes Enter/click to $primaryAction and Command+Enter to $modifierAction when steer-on-Enter is $setting",
+    "routes primary submit to $primaryAction and alternate submit to $modifierAction when steer-on-send is $setting",
     ({ setting, primaryAction, modifierAction }) => {
       const props = createFollowUpPromptBoxProps({
         kind: "queue",

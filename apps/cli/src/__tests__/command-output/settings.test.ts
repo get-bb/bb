@@ -70,7 +70,7 @@ describe("bb settings commands", () => {
     });
   });
 
-  it("updates active-thread Enter behavior while preserving the full contract", async () => {
+  it("updates active-thread submit behavior while preserving the full contract", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
       "v1.system.config.$get": vi.fn(async () => ({

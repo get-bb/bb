@@ -38,16 +38,16 @@ every window and client sees the same value.
 - Development builds always show unhandled provider events regardless of the
   saved preference.
 
-## Active-thread Enter behavior
+## Active-thread submit behavior
 
 - `steerActiveThreadOnEnter` defaults to false. Set it with
   `bb settings general steerActiveThreadOnEnter <true|false>`.
-- Outside an open composer typeahead menu, disabling it makes Enter queue a
-  follow-up and Command+Enter steer the active turn. When enabled, those
-  actions are reversed.
-- Shift+Enter inserts a newline. On coarse-pointer touch devices, the
+- Outside an open composer typeahead menu, disabling it makes
+  Command/Ctrl+Enter queue a follow-up and Command+Option/Ctrl+Alt+Enter steer
+  the active turn. When enabled, those actions are reversed.
+- Enter and Shift+Enter insert a newline. On coarse-pointer touch devices, the
   software-keyboard Return path stays a newline; iPadOS WebKit preserves the
-  Enter shortcuts for a connected Magic Keyboard.
+  modifier shortcuts for a connected Magic Keyboard.
 
 ## Streamer mode
 

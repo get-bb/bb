@@ -23,10 +23,11 @@ import type { ComposerSubmitKind } from "@/composer/model";
 type FollowUpSubmitIntent = "send" | "queue" | "steer";
 
 /**
- * Web: Enter sends (`queue-if-active`), Cmd+Enter steers; with the
- * `steerActiveThreadOnEnter` setting the two swap while the runtime is
- * active. The native composer reports `send` (idle), `queue` (active, tap)
- * or `steer` (active, long-press).
+ * Web: Command/Ctrl+Enter sends (`queue-if-active`) and
+ * Command+Option/Ctrl+Alt+Enter steers; with the
+ * `steerActiveThreadOnEnter` setting the two swap while the runtime is active.
+ * The native composer reports `send` (idle), `queue` (active, tap) or `steer`
+ * (active, long-press).
  */
 export function resolveFollowUpSubmitIntent({
   kind,

@@ -19,7 +19,7 @@ export interface SubmitAffordance {
   disabled: boolean;
   /** A stop button sits next to (or instead of) submit. */
   stop: (() => void) | null;
-  /** Long-press sends as an explicit steer (web: Cmd+Enter while active). */
+  /** Long-press sends as an explicit steer (web: Mod+Alt+Enter while active). */
   longPressSteer: boolean;
 }
 

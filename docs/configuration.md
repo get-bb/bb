@@ -178,10 +178,10 @@ to show them regardless of the toggle. Set the persisted preference from an
 agent or terminal with
 `bb settings general showUnhandledProviderEvents <true|false>`.
 
-The "Steer running threads on Enter" toggle in Settings → General changes the
+The "Steer running threads on send" toggle in Settings → General changes the
 active-thread composer shortcuts when no typeahead suggestion is active. It
-defaults to off: Enter queues and Command+Enter steers. When enabled, Enter
-steers and Command+Enter queues. Set it with
+defaults to off: Command/Ctrl+Enter queues and Command+Option/Ctrl+Alt+Enter
+steers. When enabled, those actions are reversed. Set it with
 `bb settings general steerActiveThreadOnEnter <true|false>`.
 
 The "Streamer mode" toggle in Settings → General hides every `customModels`
@@ -212,11 +212,11 @@ subagents and the Workflow tool under the Claude Code provider plugin. Read
 and set them like any plugin setting, for example
 `bb plugin config provider-claude-code set workflowsDisabled true`.
 
-Outside an open typeahead menu, Shift+Enter inserts a newline. On
-coarse-pointer touch devices, the software-keyboard Return path inserts a
-newline and the submit button sends.
-iPadOS WebKit additionally preserves the Enter and Command+Enter shortcuts
-above for a connected Magic Keyboard.
+Outside an open typeahead menu, Enter and Shift+Enter insert a newline;
+Command/Ctrl+Enter sends. On coarse-pointer touch devices, the
+software-keyboard Return path also inserts a newline and the submit button
+sends. iPadOS WebKit preserves the modifier shortcuts above for a connected
+Magic Keyboard.
 
 ## Keyboard Shortcuts
 

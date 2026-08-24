@@ -761,8 +761,8 @@ function FollowUpPromptBoxWithComposer({
               ? composer.submitTitle
               : canQueueFollowUp
                 ? steerOnPrimarySubmit
-                  ? "Steer current run (Enter)"
-                  : "Queue follow-up (Enter)"
+                  ? "Steer current run (Cmd/Ctrl+Enter)"
+                  : "Queue follow-up (Cmd/Ctrl+Enter)"
                 : isStopping
                   ? "Stopping run..."
                   : isLoadingExecutionOptions
@@ -773,7 +773,7 @@ function FollowUpPromptBoxWithComposer({
                         ? "Provisioning..."
                         : isUnavailable
                           ? "Unavailable"
-                          : "Submit (Enter)",
+                          : "Submit (Cmd/Ctrl+Enter)",
           isRunning: canStopRuntime,
         }}
         typeahead={typeahead}

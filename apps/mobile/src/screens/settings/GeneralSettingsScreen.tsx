@@ -47,7 +47,7 @@ function ConnectedGeneralSettingsScreen() {
         />
         <SettingsSwitchRow
           label="Steer running threads on send"
-          description="While a thread is running, a tap on Send queues a follow-up and a long-press steers the current run. Turn on to swap them: tap steers, long-press queues. Shared with the web's “Steer running threads on Enter”."
+          description="While a thread is running, a tap on Send queues a follow-up and a long-press steers the current run. Turn on to swap them: tap steers, long-press queues. Shared with the web's “Steer running threads on send”."
           checked={settings.steerActiveThreadOnEnter}
           disabled={serverDisabled}
           onCheckedChange={(value) =>

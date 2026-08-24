@@ -538,7 +538,7 @@ const RICH_TEXT_EDITING_SETTING_LABEL = "Markdown formatting in prompt box";
 const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
   "Show unhandled provider events";
 const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
-  "Steer running threads on Enter";
+  "Steer running threads on send";
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 
 export function AppearanceSettingsSection({
@@ -735,7 +735,7 @@ export function GeneralSettingsSection({
 
         <SettingsWithControl
           label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
-          description="Use Enter to steer the current run and Command+Enter to queue a follow-up."
+          description="Use Command/Ctrl+Enter to steer the current run and Command+Option/Ctrl+Alt+Enter to queue a follow-up."
         >
           <Switch
             checked={steerActiveThreadOnEnter}

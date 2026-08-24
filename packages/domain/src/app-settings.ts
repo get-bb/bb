@@ -13,8 +13,8 @@ export const appSettingsSchema = z
     /** Show shortcut hints after holding Command or Control. */
     showKeyboardHints: z.boolean(),
     /**
-     * While a thread is running, make Enter steer the active turn and use
-     * Command+Enter to queue a follow-up.
+     * While a thread is running, make the primary submit action steer the
+     * active turn and use the alternate submit action to queue a follow-up.
      */
     steerActiveThreadOnEnter: z.boolean(),
     /** Show raw provider events that bb does not yet understand. */

@@ -1222,7 +1222,7 @@ export function PromptBoxInternal({
     isSubmitting = false,
     disabled: submitDisabled = false,
     disabledReason: submitDisabledReason,
-    title: submitTitle = "Submit (Enter)",
+    title: submitTitle = "Submit (Cmd/Ctrl+Enter)",
     isRunning = false,
     onStop,
     onModifierSubmit,
@@ -1261,7 +1261,7 @@ export function PromptBoxInternal({
   // macOS. The value is stable for the lifetime of the page, so it does not
   // need another media-query listener.
   const isIPadOSWebKitDevice = useMemo(isIPadOSWebKit, []);
-  const editorEnterKeyHint = isPointerCoarse ? "enter" : "send";
+  const editorEnterKeyHint = "enter";
   // Passive text autofocus opens the soft keyboard on coarse-pointer devices.
   const shouldAvoidSoftKeyboardAutofocus = isPointerCoarse;
   const formRef = useRef<HTMLFormElement>(null);
@@ -1302,9 +1302,9 @@ export function PromptBoxInternal({
   const skipEditorChangeRef = useRef(false);
   const lastSyncedEditorValueRef = useRef<PromptEditorValueKey | null>(null);
   const triggerKeyRef = useRef("");
-  const handleEditorKeyDownRef = useRef<
-    (event: KeyboardEvent, isOriginalIPadHardwareEnter?: boolean) => boolean
-  >(() => false);
+  const handleEditorKeyDownRef = useRef<(event: KeyboardEvent) => boolean>(
+    () => false,
+  );
   const compositionEndedAtRef = useRef(Number.NEGATIVE_INFINITY);
   const postCompositionKeyDownEvents = usePostCompositionKeyDownEvents();
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
@@ -1712,7 +1712,9 @@ export function PromptBoxInternal({
         attributes: {
           "aria-label": effectivePlaceholder,
           "data-placeholder": effectivePlaceholder,
-          ...(onModifierSubmit ? { "aria-keyshortcuts": "Meta+Enter" } : {}),
+          "aria-keyshortcuts": onModifierSubmit
+            ? "Meta+Enter Control+Enter Meta+Alt+Enter Control+Alt+Enter"
+            : "Meta+Enter Control+Enter",
           autocomplete: "off",
           class: cn(
             "min-h-full whitespace-pre-wrap break-words outline-none",
@@ -1800,8 +1802,8 @@ export function PromptBoxInternal({
             // here: every deferred-flush path in ProseMirror needs either IE11
             // or an active composition, and the composition check above already
             // excludes the second one. So the observer has flushed already and
-            // the submit reads a current document.
-            return handleEditorKeyDownRef.current(event, true);
+            // the handler reads a current document.
+            return handleEditorKeyDownRef.current(event);
           },
           click: (_view, event) => {
             return suppressPromptEditorAnchorActivation(event);
@@ -2825,7 +2827,7 @@ export function PromptBoxInternal({
   );
 
   const handleEditorKeyDown = useCallback(
-    (event: KeyboardEvent, isOriginalIPadHardwareEnter = false): boolean => {
+    (event: KeyboardEvent): boolean => {
       // An IME keystroke must reach neither an app chord nor a submit. The
       // WeakSet carries the iPadOS hook's decision, because that hook runs
       // before ProseMirror's own post-composition safeguard.
@@ -2836,15 +2838,29 @@ export function PromptBoxInternal({
       ) {
         return false;
       }
-      // App keybindings win over the editor's own keymap. TipTap cancels the
-      // chords it knows (Mod+Shift+B for a blockquote, Mod+B, Mod+Shift+7/8 for
-      // lists), and the window listener skips a canceled event — so without
-      // this an app chord silently did nothing while the composer had focus.
-      if (dispatchAppCommandKey(event)) {
+      const hasSubmitModifier = event.metaKey || event.ctrlKey;
+      const isSubmitKey =
+        event.key === "Enter" &&
+        hasSubmitModifier &&
+        !event.shiftKey &&
+        !event.altKey;
+      const isModifierSubmitKey =
+        event.key === "Enter" &&
+        hasSubmitModifier &&
+        !event.shiftKey &&
+        event.altKey;
+      const isReservedComposerSubmitKey =
+        isSubmitKey || (isModifierSubmitKey && onModifierSubmit !== undefined);
+
+      // App keybindings win over the editor's own keymap except for the
+      // composer's submit chords. Reserving those prevents a custom shortcut
+      // from making send or the buttonless alternate action unreachable.
+      // TipTap cancels the formatting chords it knows (Mod+Shift+B for a
+      // blockquote, Mod+B, Mod+Shift+7/8 for lists), and the window listener
+      // skips a canceled event — so those still dispatch here first.
+      if (!isReservedComposerSubmitKey && dispatchAppCommandKey(event)) {
         return true;
       }
-      const canSubmitWithEnterKey =
-        !isPointerCoarse || isOriginalIPadHardwareEnter;
       const currentEditor = editorRef.current;
       const selection = currentEditor?.state.selection;
       const hasCollapsedSelection = Boolean(selection?.empty);
@@ -3008,26 +3024,22 @@ export function PromptBoxInternal({
         }
       }
 
-      const isModifierSubmitKey =
-        event.key === "Enter" &&
-        event.metaKey &&
-        !event.shiftKey &&
-        !event.altKey &&
-        !event.ctrlKey;
+      // Mod+Shift+Enter is the app-wide Open terminal shortcut. Keep the
+      // active-thread alternate action on Mod+Alt+Enter so editor and app
+      // commands remain unambiguous.
       if (isModifierSubmitKey && onModifierSubmit) {
         event.preventDefault();
         submitModifierPrompt();
         return true;
       }
 
-      const isBlockquoteExitKey =
+      const isPromptNewlineKey =
         event.key === "Enter" &&
-        event.shiftKey &&
         !event.metaKey &&
         !event.altKey &&
         !event.ctrlKey;
       if (
-        isBlockquoteExitKey &&
+        isPromptNewlineKey &&
         currentEditor &&
         applyPromptListNewline(currentEditor)
       ) {
@@ -3036,7 +3048,7 @@ export function PromptBoxInternal({
       }
 
       if (
-        isBlockquoteExitKey &&
+        isPromptNewlineKey &&
         currentEditor &&
         (insertParagraphBeforeBlockquote(currentEditor) ||
           exitTrailingBlockquoteBreak(currentEditor))
@@ -3045,12 +3057,6 @@ export function PromptBoxInternal({
         return true;
       }
 
-      const isPromptNewlineKey =
-        event.key === "Enter" &&
-        !event.metaKey &&
-        !event.altKey &&
-        !event.ctrlKey &&
-        (event.shiftKey || !canSubmitWithEnterKey);
       if (isPromptNewlineKey && currentEditor && exitHeading(currentEditor)) {
         event.preventDefault();
         return true;
@@ -3064,9 +3070,6 @@ export function PromptBoxInternal({
         event.preventDefault();
         return true;
       }
-
-      if (!canSubmitWithEnterKey) return false;
-      const isSubmitKey = event.key === "Enter" && !event.shiftKey;
 
       if (!isSubmitKey) return false;
       event.preventDefault();
@@ -3086,7 +3089,6 @@ export function PromptBoxInternal({
       commandIsLoadingMore,
       dispatchAppCommandKey,
       history,
-      isPointerCoarse,
       loadMoreCommands,
       onCommandQueryChange,
       onEscape,

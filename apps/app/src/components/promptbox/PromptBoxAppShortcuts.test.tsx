@@ -107,17 +107,25 @@ function ShortcutHintState() {
   );
 }
 
-function renderComposer(extra: React.ReactNode = null) {
+function renderComposer(
+  extra: React.ReactNode = null,
+  options: {
+    value?: string;
+    onSubmit?: () => void;
+    onModifierSubmit?: () => void;
+  } = {},
+) {
   render(
     <MemoryRouter>
       <AppCommandProvider>
         <SidebarToggleHandler />
         {extra}
         <PromptBoxInternal
-          value=""
+          value={options.value ?? ""}
           mentionRanges={[]}
           onChange={vi.fn()}
-          onSubmit={vi.fn()}
+          onSubmit={options.onSubmit ?? vi.fn()}
+          submission={{ onModifierSubmit: options.onModifierSubmit }}
           mentionMenuPlacement="bottom"
           typeahead={{
             mention: {
@@ -218,6 +226,54 @@ describe("prompt editor app shortcuts", () => {
     });
 
     expect(testState.calls).toEqual(["sidebar.toggle"]);
+  });
+
+  it("reserves Ctrl+Enter for primary submit when an app shortcut conflicts", () => {
+    testState.sidebarShortcut = {
+      key: "Enter",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: false,
+      shift: false,
+    };
+    const onSubmit = vi.fn();
+    const editor = renderComposer(null, {
+      value: "Send this",
+      onSubmit,
+    });
+
+    const event = pressInEditor(editor, { ctrlKey: true, key: "Enter" });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(testState.calls).toEqual([]);
+  });
+
+  it("reserves Ctrl+Alt+Enter for alternate submit when an app shortcut conflicts", () => {
+    testState.sidebarShortcut = {
+      key: "Enter",
+      mod: true,
+      meta: false,
+      control: false,
+      alt: true,
+      shift: false,
+    };
+    const onModifierSubmit = vi.fn();
+    const editor = renderComposer(null, {
+      value: "Queue this",
+      onModifierSubmit,
+    });
+
+    const event = pressInEditor(editor, {
+      altKey: true,
+      ctrlKey: true,
+      key: "Enter",
+    });
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onModifierSubmit).toHaveBeenCalledOnce();
+    expect(testState.calls).toEqual([]);
   });
 
   it("releases composer focus on Escape", () => {

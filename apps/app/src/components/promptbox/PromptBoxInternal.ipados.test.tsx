@@ -150,7 +150,7 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("submits a Magic Keyboard Enter once, with no replayed second submit", () => {
+  it("submits Magic Keyboard Command+Enter once, with no replayed second submit", () => {
     const onChange = vi.fn();
     const onSubmit = vi.fn();
     render(
@@ -176,6 +176,7 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
       key: "Enter",
       code: "Enter",
       keyCode: 13,
+      metaKey: true,
     });
 
     expect(onSubmit).toHaveBeenCalledOnce();

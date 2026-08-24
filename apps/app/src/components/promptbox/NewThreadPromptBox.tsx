@@ -376,7 +376,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
     ? "Submitting..."
     : execution.model.isLoading
       ? "Loading models..."
-      : "Submit (Enter)";
+      : "Submit (Cmd/Ctrl+Enter)";
 
   return (
     <div

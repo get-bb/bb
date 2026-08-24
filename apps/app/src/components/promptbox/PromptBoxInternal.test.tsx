@@ -1221,31 +1221,107 @@ describe("PromptBoxInternal submit shortcuts", () => {
     });
   });
 
-  it("continues to submit unmodified Enter on a fine-pointer device", () => {
-    const restoreMatchMedia = mockPointerCoarse(false);
-    try {
-      const onSubmit = vi.fn();
-      render(
-        <PromptBoxInternal
-          {...createPromptBoxProps({
-            value: "Run this",
-            onSubmit,
-          })}
-        />,
-      );
+  it.each([
+    ["Enter", {}],
+    ["Shift+Enter", { shiftKey: true }],
+  ] as const)(
+    "inserts a newline on %s on a fine-pointer device",
+    async (_label, modifiers) => {
+      const restoreMatchMedia = mockPointerCoarse(false);
+      try {
+        const onChange = vi.fn();
+        const onSubmit = vi.fn();
+        render(
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value: "Run this",
+              onChange,
+              onSubmit,
+            })}
+          />,
+        );
 
-      const wasNotCanceled = fireEvent.keyDown(getPromptEditorElement(), {
-        key: "Enter",
-      });
+        const wasNotCanceled = fireEvent.keyDown(getPromptEditorElement(), {
+          key: "Enter",
+          ...modifiers,
+        });
 
-      expect(wasNotCanceled).toBe(false);
-      expect(onSubmit).toHaveBeenCalledOnce();
-    } finally {
-      restoreMatchMedia();
-    }
+        expect(wasNotCanceled).toBe(false);
+        expect(onSubmit).not.toHaveBeenCalled();
+        await waitFor(() =>
+          expect(onChange).toHaveBeenLastCalledWith("Run this\n", []),
+        );
+      } finally {
+        restoreMatchMedia();
+      }
+    },
+  );
+
+  it.each([
+    ["Command", { metaKey: true }],
+    ["Control", { ctrlKey: true }],
+  ] as const)("submits %s+Enter as the primary action", (_label, modifier) => {
+    const onModifierSubmit = vi.fn();
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Run this",
+          onSubmit,
+          submission: { onModifierSubmit },
+        })}
+      />,
+    );
+
+    const wasNotCanceled = fireEvent.keyDown(getPromptEditorElement(), {
+      key: "Enter",
+      ...modifier,
+    });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onModifierSubmit).not.toHaveBeenCalled();
   });
 
-  it("submits a Magic Keyboard Enter on coarse-pointer iPadOS WebKit", () => {
+  it("routes Command+Option+Enter to the alternate action", () => {
+    const onModifierSubmit = vi.fn();
+    const onSubmit = vi.fn();
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          value: "Follow up",
+          onSubmit,
+          submission: { onModifierSubmit },
+        })}
+      />,
+    );
+
+    const wasNotCanceled = fireEvent.keyDown(getPromptEditorElement(), {
+      key: "Enter",
+      metaKey: true,
+      altKey: true,
+    });
+
+    expect(wasNotCanceled).toBe(false);
+    expect(onModifierSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("exposes the primary and alternate submit shortcuts to assistive technology", () => {
+    render(
+      <PromptBoxInternal
+        {...createPromptBoxProps({
+          submission: { onModifierSubmit: vi.fn() },
+        })}
+      />,
+    );
+
+    expect(getPromptEditorElement().getAttribute("aria-keyshortcuts")).toBe(
+      "Meta+Enter Control+Enter Meta+Alt+Enter Control+Alt+Enter",
+    );
+  });
+
+  it("inserts a newline for Magic Keyboard Enter on coarse-pointer iPadOS WebKit", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     const restoreNavigator = mockIPadOSWebKit();
     try {
@@ -1271,8 +1347,10 @@ describe("PromptBoxInternal submit shortcuts", () => {
 
       expect(wasNotCanceled).toBe(false);
       expect(editor.getAttribute("enterkeyhint")).toBe("enter");
-      expect(onSubmit).toHaveBeenCalledOnce();
-      expect(onChange).not.toHaveBeenCalled();
+      expect(onSubmit).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith("Run this\n", []),
+      );
       expect(document.activeElement).toBe(editor);
     } finally {
       restoreNavigator();
@@ -1418,7 +1496,7 @@ describe("PromptBoxInternal submit shortcuts", () => {
     }
   });
 
-  it("routes Magic Keyboard Command+Enter to modifier submit on coarse-pointer iPadOS WebKit", () => {
+  it("routes Magic Keyboard Command+Enter to primary submit on coarse-pointer iPadOS WebKit", () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     const restoreNavigator = mockIPadOSWebKit();
     try {
@@ -1443,8 +1521,8 @@ describe("PromptBoxInternal submit shortcuts", () => {
         metaKey: true,
       });
 
-      expect(onModifierSubmit).toHaveBeenCalledOnce();
-      expect(onSubmit).not.toHaveBeenCalled();
+      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(onModifierSubmit).not.toHaveBeenCalled();
       expect(document.activeElement).toBe(editor);
     } finally {
       restoreNavigator();
@@ -1509,15 +1587,17 @@ describe("PromptBoxInternal submit shortcuts", () => {
     }
   });
 
-  it("still submits a hardware Enter after a compositionend outside a composition", () => {
+  it("still inserts a newline for hardware Enter after a compositionend outside a composition", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     const restoreNavigator = mockIPadOSWebKit();
     try {
+      const onChange = vi.fn();
       const onSubmit = vi.fn();
       render(
         <PromptBoxInternal
           {...createPromptBoxProps({
             value: "Run this",
+            onChange,
             onSubmit,
           })}
         />,
@@ -1535,7 +1615,10 @@ describe("PromptBoxInternal submit shortcuts", () => {
         keyCode: 13,
       });
 
-      expect(onSubmit).toHaveBeenCalledOnce();
+      expect(onSubmit).not.toHaveBeenCalled();
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith("Run this\n", []),
+      );
     } finally {
       restoreNavigator();
       restoreMatchMedia();
@@ -1780,7 +1863,9 @@ describe("PromptBoxInternal plugin composer actions", () => {
       screen.getByRole("button", { name: "Still available" }),
     ).toBeTruthy();
     expect(screen.queryByText(/plugin actions crashed/u)).toBeNull();
-    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Submit (Cmd/Ctrl+Enter)" }),
+    ).toBeTruthy();
     await waitFor(() => {
       expect(getPromptEditorElement().getAttribute("contenteditable")).toBe(
         "true",
@@ -1880,7 +1965,9 @@ describe("PromptBoxInternal plugin composer actions", () => {
           ?.getAttribute("aria-busy"),
       ).toBe("true");
     });
-    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Submit (Cmd/Ctrl+Enter)" }),
+    ).toBeTruthy();
 
     fireEvent.click(
       screen.getByRole("button", { name: "Toggle lock (thread)" }),
@@ -1986,7 +2073,9 @@ describe("PromptBoxInternal plugin composer actions", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Plugin action" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Submit (Cmd/Ctrl+Enter)" }),
+    ).toBeTruthy();
   });
 });
 
@@ -2128,7 +2217,9 @@ describe("PromptBoxInternal compact layout", () => {
 
     const form = document.querySelector("[data-promptbox]");
     expect(form?.getAttribute("data-promptbox-compact")).toBe("");
-    expect(screen.getByRole("button", { name: "Submit (Enter)" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Submit (Cmd/Ctrl+Enter)" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Prompt actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Model selector" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Attach files" })).toBeNull();
@@ -2181,7 +2272,7 @@ describe("PromptBoxInternal compact layout", () => {
       );
       expect(submitGroup?.contains(voiceButton)).toBe(true);
       expect(
-        screen.queryByRole("button", { name: "Submit (Enter)" }),
+        screen.queryByRole("button", { name: "Submit (Cmd/Ctrl+Enter)" }),
       ).toBeNull();
 
       expect(
@@ -2215,7 +2306,9 @@ describe("PromptBoxInternal compact layout", () => {
 
     await waitForPromptFocus();
     const editor = getPromptEditorElement();
-    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+    const submit = screen.getByRole("button", {
+      name: "Submit (Cmd/Ctrl+Enter)",
+    });
 
     expect(
       fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
@@ -2236,7 +2329,9 @@ describe("PromptBoxInternal compact layout", () => {
 
     await waitForPromptFocus();
     const editor = getPromptEditorElement();
-    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+    const submit = screen.getByRole("button", {
+      name: "Submit (Cmd/Ctrl+Enter)",
+    });
 
     // TipTap derives isFocused from focus and blur events. Model the iOS
     // window where its blur event has arrived but the contenteditable still
@@ -2268,7 +2363,9 @@ describe("PromptBoxInternal compact layout", () => {
 
     await waitForPromptFocus();
     const editor = getPromptEditorElement();
-    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+    const submit = screen.getByRole("button", {
+      name: "Submit (Cmd/Ctrl+Enter)",
+    });
 
     expect(
       fireEvent.pointerDown(submit, { button: 0, pointerType: "touch" }),
@@ -2347,7 +2444,9 @@ describe("PromptBoxInternal compact layout", () => {
     );
 
     const submitGroup = document.querySelector("[data-promptbox-submit-group]");
-    const submit = screen.getByRole("button", { name: "Submit (Enter)" });
+    const submit = screen.getByRole("button", {
+      name: "Submit (Cmd/Ctrl+Enter)",
+    });
     const voice = screen.getByRole("button", { name: "Start voice input" });
 
     expect(submitGroup?.contains(submit)).toBe(true);

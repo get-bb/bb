@@ -274,9 +274,10 @@ function buildSendQueuedMessageByIdRequest({
 }
 
 /**
- * Cmd+Enter on an active follow-up composer sends current draft input as an
- * explicit steer. If the composer is empty, it sends only the current queue
- * head through the same auto path as the queued-card "Send now" action.
+ * The active follow-up composer's alternate submit action sends current draft
+ * input as an explicit steer. On web this is Command/Ctrl+Alt+Enter by default.
+ * If the composer is empty, it sends only the current queue head through the
+ * same auto path as the queued-card "Send now" action.
  */
 export function buildFollowUpShortcutRequest({
   execution,
