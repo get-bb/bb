@@ -27,11 +27,11 @@ let harness: FakePiBridgeHarness;
 
 beforeEach(async () => {
   harness = await startFakePiBridge({ prefix: "bb-pi-lifecycle-", initialize: true, processLog: true });
-}, 30_000);
+}, 90_000);
 
 afterEach(async () => {
   await harness.teardown();
-}, 30_000);
+}, 90_000);
 
 let nextId = 1000;
 
@@ -45,7 +45,10 @@ function isAlive(pid: number): boolean {
 }
 
 async function expectEveryChildGone(expectedSpawns: number): Promise<void> {
-  const deadline = Date.now() + 10_000;
+  // A child that ignores EOF is SIGTERMed after 4 s and SIGKILLed after
+  // another 4 s; the exit then has to reach the process log. Leave room for
+  // that whole escalation on a starved runner.
+  const deadline = Date.now() + 30_000;
   for (;;) {
     const log = harness.readProcessLog();
     const allExited =
@@ -95,7 +98,7 @@ it("stop{release} ends the child", async () => {
   });
   expect(stop.result).toMatchObject({ ok: true, providerCheckpointId: "leaf-1" });
   await expectEveryChildGone(1);
-}, 30_000);
+}, 90_000);
 
 it("stop{interrupt} of a live run ends the child, and the turn settled before the result", async () => {
   await startThread("thr_lc_interrupt");
@@ -114,7 +117,7 @@ it("stop{interrupt} of a live run ends the child, and the turn settled before th
   });
   expect(stop.result).toMatchObject({ ok: true });
   await expectEveryChildGone(1);
-}, 30_000);
+}, 90_000);
 
 it("discard ends the child and removes the session file", async () => {
   await startThread("thr_lc_discard");
@@ -127,7 +130,7 @@ it("discard ends the child and removes the session file", async () => {
   expect(discard.result).toEqual({ ok: true });
   expect(existsSync(sessionFile)).toBe(false);
   await expectEveryChildGone(1);
-}, 30_000);
+}, 90_000);
 
 it("a failed construction leaves no child", async () => {
   // A provider the catalog does not know passes the up-front check (pi may
@@ -146,7 +149,7 @@ it("a failed construction leaves no child", async () => {
   const log = harness.readProcessLog();
   expect(log.spawned.length).toBeGreaterThan(1);
   await expectEveryChildGone(log.spawned.length);
-}, 30_000);
+}, 90_000);
 
 it("the fork helper child exits once the fork is done", async () => {
   // The fake's extension runs the real SessionManager fork, so the source
@@ -188,7 +191,7 @@ it("the fork helper child exits once the fork is done", async () => {
   });
   // The helper child and the session child.
   await expectEveryChildGone(2);
-}, 30_000);
+}, 90_000);
 
 /** The per-child scratch files; the extension file lives for the process. */
 function scratchFiles(): string[] {
@@ -251,7 +254,7 @@ it("closing the catalog ends its child", async () => {
   expect(models.result).toMatchObject({ models: expect.any(Array) });
   await experimental_closeAllForTests();
   await expectEveryChildGone(1);
-}, 30_000);
+}, 90_000);
 
 it("a child that ignores EOF and SIGTERM is SIGKILLed", async () => {
   vi.stubEnv("FAKE_PI_HANG_ON_CLOSE", "1");
@@ -272,4 +275,4 @@ it("a child that ignores EOF and SIGTERM is SIGKILLed", async () => {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
   expect(isAlive(pid)).toBe(false);
-}, 30_000);
+}, 90_000);

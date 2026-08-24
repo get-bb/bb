@@ -293,11 +293,13 @@ export class PiRpcSession {
     // Readiness: pi emits no ready event of its own; the first answered
     // command is it, and the extension's `ready` proves the channel works
     // (a dead channel is a construction error, not a hung first tool call).
-    // A child that dies first fails the construction with its stderr.
-    const readinessBudgetMs = readinessTimeoutMs();
-    const deadline = Date.now() + readinessBudgetMs;
-    const state = await this.getState(readinessBudgetMs);
-    await this.awaitReady(Math.max(0, deadline - Date.now()), child);
+    // A child that dies first fails the construction with its stderr. The
+    // first command waits on the channel budget like any other; the
+    // readiness budget (overridable for tests) starts once pi has answered,
+    // so it bounds the extension's report alone and a slow spawn cannot turn
+    // a never-ready extension into a get_state timeout.
+    const state = await this.getState(CHANNEL_REQUEST_TIMEOUT_MS);
+    await this.awaitReady(readinessTimeoutMs(), child);
     if (state.model?.provider === "unknown") {
       return { ok: false, error: new Error("Pi has no authenticated model provider available.") };
     }

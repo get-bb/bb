@@ -60,7 +60,7 @@ it("a child that dies mid-run does not take the bridge down: the next write is a
   expect(steer.error).toMatchObject({ message: expect.stringMatching(/No active Pi session|pi exited/u) });
   // Still alive and serving: a fresh thread starts.
   expect((await harness.startThread("thr_r2_epipe_next")).result).toMatchObject({ providerThreadId: "thr_r2_epipe_next" });
-}, 30_000);
+}, 90_000);
 
 it("a missing executable fails thread/start fast with the spawn error", async () => {
   vi.stubEnv(PI_BRIDGE_COMMAND_ENV, join(harness.workspaceDir, "no-such-pi"));
@@ -69,7 +69,7 @@ it("a missing executable fails thread/start fast with the spawn error", async ()
   const response = await harness.startThread("thr_r2_enoent");
   expect(Date.now() - startedAt).toBeLessThan(5_000);
   expect(response.error).toMatchObject({ message: expect.stringMatching(/ENOENT/u) });
-}, 30_000);
+}, 90_000);
 
 it("refuses a manual compaction while pi reports a run still streaming", async () => {
   vi.stubEnv("FAKE_PI_STREAMING_AFTER_END", "1");
@@ -130,7 +130,7 @@ it("refuses a manual compaction while pi reports a run still streaming", async (
     error: { message: expect.stringContaining("Cannot compact context while Pi is processing a turn") },
   });
   expect(harness.deltasOf(threadId).slice(before).some((d) => d.kind === "item.open")).toBe(false);
-}, 30_000);
+}, 90_000);
 
 it("a steer consumed by the run is reported accepted and named in the reply", async () => {
   const threadId = "thr_r2_steer_ok";
@@ -150,7 +150,7 @@ it("a steer consumed by the run is reported accepted and named in the reply", as
   expect(harness.deltasOf(threadId).some((d) => d.kind === "input.accepted" && d.clientRequestId === "creq_cd23456789")).toBe(true);
   expect(harness.deltasOf(threadId).some((d) => d.kind === "item.textDelta" && String(d.text).includes("Steered: take the left path"))).toBe(true);
   expect(harness.messages.some((m) => m.method === "error")).toBe(false);
-}, 30_000);
+}, 90_000);
 
 it("a steer still queued when the run ends is reported dropped through the delivery barrier, not a timer", async () => {
   vi.stubEnv("FAKE_PI_DROP_STEER_AT_END", "1");
@@ -187,7 +187,7 @@ it("a steer still queued when the run ends is reported dropped through the deliv
   });
   // The run never acted on it: no steered reply reached the runtime.
   expect(harness.deltasOf(threadId).some((d) => d.kind === "item.textDelta" && String(d.text).includes("Steered:"))).toBe(false);
-}, 30_000);
+}, 90_000);
 
 it("recovers from one transient model mismatch by respawning", async () => {
   vi.stubEnv("FAKE_PI_SPAWN_COUNTER_FILE", join(harness.workspaceDir, "spawns"));
@@ -208,7 +208,7 @@ it("recovers from one transient model mismatch by respawning", async () => {
   expect(harness.readProcessLog().exited).toContain(log.spawned[0]);
   expect(harness.messages.some((m) => m.method === "error")).toBe(false);
   expect(harness.messages.some((m) => m.method === "session/ended")).toBe(false);
-}, 30_000);
+}, 90_000);
 
 it("a child whose extension never reports ready is a construction error, not a hung tool call", async () => {
   vi.stubEnv("FAKE_PI_NO_SESSION_START", "1");
@@ -242,7 +242,7 @@ it("evicts an idle catalog child", async () => {
   // A later request spawns a fresh one.
   await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
   expect(harness.readProcessLog().spawned).toHaveLength(2);
-}, 30_000);
+}, 90_000);
 
 it("reports a bash call's cwd as the thread's working directory, never an empty string", async () => {
   const threadId = "thr-bash-cwd";
@@ -252,7 +252,7 @@ it("reports a bash call's cwd as the thread's working directory, never an empty 
   const opened = harness.deltasOf(threadId).find((d) => d.kind === "item.open");
   expect(opened?.item).toMatchObject({ type: "command", command: "ls", cwd: harness.workspaceDir });
   expect(JSON.stringify(harness.deltasOf(threadId))).not.toContain('"cwd":""');
-}, 30_000);
+}, 90_000);
 
 it("a resumed thread reports the session header's cwd, not the cwd bb asked for", async () => {
   // pi's SessionManager.open runs the session where its header says; the
@@ -281,4 +281,4 @@ it("a resumed thread reports the session header's cwd, not the cwd bb asked for"
   } finally {
     rmSync(headerDir, { recursive: true, force: true });
   }
-}, 30_000);
+}, 90_000);

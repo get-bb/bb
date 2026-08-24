@@ -41,7 +41,16 @@ const INITIALIZE_ID = 100;
 /** `startThread` numbers its requests from here, clear of any suite's own ids. */
 const FIRST_HARNESS_REQUEST_ID = 1_000_000;
 /** Longer than the kit's 15 s: every request here may cold-start a real child. */
-const RESPONSE_DEADLINE_MS = 20_000;
+/**
+ * How long a request may take before the harness calls it unanswered. A
+ * construction the bridge retries (up to eight spawns through the
+ * transient-auth window, each a node child that imports the extension) runs
+ * several seconds per attempt on a starved CI runner, and the bridge's own
+ * readiness budget per attempt is a minute: the harness must outlive what
+ * the bridge is still legitimately waiting for, or it reports a response
+ * that was on its way as missing.
+ */
+const RESPONSE_DEADLINE_MS = 60_000;
 
 const threadDeltaParamsSchema = z.object({
   threadId: z.string(),
