@@ -18,6 +18,12 @@ import {
 // D1. TTLs are short so sign-out / disconnect take effect quickly (and the DO
 // already severs a live tunnel on revoke, so a stale-cached label still can't
 // reach a disconnected server).
+//
+// Entries hold the lookup's promise, stored the moment the query starts, so a
+// COLD isolate's request burst is also one D1 round trip per key: request
+// 2..N join request 1's in-flight lookup instead of issuing their own. A
+// rejected lookup is evicted when it settles — only successful lookups (and
+// deliberate cached negatives) live out the TTL.
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
 const SESSION_REFRESH_BEFORE_EXPIRY_MS =
@@ -25,7 +31,7 @@ const SESSION_REFRESH_BEFORE_EXPIRY_MS =
   1000;
 
 interface CacheEntry<T> {
-  value: T;
+  value: Promise<T>;
   expires: number;
 }
 const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
@@ -45,11 +51,36 @@ function cacheGet<T>(
   map: Map<string, CacheEntry<T>>,
   key: string,
   now: number,
-): T | undefined {
+): Promise<T> | undefined {
   const hit = map.get(key);
   if (hit && hit.expires > now) return hit.value;
   if (hit) map.delete(key);
   return undefined;
+}
+
+function cacheStore<T>(
+  map: Map<string, CacheEntry<T>>,
+  key: string,
+  value: Promise<T>,
+  expires: number,
+  /** Recomputes the entry's expiry once the lookup lands (e.g. clamping a
+   * session entry to its D1 row's own expiration). */
+  settledExpires?: (value: T) => number,
+): Promise<T> {
+  const entry: CacheEntry<T> = { value, expires };
+  map.set(key, entry);
+  value.then(
+    (settled) => {
+      // Guard the identity: a fresh read or an invalidation may have
+      // replaced this entry already.
+      if (settledExpires === undefined || map.get(key) !== entry) return;
+      entry.expires = settledExpires(settled);
+    },
+    () => {
+      if (map.get(key) === entry) map.delete(key);
+    },
+  );
+  return value;
 }
 
 interface ResolvedServer {
@@ -107,7 +138,18 @@ export async function resolveLabel(
     const cached = cacheGet(labelCache, label, now);
     if (cached !== undefined) return cached;
   }
+  return cacheStore(
+    labelCache,
+    label,
+    lookupLabel(label, db),
+    now + LABEL_TTL_MS,
+  );
+}
 
+async function lookupLabel(
+  label: string,
+  db: ConnectDb,
+): Promise<ResolvedLabel | null> {
   const serverRow = await db
     .select({
       userId: server.userId,
@@ -120,7 +162,7 @@ export async function resolveLabel(
     .where(eq(server.subdomain, label))
     .get();
   if (serverRow) {
-    const resolvedServer: ResolvedServer = {
+    return {
       kind: "server",
       userId: serverRow.userId,
       server: {
@@ -130,11 +172,6 @@ export async function resolveLabel(
         lastSeenAt: serverRow.lastSeenAt,
       },
     };
-    labelCache.set(label, {
-      value: resolvedServer,
-      expires: now + LABEL_TTL_MS,
-    });
-    return resolvedServer;
   }
 
   const machineRow = await db
@@ -159,25 +196,19 @@ export async function resolveLabel(
     )
     .where(eq(machine.subdomain, label))
     .get();
-  const resolvedMachine: ResolvedMachine | null = machineRow
-    ? {
-        kind: "machine",
-        routingKey: machineRoutingKey(label, machineRow.generation),
-        userId: machineRow.userId,
-        accountHandle: machineRow.accountHandle,
-        machine: {
-          id: machineRow.machineId,
-          credentialHash: machineRow.credentialHash,
-          revokedAt: machineRow.revokedAt,
-          lastSeenAt: machineRow.lastSeenAt,
-        },
-      }
-    : null;
-  labelCache.set(label, {
-    value: resolvedMachine,
-    expires: now + LABEL_TTL_MS,
-  });
-  return resolvedMachine;
+  if (!machineRow) return null;
+  return {
+    kind: "machine",
+    routingKey: machineRoutingKey(label, machineRow.generation),
+    userId: machineRow.userId,
+    accountHandle: machineRow.accountHandle,
+    machine: {
+      id: machineRow.machineId,
+      credentialHash: machineRow.credentialHash,
+      revokedAt: machineRow.revokedAt,
+      lastSeenAt: machineRow.lastSeenAt,
+    },
+  };
 }
 
 export interface VerifiedSessionCookie {
@@ -214,8 +245,6 @@ export async function verifySessionCookieDetails(
   const decoded = safeDecode(cookieValue);
   const dot = decoded.lastIndexOf(".");
   if (dot <= 0) return null;
-  const token = decoded.slice(0, dot);
-  const providedSig = decoded.slice(dot + 1);
 
   const now = Date.now();
   // Cache on the full `token.sig` value, not the token alone: keying on the
@@ -224,9 +253,38 @@ export async function verifySessionCookieDetails(
   // one would negative-poison the real token). The full-cookie key makes the
   // cache reflect exactly what passed verification.
   const cached = cacheGet(sessionCache, decoded, now);
-  if (cached !== undefined)
-    return cached === null ? null : verifiedSession(cached, now);
+  const cachedSession =
+    cached !== undefined
+      ? await cached
+      : await cacheStore(
+          sessionCache,
+          decoded,
+          lookupCachedSession(
+            decoded.slice(0, dot),
+            decoded.slice(dot + 1),
+            secret,
+            db,
+            now,
+          ),
+          now + SESSION_TTL_MS,
+          // A positive entry must not outlive its D1 session row; the clamp
+          // runs at settle time because a single-flight entry is stored
+          // before the row is known.
+          (looked) =>
+            looked === null
+              ? now + SESSION_TTL_MS
+              : Math.min(now + SESSION_TTL_MS, looked.expiresAt),
+        );
+  return cachedSession === null ? null : verifiedSession(cachedSession, now);
+}
 
+async function lookupCachedSession(
+  token: string,
+  providedSig: string,
+  secret: string,
+  db: ConnectDb,
+  now: number,
+): Promise<CachedSession | null> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -240,27 +298,16 @@ export async function verifySessionCookieDetails(
     new TextEncoder().encode(token),
   );
   const expectedSig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
-  if (!constantTimeEqual(providedSig, expectedSig)) {
-    sessionCache.set(decoded, { value: null, expires: now + SESSION_TTL_MS });
-    return null;
-  }
+  // A bad signature is a deliberate cached negative: it costs no D1 read and
+  // keeps a forged cookie from hammering the crypto path per request.
+  if (!constantTimeEqual(providedSig, expectedSig)) return null;
 
   const row = await db
     .select({ expiresAt: session.expiresAt, userId: session.userId })
     .from(session)
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date(now))))
     .get();
-  const cachedSession = row
-    ? { userId: row.userId, expiresAt: row.expiresAt.getTime() }
-    : null;
-  sessionCache.set(decoded, {
-    value: cachedSession,
-    expires:
-      row === undefined
-        ? now + SESSION_TTL_MS
-        : Math.min(now + SESSION_TTL_MS, row.expiresAt.getTime()),
-  });
-  return cachedSession === null ? null : verifiedSession(cachedSession, now);
+  return row ? { userId: row.userId, expiresAt: row.expiresAt.getTime() } : null;
 }
 
 /** Returns the owning user for callers that do not participate in refresh. */
