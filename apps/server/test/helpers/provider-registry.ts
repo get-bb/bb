@@ -27,6 +27,8 @@ import {
   EMPTY_PROVIDER_NATIVE_ROOTS,
   EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
   type JsonValue,
+  parseNamespacedGlyph,
+  pluginPackageJsonSchema,
   type ProviderInfo,
   type ProviderNativeRootSet,
 } from "@bb/domain";
@@ -76,6 +78,48 @@ export async function loadFirstPartyProviderDeclarations(): Promise<
 const NO_PLUGIN_SETTINGS = (): Readonly<Record<string, never>> => ({});
 
 /**
+ * The declared icons of a first-party plugin (`bb.branding.experimental_icons`),
+ * name → plugin-relative path. The plugin runtime resolves a provider icon in
+ * the namespaced form (`"<pluginId>/<name>"`) against the branding snapshots
+ * it took at load; a harness that reads only the path form would register
+ * those providers with no icon bytes, and the logo route would answer 404 for
+ * a provider that has a logo in production.
+ */
+async function declaredIcons(pluginId: string): Promise<Map<string, string>> {
+  const manifest = pluginPackageJsonSchema.parse(
+    JSON.parse(
+      await readFile(
+        join(firstPartyPluginRootDir(pluginId), "package.json"),
+        "utf8",
+      ),
+    ),
+  );
+  return new Map(Object.entries(manifest.bb.branding.experimental_icons ?? {}));
+}
+
+/**
+ * The icon byte snapshot the plugin runtime captures at registration, for
+ * either declared form: a plugin-relative path, or one of the plugin's own
+ * declared icons by its namespaced glyph. The provider-logo route serves
+ * exactly these bytes.
+ */
+function providerIconSnapshot(args: {
+  pluginId: string;
+  icon: string | undefined;
+  icons: ReadonlyMap<string, string>;
+}): { bytes: Uint8Array; contentType: string } | null {
+  const namespaced =
+    args.icon === undefined ? null : parseNamespacedGlyph(args.icon);
+  const asset =
+    namespaced === null
+      ? args.icon
+      : namespaced.pluginId === args.pluginId
+        ? args.icons.get(namespaced.name)
+        : undefined;
+  return readPluginProviderIcon(firstPartyPluginRootDir(args.pluginId), asset);
+}
+
+/**
  * Registers the first-party providers into an existing registry, exactly as
  * their four plugins would. `excludePluginIds` models a plugin the user disabled
  * (or that failed to load), whose provider is then absent from the registry.
@@ -103,6 +147,7 @@ export async function registerFirstPartyProviders(
       continue;
     }
     const declarations = await captureFirstPartyProviderDeclarations(pluginId);
+    const icons = await declaredIcons(pluginId);
     // The artifact lands before the registration flushes, as the plugin
     // runtime records it before the load commits: a picker request that
     // wakes on the registration must find the bridge already there.
@@ -114,12 +159,11 @@ export async function registerFirstPartyProviders(
       options.artifacts.set(pluginId, stubHostArtifact(pluginId));
     }
     for (const declaration of declarations) {
-      // The icon byte snapshot the plugin runtime captures at registration;
-      // the provider-logo route serves exactly these bytes.
-      const icon = readPluginProviderIcon(
-        firstPartyPluginRootDir(pluginId),
-        declaration.icon,
-      );
+      const icon = providerIconSnapshot({
+        pluginId,
+        icon: declaration.icon,
+        icons,
+      });
       registry.register({
         ...buildPluginProviderRegistration({
           available: !unavailable.has(pluginId),
@@ -129,7 +173,7 @@ export async function registerFirstPartyProviders(
         }),
         ...(icon === null ? {} : { icon }),
         pluginId,
-        iconNames: new Set<string>(),
+        iconNames: new Set(icons.keys()),
         // The bundled order: codex, claude-code, pi, acp — the same install
         // rank the plugin runtime assigns from the bundled plugin list.
         installRank: {

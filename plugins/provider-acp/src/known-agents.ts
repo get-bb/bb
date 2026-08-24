@@ -14,6 +14,23 @@ import { resolveOmpNativeRoots } from "./native-roots/omp.js";
 import { resolveOpenCodeNativeRoots } from "./native-roots/opencode.js";
 
 /**
+ * The plugin id bb installs this plugin under; the namespace of its declared
+ * icons.
+ */
+const PLUGIN_ID = "provider-acp";
+
+/**
+ * An agent logo as the namespaced glyph of an icon this plugin's manifest
+ * declares (`bb.branding.experimental_icons`). Not a `./icons/x.svg` path:
+ * the packaged build ships only the assets the manifest declares, so a path
+ * named only here would be missing from the installed plugin and the
+ * provider would register without a logo.
+ */
+function declaredIcon(name: string): string {
+  return `${PLUGIN_ID}/${name}`;
+}
+
+/**
  * A Claude plugin installed inside a `.claude/skills` directory is not a
  * skill of the agent reading that tree; the marker tells the daemon to skip
  * it (the claude-code plugin lists such plugins through their own roots).
@@ -56,7 +73,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
     id: "acp-cursor",
     displayName: "Cursor",
-    icon: "./icons/cursor.svg",
+    icon: declaredIcon("cursor"),
     iconTint: { light: "#111827", dark: "#F5F5F5" },
     signInCommand: "cursor-agent login",
     installUrl: "https://cursor.com/docs/cli/installation",
@@ -103,7 +120,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
     id: "acp-opencode",
     displayName: "opencode",
-    icon: "./icons/opencode.svg",
+    icon: declaredIcon("opencode"),
     iconTint: { light: "#2563EB", dark: "#2563EB" },
     signInCommand: "opencode auth login",
     installUrl: "https://opencode.ai/docs",
@@ -135,7 +152,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
     id: "acp-omp",
     displayName: "omp",
-    icon: "./icons/omp.svg",
+    icon: declaredIcon("omp"),
     iconTint: { light: "#9333EA", dark: "#9333EA" },
     signInCommand: "omp login",
     installUrl: "https://github.com/can1357/omp",
@@ -174,7 +191,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
     id: "acp-grok",
     displayName: "Grok Build",
-    icon: "./icons/grok.svg",
+    icon: declaredIcon("grok"),
     signInCommand: "grok login",
     installUrl: "https://docs.x.ai/docs/grok-build",
     visibility: "installed",
@@ -225,7 +242,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
     id: "acp-hermes-agent",
     displayName: "Hermes Agent",
-    icon: "./icons/hermes-agent.svg",
+    icon: declaredIcon("hermes-agent"),
     signInCommand: "hermes login",
     installUrl: "https://hermes-agent.nousresearch.com",
     visibility: "installed",

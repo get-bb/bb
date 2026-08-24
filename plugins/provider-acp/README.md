@@ -35,7 +35,8 @@ What lives here:
   bridge, re-exported, and a host entry whose one RPC asks an agent what it
   supports on the machine it is installed on (`src/contract.ts`,
   `src/probe-capabilities.ts`).
-- `icons/` — the provider logos.
+- `icons/` — the provider logos, declared in `package.json` under
+  `bb.branding.experimental_icons` so the packaged build ships them.
 
 The kit itself, including the ACP wire schema, the delta translation, the
 per-agent dialects and the bridge process, is `packages/provider-bridge-acp`.

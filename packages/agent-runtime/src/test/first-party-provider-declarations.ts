@@ -10,7 +10,10 @@
  * runtime, which also imports them as untyped modules and validates what
  * comes back (the fake host runs the same validator on every registration).
  */
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { pluginPackageJsonSchema } from "@bb/domain";
 import type { PluginSettingValue } from "@get-bb/plugin-sdk";
 import type { NormalizedPluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -24,6 +27,26 @@ export function firstPartyPluginRootDir(pluginId: string): string {
   return fileURLToPath(
     new URL(`../../../../plugins/${pluginId}`, import.meta.url),
   );
+}
+
+/**
+ * The icon names the plugin's manifest declares
+ * (`bb.branding.experimental_icons`). A provider whose declaration names one
+ * of them as a namespaced glyph (`"<pluginId>/<name>"`) registers only when
+ * the host knows the name, so the capture reads the same manifest the plugin
+ * runtime reads; without it every such registration is refused and the
+ * plugin looks like it declared nothing.
+ */
+async function declaredIconNames(pluginId: string): Promise<string[]> {
+  const manifest = pluginPackageJsonSchema.parse(
+    JSON.parse(
+      await readFile(
+        path.join(firstPartyPluginRootDir(pluginId), "package.json"),
+        "utf8",
+      ),
+    ),
+  );
+  return Object.keys(manifest.bb.branding.experimental_icons ?? {});
 }
 
 export interface CaptureFirstPartyProviderDeclarationsOptions {
@@ -64,6 +87,7 @@ export async function captureFirstPartyProviderDeclarations(
     // server's data dir. Point it at a directory that holds no config.json
     // so the machine running the tests cannot add an agent to them.
     dataDir: firstPartyPluginRootDir("__no-such-data-dir__"),
+    experimental_declaredIconNames: await declaredIconNames(pluginId),
     ...(options.settings === undefined ? {} : { settings: options.settings }),
   });
   try {

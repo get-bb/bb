@@ -183,6 +183,10 @@ describe("first-party provider plugins", () => {
           expect(registration.info.logoUrl, label).toBe(
             plugin.hasLogo ? expectedLogoUrl(plugin.providerId) : null,
           );
+          // The URL alone proves nothing: the route serves the byte snapshot
+          // taken at registration, and a declared icon whose file is absent
+          // leaves the snapshot empty behind a well-formed URL.
+          expect(registration.icon !== undefined, label).toBe(plugin.hasLogo);
           expect(registration.visibility, label).toBe(plugin.visibility);
           // The facts the takeover merge used to carry over from the seed.
           expect(

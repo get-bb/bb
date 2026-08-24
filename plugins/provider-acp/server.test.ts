@@ -6,14 +6,39 @@
  */
 
 import { getEventListeners } from "node:events";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { experimental_acpAgentProbeSchema } from "@get-bb/plugin-sdk/provider-bridge/acp";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
+import { z } from "zod";
 import { acpHostContract } from "./src/contract.js";
+import { KNOWN_ACP_AGENTS } from "./src/known-agents.js";
 import acpProvidersPlugin from "./server.js";
 
 /** A data dir with no config.json, so the deprecated array is never read. */
 const NO_LEGACY_CONFIG = "/tmp/bb-acp-plugin-test-no-config";
+
+const PLUGIN_ID = "provider-acp";
+
+/**
+ * The icon names the manifest declares (`bb.branding.experimental_icons`):
+ * what production lets a provider `icon` name as `"provider-acp/<name>"`.
+ */
+const DECLARED_ICON_NAMES = Object.keys(
+  z
+    .object({
+      bb: z.object({
+        branding: z.object({
+          experimental_icons: z.record(z.string(), z.string()),
+        }),
+      }),
+    })
+    .parse(
+      JSON.parse(
+        readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+      ),
+    ).bb.branding.experimental_icons,
+);
 
 function customAgents(...agents: unknown[]): string {
   return JSON.stringify(agents);
@@ -42,8 +67,9 @@ async function loadPlugin(options: {
   hosts?: { id: string; status: string }[];
 }) {
   const host = createFakePluginHost({
-    pluginId: "provider-acp",
+    pluginId: PLUGIN_ID,
     dataDir: NO_LEGACY_CONFIG,
+    experimental_declaredIconNames: DECLARED_ICON_NAMES,
     ...(options.customAgents === undefined
       ? {}
       : { settings: { customAgents: options.customAgents } }),
@@ -157,8 +183,9 @@ describe("the ACP plugin's registration bookkeeping", () => {
   // the picker empty.
   it("registers the shipped agents before the factory's first await", async () => {
     const host = createFakePluginHost({
-      pluginId: "provider-acp",
+      pluginId: PLUGIN_ID,
       dataDir: NO_LEGACY_CONFIG,
+      experimental_declaredIconNames: DECLARED_ICON_NAMES,
     });
     host.harness.sdk.stub("hosts.list", () => Promise.resolve([]));
 
@@ -211,9 +238,7 @@ describe("the ACP plugin's registration bookkeeping", () => {
         command: "amp",
       }),
     });
-    await vi.waitFor(() =>
-      expect(registeredIds(host)).toContain("acp-amp"),
-    );
+    await vi.waitFor(() => expect(registeredIds(host)).toContain("acp-amp"));
 
     // Identity, not equality: a dispose-and-re-register would put a NEW
     // object here even though the declaration is unchanged.
@@ -247,17 +272,15 @@ describe("the ACP plugin's registration bookkeeping", () => {
           displayName: "Amp",
           command: "amp",
         }),
-        }),
+      }),
     ]);
 
-    await vi.waitFor(() =>
-      expect(registeredIds(host)).toContain("acp-amp"),
-    );
+    await vi.waitFor(() => expect(registeredIds(host)).toContain("acp-amp"));
     // Exactly one registration for the id, and the untouched agents were
     // never re-registered.
-    expect(
-      registeredIds(host).filter((id) => id === "acp-amp"),
-    ).toHaveLength(1);
+    expect(registeredIds(host).filter((id) => id === "acp-amp")).toHaveLength(
+      1,
+    );
     expect(
       host.harness.registrations.providerRegistrations.find(
         (declaration) => declaration.id === "acp-cursor",
@@ -373,9 +396,7 @@ describe("the ACP plugin's capability probe", () => {
       for (let poll = 0; poll < 5; poll += 1) {
         await vi.advanceTimersByTimeAsync(5_000);
       }
-      expect(
-        host.harness.sdk.callsTo("hosts.list").length,
-      ).toBeGreaterThan(2);
+      expect(host.harness.sdk.callsTo("hosts.list").length).toBeGreaterThan(2);
       expect(getEventListeners(signal, "abort").length).toBeLessThanOrEqual(1);
     } finally {
       vi.useRealTimers();
@@ -430,5 +451,25 @@ describe("the ACP plugin's capability probe", () => {
     await run.done;
 
     expect(probed).toEqual([]);
+  });
+});
+
+describe("known agent logos", () => {
+  // The packaged build ships only the assets the manifest declares. A
+  // `./icons/x.svg` path named only in a declaration is absent from the
+  // installed plugin, the provider registers without a logo, and the model
+  // picker draws nothing where the agent's mark belongs. The fake host
+  // refuses an undeclared namespaced glyph like production does; this guards
+  // the path form, which both accept.
+  it("declares every agent logo in the manifest", () => {
+    for (const agent of KNOWN_ACP_AGENTS) {
+      if (agent.icon === undefined) continue;
+      expect(agent.icon, agent.id).toMatch(
+        new RegExp(`^${PLUGIN_ID}/[a-z0-9][a-z0-9-]*$`, "u"),
+      );
+      expect(DECLARED_ICON_NAMES, `${agent.id} icon ${agent.icon}`).toContain(
+        agent.icon.slice(PLUGIN_ID.length + 1),
+      );
+    }
   });
 });
