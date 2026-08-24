@@ -407,7 +407,11 @@ function looksLikePath(token: string): boolean {
 /** The verb a set of file changes reads as: all adds, all deletes, else edits. */
 function fileChangeVerb(
   changes: readonly DeltaFileChange[],
+  fallback: AcpFileChangeVerb,
 ): AcpFileChangeVerb {
+  if (changes.length === 0) {
+    return fallback;
+  }
   if (changes.every((change) => change.kind === "add")) {
     return "add";
   }
@@ -442,11 +446,14 @@ function buildAcpFileChanges(
   return path === undefined ? [] : [{ path, kind: operation.changeKind }];
 }
 
-function fileChangeItem(changes: DeltaFileChange[]): AcpClassifiedToolCall {
+function fileChangeItem(
+  changes: DeltaFileChange[],
+  fallbackVerb: AcpFileChangeVerb,
+): AcpClassifiedToolCall {
   return {
     item: { type: "fileChange", changes },
     presentation: fileChangePresentation({
-      verb: fileChangeVerb(changes),
+      verb: fileChangeVerb(changes, fallbackVerb),
       paths: changes.map((change) => change.path),
     }),
   };
@@ -628,9 +635,7 @@ export function classifyAcpToolCall(
   }
   if (operation.kind === "file_change") {
     const changes = buildAcpFileChanges(event, operation, options);
-    if (changes.length > 0) {
-      return fileChangeItem(changes);
-    }
+    return fileChangeItem(changes, operation.changeKind);
   }
   const title = toOptionalString(event.title);
   switch (event.kind) {

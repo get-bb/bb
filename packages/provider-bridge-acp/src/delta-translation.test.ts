@@ -739,7 +739,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
   });
 
-  it("tracks Cursor edit calls as file changes before the final diff arrives", () => {
+  it("keeps a Cursor edit in one file-change lifecycle when the final diff supplies its path", () => {
     const harness = startedHarness();
     const turnId = harness.openTurnId();
 
@@ -750,7 +750,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         title: "Edit file",
         kind: "edit",
         status: "in_progress",
-        locations: [{ path: "/workspace/a.ts" }],
+        rawInput: {},
       }),
     );
     expect(startedEvents).toEqual([
@@ -762,13 +762,12 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         item: {
           type: "fileChange",
           id: expect.stringMatching(ITEM_ID_PATTERN),
-          changes: [{ path: "/workspace/a.ts", kind: "update" }],
+          changes: [],
           status: "pending",
           approvalStatus: null,
           presentation: {
             label: { pending: "Editing file", completed: "Edited file" },
             icon: { glyph: "EditFile" },
-            title: "a.ts",
           },
         },
       },
@@ -809,6 +808,76 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         ? completedEvents[0].item.changes[0]
         : undefined;
     expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
+  });
+
+  it("keeps an OpenCode edit in one file-change lifecycle when its path arrives late", () => {
+    const harness = startedHarness();
+    const turnId = harness.openTurnId();
+
+    const startedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-opencode-write",
+        title: "write",
+        kind: "edit",
+        status: "pending",
+        locations: [],
+        rawInput: {},
+      }),
+    );
+    expect(startedEvents).toEqual([
+      {
+        type: "item/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope(turnId),
+        item: {
+          type: "fileChange",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
+          changes: [],
+          status: "pending",
+          approvalStatus: null,
+          presentation: {
+            label: { pending: "Editing file", completed: "Edited file" },
+            icon: { glyph: "EditFile" },
+          },
+        },
+      },
+    ]);
+    const startedItemId =
+      startedEvents[0]?.type === "item/started" ? startedEvents[0].item.id : "";
+
+    const completedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-opencode-write",
+        title: "notes.md",
+        status: "completed",
+        locations: [{ path: "/workspace/notes.md" }],
+        rawInput: {
+          content: "updated\n",
+          filePath: "/workspace/notes.md",
+        },
+        rawOutput: { output: "Wrote file successfully." },
+      }),
+    );
+    expect(completedEvents).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "fileChange",
+          id: startedItemId,
+          status: "completed",
+          changes: [
+            expect.objectContaining({
+              path: "/workspace/notes.md",
+              kind: "update",
+            }),
+          ],
+          presentation: expect.objectContaining({ title: "notes.md" }),
+        }),
+      }),
+    ]);
   });
 
   it("translates plan updates into settled planSteps snapshots", () => {
@@ -1198,6 +1267,24 @@ describe("acp delta translation (native kinds → core kinds)", () => {
         },
       }),
     );
+  });
+
+  it("maps a path-pending delete to an empty file change", () => {
+    expect(
+      openItem({
+        toolCallId: "delete-1",
+        title: "Delete file",
+        kind: "delete",
+        rawInput: {},
+      }),
+    ).toMatchObject({
+      type: "fileChange",
+      changes: [],
+      presentation: {
+        label: { pending: "Deleting file", completed: "Deleted file" },
+        icon: { glyph: "Trash2" },
+      },
+    });
   });
 
   it("maps a fetch to webFetch when the URL is known", () => {
