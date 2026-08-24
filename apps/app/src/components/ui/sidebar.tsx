@@ -2128,6 +2128,14 @@ const SidebarFooter = React.forwardRef<
 });
 SidebarFooter.displayName = "SidebarFooter";
 
+// Selects the scrolling `SidebarContent` div below. `SidebarWindowedItems`
+// walks up to it from its own wrapper rows when it commits in the same pass
+// as `SidebarContent`, because React attaches an ancestor's ref after its
+// descendants' layout effects have run and `useSidebarContentElementRef` is
+// still empty at that point. Keep it paired with the `data-sidebar` attribute
+// on that div.
+const SIDEBAR_CONTENT_SELECTOR = '[data-sidebar="content"]';
+
 const SidebarContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div">
@@ -2368,6 +2376,7 @@ const SidebarMenuSkeleton = React.forwardRef<
 SidebarMenuSkeleton.displayName = "SidebarMenuSkeleton";
 
 export {
+  SIDEBAR_CONTENT_SELECTOR,
   Sidebar,
   SidebarContent,
   SidebarFooter,

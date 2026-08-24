@@ -8,7 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSidebarContentElementRef } from "@/components/ui/sidebar.js";
+import {
+  SIDEBAR_CONTENT_SELECTOR,
+  useSidebarContentElementRef,
+} from "@/components/ui/sidebar.js";
 import {
   encodeSidebarWindowedNavigationEntries,
   SIDEBAR_WINDOWED_NAV_ATTRIBUTE,
@@ -55,11 +58,6 @@ interface SidebarWindowedItemsProps {
 }
 
 const EMPTY_KEY_SET: ReadonlySet<string> = new Set();
-
-// Matches the scrolling `SidebarContent` div in
-// apps/app/src/components/ui/sidebar.tsx, which is also what
-// `useSidebarContentElementRef` points at once its ref is attached.
-const SIDEBAR_CONTENT_SELECTOR = '[data-sidebar="content"]';
 
 /**
  * Windows a sidebar item list against the sidebar scroll container (#1261).
