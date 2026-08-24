@@ -58,3 +58,14 @@ export function readCachedStreamerMode(
   return queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey())
     ?.generalSettings.streamerMode;
 }
+
+/**
+ * The provider order the cache last saw from the server, or undefined when
+ * `/system/config` has not resolved in this window.
+ */
+export function readCachedProviderOrder(
+  queryClient: QueryClient,
+): readonly string[] | undefined {
+  return queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey())
+    ?.generalSettings.providerOrder;
+}
