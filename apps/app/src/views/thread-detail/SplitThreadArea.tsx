@@ -215,30 +215,44 @@ function usePreservedSplitScrollPositions(maximizedPaneId: string | null) {
     }
     previousMaximizedPaneIdRef.current = maximizedPaneId;
 
-    const restore = () => {
+    /** Reapplies saved positions; true when any element needed correction. */
+    const restore = (): boolean => {
       const workspace = workspaceRef.current;
+      let corrected = false;
       for (const [element, position] of positionsRef.current) {
         if (workspace === null || !workspace.contains(element)) {
           positionsRef.current.delete(element);
           continue;
         }
+        if (
+          element.scrollLeft === position.left &&
+          element.scrollTop === position.top
+        ) {
+          continue;
+        }
         element.scrollLeft = position.left;
         element.scrollTop = position.top;
+        corrected = true;
       }
+      return corrected;
     };
 
     // Restore before paint, then briefly across animation frames so passive
     // timeline effects, virtualization, and browser scroll anchoring cannot
-    // overwrite the saved position while pane visibility settles.
+    // overwrite the saved position while pane visibility settles. Each frame
+    // forces layout on every tracked scroller, so the loop ends after the
+    // first frame with nothing to correct; the frame cap bounds the
+    // pathological case where something keeps fighting the restore.
     restore();
     let frame: number | null = null;
-    let framesRemaining = 30;
+    let framesRemaining = 5;
     const restoreUntilSettled = () => {
-      restore();
+      const corrected = restore();
       framesRemaining -= 1;
-      if (framesRemaining > 0) {
-        frame = window.requestAnimationFrame(restoreUntilSettled);
-      }
+      frame =
+        corrected && framesRemaining > 0
+          ? window.requestAnimationFrame(restoreUntilSettled)
+          : null;
     };
     frame = window.requestAnimationFrame(restoreUntilSettled);
     return () => {
