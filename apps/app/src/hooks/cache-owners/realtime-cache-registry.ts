@@ -1176,17 +1176,26 @@ function patchThreadListPendingInteractionState({
  */
 function patchThreadListStatusState(
   context: ThreadRealtimeDirtyContext,
-): QueryKey[] | undefined {
-  const { queryClient, statusChange, threadId } = context;
+): void {
+  const { flushOnce, queryClient, statusChange, threadId } = context;
   if (!threadId || !statusChange) {
     dirtyActiveThreadListQueriesWithThrottledRefetch(context);
-    return undefined;
+    return;
   }
   updateCachedThreadListStatusState(queryClient, threadId, statusChange);
   for (const queryKey of getFetchingThreadListQueryKeys(queryClient)) {
     queryClient.invalidateQueries({ exact: true, queryKey });
   }
-  return [threadSearchQueryKeyPrefix()]; // Result rows render status but are not list-shaped.
+  // Result rows render status but are not list-shaped, so search refreshes
+  // rather than patches — once per flush and without aborting a request in
+  // flight: status changes ride the immediate path, and the default
+  // cancelling invalidation could starve an open search on a slow link.
+  if (flushOnce("thread-search:status-changed")) {
+    queryClient.invalidateQueries(
+      { queryKey: threadSearchQueryKeyPrefix() },
+      { cancelRefetch: false },
+    );
+  }
 }
 
 function dirtyEnvironmentRecordQueries(

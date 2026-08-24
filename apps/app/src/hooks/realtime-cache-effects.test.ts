@@ -569,6 +569,73 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("does not abort an in-flight search when a status change patches the row", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const threadSearchKey = threadSearchQueryKey({
+      limitPerGroup: 20,
+      query: "needle",
+    });
+    // Cached data matters: the default cancelling invalidation only aborts
+    // and re-issues a fetch when the query already holds data — exactly the
+    // open-search-refreshing case a streaming turn's status flips would starve.
+    queryClient.setQueryData(threadSearchKey, {
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+    const signals: AbortSignal[] = [];
+    const resolveFetches: Array<(value: unknown) => void> = [];
+    const searchQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
+      signals.push(signal);
+      return new Promise((resolve) => {
+        resolveFetches.push(resolve);
+      });
+    });
+    const searchObserver = new QueryObserver(queryClient, {
+      queryKey: threadSearchKey,
+      queryFn: searchQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeSearch = searchObserver.subscribe(() => {});
+    void searchObserver.refetch();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_1",
+      metadata: {
+        projectId: "project-1",
+        statusChange: {
+          activity: NO_THREAD_ACTIVITY,
+          latestAttentionAt: 100,
+          runtime: {
+            displayStatus: "active",
+            hostReconnectGraceExpiresAt: null,
+          },
+          status: "active",
+          updatedAt: 200,
+        },
+      },
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Status changes ride the immediate path, so a cancelling invalidation
+    // here could starve an open search forever; the request keeps running.
+    expect(signals[0]?.aborted).toBe(false);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+
+    resolveFetches[0]?.({
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    unsubscribeSearch();
+    effects.dispose();
+  });
+
   it("marks the timeline of an unviewed thread stale without scheduling a refetch", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
