@@ -1,4 +1,4 @@
-export const threadDynamicContextFileStatusValues = [
+const threadDynamicContextFileStatusValues = [
   "present",
   "missing",
   "too_large",

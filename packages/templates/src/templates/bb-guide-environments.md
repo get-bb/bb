@@ -107,6 +107,15 @@ Making your repo work with bb:
 
   bb environment archive-threads <id>     Archive all threads in an environment
 
+  When the last thread of a managed worktree environment is archived or
+  deleted, bb destroys the environment: it stops the agent process, then
+  stops every process whose working directory is inside the worktree
+  (background jobs the agent left behind, and also shells, editors, or
+  servers you started there yourself), then removes the worktree and its
+  branch. Each process gets SIGTERM, then SIGKILL after a short grace
+  period. Move your own shells out of the worktree first if you want to
+  keep them.
+
   bb environment pull-request show <id>   Inspect a pull request
   bb environment pull-request ready <id>  Mark a pull request ready
   bb environment pull-request draft <id>  Convert a pull request to draft
@@ -146,6 +155,8 @@ Remote access (bb connect):
   bb connect unexpose <port> [--host <name-or-id>]  Stop sharing on that host
   bb connect shares [--host <name-or-id>]           List that host's shares
   bb connect servers                      List every bb on this account (handle, url, live)
+  bb connect machine-code                 Mint a one-time code that pairs the bb mobile app
+                                          (needs the mobileApp experiment)
 
   Port sharing works from threads on any enrolled host. In a thread,
   `bb connect expose <port>` resolves the thread environment's host; outside a
@@ -160,7 +171,18 @@ Remote access (bb connect):
   `bb connect status` shows all shares with host + URL. `shares --json` returns
   the resolved `host` and rows with `hostId`, `hostName`, `port`, and `url`.
 
+  The bb mobile app pairs with a paired bb through bb connect. Turn on the
+  `mobileApp` experiment first (`bb settings experiment mobileApp true`, or
+  Settings → Experiments → Mobile app); the surfaces below stay hidden without
+  it. Settings → Remote access → Add mobile device shows a QR code plus the code as text;
+  `bb connect machine-code` prints the same code, server URL, apex, and expiry
+  (`--json` for `{code, serverUrl, apex, expiresAt}`). The phone scans or
+  types the code and enrolls as a connect machine on the account with its own
+  revocable credential (it appears in the getbb.app dashboard machine list).
+  Codes last 10 minutes and work once; an account-machine-limit failure says
+  so and points at the dashboard to revoke an unused device.
+
   Remote access is owned by the builtin "connect" plugin (Plugins → connect
-  shows the URL, QR code, and shared ports). Disabling the plugin
-  (`bb plugin disable connect`) cuts off all remote access; re-enable with
-  `bb plugin enable connect`.
+  shows the URL, QR code, mobile pairing, and shared ports). Disabling the
+  plugin (`bb plugin disable connect`) cuts off all remote access; re-enable
+  with `bb plugin enable connect`.

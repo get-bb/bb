@@ -1,5 +1,5 @@
 /** Outcome of a Cmd+Shift+M dispatch for a single model picker instance. */
-export type ModelPickerToggleAction = "open" | "close" | "ignore";
+type ModelPickerToggleAction = "open" | "close" | "ignore";
 
 /**
  * Which mounted picker a model-picker chord addresses. Every composer registers

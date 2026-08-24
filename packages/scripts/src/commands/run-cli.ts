@@ -32,9 +32,7 @@ export function resolveCliExecution(
   };
 }
 
-export async function main(
-  cliArgs: string[] = process.argv.slice(2),
-): Promise<void> {
+async function main(cliArgs: string[] = process.argv.slice(2)): Promise<void> {
   const execution = resolveCliExecution(cliArgs);
   process.exitCode = await runScriptProcess({
     args: execution.args,

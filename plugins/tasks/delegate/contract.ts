@@ -23,6 +23,12 @@ export const delegationRpcContract = defineRpcContract({
     input: z.object({ taskId: idSchema, threadId: threadIdSchema }).strict(),
     output: z.object({ threadId: threadIdSchema }).strict(),
   },
+  // Inverse of taskThreadsAttach: removes the (task, thread) row. Fails when
+  // the thread is not attached to the task.
+  taskThreadsDetach: {
+    input: z.object({ taskId: idSchema, threadId: threadIdSchema }).strict(),
+    output: z.object({ threadId: threadIdSchema }).strict(),
+  },
 });
 
 export type DelegationRpcContract = typeof delegationRpcContract;

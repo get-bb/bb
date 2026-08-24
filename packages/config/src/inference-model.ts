@@ -3,12 +3,7 @@ export interface ProviderModelInfo {
   modelId: string;
 }
 
-interface ValidateProviderModelConfigArgs {
-  name: string;
-  value: string;
-}
-
-export interface ParseProviderModelConfigArgs {
+interface ParseProviderModelConfigArgs {
   name: string;
   value: string;
 }
@@ -29,8 +24,8 @@ export function parseProviderModelConfig(
   );
 }
 
-export function validateProviderModelConfig(
-  args: ValidateProviderModelConfigArgs,
+function validateProviderModelConfig(
+  args: ParseProviderModelConfigArgs,
 ): string {
   parseProviderModelConfig(args);
   return args.value;

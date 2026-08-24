@@ -9,7 +9,7 @@ import type {
   RegistrySkillsPage,
 } from "@bb/server-contract";
 import { RESOURCE_GRID_PAGE_SIZE } from "@bb/shared-ui/resource-pagination";
-import { BbHttpError, sdk } from "@/lib/sdk";
+import { sdk } from "@/lib/sdk";
 
 export type {
   RegistryPagination,
@@ -21,10 +21,6 @@ export type {
 };
 
 export const REGISTRY_PAGE_SIZE = RESOURCE_GRID_PAGE_SIZE;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 export async function fetchRegistrySkills(args: {
   query: string;
@@ -86,33 +82,6 @@ export async function fetchRegistryRepositoryStars(
   signal?: AbortSignal,
 ): Promise<number> {
   return (await sdk.skills.registry.repositoryStars({ source, signal })).stars;
-}
-
-export async function installRegistrySkill(args: { skill: RegistrySkill }) {
-  try {
-    return await sdk.skills.registry.install({
-      registrySkillId: args.skill.id,
-    });
-  } catch (error) {
-    if (error instanceof BbHttpError) {
-      throw new Error(
-        isRecord(error.body) && typeof error.body.message === "string"
-          ? error.body.message
-          : "Couldn't save skill",
-      );
-    }
-    if (error instanceof Error && error.name === "ZodError") {
-      throw new Error("Couldn't save skill");
-    }
-    throw error;
-  }
-}
-
-export function normalizeSkillName(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-");
 }
 
 export function resolveInstalledRegistrySkill(

@@ -199,6 +199,21 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     });
   }
 
+  // A host file write may land inside an environment checkout. The daemon
+  // watcher event for it arrives asynchronously, and only when someone is
+  // subscribed, so drop the host's cached workspace reads before responding
+  // (whether the write succeeded or failed midway).
+  const runHostFileMutation = async <T>(
+    hostId: string,
+    run: () => Promise<T>,
+  ): Promise<T> => {
+    try {
+      return await run();
+    } finally {
+      deps.workspaceReadCaches.invalidateHost(hostId);
+    }
+  };
+
   post(fileRoutes.read, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
@@ -222,24 +237,26 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.write, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
-      const result = await callHostOnlineRpc(deps, {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.write_file",
-          path: payload.path,
-          content: payload.content,
-          contentEncoding: payload.contentEncoding ?? "utf8",
-          createParents: payload.createParents ?? false,
-          ...(payload.rootPath !== undefined
-            ? { rootPath: payload.rootPath }
-            : {}),
-          ...(payload.expectedSha256 !== undefined
-            ? { expectedSha256: payload.expectedSha256 }
-            : {}),
-          ...(payload.mode !== undefined ? { mode: payload.mode } : {}),
-        },
-      });
+      const result = await runHostFileMutation(hostId, () =>
+        callHostOnlineRpc(deps, {
+          hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "host.write_file",
+            path: payload.path,
+            content: payload.content,
+            contentEncoding: payload.contentEncoding ?? "utf8",
+            createParents: payload.createParents ?? false,
+            ...(payload.rootPath !== undefined
+              ? { rootPath: payload.rootPath }
+              : {}),
+            ...(payload.expectedSha256 !== undefined
+              ? { expectedSha256: payload.expectedSha256 }
+              : {}),
+            ...(payload.mode !== undefined ? { mode: payload.mode } : {}),
+          },
+        }),
+      );
       return context.json(result);
     } catch (error) {
       return remapDaemonFileRouteError(error);
@@ -289,18 +306,20 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.mkdir, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
-      const result = await callHostOnlineRpc(deps, {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.mkdir",
-          path: payload.path,
-          recursive: payload.recursive ?? false,
-          ...(payload.rootPath !== undefined
-            ? { rootPath: payload.rootPath }
-            : {}),
-        },
-      });
+      const result = await runHostFileMutation(hostId, () =>
+        callHostOnlineRpc(deps, {
+          hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "host.mkdir",
+            path: payload.path,
+            recursive: payload.recursive ?? false,
+            ...(payload.rootPath !== undefined
+              ? { rootPath: payload.rootPath }
+              : {}),
+          },
+        }),
+      );
       return context.json(result);
     } catch (error) {
       return remapDaemonFileRouteError(error);
@@ -310,18 +329,20 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.move, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
-      const result = await callHostOnlineRpc(deps, {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.move_path",
-          sourcePath: payload.sourcePath,
-          destinationPath: payload.destinationPath,
-          ...(payload.rootPath !== undefined
-            ? { rootPath: payload.rootPath }
-            : {}),
-        },
-      });
+      const result = await runHostFileMutation(hostId, () =>
+        callHostOnlineRpc(deps, {
+          hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "host.move_path",
+            sourcePath: payload.sourcePath,
+            destinationPath: payload.destinationPath,
+            ...(payload.rootPath !== undefined
+              ? { rootPath: payload.rootPath }
+              : {}),
+          },
+        }),
+      );
       return context.json(result);
     } catch (error) {
       return remapDaemonFileRouteError(error);
@@ -331,18 +352,20 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
   post(fileRoutes.remove, async (context, payload) => {
     const hostId = resolveHostId(payload.hostId);
     try {
-      const result = await callHostOnlineRpc(deps, {
-        hostId,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.remove_path",
-          path: payload.path,
-          recursive: payload.recursive ?? false,
-          ...(payload.rootPath !== undefined
-            ? { rootPath: payload.rootPath }
-            : {}),
-        },
-      });
+      const result = await runHostFileMutation(hostId, () =>
+        callHostOnlineRpc(deps, {
+          hostId,
+          timeoutMs: COMMAND_TIMEOUT_MS,
+          command: {
+            type: "host.remove_path",
+            path: payload.path,
+            recursive: payload.recursive ?? false,
+            ...(payload.rootPath !== undefined
+              ? { rootPath: payload.rootPath }
+              : {}),
+          },
+        }),
+      );
       return context.json(result);
     } catch (error) {
       return remapDaemonFileRouteError(error);

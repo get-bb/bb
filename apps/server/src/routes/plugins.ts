@@ -19,6 +19,7 @@ import {
   type AppAssetCompressionCache,
 } from "../services/plugins/app-asset-compression-cache.js";
 import { rankAcceptedAssetEncodings } from "../asset-content-encoding.js";
+import { pluginImageResponse } from "./plugin-image-response.js";
 import {
   pluginApplyUpdateRequestSchema,
   pluginInstallRequestSchema,
@@ -28,7 +29,7 @@ import {
 } from "@bb/server-contract";
 
 /** The slice of server deps the "local" auth checks need (origin allowlist). */
-export interface PluginRoutesDeps {
+interface PluginRoutesDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
   db: import("@bb/db").DbConnection;
 }
@@ -294,6 +295,28 @@ export function registerPluginRoutes(
     "app.css": { kind: "css", contentType: "text/css; charset=utf-8" },
   } as const;
 
+  // Declared icons (`bb.branding.experimental_icons`): one SVG per declared
+  // name, identity-backed like the branding assets. A Hono `:file` segment
+  // never spans "/", so this route does not shadow the one below.
+  app.get("/plugins/:id/assets/icons/:file", (context) => {
+    const file = context.req.param("file");
+    const name = file.endsWith(".svg") ? file.slice(0, -".svg".length) : null;
+    const asset =
+      name === null || name.length === 0
+        ? undefined
+        : plugins.getIconAsset(context.req.param("id"), name);
+    if (!asset) {
+      return context.json({ ok: false, error: "plugin has no such icon" }, 404);
+    }
+    return pluginImageResponse(
+      context,
+      asset,
+      context.req.query("h") === asset.hash
+        ? "public, max-age=31536000, immutable"
+        : "no-store",
+    );
+  });
+
   app.get("/plugins/:id/assets/:file", async (context) => {
     const file = context.req.param("file");
     // Explicit plugin branding assets: same hash-busting cache policy as the
@@ -306,14 +329,13 @@ export function registerPluginRoutes(
           404,
         );
       }
-      const cacheControl =
+      return pluginImageResponse(
+        context,
+        asset,
         context.req.query("h") === asset.hash
           ? "public, max-age=31536000, immutable"
-          : "no-store";
-      return context.body(new Uint8Array(asset.bytes), 200, {
-        "content-type": asset.contentType,
-        "cache-control": cacheControl,
-      });
+          : "no-store",
+      );
     }
     const spec =
       file === "app.js" || file === "app.css"
@@ -450,8 +472,14 @@ export function registerPluginRoutes(
 
   app.post("/plugins/reload", async (context) => {
     const id = context.req.query("id") ?? undefined;
-    await plugins.reload(id);
-    return context.json({ ok: true, plugins: plugins.list() });
+    const outcome = await plugins.reload(id);
+    // A reload that left a targeted plugin without its current sources
+    // running (degraded after a hung service, or the previous instance kept)
+    // is a failure the caller must see: `bb plugin reload` exits 1 on it and
+    // the dev loop logs it. The inventory rides along so the status detail
+    // is visible either way.
+    if (!outcome.ok) return context.json(outcome, 422);
+    return context.json(outcome);
   });
 
   app.post("/plugins/:id/enable", async (context) => {

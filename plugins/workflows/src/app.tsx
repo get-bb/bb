@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -31,10 +32,16 @@ import {
   definePluginApp,
   useBbNavigate,
   useComposerView,
+  useRealtime,
+  useRealtimeConnectionState,
   useRpc,
   type PluginMessageDirectiveProps,
   type PluginThreadPanelProps,
 } from "@get-bb/plugin-sdk/app";
+import {
+  WORKFLOW_RUNS_REALTIME_CHANNEL,
+  workflowRunsSignalThreadId,
+} from "./realtime-channel.js";
 import type { workflowUiRpcContract } from "./ui-contract.js";
 import type { WorkflowCallView, WorkflowRunView } from "./ui-contract.js";
 
@@ -369,8 +376,66 @@ function useWorkflowRun(
   const shouldPoll =
     state.status === "error" ||
     (state.status === "ready" && state.run !== null && isRunActive(state.run));
+  useVisibleActivePolling(refresh, shouldPoll);
+
+  return { state, refresh };
+}
+
+function subscribeDocumentVisibility(onChange: () => void): () => void {
+  document.addEventListener("visibilitychange", onChange);
+  return () => document.removeEventListener("visibilitychange", onChange);
+}
+
+function readDocumentVisible(): boolean {
+  return document.visibilityState !== "hidden";
+}
+
+function useDocumentVisible(): boolean {
+  return useSyncExternalStore(
+    subscribeDocumentVisibility,
+    readDocumentVisible,
+    () => true,
+  );
+}
+
+/**
+ * Poll `refresh` every second, but only while `active` and the document is
+ * visible. A hidden tab (phone in a pocket, app switcher) never polls; when
+ * it comes back, and when the realtime connection comes back, one immediate
+ * refresh catches up on whatever the pause or the outage hid.
+ */
+function useVisibleActivePolling(
+  refresh: () => Promise<void>,
+  active: boolean,
+): void {
+  const visible = useDocumentVisible();
+  const connection = useRealtimeConnectionState();
+  const wasHidden = useRef(false);
+  const wasDisconnected = useRef(false);
+
   useEffect(() => {
-    if (!shouldPoll) return;
+    if (!visible) {
+      wasHidden.current = true;
+      return;
+    }
+    if (!wasHidden.current) return;
+    wasHidden.current = false;
+    void refresh();
+  }, [refresh, visible]);
+
+  useEffect(() => {
+    if (connection !== "connected") {
+      wasDisconnected.current = true;
+      return;
+    }
+    if (!wasDisconnected.current) return;
+    wasDisconnected.current = false;
+    void refresh();
+  }, [connection, refresh]);
+
+  const enabled = active && visible;
+  useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     let timeout: number | null = null;
     const schedule = () => {
@@ -385,9 +450,7 @@ function useWorkflowRun(
       cancelled = true;
       if (timeout !== null) window.clearTimeout(timeout);
     };
-  }, [refresh, shouldPoll]);
-
-  return { state, refresh };
+  }, [enabled, refresh]);
 }
 
 function useActiveWorkflowRuns(threadId: string): {
@@ -420,22 +483,17 @@ function useActiveWorkflowRuns(threadId: string): {
     };
   }, [refresh]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let timeout: number | null = null;
-    const schedule = () => {
-      timeout = window.setTimeout(() => {
-        void refresh().finally(() => {
-          if (!cancelled) schedule();
-        });
-      }, ACTIVE_POLL_INTERVAL_MS);
-    };
-    schedule();
-    return () => {
-      cancelled = true;
-      if (timeout !== null) window.clearTimeout(timeout);
-    };
-  }, [refresh]);
+  // The service publishes when this thread's run set changes (start, claim,
+  // settle, cancel), so an idle thread needs no standing poll to learn about
+  // a new run; polling below covers progress while a run is active.
+  useRealtime(WORKFLOW_RUNS_REALTIME_CHANNEL, (payload) => {
+    if (workflowRunsSignalThreadId(payload) === threadId) void refresh();
+  });
+
+  const shouldPoll =
+    state.status === "error" ||
+    (state.status === "ready" && state.runs.some(isRunActive));
+  useVisibleActivePolling(refresh, shouldPoll);
 
   const setRuns = useCallback(
     (update: (runs: WorkflowRunView[]) => WorkflowRunView[]) => {
@@ -802,14 +860,17 @@ function WorkflowPreviewLoaded({
 
 function WorkflowRunPanel({ threadId, params }: PluginThreadPanelProps) {
   const runId = panelRunId(params);
-  if (runId === undefined) {
-    return (
-      <EmptyOrError>
-        This workflow panel has invalid run parameters.
-      </EmptyOrError>
-    );
-  }
-  return <WorkflowRunPanelLoaded threadId={threadId} runId={runId} />;
+  return (
+    <div className="h-full min-h-0 flex-1 p-4">
+      {runId === undefined ? (
+        <EmptyOrError>
+          This workflow panel has invalid run parameters.
+        </EmptyOrError>
+      ) : (
+        <WorkflowRunPanelLoaded threadId={threadId} runId={runId} />
+      )}
+    </div>
+  );
 }
 
 function WorkflowRunPanelLoaded({
@@ -863,7 +924,7 @@ function WorkflowRunPanelLoaded({
     <div className="flex h-full min-h-0 flex-col bg-background">
       <div
         data-detail-scroll-area="workflow-panel"
-        className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 overflow-y-auto"
       >
         <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
@@ -985,5 +1046,6 @@ export default definePluginApp((app) => {
     title: "Workflow run",
     icon: "Workflow",
     component: WorkflowRunPanel,
+    layout: "flush",
   });
 });

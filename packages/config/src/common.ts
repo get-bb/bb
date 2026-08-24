@@ -11,7 +11,7 @@ export interface LogLevelConfig {
   BB_LOG_LEVEL: string;
 }
 
-export type LoadLogLevelConfigArgs = EnvLoaderArgs;
+type LoadLogLevelConfigArgs = EnvLoaderArgs;
 
 export interface CommonConfig extends LogLevelConfig {
   BB_DATA_DIR: string;

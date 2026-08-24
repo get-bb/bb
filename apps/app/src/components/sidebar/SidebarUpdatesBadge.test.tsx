@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { Host } from "@bb/domain";
@@ -11,12 +11,35 @@ import type {
   UpdateInventory,
   UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
 const useUpdateInventoryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useUpdateInventory", () => ({
   useUpdateInventory: useUpdateInventoryMock,
+}));
+
+// The marks come from the provider roster: each registered provider's
+// declared logo, served by the host.
+vi.mock("@/lib/sdk", async () => {
+  const { makeProviderInfo: provider } = await import(
+    "@/test/provider-info-fixture"
+  );
+  return {
+    sdk: {
+      providers: {
+        list: vi.fn(async () => [
+          provider({ id: "claude-code", displayName: "Claude Code" }),
+          provider({ id: "codex", displayName: "Codex" }),
+        ]),
+      },
+    },
+  };
+});
+
+vi.mock("@/lib/ws", () => ({
+  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
 afterEach(() => {
@@ -102,6 +125,7 @@ function machine(
     isPrimary: true,
     providerStatus: null,
     statusPending: false,
+    statusFetching: false,
     statusError: false,
     issues: [],
     canRetryDaemonUpdate: false,
@@ -121,12 +145,14 @@ function renderBadge(inventory: Partial<UpdateInventory>) {
     hasAttention: false,
     ...inventory,
   });
+  const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <TooltipProvider>
         <SidebarUpdatesBadge />
       </TooltipProvider>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -153,7 +179,7 @@ describe("SidebarUpdatesBadge", () => {
   it("shows only the provider chip when bb itself is current", () => {
     renderBadge({
       machines: [
-        machine({ issues: [providerIssue("claudeCode", "Claude Code")] }),
+        machine({ issues: [providerIssue("claude-code", "Claude Code")] }),
       ],
     });
 
@@ -169,7 +195,7 @@ describe("SidebarUpdatesBadge", () => {
     renderBadge({
       machines: [
         machine({
-          issues: [missingInstallIssue("claudeCode", "Claude Code")],
+          issues: [missingInstallIssue("claude-code", "Claude Code")],
         }),
       ],
     });
@@ -192,18 +218,18 @@ describe("SidebarUpdatesBadge", () => {
     expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
   });
 
-  it("renders one mark per provider in a stable order when the same CLI is stale on several machines", () => {
+  it("renders one mark per provider in a stable order when the same CLI is stale on several machines", async () => {
     renderBadge({
       appUpdateAvailable: true,
       machines: [
         machine({
           host: host("host-1"),
-          issues: [providerIssue("claudeCode", "Claude Code")],
+          issues: [providerIssue("claude-code", "Claude Code")],
         }),
         machine({
           host: host("host-2"),
           issues: [
-            providerIssue("claudeCode", "Claude Code"),
+            providerIssue("claude-code", "Claude Code"),
             providerIssue("codex", "Codex"),
           ],
         }),
@@ -211,11 +237,24 @@ describe("SidebarUpdatesBadge", () => {
     });
 
     const providerChip = screen.getByTestId("sidebar-updates-badge-providers");
-    // Codex leads regardless of which machine surfaced the issue first.
+    // The first host-reported provider order is retained while duplicates
+    // from later machines collapse into one mark.
     expect(providerChip.getAttribute("aria-label")).toBe(
-      "Codex and Claude Code updates available",
+      "Claude Code and Codex updates available",
     );
-    expect(providerChip.querySelectorAll("svg[viewBox]").length).toBe(3);
+    // One served logo per stale provider, drawn as a currentColor mask once
+    // the roster has loaded; the bb chip keeps its own inline mark.
+    await waitFor(() =>
+      expect(
+        providerChip.querySelectorAll("[data-provider-icon] [data-provider-logo]")
+          .length,
+      ).toBe(2),
+    );
+    expect(
+      [...providerChip.querySelectorAll("[data-provider-icon]")].map((node) =>
+        node.getAttribute("data-provider-icon"),
+      ),
+    ).toEqual(["claude-code", "codex"]);
     expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();
   });
 });

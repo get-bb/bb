@@ -10,7 +10,7 @@ import {
   type WorkflowValidationSummary,
 } from "./workflow-validation.js";
 
-export interface PreparedWorkflowSource extends ResolvedWorkflowSource {
+interface PreparedWorkflowSource extends ResolvedWorkflowSource {
   validation: WorkflowValidationSummary;
 }
 

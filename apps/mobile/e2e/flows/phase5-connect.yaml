@@ -1,0 +1,231 @@
+# Phase 5 bb connect: first run → Add server → "Connect with bb connect" →
+# manual code entry against the stub apex (code, handle, self-hosted apex) →
+# enrolled screen (session signed in, account servers listed) → Done → home
+# connected through the stub gate (session cookie on fetch + /ws) → the stub
+# expires the session → the app re-mints it (no banner) → the stub revokes
+# the machine → auth-required banner → "Sign in again" → re-pair with a new
+# code → home connected again.
+#
+# Requires, besides Metro with EXPO_PUBLIC_BB_E2E=1 (METRO_URL):
+#   pnpm --filter @bb/integration-tests e2e:mobile-backend
+#   BB_MOBILE_E2E_SIMULATOR=<udid> pnpm --filter @bb/integration-tests e2e:mobile-connect-stub
+# The stub installs its root certificate in the simulator on start; the
+# gate is https://stub.localhost:42998 (STUB_URL), the apex https://localhost:42998
+# (APEX_URL), the pairing code STUB-PAIR (CODE).
+#
+# Run: JAVA_HOME=/opt/homebrew/opt/openjdk@17 maestro test e2e/flows/phase5-connect.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  APEX_URL: "https://localhost:42998"
+  STUB_URL: "https://stub.localhost:42998"
+  CODE: "STUB-PAIR"
+---
+- runFlow: ../subflows/launch-app.yaml
+# First run: Add server offers bb connect above the direct URL form.
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- assertVisible:
+    id: "add-server-connect"
+- takeScreenshot: p5-connect-add-server
+- tapOn:
+    id: "add-server-connect"
+- extendedWaitUntil:
+    visible: "Connect to getbb.app"
+    timeout: 15000
+- takeScreenshot: p5-connect-enroll-form
+# A wrong code shows the apex's error inline and keeps the form.
+- tapOn:
+    id: "connect-code-input"
+- inputText: "EXPIRED-CODE"
+# Tapping static text dismisses the keyboard (Maestro's hideKeyboard looks
+# for a Return/Done key; the code field's key is "next").
+- tapOn: "Pairing code"
+- tapOn:
+    id: "connect-advanced-toggle"
+- scrollUntilVisible:
+    element:
+      id: "connect-apex-input"
+    direction: DOWN
+- tapOn:
+    id: "connect-apex-input"
+- inputText: "${APEX_URL}"
+- tapOn: "bb connect address"
+- scrollUntilVisible:
+    element:
+      id: "connect-submit"
+    direction: DOWN
+- tapOn:
+    id: "connect-submit"
+- extendedWaitUntil:
+    visible: "Code expired"
+    timeout: 20000
+- takeScreenshot: p5-connect-expired-code
+# The real code: handle + self-hosted apex → redeem → profile → session.
+- scrollUntilVisible:
+    element:
+      id: "connect-code-input"
+    direction: UP
+- tapOn:
+    id: "connect-code-input"
+- eraseText: 20
+- inputText: "${CODE}"
+- tapOn: "Pairing code"
+- tapOn:
+    id: "connect-server-input"
+- inputText: "stub"
+- tapOn: "Server (handle or URL)"
+- scrollUntilVisible:
+    element:
+      id: "connect-submit"
+    direction: DOWN
+- tapOn:
+    id: "connect-submit"
+# The first successful connection may raise the one-time push-notification
+# prompt over the enrolled screen; decline it.
+- extendedWaitUntil:
+    visible: ".*(Paired with bb connect|Not now).*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Not now"
+    commands:
+      - tapOn: "Not now"
+- extendedWaitUntil:
+    visible:
+      id: "connect-enrolled-screen"
+    timeout: 30000
+- assertVisible: ".*${STUB_URL}.*"
+# The connector minted the desktop-session cookie for the new profile.
+- extendedWaitUntil:
+    visible:
+      id: "connect-session-authenticated"
+    timeout: 30000
+# The account's servers (from the gate, with the machine credential): the
+# enrolled one is marked, the other is one tap away.
+- extendedWaitUntil:
+    visible:
+      id: "account-server-other"
+    timeout: 20000
+- assertVisible: ".*This server.*"
+- takeScreenshot: p5-connect-enrolled
+- tapOn:
+    id: "account-server-add-other"
+- extendedWaitUntil:
+    visible: "Added Other stub server"
+    timeout: 10000
+- tapOn:
+    id: "connect-done"
+# Home through the gate: session cookie on every fetch and on the /ws upgrade.
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Not now"
+    commands:
+      - tapOn: "Not now"
+- extendedWaitUntil:
+    notVisible:
+      id: "connection-banner"
+    timeout: 30000
+- assertVisible: "Rich thread"
+- takeScreenshot: p5-connect-home
+# Servers list: mode pills + handle.
+# Workspace menu → Settings.
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+- assertVisible:
+    id: "settings-servers"
+- tapOn:
+    id: "settings-servers"
+- extendedWaitUntil:
+    visible: ".*@stub.*"
+    timeout: 10000
+- assertVisible: ".*@other.*"
+- assertVisible: ".*bb connect.*"
+- takeScreenshot: p5-connect-servers
+- tapOn:
+    id: "BackButton"
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 10000
+# The gate forgets the session (cookie rejected, sockets closed): the app
+# re-mints one with the credential and reconnects without asking the user.
+- runScript:
+    file: ../scripts/connect-stub-control.js
+    env:
+      STUB_ACTION: "expire-session"
+- extendedWaitUntil:
+    visible:
+      id: "connection-banner"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible:
+      id: "connection-banner"
+    timeout: 60000
+- takeScreenshot: p5-connect-session-renewed
+# The credential itself is revoked: auth-required banner with "Sign in again".
+- runScript:
+    file: ../scripts/connect-stub-control.js
+    env:
+      STUB_ACTION: "revoke-machine"
+- extendedWaitUntil:
+    visible:
+      id: "connection-banner-auth-required"
+    timeout: 60000
+- takeScreenshot: p5-connect-auth-required
+# The whole banner is the action (the dev-client's floating button covers
+# the "Sign in again" label's corner on the simulator).
+- tapOn:
+    id: "connection-banner"
+- extendedWaitUntil:
+    visible: "Sign in again to stub"
+    timeout: 15000
+- tapOn:
+    id: "connect-code-input"
+- inputText: "${CODE}"
+- tapOn: "Pairing code"
+- scrollUntilVisible:
+    element:
+      id: "connect-submit"
+    direction: DOWN
+- tapOn:
+    id: "connect-submit"
+- extendedWaitUntil:
+    visible: ".*(Paired again|Not now).*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Not now"
+    commands:
+      - tapOn: "Not now"
+- extendedWaitUntil:
+    visible:
+      id: "connect-enrolled-screen"
+    timeout: 30000
+- assertVisible: "Paired again"
+- extendedWaitUntil:
+    visible:
+      id: "connect-session-authenticated"
+    timeout: 30000
+- takeScreenshot: p5-connect-reauth
+- tapOn:
+    id: "connect-done"
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+- extendedWaitUntil:
+    notVisible:
+      id: "connection-banner"
+    timeout: 30000
+- takeScreenshot: p5-connect-home-again

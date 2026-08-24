@@ -1,5 +1,6 @@
 import { updateHost } from "@bb/db";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import {
   systemExecutionOptionsResponseSchema,
@@ -30,16 +31,25 @@ function providerHostResponse(
       },
     };
   }
-  if (request.command.type === "known_acp_agents.status") {
+  if (request.command.type === "provider.health") {
     return {
       ok: true as const,
       result: {
-        agents: request.command.agents.map((agent) => ({
-          ...agent,
-          installed: agent.id === installedProviderId,
-          executablePath:
-            agent.id === installedProviderId ? `/bin/${agent.id}` : null,
-        })),
+        supported: true as const,
+        health: {
+          status:
+            request.command.providerId === installedProviderId
+              ? ("ready" as const)
+              : ("not_installed" as const),
+          statusMessage: null,
+          accountEmail: null,
+          planLabel: null,
+          installedVersion: null,
+          minimumSupportedVersion: null,
+          canInstall: false,
+          canUpdate: false,
+          loginCommand: null,
+        },
       },
     };
   }
@@ -146,17 +156,12 @@ describe("system provider host routing", () => {
         "remote-model",
       ]);
       // Only the routing facts matter here; `bridgeLaunch` rides every
-      // command and has its own tests.
+      // command and has its own tests. The Codex catalog is host-scoped, so
+      // the environment read carries no workspace path and is served from the
+      // memo filled by the explicit-host read: one probe on the remote host.
       expect(
         remoteModelCommands.map(({ bridgeLaunch: _ignored, ...rest }) => rest),
-      ).toEqual([
-        { type: "provider.list_models", providerId: "codex" },
-        {
-          type: "provider.list_models",
-          providerId: "codex",
-          cwd: "/tmp/test-environment",
-        },
-      ]);
+      ).toEqual([{ type: "provider.list_models", providerId: "codex" }]);
     });
   });
 
@@ -218,4 +223,46 @@ describe("system provider host routing", () => {
       });
     },
   );
+});
+
+describe("GET /api/v1/system/providers", () => {
+  it("serves the maintenance facts under `maintenance` and no alias key", async () => {
+    await withTestHarness({}, async (harness) => {
+      const primary = seedHostSession(harness.deps, {
+        id: "host-provider-shape-primary",
+      });
+      seedPrimaryHost(harness.deps, primary.host.id);
+      registerHostRpcResponder(harness, {
+        hostId: primary.host.id,
+        sessionId: primary.session.id,
+        handle: (request) =>
+          providerHostResponse(request, "acp-opencode", "model"),
+      });
+
+      const response = await harness.app.request("/api/v1/system/providers");
+      expect(response.status).toBe(200);
+      const raw = await readJson(response);
+
+      // Every client ships with the server, so nothing is served beside
+      // `maintenance`: the pre-stabilization `experimental_provider*` booleans
+      // are gone from the wire, not only from the parsed contract. The contract
+      // schema would strip an unknown key, so this reads the raw rows.
+      const rows = z.array(z.record(z.string(), z.unknown())).parse(raw);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(
+          Object.keys(row).filter((key) =>
+            key.startsWith("experimental_provider"),
+          ),
+        ).toEqual([]);
+      }
+      for (const provider of systemProviderInfoSchema.array().parse(raw)) {
+        expect(provider.maintenance).toEqual({
+          health: expect.any(Boolean),
+          usage: expect.any(Boolean),
+          installation: expect.any(Boolean),
+        });
+      }
+    });
+  });
 });

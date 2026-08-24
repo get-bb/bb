@@ -21,6 +21,7 @@ function createTestPreset(
     providerId: "claude-code",
     modelId: "claude-sonnet-5",
     reasoningLevel: "high",
+    serviceTier: "fast",
     permissionMode: "full",
     environmentKind: overrides.environmentKind ?? "project-default",
     baseBranch: overrides.baseBranch ?? null,
@@ -75,6 +76,7 @@ describe("task delegation", () => {
           providerId: "claude-code",
           model: "claude-sonnet-5",
           reasoningLevel: "high",
+          serviceTier: "fast",
           permissionMode: "full",
           title: "TASK-1 · Implement delegation",
           prompt: expect.stringContaining(
@@ -404,6 +406,88 @@ describe("task delegation", () => {
         payload: { taskId: task.id, projectId: project.id },
       },
     ]);
+
+    await harness.dispose();
+  });
+});
+
+describe("task thread detach", () => {
+  it("detaches an attached thread through taskThreadsDetach and invalidates", async () => {
+    const { bb, harness } = createFakePluginHost({
+      pluginId: "tasks",
+      sdk: {
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => ({
+            id: threadId,
+            title: `Worker ${threadId}`,
+            titleFallback: null,
+            status: threadId === "thr_dead" ? "error" : "idle",
+          }),
+        },
+      },
+    });
+    const store = createStore(bb);
+    const project = store.tasks.createProject({
+      name: "Manual",
+      prefix: "MAN",
+      color: "blue",
+    });
+    const task = store.tasks.createTask({
+      projectId: project.id,
+      title: "Respawned work",
+    });
+    const otherTask = store.tasks.createTask({
+      projectId: project.id,
+      title: "Other work",
+    });
+    registerDelegation(bb, store);
+
+    await harness.callRpc("taskThreadsAttach", {
+      taskId: task.id,
+      threadId: "thr_dead",
+    });
+    await harness.callRpc("taskThreadsAttach", {
+      taskId: task.id,
+      threadId: "thr_live",
+    });
+    // The same thread attached to a second task must survive a detach from
+    // the first one.
+    await harness.callRpc("taskThreadsAttach", {
+      taskId: otherTask.id,
+      threadId: "thr_dead",
+    });
+    harness.realtimeSignals.length = 0;
+
+    await expect(
+      harness.callRpc("taskThreadsDetach", {
+        taskId: task.id,
+        threadId: "thr_dead",
+      }),
+    ).resolves.toEqual({ threadId: "thr_dead" });
+
+    expect(
+      store.tasks.listTaskThreads(task.id).map((thread) => thread.threadId),
+    ).toEqual(["thr_live"]);
+    expect(
+      store.tasks
+        .listTaskThreads(otherTask.id)
+        .map((thread) => thread.threadId),
+    ).toEqual(["thr_dead"]);
+    expect(harness.realtimeSignals).toEqual([
+      { channel: "threads:changed", payload: { taskId: task.id } },
+      {
+        channel: "tasks:changed",
+        payload: { taskId: task.id, projectId: project.id },
+      },
+    ]);
+
+    // Detaching a thread that is not attached is an error, not a no-op.
+    await expect(
+      harness.callRpc("taskThreadsDetach", {
+        taskId: task.id,
+        threadId: "thr_dead",
+      }),
+    ).rejects.toThrow(`Thread thr_dead is not attached to ${task.key}`);
 
     await harness.dispose();
   });

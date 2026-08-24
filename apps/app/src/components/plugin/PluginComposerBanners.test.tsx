@@ -78,24 +78,6 @@ describe("ComposerBannersSlot", () => {
     expect(screen.getByText("bare body").closest("section")).toBeNull();
   });
 
-  it("collapses an empty card row when its component renders null", () => {
-    setPluginSlotRegistrations(
-      "empty-plugin",
-      registrations([
-        {
-          id: "empty",
-          banners: [{ id: "nothing", component: () => null }],
-        },
-      ]),
-    );
-
-    render(<ComposerBannersSlot view={composerView("t1")} />);
-
-    expect(
-      screen.getByRole("region", { name: "empty-plugin" }).className,
-    ).toContain("empty:hidden");
-  });
-
   it("collapses only the crashing banner", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});

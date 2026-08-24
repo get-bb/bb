@@ -4,7 +4,7 @@ import {
 } from "@bb/config/local-app-origins";
 import type { ServerRuntimeConfig } from "./types.js";
 
-export interface BrowserRequestGuardDeps {
+interface BrowserRequestGuardDeps {
   config: Pick<ServerRuntimeConfig, "serverPort" | "appUrl" | "devAppPort">;
 }
 
@@ -25,7 +25,7 @@ interface BrowserRequestContext {
   };
 }
 
-function allowedAppOrigins(deps: BrowserRequestGuardDeps): Set<string> {
+export function allowedAppOrigins(deps: BrowserRequestGuardDeps): Set<string> {
   const args: BuildLocalAppOriginsArgs = {
     serverPort: deps.config.serverPort,
   };

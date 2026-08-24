@@ -35,9 +35,8 @@ export type TimelineTitleLinkResolver = (
   link: TimelineTitleLink,
 ) => string | null;
 
-export interface TimelineTitleViewProps {
+interface TimelineTitleViewProps {
   title: TimelineTitle;
-  className?: string;
   onTitleAction?: TimelineTitleActionResolver;
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
 }
@@ -344,7 +343,6 @@ function renderDecoration(
 
 export function TimelineTitleView({
   title,
-  className,
   onTitleAction,
   resolveSegmentLinkHref,
 }: TimelineTitleViewProps) {
@@ -353,10 +351,7 @@ export function TimelineTitleView({
 
   return (
     <span
-      className={cn(
-        "inline-flex min-w-0 max-w-full items-baseline gap-1 overflow-hidden whitespace-nowrap text-sm leading-5",
-        className,
-      )}
+      className="inline-flex min-w-0 max-w-full items-baseline gap-1 overflow-hidden whitespace-nowrap text-sm leading-5"
       title={title.plain}
     >
       {/* Literal whitespace text nodes between flex items keep the

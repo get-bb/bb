@@ -12,6 +12,7 @@ import {
   formatTimelineActivityIntentDetail,
   getTimelineActivityIntentDetailDedupeKey,
   hasTimelineExplorationIntent,
+  timelineRowActivityIntents,
   type TimelineExplorationWorkRow,
 } from "./timeline-activity-intents.js";
 import {
@@ -28,17 +29,15 @@ import type {
 
 export type ThreadTimelineTextFormat = "json" | "minimal" | "verbose";
 
-export interface ThreadTimelineTextOptions {
+interface ThreadTimelineTextOptions {
   verbose?: boolean;
   color?: boolean;
-  truncateForAudit?: boolean;
 }
 
 interface TimelineTextFormatContext {
   verbose: boolean;
   color: boolean;
   depth: number;
-  truncateForAudit: boolean;
   /**
    * `id` of the bundle-summary that is the open step's active-latest bundle
    * for the row list currently being formatted. Computed once per list via
@@ -68,14 +67,6 @@ type TimelineConversationViewRow = Extract<
   ThreadTimelineViewRow,
   { kind: "conversation" }
 >;
-
-interface AuditTruncationNoticeOptions {
-  skippedLineCount: number;
-  indent: number;
-}
-
-const AUDIT_BODY_LINE_LIMIT = 3;
-const AUDIT_LINE_LENGTH_LIMIT = 100;
 
 function dim(text: string, color: boolean): string {
   return color ? `\x1b[2m${text}\x1b[22m` : text;
@@ -138,71 +129,6 @@ function indentBlock(text: string, prefix: string): string {
     .split("\n")
     .map((line) => (line.length === 0 ? "" : `${prefix}${line}`))
     .join("\n");
-}
-
-function lineIndent(line: string): number {
-  return /^\s*/u.exec(line)?.[0].length ?? 0;
-}
-
-function auditTruncatedLine(line: string): string {
-  if (line.length <= AUDIT_LINE_LENGTH_LIMIT) {
-    return line;
-  }
-
-  const omittedCharacterCount = line.length - AUDIT_LINE_LENGTH_LIMIT;
-  return `${line.slice(0, AUDIT_LINE_LENGTH_LIMIT)}... [truncated ${omittedCharacterCount} chars]`;
-}
-
-function auditTruncatedLinesNotice(
-  options: AuditTruncationNoticeOptions,
-): string {
-  return `${" ".repeat(options.indent)}... [truncated ${options.skippedLineCount} lines]`;
-}
-
-function auditTruncationNoticeIndent(
-  skippedLines: readonly string[],
-  fallbackLines: readonly string[],
-): number {
-  const skippedLineIndents = skippedLines
-    .filter((line) => line.length > 0)
-    .map(lineIndent);
-  if (skippedLineIndents.length > 0) {
-    return Math.min(...skippedLineIndents);
-  }
-
-  const fallbackLineIndents = fallbackLines
-    .filter((line) => line.length > 0)
-    .map(lineIndent);
-  return fallbackLineIndents.length > 0 ? Math.min(...fallbackLineIndents) : 0;
-}
-
-function truncateBodyLinesForAudit(lines: readonly string[]): string[] {
-  const bodyLines = lines.flatMap((line) => line.split("\n"));
-  const visibleLines = bodyLines
-    .slice(0, AUDIT_BODY_LINE_LIMIT)
-    .map(auditTruncatedLine);
-  const skippedLines = bodyLines.slice(AUDIT_BODY_LINE_LIMIT);
-  if (skippedLines.length === 0) {
-    return visibleLines;
-  }
-
-  return [
-    ...visibleLines,
-    auditTruncatedLinesNotice({
-      skippedLineCount: skippedLines.length,
-      indent: auditTruncationNoticeIndent(skippedLines, visibleLines),
-    }),
-  ];
-}
-
-function maybeTruncateBodyLinesForAudit(
-  lines: readonly string[],
-  context: TimelineTextFormatContext,
-): string[] {
-  if (!context.truncateForAudit) {
-    return [...lines];
-  }
-  return truncateBodyLinesForAudit(lines);
 }
 
 function statusLabel(status: TimelineRowStatus, color: boolean): string {
@@ -291,11 +217,7 @@ function formatWorkBody(
       if (row.approvalStatus !== null) {
         lines.push(`  ${workStatusLabel(row, context.color)}`);
       }
-      if (
-        context.verbose &&
-        row.output.trim() &&
-        !hasTimelineExplorationIntent(row)
-      ) {
+      if (context.verbose && row.output.trim()) {
         lines.push(formatWorkOutput(row.output, context.color));
       }
       return lines;
@@ -314,6 +236,31 @@ function formatWorkBody(
     case "web-fetch":
       return lines;
     case "image-view":
+      return lines;
+    case "file-read":
+    case "search":
+      return lines;
+    case "plan-steps":
+      if (context.verbose) {
+        for (const step of row.steps) {
+          const marker =
+            step.status === "completed"
+              ? "[x]"
+              : step.status === "active"
+                ? "[>]"
+                : step.status === "failed"
+                  ? "[!]"
+                  : "[ ]";
+          lines.push(dim(`  ${marker} ${step.step}`, context.color));
+        }
+      }
+      return lines;
+    case "extension":
+      if (row.presentation.detail && row.presentation.detail.trim()) {
+        lines.push(
+          dim(indentBlock(row.presentation.detail, "  "), context.color),
+        );
+      }
       return lines;
     case "approval":
     case "question":
@@ -340,11 +287,7 @@ function formatWorkRow(
 ): string {
   const lines = [rowHeader(formatWorkTitle(row, context), context)];
   const bodyLines = formatWorkBody(row, context);
-  lines.push(
-    ...(row.workKind === "delegation"
-      ? bodyLines
-      : maybeTruncateBodyLinesForAudit(bodyLines, context)),
-  );
+  lines.push(...bodyLines);
   return lines.join("\n");
 }
 
@@ -353,7 +296,7 @@ function formatExplorationWorkDetails(
 ): string[] {
   let lastEmittedKey: string | null = null;
   const details: string[] = [];
-  for (const intent of row.activityIntents) {
+  for (const intent of timelineRowActivityIntents(row)) {
     if (intent.type === "unknown") {
       continue;
     }
@@ -381,7 +324,9 @@ function formatWorkSummaryDetails(
   const childContext = nestedContext(context, null);
   for (const child of row.children) {
     if (
-      (child.workKind === "command" || child.workKind === "tool") &&
+      (child.workKind === "command" ||
+        child.workKind === "file-read" ||
+        child.workKind === "search") &&
       hasTimelineExplorationIntent(child)
     ) {
       lines.push(
@@ -394,7 +339,9 @@ function formatWorkSummaryDetails(
     if (
       child.workKind === "web-search" ||
       child.workKind === "web-fetch" ||
-      child.workKind === "image-view"
+      child.workKind === "image-view" ||
+      child.workKind === "plan-steps" ||
+      child.workKind === "extension"
     ) {
       lines.push(rowHeader(formatWorkTitle(child, childContext), childContext));
       continue;
@@ -451,9 +398,7 @@ function formatRow(
     case "conversation":
       return [
         rowHeader(row.role === "user" ? "User" : "Assistant", context),
-        maybeTruncateBodyLinesForAudit(row.text.split("\n"), context).join(
-          "\n",
-        ),
+        row.text,
         formatConversationRequestLabel(row),
       ]
         .filter((line): line is string => line !== null)
@@ -516,7 +461,6 @@ export function formatThreadTimelineText(
     verbose: options?.verbose ?? false,
     color: options?.color ?? false,
     depth: 0,
-    truncateForAudit: options?.truncateForAudit ?? false,
     activeLatestBundleId: findActiveLatestBundleId(viewRows),
   });
 }

@@ -160,7 +160,7 @@ export function getPluginMarketplaceIcon(
     .get();
 }
 
-export function upsertPluginMarketplaceIcon(
+function upsertPluginMarketplaceIcon(
   db: DbQueryConnection,
   input: UpsertPluginMarketplaceIconInput,
 ): void {
@@ -182,24 +182,6 @@ export function upsertPluginMarketplaceIcon(
       },
     })
     .run();
-}
-
-export function deletePluginMarketplaceIcon(
-  db: DbQueryConnection,
-  marketplaceName: string,
-  entryId: string,
-): boolean {
-  return (
-    db
-      .delete(pluginMarketplaceIcons)
-      .where(
-        and(
-          eq(pluginMarketplaceIcons.marketplaceName, marketplaceName),
-          eq(pluginMarketplaceIcons.entryId, entryId),
-        ),
-      )
-      .run().changes > 0
-  );
 }
 
 /** Replace one marketplace's complete icon set inside the caller's commit. */

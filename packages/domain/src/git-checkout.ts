@@ -66,7 +66,7 @@ export const gitCheckoutRefSchema = z.discriminatedUnion("kind", [
 ]);
 export type GitCheckoutRef = z.infer<typeof gitCheckoutRefSchema>;
 
-export const workspaceGitOperationSchema = z.discriminatedUnion("kind", [
+const workspaceGitOperationSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("none") }),
   z.object({
     kind: z.literal("merge"),
@@ -100,7 +100,7 @@ export type GitBranchRefClassification = z.infer<
   typeof gitBranchRefClassificationSchema
 >;
 
-export const defaultBranchRelationSchema = z.enum([
+const defaultBranchRelationSchema = z.enum([
   "equal",
   "local-behind",
   "local-ahead",

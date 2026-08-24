@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { runGit, WorkspaceError } from "@bb/host-workspace";
+import {
+  runGit,
+  WorkspaceError,
+  type GitProcessOptions,
+} from "@bb/host-workspace";
 import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
 
 const PROJECT_CLONE_TIMEOUT_MS = 20 * 60 * 1000;
@@ -43,13 +47,17 @@ async function requireEmptyOrMissingTarget(targetPath: string): Promise<void> {
   }
 }
 
-export async function inspectProjectPath(projectPath: string): Promise<{
+export async function inspectProjectPath(
+  projectPath: string,
+  options: GitProcessOptions = {},
+): Promise<{
   path: string;
   gitRemoteUrl: string | null;
 }> {
   const resolvedPath = path.resolve(projectPath);
   const result = await runGit(["remote", "get-url", "origin"], {
     cwd: resolvedPath,
+    ...options,
     allowFailure: true,
   });
   const gitRemoteUrl = result.exitCode === 0 ? result.stdout.trim() : "";
@@ -64,6 +72,7 @@ export async function cloneProject(args: {
   projectSlug: string;
   remoteUrl: string;
   targetPath?: string;
+  shellPath?: string;
 }): Promise<{ path: string; gitRemoteUrl: string | null }> {
   const targetPath = path.resolve(
     args.targetPath ??
@@ -74,6 +83,7 @@ export async function cloneProject(args: {
   try {
     await runGit(["clone", args.remoteUrl, targetPath], {
       cwd: path.dirname(targetPath),
+      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
       timeoutMs: PROJECT_CLONE_TIMEOUT_MS,
     });
   } catch (error) {
@@ -82,5 +92,8 @@ export async function cloneProject(args: {
     }
     throw error;
   }
-  return inspectProjectPath(targetPath);
+  return inspectProjectPath(
+    targetPath,
+    args.shellPath === undefined ? {} : { shellPath: args.shellPath },
+  );
 }

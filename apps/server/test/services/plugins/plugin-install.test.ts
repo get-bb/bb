@@ -39,6 +39,7 @@ import {
   parsePluginSource,
   runInstallCommand,
 } from "../../../src/services/plugins/install-sources.js";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -310,6 +311,43 @@ describe("plugin install sources", () => {
     ).rejects.toThrow(/more than 5 bytes/);
   });
 
+  it("keeps script-policy npm config out of git/npm children", async () => {
+    // Launching bb through a package manager exports the user's whole .npmrc
+    // as npm_config_*, and npm reads env above every .npmrc file. An ordinary
+    // allow-scripts entry arrived at npm 11/12 as --allow-scripts and made
+    // every git and npm plugin install fail with EALLOWSCRIPTS. Installs pass
+    // --ignore-scripts; that policy is not the environment's to override.
+    // The test runner itself may have been launched that way, so restore
+    // whatever was there rather than deleting.
+    const overrides: Record<string, string> = {
+      npm_config_allow_scripts: "@github/keytar,node-pty",
+      npm_config_ignore_scripts: "false",
+      // npm case-folds config keys; the filter must too.
+      NPM_CONFIG_FOREGROUND_SCRIPTS: "true",
+      // Other npm config is a supported way to point bb at a registry or
+      // cache (plugin-registration reads npm_config_registry itself), so it
+      // must pass.
+      npm_config_registry: "https://registry.example.invalid/",
+    };
+    const previous = new Map<string, string | undefined>();
+    for (const [key, value] of Object.entries(overrides)) {
+      previous.set(key, process.env[key]);
+      process.env[key] = value;
+    }
+    try {
+      const seen = await runInstallCommand(process.execPath, [
+        "-e",
+        "process.stdout.write(['npm_config_allow_scripts', 'npm_config_ignore_scripts', 'NPM_CONFIG_FOREGROUND_SCRIPTS', 'npm_config_registry'].map((k) => process.env[k] ?? '-').concat(process.env.PATH === undefined ? 'no-path' : 'path').join('|'))",
+      ]);
+      expect(seen).toBe("-|-|-|https://registry.example.invalid/|path");
+    } finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+
   it("keeps scoped npm and nested git cache paths inside their roots", () => {
     expect(npmArtifactCacheDir("/data", "@acme/plugin", "1.2.3")).toBe(
       "/data/plugins/cache/npm/@acme/plugin/1.2.3",
@@ -354,6 +392,7 @@ describe("plugin install flows", () => {
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -995,6 +1034,7 @@ describe("plugin install flows", () => {
 
       // The same db and dataDir, so the checkout and its artifact row survive.
       service = createPluginService({
+      aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -1118,6 +1158,7 @@ describe("plugin install flows", () => {
       await mkdir(`${entry.rootDir}.promoting`, { recursive: true });
       await writeFile(join(`${entry.rootDir}.promoting`, "partial"), "copy");
       service = createPluginService({
+      aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {

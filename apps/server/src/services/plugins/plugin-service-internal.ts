@@ -1,3 +1,4 @@
+import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
 import type { DynamicTool, Thread } from "@bb/domain";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
@@ -22,24 +23,13 @@ import type { HostSharedPortCoordinator } from "../../ws/host-shared-ports.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import type { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 export type {
-  PluginApplyUpdateResult,
   PluginHandlerStats,
   PluginRuntimeStatus,
-  PluginServiceEntry,
   PluginUpdateCheckEntry,
 } from "@bb/server-contract";
 
 /** Live state of one registered background service. */
-export type PluginServiceState = "running" | "backoff" | "stopped";
-
-export interface PluginScheduleEntry {
-  name: string;
-  cron: string;
-  nextRunAt: number;
-  lastRunAt: number | null;
-  lastStatus: "running" | "ok" | "error" | null;
-  lastError: string | null;
-}
+type PluginServiceState = "running" | "backoff" | "stopped";
 
 export type PluginListEntry = InstalledPlugin;
 
@@ -63,8 +53,6 @@ export interface LoadedPlugin {
   manifest: PluginManifest;
   handle: PluginApiHandle;
   services: ServiceRuntime[];
-  isBuiltin: boolean;
-  builtinName: string | null;
 }
 
 export interface PluginHostArtifactSnapshot {
@@ -90,7 +78,7 @@ export interface PluginServiceDeps {
     hostId: string,
   ) => Promise<HostDaemonConnectTunnelIdentity>;
   /** Omitted only by isolated plugin tests that exercise no provider surface;
-   * `bb.agents.experimental_registerProvider` throws without it. */
+   * `bb.providers.register` throws without it. */
   providerRegistry?: ProviderRegistryService;
   /** Live provider-bridge artifacts, shared with the internal routes and
    * thread commands. Omitted only by isolated plugin tests that exercise no
@@ -100,6 +88,14 @@ export interface PluginServiceDeps {
    * tests, which then get a private one.
    */
   pluginHostArtifacts?: PluginHostArtifactRegistry;
+  /** The AI services plugins serve (`bb.experimental_aiServices.register`). */
+  aiServices: AiServiceRegistry;
+  /**
+   * Fired after a plugin's effective settings values changed and its own
+   * `onChange` listeners ran. Server-side caches keyed by plugin settings
+   * (plugin-resolved native roots) invalidate here.
+   */
+  onSettingsChanged?: (pluginId: string) => void;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
@@ -111,7 +107,9 @@ export interface PluginServiceDeps {
   telemetry: TelemetryService;
   pendingInteractions?: Pick<
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
-    "requestPluginInteraction" | "interruptPluginInteractions"
+    | "requestPluginInteraction"
+    | "interruptPluginInteractions"
+    | "setPluginDirectory"
   >;
   /** BB data dir: plugin database files and secrets live under <dataDir>/plugins/<id>/. */
   dataDir: string;
@@ -142,6 +140,8 @@ export interface PluginServiceDeps {
     durationMs: number,
     onElapsed: () => void,
   ) => () => void;
+  /** Test seam for the periodic update-check timer. */
+  scheduleUpdateCheck?: (delayMs: number, onElapsed: () => void) => () => void;
   /** Test failpoint after state replay but before pointer restoration. */
   afterPluginRollbackStateRestored?: (args: {
     pluginId: string;
@@ -163,6 +163,8 @@ export interface PluginServiceDeps {
     input: unknown;
     hostId: string;
     signal?: AbortSignal;
+    /** The call's own budget; defaults to the common command timeout. */
+    timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
   }) => Promise<unknown>;
   /** Stops this plugin's workers on connected hosts during reload/disable. */

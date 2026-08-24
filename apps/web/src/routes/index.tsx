@@ -33,7 +33,6 @@ import type { CSSProperties, ReactNode } from "react";
 
 import changelogMd from "../../../../CHANGELOG.md?raw";
 import { initAnalytics, trackLandingEvent } from "../landing/analytics";
-import bbIcon from "../assets/bb-icon.png";
 import blackstoneLogo from "../assets/company-logos/blackstone.png";
 import datadogLogo from "../assets/company-logos/datadog.svg";
 import figmaLogo from "../assets/company-logos/figma.svg";
@@ -53,7 +52,6 @@ import {
   DownloadLink,
   EmailSignup,
   GitHubLink,
-  ProductHuntCallout,
 } from "../landing/cta";
 import { SiteFooter, SiteNav } from "../landing/site-chrome";
 import {
@@ -70,7 +68,6 @@ import type { CtaPlacement } from "../landing/site";
 import {
   CLI_COMMAND,
   OG_DESCRIPTION,
-  PRODUCT_HUNT_LAUNCH_ACTIVE,
   SITE_DESCRIPTION,
   SITE_TITLE,
   unfurlMeta,
@@ -78,26 +75,35 @@ import {
 import interWoff2 from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
 import landingCss from "../landing/landing.css?url";
 
+/* "tile" marks bake their own background into the asset (a coloured or white
+   square); "glyph" marks are drawn on transparent. Dark mode inverts only the
+   glyphs — see landing.css .company-proof-tile. */
 const COMPANY_PROOF = [
-  ["Meta", metaLogo],
-  ["Figma", figmaLogo],
-  ["Notion", notionLogo],
-  ["Datadog", datadogLogo],
-  ["Owner.com", ownerLogo],
-  ["Pendo", pendoLogo],
-  ["Blackstone", blackstoneLogo],
-  ["Moody's", moodysLogo],
-  ["Shortcut", shortcutLogo],
-  ["Render", renderLogo],
-  ["Simile", simileLogo],
+  ["Meta", metaLogo, "glyph"],
+  ["Figma", figmaLogo, "glyph"],
+  ["Notion", notionLogo, "tile"],
+  ["Datadog", datadogLogo, "glyph"],
+  ["Owner.com", ownerLogo, "tile"],
+  ["Pendo", pendoLogo, "glyph"],
+  ["Blackstone", blackstoneLogo, "tile"],
+  ["Moody's", moodysLogo, "tile"],
+  ["Shortcut", shortcutLogo, "tile"],
+  ["Render", renderLogo, "glyph"],
+  ["Simile", simileLogo, "glyph"],
 ] as const;
 
 function CompanyProofLogos({ duplicate = false }: { duplicate?: boolean }) {
   return (
     <ul className="company-proof-logos" aria-hidden={duplicate || undefined}>
-      {COMPANY_PROOF.map(([name, logo]) => (
+      {COMPANY_PROOF.map(([name, logo, kind]) => (
         <li key={name} className="company-proof-company">
-          <img src={logo} alt={duplicate ? "" : name} width={20} height={20} />
+          <img
+            src={logo}
+            alt={duplicate ? "" : name}
+            width={20}
+            height={20}
+            className={kind === "tile" ? "company-proof-tile" : undefined}
+          />
           <span aria-hidden="true">{name}</span>
         </li>
       ))}
@@ -125,7 +131,6 @@ export const Route = createFileRoute("/")({
       // Unfurl title is just "bb": the card image already carries the
       // tagline, and platforms print the title right next to the image.
       ...unfurlMeta("bb", OG_DESCRIPTION, "/"),
-      { name: "theme-color", content: "#ffffff" },
     ],
     links: [
       {
@@ -1333,7 +1338,7 @@ function AgentChat() {
           <div className="tg-msg tg-in" style={{ animationDelay: "2.4s" }}>
             <div className="tg-thread">
               <div className="tg-thread-top">
-                <img src={bbIcon} alt="" className="tg-thread-mark" />
+                <span aria-hidden="true" className="bb-mark tg-thread-mark" />
                 <span className="tg-thread-eyebrow">Worker thread</span>
                 <span className="tg-stat" aria-hidden>
                   <span
@@ -1661,7 +1666,7 @@ function SpawnSidebar() {
       aria-label="bb spawns and manages a worker thread for each provider"
     >
       <div className="sb-head">
-        <img src={bbIcon} alt="" className="sb-mark" />
+        <span aria-hidden="true" className="bb-mark sb-mark" />
         <span className="sb-title">Threads</span>
         <span className="sb-active">5 active</span>
       </div>
@@ -1766,17 +1771,11 @@ function LandingPage() {
       <SiteNav />
 
       <header className="hero">
-        {PRODUCT_HUNT_LAUNCH_ACTIVE ? (
-          <ProductHuntCallout placement="hero" />
-        ) : (
-          <a className="updates-callout" href={LATEST_RELEASE_URL}>
-            <span className="updates-label">New</span>
-            <span className="updates-title">
-              {LATEST_RELEASE_META.headline}
-            </span>
-            <ChevronRight className="updates-arrow" />
-          </a>
-        )}
+        <a className="updates-callout" href={LATEST_RELEASE_URL}>
+          <span className="updates-label">New</span>
+          <span className="updates-title">{LATEST_RELEASE_META.headline}</span>
+          <ChevronRight className="updates-arrow" />
+        </a>
         <h1>The IDE that builds itself</h1>
         <p className="sub">
           bb can control, customize, and automate itself, laying the groundwork

@@ -6,7 +6,7 @@ import { formatFileSize } from "../views/activity/time.js";
 import type { AttachmentOwnerRef } from "../views/detail/attachments.js";
 
 /** Frontend mirror of attachments/index.ts `MAX_ATTACHMENT_SIZE_BYTES`. */
-export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export interface StagedAttachment {
   id: number;

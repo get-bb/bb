@@ -84,7 +84,7 @@ export function setComposerTextEffect(
   notify(storageKey);
 }
 
-export function subscribeComposerTextEffect(
+function subscribeComposerTextEffect(
   storageKey: string | null,
   listener: ComposerTextEffectListener,
 ): () => void {

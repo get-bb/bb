@@ -7,10 +7,7 @@ import {
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 
-export const CLAUDE_PERMISSION_REQUEST_APPROVAL_METHOD =
-  "item/permissions/requestApproval";
 export const CLAUDE_USER_QUESTION_TOOL_NAME = "AskUserQuestion";
-export const CLAUDE_USER_QUESTION_REQUEST_METHOD = "item/userQuestion/request";
 export const CLAUDE_EXIT_PLAN_MODE_TOOL_NAME = "ExitPlanMode";
 
 // Claude calls ExitPlanMode with no blockedPath, no decisionReason and no
@@ -23,9 +20,6 @@ export const claudeExitPlanModeInputSchema = z.object({
   plan: z.string().min(1),
   planFilePath: z.string().min(1).optional(),
 });
-export type ClaudeExitPlanModeInput = z.infer<
-  typeof claudeExitPlanModeInputSchema
->;
 
 /**
  * Sent back to the model when the user rejects a plan. The turn stays open and
@@ -80,9 +74,7 @@ const claudePermissionUpdateSchema = z.discriminatedUnion("type", [
     destination: z.literal("session"),
   }),
 ]);
-export type ClaudePermissionUpdate = z.infer<
-  typeof claudePermissionUpdateSchema
->;
+type ClaudePermissionUpdate = z.infer<typeof claudePermissionUpdateSchema>;
 
 // Suggestions Claude sends to bb. Claude picks the destination it would use for
 // its own prompt, and that is frequently not "session": the sandbox network
@@ -164,7 +156,7 @@ const CLAUDE_FILE_PERMISSION_KIND_BY_TOOL_NAME = new Map<
 // Claude asks with this pseudo tool when a sandboxed command opens an outbound
 // connection. It carries no file path, so the tool name is the only signal that
 // the prompt grants network access.
-export const CLAUDE_SANDBOX_NETWORK_TOOL_NAME = "SandboxNetworkAccess";
+const CLAUDE_SANDBOX_NETWORK_TOOL_NAME = "SandboxNetworkAccess";
 
 const CLAUDE_NETWORK_PERMISSION_TOOL_NAMES = new Set([
   "WebFetch",
@@ -372,7 +364,7 @@ const claudeUserQuestionResponseSchema = z.object({
   updatedInput: claudeUserQuestionOutputSchema,
 });
 
-export const claudeInteractiveResponseSchema = z.union([
+const claudeInteractiveResponseSchema = z.union([
   claudePermissionApprovalResponseSchema,
   claudeUserQuestionResponseSchema,
 ]);

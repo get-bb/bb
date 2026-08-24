@@ -8,8 +8,6 @@ export const DEFAULT_TIMEOUT_MS = scaleTimeoutMs(10_000);
 export const TURN_TIMEOUT_MS = scaleTimeoutMs(15_000);
 // Active-turn waits: enough time to observe concurrent threads become active.
 export const ACTIVE_TIMEOUT_MS = scaleTimeoutMs(5_000);
-// Reprovision waits: managed cleanup plus a fresh start can take longer than a normal turn.
-export const REPROVISION_TIMEOUT_MS = scaleTimeoutMs(25_000);
 // Fake provider inputs accept `delay:<ms>` prefixes to keep sibling turns overlapping.
 export const CONCURRENT_DELAY_TEXT = "delay:800";
 

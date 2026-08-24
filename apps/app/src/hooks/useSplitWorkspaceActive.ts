@@ -1,5 +1,4 @@
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 
 /**
  * True when the split workspace renders pane chrome — panes, pane headers, and
@@ -14,7 +13,6 @@ import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
  * at all.
  */
 export function useSplitWorkspaceActive(): boolean {
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const isCompactViewport = useIsCompactViewport();
-  return threadSplitsEnabled && !isCompactViewport;
+  return !isCompactViewport;
 }

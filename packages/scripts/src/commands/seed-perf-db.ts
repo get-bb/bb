@@ -9,13 +9,12 @@ import {
   resolveDataDirDatabasePath,
   resolveProdDataDir,
 } from "@bb/config/runtime";
+import { HOST_ID_FILE_NAME } from "@bb/host-daemon-contract";
 import { seedPerfFixture } from "../lib/seed-perf-fixture.js";
 import { bold, cyan, dim, green, log, endStep } from "../lib/script-helpers.js";
 
 const commandDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(commandDir, "..", "..", "..", "..");
-
-const HOST_ID_FILE_NAME = "host-id";
 
 interface SeedCommandArgs {
   dataDir: string | null;
@@ -128,9 +127,7 @@ function readSeedHostId(dataDir: string): string {
   return "host_seedfixture";
 }
 
-export async function main(
-  argv: string[] = process.argv.slice(2),
-): Promise<void> {
+async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const args = parseArgs(argv);
   if (args === null) {
     process.stdout.write(renderHelpText());

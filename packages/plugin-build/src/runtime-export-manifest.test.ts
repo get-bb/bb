@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 
@@ -18,17 +21,21 @@ describe("runtime export manifest generator", () => {
       if (typeof globalThis.navigator !== "undefined") {
         throw new Error("test could not remove globalThis.navigator");
       }
-      process.argv.push("--check");
       await import(${JSON.stringify(scriptUrl)});
     `;
 
-      const result = await execFileAsync(
-        process.execPath,
-        ["--input-type=module", "--eval", source],
-        { timeout: GENERATOR_TIMEOUT_MS },
-      );
-
-      expect(result.stdout).toContain("runtime-export-manifest.ts");
+      const outDir = await mkdtemp(path.join(tmpdir(), "bb-runtime-manifest-"));
+      try {
+        const outPath = path.join(outDir, "manifest.ts");
+        const result = await execFileAsync(
+          process.execPath,
+          ["--input-type=module", "--eval", source, "--", "--out", outPath],
+          { timeout: GENERATOR_TIMEOUT_MS },
+        );
+        expect(result.stdout).toContain(outPath);
+      } finally {
+        await rm(outDir, { recursive: true, force: true });
+      }
     },
     GENERATOR_TIMEOUT_MS,
   );

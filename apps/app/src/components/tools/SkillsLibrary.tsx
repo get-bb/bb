@@ -21,11 +21,11 @@ import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navig
 import {
   SkillDetailDialogView,
   SkillsOverview,
-  type ProviderDisplayNames,
+  type ProviderRoster,
 } from "@/components/tools/SkillsCollection";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { isSkillEditable } from "@/components/tools/skill-taxonomy";
-import { CREATE_SKILL_PROMPT } from "@/lib/create-resource-prompts";
+import { CREATE_SKILL_PROMPT } from "@bb/client-core";
 import {
   buildRegistrySkillReferencePrompt,
   fetchRegistrySkillDetail,
@@ -62,13 +62,10 @@ const EMPTY_SKILLS: readonly SkillSummary[] = [];
  * custom ACP agent is one), so the server roster is what turns them into names
  * a user can tell apart.
  */
-function useProviderDisplayNames(): ProviderDisplayNames {
+function useProviderRoster(): ProviderRoster {
   const providers = useSystemProviders().data;
   return useMemo(
-    () =>
-      new Map(
-        (providers ?? []).map((provider) => [provider.id, provider.displayName]),
-      ),
+    () => new Map((providers ?? []).map((provider) => [provider.id, provider])),
     [providers],
   );
 }
@@ -90,7 +87,7 @@ function SkillDetailPage({
   onClose: () => void;
   onEdit: (skill: SkillSummary) => void;
 }) {
-  const providerDisplayNames = useProviderDisplayNames();
+  const providerRoster = useProviderRoster();
   const [selectedPath, setSelectedPath] = useState("SKILL.md");
   useEffect(() => {
     setSelectedPath("SKILL.md");
@@ -111,7 +108,7 @@ function SkillDetailPage({
   return (
     <SkillDetailDialogView
       skill={skill}
-      providerDisplayNames={providerDisplayNames}
+      providerRoster={providerRoster}
       files={filesQuery.data?.files ?? ["SKILL.md"]}
       selectedPath={selectedPath}
       onSelectPath={setSelectedPath}
@@ -148,7 +145,7 @@ function SkillDetailPage({
 }
 
 export function SkillsLibrary() {
-  const providerDisplayNames = useProviderDisplayNames();
+  const providerRoster = useProviderRoster();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -591,7 +588,7 @@ export function SkillsLibrary() {
       ) : (
         <SkillsOverview
           skills={skills}
-          providerDisplayNames={providerDisplayNames}
+          providerRoster={providerRoster}
           isLoading={isLoading}
           hasError={hasError}
           query={libraryQuery}

@@ -9,6 +9,7 @@ import {
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
+import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import type {
   PendingInteractionCreate,
   PendingInteractionResolution,
@@ -41,11 +42,13 @@ import {
 } from "./injected-skills.js";
 import { reconnectProvisionArgs } from "./workspace-provision-target.js";
 import type { FetchSkillTree } from "./skill-trees.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type StopWatching = () => void | Promise<void>;
 
 const STOP_WATCHING: StopWatching = () => undefined;
 const PROVIDER_MAINTENANCE_WORKSPACE_DIR = "provider-maintenance-workspace";
+const PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS = 60_000;
 const PROVIDER_PROCESS_EXIT_DETAIL_MAX_LENGTH = 4000;
 
 interface RuntimeSkillConfig {
@@ -148,7 +151,7 @@ export interface RuntimeEntry {
   terminals: Set<string>;
 }
 
-export interface InjectedSkillsChangedNotification {
+interface InjectedSkillsChangedNotification {
   changedPaths: string[];
   sourceType: InjectedSkillsObservedChange["sourceType"];
 }
@@ -171,15 +174,15 @@ export interface EnsureEnvironmentArgs {
   provision?: ProvisionWorkspaceArgs;
 }
 
-export interface CancelEnvironmentProvisionArgs {
+interface CancelEnvironmentProvisionArgs {
   environmentId: string;
 }
 
-export interface CancelEnvironmentProvisionResult {
+interface CancelEnvironmentProvisionResult {
   aborted: boolean;
 }
 
-export interface RefreshEnvironmentWorkspaceArgs {
+interface RefreshEnvironmentWorkspaceArgs {
   environmentId: string;
   provision: ProvisionWorkspaceArgs;
   workspacePath: string;
@@ -200,6 +203,7 @@ export interface RuntimeManagerOptions {
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
+  providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
   threadStorageRootPath?: string | null;
@@ -225,7 +229,7 @@ export interface RuntimeManagerReapIdleProviderSessionsArgs {
   providerSessionReapingEnabled: boolean;
 }
 
-export interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
+interface RuntimeManagerReapedIdleProviderSession extends ReapedIdleProviderSession {
   environmentId: string;
 }
 
@@ -237,9 +241,9 @@ export interface RuntimeManagerReapIdleProviderSessionsResult {
  * `interrupt` stops an old runtime even while it runs a turn. `keep` leaves
  * that turn alone and reports its environment to the caller.
  */
-export type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
+type ReleaseThreadActiveTurnPolicy = "interrupt" | "keep";
 
-export interface ReleaseThreadFromOtherEnvironmentsResult {
+interface ReleaseThreadFromOtherEnvironmentsResult {
   /** Environments that still run a turn for the thread under `keep`. */
   activeTurnEnvironmentIds: string[];
   /** Provider checkpoint retained by a stopped runtime, when one reported it. */
@@ -287,10 +291,13 @@ function providerProcessEnvFromShellEnv(
   if (shellEnv.PATH) {
     env.PATH = shellEnv.PATH;
   }
-  // The Claude bridge resolves the CLI from its own process env; forward the
-  // documented override past the BB_* spawn sanitization.
-  if (shellEnv.BB_CLAUDE_CODE_EXECUTABLE) {
-    env.BB_CLAUDE_CODE_EXECUTABLE = shellEnv.BB_CLAUDE_CODE_EXECUTABLE;
+  // Bridge record mode (docs/provider-bridge-protocol.md) rides the same
+  // forward, from the daemon's own env rather than the shell env: the shell
+  // env doubles as the agent's shell environment, and the variable must reach
+  // the bridge process only, never the provider child or its shells.
+  const recordDir = process.env.BB_PROVIDER_BRIDGE_RECORD_DIR;
+  if (recordDir) {
+    env.BB_PROVIDER_BRIDGE_RECORD_DIR = recordDir;
   }
   return Object.keys(env).length > 0 ? env : null;
 }
@@ -302,6 +309,13 @@ export class RuntimeManager {
   private baseShellEnv;
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
+  /**
+   * The catalog an entry still being created will run on. A catalog swap in
+   * another environment prunes staging dirs by the catalogs in use, and an
+   * entry inside `createEntry` is not in `entries` yet — without this its
+   * staged root could be removed from under it.
+   */
+  private readonly pendingCatalogHashes = new Map<string, string>();
   private readonly pendingEnvironmentProvisions = new Map<
     string,
     PendingEnvironmentProvision
@@ -323,7 +337,9 @@ export class RuntimeManager {
   private pendingProviderMaintenanceRuntime: PendingProviderMaintenanceRuntime | null =
     null;
   private providerMaintenanceRuntimeGeneration = 0;
-  private managedShellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]> = {};
+  private providerMaintenanceActiveRequests = 0;
+  private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
+    null;
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
@@ -618,10 +634,7 @@ export class RuntimeManager {
   }
 
   getShellEnv(): NonNullable<AgentRuntimeOptions["shellEnv"]> {
-    return {
-      ...this.baseShellEnv,
-      ...this.managedShellEnv,
-    };
+    return { ...this.baseShellEnv };
   }
 
   async replaceBaseShellEnv(
@@ -729,6 +742,7 @@ export class RuntimeManager {
         dataDir: this.options.dataDir,
         keepCatalogHashes: [
           ...pendingCatalogHashes,
+          ...this.pendingCatalogHashes.values(),
           ...[...this.entries.values()].flatMap((entry) =>
             entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
           ),
@@ -823,12 +837,6 @@ export class RuntimeManager {
     return null;
   }
 
-  replaceManagedShellEnv(
-    shellEnv: NonNullable<AgentRuntimeOptions["shellEnv"]>,
-  ): void {
-    this.managedShellEnv = { ...shellEnv };
-  }
-
   /**
    * Tears down the resident provider-maintenance runtime so the next caller
    * gets a fresh one. In-flight maintenance RPCs fail with "Runtime shutting
@@ -846,6 +854,7 @@ export class RuntimeManager {
   }
 
   private async shutdownProviderMaintenanceRuntime(): Promise<void> {
+    this.clearProviderMaintenanceIdleTimer();
     const existingRuntime = this.providerMaintenanceRuntime;
     const pendingRuntime = this.pendingProviderMaintenanceRuntime;
     this.providerMaintenanceRuntimeGeneration += 1;
@@ -870,6 +879,38 @@ export class RuntimeManager {
     );
   }
 
+  private clearProviderMaintenanceIdleTimer(): void {
+    if (this.providerMaintenanceIdleTimer === null) return;
+    clearTimeout(this.providerMaintenanceIdleTimer);
+    this.providerMaintenanceIdleTimer = null;
+  }
+
+  private scheduleProviderMaintenanceIdleShutdown(): void {
+    this.clearProviderMaintenanceIdleTimer();
+    if (
+      this.providerMaintenanceActiveRequests > 0 ||
+      (this.providerMaintenanceRuntime === null &&
+        this.pendingProviderMaintenanceRuntime === null)
+    ) {
+      return;
+    }
+
+    const timeoutMs =
+      this.options.providerMaintenanceIdleTimeoutMs ??
+      PROVIDER_MAINTENANCE_IDLE_TIMEOUT_MS;
+    this.providerMaintenanceIdleTimer = setTimeout(() => {
+      this.providerMaintenanceIdleTimer = null;
+      if (this.providerMaintenanceActiveRequests > 0) return;
+      void this.shutdownProviderMaintenanceRuntime().catch((error) => {
+        this.options.logger?.warn(
+          { err: error },
+          "Failed to shut down idle provider maintenance runtime",
+        );
+      });
+    }, timeoutMs);
+    this.providerMaintenanceIdleTimer.unref();
+  }
+
   private async evictIdleRuntimeEntries(): Promise<void> {
     const idleEntries = [...this.entries.values()].filter(
       (entry) => !this.entryHasActiveEnvironmentWork(entry),
@@ -882,13 +923,6 @@ export class RuntimeManager {
 
     await Promise.all(idleEntries.map((entry) => entry.runtime.shutdown()));
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
-  }
-
-  async openWorkspace(path: string): Promise<HostWorkspace> {
-    return this.provisionWorkspace({
-      workspaceProvisionType: "unmanaged",
-      path,
-    });
   }
 
   async ensureProviderMaintenanceRuntime(args: {
@@ -925,6 +959,23 @@ export class RuntimeManager {
     };
     this.pendingProviderMaintenanceRuntime = pendingRuntime;
     return promise;
+  }
+
+  async withProviderMaintenanceRuntime<TResult>(
+    args: { dataDir: string },
+    request: (runtime: AgentRuntime) => Promise<TResult>,
+  ): Promise<TResult> {
+    this.clearProviderMaintenanceIdleTimer();
+    this.providerMaintenanceActiveRequests += 1;
+    try {
+      const runtime = await this.ensureProviderMaintenanceRuntime(args);
+      return await request(runtime);
+    } finally {
+      this.providerMaintenanceActiveRequests -= 1;
+      if (this.providerMaintenanceActiveRequests === 0) {
+        this.scheduleProviderMaintenanceIdleShutdown();
+      }
+    }
   }
 
   async ensureEnvironment(args: EnsureEnvironmentArgs): Promise<RuntimeEntry> {
@@ -984,6 +1035,7 @@ export class RuntimeManager {
       })
       .finally(() => {
         this.pendingEntries.delete(args.environmentId);
+        this.pendingCatalogHashes.delete(args.environmentId);
         this.clearPendingEnvironmentProvision(
           args.environmentId,
           pendingProvision,
@@ -991,6 +1043,9 @@ export class RuntimeManager {
       });
     pendingProvision.done = creation;
     this.pendingEntries.set(args.environmentId, creation);
+    if (skillConfig !== null) {
+      this.pendingCatalogHashes.set(args.environmentId, skillConfig.catalogHash);
+    }
 
     return creation;
   }
@@ -1022,7 +1077,7 @@ export class RuntimeManager {
       );
     }
 
-    const workspace = await this.provisionWorkspace(args.provision);
+    const workspace = await this.provisionHostWorkspace(args.provision);
     if (workspace.path !== args.workspacePath) {
       throw new Error(
         `Workspace refresh for ${args.environmentId} returned ${workspace.path}, not ${args.workspacePath}`,
@@ -1107,7 +1162,10 @@ export class RuntimeManager {
       );
     }
 
-    await this.provisionWorkspace({ ...args.provision, signal: args.signal });
+    await this.provisionHostWorkspace({
+      ...args.provision,
+      signal: args.signal,
+    });
     this.options.onWorkspaceStatusChanged?.({
       environmentId: args.entry.environmentId,
       changeKinds: ["work-status-changed", "git-refs-changed"],
@@ -1126,8 +1184,54 @@ export class RuntimeManager {
     this.entries.delete(environmentId);
     await this.stopWatchingStatus(entry);
     await entry.runtime.shutdown();
+    await this.killManagedWorkspaceProcesses(entry);
     await entry.workspace.destroy();
     await this.cleanupUnusedInjectedSkillStagingDirs([]);
+  }
+
+  /**
+   * Reaps every process still rooted in a managed workspace before its
+   * directory is removed. Runtime and terminal shutdown signal their own
+   * process groups, but processes that start a new session (`setsid`,
+   * `nohup`, detached dev servers) survive that and would otherwise keep
+   * running with a cwd in a deleted directory.
+   *
+   * The sweep is ownership-agnostic on purpose: it kills ANY process of this
+   * user whose cwd is inside the workspace, including ones bb never started
+   * (a shell `cd`'d into the worktree, an editor terminal, a debugger). The
+   * directory is about to be deleted, so those processes lose their cwd
+   * anyway. Only managed workspaces are swept; personal workspaces stay
+   * untouched.
+   */
+  private async killManagedWorkspaceProcesses(
+    entry: RuntimeEntry,
+  ): Promise<void> {
+    if (!entry.workspace.managed) {
+      return;
+    }
+    try {
+      const killed = await killProcessesWithCwdUnder({
+        directory: entry.workspace.path,
+      });
+      if (killed.length > 0) {
+        this.options.logger?.warn(
+          {
+            environmentId: entry.environmentId,
+            workspacePath: entry.workspace.path,
+            pids: killed.map((process) => process.pid),
+          },
+          "Killed processes still running in a destroyed environment",
+        );
+      }
+    } catch (error) {
+      this.options.logger?.warn(
+        {
+          environmentId: entry.environmentId,
+          reason: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to reap processes in a destroyed environment",
+      );
+    }
   }
 
   async forgetEnvironment(environmentId: string): Promise<void> {
@@ -1335,12 +1439,8 @@ export class RuntimeManager {
       );
     }
 
-    const setupPath = this.getShellEnv().PATH;
-    const workspace = await this.provisionWorkspace({
+    const workspace = await this.provisionHostWorkspace({
       ...provision,
-      ...(provision.workspaceProvisionType === "managed-worktree" && setupPath
-        ? { setupPath }
-        : {}),
       signal: args.provisionSignal,
     });
     const workspaceWriteRoots =
@@ -1374,6 +1474,26 @@ export class RuntimeManager {
         })),
       onInteractiveRequest: this.options.onInteractiveRequest,
       onStderr: this.options.onStderr,
+      onProviderRecovery: (hint) => {
+        // The runtime has already acted on the kind (unarchive-and-retry,
+        // typed auth_required rejection, bridge restart, stale-steer drop,
+        // rate-limit ladder end: a rateLimited rejection arrives here only
+        // when it is terminal or ended the retry ladder). Provider health is
+        // pulled on demand by the server, so there is no host-side cache to
+        // invalidate here; the hint is logged so it is never silently
+        // consumed.
+        this.options.logger?.debug(
+          {
+            environmentId: args.environmentId,
+            providerId: hint.providerId,
+            threadId: hint.threadId,
+            kind: hint.kind,
+            retryable: hint.retryable,
+            message: hint.message,
+          },
+          "Provider bridge raised a recovery hint",
+        );
+      },
       onProcessExit: (info) => {
         if (!info.expected) {
           for (const event of this.buildUnexpectedProviderExitEvents(info)) {
@@ -1405,6 +1525,15 @@ export class RuntimeManager {
       workspace,
       path: workspace.path,
     };
+  }
+
+  private provisionHostWorkspace(
+    provision: ProvisionWorkspaceArgs,
+  ): Promise<HostWorkspace> {
+    return this.provisionWorkspace({
+      ...provision,
+      ...userExecutableProcessOptions(this.getShellEnv()),
+    });
   }
 
   private async stopWatchingStatus(entry: RuntimeEntry): Promise<void> {

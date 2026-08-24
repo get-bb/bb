@@ -18,7 +18,7 @@ import {
 import { connectPublicProtocol } from "@bb/connect-client";
 import type { HostDaemonLogger } from "../logger.js";
 
-export type ConnectTunnelState = "connected" | "reconnecting" | "offline";
+type ConnectTunnelState = "connected" | "reconnecting" | "offline";
 
 export interface ConnectTunnelStatus {
   state: ConnectTunnelState;
@@ -38,7 +38,7 @@ export type ConnectTunnelFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-export interface ConnectTunnelClientOptions {
+interface ConnectTunnelClientOptions {
   serverUrl: string;
   hostName: string;
   machineCredential?: string;
@@ -55,7 +55,7 @@ interface TrustedConnectGate {
   baseDomain: string;
 }
 
-export class ConnectTunnelCredentialRejectedError extends Error {
+class ConnectTunnelCredentialRejectedError extends Error {
   readonly code = "credential_rejected";
 
   constructor(message: string) {

@@ -121,7 +121,7 @@ async function exists(path: string): Promise<boolean> {
   );
 }
 
-export function pluginDataDir(dataDir: string, pluginId: string): string {
+function pluginDataDir(dataDir: string, pluginId: string): string {
   return join(dataDir, "plugins", pluginId);
 }
 

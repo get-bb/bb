@@ -29,7 +29,7 @@ export interface GitDiffCardHeaderModel {
   deletions: number;
 }
 
-export interface GitDiffCardHeaderProps {
+interface GitDiffCardHeaderProps {
   model: GitDiffCardHeaderModel;
   /** Rename/copy source path; null when not a rename or copy. */
   previousPath: string | null;
@@ -73,7 +73,7 @@ function formatByteSize(bytes: number): string {
   return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
 }
 
-export interface GitDiffCardImageSizeStatProps {
+interface GitDiffCardImageSizeStatProps {
   stat: DiffImageSizeStat;
 }
 
@@ -98,7 +98,7 @@ export function GitDiffCardImageSizeStat({
   );
 }
 
-export interface GitDiffCardRawToggleProps {
+interface GitDiffCardRawToggleProps {
   fileLabel: string;
   isRaw: boolean;
   onToggle: () => void;
@@ -277,12 +277,10 @@ const GIT_DIFF_CARD_HEADER_WRAPPER_BASE_CLASS =
   // chevrons the library renders between hunks below.
   "rounded-lg bg-background py-1.5 pl-2 pr-3 text-xs font-medium text-foreground";
 
-export interface GitDiffCardHeaderWrapperClassArgs {
+interface GitDiffCardHeaderWrapperClassArgs {
   stickyHeader: boolean;
-  stickyHeaderTopClassName?: string;
   isBodyHidden: boolean;
   isStuck: boolean;
-  applyStuckHeaderChrome?: boolean;
   showStuckHeaderEdge?: boolean;
 }
 
@@ -292,24 +290,19 @@ export interface GitDiffCardHeaderWrapperClassArgs {
  */
 export function gitDiffCardHeaderWrapperClass({
   stickyHeader,
-  stickyHeaderTopClassName = "top-0",
   isBodyHidden,
   isStuck,
-  applyStuckHeaderChrome = true,
   showStuckHeaderEdge = true,
 }: GitDiffCardHeaderWrapperClassArgs): string {
   return cn(
     GIT_DIFF_CARD_HEADER_WRAPPER_BASE_CLASS,
     stickyHeader && "sticky z-30",
-    stickyHeader && stickyHeaderTopClassName,
+    stickyHeader && "top-0",
     !isBodyHidden && "rounded-b-none",
-    isStuck && applyStuckHeaderChrome && "rounded-t-none",
+    isStuck && "rounded-t-none",
     // When stuck, the card's own rounded top border scrolls out of view. Draw
     // the replacement top edge as an inset shadow instead of a real border so
     // the stuck transition does not change layout.
-    isStuck &&
-      applyStuckHeaderChrome &&
-      showStuckHeaderEdge &&
-      "shadow-[inset_0_1px_0_var(--border)]",
+    isStuck && showStuckHeaderEdge && "shadow-[inset_0_1px_0_var(--border)]",
   );
 }

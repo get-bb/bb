@@ -36,14 +36,12 @@ import {
   PluginProvenancePill,
 } from "@/components/tools/PluginDetail";
 import {
-  BbLogo,
   ProviderLogo,
   SkillProvenanceTooltip,
 } from "@/components/tools/SkillsCollection";
-import {
-  SkillDetailView,
-  SkillOwnershipBadge,
-} from "@/components/tools/SkillDetailView";
+import { BbLogo } from "@/components/ui/bb-logo";
+import { ProvenancePill } from "@/components/tools/ProvenancePill";
+import { SkillDetailView } from "@/components/tools/SkillDetailView";
 
 /**
  * Every state each tool type's detail page can be in, rendered as the real
@@ -565,8 +563,10 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   description: "Browse GitHub issues and pull requests without leaving bb.",
   icon: "Github",
   iconUrl: null,
+  iconTinted: false,
   category: "Developer tools",
   source: "builtin:github",
+  repositoryUrl: null,
   marketplaceDisplayName: "BB Community",
   publisherKey: "builtin",
   publisherLabel: "BB Official",
@@ -700,6 +700,7 @@ function CatalogPlugin({
           displayName: entry.displayName,
           icon: entry.icon,
           iconUrl: entry.iconUrl,
+          iconTinted: entry.iconTinted,
           source: entry.source,
         }}
         onOpenChange={setInstallOpen}
@@ -1254,17 +1255,14 @@ export function ResourceControlStates() {
           <ControlRow
             state="Skill · BB Official"
             control={
-              <SkillOwnershipBadge
-                label="BB Official"
-                tooltip="Ships with bb"
-              />
+              <ProvenancePill label="BB Official" tooltip="Ships with bb" />
             }
             meaning="A skill that ships with bb."
           />
           <ControlRow
             state="Skill · Included"
             control={
-              <SkillOwnershipBadge
+              <ProvenancePill
                 label="Included"
                 tooltip={
                   <SkillProvenanceTooltip
@@ -1280,7 +1278,7 @@ export function ResourceControlStates() {
           <ControlRow
             state="Skill · Imported"
             control={
-              <SkillOwnershipBadge
+              <ProvenancePill
                 label="Imported"
                 tooltip={
                   <SkillProvenanceTooltip

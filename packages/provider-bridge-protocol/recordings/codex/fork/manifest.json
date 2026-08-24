@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "fork",
+  "threadId": "thr_rciv6va95h",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "A thread forked from a resumed source thread, then one turn.",
+  "note": "fork of thr_rsjqcswyh2",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 13,
+    "provider→bridge": 22,
+    "bridge→provider": 5
+  }
+}

@@ -1,28 +1,23 @@
 import type { ReactNode } from "react";
-import type { ThreadOriginKind } from "@bb/domain";
+import { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { BbHttpError } from "@/lib/sdk";
-import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
 import {
   ThreadTimelineSurface,
   type ThreadTimelineSurfaceProps,
 } from "./ThreadTimelineSurface.js";
 import {
   useThreadTimelineController,
-  type ThreadTimelineRowFilter,
   type UseThreadTimelineControllerResult,
 } from "./useThreadTimelineController.js";
 
-export interface ThreadTimelinePanelContentProps {
-  canSpawnChild?: boolean;
+interface ThreadTimelinePanelContentProps {
   isTurnSubmitting?: boolean;
   leadingContent?: ReactNode;
-  missingThreadLabel?: string;
-  onForkMessage?: ThreadTimelineSurfaceProps["onForkMessage"];
   onMessageAddToChat?: ThreadTimelineSurfaceProps["onMessageAddToChat"];
   onSendToMainMessage?: ThreadTimelineSurfaceProps["onSendToMainMessage"];
   onSelectionAddToChat?: ThreadTimelineSurfaceProps["onSelectionAddToChat"];
@@ -30,27 +25,17 @@ export interface ThreadTimelinePanelContentProps {
   includePluginMessageActions?: ThreadTimelineSurfaceProps["includePluginMessageActions"];
   onOpenLink?: ThreadTimelineSurfaceProps["onOpenLink"];
   onOpenLocalFileLink?: ThreadTimelineSurfaceProps["onOpenLocalFileLink"];
-  onOpenPluginPanel?: ThreadTimelineSurfaceProps["onOpenPluginPanel"];
-  onTitleAction?: ThreadTimelineSurfaceProps["onTitleAction"];
   projectId?: string;
-  provisioningLabel?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
-  rowFilter?: ThreadTimelineRowFilter;
-  showLoadOlderRows?: boolean;
   surfaceKey?: string;
-  threadOriginKind?: ThreadOriginKind | null;
   threadId: string;
   timeline?: UseThreadTimelineControllerResult;
-  timelineErrorLabel?: string;
   workspaceRootPath?: string;
 }
 
 export function ThreadTimelinePanelContent({
-  canSpawnChild,
   isTurnSubmitting = false,
   leadingContent,
-  missingThreadLabel = "This thread is no longer available.",
-  onForkMessage,
   onMessageAddToChat,
   onSendToMainMessage,
   onSelectionAddToChat,
@@ -58,24 +43,16 @@ export function ThreadTimelinePanelContent({
   includePluginMessageActions,
   onOpenLink,
   onOpenLocalFileLink,
-  onOpenPluginPanel,
-  onTitleAction,
   projectId,
-  provisioningLabel = "Provisioning thread...",
   resolveMentionLink,
-  rowFilter,
-  showLoadOlderRows = true,
   surfaceKey,
-  threadOriginKind = null,
   threadId,
   timeline,
-  timelineErrorLabel = "Failed to load timeline",
   workspaceRootPath,
 }: ThreadTimelinePanelContentProps) {
   const threadQuery = useThread(threadId);
   const ownedTimeline = useThreadTimelineController({
     enabled: timeline === undefined,
-    rowFilter,
     surfaceKey,
     threadId,
   });
@@ -95,7 +72,7 @@ export function ThreadTimelinePanelContent({
     displayStatus === "host-reconnecting"
       ? "Waiting for reconnection"
       : isProvisioningDisplayStatus
-        ? provisioningLabel
+        ? "Provisioning thread..."
         : backgroundOnlyIndicatorLabel;
   const showOngoingIndicator =
     threadQuery.data?.status !== "stopping" &&
@@ -114,7 +91,7 @@ export function ThreadTimelinePanelContent({
       <ConversationTimeline className="flex-1">
         {leadingContent}
         <EmptyStatePanel className="mx-2 rounded-lg">
-          {missingThreadLabel}
+          This thread is no longer available.
         </EmptyStatePanel>
       </ConversationTimeline>
     );
@@ -123,11 +100,7 @@ export function ThreadTimelinePanelContent({
   return (
     <ThreadTimelineSurface
       activeThinking={resolvedTimeline.activeThinking}
-      canSpawnChild={canSpawnChild}
-      threadOriginKind={threadOriginKind}
-      hasOlderTimelineRows={
-        showLoadOlderRows ? resolvedTimeline.hasOlderTimelineRows : false
-      }
+      hasOlderTimelineRows={resolvedTimeline.hasOlderTimelineRows}
       isLoadingOlderTimelineRows={resolvedTimeline.isLoadingOlderTimelineRows}
       isThreadTimelinePending={
         resolvedTimeline.timelineLoading &&
@@ -139,24 +112,18 @@ export function ThreadTimelinePanelContent({
       }
       loadingContent={<ThreadTimelinePanelLoadingSkeleton />}
       leadingContent={leadingContent}
-      onForkMessage={onForkMessage}
       onMessageAddToChat={onMessageAddToChat}
       onSendToMainMessage={onSendToMainMessage}
       onSelectionAddToChat={onSelectionAddToChat}
       consumerMessageActions={consumerMessageActions}
       includePluginMessageActions={includePluginMessageActions}
-      onLoadOlderRows={
-        showLoadOlderRows ? resolvedTimeline.loadOlderTimelineRows : undefined
-      }
+      onLoadOlderRows={resolvedTimeline.loadOlderTimelineRows}
       onOpenLink={onOpenLink}
       onOpenLocalFileLink={onOpenLocalFileLink}
-      onOpenPluginPanel={onOpenPluginPanel}
-      onTitleAction={onTitleAction}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
       showOngoingIndicator={showOngoingIndicator}
       ongoingIndicatorLabel={ongoingIndicatorLabel}
-      timelineErrorLabel={timelineErrorLabel}
       timelineErrorClassName="mx-2 mt-4 text-destructive"
       timelineRows={timelineRows}
       threadId={threadId}

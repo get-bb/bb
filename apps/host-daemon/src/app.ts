@@ -11,7 +11,6 @@ import {
 } from "./interactive-request-registry.js";
 import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
 import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
-import { shutdownDefaultListModelsRuntimes } from "./command-dispatch-support.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import type { HostDaemonLogger } from "./logger.js";
@@ -102,7 +101,7 @@ interface StartIdleProviderSessionReaperArgs {
   setIntervalFn: IdleProviderSessionReaperIntervalFn;
 }
 
-export interface CreateHostDaemonAppOptions {
+interface CreateHostDaemonAppOptions {
   dataDir: string;
   serverUrl: string;
   hostKey: string;
@@ -117,7 +116,6 @@ export interface CreateHostDaemonAppOptions {
   machineCredential?: string;
   connectMachineId?: string;
   autoUpdate?: boolean;
-  installUpdateTarball?: (tarballPath: string) => Promise<void>;
   releaseLock: () => Promise<void>;
   localApiConfig: HostDaemonLocalApiConfig | null;
   createRuntime?: RuntimeManagerOptions["createRuntime"];
@@ -127,7 +125,6 @@ export interface CreateHostDaemonAppOptions {
     NonNullable<AgentRuntimeOptions["shellEnv"]>
   >;
   nowMs?: () => number;
-  threadStorageRootPath?: string;
   hostWatcher?: HostWatcher;
   onToolCall?: (request: ToolCallRequest) => Promise<ToolCallResponse>;
   fetchFn?: FetchFn;
@@ -230,12 +227,7 @@ interface MaybeInvalidateSessionArgs {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
-  const threadStorageRootPath = await ensureThreadStorageRoot(
-    options.dataDir,
-    options.threadStorageRootPath
-      ? { configuredRoot: options.threadStorageRootPath }
-      : {},
-  );
+  const threadStorageRootPath = await ensureThreadStorageRoot(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
   );
@@ -298,13 +290,13 @@ export async function createHostDaemonApp(
   async function flushThreadEventsBeforeInteractiveRegistration(): Promise<void> {
     // Interactive registration creates server-owned turn-scoped timeline state,
     // so the server must first observe the provider turn/started for that turn.
-    await eventSink.flushRequired();
+    await eventSink.flush();
   }
 
   async function flushThreadEventsBeforeToolCall(): Promise<void> {
     // Dynamic tool calls can append server-owned turn-scoped events, so the
     // server must first observe any provider turn/started already emitted.
-    await eventSink.flushRequired();
+    await eventSink.flush();
   }
 
   const serverClient = createServerClient({
@@ -440,6 +432,7 @@ export async function createHostDaemonApp(
     hostWatcher: options.hostWatcher,
     refreshWorkspace: (args) =>
       runtimeManager.refreshEnvironmentWorkspace(args),
+    shellEnv: () => runtimeManager.getShellEnv(),
     threadStorageRootPath,
     onThreadStorageChanged: ({ environmentId }) => {
       sendServerMessage({
@@ -627,14 +620,6 @@ export async function createHostDaemonApp(
         throw error;
       }
     },
-    onStderr: (line) => {
-      if (line.includes('"component":"claude-code-mock-cli-traffic-proxy"')) {
-        options.logger.info(
-          { providerStderr: line },
-          "Claude Code mock CLI traffic proxy request",
-        );
-      }
-    },
     onProcessExit: (info) => {
       const threadIds = info.threads.map((thread) => thread.threadId);
       if (!info.expected && info.stderr) {
@@ -782,10 +767,38 @@ export async function createHostDaemonApp(
     terminalManager,
     listModels: async (args) => {
       await refreshRuntimeShellEnv();
-      const runtime = await runtimeManager.ensureProviderMaintenanceRuntime({
-        dataDir: options.dataDir,
-      });
-      return runtime.listModels(args);
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.listModels(args),
+      );
+    },
+    providerHealth: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.providerHealth(args),
+      );
+    },
+    providerUsage: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.providerUsage(args),
+      );
+    },
+    providerInstallationStatus: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.providerInstallationStatus(args),
+      );
+    },
+    providerInstallationRun: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.providerInstallationRun(args),
+      );
     },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
@@ -809,6 +822,7 @@ export async function createHostDaemonApp(
     hostType: options.hostType,
     dataDir: options.dataDir,
     instanceId: options.instanceId,
+    localApiPort: options.localApiConfig?.port ?? null,
     logger: options.logger,
     machineCredential: options.machineCredential,
     connectMachineId: options.connectMachineId,
@@ -817,7 +831,6 @@ export async function createHostDaemonApp(
       dataDir: options.dataDir,
       enabled: options.autoUpdate ?? false,
       fetchFn: options.fetchFn,
-      installTarball: options.installUpdateTarball,
       logger: options.logger,
       serverUrl: options.serverUrl,
     }),
@@ -905,6 +918,7 @@ export async function createHostDaemonApp(
         devAppPort: options.devAppPort,
         appUrl: options.appUrl,
         getConnected: () => connection.sessionId != null,
+        shellEnv: () => runtimeManager.getShellEnv(),
       })
     : null;
   const eventLoopStallMonitor = startEventLoopStallMonitor({
@@ -946,7 +960,6 @@ export async function createHostDaemonApp(
       await runtimeManager.shutdownAll();
       await eventSink.flush();
       await eventSink.dispose();
-      await shutdownDefaultListModelsRuntimes();
       await connection.shutdown();
     },
     onStart: async () => {

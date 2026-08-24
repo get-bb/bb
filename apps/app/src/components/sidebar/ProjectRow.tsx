@@ -16,7 +16,7 @@ import {
 import { createPortal } from "react-dom";
 import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
 import {
   usePromptDraftHasInput,
@@ -66,18 +66,20 @@ import {
   getCollapsedChildActivity,
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
-} from "@/lib/thread-activity";
+} from "@bb/client-core";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { getProjectSettingsRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { appToast } from "@/components/ui/app-toast";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import {
   CollapsedThreadStatusGlyph,
   ThreadRow,
   type ThreadRowOptions,
 } from "./ThreadRow";
 import {
+  buildSidebarEntitySectionId,
   buildSectionThreadList,
   buildProjectThreadGroups,
   CHRONOLOGICAL_CONTAINER_ID,
@@ -94,7 +96,7 @@ import {
   type SidebarSectionDefinition,
   type SidebarSectionGroup,
   type ThreadComparator,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import { SidebarWindowedItems } from "./SidebarWindowedItems";
 import { SidebarSectionRow } from "./SidebarSectionRow";
 import { TopLevelSidebarSection } from "./TopLevelSidebarSection";
@@ -116,9 +118,8 @@ import {
   type SidebarSortableDragBindings,
 } from "./sortableMotion";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
-import type { NeighborReorderRequest } from "@/lib/neighbor-reorder";
+import type { NeighborReorderRequest } from "@bb/client-core";
 import { SidebarChildToggleChevron } from "./SidebarChildToggleChevron";
-import { buildSidebarEntitySectionId } from "./sidebarSectionOrder";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
 import {
   collectSectionThreadDndLookup,
@@ -271,6 +272,8 @@ interface ProjectThreadTreeGroupProps {
 }
 
 interface ThreadTreeNodeRowProps {
+  // Project of the enclosing group for a root node, or of the parent thread for
+  // a child node. A node whose thread lives elsewhere gets a cross-project marker.
   projectId: string;
   node: ProjectThreadNode;
   depthOffset: number;
@@ -396,18 +399,18 @@ interface EnvironmentThreadGroupHeaderProps {
   parentLineDepth?: number;
   childActivity: CollapsedChildActivity;
   isCollapsed: boolean;
-  archiveThreadsPending?: boolean;
-  onArchiveThreads?: () => void;
-  onCreateNewThread?: () => void;
-  onRenameEnvironment?: () => void;
+  archiveThreadsPending: boolean;
+  onArchiveThreads: () => void;
+  onCreateNewThread: () => void;
+  onRenameEnvironment: () => void;
   onToggleCollapsed: (environmentId: string) => void;
 }
 
 interface EnvironmentThreadGroupHeaderActionsProps {
   archiveThreadsPending: boolean;
-  onArchiveThreads?: () => void;
-  onCreateNewThread?: () => void;
-  onRenameEnvironment?: () => void;
+  onArchiveThreads: () => void;
+  onCreateNewThread: () => void;
+  onRenameEnvironment: () => void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -752,7 +755,7 @@ function useArchiveEnvironmentThreadGroupAction({
   selectedThreadId,
   threads,
 }: UseArchiveEnvironmentThreadGroupActionArgs): UseArchiveEnvironmentThreadGroupActionResult {
-  const navigate = useNavigate();
+  const navigate = useRouteNavigate();
   const archiveEnvironmentThreads = useArchiveEnvironmentThreads();
   const {
     isPending: archiveThreadsIsPending,
@@ -855,10 +858,6 @@ function EnvironmentThreadGroupHeaderActions({
   onRenameEnvironment,
   onOpenChange,
 }: EnvironmentThreadGroupHeaderActionsProps) {
-  if (!onCreateNewThread && !onArchiveThreads && !onRenameEnvironment) {
-    return null;
-  }
-
   return (
     <span className="inline-flex shrink-0 items-center">
       <DropdownMenu onOpenChange={onOpenChange}>
@@ -881,37 +880,31 @@ function EnvironmentThreadGroupHeaderActions({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          {onCreateNewThread ? (
-            <DropdownMenuItem onSelect={onCreateNewThread}>
-              <Icon name="MessageSquarePlus" aria-hidden="true" />
-              New thread
-            </DropdownMenuItem>
-          ) : null}
-          {onRenameEnvironment ? (
-            <DropdownMenuItem
-              onSelect={() => {
-                onRenameEnvironment();
-              }}
-            >
-              <Icon name="Edit" aria-hidden="true" />
-              Rename
-            </DropdownMenuItem>
-          ) : null}
-          {onArchiveThreads ? (
-            <DropdownMenuItem
-              disabled={archiveThreadsPending}
-              onSelect={(event) => {
-                if (archiveThreadsPending) {
-                  event.preventDefault();
-                  return;
-                }
-                onArchiveThreads();
-              }}
-            >
-              <Icon name="Archive" aria-hidden="true" />
-              Archive worktree
-            </DropdownMenuItem>
-          ) : null}
+          <DropdownMenuItem onSelect={onCreateNewThread}>
+            <Icon name="MessageSquarePlus" aria-hidden="true" />
+            New thread
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              onRenameEnvironment();
+            }}
+          >
+            <Icon name="Edit" aria-hidden="true" />
+            Rename
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={archiveThreadsPending}
+            onSelect={(event) => {
+              if (archiveThreadsPending) {
+                event.preventDefault();
+                return;
+              }
+              onArchiveThreads();
+            }}
+          >
+            <Icon name="Archive" aria-hidden="true" />
+            Archive worktree
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </span>
@@ -926,7 +919,7 @@ function EnvironmentThreadGroupHeader({
   parentLineDepth,
   childActivity,
   isCollapsed,
-  archiveThreadsPending = false,
+  archiveThreadsPending,
   onArchiveThreads,
   onCreateNewThread,
   onRenameEnvironment,
@@ -1651,8 +1644,10 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     ],
   );
   const showChildren = !isCollapsed && hasChildren;
-  const rowProjectId =
-    variant === "section" ? node.thread.projectId : projectId;
+  // Route and draft keys always use the thread's own project; a child may live
+  // in a different project than the parent it nests under.
+  const rowProjectId = node.thread.projectId;
+  const crossProjectId = rowProjectId !== projectId ? rowProjectId : null;
   const hasComposerDraft = usePromptDraftHasInput({
     kind: "thread",
     projectId: rowProjectId,
@@ -1671,6 +1666,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
     <ThreadRow
       projectId={rowProjectId}
       thread={node.thread}
+      crossProjectId={crossProjectId}
       isActive={selectedThreadId === node.thread.id}
       hasComposerDraft={hasComposerDraft}
       onProjectSelect={onProjectSelect}
@@ -1705,7 +1701,7 @@ export const ThreadTreeNodeRow = memo(function ThreadTreeNodeRow({
               return (
                 <ThreadTreeItemRow
                   key={getItemKey(item)}
-                  projectId={projectId}
+                  projectId={rowProjectId}
                   item={item}
                   depthOffset={depthOffset}
                   selectedThreadId={selectedThreadId}

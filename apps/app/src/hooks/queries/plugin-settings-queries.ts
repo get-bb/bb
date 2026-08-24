@@ -10,9 +10,9 @@ import { pluginListQueryKey, pluginSettingsViewQueryKey } from "./query-keys";
 
 type FetchLike = typeof fetch;
 
-export type PluginProvenance = InstalledPlugin["provenance"];
+type PluginProvenance = InstalledPlugin["provenance"];
 
-export interface PluginUpdateFailure {
+interface PluginUpdateFailure {
   version: string;
   at: number | null;
   detail: string;
@@ -144,7 +144,7 @@ export interface PluginSettingsView {
   values: PluginSettingsResponse["values"];
 }
 
-export async function fetchPluginSettingsView(
+async function fetchPluginSettingsView(
   fetchImpl: FetchLike,
   pluginId: string,
 ): Promise<PluginSettingsView | null> {

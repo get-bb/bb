@@ -15,9 +15,25 @@ import {
   type AutomationTrigger,
 } from "./rpc-types.js";
 
+const AUTOMATION_COLUMNS = `id, project_id AS projectId, target_thread_id AS targetThreadId,
+  name, enabled, trigger_type AS triggerType,
+  trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
+  created_by_thread_id AS createdByThreadId,
+  next_run_at AS nextRunAt, last_run_at AS lastRunAt,
+  run_count AS runCount, consecutive_failures AS consecutiveFailures,
+  last_run_status AS lastRunStatus,
+  last_run_thread_id AS lastRunThreadId, last_error AS lastError,
+  created_at AS createdAt, updated_at AS updatedAt`;
+
+const AUTOMATION_RUN_COLUMNS = `id, automation_id AS automationId, run_mode AS runMode,
+  thread_id AS threadId, status, trigger, skip_reason AS skipReason,
+  error, output, exit_code AS exitCode,
+  idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
+  started_at AS startedAt, finished_at AS finishedAt`;
+
 export type Db = Database.Database;
 
-export const AUTOMATION_MAX_CONSECUTIVE_FAILURES = 3;
+const AUTOMATION_MAX_CONSECUTIVE_FAILURES = 3;
 export const AUTOMATION_RETRY_BASE_MS = 30_000;
 
 export interface AutomationRow {
@@ -201,7 +217,7 @@ export const migrations = [
  * (AUTOMATION_MAX_CONSECUTIVE_FAILURES), so the sequence never grows past
  * that; raise the strike count and this doubles further.
  */
-export function automationRetryDelayMs(consecutiveFailures: number): number {
+function automationRetryDelayMs(consecutiveFailures: number): number {
   const exponent = Math.max(0, consecutiveFailures - 1);
   return AUTOMATION_RETRY_BASE_MS * 2 ** exponent;
 }
@@ -335,15 +351,7 @@ export function getAutomation(db: Db, id: string): AutomationRow | null {
     db
       .prepare(
         `SELECT
-           id, project_id AS projectId, target_thread_id AS targetThreadId,
-           name, enabled, trigger_type AS triggerType,
-           trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
-           created_by_thread_id AS createdByThreadId,
-           next_run_at AS nextRunAt, last_run_at AS lastRunAt,
-           run_count AS runCount, consecutive_failures AS consecutiveFailures,
-           last_run_status AS lastRunStatus,
-           last_run_thread_id AS lastRunThreadId, last_error AS lastError,
-           created_at AS createdAt, updated_at AS updatedAt
+           ${AUTOMATION_COLUMNS}
          FROM automations WHERE id = ?`,
       )
       .get(id),
@@ -365,15 +373,7 @@ export function listAutomationsForProject(
   return db
     .prepare(
       `SELECT
-         id, project_id AS projectId, target_thread_id AS targetThreadId,
-         name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
-         created_by_thread_id AS createdByThreadId,
-         next_run_at AS nextRunAt, last_run_at AS lastRunAt,
-         run_count AS runCount, consecutive_failures AS consecutiveFailures,
-         last_run_status AS lastRunStatus,
-         last_run_thread_id AS lastRunThreadId, last_error AS lastError,
-         created_at AS createdAt, updated_at AS updatedAt
+         ${AUTOMATION_COLUMNS}
        FROM automations
        WHERE project_id = ?
        ORDER BY created_at DESC, id DESC`,
@@ -386,15 +386,7 @@ export function listAllAutomations(db: Db): AutomationRow[] {
   return db
     .prepare(
       `SELECT
-         id, project_id AS projectId, target_thread_id AS targetThreadId,
-         name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
-         created_by_thread_id AS createdByThreadId,
-         next_run_at AS nextRunAt, last_run_at AS lastRunAt,
-         run_count AS runCount, consecutive_failures AS consecutiveFailures,
-         last_run_status AS lastRunStatus,
-         last_run_thread_id AS lastRunThreadId, last_error AS lastError,
-         created_at AS createdAt, updated_at AS updatedAt
+         ${AUTOMATION_COLUMNS}
        FROM automations
        ORDER BY created_at DESC, id DESC`,
     )
@@ -512,15 +504,7 @@ export function listDueAutomations(
   return db
     .prepare(
       `SELECT
-         id, project_id AS projectId, target_thread_id AS targetThreadId,
-         name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
-         created_by_thread_id AS createdByThreadId,
-         next_run_at AS nextRunAt, last_run_at AS lastRunAt,
-         run_count AS runCount, consecutive_failures AS consecutiveFailures,
-         last_run_status AS lastRunStatus,
-         last_run_thread_id AS lastRunThreadId, last_error AS lastError,
-         created_at AS createdAt, updated_at AS updatedAt
+         ${AUTOMATION_COLUMNS}
        FROM automations
        WHERE enabled = 1
          AND trigger_type IN ('schedule', 'once')
@@ -533,7 +517,7 @@ export function listDueAutomations(
     .map(requiredAutomationRow);
 }
 
-export type ClaimScheduledRunResult =
+type ClaimScheduledRunResult =
   | { advanced: false }
   | { advanced: true; automation: AutomationRow; run: AutomationRunRow };
 
@@ -545,11 +529,7 @@ export function getRunningAutomationRun(
     db
       .prepare(
         `SELECT
-           id, automation_id AS automationId, run_mode AS runMode,
-           thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-           error, output, exit_code AS exitCode,
-           idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-           started_at AS startedAt, finished_at AS finishedAt
+           ${AUTOMATION_RUN_COLUMNS}
          FROM automation_runs
          WHERE automation_id = ? AND status = 'running'
          ORDER BY started_at DESC, id DESC
@@ -599,15 +579,7 @@ export function claimAutomationScheduledRun(
            updated_at = @now
          WHERE id = @automationId AND next_run_at = @expectedNextRunAt
          RETURNING
-           id, project_id AS projectId, target_thread_id AS targetThreadId,
-           name, enabled, trigger_type AS triggerType,
-           trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
-           created_by_thread_id AS createdByThreadId,
-           next_run_at AS nextRunAt, last_run_at AS lastRunAt,
-           run_count AS runCount, consecutive_failures AS consecutiveFailures,
-           last_run_status AS lastRunStatus,
-           last_run_thread_id AS lastRunThreadId, last_error AS lastError,
-           created_at AS createdAt, updated_at AS updatedAt`,
+           ${AUTOMATION_COLUMNS}`,
       )
       .get({
         automationId: args.automationId,
@@ -789,11 +761,7 @@ export function createManualRun(
         db
           .prepare(
             `SELECT
-               id, automation_id AS automationId, run_mode AS runMode,
-               thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-               error, output, exit_code AS exitCode,
-               idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-               started_at AS startedAt, finished_at AS finishedAt
+               ${AUTOMATION_RUN_COLUMNS}
              FROM automation_runs
              WHERE automation_id = ? AND idempotency_key = ?`,
           )
@@ -826,16 +794,12 @@ export function createManualRun(
   })();
 }
 
-export function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
+function getAutomationRun(db: Db, id: string): AutomationRunRow | null {
   return optionalRunRow(
     db
       .prepare(
         `SELECT
-           id, automation_id AS automationId, run_mode AS runMode,
-           thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-           error, output, exit_code AS exitCode,
-           idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-           started_at AS startedAt, finished_at AS finishedAt
+           ${AUTOMATION_RUN_COLUMNS}
          FROM automation_runs WHERE id = ?`,
       )
       .get(id),
@@ -882,11 +846,7 @@ export function listRunningAutomationRuns(db: Db): AutomationRunRow[] {
   return db
     .prepare(
       `SELECT
-           id, automation_id AS automationId, run_mode AS runMode,
-           thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-           error, output, exit_code AS exitCode,
-           idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-           started_at AS startedAt, finished_at AS finishedAt
+           ${AUTOMATION_RUN_COLUMNS}
          FROM automation_runs
          WHERE status = 'running'
          ORDER BY started_at ASC, id ASC`,
@@ -901,11 +861,7 @@ export function listRunningAutomationRunsByThread(
   return db
     .prepare(
       `SELECT
-           id, automation_id AS automationId, run_mode AS runMode,
-           thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-           error, output, exit_code AS exitCode,
-           idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-           started_at AS startedAt, finished_at AS finishedAt
+           ${AUTOMATION_RUN_COLUMNS}
          FROM automation_runs
          WHERE thread_id = ? AND status = 'running'
          ORDER BY started_at DESC, id DESC`,
@@ -925,11 +881,7 @@ export function listAutomationRuns(
     ? db
         .prepare(
           `SELECT
-             id, automation_id AS automationId, run_mode AS runMode,
-             thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-             error, output, exit_code AS exitCode,
-             idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-             started_at AS startedAt, finished_at AS finishedAt
+             ${AUTOMATION_RUN_COLUMNS}
            FROM automation_runs
            WHERE automation_id = ?
              AND (started_at < ? OR (started_at = ? AND id < ?))
@@ -946,11 +898,7 @@ export function listAutomationRuns(
     : db
         .prepare(
           `SELECT
-             id, automation_id AS automationId, run_mode AS runMode,
-             thread_id AS threadId, status, trigger, skip_reason AS skipReason,
-             error, output, exit_code AS exitCode,
-             idempotency_key AS idempotencyKey, scheduled_for AS scheduledFor,
-             started_at AS startedAt, finished_at AS finishedAt
+             ${AUTOMATION_RUN_COLUMNS}
            FROM automation_runs
            WHERE automation_id = ?
            ORDER BY started_at DESC, id DESC
@@ -975,15 +923,7 @@ export function disableAutomationsForDeletedThread(
   return db
     .prepare(
       `SELECT
-         id, project_id AS projectId, target_thread_id AS targetThreadId,
-         name, enabled, trigger_type AS triggerType,
-         trigger_config AS triggerConfig, run_mode AS runMode, execution, origin,
-         created_by_thread_id AS createdByThreadId,
-         next_run_at AS nextRunAt, last_run_at AS lastRunAt,
-         run_count AS runCount, consecutive_failures AS consecutiveFailures,
-         last_run_status AS lastRunStatus,
-         last_run_thread_id AS lastRunThreadId, last_error AS lastError,
-         created_at AS createdAt, updated_at AS updatedAt
+         ${AUTOMATION_COLUMNS}
        FROM automations
        WHERE target_thread_id = @threadId AND last_error = 'target thread deleted'
        ORDER BY updated_at DESC`,

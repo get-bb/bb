@@ -3,9 +3,7 @@
 Status: **implemented**. The members below ship in `@get-bb/plugin-sdk/app`.
 
 This document specifies one exclusive slot and the data surface it needs.
-A plugin uses them to replace bb's thread list with its own. The reference
-consumer is the `t3sidebar` plugin in
-[`examples/plugins/t3sidebar`](../examples/plugins/t3sidebar).
+A plugin uses them to replace bb's thread list with its own.
 
 Every member below ships with the `experimental_` prefix and an entry in
 [api_to_audit.md](api_to_audit.md), per [AGENTS.md](../AGENTS.md).
@@ -81,7 +79,7 @@ interface PluginThreadListProps {
    * BB's thread list bound to this sidebar instance. Render it to delegate
    * conditionally without re-entering plugin replacement resolution.
    */
-  experimental_Original: ComponentType;
+  Original: ComponentType;
 }
 ```
 
@@ -336,9 +334,8 @@ engages once the pointer leaves the sidebar.
 
 ## 7. A second slot: the thread header
 
-A replaced sidebar often hides something the old sidebar showed. The
-t3sidebar plugin hides child threads, because a flat inbox has no place to
-nest them. Those children still need a home, and the thread header is it.
+A replaced sidebar often hides something the old sidebar showed. A flat
+inbox-style list hides child threads, because it has no place to nest them. Those children still need a home, and the thread header is it.
 
 bb already has a backend version of this. `bb.ui.registerThreadAction` puts a
 host-rendered button in the thread header and runs `run` on the server. That

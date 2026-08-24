@@ -31,6 +31,8 @@ interface StatusPayload {
     title: string | null;
   }> | null;
   pendingTodos: ThreadTimelinePendingTodos | null;
+  /** Enabled plugins the server did not load (#1915). */
+  pluginsNeedingAttention: Array<{ id: string; status: string }>;
 }
 
 interface StatusCommandOptions {
@@ -59,6 +61,7 @@ export function registerStatusCommand(
           thread: null,
           childThreads: null,
           pendingTodos: null,
+          pluginsNeedingAttention: [],
         };
 
         let serverAvailable = false;
@@ -76,6 +79,17 @@ export function registerStatusCommand(
           }
         } catch {
           // Server unreachable — leave dataDir null.
+        }
+
+        if (serverAvailable) {
+          const { plugins } = await createCliBbSdk(getUrl()).plugins.list();
+          payload.pluginsNeedingAttention = plugins
+            .filter(
+              (p) =>
+                p.enabled &&
+                ["incompatible", "error", "missing"].includes(p.status),
+            )
+            .map((p) => ({ id: p.id, status: p.status }));
         }
 
         // Try to fetch enriched data from the server
@@ -177,6 +191,14 @@ export function registerStatusCommand(
         if (payload.dataDir) {
           console.log("");
           console.log(`Data dir: ${payload.dataDir}`);
+        }
+
+        const attention = payload.pluginsNeedingAttention;
+        if (attention.length > 0) {
+          console.log("");
+          console.log(
+            `${attention.length} plugin${attention.length === 1 ? "" : "s"} not running (${attention.map((p) => `${p.id}: ${p.status}`).join(", ")}). Run bb plugin list.`,
+          );
         }
 
         if (!context.projectId && !context.threadId) {

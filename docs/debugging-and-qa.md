@@ -1,6 +1,7 @@
 # Debugging And QA
 
 - `pnpm dev` prints the active frontend URL, server API URL, host daemon port, data dir, and logs dir. Do not assume fixed dev ports.
+- `pnpm start:worktree` builds production artifacts and serves the optimized app bundle from the checkout-specific dev server URL, while keeping the same dev data directory and deterministic server/host-daemon ports. It has no Vite dev server or hot reload.
 - The packaged app defaults to server/frontend `:38886`, host daemon `:38887`, data dir `~/.bb/`, and logs under `~/.bb/logs/`.
 - Entity IDs in URLs (`proj_*`, `thr_*`) are primary keys. Query them directly against the active data dir: `sqlite3 <data>/bb.db "SELECT * FROM threads WHERE id = 'thr_xxx';"`.
 - API routes are under `/api/v1/`, for example `GET /api/v1/threads/:id`.
@@ -44,6 +45,32 @@ eval "$(scripts/bb-dev-app env)"
 pnpm bb:dev thread spawn --project proj_personal --provider codex --permission-mode accept-edits --title "Smoke test" --prompt "Reply only with ok." --json
 ```
 
+## Record Provider Bridge Traffic
+
+Export `BB_PROVIDER_BRIDGE_RECORD_DIR` before you start the dev app and every
+provider bridge records its runtime and provider wires as NDJSON:
+
+```bash
+BB_PROVIDER_BRIDGE_RECORD_DIR=$HOME/.bb/provider-recordings/raw scripts/bb-dev-app current
+eval "$(scripts/bb-dev-app env)"
+pnpm bb:dev thread spawn --project proj_personal --provider codex --prompt "Run git status." --json
+ls ~/.bb/provider-recordings/raw/codex/
+```
+
+The layout is `<dir>/<providerId>/<threadId>/<direction>.ndjson`, plus a
+`_process` scope for lines that belong to no thread. See
+[provider-bridge-protocol.md](provider-bridge-protocol.md), "Record mode",
+for the entry format. Raw recordings can contain secrets and absolute paths.
+Run `node scripts/provider-recordings/redact.mjs <raw-dir> <out-dir>` before
+you share one, and never commit a raw recording.
+
+To compare two checkouts' bridges on the committed recordings, run
+`pnpm parity --old <checkout> --new . [--provider <id>] [--cell <name>]`.
+Each leg replays every cell through its own bridge, assembler, and timeline
+projection; the run prints a PASS/FAIL line per cell with event and row
+counts and exits non-zero on any diff outside
+`packages/provider-bridge-protocol/recordings/parity-allowlist.json`.
+
 ## Performance Fixture Database
 
 Use `pnpm seed:perf` to fill a dev database with a large, realistic fixture:
@@ -57,6 +84,124 @@ payloads. Use it to reproduce performance problems that only appear at scale.
 - Scale flags: `--projects`, `--threads`, `--events`, `--seed`. `--reset`
   deletes the database file first. Without `--reset` the fixture appends.
 - Example: `pnpm seed:perf -- --reset --events 400000`.
+
+## Provider Corpus
+
+The provider corpus is a private set of real production threads (307 threads,
+330,626 event rows, extracted from a personal `~/.bb/bb.db`). It is the
+regression oracle for the provider-plugin migration: every layer must project
+the same rows and build timelines at the same speed. The corpus contains real
+prompts, code, and paths, so it is **never committed**; `.gitignore` blocks
+every `provider-corpus/` directory except the in-repo harness and scripts.
+
+- Location: `~/.bb/provider-corpus/` by default. Tests read it through
+  `BB_PROVIDER_CORPUS_DIR` and skip when the variable is unset or the directory
+  has no `manifest.json`, so CI and fresh checkouts stay green.
+- Layout: `manifest.json` (thread selection and reasons), `profile.json`,
+  `threads/<provider>/<threadId>/{meta.json,events.ndjson}`, and the generated
+  `snapshots/` directory described below.
+- Reader: `@bb/test-helpers` exports `corpusAvailable()`,
+  `listCorpusThreads({ provider?, reasons? })`, and `loadCorpusThread(id)`.
+  Event rows decode through the same `parseStoredThreadEvent` the server uses.
+
+Gates under `apps/server/test/provider-corpus/`:
+
+- `row-snapshots.test.ts` loads each thread into in-memory SQLite and projects
+  every timeline page the way `GET /threads/:id/timeline` does (default and
+  nested variants), then compares the rows with
+  `snapshots/rows/<provider>/<threadId>.json`.
+- `timeline-perf.test.ts` measures the 10 largest threads per provider (latest
+  page and full page walk, five builds each, calibrated against a synthetic
+  thread built in the same run) and compares with `snapshots/perf-baseline.json`.
+  The CI micro-benchmark in the same file needs no corpus.
+
+Run them:
+
+```bash
+scripts/provider-corpus/snapshot-rows.sh compare   # default mode, fails on diffs
+scripts/provider-corpus/snapshot-rows.sh write     # refresh the baseline
+```
+
+The script wraps `pnpm exec turbo run test:provider-corpus --filter=@bb/server`
+with `BB_PROVIDER_CORPUS_SNAPSHOT=write|compare`. Turbo strips undeclared
+variables, so use that task (not the package `test` task) when you set the
+corpus variables. Each run writes `snapshots/rows-last-run.json` and
+`snapshots/perf-last-run.md` with totals and the perf table.
+
+Compare mode fails on any row diff that `snapshots/allowlist.json` does not
+cover. An entry names a scope, a path, and the PR that made the change:
+
+```json
+[
+  {
+    "threadId": "thr_abc123",
+    "path": "/variants/*/pages/*/rows/*/output",
+    "pr": "#1234",
+    "reason": "…"
+  },
+  {
+    "provider": "codex",
+    "path": "/variants/default/pages/**/planSteps",
+    "pr": "#1235",
+    "reason": "…"
+  },
+  { "*": true, "path": "/variants/**/maxSeq", "pr": "#1236", "reason": "…" }
+]
+```
+
+`path` is a JSON pointer over the snapshot, or a glob where `*` matches one
+segment and `**` any number. The run prints the entries it used; an entry that
+covers nothing fails the run because it is stale.
+
+`snapshots/rows` is the baseline minted on `main` and shared by every
+workstream, so never run `write` against it from a feature branch. A PR that
+intentionally changes rows carries its own allowlist in the repository
+(`apps/server/test/provider-corpus/allowlists/<ws>.json`, same schema, merged
+after the shared file) and compares with
+`BB_PROVIDER_CORPUS_ALLOWLIST=<that file>`. A snapshot of the branch's own
+rows goes to a shadow directory: `BB_PROVIDER_CORPUS_SNAPSHOT_DIR=<dir>`
+redirects both `write` and `compare`. Re-mint `snapshots/rows` from `main`
+after such a PR merges and delete the allowlist file it carried.
+
+A pointer allowlist cannot describe a change that adds or removes rows: every
+later sibling shifts and the diff reports the whole turn. For such a change,
+carry a row-class file instead
+(`apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json`) and set
+`BB_PROVIDER_CORPUS_ROW_CLASSES=<that file>` on the compare run. The gate then
+matches rows by identity (`callId`, `itemId`, `interactionId`, turn id, or row
+id), buckets every change into the first class whose matcher fits, and fails
+on a change no class claims or an entry that claims nothing (judged per
+entry, so a dead matcher cannot hide behind a sibling with the same name). A
+class names a `reason` and one matcher: `added`, `removed`, `moved` (the row left one
+nesting level for another), `resegmented` (a turn shows a different number of
+visible segments), `reshaped` (`from`/`to` kinds, optionally the other
+`fields` the reshape may touch), or `changed` with the `fields` it may touch;
+each narrows by `kind`, `workKind`, `role`, and `nested`. Turn bounds that follow a changed child fall into the built-in
+`container-bounds` class. The run prints the count per class and records them
+in `rows-last-run.json`. To iterate on the classes without re-projecting the
+corpus, mint the branch's rows once into a shadow directory and classify the
+two directories offline:
+
+```bash
+pnpm exec tsx scripts/provider-corpus/classify-row-diff.ts \
+  ~/.bb/provider-corpus/snapshots/rows ~/.bb/provider-corpus/snapshots/rows.<ws> \
+  --classes apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json --verbose
+```
+
+Perf compare mode passes when each thread's normalized cost is within 10% of
+the baseline (or within 5 ms of intrinsic cost for the small latest-page
+builds) and the median event size is within 15%. The normalized cost is the
+minimum build time over five samples divided by the minimum time of a fixed
+CPU workload (JSON codec and sorting over a deterministic document) run once
+per sample right before the builds. The workload shares no code with the
+timeline, so a uniform timeline regression still moves the ratio, while
+machine speed and steady load cancel. Each thread gets up to three attempts so
+a burst of load does not fail the run (write mode keeps the median attempt);
+raw p50/p95 are printed for information. The
+baseline records the gate settings and compare mode refuses a baseline
+written with different ones. Run the gate on a machine whose load average is
+below its core count: when the machine is oversubscribed the table header
+says so and even paired ratios drift by 10–20%.
 
 ## Local Cloud
 
@@ -83,3 +228,15 @@ enrollment remains HTTPS-only.
 
 Ctrl-C stops the local services. Local D1 state is kept under
 `.wrangler/cloud-dev`.
+
+## Provider-literal ratchet (G1)
+
+`node scripts/check-provider-literal-ratchet.mjs` counts provider-_id_ literals
+(`"codex"`, `"claude-code"`, `"acp-…"`, `providerId === "…"`, `isAcpProviderId`, …)
+in core (everything outside `plugins/provider-*` and `examples/`) and compares a
+per-file count against `scripts/provider-literal-baseline.json`. The count may
+only go down. Adding a provider-id branch to core fails CI. When you remove
+literals, regenerate the baseline with `--write` and commit it so the reduction
+is recorded. `--list` prints every hit. When the baseline reaches zero, delete
+it and the guard. This is guardrail G1 of the provider-plugin migration
+(the provider-plugin API design (docs/provider-plugin-api.md, added by the v3 contract PR; overview at https://get-bb.github.io/reports/design/provider-plugin-api.html)).

@@ -13,6 +13,56 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("public environments", () => {
+  it("lists cached branch options while remotes refresh in the background", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-environment-branch-options",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/branch-options-env",
+        workspaceProvisionType: "managed-worktree",
+      });
+
+      const responsePromise = harness.app.request(
+        `/api/v1/environments/${environment.id}/diff/branches?query=feature&selectedBranch=origin%2Fmain&limit=10`,
+      );
+      const branchOptionsCommand = await waitForQueuedCommand(
+        harness,
+        ({ command }) => command.type === "host.list_branch_options",
+      );
+      expect(branchOptionsCommand.command).toEqual({
+        type: "host.list_branch_options",
+        path: "/tmp/branch-options-env",
+        query: "feature",
+        selectedBranch: "origin/main",
+        limit: 10,
+        remoteRefresh: "background",
+      });
+      await reportQueuedCommandSuccess(harness, branchOptionsCommand, {
+        branches: ["feature/local"],
+        branchesTruncated: false,
+        remoteBranches: ["origin/feature/remote"],
+        remoteBranchesTruncated: false,
+        selectedBranch: { kind: "remote", name: "origin/main" },
+      });
+
+      const response = await responsePromise;
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        branches: ["feature/local"],
+        branchesTruncated: false,
+        remoteBranches: ["origin/feature/remote"],
+        remoteBranchesTruncated: false,
+        selectedBranch: { kind: "remote", name: "origin/main" },
+      });
+    });
+  });
+
   it("propagates a bounded truncated diff table of contents", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {

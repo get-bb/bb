@@ -34,6 +34,25 @@ describe("bb settings commands", () => {
     });
   });
 
+  // Keys come from `appSettingsSchema`, so an unknown one is rejected by the
+  // command rather than sent to the server.
+  it("rejects an unknown general setting key", async () => {
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": vi.fn(async ({ json }) => json),
+    });
+
+    await expect(
+      runCommand(["settings", "general", "notASetting", "true"], register),
+    ).rejects.toThrow("process.exit:1");
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("Unknown general setting 'notASetting'"),
+    );
+  });
+
   it("updates keyboard hint visibility while preserving the full contract", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
@@ -71,66 +90,51 @@ describe("bb settings commands", () => {
     });
   });
 
-  it("enables new onboarding before replaying the setup guide", async () => {
-    const updateExperiments = vi.fn(async ({ json }) => json);
-    const updateGeneralSettings = vi.fn(async ({ json }) => json);
-    stubServerApi({
-      "v1.system.config.$get": vi.fn(async () => ({
-        generalSettings: {
-          ...defaultAppSettings,
-          onboardingCompletedAt: "2026-08-06T00:00:00.000Z",
-        },
-        experiments: defaultExperiments,
-      })),
-      "v1.settings.experiments.$put": updateExperiments,
-      "v1.settings.general.$put": updateGeneralSettings,
-    });
-
-    await runCommand(["settings", "replay-onboarding"], register);
-
-    expect(updateExperiments).toHaveBeenCalledWith({
-      json: { ...defaultExperiments, newOnboarding: true },
-    });
-    expect(updateGeneralSettings).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, onboardingCompletedAt: null },
-    });
-    expect(console.log).toHaveBeenCalledWith(
-      "New onboarding is enabled; onboarding will show again",
-    );
-  });
-
-  it("reports both replay side effects as JSON", async () => {
+  it("enables the changelog preview experiment", async () => {
+    const put = vi.fn(async ({ json }) => json);
     stubServerApi({
       "v1.system.config.$get": vi.fn(async () => ({
         generalSettings: defaultAppSettings,
         experiments: defaultExperiments,
       })),
-      "v1.settings.experiments.$put": vi.fn(async ({ json }) => json),
-      "v1.settings.general.$put": vi.fn(async ({ json }) => json),
+      "v1.settings.experiments.$put": put,
     });
 
-    await runCommand(["settings", "replay-onboarding", "--json"], register);
-
-    expect(console.log).toHaveBeenCalledWith(
-      JSON.stringify(
-        {
-          experiments: { ...defaultExperiments, newOnboarding: true },
-          generalSettings: {
-            ...defaultAppSettings,
-            onboardingCompletedAt: null,
-          },
-        },
-        null,
-        2,
-      ),
+    await runCommand(
+      ["settings", "experiment", "changelogPreview", "true"],
+      register,
     );
+
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultExperiments, changelogPreview: true },
+    });
+  });
+
+  it("updates timeline windowing while preserving every experiment", async () => {
+    const updateExperiments = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.experiments.$put": updateExperiments,
+    });
+
+    await runCommand(
+      ["settings", "experiment", "timelineWindowing", "true"],
+      register,
+    );
+
+    expect(updateExperiments).toHaveBeenCalledWith({
+      json: { ...defaultExperiments, timelineWindowing: true },
+    });
   });
 
   it("reads usage from a selected machine", async () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },
-      claudeCode: { status: "unauthenticated" },
-      cursor: { status: "unauthenticated" },
+      "claude-code": { status: "unauthenticated" },
+      "acp-cursor": { status: "unauthenticated" },
     }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => [

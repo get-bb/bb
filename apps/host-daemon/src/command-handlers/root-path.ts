@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 
-export interface ResolveNonSymlinkDirectoryPathArgs {
+interface ResolveNonSymlinkDirectoryPathArgs {
   description: string;
   path: string;
 }

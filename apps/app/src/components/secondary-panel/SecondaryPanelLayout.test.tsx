@@ -18,6 +18,7 @@ import {
 type DrawerShellCallback = (open: boolean) => void;
 
 const panelGroupState = vi.hoisted(() => ({
+  getLayout: vi.fn(() => [60, 40]),
   setLayout: vi.fn(),
 }));
 const drawerShellState = vi.hoisted(() => ({
@@ -37,17 +38,23 @@ vi.mock("react-resizable-panels", async () => {
   const React = await import("react");
 
   const PanelGroup = React.forwardRef<
-    { setLayout: (layout: number[]) => void },
+    {
+      getLayout: () => number[];
+      setLayout: (layout: number[]) => void;
+    },
     { children?: ReactNode }
-  >(({ children }, ref) => {
+  >(({ children, ...props }, ref) => {
     React.useImperativeHandle(
       ref,
-      () => ({ setLayout: panelGroupState.setLayout }),
+      () => ({
+        getLayout: panelGroupState.getLayout,
+        setLayout: panelGroupState.setLayout,
+      }),
       [],
     );
     return React.createElement(
       "div",
-      { "data-testid": "panel-group" },
+      { ...props, "data-testid": "panel-group" },
       children,
     );
   });
@@ -99,6 +106,7 @@ interface RenderLayoutArgs {
   isCompactViewport: boolean;
   isFocusedHosted?: boolean;
   open: boolean;
+  panelGroupKey?: string;
   renderPanel: (args: SecondaryPanelRenderArgs) => ReactNode;
   resetKey: string;
 }
@@ -149,6 +157,7 @@ function renderLayout(args: RenderLayoutArgs) {
           open={renderArgs.open}
           onToggle={noop}
           onClose={noop}
+          panelGroupKey={renderArgs.panelGroupKey}
           resetKey={renderArgs.resetKey}
           contentKey={renderArgs.resetKey}
           drawerLabel="Details"
@@ -262,20 +271,116 @@ function expectNativeBrowserVisibility(visible: boolean) {
   ).toBe(String(visible));
 }
 
+// `installAnimationFrameQueue` overwrites these with `Object.defineProperty`
+// before spying on them, so `vi.restoreAllMocks` restores the spy to that
+// overwrite rather than to the real function — leaving every test that runs
+// afterwards with a `requestAnimationFrame` that never invokes its callback.
+// Captured once at module load, before any test has had a chance to replace
+// them.
+const PRISTINE_REQUEST_ANIMATION_FRAME = window.requestAnimationFrame;
+const PRISTINE_CANCEL_ANIMATION_FRAME = window.cancelAnimationFrame;
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.clearAllMocks();
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: PRISTINE_REQUEST_ANIMATION_FRAME,
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: PRISTINE_CANCEL_ANIMATION_FRAME,
+  });
   drawerShellState.onContentAnimationEnd = undefined;
 });
 
 beforeEach(() => {
   publishedHostedPanel = null;
+  panelGroupState.getLayout.mockReset().mockReturnValue([60, 40]);
   panelGroupState.setLayout.mockReset();
   vi.mocked(dispatchBrowserViewBoundsSync).mockReset();
 });
 
 describe("SecondaryPanelLayout", () => {
+  it("preserves routed main content when the panel state identity changes", () => {
+    const frames = installAnimationFrameQueue();
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: true,
+      panelGroupKey: "plugin-pane-1",
+      renderPanel: createPanelRenderer(),
+      resetKey: "plugin-page-a",
+    });
+
+    act(() => {
+      frames.flushAll();
+      frames.flushAll();
+    });
+    const panelGroup = screen.getByTestId("panel-group");
+    const mainContent = screen.getByTestId("main-content");
+    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "220ms",
+    );
+
+    view.rerenderWith({ resetKey: "plugin-page-b" });
+
+    expect(screen.getByTestId("panel-group")).toBe(panelGroup);
+    expect(screen.getByTestId("main-content")).toBe(mainContent);
+    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "0ms",
+    );
+  });
+
+  it("settles mount-time panel state before enabling layout transitions", () => {
+    const frames = installAnimationFrameQueue();
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: true,
+      renderPanel: createPanelRenderer(),
+      resetKey: "plugin-page",
+    });
+
+    const panelGroup = screen.getByTestId("panel-group");
+    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "0ms",
+    );
+
+    // This mirrors storage hydration dropping a transient New tab. The panel
+    // closes while transitions are still suppressed.
+    view.rerenderWith({ open: false });
+    act(() => frames.flushAll());
+    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "0ms",
+    );
+
+    act(() => frames.flushAll());
+    expect(panelGroup.style.getPropertyValue("--panel-collapse-duration")).toBe(
+      "220ms",
+    );
+  });
+
+  it("waits for a secondary panel before applying a two-panel layout", () => {
+    panelGroupState.getLayout.mockReturnValue([100]);
+    const view = renderLayout({
+      isCompactViewport: false,
+      open: false,
+      renderPanel: () => null,
+      resetKey: "plugin-page",
+    });
+
+    expect(panelGroupState.setLayout).not.toHaveBeenCalled();
+
+    panelGroupState.getLayout.mockReturnValue([60, 40]);
+    const renderPanel = createPanelRenderer();
+    view.rerenderWith({ open: true, renderPanel });
+
+    expect(panelGroupState.setLayout).toHaveBeenCalledTimes(1);
+    expect(panelGroupState.setLayout).toHaveBeenLastCalledWith([60, 40]);
+  });
+
   it("owns the desktop open, closed, and conversation-collapse layouts", () => {
     const renderPanel = createPanelRenderer();
     const view = renderLayout({
@@ -322,6 +427,7 @@ describe("SecondaryPanelLayout", () => {
   });
 
   it("publishes one hosted panel model and gates native content on pane focus", () => {
+    const frames = installAnimationFrameQueue();
     const renderPanel = createPanelRenderer();
     const view = renderLayout({
       collapseActive: true,
@@ -337,6 +443,7 @@ describe("SecondaryPanelLayout", () => {
       contentKey: "thread-1",
       isMainCollapsed: true,
       isOpen: true,
+      transitionsReady: false,
     });
     expect(renderPanel).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -347,6 +454,12 @@ describe("SecondaryPanelLayout", () => {
       }),
     );
     expect(publishedHostedPanel?.onToggle).toBe(noop);
+
+    act(() => {
+      frames.flushAll();
+      frames.flushAll();
+    });
+    expect(publishedHostedPanel?.transitionsReady).toBe(true);
 
     view.rerenderWith({ isFocusedHosted: false });
     expect(renderPanel).toHaveBeenLastCalledWith(

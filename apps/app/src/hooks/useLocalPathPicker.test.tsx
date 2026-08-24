@@ -122,8 +122,8 @@ describe("useLocalPathPicker", () => {
 
 /**
  * Choosing between the native folder picker and the in-app dialog. This lived
- * in `useQuickCreateProject` until onboarding needed the same behavior; it is
- * shared here so every path-entry caller agrees.
+ * in `useQuickCreateProject` until a second caller needed the same behavior; it
+ * is shared here so every path-entry caller agrees.
  */
 describe("useLocalPathPicker openPathEntry", () => {
   it("opens the dialog instead of the native picker when several machines exist", () => {

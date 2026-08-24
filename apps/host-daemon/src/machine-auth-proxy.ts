@@ -10,7 +10,7 @@ import type { Duplex } from "node:stream";
 const LOOPBACK_HOST = "127.0.0.1";
 const MACHINE_HEADER = "x-bb-connect-machine";
 
-export interface StartMachineAuthProxyOptions {
+interface StartMachineAuthProxyOptions {
   machineCredential: string;
   serverUrl: string;
   port?: number;
@@ -43,7 +43,7 @@ type RejectedSocketStatus = keyof typeof REJECTED_SOCKET_MESSAGES;
  * and a `no-cors` request still acts even though its response stays hidden, so
  * a browsed page must never borrow that credential.
  */
-export function isBrowserRequest(headers: IncomingHttpHeaders): boolean {
+function isBrowserRequest(headers: IncomingHttpHeaders): boolean {
   return BROWSER_REQUEST_HEADERS.some((name) => headers[name] !== undefined);
 }
 
@@ -81,7 +81,7 @@ function parseHostAuthority(
  * `http://rebind.example` is not a potentially trustworthy URL, so Chromium
  * sends no `Sec-Fetch-*`, and a `no-cors` GET sends no `Origin` either.
  */
-export function isProxyLoopbackAuthority(
+function isProxyLoopbackAuthority(
   host: string | undefined,
   boundPort: number,
 ): boolean {

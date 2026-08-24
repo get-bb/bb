@@ -17,15 +17,10 @@ import { useResolvedComposerPlusMenuItems } from "@/components/plugin/composer-s
 import { useOptionalPluginComposerView } from "@/components/plugin/plugin-composer-host";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
-import type { ProviderPromptActionCommand } from "./mentions/command-trigger";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
+import type { ProviderPromptActionCommand } from "@bb/client-core";
 
-export type PromptBoxActionKind =
-  | "skills"
-  | "plan"
-  | "goal"
-  | "automation"
-  | "plugin";
+type PromptBoxActionKind = "skills" | "plan" | "goal" | "automation" | "plugin";
 
 export interface PromptBoxAction {
   kind: PromptBoxActionKind;
@@ -35,7 +30,7 @@ export interface PromptBoxAction {
   disabled?: boolean;
 }
 
-export interface PromptBoxActionsMenuProps {
+interface PromptBoxActionsMenuProps {
   actions?: readonly PromptBoxAction[];
   isAttaching?: boolean;
   onAttach?: () => void;

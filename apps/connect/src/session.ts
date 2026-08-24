@@ -37,7 +37,7 @@ function cacheGet<T>(
   return undefined;
 }
 
-export interface ResolvedServer {
+interface ResolvedServer {
   kind: "server";
   /**
    * The account that owns this server (`server.userId`). Session and machine
@@ -55,7 +55,7 @@ export interface ResolvedServer {
   };
 }
 
-export interface ResolvedMachine {
+interface ResolvedMachine {
   kind: "machine";
   routingKey: string;
   userId: string;
@@ -69,7 +69,7 @@ export interface ResolvedMachine {
   };
 }
 
-export type ResolvedLabel = ResolvedServer | ResolvedMachine;
+type ResolvedLabel = ResolvedServer | ResolvedMachine;
 
 /**
  * Preserve the existing server-label resolution path and precedence: first

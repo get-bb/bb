@@ -158,7 +158,7 @@ function createSigningPlan(env) {
   };
 }
 
-export function resolveElectronBuilderConfig(baseConfig, env) {
+function resolveElectronBuilderConfig(baseConfig, env) {
   const signingPlan = createSigningPlan(env);
   const releaseChannel = resolveDesktopReleaseChannel(env);
   const releaseConfig = createDesktopReleaseConfig(releaseChannel);
@@ -297,10 +297,3 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   });
 }
-
-export const electronBuilderSigningEnvironment = {
-  codeSigningKeys,
-  missingEnvironmentKeys,
-  notarizationKeys,
-  requiredSigningEnvironmentKeys,
-};

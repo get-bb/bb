@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// Adding a preference here plus its default below is the whole change: values
+// persist as key/value rows, the route and SDK carry the object as a whole,
+// and `bb settings general` takes its keys from this schema. Only the UI
+// control that exposes it is left.
 /**
  * App-wide server-backed preferences.
  * Client-local settings stay in the frontend localStorage helpers instead.
@@ -15,26 +19,23 @@ export const appSettingsSchema = z
     steerActiveThreadOnEnter: z.boolean(),
     /** Show raw provider events that bb does not yet understand. */
     showUnhandledProviderEvents: z.boolean(),
-    /** Enable Codex's native memory recall and generation for bb threads. */
-    codexMemoryEnabled: z.boolean(),
-    /** Enable Claude Code's native auto-memory reads and writes for bb threads. */
-    claudeCodeMemoryEnabled: z.boolean(),
-    /** Prevent Codex from exposing its native multi-agent tools to bb threads. */
-    codexSubagentsDisabled: z.boolean(),
-    /** Prevent Claude Code from exposing its native Task tool to bb threads. */
-    claudeCodeSubagentsDisabled: z.boolean(),
-    /** Prevent Claude Code from exposing its native Workflow tool. */
-    claudeCodeWorkflowsDisabled: z.boolean(),
     /**
-     * ISO timestamp of when first-run onboarding last finished or was
-     * dismissed; null means it has never run. A timestamp rather than a boolean
-     * so we also know *when*, and so "never ran" has an honest value.
-     *
-     * Deliberately not a proxy for "is bb set up": whether an agent is usable is
-     * answered live by `provider.usage`, so dismissing onboarding never claims
-     * the machine is configured. Setting this back to null re-triggers the flow.
+     * Provider ids that lead the picker, in this order. Ids not listed follow
+     * in plugin install order; an id that names no registered provider is
+     * ignored. Empty means plain install order.
      */
-    onboardingCompletedAt: z.string().nullable(),
+    providerOrder: z.array(z.string().min(1)),
+    /**
+     * The provider new threads default to when neither the caller nor the
+     * project chose one. Null means the first available provider in picker
+     * order.
+     */
+    defaultProviderId: z.string().min(1).nullable(),
+    /**
+     * Hide the `customModels` entries from `config.json` in every model list
+     * (pickers, CLI, SDK) so a screen share does not reveal a private model id.
+     */
+    streamerMode: z.boolean(),
   })
   .strict();
 export type AppSettings = z.infer<typeof appSettingsSchema>;
@@ -43,10 +44,7 @@ export const defaultAppSettings: AppSettings = {
   showKeyboardHints: true,
   steerActiveThreadOnEnter: false,
   showUnhandledProviderEvents: false,
-  codexMemoryEnabled: true,
-  claudeCodeMemoryEnabled: true,
-  codexSubagentsDisabled: false,
-  claudeCodeSubagentsDisabled: false,
-  claudeCodeWorkflowsDisabled: false,
-  onboardingCompletedAt: null,
+  providerOrder: [],
+  defaultProviderId: null,
+  streamerMode: false,
 };

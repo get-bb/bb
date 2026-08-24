@@ -8,7 +8,7 @@ import {
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export interface InlineThreadTitleCommitResult {
+interface InlineThreadTitleCommitResult {
   kind: "cancel" | "commit";
   title?: string;
 }
@@ -26,16 +26,14 @@ export function resolveInlineThreadTitleCommit(args: {
 
 interface InlineThreadTitleEditorProps {
   ariaLabel: string;
-  className?: string;
   value: string;
   onCancel: () => void;
   onChange: (value: string) => void;
   onSubmit: () => void;
 }
 
-export function InlineThreadTitleEditor({
+function InlineThreadTitleEditor({
   ariaLabel,
-  className,
   value,
   onCancel,
   onChange,
@@ -90,7 +88,6 @@ export function InlineThreadTitleEditor({
         // border, so the chrome does not change the line box and can follow
         // the rounded corners.
         "relative z-10 box-border min-w-0 w-[calc(100%+0.5rem)] -mx-1 appearance-none rounded-sm border-0 bg-transparent px-1 py-0 text-sm font-normal leading-[inherit] outline-none ring-1 ring-ring",
-        className,
       )}
       spellCheck={false}
       value={value}
@@ -117,7 +114,6 @@ export function InlineThreadTitleEditor({
 }
 
 interface UseInlineThreadTitleArgs {
-  inputClassName?: string;
   onCommit: (title: string) => void;
   /** Cancel an open edit when this identity changes (usually the thread id). */
   resetKey: string;
@@ -131,7 +127,6 @@ interface UseInlineThreadTitleResult {
 }
 
 export function useInlineThreadTitle({
-  inputClassName,
   onCommit,
   resetKey,
   title,
@@ -183,7 +178,6 @@ export function useInlineThreadTitle({
     editor: isEditing ? (
       <InlineThreadTitleEditor
         ariaLabel="Thread name"
-        className={inputClassName}
         value={draft}
         onCancel={cancelEditing}
         onChange={setDraft}

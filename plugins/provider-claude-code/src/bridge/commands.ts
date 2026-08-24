@@ -1,8 +1,9 @@
 import {
-  claudeCodeMockCliTrafficConfigSchema,
+  dynamicToolSchema,
+  initializeParamsSchema,
   instructionModeValues,
   permissionEscalationValues,
-  reasoningLevelValues,
+  reasoningLevelSchema,
   runtimePermissionScopeValues,
   threadDiscardParamsSchema as canonicalThreadDiscardParamsSchema,
   threadForkParamsSchema as canonicalThreadForkParamsSchema,
@@ -13,6 +14,8 @@ import {
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
   bridgeRequestEnvelopeSchema,
+  providerMaintenanceParamsSchema,
+  providerInstallationRunParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { claudePermissionModeSchema } from "../interactive-contract.js";
@@ -22,7 +25,6 @@ const bridgePermissionEscalationSchema = z
   .enum(permissionEscalationValues)
   .nullable();
 const bridgePermissionScopeSchema = z.enum(runtimePermissionScopeValues);
-const bridgeReasoningLevelSchema = z.enum(reasoningLevelValues);
 // Omission means the session has no extra writable roots; this keeps older
 // bridge messages compatible and avoids sending an empty protocol field.
 const bridgeAdditionalWorkspaceWriteRootsSchema = z
@@ -36,12 +38,6 @@ const bridgeClaudeLocalPluginSchema = z.object({
 const bridgeClaudePluginsSchema = z
   .array(bridgeClaudeLocalPluginSchema)
   .optional();
-
-const dynamicToolSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  inputSchema: z.unknown(),
-});
 
 export const claudeThreadStartParamsSchema = z.object({
   threadId: z.string(),
@@ -59,9 +55,8 @@ export const claudeThreadStartParamsSchema = z.object({
   permissionScope: bridgePermissionScopeSchema,
   permissionEscalation: bridgePermissionEscalationSchema,
   config: z.record(z.string(), z.unknown()).optional(),
-  claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema,
   model: z.string().optional(),
-  reasoningLevel: bridgeReasoningLevelSchema.optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
@@ -88,12 +83,15 @@ export const claudeTurnStartParamsSchema = z.object({
   providerThreadId: z.string().nullable(),
   input: z.array(z.unknown()),
   model: z.string().optional(),
-  reasoningLevel: bridgeReasoningLevelSchema.optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   permissionEscalation: bridgePermissionEscalationSchema,
+  // `/plan` on a later turn: the live session switches into Plan mode before
+  // the prompt is pushed. Undefined keeps the session's current mode.
+  claudeCodePermissionMode: z.literal("plan").optional(),
 });
 
 export const claudeTurnSteerParamsSchema = z.object({
@@ -102,27 +100,39 @@ export const claudeTurnSteerParamsSchema = z.object({
   expectedTurnId: z.string(),
   input: z.array(z.unknown()),
   model: z.string().optional(),
-  reasoningLevel: bridgeReasoningLevelSchema.optional(),
+  reasoningLevel: reasoningLevelSchema.optional(),
   workflowsEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),
   providerSubagentsEnabled: z.boolean().optional(),
   permissionEscalation: bridgePermissionEscalationSchema,
+  claudeCodePermissionMode: z.literal("plan").optional(),
 });
 
 /** The canonical Provider Bridge Protocol params, per method. */
 const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
-    params: z
-      .object({
-        protocolVersion: z.number().int().positive(),
-        client: z.object({ name: z.string(), version: z.string() }),
-      })
-      .passthrough(),
+    params: initializeParamsSchema,
   }),
   z.object({
     method: z.literal("model/list"),
     params: z.object({}),
+  }),
+  z.object({
+    method: z.literal("provider/health"),
+    params: providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/usage"),
+    params: providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/installation/status"),
+    params: providerMaintenanceParamsSchema,
+  }),
+  z.object({
+    method: z.literal("provider/installation/run"),
+    params: providerInstallationRunParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),
@@ -186,7 +196,7 @@ const claudeCodeCommandMethods = new Set<string>(
  * something to drop: the caller is waiting on `id` and would otherwise learn
  * nothing until its request timed out.
  */
-export type ClaudeCodeJsonRpcRequestDecodeResult =
+type ClaudeCodeJsonRpcRequestDecodeResult =
   | { kind: "request"; request: ClaudeCodeJsonRpcRequest }
   | { kind: "not_a_request" }
   | { kind: "unknown_method"; id: string | number; method: string }

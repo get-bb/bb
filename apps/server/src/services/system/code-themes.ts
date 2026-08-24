@@ -17,7 +17,7 @@ const CONVENTION_CODE_THEME_FILES = {
   light: "pierre-light.json",
 } as const;
 
-export interface PluginThemeCodeThemePaths {
+interface PluginThemeCodeThemePaths {
   dark?: string;
   light?: string;
 }
@@ -134,7 +134,6 @@ export function readCustomThemeCodeTheme(
  */
 export function readPluginThemeCodeTheme(
   sourceId: string,
-  rootDir: string,
   declaration: UiCodeThemeDeclaration | undefined,
   paths: PluginThemeCodeThemePaths,
 ): DeclaredCodeTheme | null {

@@ -1,4 +1,4 @@
-export interface ExponentialBackoffDelayArgs {
+interface ExponentialBackoffDelayArgs {
   attempt: number;
   baseDelayMs: number;
   maxDelayMs: number;

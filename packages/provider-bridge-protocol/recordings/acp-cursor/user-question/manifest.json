@@ -1,0 +1,17 @@
+{
+  "provider": "acp-cursor",
+  "cell": "user-question",
+  "threadId": "thr_mtkg4tpja2",
+  "scope": "thread",
+  "cliVersion": "cursor-agent 2026.08.11-e8db854",
+  "recordedAt": "2026-08-21",
+  "description": "The agent asks the user a question and continues with the answer.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 24,
+    "provider→bridge": 22,
+    "bridge→provider": 4
+  }
+}

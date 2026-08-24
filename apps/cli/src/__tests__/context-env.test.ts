@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createCliRuntimeContext,
-  requireProjectId,
   requireThreadId,
   requireThreadIdOrSelf,
   resolveContextProjectId,
@@ -22,9 +21,6 @@ describe("context-env", () => {
   });
 
   it("requires project and thread context when missing", () => {
-    expect(() => requireProjectId(undefined)).toThrow(
-      "Missing project ID. Pass --project <id>.",
-    );
     expect(() => requireThreadId(undefined)).toThrow(
       "Missing thread ID. Pass <threadId>.",
     );

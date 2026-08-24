@@ -1,6 +1,4 @@
-import {
-  type AvailableModel,
-} from "@get-bb/plugin-sdk/provider-bridge";
+import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 import { buildClaudeCodeModels } from "../model-list.js";
 import { translateMissingClaudeCliError } from "./missing-cli-error.js";
@@ -48,4 +46,53 @@ export async function listClaudeCodeBridgeModels(
   } finally {
     session.close();
   }
+}
+
+interface ClaudeCodeBridgeModelListMemoOptions {
+  list?: () => ReturnType<typeof listClaudeCodeBridgeModels>;
+  now?: () => number;
+  ttlMs: number;
+}
+
+/**
+ * Memoizes {@link listClaudeCodeBridgeModels} for one bridge process. Each
+ * probe spawns a Claude CLI, and every picker open, thread open, and server
+ * reconnect asks for the catalog; concurrent asks share one probe and a
+ * settled catalog is reused until the window ends. Failures are never kept so
+ * a transient probe error is retried on the next ask. The window stays short
+ * because the server memoizes on top of this and this bridge outlives server
+ * restarts: it absorbs bursts without doubling the staleness a login change
+ * can see.
+ */
+export function createClaudeCodeBridgeModelListMemo({
+  list = listClaudeCodeBridgeModels,
+  now = Date.now,
+  ttlMs,
+}: ClaudeCodeBridgeModelListMemoOptions): () => ReturnType<
+  typeof listClaudeCodeBridgeModels
+> {
+  type Catalog = Awaited<ReturnType<typeof listClaudeCodeBridgeModels>>;
+  let settled: { catalog: Catalog; expiresAt: number } | null = null;
+  let pending: Promise<Catalog> | null = null;
+  return () => {
+    if (settled !== null && settled.expiresAt > now()) {
+      return Promise.resolve(settled.catalog);
+    }
+    settled = null;
+    if (pending !== null) {
+      return pending;
+    }
+    const probe = list()
+      .then((catalog) => {
+        settled = { catalog, expiresAt: now() + ttlMs };
+        return catalog;
+      })
+      .finally(() => {
+        if (pending === probe) {
+          pending = null;
+        }
+      });
+    pending = probe;
+    return probe;
+  };
 }

@@ -216,7 +216,7 @@ const DialogOverlay = React.forwardRef<
     // when rendered from a plugin slot (see portal-scope.ts).
     {...usePortalScopeProps()}
     className={cn(
-      "fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+      "fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -230,10 +230,16 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 type DialogContentProps = React.ComponentPropsWithoutRef<
   typeof DialogPrimitive.Content
->;
+> & {
+  /**
+   * Drop the corner close button, for content that occupies that corner.
+   * Escape and the overlay still close the dialog.
+   */
+  hideCloseButton?: boolean;
+};
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
-  ({ className, children, ...props }, ref) => {
+  ({ className, children, hideCloseButton = false, ...props }, ref) => {
     const { isCompactViewport, open, onOpenChange, titleId, descriptionId } =
       useResponsiveDialog();
     useBrowserDimmingModal(open);
@@ -280,10 +286,12 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           {...props}
         >
           {children}
-          <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-state-active data-[state=open]:text-foreground">
-            <Icon name="X" className="h-4 w-4" />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
+          {hideCloseButton ? null : (
+            <DialogPrimitive.Close className="absolute right-4 top-4 cursor-pointer rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-state-active data-[state=open]:text-foreground">
+              <Icon name="X" className="h-4 w-4" />
+              <span className="sr-only">Close</span>
+            </DialogPrimitive.Close>
+          )}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     );

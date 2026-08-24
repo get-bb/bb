@@ -1,34 +1,15 @@
-export { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
+export { isRunningThreadRuntimeDisplayStatus } from "@bb/client-core";
 export { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 export type { ThreadTimelineRowsProps } from "./ThreadTimelineRows.js";
-export {
-  ThreadTimelinePanelContent,
-  type ThreadTimelinePanelContentProps,
-} from "./ThreadTimelinePanelContent.js";
+export { ThreadTimelinePanelContent } from "./ThreadTimelinePanelContent.js";
 export {
   ThreadTimelineSurface,
-  type HostConnectionNotice,
   type ThreadTimelineSurfaceProps,
 } from "./ThreadTimelineSurface.js";
-export {
-  useThreadTimelineController,
-  type ThreadTimelineRowFilter,
-  type UseThreadTimelineControllerArgs,
-  type UseThreadTimelineControllerResult,
-} from "./useThreadTimelineController.js";
+export { useThreadTimelineController } from "./useThreadTimelineController.js";
 export type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
-export {
-  TimelineStatusIndicator,
-  type TimelineStatusIndicatorProps,
-} from "./TimelineStatusIndicator.js";
-export {
-  TimelineWorkingIndicator,
-  type TimelineWorkingIndicatorProps,
-} from "./TimelineWorkingIndicator.js";
-export {
-  ThreadContextWindowIndicator,
-  type ThreadContextWindowIndicatorProps,
-} from "./ThreadContextWindowIndicator.js";
+export { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
+export { ThreadContextWindowIndicator } from "./ThreadContextWindowIndicator.js";
 export type {
   ThreadTimelineEditMessageHandler,
   ThreadTimelineEditMessageTarget,
@@ -36,15 +17,10 @@ export type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineAddToChatHandler,
   ThreadTimelineSendToMainMessageHandler,
-  ThreadTimelineSendToMainMessageTarget,
   ThreadTimelineConsumerMessageAction,
   ThreadTimelineLinkHandler,
-  ThreadTimelineImageViewSrcResolver,
-  ThreadTimelineImageViewSrcTarget,
   ThreadTimelineLocalFileLink,
   ThreadTimelineLocalFileLinkHandler,
   ThreadTimelineOpenPluginPanelHandler,
   ThreadTimelineUnreadDividerPlacement,
-  ThreadTimelineTheme,
-  UserAttachmentImageSrcResolver,
 } from "./types.js";

@@ -43,8 +43,8 @@ single-consumer feature UI:
 - Components with no expected reuse outside the app.
 
 Thin app wrappers are expected when a primitive needs app policy. For example,
-`components/ui` owns the generic `Toaster`, while the app owns `AppToaster`
-because it injects the preferred theme.
+the app owns `AppToaster` around the generic `sonner` `Toaster` because it
+injects the preferred theme.
 
 ## Litmus Test
 

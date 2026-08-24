@@ -33,6 +33,8 @@ run-name: ${{ github.event_name == 'schedule' && 'Publish bb-app + desktop night
 
 # Only the npm publish job gets id-token: write, for npm trusted publishing.
 # The desktop build jobs must not inherit an OIDC token they never use.
+# The npm publish jobs run on GitHub-hosted runners. npm rejects provenance
+# bundles from self-hosted runners such as Blacksmith (E422).
 permissions:
   contents: read
 
@@ -48,7 +50,7 @@ env:
 jobs:
   publish:
     name: Publish bb-app
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -242,7 +244,7 @@ jobs:
     name: Publish bb-app nightly after the release
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.npm_tag == 'latest' && inputs.dry_run == false }}
     needs: publish
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -365,7 +367,7 @@ jobs:
   # docs/bb-release-process.md#publishing-the-plugin-sdk.
   publish-plugin-sdk:
     name: Publish @get-bb/plugin-sdk
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release
     permissions:
@@ -725,8 +727,48 @@ jobs:
             apps/desktop/release/desktop-version-linux.json
           if-no-files-found: error
 
+  nightly-mobile-ios:
+    name: Build bb Nightly iOS (EAS)
+    # Same gate as the desktop jobs: only after the npm publish succeeded on
+    # the scheduled or manual nightly path. The reusable workflow starts an
+    # EAS production build that auto-submits to TestFlight.
+    if: >-
+      ${{ !cancelled()
+      && needs.publish.result == 'success'
+      && (github.event_name == 'schedule'
+      || (inputs.npm_tag == 'nightly' && inputs.dry_run == false)
+      || needs.publish-nightly.result == 'success') }}
+    needs:
+      - publish
+      - publish-nightly
+    uses: ./.github/workflows/mobile-ios-eas.yml
+    with:
+      profile: production
+      submit: true
+      # An empty version keeps the marketing version committed in
+      # apps/mobile/app.json. TestFlight needs a Beta App Review for the
+      # first build of each new marketing version, so a nightly that tracked
+      # the bb-app version (0.39.0, 0.39.1, ...) blocked external testers
+      # every time the base version moved. With a pinned version, the remote
+      # EAS build number tells nightly builds apart and later builds skip
+      # the review.
+      version: ""
+      external_group: External testers
+    secrets:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+
   nightly-desktop-publish:
     name: Publish bb Nightly desktop
+    # See the macOS job for why this condition uses `!cancelled()`. GitHub
+    # propagates a skip transitively, so the skipped publish-nightly reaches
+    # this job through the build jobs even though they run. Without the
+    # override this job is skipped on exactly the paths that exist to produce
+    # a nightly, and only a stable release run ever moves the release.
+    if: >-
+      ${{ !cancelled()
+      && needs.nightly-desktop-macos.result == 'success'
+      && needs.nightly-desktop-linux.result == 'success' }}
     needs:
       - nightly-desktop-macos
       - nightly-desktop-linux

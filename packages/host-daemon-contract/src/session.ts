@@ -15,7 +15,7 @@ import {
   toolCallResponseSchema,
 } from "@bb/domain";
 import { z } from "zod";
-import type { Endpoint } from "./common.js";
+import type { Endpoint } from "@bb/hono-typed-routes";
 import type {
   HostDaemonOnlineRpcCommandType,
   HostDaemonSettledCommandType,
@@ -31,7 +31,7 @@ import {
 } from "./commands.js";
 import { hostPlatformSchema } from "./local.js";
 
-export const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
+const HOST_DAEMON_WEBSOCKET_PROTOCOL = "bb-host-daemon.v1";
 
 export const hostDaemonActiveThreadSchema = z.object({
   threadId: z.string().min(1),
@@ -40,7 +40,7 @@ export type HostDaemonActiveThread = z.infer<
   typeof hostDaemonActiveThreadSchema
 >;
 
-export const hostDaemonLoadedEnvironmentSchema = z.object({
+const hostDaemonLoadedEnvironmentSchema = z.object({
   environmentId: z.string().min(1),
 });
 export type HostDaemonLoadedEnvironment = z.infer<
@@ -56,7 +56,7 @@ export type HostDaemonRuntimePolicy = z.infer<
   typeof hostDaemonRuntimePolicySchema
 >;
 
-export const hostDaemonWatchSetWorkspaceTargetSchema = z
+const hostDaemonWatchSetWorkspaceTargetSchema = z
   .object({
     environmentId: z.string().min(1),
     workspaceContext: workspaceContextSchema,
@@ -66,7 +66,7 @@ export type HostDaemonWatchSetWorkspaceTarget = z.infer<
   typeof hostDaemonWatchSetWorkspaceTargetSchema
 >;
 
-export const hostDaemonWatchSetThreadStorageTargetSchema = z
+const hostDaemonWatchSetThreadStorageTargetSchema = z
   .object({
     environmentId: z.string().min(1),
     threadId: z.string().min(1),
@@ -76,7 +76,7 @@ export type HostDaemonWatchSetThreadStorageTarget = z.infer<
   typeof hostDaemonWatchSetThreadStorageTargetSchema
 >;
 
-export const hostDaemonWatchSetSchema = z
+const hostDaemonWatchSetSchema = z
   .object({
     generation: z.number().int().nonnegative(),
     workspaceTargets: z.array(hostDaemonWatchSetWorkspaceTargetSchema),
@@ -85,7 +85,7 @@ export const hostDaemonWatchSetSchema = z
   .strict();
 export type HostDaemonWatchSet = z.infer<typeof hostDaemonWatchSetSchema>;
 
-export const hostDaemonConnectSharesSchema = z
+const hostDaemonConnectSharesSchema = z
   .object({
     generation: z.number().int().nonnegative(),
     ports: z.array(z.number().int().min(1).max(65535)),
@@ -95,15 +95,12 @@ export type HostDaemonConnectShares = z.infer<
   typeof hostDaemonConnectSharesSchema
 >;
 
-export const hostDaemonPluginHostGenerationSchema = z
+const hostDaemonPluginHostGenerationSchema = z
   .object({
     pluginId: z.string().min(1),
     generation: z.string().min(1),
   })
   .strict();
-export type HostDaemonPluginHostGeneration = z.infer<
-  typeof hostDaemonPluginHostGenerationSchema
->;
 
 export const hostDaemonSessionOpenRequestSchema = z.object({
   hostId: z.string().min(1),
@@ -114,13 +111,21 @@ export const hostDaemonSessionOpenRequestSchema = z.object({
   hasMachineCredential: z.boolean(),
   platform: hostPlatformSchema,
   dataDir: z.string().min(1),
+  /**
+   * Loopback editor-helper port, or null when this daemon exposes no full
+   * local API. The default preserves the protocol-mismatch response for
+   * daemons from before this field existed, so they can reach self-update.
+   */
+  localApiPort: z.number().int().min(1).max(65_535).nullable().default(null),
   // Accept any version at the schema boundary so the server can return an
   // actionable protocol mismatch instead of an opaque validation failure.
   protocolVersion: z.number().int().positive(),
   activeThreads: z.array(hostDaemonActiveThreadSchema),
   loadedEnvironments: z.array(hostDaemonLoadedEnvironmentSchema).default([]),
 });
-export type HostDaemonSessionOpenRequest = z.input<
+// Current daemon code must send every server-defaulted field explicitly. The
+// schema's wider input remains a compatibility boundary for older daemons.
+export type HostDaemonSessionOpenRequest = z.output<
   typeof hostDaemonSessionOpenRequestSchema
 >;
 
@@ -142,9 +147,7 @@ export const hostDaemonEnrollResponseSchema = z
     hostKey: z.string().min(1),
   })
   .strict();
-export type HostDaemonEnrollResponse = z.infer<
-  typeof hostDaemonEnrollResponseSchema
->;
+type HostDaemonEnrollResponse = z.infer<typeof hostDaemonEnrollResponseSchema>;
 
 export const hostDaemonEnrollKeyRequestSchema = z
   .object({
@@ -200,7 +203,7 @@ export type HostDaemonProjectAttachmentContentQuery = z.infer<
   typeof hostDaemonProjectAttachmentContentQuerySchema
 >;
 
-export const hostDaemonEventEnvelopeSchema = z
+const hostDaemonEventEnvelopeSchema = z
   .object({
     threadId: z.string().min(1),
     event: threadEventSchema,
@@ -221,32 +224,16 @@ const hostDaemonWireEventSchema = z
         path: ["sequence"],
       });
     }
-    // Plugin status labels are server-owned presentation metadata, snapshotted
-    // during ingest. Without this guard a daemon could set them directly on
-    // MCP, unknown, and unlabeled tool calls, which the enrichment step leaves
-    // untouched.
-    const item: unknown = (value as { item?: unknown }).item;
-    if (
-      typeof item === "object" &&
-      item !== null &&
-      Object.hasOwn(item, "statusLabels")
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Daemon events must not provide server-owned status labels",
-        path: ["item", "statusLabels"],
-      });
-    }
   })
   .pipe(threadEventSchema);
 
-export const hostDaemonEventGroupSchema = z
+const hostDaemonEventGroupSchema = z
   .object({
     threadId: z.string().min(1),
     events: z.array(hostDaemonWireEventSchema).min(1),
   })
   .strict();
-export type HostDaemonEventGroup = z.infer<typeof hostDaemonEventGroupSchema>;
+type HostDaemonEventGroup = z.infer<typeof hostDaemonEventGroupSchema>;
 
 export const hostDaemonEventBatchRequestSchema = z
   .object({
@@ -286,11 +273,11 @@ export function ungroupHostDaemonEvents(
   );
 }
 
-export const hostDaemonEventRejectionReasonSchema = z.enum([
+const hostDaemonEventRejectionReasonSchema = z.enum([
   "thread_not_owned_by_host",
 ]);
 
-export const hostDaemonRejectedEventSchema = z
+const hostDaemonRejectedEventSchema = z
   .object({
     eventIndex: z.number().int().nonnegative(),
     threadId: z.string().min(1),
@@ -319,7 +306,7 @@ export type HostDaemonEventBatchResponse = z.infer<
   typeof hostDaemonEventBatchResponseSchema
 >;
 
-export const hostDaemonEnvironmentChangeSchema = z
+const hostDaemonEnvironmentChangeSchema = z
   .enum(ENVIRONMENT_CHANGE_KINDS)
   .extract([
     "work-status-changed",
@@ -330,7 +317,7 @@ export type HostDaemonEnvironmentChange = z.infer<
   typeof hostDaemonEnvironmentChangeSchema
 >;
 
-export const hostDaemonEnvironmentChangePayloadSchema = z.object({
+const hostDaemonEnvironmentChangePayloadSchema = z.object({
   environmentId: z.string().min(1),
   change: hostDaemonEnvironmentChangeSchema,
 });
@@ -338,7 +325,7 @@ export type HostDaemonEnvironmentChangePayload = z.infer<
   typeof hostDaemonEnvironmentChangePayloadSchema
 >;
 
-export const hostDaemonEnvironmentMetadataChangePayloadSchema = z
+const hostDaemonEnvironmentMetadataChangePayloadSchema = z
   .object({
     environmentId: z.string().min(1),
     workspace: discoveredWorkspacePropertiesSchema,
@@ -348,7 +335,7 @@ export type HostDaemonEnvironmentMetadataChangePayload = z.infer<
   typeof hostDaemonEnvironmentMetadataChangePayloadSchema
 >;
 
-export const hostDaemonSessionCloseReasonSchema = z.enum([
+const hostDaemonSessionCloseReasonSchema = z.enum([
   "replaced",
   "expired",
   "daemon-disconnect",
@@ -450,16 +437,16 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     onlineRpcResponseSuccessSchemaFor("host.install_global_skills"),
     onlineRpcResponseSuccessSchemaFor("host.global_skills_status"),
     onlineRpcResponseSuccessSchemaFor("host.file_metadata"),
+    onlineRpcResponseSuccessSchemaFor("host.list_branch_options"),
     onlineRpcResponseSuccessSchemaFor("host.list_branches"),
     onlineRpcResponseSuccessSchemaFor("host.read_file"),
     onlineRpcResponseSuccessSchemaFor("host.read_file_relative"),
     onlineRpcResponseSuccessSchemaFor("host.write_file"),
     onlineRpcResponseSuccessSchemaFor("provider.list_models"),
-    onlineRpcResponseSuccessSchemaFor("known_acp_agents.status"),
+    onlineRpcResponseSuccessSchemaFor("provider.health"),
+    onlineRpcResponseSuccessSchemaFor("provider.installation.status"),
+    onlineRpcResponseSuccessSchemaFor("provider.installation.run"),
     onlineRpcResponseSuccessSchemaFor("provider.usage"),
-    onlineRpcResponseSuccessSchemaFor("provider_cli.status"),
-    onlineRpcResponseSuccessSchemaFor("provider_cli.install"),
-    onlineRpcResponseSuccessSchemaFor("workspace.discover_repos"),
     onlineRpcResponseSuccessSchemaFor("workspace.status"),
     onlineRpcResponseSuccessSchemaFor("workspace.diff"),
     onlineRpcResponseSuccessSchemaFor("workspace.diffFiles"),
@@ -476,8 +463,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("thread.archive"),
     commandRpcResponseSuccessSchemaFor("thread.unarchive"),
     commandRpcResponseSuccessSchemaFor("interactive.resolve"),
-    commandRpcResponseSuccessSchemaFor("codex.inference.complete"),
-    commandRpcResponseSuccessSchemaFor("codex.voice.transcribe"),
     commandRpcResponseSuccessSchemaFor("environment.provision"),
     commandRpcResponseSuccessSchemaFor("project.clone"),
     commandRpcResponseSuccessSchemaFor("environment.provision.cancel"),
@@ -646,9 +631,6 @@ const hostDaemonConnectTunnelIdentityMessageSchema = z
     identity: hostDaemonConnectTunnelIdentitySchema,
   })
   .strict();
-export type HostDaemonConnectTunnelIdentityMessage = z.infer<
-  typeof hostDaemonConnectTunnelIdentityMessageSchema
->;
 
 const pluginHostWorkerExitedMessageSchema = z
   .object({
@@ -657,9 +639,6 @@ const pluginHostWorkerExitedMessageSchema = z
     generation: z.string().min(1),
   })
   .strict();
-export type PluginHostWorkerExitedMessage = z.infer<
-  typeof pluginHostWorkerExitedMessageSchema
->;
 
 const pluginHostSignalMessageSchema = z
   .object({
@@ -670,9 +649,6 @@ const pluginHostSignalMessageSchema = z
     payload: jsonValueSchema,
   })
   .strict();
-export type PluginHostSignalMessage = z.infer<
-  typeof pluginHostSignalMessageSchema
->;
 
 const hostDaemonTerminalOpenedMessageSchema = z
   .object({
@@ -813,7 +789,7 @@ export type HostDaemonInteractiveInterruptResponse = z.infer<
   typeof hostDaemonInteractiveInterruptResponseSchema
 >;
 
-export const hostDaemonSkillTreeEntrySchema = z
+const hostDaemonSkillTreeEntrySchema = z
   .object({
     path: z.string().min(1),
     mode: z.number().int().min(0).max(0o777),
@@ -910,7 +886,7 @@ export type HostDaemonInternalSchema = {
   };
 };
 
-export type HostDaemonInternalRoutes = Hono<{}, HostDaemonInternalSchema, "/">;
+type HostDaemonInternalRoutes = Hono<{}, HostDaemonInternalSchema, "/">;
 
 function parseProtocolHeader(protocolHeader: string | undefined): string[] {
   if (!protocolHeader) {

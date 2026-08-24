@@ -4,13 +4,14 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "build": "node ../../packages/plugin-build/scripts/generate-runtime-export-manifest.mjs && node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates --external ./start-server.js --copy-dir ../../packages/db/drizzle dist/drizzle --copy-dir src/assets dist/assets && node --import tsx scripts/copy-builtin-skills.ts && node ../../scripts/build-node-entry.mjs src/start-server.ts dist/start-server.js && node ../../scripts/build-node-entry.mjs ../../packages/plugin-sdk/src/index.ts dist/plugin-sdk-runtime.js",
+    "build": "node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --external ./start-server.js --copy-dir ../../packages/db/drizzle dist/drizzle --copy-dir src/assets dist/assets && node --import tsx scripts/copy-builtin-skills.ts && node ../../scripts/build-node-entry.mjs src/start-server.ts dist/start-server.js && node ../../scripts/build-node-entry.mjs ../../packages/plugin-sdk/src/index.ts dist/plugin-sdk-runtime.js",
     "start": "node dist/index.js",
     "start:prod": "cross-env NODE_ENV=production node dist/index.js",
     "dev": "node --conditions=source --import tsx scripts/dev-supervisor.mjs",
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "test:provider-corpus": "vitest run --config vitest.config.ts test/provider-corpus"
   },
   "dependencies": {
     "@bb/config": "workspace:*",
@@ -50,6 +51,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@bb/agent-runtime": "workspace:*",
     "@bb/scripts": "workspace:*",
     "@bb/test-helpers": "workspace:*",
     "@bb/tsconfig": "workspace:*",

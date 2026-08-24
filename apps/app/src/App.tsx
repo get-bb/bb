@@ -10,10 +10,14 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { AuthCallbackView } from "./views/AuthCallbackView";
 import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
+import { AppNavigationUrlHost } from "./lib/url-open-routing";
+import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
 import { useAppTheme } from "./hooks/useAppTheme";
 import { useFaviconColorSync } from "./lib/favicon-color-preference";
 import { useDesktopThemeSync } from "./hooks/useDesktopThemeSync";
 import { usePluginFrontendBoot } from "./hooks/usePluginFrontendBoot";
+import { markRouteContentPainted } from "./lib/route-content-paint";
+import { useRememberPluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import { useWebSocket } from "./hooks/useWebSocket";
 import {
   AUTH_CALLBACK_ROUTE_PATH,
@@ -33,7 +37,6 @@ import {
   SETTINGS_PLUGIN_ROUTE_PATH,
   SETTINGS_PLUGINS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
-  SETTINGS_PROVIDER_ROUTE_PATH,
   SETTINGS_ROUTE_PATH,
   SETTINGS_SECTION_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
@@ -51,9 +54,9 @@ import {
   getSkillDetailRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
-import { OnboardingHost } from "@/components/onboarding/OnboardingHost";
 import { ProviderCliInstallLogDialogHost } from "./components/provider-cli/provider-cli-install";
 import { PluginSettingsCompatibilityRoute } from "./components/settings/PluginSettingsCompatibilityRoute";
+import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -75,7 +78,17 @@ const ProjectSettingsView = lazy(() =>
     default: m.ProjectSettingsView,
   })),
 );
-const SplitWorkspaceRoute = lazy(() => import("./views/SplitWorkspaceRoute"));
+// Start fetching the split-workspace route chunk (and, through Vite's preload
+// helper, its static closure) as soon as the boot chunk evaluates instead of
+// waiting for the first React render to reach the lazy element. Nearly every
+// page load ends up on this route, so the request is never wasted, and on a
+// phone the boot parse + first render otherwise adds a serialized round trip
+// before the largest transfer even starts. The trailing catch only keeps a
+// failed fetch from surfacing as an unhandled rejection while no route has
+// rendered yet; React.lazy still receives the rejection when it renders.
+const splitWorkspaceRouteModule = import("./views/SplitWorkspaceRoute");
+splitWorkspaceRouteModule.catch(() => {});
+const SplitWorkspaceRoute = lazy(() => splitWorkspaceRouteModule);
 
 export function LegacyAutomationDetailRedirect() {
   const location = useLocation();
@@ -150,10 +163,6 @@ export function LegacyToolsPathRedirect() {
       replace
     />
   );
-}
-
-export function LegacyPluginBrowseRedirect() {
-  return <Navigate to={TOOLS_PLUGINS_ROUTE_PATH} replace />;
 }
 
 function hashTargetId(hash: string): string | null {
@@ -244,10 +253,6 @@ function AppRoutes() {
             element={<MachineSettingsView />}
           />
           <Route
-            path={SETTINGS_PROVIDER_ROUTE_PATH}
-            element={<SettingsView />}
-          />
-          <Route
             path={PROJECT_SETTINGS_ROUTE_PATH}
             element={<ProjectSettingsView />}
           />
@@ -312,7 +317,7 @@ function AppRoutes() {
           <Route path={TOOLS_PLUGINS_ROUTE_PATH} element={<ToolsView />} />
           <Route
             path={TOOLS_PLUGIN_BROWSE_ROUTE_PATH}
-            element={<LegacyPluginBrowseRedirect />}
+            element={<ExtensionsLandingRedirect />}
           />
           <Route
             path={TOOLS_PLUGIN_DETAIL_ROUTE_PATH}
@@ -322,11 +327,35 @@ function AppRoutes() {
             path={LEGACY_SKILLS_ROUTE_PATH}
             element={<Navigate to={SKILLS_ROUTE_PATH} replace />}
           />
-          <Route path="*" element={<SplitWorkspaceRoute />} />
+          <Route
+            path="*"
+            element={
+              // The thread / new-thread pane draws its own header, so while
+              // its chunk loads the content area would otherwise be blank.
+              // Settings and tools routes keep the outer null fallback: the
+              // AppLayout header is already on screen for them.
+              <Suspense fallback={<RouteLoadingSkeleton />}>
+                <SplitWorkspaceRoute />
+              </Suspense>
+            }
+          />
         </Routes>
+        <RouteContentPaintSignal />
       </Suspense>
     </AppLayout>
   );
+}
+
+/**
+ * Sibling of the lazy routes inside their Suspense boundary: React commits
+ * it (and runs its effect) only once the first route content has resolved,
+ * which is the signal deferred plugin frontend boot waits on.
+ */
+function RouteContentPaintSignal() {
+  useEffect(() => {
+    markRouteContentPainted();
+  }, []);
+  return null;
 }
 
 export function App() {
@@ -342,26 +371,28 @@ export function App() {
   useFaviconColorSync();
   // Load plugin frontend bundles once system config resolves.
   usePluginFrontendBoot();
+  useRememberPluginNavPanelChrome();
 
   return (
     <QuickCreateProjectProvider>
       <AppCommandProvider>
         <RouteNavigationProvider>
-          <HashNavigationScroll />
-          <Routes>
-            <Route
-              path={AUTH_CALLBACK_ROUTE_PATH}
-              element={<AuthCallbackView />}
-            />
-            <Route path="*" element={<AppRoutes />} />
-          </Routes>
-          {/* Outside <Routes>: a provider CLI install outlives the page that
-              started it, so its failure toast can be clicked from any route —
-              including auth callback, which renders no app shell. */}
-          <ProviderCliInstallLogDialogHost />
-          {/* First-run onboarding. Outside <Routes> so it is not tied to a
-              page. It self-gates on the experiment and completion timestamp. */}
-          <OnboardingHost />
+          <AppNavigationUrlHost>
+            <AppFileExternalNavigationHost>
+              <HashNavigationScroll />
+              <Routes>
+                <Route
+                  path={AUTH_CALLBACK_ROUTE_PATH}
+                  element={<AuthCallbackView />}
+                />
+                <Route path="*" element={<AppRoutes />} />
+              </Routes>
+              {/* Outside <Routes>: a provider CLI install outlives the page that
+                started it, so its failure toast can be clicked from any route —
+                including auth callback, which renders no app shell. */}
+               <ProviderCliInstallLogDialogHost />
+             </AppFileExternalNavigationHost>
+          </AppNavigationUrlHost>
         </RouteNavigationProvider>
       </AppCommandProvider>
     </QuickCreateProjectProvider>

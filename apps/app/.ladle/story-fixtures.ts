@@ -7,10 +7,12 @@ import type {
   ThreadListEntry,
   WorkspaceStatus,
 } from "@bb/domain";
+import type {
+  ProviderCliKey,
+  ProviderCliStatus,
+} from "@bb/host-daemon-contract";
 import type { ProjectResponse } from "@bb/server-contract";
-import { ClaudeIcon } from "../src/components/icons/ClaudeIcon";
-import { OpenAiIcon } from "../src/components/icons/OpenAiIcon";
-import { PiIcon } from "../src/components/icons/PiIcon";
+import { getProviderIconInfo } from "../src/lib/provider-icon";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
@@ -110,10 +112,21 @@ export function makeAttachmentsConfig(
 // need to pre-format.
 // ---------------------------------------------------------------------------
 
+// Core vendors no brand marks (they come from the provider plugins' declared
+// logos), so stories draw each provider through a declared host glyph.
+function storyProviderIcon(providerId: string, glyph: string) {
+  return getProviderIconInfo(providerId, { logoUrl: null, icon: { glyph } })
+    ?.icon;
+}
+
 export const STORY_PROVIDER_OPTIONS: readonly PickerOption<string>[] = [
-  { value: "codex", label: "Codex", icon: OpenAiIcon },
-  { value: "claude-code", label: "Claude Code", icon: ClaudeIcon },
-  { value: "pi", label: "Pi", icon: PiIcon },
+  { value: "codex", label: "Codex", icon: storyProviderIcon("codex", "Code") },
+  {
+    value: "claude-code",
+    label: "Claude Code",
+    icon: storyProviderIcon("claude-code", "Sparkles"),
+  },
+  { value: "pi", label: "Pi", icon: storyProviderIcon("pi", "Zap") },
 ];
 
 export const STORY_CODEX_MODELS: readonly PickerOption<string>[] = [
@@ -411,6 +424,34 @@ export function makeHost(overrides: Partial<Host> = {}): Host {
     updatedAt: 100,
   };
   return { ...base, ...overrides };
+}
+
+export function makeProviderCliStatus(
+  provider: ProviderCliKey,
+  overrides: Partial<ProviderCliStatus> = {},
+): ProviderCliStatus {
+  const identity =
+    provider === "codex"
+      ? { displayName: "Codex", executableName: "codex" }
+      : provider === "claude-code"
+        ? { displayName: "Claude Code", executableName: "claude" }
+        : { displayName: "Cursor", executableName: "agent" };
+  return {
+    displayName: identity.displayName,
+    executableName: identity.executableName,
+    executablePath: `/usr/local/bin/${identity.executableName}`,
+    installed: true,
+    installSource: "npmGlobal",
+    currentVersion: "1.0.0",
+    latestVersion: "1.0.0",
+    minimumSupportedVersion: null,
+    npmPackageName: null,
+    npmGlobalPackageVersion: null,
+    installAction: null,
+    needsUpdate: false,
+    versionUnsupported: false,
+    ...overrides,
+  };
 }
 
 export function makeEnvironment(

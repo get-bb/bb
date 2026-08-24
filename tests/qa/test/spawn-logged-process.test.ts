@@ -197,7 +197,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 import {
   buildStandaloneRuntimeEnv,
   cleanupStandaloneOrphans,
-  createStandaloneHostEnrollKey,
+  createHostEnrollKey,
   spawnLoggedProcess,
   startQaServer,
 } from "../src/shared.js";
@@ -327,7 +327,7 @@ describe("spawnLoggedProcess", () => {
     );
 
     await expect(
-      createStandaloneHostEnrollKey("http://127.0.0.1:4567"),
+      createHostEnrollKey("http://127.0.0.1:4567"),
     ).resolves.toMatchObject({
       enrollKey: "bbde_standalone",
       hostId: "host_standalone",

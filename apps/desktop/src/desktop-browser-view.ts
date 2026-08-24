@@ -4,6 +4,8 @@ import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   clampBbDesktopBrowserViewBounds,
   type BbDesktopBrowserAttachRequest,
+  type BbDesktopBrowserFindInPageRequest,
+  type BbDesktopBrowserFindResult,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserScopedOpenTabRequest,
@@ -11,12 +13,16 @@ import {
   type BbDesktopBrowserSetVisibleRequest,
   type BbDesktopBrowserSnapshot,
   type BbDesktopBrowserState,
+  type BbDesktopBrowserTabRef,
+  type BbDesktopBrowserStopFindInPageRequest,
   type BbDesktopBrowserViewportBounds,
   type BbDesktopBrowserViewBounds,
 } from "@bb/desktop-contract";
 import type { AppCommandId, AppShortcutInput } from "@bb/domain";
 import {
+  BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL,
   BB_DESKTOP_BROWSER_OPEN_TAB_CHANNEL,
+  BB_DESKTOP_BROWSER_FOCUSED_CHANNEL,
   BB_DESKTOP_BROWSER_SCOPED_OPEN_TAB_CHANNEL,
   BB_DESKTOP_BROWSER_SNAPSHOT_CHANNEL,
   BB_DESKTOP_BROWSER_STATE_CHANNEL,
@@ -51,7 +57,7 @@ function truncate(value: string, max: number): string {
  * Isolated, persistent partition for the in-app browser. Cookies/storage never
  * touch the bb app session (`defaultSession`) or the user's real browser.
  */
-export const BB_BROWSER_PARTITION = "persist:bb-browser";
+const BB_BROWSER_PARTITION = "persist:bb-browser";
 
 /**
  * `did-fail-load` reports aborted main-frame loads (a user navigating away, a
@@ -75,14 +81,24 @@ interface BrowserViewEntry {
   rendererRecoveryAttempts: number;
   rendererRecoveryState: "healthy" | "pending" | "blocked";
   rendererRecoveryTimer: ReturnType<typeof setTimeout> | null;
+  suppressNextFocusNotification: boolean;
   visible: boolean;
+  /**
+   * Request id of the latest `findInPage` call, or null when no find session
+   * is active. `found-in-page` results for any other id are stale (an older
+   * query, or a session the renderer already stopped) and are dropped so they
+   * can never overwrite the count of a newer query or revive a cleared one.
+   */
+  activeFindRequestId: number | null;
 }
 
 export type DesktopBrowserHostWebContentsPayload =
   | BbDesktopBrowserState
   | BbDesktopBrowserOpenTabRequest
   | BbDesktopBrowserScopedOpenTabRequest
-  | BbDesktopBrowserSnapshot;
+  | BbDesktopBrowserSnapshot
+  | BbDesktopBrowserTabRef
+  | BbDesktopBrowserFindResult;
 
 export interface DesktopBrowserHostContentBounds {
   height: number;
@@ -107,7 +123,7 @@ export interface DesktopBrowserHostWindow {
   webContents: DesktopBrowserHostWebContents;
 }
 
-export interface DispatchDesktopBrowserAppCommandArgs {
+interface DispatchDesktopBrowserAppCommandArgs {
   command: AppCommandId;
   hostWebContentsId: number;
 }
@@ -148,6 +164,7 @@ interface SetEntryDesiredBoundsArgs {
 export interface DesktopBrowserViewManager {
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
   detach(args: HostScopedTabArgs): void;
+  focus(args: HostScopedTabArgs): void;
   navigate(args: HostScopedRequestArgs<BbDesktopBrowserNavigateRequest>): void;
   goBack(args: HostScopedTabArgs): void;
   goForward(args: HostScopedTabArgs): void;
@@ -158,6 +175,21 @@ export interface DesktopBrowserViewManager {
   ): void;
   setVisible(
     args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
+  ): void;
+  setVisibleWithoutFocus(
+    args: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
+  ): void;
+  /**
+   * Find text in a tab's page. Results arrive asynchronously as
+   * `found-in-page` events, relayed to the renderer over
+   * `BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL`.
+   */
+  findInPage(
+    args: HostScopedRequestArgs<BbDesktopBrowserFindInPageRequest>,
+  ): void;
+  /** End a tab's find session and clear (or keep/activate) its highlights. */
+  stopFindInPage(
+    args: HostScopedRequestArgs<BbDesktopBrowserStopFindInPageRequest>,
   ): void;
   /**
    * Hide every visible view owned by the window for the duration of a native
@@ -444,6 +476,14 @@ export function createDesktopBrowserViewManager(
   ): void {
     const webContents = entry.view.webContents;
 
+    webContents.on("focus", () => {
+      if (entry.suppressNextFocusNotification) {
+        entry.suppressNextFocusNotification = false;
+        return;
+      }
+      send(hostWindow, BB_DESKTOP_BROWSER_FOCUSED_CHANNEL, { tabId });
+    });
+
     webContents.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || input.isAutoRepeat || input.isComposing) {
         return;
@@ -460,7 +500,9 @@ export function createDesktopBrowserViewManager(
       // Prevent both the untrusted page and Electron's application menu from
       // also handling a chord that bb resolved as a browser command.
       event.preventDefault();
-      if (command === "browser.focusLocation") {
+      // These commands move typing into a renderer input (address bar, find
+      // bar), so the host window must take keyboard focus away from the view.
+      if (command === "browser.focusLocation" || command === "browser.find") {
         args.focusHostWebContents(hostWindow.webContents.id);
       }
       args.dispatchAppCommand({
@@ -544,6 +586,19 @@ export function createDesktopBrowserViewManager(
         },
       ]);
       menu.popup();
+    });
+
+    webContents.on("found-in-page", (_event, result) => {
+      if (result.requestId !== entry.activeFindRequestId) {
+        return;
+      }
+      send(hostWindow, BB_DESKTOP_BROWSER_FIND_RESULT_CHANNEL, {
+        tabId,
+        requestId: result.requestId,
+        activeMatchOrdinal: result.activeMatchOrdinal,
+        matches: result.matches,
+        finalUpdate: result.finalUpdate,
+      });
     });
 
     webContents.on("render-process-gone", (_event, details) => {
@@ -630,7 +685,9 @@ export function createDesktopBrowserViewManager(
       rendererRecoveryAttempts: 0,
       rendererRecoveryState: "healthy",
       rendererRecoveryTimer: null,
+      suppressNextFocusNotification: false,
       visible: false,
+      activeFindRequestId: null,
     };
     wireWebContents(args.hostWindow, args.tabId, entry);
     args.hostWindow.contentView.addChildView(view);
@@ -685,6 +742,52 @@ export function createDesktopBrowserViewManager(
     fn(entry);
   }
 
+  function hasOtherVisibleEntry(
+    hostWindow: DesktopBrowserHostWindow,
+    tabId: string,
+  ): boolean {
+    const hostPrefix = `${hostWindow.webContents.id}:`;
+    const currentKey = browserViewKey(hostWindow, tabId);
+    for (const [key, entry] of entries) {
+      if (key !== currentKey && key.startsWith(hostPrefix) && entry.visible) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function focusEntryWithoutNotifying(entry: BrowserViewEntry): void {
+    entry.suppressNextFocusNotification = true;
+    entry.view.webContents.focus();
+    setTimeout(() => {
+      entry.suppressNextFocusNotification = false;
+    }, 0);
+  }
+
+  function setEntryVisibility(
+    {
+      hostWindow,
+      request,
+    }: HostScopedRequestArgs<BbDesktopBrowserSetVisibleRequest>,
+    focusOnShow: boolean,
+  ): void {
+    withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+      const wasVisible = entry.visible;
+      entry.visible = request.visible;
+      applyEntryVisibility(entry, hostWindow);
+      scheduleEntryRendererRecovery(entry, hostWindow, request.tabId);
+      if (
+        focusOnShow &&
+        request.visible &&
+        !wasVisible &&
+        !hasOtherVisibleEntry(hostWindow, request.tabId) &&
+        !entry.view.webContents.isDestroyed()
+      ) {
+        focusEntryWithoutNotifying(entry);
+      }
+    });
+  }
+
   return {
     attach({ hostWindow, request }) {
       const key = browserViewKey(hostWindow, request.tabId);
@@ -707,15 +810,19 @@ export function createDesktopBrowserViewManager(
       if (
         request.visible &&
         !wasVisible &&
+        !hasOtherVisibleEntry(hostWindow, request.tabId) &&
         !entry.view.webContents.isDestroyed()
       ) {
-        entry.view.webContents.focus();
+        focusEntryWithoutNotifying(entry);
       }
       loadIfNeeded(entry, request.url);
       pushState(hostWindow, request.tabId);
     },
     detach({ hostWindow, tabId }) {
       destroyEntry(hostWindow, browserViewKey(hostWindow, tabId));
+    },
+    focus({ hostWindow, tabId }) {
+      withEntry({ hostWindow, tabId }, focusEntryWithoutNotifying);
     },
     navigate({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
@@ -759,24 +866,30 @@ export function createDesktopBrowserViewManager(
         setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       });
     },
-    setVisible({ hostWindow, request }) {
+    findInPage({ hostWindow, request }) {
       withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
-        const wasVisible = entry.visible;
-        entry.visible = request.visible;
-        applyEntryVisibility(entry, hostWindow);
-        scheduleEntryRendererRecovery(entry, hostWindow, request.tabId);
-        // Focus the view only on a real not-visible → visible transition so the
-        // Edit-menu copy/cut/paste roles and Cmd+C target this view's
-        // webContents (the focused one). Skip redundant re-syncs so we never
-        // yank focus away from the React address bar mid-interaction.
-        if (
-          request.visible &&
-          !wasVisible &&
-          !entry.view.webContents.isDestroyed()
-        ) {
-          entry.view.webContents.focus();
-        }
+        // Electron's `findNext` means "start a new find session" (true for the
+        // first request of a query, false to step through its matches).
+        entry.activeFindRequestId = entry.view.webContents.findInPage(
+          request.text,
+          {
+            forward: request.forward,
+            findNext: request.newSession,
+          },
+        );
       });
+    },
+    stopFindInPage({ hostWindow, request }) {
+      withEntry({ hostWindow, tabId: request.tabId }, (entry) => {
+        entry.activeFindRequestId = null;
+        entry.view.webContents.stopFindInPage(request.action);
+      });
+    },
+    setVisible({ hostWindow, request }) {
+      setEntryVisibility({ hostWindow, request }, true);
+    },
+    setVisibleWithoutFocus({ hostWindow, request }) {
+      setEntryVisibility({ hostWindow, request }, false);
     },
     beginWindowResize(hostWindow) {
       if (isHostResizing(hostWindow)) {

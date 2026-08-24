@@ -33,25 +33,25 @@ export interface CompatibleServerProbeResult {
   serverUrl: string;
 }
 
-export interface IncompatibleServerProbeResult {
+interface IncompatibleServerProbeResult {
   kind: "incompatible";
   reason: string;
   serverUrl: string;
 }
 
-export interface UnavailableServerProbeResult {
+interface UnavailableServerProbeResult {
   kind: "unavailable";
   reason: string;
   serverUrl: string;
 }
 
-export interface ProbeBbServerArgs {
+interface ProbeBbServerArgs {
   fetchImpl?: ServerProbeFetch;
   serverUrl: string;
   timeoutMs: number;
 }
 
-export interface WaitForCompatibleServerArgs {
+interface WaitForCompatibleServerArgs {
   intervalMs: number;
   serverUrl: string;
   timeoutMs: number;

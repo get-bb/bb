@@ -94,6 +94,14 @@
       "type": "registry:ui"
     },
     {
+      "name": "icon-extended",
+      "type": "registry:ui"
+    },
+    {
+      "name": "icon-registry",
+      "type": "registry:ui"
+    },
+    {
       "name": "input",
       "type": "registry:ui"
     },

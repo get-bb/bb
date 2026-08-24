@@ -4,7 +4,7 @@ import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
 
 export type BbRuntimeMode = "dev" | "prod";
 
-export interface DevPortSet {
+interface DevPortSet {
   appPort: number;
   cloudPort: number;
   cloudWorkerPort: number;
@@ -21,69 +21,69 @@ export interface DevInstanceConfig {
   serverUrl: string;
 }
 
-export interface ResolveDevInstanceConfigArgs {
+interface ResolveDevInstanceConfigArgs {
   homeDir: string;
   repoRoot: string;
 }
 
-export interface DevProcessEnvArgs {
+interface DevProcessEnvArgs {
   baseEnv: NodeJS.ProcessEnv;
   config: DevInstanceConfig;
 }
 
-export interface ResolveInheritedDevSkillsRootPathsArgs {
+interface ResolveInheritedDevSkillsRootPathsArgs {
   homeDir: string;
   repoRoot: string;
 }
 
-export interface ParseDataDirEnvValueArgs {
+interface ParseDataDirEnvValueArgs {
   homeDir: string;
   rawDataDir: string;
 }
 
-export interface ResolveConfiguredDataDirArgs {
+interface ResolveConfiguredDataDirArgs {
   defaultDataDir: string;
   env: NodeJS.ProcessEnv;
   homeDir: string;
 }
 
-export interface ResolveProdDataDirArgs {
+interface ResolveProdDataDirArgs {
   homeDir: string;
 }
 
-export interface ResolveRuntimeDataDirArgs {
+interface ResolveRuntimeDataDirArgs {
   env: NodeJS.ProcessEnv;
   homeDir: string;
   mode: BbRuntimeMode;
   repoRoot?: string;
 }
 
-export interface ResolveDataDirDatabasePathArgs {
+interface ResolveDataDirDatabasePathArgs {
   dataDir: string;
 }
 
-export interface ParsePortValueArgs {
+interface ParsePortValueArgs {
   name: string;
   rawPort: string;
 }
 
-export interface ValidatePortNumberArgs {
+interface ValidatePortNumberArgs {
   name: string;
   value: number;
 }
 
-export interface ResolvePortFromEnvArgs {
+interface ResolvePortFromEnvArgs {
   defaultPort: number;
   env: NodeJS.ProcessEnv;
   name: string;
 }
 
-export const BB_PROD_DATA_DIR_NAME = ".bb";
-export const BB_DEV_DATA_ROOT_DIR = ".bb-dev";
+const BB_PROD_DATA_DIR_NAME = ".bb";
+const BB_DEV_DATA_ROOT_DIR = ".bb-dev";
 export const BB_PROD_SERVER_PORT = 38886;
 export const BB_PROD_HOST_DAEMON_PORT = 38887;
 export const BB_LOOPBACK_HOST = "127.0.0.1";
-export const BB_SQLITE_DATABASE_FILE_NAME = "bb.db";
+const BB_SQLITE_DATABASE_FILE_NAME = "bb.db";
 
 const DEV_HASH_LENGTH = 12;
 const DEV_PORT_BUCKETS = 8_000;
@@ -331,9 +331,7 @@ export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
     BB_DEV_APP_PORT: String(args.config.ports.appPort),
     BB_DEV_CONNECT_BASE_URL: `http://bb.localhost:${args.config.ports.cloudPort}`,
     BB_HOST_DAEMON_PORT: String(args.config.ports.hostDaemonPort),
-    ...(inheritedSkillsRootPaths.length > 0
-      ? { BB_INHERITED_SKILLS_ROOTS: inheritedSkillsRootPaths.join(delimiter) }
-      : {}),
+    BB_INHERITED_SKILLS_ROOTS: inheritedSkillsRootPaths.join(delimiter),
     BB_SERVER_PORT: String(args.config.ports.serverPort),
     BB_SERVER_URL: args.config.serverUrl,
     NODE_ENV: "development",

@@ -1,6 +1,5 @@
 import { Command } from "commander";
 import type { AvailableModel } from "@bb/domain";
-import type { ProviderHostRoutingArgs } from "@bb/sdk";
 import type { SystemProviderInfo } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -29,13 +28,6 @@ interface IncludeSelectedOnlyModelArgs {
   selectedModel?: string;
 }
 
-async function resolveProviderRouting(
-  opts: ProviderListCommandOptions,
-  serverUrl: string,
-): Promise<ProviderHostRoutingArgs> {
-  return resolveMachineEnvironmentRouting(opts, serverUrl);
-}
-
 function addProviderRoutingOptions(command: Command): Command {
   return command
     .option("--machine <id-or-name>", "Machine whose providers should be used")
@@ -62,7 +54,7 @@ export function registerProviderCommands(
         const serverUrl = getUrl();
         const sdk = createCliBbSdk(serverUrl);
         const providers = await sdk.providers.list(
-          await resolveProviderRouting(opts, serverUrl),
+          await resolveMachineEnvironmentRouting(opts, serverUrl),
         );
         if (outputJson(opts, providers)) return;
         if (providers.length === 0) {
@@ -89,7 +81,7 @@ export function registerProviderCommands(
           const serverUrl = getUrl();
           const sdk = createCliBbSdk(serverUrl);
           const executionOptions = await sdk.providers.models({
-            ...(await resolveProviderRouting(opts, serverUrl)),
+            ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
             ...(providerId ? { providerId } : {}),
           });
           const models = includeSelectedOnlyModel({

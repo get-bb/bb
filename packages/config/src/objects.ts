@@ -1,4 +1,4 @@
-export interface AssignIfDefinedArgs<
+interface AssignIfDefinedArgs<
   TTarget extends object,
   TKey extends keyof TTarget,
 > {

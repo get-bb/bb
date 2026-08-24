@@ -1,5 +1,9 @@
 import { Command } from "commander";
 import type { Host } from "@bb/domain";
+import {
+  UPDATE_STATE_PRESENTATION,
+  type UpdateState,
+} from "@bb/domain/update-state";
 import type { HostProviderCliStatusResponse } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -7,10 +11,8 @@ import { renderBorderlessTable } from "../table.js";
 import { outputJson } from "./helpers.js";
 import { resolveMachineId } from "./machine.js";
 
-const MANAGED_PROVIDERS = ["codex", "claudeCode"] as const;
-
-type ProviderCliKey = (typeof MANAGED_PROVIDERS)[number];
-type ProviderCliStatus = HostProviderCliStatusResponse[ProviderCliKey];
+type ProviderCliKey = string;
+type ProviderCliStatus = HostProviderCliStatusResponse[string];
 type ProviderCliStatusResponse = HostProviderCliStatusResponse;
 
 interface UpdatesCommandOptions {
@@ -30,15 +32,27 @@ interface MachineUpdatesEntry {
   statusError: string | null;
 }
 
-function providerStateLabel(status: ProviderCliStatus): string {
-  if (!status.installed) return "not installed";
-  if (status.versionUnsupported) return "update needed";
-  if (status.needsUpdate) {
+/**
+ * The same state ladder Settings → Updates draws, printed as words.
+ *
+ * Both surfaces read `UPDATE_STATE_PRESENTATION` so a CLI that reads "Update
+ * in terminal" reads the same way in the app. This used to
+ * be a second, hand-maintained list of phrases here, and the two had already
+ * drifted — the app said "Update needed" where the CLI said "update needed"
+ * for one case and "update manually" for another.
+ */
+function providerState(status: ProviderCliStatus): UpdateState {
+  if (!status.installed) return "not-installed";
+  if (status.needsUpdate || status.versionUnsupported) {
     return status.installAction === null
-      ? "update manually"
-      : "update available";
+      ? "update-manually"
+      : "update-available";
   }
-  return "up to date";
+  return "up-to-date";
+}
+
+function providerStateLabel(status: ProviderCliStatus): string {
+  return UPDATE_STATE_PRESENTATION[providerState(status)].label;
 }
 
 function providerVersionLabel(status: ProviderCliStatus): string {
@@ -91,8 +105,7 @@ function actionableTargets(
   const targets: ProviderUpdateTarget[] = [];
   for (const entry of entries) {
     if (entry.providerStatus === null) continue;
-    for (const provider of MANAGED_PROVIDERS) {
-      const status = entry.providerStatus[provider];
+    for (const [provider, status] of Object.entries(entry.providerStatus)) {
       if (isActionableProviderStatus(status)) {
         targets.push({ host: entry.host, provider, status });
       }
@@ -115,8 +128,7 @@ function printUpdatesTable(args: {
       rows.push([entry.host.name, "-", entry.statusError ?? "status failed"]);
       continue;
     }
-    for (const provider of MANAGED_PROVIDERS) {
-      const status = entry.providerStatus[provider];
+    for (const status of Object.values(entry.providerStatus)) {
       rows.push([
         `${entry.host.name} · ${status.displayName}`,
         providerVersionLabel(status),
@@ -186,8 +198,8 @@ export function registerUpdatesCommands(
         const appState = version.isDevelopment
           ? "development mode"
           : version.updateAvailable
-            ? `update available (run: ${version.upgradeCommand})`
-            : "up to date";
+            ? `${UPDATE_STATE_PRESENTATION["update-available"].label} (run: ${version.upgradeCommand})`
+            : UPDATE_STATE_PRESENTATION["up-to-date"].label;
         const appVersionLabel =
           version.latestVersion !== null &&
           version.latestVersion !== version.currentVersion
@@ -222,15 +234,12 @@ export function registerUpdatesCommands(
           const hasManualUpdates = entries.some(
             (entry) =>
               entry.providerStatus !== null &&
-              MANAGED_PROVIDERS.some((provider) => {
-                const status = entry.providerStatus?.[provider];
-                return (
-                  status !== undefined &&
+              Object.values(entry.providerStatus).some(
+                (status) =>
                   status.installed &&
                   status.needsUpdate &&
-                  status.installAction === null
-                );
-              }),
+                  status.installAction === null,
+              ),
           );
           console.log(
             hasManualUpdates
@@ -271,8 +280,7 @@ export function registerUpdatesCommands(
               hostName: target.host.name,
               provider: target.provider,
               success,
-              message:
-                errorEvent?.type === "error" ? errorEvent.message : null,
+              message: errorEvent?.type === "error" ? errorEvent.message : null,
             });
             if (!opts.json) {
               console.log(

@@ -3,13 +3,7 @@ import { Button } from "@bb/shared-ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@bb/shared-ui/dialog";
 import { Icon } from "@bb/shared-ui/icon";
 
-export const imageLightboxKeyActionValues = [
-  "close",
-  "next",
-  "previous",
-] as const;
-export type ImageLightboxKeyAction =
-  (typeof imageLightboxKeyActionValues)[number];
+type ImageLightboxKeyAction = "close" | "next" | "previous";
 
 const IMAGE_TRANSPARENCY_CHECKER_BASE =
   "color-mix(in oklch, var(--ink) 5%, var(--canvas))";
@@ -22,7 +16,7 @@ export const IMAGE_TRANSPARENCY_CHECKER_STYLE: CSSProperties = {
   backgroundSize: "16px 16px",
 };
 
-export interface ImageLightboxKeyActionInput {
+interface ImageLightboxKeyActionInput {
   event: Pick<
     KeyboardEvent,
     "altKey" | "ctrlKey" | "defaultPrevented" | "key" | "metaKey"
@@ -30,13 +24,13 @@ export interface ImageLightboxKeyActionInput {
   hasNavigation: boolean;
 }
 
-export interface WrappedImageIndexInput {
+interface WrappedImageIndexInput {
   currentIndex: number;
   direction: "next" | "previous";
   itemCount: number;
 }
 
-export interface ImageLightboxProps {
+interface ImageLightboxProps {
   hasMultipleImages?: boolean;
   imageAlt: string;
   imageSrc: string | null;

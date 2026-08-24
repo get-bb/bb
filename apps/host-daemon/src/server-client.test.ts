@@ -88,6 +88,7 @@ describe("createServerClient", () => {
       hostType: "persistent",
       dataDir: "/tmp/bb",
       instanceId: "instance-1",
+      localApiPort: null,
       activeThreads: [],
       loadedEnvironments: [],
     });
@@ -107,6 +108,7 @@ describe("createServerClient", () => {
       const fetchFn = vi.fn<FetchFn>(async (_input, init) => {
         expect(JSON.parse(String(init?.body))).toMatchObject({
           hasMachineCredential,
+          localApiPort: 38_888,
         });
         return Response.json(
           {
@@ -132,6 +134,7 @@ describe("createServerClient", () => {
         hostType: "persistent",
         dataDir: "/tmp/bb",
         instanceId: "instance-1",
+        localApiPort: 38_888,
         activeThreads: [],
         loadedEnvironments: [],
       });
@@ -439,7 +442,6 @@ describe("createServerClient", () => {
           threadId: "thr_123",
         },
       ],
-      kind: "accepted",
       rejectedEvents: [],
     });
   });

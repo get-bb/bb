@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   type MouseEventHandler,
+  type PointerEvent as ReactPointerEvent,
   type RefObject,
   useCallback,
   useEffect,
@@ -41,10 +42,9 @@ import {
   MACOS_WINDOW_NO_DRAG_CLASS,
 } from "@/lib/bb-desktop";
 import type {
-  SecondaryPanelFileTab,
+  SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
-} from "./secondaryPanelFileTab";
-export type { SecondaryPanelFileTab } from "./secondaryPanelFileTab";
+} from "./secondaryPanelTab";
 
 // Roughly one wide tab, so one click reveals the next tab without overshooting.
 const CHEVRON_SCROLL_STEP_PX = 140;
@@ -57,6 +57,17 @@ const TAB_STRIP_SCROLL_BUTTON_CLASS =
 const EDGE_EPSILON_PX = 1;
 
 export const SECONDARY_PANEL_TAB_STRIP_FADE_TONE: OverflowFadeTone = "sidebar";
+
+/**
+ * Stand-in for dnd-kit's TouchSensor while the panel is closed or has nothing
+ * to reorder: same activators (so the sensor slot keeps its shape) but no
+ * window `touchmove` listener from `setup`.
+ */
+class InertTouchSensor extends TouchSensor {
+  static override setup(): () => void {
+    return () => {};
+  }
+}
 
 interface TabStripOverflowState {
   /** The intrinsic tab row is wider than the whole strip. */
@@ -74,34 +85,51 @@ const INITIAL_OVERFLOW_STATE: TabStripOverflowState = {
 };
 
 export interface SecondaryPanelTabStripProps {
-  fileTabs: SecondaryPanelFileTab[];
+  activeTabId: string | null;
+  tabs: readonly SecondaryPanelRenderableTab[];
+  onBeginTabDrag?: (
+    tabId: string,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => void;
   onReorderTab: SecondaryPanelTabReorderHandler;
   usesDesktopChrome: boolean;
-  activeTreatment?: "fill" | "underline";
+  /**
+   * Whether the hosting panel is open. The strip stays mounted inside a closed
+   * (retained) panel; touch reorder is only wired while it is open so the
+   * dnd-kit touch sensor's scroll-blocking window listener does not exist on
+   * every page.
+   */
+  isPanelOpen: boolean;
 }
 
-interface SortableFileTabProps {
-  activeTreatment: "fill" | "underline";
+interface SortablePanelTabProps {
+  isActive: boolean;
   activeTabRef: RefObject<HTMLDivElement | null>;
   dragDisabled: boolean;
   noDragClass: string | null;
-  tab: SecondaryPanelFileTab;
+  onBeginTabDrag?: (
+    tabId: string,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => void;
+  tab: SecondaryPanelRenderableTab;
 }
 
 /**
  * The middle, horizontally-scrolling region of the secondary panel tab strip.
  *
- * Only the file tabs scroll; the leading Info/Diff controls and trailing
+ * Only the closable tabs scroll; the leading Info/Diff controls and trailing
  * new-tab/panel controls stay anchored outside this component. Edge
  * fades and scroll buttons appear only on a side that has more tabs, and the
  * active tab is auto-scrolled into view on mount and whenever it changes
  * (covering pointer, keyboard, and programmatic selection).
  */
 export function SecondaryPanelTabStrip({
-  fileTabs,
+  activeTabId,
+  tabs,
+  onBeginTabDrag,
   onReorderTab,
   usesDesktopChrome,
-  activeTreatment = "fill",
+  isPanelOpen,
 }: SecondaryPanelTabStripProps) {
   const stripRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -126,18 +154,29 @@ export function SecondaryPanelTabStrip({
     clearDragClickSuppressionSoon,
     consumeDragClickSuppression,
   } = useDragClickSuppression();
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 6 },
-    }),
+  const dragDisabled = tabs.length < 2;
+  const mouseSensor = useSensor(MouseSensor, {
+    activationConstraint: { distance: 4 },
+  });
+  // dnd-kit's TouchSensor keeps a NON-passive window `touchmove` listener
+  // installed while any DndContext using it is mounted, which makes every
+  // scroll start on phones wait for the main thread. Only wire the real
+  // sensor while there is something to reorder in an open panel. The sensor
+  // list must keep a constant length: DndContext's setup effect uses the
+  // sensor classes as its dependency array, and React skips an effect whose
+  // dependency array merely changed size, so swapping the CLASS (rather than
+  // dropping the entry) is what makes the listener install on open and go
+  // away on close.
+  const touchSensor = useSensor(
+    isPanelOpen && !dragDisabled ? TouchSensor : InertTouchSensor,
+    { activationConstraint: { delay: 200, tolerance: 6 } },
   );
-  const tabIds = useMemo(() => fileTabs.map((tab) => tab.id), [fileTabs]);
-  const dragDisabled = fileTabs.length < 2;
+  const sensors = useSensors(mouseSensor, touchSensor);
+  const tabIds = useMemo(() => tabs.map((tab) => tab.tab.id), [tabs]);
   const draggingTab =
     draggingTabId === null
       ? null
-      : (fileTabs.find((tab) => tab.id === draggingTabId) ?? null);
+      : (tabs.find((tab) => tab.tab.id === draggingTabId) ?? null);
 
   // Cheap: reads only scrollLeft (no layout flush) against the cached capacity.
   const applyEdgeFlags = useCallback(() => {
@@ -227,7 +266,7 @@ export function SecondaryPanelTabStrip({
   // rename), so re-measure capacity whenever the tab list changes.
   useEffect(() => {
     measureCapacity();
-  }, [fileTabs, measureCapacity]);
+  }, [tabs, measureCapacity]);
 
   // A web-font swap changes the tabs' intrinsic width (and so scrollWidth)
   // without resizing the viewport or changing the tab list, which would leave the
@@ -242,7 +281,6 @@ export function SecondaryPanelTabStrip({
   // keeps a tab that was aligned to the old viewport edge from being clipped
   // when the controls reserve space. jsdom doesn't implement scrollIntoView,
   // so guard the call.
-  const activeTabId = fileTabs.find((tab) => tab.isActive)?.id ?? null;
   useLayoutEffect(() => {
     const activeTabElement = activeTabRef.current;
     if (activeTabElement === null) {
@@ -393,13 +431,14 @@ export function SecondaryPanelTabStrip({
           items={tabIds}
           strategy={horizontalListSortingStrategy}
         >
-          {fileTabs.map((tab) => (
-            <SortableFileTab
-              key={tab.id}
-              activeTreatment={activeTreatment}
+          {tabs.map((tab) => (
+            <SortablePanelTab
+              key={tab.tab.id}
               activeTabRef={activeTabRef}
               dragDisabled={dragDisabled}
+              isActive={tab.tab.id === activeTabId}
               noDragClass={noDragClass}
+              onBeginTabDrag={onBeginTabDrag}
               tab={tab}
             />
           ))}
@@ -411,7 +450,10 @@ export function SecondaryPanelTabStrip({
         {createPortal(
           <DragOverlay className="cursor-grabbing">
             {draggingTab === null ? null : (
-              <FileTab tab={draggingTab} activeTreatment={activeTreatment} />
+              <PanelTab
+                isActive={draggingTab.tab.id === activeTabId}
+                tab={draggingTab}
+              />
             )}
           </DragOverlay>,
           document.body,
@@ -424,11 +466,12 @@ export function SecondaryPanelTabStrip({
       handleDragCancel,
       handleDragEnd,
       tabIds,
-      fileTabs,
+      tabs,
       dragDisabled,
       noDragClass,
+      onBeginTabDrag,
       draggingTab,
-      activeTreatment,
+      activeTabId,
     ],
   );
 
@@ -500,26 +543,29 @@ export function SecondaryPanelTabStrip({
   );
 }
 
-function SortableFileTab({
-  activeTreatment,
+function SortablePanelTab({
   activeTabRef,
   dragDisabled,
+  isActive,
   noDragClass,
+  onBeginTabDrag,
   tab,
-}: SortableFileTabProps) {
+}: SortablePanelTabProps) {
   const { isDragging, listeners, setNodeRef, transform, transition } =
     useSortable({
-      id: tab.id,
+      id: tab.tab.id,
       disabled: dragDisabled,
     });
+  const { onPointerDown: sortablePointerDown, ...sortableListeners } =
+    listeners ?? {};
   const setTabRef = useCallback(
     (element: HTMLDivElement | null) => {
       setNodeRef(element);
-      if (tab.isActive) {
+      if (isActive) {
         activeTabRef.current = element;
       }
     },
-    [activeTabRef, setNodeRef, tab.isActive],
+    [activeTabRef, isActive, setNodeRef],
   );
   const style = useMemo<CSSProperties>(
     () => ({
@@ -541,9 +587,13 @@ function SortableFileTab({
         isDragging && "opacity-40",
         noDragClass,
       )}
-      {...listeners}
+      onPointerDown={(event) => {
+        onBeginTabDrag?.(tab.tab.id, event);
+        sortablePointerDown?.(event);
+      }}
+      {...sortableListeners}
     >
-      <FileTab tab={tab} activeTreatment={activeTreatment} />
+      <PanelTab tab={tab} isActive={isActive} />
     </div>
   );
 }
@@ -593,25 +643,22 @@ function TabStripScrollButton({
   );
 }
 
-function FileTab({
+function PanelTab({
   tab,
-  activeTreatment,
+  isActive,
 }: {
-  tab: SecondaryPanelFileTab;
-  activeTreatment: "fill" | "underline";
+  tab: SecondaryPanelRenderableTab;
+  isActive: boolean;
 }) {
   const title =
-    tab.statusLabel === null
-      ? tab.filename
-      : `${tab.filename} (${tab.statusLabel})`;
+    tab.statusLabel === null ? tab.label : `${tab.label} (${tab.statusLabel})`;
   return (
     <TabPill
-      label={tab.filename}
+      label={tab.label}
       leadingVisual={tab.leadingVisual}
       secondaryLabel={tab.statusLabel === null ? null : `(${tab.statusLabel})`}
       title={title}
-      isActive={tab.isActive}
-      activeTreatment={activeTreatment}
+      isActive={isActive}
       onSelect={tab.onSelect}
       labelMaxWidthClass="max-w-[160px]"
       closeAction={
@@ -619,8 +666,7 @@ function FileTab({
           ? null
           : {
               onClose: tab.onClose,
-              closeLabel: `Close ${tab.filename}`,
-              closeTooltip: "Close tab",
+              closeLabel: `Close ${tab.label}`,
             }
       }
     />

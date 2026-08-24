@@ -9,7 +9,7 @@
  */
 
 /** Path prefix this route owns; everything after it is an R2 object key. */
-export const MARKETPLACE_PATH_PREFIX = "/marketplace/v1/";
+const MARKETPLACE_PATH_PREFIX = "/marketplace/v1/";
 
 /** Manifest revalidates quickly; icons are immutable per URL. */
 const MANIFEST_CACHE_CONTROL = "public, max-age=300, must-revalidate";

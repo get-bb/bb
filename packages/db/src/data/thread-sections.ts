@@ -70,7 +70,7 @@ export function getThreadSectionById(
     ?? null;
 }
 
-export function getThreadSectionByName(
+function getThreadSectionByName(
   db: DbQueryConnection,
   name: string,
 ): ThreadSectionRow | null {

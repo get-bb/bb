@@ -1,4 +1,5 @@
 import { loadCliConfig, type CliConfig } from "@bb/config/cli";
+import { toOptionalString } from "@bb/config/strings";
 
 const VALID_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -6,11 +7,11 @@ export interface CliRuntimeContext {
   cliConfig: CliConfig;
 }
 
-export interface CreateCliRuntimeContextArgs {
+interface CreateCliRuntimeContextArgs {
   cliConfig?: CliConfig;
 }
 
-export interface ResolveExplicitIdFlagArgs {
+interface ResolveExplicitIdFlagArgs {
   flagName: string;
   value?: string;
 }
@@ -32,26 +33,18 @@ function validateId(value: string, source: string): string {
   return value;
 }
 
-function trimToUndefined(value?: string): string | undefined {
-  if (value === undefined) return undefined;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-export function resolveServerUrl(
-  context: CliRuntimeContext = createCliRuntimeContext(),
-): string {
+export function resolveServerUrl(context: CliRuntimeContext): string {
   return context.cliConfig.BB_SERVER_URL;
 }
 
 export function resolveContextProjectId(): string | undefined {
-  const fromEnv = trimToUndefined(process.env.BB_PROJECT_ID);
+  const fromEnv = toOptionalString(process.env.BB_PROJECT_ID);
   if (fromEnv) return validateId(fromEnv, "BB_PROJECT_ID");
   return undefined;
 }
 
 export function resolveContextThreadId(): string | undefined {
-  const fromEnv = trimToUndefined(process.env.BB_THREAD_ID);
+  const fromEnv = toOptionalString(process.env.BB_THREAD_ID);
   if (fromEnv) return validateId(fromEnv, "BB_THREAD_ID");
   return undefined;
 }
@@ -59,18 +52,9 @@ export function resolveContextThreadId(): string | undefined {
 export function resolveExplicitIdFlag(
   args: ResolveExplicitIdFlagArgs,
 ): string | undefined {
-  const fromFlag = trimToUndefined(args.value);
+  const fromFlag = toOptionalString(args.value);
   if (fromFlag) return validateId(fromFlag, args.flagName);
   return undefined;
-}
-
-export function requireProjectId(flagValue?: string): string {
-  const projectId = resolveExplicitIdFlag({
-    flagName: "--project flag",
-    value: flagValue,
-  });
-  if (projectId) return projectId;
-  throw new Error("Missing project ID. Pass --project <id>.");
 }
 
 export function requireThreadId(positionalId?: string): string {
@@ -88,7 +72,7 @@ export interface ResolvedId {
   source: "arg" | "env";
 }
 
-export interface ThreadSelfTargetOptions {
+interface ThreadSelfTargetOptions {
   self?: boolean;
 }
 

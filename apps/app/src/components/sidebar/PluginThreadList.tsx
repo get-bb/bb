@@ -1,13 +1,14 @@
 import { useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
+import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { useSidebar } from "@/components/ui/sidebar.js";
 import { useRouteState } from "@/hooks/useRouteState";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 
 /** Shared by the mount and the host's crash check. */
-export const THREAD_LIST_SLOT_KIND = "threadList";
+const THREAD_LIST_SLOT_KIND = "threadList";
 
 interface PluginThreadListProps {
   replacement: ResolvedReplacement<PluginThreadListSlot>;
@@ -57,7 +58,8 @@ export function PluginThreadList({
           isCompactViewport={isCompactViewport}
           onNavigate={onNavigate}
           searchQuery={searchQuery}
-          experimental_Original={BoundOriginal}
+          Original={BoundOriginal}
+          experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
         />
       )}
     </PluginReplacementSlot>

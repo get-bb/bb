@@ -15,21 +15,28 @@ import {
   createNoopDesktopBrowserApi,
 } from "@/test/bb-desktop-test-utils";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import { BrowserTabDeck } from "./BrowserTabDeck";
+import { BrowserTabDeck, BrowserTabLifecycleObserver } from "./BrowserTabDeck";
 import { resetBrowserViewPersistence } from "./browserViewVisibilityCoordinator";
 
 type BrowserCall =
   | { type: "attach"; request: BbDesktopBrowserAttachRequest }
+  | { type: "detach"; tabId: string }
   | { type: "setBounds"; request: BbDesktopBrowserSetBoundsRequest }
-  | { type: "setVisible"; request: BbDesktopBrowserSetVisibleRequest };
+  | { type: "setVisible"; request: BbDesktopBrowserSetVisibleRequest }
+  | {
+      type: "setVisibleWithoutFocus";
+      request: BbDesktopBrowserSetVisibleRequest;
+    };
 
 interface RecordingBrowserApi {
   api: BbDesktopBrowserApi;
   calls: BrowserCall[];
+  detachments: string[];
   attachments: BbDesktopBrowserAttachRequest[];
   bounds: BbDesktopBrowserSetBoundsRequest[];
   emitState: (state: BbDesktopBrowserState) => void;
   visibility: BbDesktopBrowserSetVisibleRequest[];
+  visibilityWithoutFocus: BbDesktopBrowserSetVisibleRequest[];
 }
 
 const BROWSER_PANEL_RECT = new DOMRect(12, 24, 420, 260);
@@ -58,13 +65,19 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
   const calls: BrowserCall[] = [];
   const attachments: BbDesktopBrowserAttachRequest[] = [];
   const bounds: BbDesktopBrowserSetBoundsRequest[] = [];
+  const detachments: string[] = [];
   const stateListeners: Array<(state: BbDesktopBrowserState) => void> = [];
   const visibility: BbDesktopBrowserSetVisibleRequest[] = [];
+  const visibilityWithoutFocus: BbDesktopBrowserSetVisibleRequest[] = [];
   const api: BbDesktopBrowserApi = {
     ...createNoopDesktopBrowserApi(),
     attach(request) {
       attachments.push(request);
       calls.push({ type: "attach", request });
+    },
+    detach(tabId) {
+      detachments.push(tabId);
+      calls.push({ type: "detach", tabId });
     },
     setBounds(request) {
       bounds.push(request);
@@ -73,6 +86,10 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
     setVisible(request) {
       visibility.push(request);
       calls.push({ type: "setVisible", request });
+    },
+    setVisibleWithoutFocus(request) {
+      visibilityWithoutFocus.push(request);
+      calls.push({ type: "setVisibleWithoutFocus", request });
     },
     onState(listener) {
       stateListeners.push(listener);
@@ -89,12 +106,14 @@ function createRecordingBrowserApi(): RecordingBrowserApi {
     calls,
     attachments,
     bounds,
+    detachments,
     emitState(state) {
       for (const listener of stateListeners) {
         listener(state);
       }
     },
     visibility,
+    visibilityWithoutFocus,
   };
 }
 
@@ -154,6 +173,34 @@ function lastCallIndex(
   }
   return -1;
 }
+
+describe("BrowserTabLifecycleObserver", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    resetBrowserViewPersistence();
+    delete window.bbDesktop;
+  });
+
+  it("destroys a closed browser view exactly once without an active deck", async () => {
+    const { api, detachments, visibility } = createRecordingBrowserApi();
+    installDesktopBrowser(api);
+    const tab = makeBrowserTab("tab-closed", "https://example.com");
+    const view = render(
+      <BrowserTabLifecycleObserver browserTabs={[tab]} threadId="thread-1" />,
+    );
+
+    await waitFor(() => expect(detachments).toHaveLength(0));
+    view.rerender(
+      <BrowserTabLifecycleObserver browserTabs={[]} threadId="thread-1" />,
+    );
+
+    await waitFor(() => expect(detachments).toEqual(["tab-closed"]));
+    expect(
+      visibility.filter((request) => request.tabId === "tab-closed"),
+    ).toEqual([{ tabId: "tab-closed", visible: false }]);
+  });
+});
 
 describe("BrowserTabDeck native browser first-show ordering", () => {
   const originalGetBoundingClientRect = Element.prototype.getBoundingClientRect;
@@ -299,6 +346,54 @@ describe("BrowserTabDeck native browser first-show ordering", () => {
     expect(hideIndex).toBeGreaterThan(showIndex);
     expect(restoredBoundsIndex).toBeGreaterThan(hideIndex);
     expect(restoredShowIndex).toBeGreaterThan(restoredBoundsIndex);
+  });
+
+  it("keeps an unfocused split view hidden on a legacy desktop focus bridge", async () => {
+    const { api, attachments, visibility } = createRecordingBrowserApi();
+    const { focus: _focus, onFocus: _onFocus, ...legacyApi } = api;
+    installDesktopBrowser(legacyApi);
+
+    render(
+      <BrowserTabDeck
+        browserTabs={[makeBrowserTab("tab-url", "https://example.com")]}
+        activeBrowserTabId="tab-url"
+        environmentId="env-1"
+        canShowNativeBrowserView
+        canHandleBrowserCommands={false}
+        threadId="thread-1"
+        onUpdate={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(attachments).toHaveLength(1));
+    expect(visibility.some((request) => request.visible)).toBe(false);
+  });
+
+  it("shows an unfocused split view without moving native focus", async () => {
+    const { api, attachments, visibility, visibilityWithoutFocus } =
+      createRecordingBrowserApi();
+    installDesktopBrowser(api);
+
+    render(
+      <BrowserTabDeck
+        browserTabs={[makeBrowserTab("tab-url", "https://example.com")]}
+        activeBrowserTabId="tab-url"
+        environmentId="env-1"
+        canShowNativeBrowserView
+        canHandleBrowserCommands={false}
+        threadId="thread-1"
+        onUpdate={() => {}}
+      />,
+    );
+
+    await waitFor(() => expect(attachments).toHaveLength(1));
+    await waitFor(() =>
+      expect(visibilityWithoutFocus).toContainEqual({
+        tabId: "tab-url",
+        visible: true,
+      }),
+    );
+    expect(visibility.some((request) => request.visible)).toBe(false);
   });
 
   it("focuses the address bar when an empty browser tab requests focus", () => {

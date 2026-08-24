@@ -13,8 +13,8 @@ import {
   isRuntimeBusyThread,
   isUnreadDoneThread,
   resolveThreadListIndicator,
-} from "./thread-activity";
-import { isThreadRead } from "./thread-read-state";
+} from "@bb/client-core";
+import { isThreadRead } from "@bb/client-core";
 
 /**
  * The ONE place a host `ThreadListEntry` becomes the plugin-facing

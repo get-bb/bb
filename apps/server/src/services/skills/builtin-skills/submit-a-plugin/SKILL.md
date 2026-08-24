@@ -280,6 +280,8 @@ Use `.svg`, `.png`, or `.webp` for an icon file. Keep the file at or below 256 K
 
 Prefer a simple square image with clear contrast at small sizes.
 
+BB masks an SVG icon with the surrounding text color, so a single-color SVG follows the user's theme. PNG and WebP icons keep their own colors. Use PNG or WebP for multi-color artwork.
+
 Do not include scripts, remote resources, or private data in an SVG.
 
 Copy the file into `icons/`. Use a content hash in the filename to prevent stale cached icons.

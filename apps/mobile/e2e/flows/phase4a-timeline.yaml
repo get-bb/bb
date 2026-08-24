@@ -1,0 +1,70 @@
+# Phase 4a timeline: first run → add the harness server → open "Rich thread"
+# → the timeline opens at the unread divider (never read → top), the first
+# user message is visible → scroll to the long markdown message → table of
+# contents → jump back to the first message.
+#
+# Requires Metro started with EXPO_PUBLIC_BB_E2E=1 and the harness backend
+# (seeds "Rich thread" with several fake-provider turns; see
+# tests/integration/mobile-e2e/backend.ts).
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+# First run: add the Direct server.
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+# Tapping static text dismisses the keyboard; Maestro's hideKeyboard swipe is
+# unreliable on this screen since the bb connect row lengthened it.
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+# Home lists the seeded threads; open the rich one.
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Rich thread"
+    timeout: 30000
+- tapOn: "Rich thread"
+# Thread detail: header + timeline. The thread was never read, so the list
+# opens at the "New" divider above the first row.
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-header"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "thread-timeline"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Hello rich thread, first message"
+    timeout: 30000
+- assertVisible: "Needs input"
+- takeScreenshot: phase4a-timeline-top
+# Scroll down to the long markdown message (assert on plain words: the
+# heading text survives any renderer; `(?s)` lets the match span the lines
+# of a multi-line text node).
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Release checklist overview.*"
+    direction: DOWN
+    timeout: 60000
+    speed: 40
+    visibilityPercentage: 10
+- takeScreenshot: phase4a-timeline-long-message
+# The Rich thread ends on a pending question, so the banner holds the bottom.
+- assertVisible:
+    id: "thread-prompt-area"
+- takeScreenshot: phase4a-timeline-bottom

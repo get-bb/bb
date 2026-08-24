@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, sql } from "drizzle-orm";
 import {
   deleteThreadEventSuffixInTransaction,
   events,
@@ -174,6 +174,31 @@ function getTurnCompletion(
   return event.type === "turn/completed" ? event : null;
 }
 
+const CODEX_NATIVE_TURN_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The provider checkpoint a completed root turn can be re-created through:
+ * what `turn/completed` recorded, which rewinds and point-in-time forks hand
+ * back to the bridge. Runtime-assembled Codex timelines have bb-minted turn
+ * ids and persist the native Codex turn id as the checkpoint. Older Codex
+ * timelines used the native UUID directly and have no checkpoint, so retain
+ * that compatibility fallback without ever forwarding a bb-minted id to Codex.
+ */
+export function resolveTurnProviderCheckpointId(args: {
+  providerCheckpointId: string | null | undefined;
+  providerId: string;
+  turnId: string;
+}): string | null {
+  if (args.providerCheckpointId) {
+    return args.providerCheckpointId;
+  }
+  return args.providerId === "codex" &&
+    CODEX_NATIVE_TURN_ID_PATTERN.test(args.turnId)
+    ? args.turnId
+    : null;
+}
+
 function resolveEditableTurnCandidate(
   db: DbQueryConnection,
   thread: Thread,
@@ -242,7 +267,7 @@ function resolveEditableTurnCandidate(
         eq(events.threadId, thread.id),
         eq(events.type, "turn/started"),
         lt(events.sequence, requestRow.sequence),
-        sql`COALESCE(json_extract(${events.data}, '$.parentToolCallId'), '') = ''`,
+        isNull(events.parentToolCallId),
       ),
     )
     .orderBy(desc(events.sequence))
@@ -263,9 +288,11 @@ function resolveEditableTurnCandidate(
   const precedingProviderCheckpoint =
     precedingTurnId === null
       ? null
-      : thread.providerId === "codex"
-        ? precedingTurnId
-        : (precedingCompletion?.providerCheckpointId ?? null);
+      : resolveTurnProviderCheckpointId({
+          providerCheckpointId: precedingCompletion?.providerCheckpointId,
+          providerId: thread.providerId,
+          turnId: precedingTurnId,
+        });
   if (precedingTurnId !== null && precedingProviderCheckpoint === null) {
     conflict("This earlier provider turn has no editable history checkpoint");
   }
@@ -446,12 +473,9 @@ export async function editThreadMessage(
   await ensureHostSessionReadyForWork(deps, {
     hostId: readyEnvironment.hostId,
   });
-  const execution = await buildExecutionOptions(
-    deps,
-    args.payload,
-    { threadId: editableThread.id },
-    "client/turn/requested",
-  );
+  const execution = await buildExecutionOptions(deps, args.payload, {
+    threadId: editableThread.id,
+  });
 
   let stagedProviderThreadId: string | null = null;
   let rewindLeaseId: string | null = null;
@@ -467,7 +491,6 @@ export async function editThreadMessage(
       requestId: createClientTurnRequestId(),
       execution,
       permissionEscalation: resolvePermissionEscalation({
-        thread: editableThread,
         initiator,
       }),
       environment: readyEnvironment,

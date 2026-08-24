@@ -10,6 +10,7 @@ import {
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
+import type { PluginCliRegistration } from "@get-bb/plugin-sdk";
 import { describe, expect, it } from "vitest";
 import {
   claimAutomationScheduledRun,
@@ -42,6 +43,7 @@ import {
 import { reconcileRunningAutomationRuns } from "./run.js";
 import { sweepDueAutomations } from "./sweep.js";
 import { createAutomationService } from "./service.js";
+import { registerAutomationCli } from "./cli.js";
 import { automationScriptDir } from "./script-files.js";
 
 function createTestDb(): Db {
@@ -71,6 +73,7 @@ function createScheduledAutomation(
       prompt: "do it",
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "medium",
       permissionMode: "accept-edits",
       environment: { type: "project-default" },
     },
@@ -96,6 +99,7 @@ function createOnceAutomation(db: Db, nextRunAt: number, id = "auto_once") {
       prompt: "do it once",
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "medium",
       permissionMode: "accept-edits",
       environment: { type: "project-default" },
     },
@@ -905,6 +909,7 @@ describe("automation service", () => {
           prompt: "hello",
           providerId: "codex",
           model: "gpt-5",
+          reasoningLevel: "medium",
           permissionMode: "accept-edits",
           environment: { type: "project-default" },
         },
@@ -952,6 +957,7 @@ describe("automation service", () => {
           prompt: "do it",
           providerId: "codex",
           model: "gpt-5",
+          reasoningLevel: "medium",
           permissionMode: "accept-edits",
           environment: { type: "project-default" },
         },
@@ -1126,6 +1132,326 @@ describe("automation service", () => {
       await expect(readdir(scriptDir)).resolves.toEqual(["old.sh"]);
     } finally {
       await rm(pluginDataDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("automation CLI --script-file", () => {
+  // Regression for get-bb/bb#1649: `--script-file` stores a snapshot copy of
+  // the source, so later edits to the source do nothing. The CLI must read the
+  // file on the invoking host (relative to the caller's cwd), print both paths
+  // with a note, and expose the stored copy path in `show`.
+  type FileReadCall = { hostId: string | undefined; path: string };
+
+  async function setup() {
+    const db = createTestDb();
+    const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-1649-data-"));
+    const srcDir = await mkdtemp(join(tmpdir(), "bb-1649-src-"));
+    const reads: FileReadCall[] = [];
+    const serviceBb = createAutomationServiceBb();
+    const service = createAutomationService({
+      bb: serviceBb,
+      db,
+      pluginDataDir,
+      serverUrl: "http://127.0.0.1:1",
+    });
+    const sdk = {
+      ...serviceBb.sdk,
+      hosts: {
+        list: async () => [
+          { id: "host_server", name: "server" },
+          { id: "host_laptop", name: "Laptop" },
+        ],
+      },
+      threads: {
+        ...serviceBb.sdk.threads,
+        get: async ({ threadId }: { threadId: string }) =>
+          threadId === "thr_env"
+            ? { id: threadId, environment: { hostId: "host_laptop" } }
+            : { id: threadId, environment: null },
+      },
+      // Fake host file API: records the host and reads the local disk.
+      files: {
+        read: async ({ hostId, path }: { hostId?: string; path: string }) => {
+          reads.push({ hostId, path });
+          const content = await readFile(path, "utf8");
+          return {
+            path,
+            content,
+            contentEncoding: "utf8" as const,
+            sizeBytes: Buffer.byteLength(content),
+            sha256: "",
+          };
+        },
+      },
+    };
+    let cli: PluginCliRegistration | undefined;
+    registerAutomationCli({
+      bb: {
+        sdk: sdk as never,
+        cli: {
+          register: (registration) => {
+            cli = registration;
+          },
+        },
+      },
+      service,
+    });
+    if (!cli) throw new Error("automation CLI was not registered");
+    return {
+      cli,
+      db,
+      pluginDataDir,
+      srcDir,
+      reads,
+      async cleanup() {
+        await rm(pluginDataDir, { recursive: true, force: true });
+        await rm(srcDir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  function idFrom(stdout: string | undefined): string {
+    const id = /Automation created: (\S+)/.exec(stdout ?? "")?.[1];
+    if (!id) throw new Error(`no id in: ${stdout}`);
+    return id;
+  }
+
+  it("resolves the source against ctx.cwd and reports the stored snapshot copy", async () => {
+    const t = await setup();
+    const sourcePath = join(t.srcDir, "hello.sh");
+    await writeFile(sourcePath, '#!/bin/sh\necho "VERSION 1"\n');
+    try {
+      // The plugin CLI runs server-side; a relative path must resolve against
+      // the invoking CLI's cwd, not the server process cwd.
+      const created = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "issue-1649",
+          "--in",
+          "30m",
+          "--script-file",
+          "./hello.sh",
+        ],
+        { cwd: t.srcDir },
+      );
+      expect(created.exitCode).toBe(0);
+      const automationId = idFrom(created.stdout);
+      // Outside a thread the read targets the server's primary host.
+      expect(t.reads).toEqual([{ hostId: undefined, path: sourcePath }]);
+      const storedPath = join(
+        automationScriptDir(t.pluginDataDir, automationId),
+        "hello.sh",
+      );
+      expect(created.stdout).toContain(`Script:    ${storedPath}`);
+      expect(created.stdout).toContain(`Copied ${sourcePath}`);
+      expect(created.stdout).toContain(`to ${storedPath}`);
+      expect(created.stdout).toContain(
+        `bb automation update ${automationId} --project proj_test --script-file ${sourcePath} --interpreter bash --timeout 120000`,
+      );
+
+      const shown = await t.cli.run(
+        ["show", automationId, "--project", "proj_test"],
+        {},
+      );
+      expect(shown.stdout).toContain(`Script:    ${storedPath}`);
+      const shownJson = await t.cli.run(
+        ["show", automationId, "--project", "proj_test", "--json"],
+        {},
+      );
+      expect(JSON.parse(shownJson.stdout ?? "").execution).toEqual({
+        mode: "script",
+        script: '#!/bin/sh\necho "VERSION 1"\n',
+        interpreter: "bash",
+        timeoutMs: 120_000,
+        storedScriptPath: storedPath,
+      });
+      // Every route that returns the automation carries the stored path.
+      const listed = await t.cli.run(
+        ["list", "--project", "proj_test", "--json"],
+        {},
+      );
+      expect(
+        JSON.parse(listed.stdout ?? "")[0].execution.storedScriptPath,
+      ).toBe(storedPath);
+      const paused = await t.cli.run(
+        ["pause", automationId, "--project", "proj_test", "--json"],
+        {},
+      );
+      expect(JSON.parse(paused.stdout ?? "").execution.storedScriptPath).toBe(
+        storedPath,
+      );
+
+      // Editing the source does not change the stored copy; only a fresh
+      // `update --script-file` refreshes it.
+      await writeFile(sourcePath, '#!/bin/sh\necho "VERSION 2"\n');
+      await expect(readFile(storedPath, "utf8")).resolves.toContain(
+        "VERSION 1",
+      );
+      const updated = await t.cli.run(
+        [
+          "update",
+          automationId,
+          "--project",
+          "proj_test",
+          "--script-file",
+          "hello.sh",
+        ],
+        { cwd: t.srcDir },
+      );
+      expect(updated.exitCode).toBe(0);
+      expect(updated.stdout).toContain(`Copied ${sourcePath}`);
+      const updatedJson = await t.cli.run(
+        ["show", automationId, "--project", "proj_test", "--json"],
+        {},
+      );
+      const refreshedPath: unknown = JSON.parse(updatedJson.stdout ?? "")
+        .execution.storedScriptPath;
+      if (typeof refreshedPath !== "string") {
+        throw new Error("missing storedScriptPath after update");
+      }
+      expect(
+        refreshedPath.startsWith(
+          automationScriptDir(t.pluginDataDir, automationId),
+        ),
+      ).toBe(true);
+      expect(updated.stdout).toContain(`to ${refreshedPath}`);
+      await expect(readFile(refreshedPath, "utf8")).resolves.toContain(
+        "VERSION 2",
+      );
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("reads the file on the thread's environment host or the --host override", async () => {
+    const t = await setup();
+    const sourcePath = join(t.srcDir, "hello.sh");
+    await writeFile(sourcePath, "echo hi\n");
+    try {
+      const inThread = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "thread-host",
+          "--in",
+          "30m",
+          "--script-file",
+          sourcePath,
+        ],
+        { cwd: "/nonexistent", threadId: "thr_env" },
+      );
+      expect(inThread.exitCode).toBe(0);
+      expect(t.reads.at(-1)).toEqual({
+        hostId: "host_laptop",
+        path: sourcePath,
+      });
+      expect(inThread.stdout).toContain(
+        `Copied ${sourcePath} (host host_laptop)`,
+      );
+      expect(inThread.stdout).toContain(
+        `--script-file ${sourcePath} --host host_laptop --interpreter bash`,
+      );
+
+      const byName = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "named-host",
+          "--in",
+          "30m",
+          "--script-file",
+          sourcePath,
+          "--host",
+          "laptop",
+        ],
+        {},
+      );
+      expect(byName.exitCode).toBe(0);
+      expect(t.reads.at(-1)).toEqual({
+        hostId: "host_laptop",
+        path: sourcePath,
+      });
+
+      const noEnv = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "no-env",
+          "--in",
+          "30m",
+          "--script-file",
+          sourcePath,
+        ],
+        { threadId: "thr_bare" },
+      );
+      expect(noEnv.exitCode).toBe(1);
+      expect(noEnv.stderr).toContain("pass --host <name-or-id>");
+
+      const hostOnly = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "host-only",
+          "--in",
+          "30m",
+          "--script",
+          "echo hi",
+          "--host",
+          "laptop",
+        ],
+        {},
+      );
+      expect(hostOnly.exitCode).toBe(1);
+      expect(hostOnly.stderr).toContain("--host requires --script-file");
+    } finally {
+      await t.cleanup();
+    }
+  });
+
+  it("prints a refresh command that keeps script settings and quotes the path", async () => {
+    const t = await setup();
+    const sourcePath = join(t.srcDir, "my check $(id).py");
+    await writeFile(sourcePath, "print('hi')\n");
+    try {
+      const created = await t.cli.run(
+        [
+          "create",
+          "--project",
+          "proj_test",
+          "--name",
+          "quoted",
+          "--in",
+          "30m",
+          "--script-file",
+          sourcePath,
+          "--interpreter",
+          "python3",
+          "--timeout",
+          "5000",
+          "--env-json",
+          '{"CHANNEL":"qa","MSG":"it\'s"}',
+        ],
+        {},
+      );
+      expect(created.exitCode).toBe(0);
+      const automationId = idFrom(created.stdout);
+      expect(created.stdout).toContain(
+        `bb automation update ${automationId} --project proj_test --script-file '${sourcePath}' --interpreter python3 --timeout 5000 --env-json '{"CHANNEL":"qa","MSG":"it'\\''s"}'`,
+      );
+    } finally {
+      await t.cleanup();
     }
   });
 });

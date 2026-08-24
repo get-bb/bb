@@ -63,7 +63,9 @@ describe("InlineVisDirective", () => {
       },
     );
 
-    await slot.findByText(/Loading visualization charts\/demo file\.html/i);
+    await slot.findByRole("status", {
+      name: "Loading visualization charts/demo file.html",
+    });
 
     const iframe = await waitFor(() => {
       const el = slot.container.querySelector("iframe");
@@ -114,6 +116,67 @@ describe("InlineVisDirective", () => {
       return el as HTMLIFrameElement;
     });
     expect(iframe.style.height).toBe("480px");
+  });
+
+  it("reserves the preview height while loading so the timeline does not jump", async () => {
+    let resolvePreview = (_result: { file: string }) => {};
+    const pendingPreview = new Promise<{ file: string }>((resolve) => {
+      resolvePreview = resolve;
+    });
+    const slot = renderSlot(
+      app.messageDirectives[0]!,
+      {
+        attributes: { file: "demo.html", height: "480" },
+        source: '::inline-vis{file="demo.html" height="480"}',
+        message,
+        openWorkspaceFile: vi.fn(() => true),
+      },
+      {
+        rpc: {
+          prepareHtmlPreview: () => pendingPreview,
+        },
+      },
+    );
+
+    const loading = await waitFor(() => {
+      const el = slot.container.querySelector('[aria-busy="true"]');
+      if (!(el instanceof HTMLElement)) {
+        throw new Error("Expected the inline visualization loader to render");
+      }
+      return el;
+    });
+    // The loader must occupy the final preview height so the bottom-anchored
+    // timeline does not scroll when the iframe replaces it.
+    expect(loading.style.height).toBe("480px");
+    expect(
+      slot.getByRole("status", { name: "Loading visualization demo.html" }),
+    ).toBe(loading);
+    const loadingCard = loading.parentElement!;
+    const loadingHeader = loadingCard.firstElementChild!;
+    const loadingHeaderHtml = loadingHeader.outerHTML;
+
+    resolvePreview({ file: "demo.html" });
+
+    const iframe = await waitFor(() => {
+      const el = slot.container.querySelector("iframe");
+      if (!(el instanceof HTMLIFrameElement)) {
+        throw new Error("Expected the inline visualization iframe to render");
+      }
+      return el;
+    });
+    expect(iframe.style.height).toBe("480px");
+    expect(slot.queryByRole("status")).toBeNull();
+
+    // Same card, same header geometry: the loaded header only swaps the
+    // placeholder spacer for the same-sized open-in-sidebar button.
+    const readyCard = iframe.parentElement!;
+    expect(readyCard.className).toBe(loadingCard.className);
+    const readyHeader = readyCard.firstElementChild!;
+    expect(readyHeader.className).toBe(loadingHeader.className);
+    expect(readyHeader.lastElementChild!.classList.contains("size-5")).toBe(
+      true,
+    );
+    expect(loadingHeaderHtml).toContain("size-5");
   });
 
   it("rejects an invalid height without calling rpc", async () => {

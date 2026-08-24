@@ -7,12 +7,12 @@ import type { ReactNode } from "react";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByThread, listPanes } from "@/lib/split-layout";
 import type { LayoutNode, PaneContent, SplitLayout } from "@/lib/split-layout";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { useThreadRowSplitDrag } from "./useThreadRowSplitDrag";
 
-const { navigateSpy, compactState, experimentState } = vi.hoisted(() => ({
+const { navigateSpy, compactState } = vi.hoisted(() => ({
   navigateSpy: vi.fn(),
   compactState: { value: false },
-  experimentState: { enabled: true },
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => ({
@@ -22,10 +22,6 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => compactState.value,
-}));
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => experimentState.enabled,
 }));
 
 function content(threadId: string): PaneContent {
@@ -70,7 +66,9 @@ function renderOpenInSplit(threadId: string, layout: SplitLayout | null) {
   const store = createStore();
   store.set(splitLayoutAtom, layout);
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <Provider store={store}>{children}</Provider>
+    <Provider store={store}>
+      <RouteNavigationProvider>{children}</RouteNavigationProvider>
+    </Provider>
   );
   const { result } = renderHook(
     () => useThreadRowSplitDrag({ projectId: "p1", threadId, title: "Thread" }),
@@ -87,7 +85,6 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
   beforeEach(() => {
     navigateSpy.mockClear();
     compactState.value = false;
-    experimentState.enabled = true;
   });
 
   it("splits the focused pane to the right by default", () => {
@@ -140,20 +137,6 @@ describe("useThreadRowSplitDrag — openInSplit (cmd-click / context-menu entry)
     const { store, openInSplit } = renderOpenInSplit("t9", null);
     openInSplit();
     expect(store.get(splitLayoutAtom)).toBeNull();
-    expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
-  });
-
-  it("disables drag and plain-navigates without touching the layout when the experiment is off", () => {
-    experimentState.enabled = false;
-    const seeded = twoPanes();
-    const { store, getOnPointerDown, openInSplit } = renderOpenInSplit(
-      "t9",
-      seeded,
-    );
-
-    expect(getOnPointerDown()).toBeUndefined();
-    openInSplit();
-    expect(store.get(splitLayoutAtom)).toBe(seeded);
     expect(navigateSpy).toHaveBeenCalledWith("/projects/p1/threads/t9");
   });
 });

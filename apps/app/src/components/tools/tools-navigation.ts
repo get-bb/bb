@@ -26,14 +26,14 @@ export type ToolsSectionId = "skills" | "plugins";
  */
 export const TOOLS_PAGE_BAND_CLASSES = "mx-auto w-full max-w-5xl px-4 md:px-5";
 
-export interface ToolsSectionDefinition {
+interface ToolsSectionDefinition {
   id: ToolsSectionId;
   label: string;
   icon: IconName;
   to: string;
 }
 
-export const TOOLS_SECTIONS = {
+const TOOLS_SECTIONS = {
   skills: {
     id: "skills",
     label: "Skills",
@@ -53,12 +53,12 @@ export const TOOLS_SECTIONS = {
  * the Library; plugins call it Installed. Breadcrumbs and the collection tab
  * both read this, so renaming happens in one place.
  */
-export const TOOLS_OWNED_COLLECTION_LABEL = {
+const TOOLS_OWNED_COLLECTION_LABEL = {
   skills: "My skills",
   plugins: "Installed",
 } as const satisfies Record<ToolsSectionId, string>;
 
-export const TOOLS_OWNED_COLLECTION_VIEW = {
+const TOOLS_OWNED_COLLECTION_VIEW = {
   skills: "library",
   plugins: "installed",
 } as const satisfies Record<ToolsSectionId, string>;
@@ -69,7 +69,7 @@ export function getToolsOwnedCollectionRoutePath(id: ToolsSectionId): string {
 
 export const TOOLS_NAV_ITEMS = [TOOLS_SECTIONS.plugins, TOOLS_SECTIONS.skills];
 
-export interface ToolsBreadcrumbSegment {
+interface ToolsBreadcrumbSegment {
   label: string;
   to?: string;
 }
@@ -271,7 +271,7 @@ export function resolveToolsBreadcrumbs(
 }
 
 /** One Extensions page the sidebar lists: identity, label, icon, route. */
-export interface ToolsPageDefinition {
+interface ToolsPageDefinition {
   id:
     | "plugins-browse"
     | "plugins-installed"
@@ -366,14 +366,13 @@ export function resolveToolsActivePage(
  */
 export function resolveToolsAreaHeaderMeta(
   pathname: string,
-  toolsHubEnabled: boolean,
   resourceLabel?: string | null,
   search = "",
 ):
   | { kind: "extensions-title"; title: string }
   | { kind: "breadcrumbs"; breadcrumbs: ToolsBreadcrumbSegment[] }
   | null {
-  if (toolsHubEnabled && isToolsRoutePath(pathname)) {
+  if (isToolsRoutePath(pathname)) {
     const pluginCreateBreadcrumbs = resolvePluginCreateBreadcrumbs(
       pathname,
       search,

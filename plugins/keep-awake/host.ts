@@ -13,7 +13,7 @@ interface KeepAwakeChild {
   once(event: "error" | "exit", listener: () => void): this;
 }
 
-export interface KeepAwakeHostDependencies {
+interface KeepAwakeHostDependencies {
   readonly pid: number;
   readonly platform: NodeJS.Platform;
   spawn(

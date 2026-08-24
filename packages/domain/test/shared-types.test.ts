@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createBuiltinPlanCommandTextInput,
   permissionModeInputSchema,
   permissionModeSchema,
   promptInputHasCommandMention,
@@ -228,5 +229,28 @@ describe("prompt command input helpers", () => {
         name: "plan",
       }),
     ).toEqual(input);
+  });
+
+  // The CLI/SDK plan input must round-trip through the same selector the
+  // server keys plan mode on, and strip back to the bare request.
+  it("builds plan command input the plan selector recognizes and strips", () => {
+    const input = [createBuiltinPlanCommandTextInput("review the diff")];
+
+    expect(input[0]?.text).toBe("/plan review the diff");
+    expect(
+      promptInputHasCommandMention(input, { trigger: "/", name: "plan" }),
+    ).toBe(true);
+    expect(
+      removeCommandMentionsFromPromptInput(input, {
+        trigger: "/",
+        name: "plan",
+      }),
+    ).toEqual([{ type: "text", text: "review the diff", mentions: [] }]);
+    expect(
+      removeCommandMentionsFromPromptInput(
+        [createBuiltinPlanCommandTextInput("")],
+        { trigger: "/", name: "plan" },
+      ),
+    ).toEqual([{ type: "text", text: "", mentions: [] }]);
   });
 });

@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "resume",
+  "threadId": "thr_5p9ar8jadb",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "A turn, a release stop, then a new turn that resumes the session.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 19,
+    "provider→bridge": 40,
+    "bridge→provider": 10
+  }
+}

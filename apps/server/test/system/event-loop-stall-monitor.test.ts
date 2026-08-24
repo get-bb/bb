@@ -141,6 +141,25 @@ describe("event loop stall monitor", () => {
     monitor.stop();
   });
 
+  it("suppresses histogram delays accumulated while the system was suspended", () => {
+    const histogram = installHistogram({
+      maxDelayMs: 300_000,
+      meanDelayMs: 25,
+      p99DelayMs: 450,
+    });
+    const logger = { info: vi.fn() };
+    let now = 0;
+
+    const monitor = startEventLoopStallMonitor({ logger, now: () => now });
+    now = 300_000;
+    vi.advanceTimersByTime(EVENT_LOOP_STALL_MONITOR_INTERVAL_MS);
+
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(histogram.reset).toHaveBeenCalledTimes(1);
+
+    monitor.stop();
+  });
+
   it("stops sampling after stop", () => {
     const histogram = installHistogram({
       maxDelayMs: 500,
@@ -158,7 +177,7 @@ describe("event loop stall monitor", () => {
     expect(logger.info).not.toHaveBeenCalled();
   });
 
-  it("includes the in-flight unit of work on the stall report", async () => {
+  it("does not attribute an in-flight async wait as the event loop block", async () => {
     installHistogram({
       maxDelayMs: 500,
       meanDelayMs: 25,
@@ -182,7 +201,8 @@ describe("event loop stall monitor", () => {
         currentWork: "GET /api/v1/threads/thr_example/timeline",
         lastWork: null,
         lastWorkMs: null,
-        slowestWork: "GET /api/v1/threads/thr_example/timeline",
+        slowestWork: null,
+        slowestWorkMs: null,
       }),
       "Event loop stalled",
     );

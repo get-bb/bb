@@ -4,7 +4,7 @@ import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-
 /** Marks the sticky footer wrapper of a bottom-anchored scroll body. */
 export const SCROLL_FOOTER_ATTRIBUTE = "data-scroll-footer";
 /** Marks each footer element whose height follows this hook. */
-export const STICKY_FOOTER_FLEX_ATTRIBUTE = "data-sticky-footer-flex";
+const STICKY_FOOTER_FLEX_ATTRIBUTE = "data-sticky-footer-flex";
 
 /**
  * Measures how tall `ref` may grow while the sticky footer that contains it

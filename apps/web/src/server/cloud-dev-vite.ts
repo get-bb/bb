@@ -1,4 +1,4 @@
-export interface CloudDevViteSettings {
+interface CloudDevViteSettings {
   persistStatePath: string;
   vars: Record<string, string>;
 }

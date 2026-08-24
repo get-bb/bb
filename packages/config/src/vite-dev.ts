@@ -3,17 +3,14 @@ import { type EnvLoaderArgs } from "./env.js";
 import { BB_LOOPBACK_HOST } from "./runtime.js";
 import { loadServerPortConfig } from "./server-port.js";
 
-export type ViteDevServerWsOrigin = { kind: "browser-host"; port: number };
-
-export interface ViteDevConfig {
+interface ViteDevConfig {
   appPort: number;
   serverHttpOrigin: string;
   serverPort: number;
-  serverWsOrigin: ViteDevServerWsOrigin;
   appHost: string;
 }
 
-export interface LoadViteDevConfigArgs extends EnvLoaderArgs {
+interface LoadViteDevConfigArgs extends EnvLoaderArgs {
   repoRoot?: string;
 }
 
@@ -41,9 +38,5 @@ export function loadViteDevConfig(
     appPort,
     serverHttpOrigin: `http://${BB_LOOPBACK_HOST}:${serverPort}`,
     serverPort,
-    serverWsOrigin: {
-      kind: "browser-host",
-      port: serverPort,
-    },
   };
 }

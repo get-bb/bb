@@ -6,7 +6,7 @@ import {
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { systemConfigQueryKey } from "../queries/query-keys";
 
-export interface KeyboardSettingsCacheTransaction {
+interface KeyboardSettingsCacheTransaction {
   previous: SystemConfigResponse | undefined;
 }
 
@@ -46,4 +46,26 @@ export function rollbackKeyboardSettingsCacheTransaction({
 }: RollbackKeyboardSettingsCacheTransactionArgs): void {
   if (transaction?.previous === undefined) return;
   queryClient.setQueryData(systemConfigQueryKey(), transaction.previous);
+}
+
+/**
+ * The streamer mode value the cache last saw from the server, or undefined
+ * when `/system/config` has not resolved in this window.
+ */
+export function readCachedStreamerMode(
+  queryClient: QueryClient,
+): boolean | undefined {
+  return queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey())
+    ?.generalSettings.streamerMode;
+}
+
+/**
+ * The provider order the cache last saw from the server, or undefined when
+ * `/system/config` has not resolved in this window.
+ */
+export function readCachedProviderOrder(
+  queryClient: QueryClient,
+): readonly string[] | undefined {
+  return queryClient.getQueryData<SystemConfigResponse>(systemConfigQueryKey())
+    ?.generalSettings.providerOrder;
 }

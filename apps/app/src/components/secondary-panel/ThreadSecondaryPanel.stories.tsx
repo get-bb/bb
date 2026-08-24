@@ -8,17 +8,27 @@ import {
 import { PanelGroup } from "react-resizable-panels";
 import {
   ThreadSecondaryPanel,
-  type SecondaryPanelFileTab,
+  type SecondaryPanelFixedTab,
+  type SecondaryPanelRenderableTab,
 } from "./ThreadSecondaryPanel";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
 import { Icon } from "@bb/shared-ui/icon";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { SidebarProvider } from "@/components/ui/sidebar";
 import {
   createGitDiffFixedPanelTab,
   createTerminalFixedPanelTab,
   createThreadInfoFixedPanelTab,
   type HostFilePreviewFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
   type SecondaryFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
+import {
+  createSidebarSplitState,
+  moveSidebarTab,
+  serializeSidebarSplitState,
+  sidebarSplitStorageKey,
+} from "./sidebarSplitLayout";
 import type { WorkspaceFile } from "@bb/server-contract";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import {
@@ -48,13 +58,42 @@ function createStoryFixedPanelTab(
     : createThreadInfoFixedPanelTab();
 }
 
-function createStoryFileTab(filename: string): HostFilePreviewFixedPanelTab {
+function createStoryFixedTabs(
+  onSelectPanel: (panel: ThreadSecondaryPanelTab) => void,
+  includeGitDiffTab = true,
+): readonly SecondaryPanelFixedTab[] {
+  return [
+    {
+      ariaLabel: "Show thread info panel",
+      label: "Info",
+      leadingVisual: <Icon name="Info" />,
+      onSelect: () => onSelectPanel("thread-info"),
+      tab: createThreadInfoFixedPanelTab(),
+      title: "Thread info",
+    },
+    ...(includeGitDiffTab
+      ? [
+          {
+            ariaLabel: "Show diff panel",
+            label: "Diff",
+            leadingVisual: <Icon name="FileDiff" />,
+            onSelect: () => onSelectPanel("git-diff"),
+            tab: createGitDiffFixedPanelTab(),
+            title: "Diff",
+          },
+        ]
+      : []),
+  ];
+}
+
+function createStoryFileTab(path: string): HostFilePreviewFixedPanelTab {
   return {
     environmentId: "env_story",
-    id: `host-file-preview:${encodeURIComponent(filename)}:thread%3Athr_story%3Aenvironment%3Aenv_story`,
+    hostId: "host_story",
+    id: `host-file-preview:${encodeURIComponent(path)}:thread%3Athr_story%3Aenvironment%3Aenv_story`,
     kind: "host-file-preview",
     lineRange: null,
-    path: filename,
+    path,
     threadId: "thr_story",
   };
 }
@@ -197,13 +236,13 @@ function RepresentativeInfoContent() {
 
 interface ShellArgs {
   initialPanel: ThreadSecondaryPanelTab;
-  showGitDiffTab?: boolean;
+  includeGitDiffTab?: boolean;
   canUseGitUi?: boolean;
 }
 
 function ShellRow({
   initialPanel,
-  showGitDiffTab = true,
+  includeGitDiffTab = true,
   canUseGitUi = true,
 }: ShellArgs) {
   return (
@@ -217,12 +256,12 @@ function ShellRow({
             environmentId={undefined}
             isOpen
             metadataContent={<RepresentativeInfoContent />}
-            showGitDiffTab={showGitDiffTab}
+            fixedTabs={createStoryFixedTabs(setPanel, includeGitDiffTab)}
+            tabs={[]}
             onPanelFocus={noop}
-            onPanelChange={setPanel}
             onCollapse={noop}
             onClose={noop}
-            onFileTabReorder={noop}
+            onTabReorder={noop}
             onOpenNewTab={noop}
             isConversationCollapsed={false}
             onToggleConversationCollapse={noop}
@@ -297,7 +336,6 @@ function FileTabsShellInner({
     activeFilename === null
       ? activeFixedTab
       : createStoryFileTab(activeFilename);
-  const activeTabId = activeTab.id;
 
   const handleCloseFile = useCallback(
     (filename: string) => {
@@ -308,15 +346,13 @@ function FileTabsShellInner({
     [pinnedFilename],
   );
 
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
+  const panelTabs = useMemo<SecondaryPanelRenderableTab[]>(
     () =>
       openFiles.map((filename) => {
         const tab = createStoryFileTab(filename);
         const visual = resolveRightPanelFileVisual({ path: filename });
         return {
-          id: tab.id,
-          filename,
-          isActive: tab.id === activeTabId,
+          label: filename,
           isPinned: filename === pinnedFilename,
           leadingVisual: (
             <Icon name={visual.iconName} className="size-3.5" aria-hidden />
@@ -324,9 +360,11 @@ function FileTabsShellInner({
           statusLabel: null,
           onSelect: () => setActiveFilename(filename),
           onClose: () => handleCloseFile(filename),
+          renderContent: () => representativeFileContent,
+          tab,
         };
       }),
-    [openFiles, activeTabId, handleCloseFile, pinnedFilename],
+    [openFiles, handleCloseFile, pinnedFilename],
   );
 
   return (
@@ -338,17 +376,15 @@ function FileTabsShellInner({
         environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}
-        fileTabs={fileTabs}
-        fileTabContent={activeFilename ? representativeFileContent : null}
-        showGitDiffTab
-        onPanelFocus={noop}
-        onPanelChange={(panel) => {
+        tabs={panelTabs}
+        fixedTabs={createStoryFixedTabs((panel) => {
           setActiveFilename(null);
           setActiveFixedTab(createStoryFixedPanelTab(panel));
-        }}
+        })}
+        onPanelFocus={noop}
         onCollapse={noop}
         onClose={noop}
-        onFileTabReorder={noop}
+        onTabReorder={noop}
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
@@ -395,7 +431,6 @@ function TerminalTabsShellInner({
       : createTerminalFixedPanelTab({
           terminalId: activeTerminal.terminalId,
         });
-  const activeTabId = activeTab.id;
 
   const handleCloseTerminal = useCallback(
     (terminalId: string) => {
@@ -415,25 +450,28 @@ function TerminalTabsShellInner({
     [openTerminals],
   );
 
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(
+  const panelTabs = useMemo<SecondaryPanelRenderableTab[]>(
     () =>
       openTerminals.map((terminal) => {
         const tab = createTerminalFixedPanelTab({
           terminalId: terminal.terminalId,
         });
         return {
-          id: tab.id,
-          filename: terminal.title,
-          isActive: tab.id === activeTabId,
+          contentFillsRegion: true,
+          label: terminal.title,
           leadingVisual: (
             <Icon name="Terminal" className="size-3.5" aria-hidden />
           ),
           statusLabel: terminal.statusLabel,
           onSelect: () => setActiveTerminalId(terminal.terminalId),
           onClose: () => handleCloseTerminal(terminal.terminalId),
+          renderContent: () => (
+            <RepresentativeTerminalContent title={terminal.title} />
+          ),
+          tab,
         };
       }),
-    [activeTabId, handleCloseTerminal, openTerminals],
+    [handleCloseTerminal, openTerminals],
   );
 
   return (
@@ -445,21 +483,15 @@ function TerminalTabsShellInner({
         environmentId={undefined}
         isOpen
         metadataContent={<RepresentativeInfoContent />}
-        fileTabs={fileTabs}
-        fileTabContent={
-          activeTerminal ? (
-            <RepresentativeTerminalContent title={activeTerminal.title} />
-          ) : null
-        }
-        showGitDiffTab
-        onPanelFocus={noop}
-        onPanelChange={(panel) => {
+        tabs={panelTabs}
+        fixedTabs={createStoryFixedTabs((panel) => {
           setActiveTerminalId("");
           setActiveFixedTab(createStoryFixedPanelTab(panel));
-        }}
+        })}
+        onPanelFocus={noop}
         onCollapse={noop}
         onClose={noop}
-        onFileTabReorder={noop}
+        onTabReorder={noop}
         onOpenNewTab={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
@@ -475,6 +507,124 @@ function TerminalTabsShellRow(props: TerminalTabsShellRowProps) {
   return <TerminalTabsShellInner {...props} />;
 }
 
+const SPLIT_STORY_PANEL_STATE_ID = "ladle-production-split-panes";
+const SPLIT_STORY_FILE = createStoryFileTab("ThreadSecondaryPanel.tsx");
+const SPLIT_STORY_TERMINAL = createTerminalFixedPanelTab({
+  terminalId: "term_story_running",
+});
+const SPLIT_STORY_FILE_TABS: readonly SecondaryFileFixedPanelTab[] = [
+  SPLIT_STORY_FILE,
+  SPLIT_STORY_TERMINAL,
+];
+const SPLIT_STORY_TABS: readonly SecondaryFixedPanelTab[] = [
+  createThreadInfoFixedPanelTab(),
+  createGitDiffFixedPanelTab(),
+  ...SPLIT_STORY_FILE_TABS,
+];
+
+function createSplitStoryState() {
+  let state = createSidebarSplitState(
+    SPLIT_STORY_TABS.map((tab) => tab.id),
+    createThreadInfoFixedPanelTab().id,
+  );
+  state = moveSidebarTab(
+    state,
+    "pane-primary",
+    SPLIT_STORY_FILE.id,
+    { paneId: "pane-primary", zone: "bottom" },
+    { groupId: "group-file" },
+  );
+  return moveSidebarTab(
+    state,
+    "pane-primary",
+    SPLIT_STORY_TERMINAL.id,
+    { paneId: "pane-primary", zone: "right" },
+    { groupId: "group-terminal" },
+  );
+}
+
+function ProductionSplitPanesStory() {
+  const [activeTab, setActiveTab] = useState<SecondaryFixedPanelTab>(() => {
+    window.localStorage.setItem(
+      sidebarSplitStorageKey(SPLIT_STORY_PANEL_STATE_ID),
+      serializeSidebarSplitState(createSplitStoryState()),
+    );
+    return SPLIT_STORY_TERMINAL;
+  });
+
+  const panelTabs = useMemo<SecondaryPanelRenderableTab[]>(
+    () =>
+      [SPLIT_STORY_FILE, SPLIT_STORY_TERMINAL].map((tab) => ({
+        contentFillsRegion: tab.kind === "terminal",
+        label:
+          tab.kind === "terminal" ? "pnpm dev" : "ThreadSecondaryPanel.tsx",
+        leadingVisual: (
+          <Icon
+            name={tab.kind === "terminal" ? "Terminal" : "Code"}
+            className="size-3.5"
+            aria-hidden
+          />
+        ),
+        statusLabel: null,
+        onSelect: () => setActiveTab(tab),
+        onClose: noop,
+        renderContent: () =>
+          tab.kind === "terminal" ? (
+            <RepresentativeTerminalContent title="pnpm dev" />
+          ) : (
+            representativeFileContent
+          ),
+        tab,
+      })),
+    [],
+  );
+
+  return (
+    <TooltipProvider>
+      <SidebarProvider>
+        <PanelStage height="info">
+          <ThreadSecondaryPanel
+            activeTab={activeTab}
+            canUseGitUi
+            requestedMergeBaseBranch="main"
+            environmentId={undefined}
+            isOpen
+            metadataContent={<RepresentativeInfoContent />}
+            tabs={panelTabs}
+            fixedTabs={createStoryFixedTabs((panel) =>
+              setActiveTab(createStoryFixedPanelTab(panel)),
+            )}
+            splitPanelStateId={SPLIT_STORY_PANEL_STATE_ID}
+            onPanelFocus={noop}
+            onCollapse={noop}
+            onClose={noop}
+            onTabReorder={noop}
+            onOpenNewTab={noop}
+            isConversationCollapsed={false}
+            onToggleConversationCollapse={noop}
+            renderAsDrawer={false}
+            inlinePanelToggle="hidden"
+            showConversationCollapseControl={false}
+          />
+        </PanelStage>
+      </SidebarProvider>
+    </TooltipProvider>
+  );
+}
+
+export function SplitPanes() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="production split panes"
+        hint="real right-panel tabs, pane focus, arrangement, maximize, close, and inner divider behavior"
+      >
+        <ProductionSplitPanesStory />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 export function Overview() {
   return (
     <StoryCard>
@@ -488,7 +638,7 @@ export function Overview() {
         label="parent thread, info tab"
         hint="no Diff for this parent thread; workspace tree is rendered inside the info tab body"
       >
-        <ShellRow initialPanel="thread-info" showGitDiffTab={false} />
+        <ShellRow initialPanel="thread-info" includeGitDiffTab={false} />
       </StoryRow>
       <StoryRow
         label="git UI disabled"

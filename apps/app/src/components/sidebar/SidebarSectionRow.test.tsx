@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
+import {
+  resetPluginThreadRowStatusesForTest,
+  setPluginThreadRowStatus,
+} from "@/lib/plugin-thread-row-status";
 import { SidebarSectionRow } from "./SidebarSectionRow";
 
 afterEach(() => {
   cleanup();
+  resetPluginThreadRowStatusesForTest();
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
@@ -41,38 +45,6 @@ describe("SidebarSectionRow", () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0);
     expect(row?.style.paddingLeft).toBe("32px");
-  });
-
-  it("pins collapsed child activity to the row edge independently of section actions", () => {
-    render(
-      <TooltipProvider>
-        <SidebarSectionRow
-          name="Build"
-          label="Build"
-          depth={1}
-          activity={{
-            ...NO_COLLAPSED_CHILD_ACTIVITY,
-            working: true,
-            runtimeWorking: true,
-          }}
-          isCollapsed
-          onToggleCollapsed={vi.fn()}
-          onCreateThread={vi.fn()}
-          onRename={vi.fn()}
-        />
-      </TooltipProvider>,
-    );
-
-    const edgeSlot = screen
-      .getAllByLabelText("Thread working")
-      .map((indicator) =>
-        indicator.closest("[data-sidebar-collapsed-activity-edge]"),
-      )
-      .find((slot) => slot !== null);
-
-    expect(edgeSlot).toBeInstanceOf(HTMLElement);
-    expect((edgeSlot as HTMLElement).className).toContain("absolute");
-    expect((edgeSlot as HTMLElement).className).toContain("right-0");
   });
 
   it("rolls hidden split threads up to the collapsed section row", () => {
@@ -145,5 +117,29 @@ describe("SidebarSectionRow", () => {
     expect(slots[1]?.getAttribute("class")).toContain("fill-none");
     expect(slots[2]?.getAttribute("class")).toContain("fill-primary");
     expect(screen.queryByLabelText("Thread needs user input")).toBeNull();
+  });
+
+  it("rolls a hidden plugin status up to the collapsed section row", () => {
+    setPluginThreadRowStatus("thread-one", "prompt-shaper", {
+      icon: "AiContentGenerator01",
+      label: "Plugin improving draft",
+      tone: "running",
+    });
+
+    render(
+      <SidebarSectionRow
+        name="Building"
+        label="Work / Building"
+        depth={1}
+        activity={NO_COLLAPSED_CHILD_ACTIVITY}
+        collapsedThreads={[{ id: "thread-one", projectId: "project-one" }]}
+        isCollapsed
+        onToggleCollapsed={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByLabelText("Plugin improving draft")).not.toHaveLength(
+      0,
+    );
   });
 });

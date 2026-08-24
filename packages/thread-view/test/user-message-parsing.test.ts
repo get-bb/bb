@@ -9,11 +9,8 @@ import type { BuildEventProjectionMessagesOptions } from "../src/event-projectio
 import type { AcceptedClientRequest } from "../src/accepted-client-request-context.js";
 import {
   parsePromptInput,
-  parseAcceptedSteerFromClientRequest,
   parseAcceptedSteersFromClientRequest,
-  parsePendingSteerFromClientRequest,
   parsePendingSteersFromClientRequest,
-  parseUserFromClientRequest,
   parseUsersFromClientRequest,
 } from "../src/user-message-parsing.js";
 
@@ -149,11 +146,12 @@ describe("user message parsing", () => {
   it("populates initiator, senderThreadId, and turnRequest for user-initiated messages", () => {
     const { event, meta } = decodeThreadEventRow(userMessageRequest());
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
@@ -252,11 +250,12 @@ describe("user message parsing", () => {
     });
     const { event, meta } = decodeThreadEventRow(row);
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
@@ -279,11 +278,12 @@ describe("user message parsing", () => {
     });
     const { event, meta } = decodeThreadEventRow(row);
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
@@ -296,11 +296,12 @@ describe("user message parsing", () => {
   it("populates initiator for system-initiated messages with a turnRequest", () => {
     const { event, meta } = decodeThreadEventRow(systemMessageRequest());
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
@@ -334,11 +335,12 @@ describe("user message parsing", () => {
     });
     const { event, meta } = decodeThreadEventRow(row);
 
-    const message = parseUserFromClientRequest({
-      decoded: event,
-      meta,
-      options: standardProjectionOptions,
-    });
+    const message =
+      parseUsersFromClientRequest({
+        decoded: event,
+        meta,
+        options: standardProjectionOptions,
+      })[0] ?? null;
 
     expect(message).toMatchObject({
       kind: "user",
@@ -367,12 +369,12 @@ describe("user message parsing", () => {
       const accepted = acceptedClientRequest();
 
       expect(
-        parsePendingSteerFromClientRequest({
+        parsePendingSteersFromClientRequest({
           acceptedClientRequest: undefined,
           decoded: event,
           meta,
           options: standardProjectionOptions,
-        }),
+        })[0] ?? null,
       ).toMatchObject({
         kind: "user",
         turnRequest: { isGrouped: false, kind: "steer", status: "pending" },
@@ -382,12 +384,12 @@ describe("user message parsing", () => {
         sourceSeqStart: meta.seq,
       });
       expect(
-        parseAcceptedSteerFromClientRequest({
+        parseAcceptedSteersFromClientRequest({
           acceptedClientRequest: accepted,
           decoded: event,
           meta,
           options: standardProjectionOptions,
-        }),
+        })[0] ?? null,
       ).toMatchObject({
         kind: "user",
         turnRequest: { isGrouped: false, kind: "steer", status: "accepted" },
@@ -398,11 +400,11 @@ describe("user message parsing", () => {
       });
       // Steers flow through the steer-specific parsers — parseUser short-circuits.
       expect(
-        parseUserFromClientRequest({
+        parseUsersFromClientRequest({
           decoded: event,
           meta,
           options: standardProjectionOptions,
-        }),
+        })[0] ?? null,
       ).toBeNull();
     }
   });
@@ -545,21 +547,21 @@ describe("user message parsing", () => {
     const accepted = acceptedClientRequest({ turnId: "turn-2" });
 
     expect(
-      parseAcceptedSteerFromClientRequest({
+      parseAcceptedSteersFromClientRequest({
         acceptedClientRequest: accepted,
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toBeNull();
 
     expect(
-      parseUserFromClientRequest({
+      parseUsersFromClientRequest({
         acceptedClientRequest: accepted,
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toMatchObject({
       kind: "user",
       scope: turnScope("turn-2"),
@@ -575,20 +577,20 @@ describe("user message parsing", () => {
     );
 
     expect(
-      parsePendingSteerFromClientRequest({
+      parsePendingSteersFromClientRequest({
         acceptedClientRequest: undefined,
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toBeNull();
 
     expect(
-      parseUserFromClientRequest({
+      parseUsersFromClientRequest({
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toMatchObject({
       kind: "user",
       text: "Fallback message",
@@ -600,11 +602,11 @@ describe("user message parsing", () => {
     const { event, meta } = decodeThreadEventRow(systemMessageRequest());
 
     expect(
-      parseUserFromClientRequest({
+      parseUsersFromClientRequest({
         decoded: event,
         meta,
         options: standardProjectionOptions,
-      }),
+      })[0] ?? null,
     ).toMatchObject({
       initiator: "system",
       kind: "user",

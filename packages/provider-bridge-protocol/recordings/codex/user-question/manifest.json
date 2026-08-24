@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "user-question",
+  "threadId": "thr_mezuckuy25",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "The agent asks the user a question and continues with the answer.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 20,
+    "provider→bridge": 39,
+    "bridge→provider": 6
+  }
+}

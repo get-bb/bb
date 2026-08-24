@@ -7,7 +7,7 @@ import type {
   ClaudeResultSubtype,
 } from "./schemas.js";
 
-export interface BuildClaudeProviderErrorInfoArgs {
+interface BuildClaudeProviderErrorInfoArgs {
   code?: ClaudeAssistantMessageError;
   httpStatusCode?: number | null;
   resultSubtype?: string;
@@ -77,8 +77,6 @@ function parseClaudeResultSubtype(
     case "error_max_budget_usd":
     case "error_max_structured_output_retries":
       return resultSubtype;
-    case undefined:
-      return null;
     default:
       return null;
   }

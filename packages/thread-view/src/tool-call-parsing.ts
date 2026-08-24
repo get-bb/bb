@@ -1,19 +1,8 @@
 import type { EventProjectionToolParsedIntent } from "./event-projection-types.js";
 
+// Shell wrappers are not provider tool names: a `bash -lc '<cmd>'` wrapper
+// is stripped from every provider's commands so the row shows what ran.
 const SHELL_WRAPPER_NAMES = new Set(["sh", "bash", "zsh"]);
-const DELEGATION_TOOL_NAMES = new Set([
-  "Agent",
-  "Task",
-  "spawnAgent",
-  "resumeAgent",
-]);
-// Claude names these built-ins with title case while Pi uses lowercase names.
-// Keep this as an explicit alias list instead of normalizing every tool name:
-// plugin-contributed tool names are case-sensitive and may not share the
-// built-ins' semantics.
-const STRUCTURED_READ_TOOL_NAMES = new Set(["Read", "read"]);
-const STRUCTURED_SEARCH_TOOL_NAMES = new Set(["Grep", "grep"]);
-const STRUCTURED_LIST_TOOL_NAMES = new Set(["Glob", "glob"]);
 
 const SHELL_SEGMENT_BREAK_TOKENS = new Set(["&&", "||", "|", ";", "\n"]);
 
@@ -77,37 +66,6 @@ export function extractShellCommandFromString(
   return unwrapQuotedShellArg(commandArg.trim());
 }
 
-export function baseToolName(toolName: string): string {
-  const segments = toolName.split(":");
-  return segments[segments.length - 1] ?? toolName;
-}
-
-export function isStructuredReadToolName(toolName: string): boolean {
-  return STRUCTURED_READ_TOOL_NAMES.has(baseToolName(toolName));
-}
-
-export function isStructuredSearchToolName(toolName: string): boolean {
-  return STRUCTURED_SEARCH_TOOL_NAMES.has(baseToolName(toolName));
-}
-
-export function isStructuredListToolName(toolName: string): boolean {
-  return STRUCTURED_LIST_TOOL_NAMES.has(baseToolName(toolName));
-}
-
-export function isDelegationToolName(toolName: string): boolean {
-  return DELEGATION_TOOL_NAMES.has(baseToolName(toolName));
-}
-
-export function stripAgentOutputMetadata(output: string): string {
-  const lines = output
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter(
-      (line) => !line.startsWith("agentId:") && !line.startsWith("<usage>"),
-    );
-  return lines.join("\n").trim();
-}
-
 // Characters that a backslash may escape inside double quotes, per POSIX shell
 // semantics. A backslash before any other character is preserved literally.
 const DOUBLE_QUOTE_ESCAPABLE = new Set(["$", "`", '"', "\\", "\n"]);
@@ -116,12 +74,12 @@ const DOUBLE_QUOTE_ESCAPABLE = new Set(["$", "`", '"', "\\", "\n"]);
  * came from inside a quoted string. The `quoted` flag lets the redirect
  * classifier distinguish operator-shaped characters that originated as shell
  * operators from ones the user typed inside quotes. */
-export interface ShellToken {
+interface ShellToken {
   readonly value: string;
   readonly quoted: boolean;
 }
 
-export function tokenizeShellWords(command: string): ShellToken[] {
+function tokenizeShellWords(command: string): ShellToken[] {
   const tokens: ShellToken[] = [];
   let current = "";
   // Track quoted vs unquoted contributions to the current token separately.

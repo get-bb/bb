@@ -4,11 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import {
-  createAgentRuntimeWithAdapters,
-  createFakeAdapter,
-  type ProviderAdapterFactory,
-} from "@bb/agent-runtime/test";
 import type { DbConnection } from "@bb/db";
 import { defaultFeatureFlags } from "@bb/domain";
 import {
@@ -23,10 +18,13 @@ import { createHostDaemonClient } from "@bb/host-daemon-contract";
 import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
+import { createAiServiceRegistry } from "../../../apps/server/src/services/ai/ai-service-registry.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
-import { createProviderRegistryService } from "../../../apps/server/src/services/providers/provider-registry.js";
-import { resolveAcpAgentCapabilitiesForProviderId } from "../../../apps/server/src/services/system/acp-launch-spec.js";
+import {
+  createProviderRegistryService,
+  type ProviderRegistryService,
+} from "../../../apps/server/src/services/providers/provider-registry.js";
 import {
   recordFirstPartyProviderBridgeArtifacts,
   registerFakeProviders,
@@ -39,6 +37,7 @@ import {
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
+import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
@@ -49,10 +48,11 @@ import type {
 import { HostSharedPortCoordinator } from "../../../apps/server/src/ws/host-shared-ports.js";
 import { NotificationHub } from "../../../apps/server/src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../../apps/server/src/ws/watch-interests.js";
+import { WorkspaceReadCaches } from "../../../apps/server/src/services/environments/workspace-read-cache.js";
 import { createPublicApiClient } from "@bb/server-contract";
 import { waitForHostConnected } from "./assertions.js";
 import { createIntegrationFetch } from "./fetch.js";
-import { removePathWithRetry } from "./remove-path.js";
+import { isNodeError, removePathWithRetry } from "./remove-path.js";
 import { createTestGitRepo } from "./seed.js";
 
 const repoRoot = path.resolve(
@@ -82,6 +82,12 @@ export interface RunningTestServer {
   db: DbConnection;
   hub: NotificationHub;
   machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
+  /**
+   * Providers come only from plugin registrations. A test that needs a
+   * user-configured agent registers it here, exactly as the owning plugin
+   * would from its own settings.
+   */
+  providerRegistry: ProviderRegistryService;
 }
 
 export interface IntegrationHarness {
@@ -105,7 +111,17 @@ export interface IntegrationHarness {
 }
 
 export interface CreateHarnessOptions {
-  adapterFactory?: ProviderAdapterFactory;
+  /**
+   * Bind the server to a fixed port instead of an ephemeral one. Long-lived
+   * harness backends (mobile e2e) need a stable URL for the app under test.
+   */
+  serverPort?: number;
+  /**
+   * Bind host. Defaults to loopback. `0.0.0.0` lets a physical phone on the
+   * same network reach the harness server; the client base URL stays on
+   * 127.0.0.1 either way.
+   */
+  bindHost?: "127.0.0.1" | "0.0.0.0";
 }
 
 export type WithHarnessCallback<T> = (
@@ -132,23 +148,6 @@ function requireListeningAddress(
     throw new Error("Server address was not assigned");
   }
   return address;
-}
-
-function hasAdapterFactoryOverride(options: CreateHarnessOptions): boolean {
-  return Object.prototype.hasOwnProperty.call(options, "adapterFactory");
-}
-
-function resolveAdapterFactory(
-  options: CreateHarnessOptions,
-): ProviderAdapterFactory | undefined {
-  if (hasAdapterFactoryOverride(options)) {
-    return options.adapterFactory;
-  }
-  return () => createFakeAdapter();
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error;
 }
 
 function isRetryableSessionOpenFailure(error: unknown): boolean {
@@ -212,7 +211,6 @@ export async function loadProjectEnvFile(): Promise<string | null> {
 
 async function startIntegrationServer(
   tmpRoot: string,
-  threadStorageRootPath: string,
   options: CreateHarnessOptions,
 ): Promise<RunningTestServer> {
   const serverDataDir = path.join(tmpRoot, "server-data");
@@ -227,11 +225,10 @@ async function startIntegrationServer(
   const hub = new NotificationHub();
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const watchInterests = new WatchInterestCoordinator({ db, hub });
+  const workspaceReadCaches = new WorkspaceReadCaches({ hub });
   const config: ServerRuntimeConfig = {
-    appSurface: "web",
     appVersion: "0.0.0-dev",
     builtinSkillsRootPath,
-    customAcpAgents: [],
     customModels: [],
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,
@@ -246,7 +243,6 @@ async function startIntegrationServer(
     appUrl: "https://bb.example.test",
     serverPort: 0,
     sharedSkillRoots: { user: [], project: [] },
-    threadStorageRootPath,
     transcriptionModel: "test/mock-transcription",
     isDevelopment: false,
     // The integration harness runs no periodic sweep and has no time control, so
@@ -277,26 +273,22 @@ async function startIntegrationServer(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
-  const providerRegistry = createProviderRegistryService({
-    resolveAcpAgentCapabilities: (providerId) =>
-      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
-  });
+  const providerRegistry = createProviderRegistryService({});
   // Providers come only from plugin declarations. This harness runs no plugin
   // service, so it registers the first-party declarations directly, exactly as
   // their plugins would.
   await registerFirstPartyProviders(providerRegistry);
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
-  // The fake providers these tests drive are declarations too: every
-  // bridge-bound command carries a `bridgeLaunch`, so a provider with no
-  // declaration and no artifact cannot have a command built for it at all. The
-  // daemon side runs a fake adapter and never reads the launch.
-  registerFakeProviders(providerRegistry, pluginHostArtifacts);
-  // Every first-party bridge except Pi's ships as a plugin artifact, and the
-  // daemon has no bridge for those providers without one on the wire. The
-  // dynamic ACP tier depends on it most: `acp-<slug>` ids are never
-  // registered, so the ACP plugin's artifact is the only thing that launches
-  // a configured agent.
+  // The fake providers these tests drive are declarations too, each backed
+  // by the scripted echo bridge artifact: every bridge-bound command carries
+  // a `bridgeLaunch`, and the daemon runs that artifact through the real
+  // bridge-protocol adapter exactly as it would a product provider's.
+  await registerFakeProviders(providerRegistry, pluginHostArtifacts);
+  // Every first-party bridge ships as a plugin artifact (pi's included), and
+  // the daemon has no bridge for a provider without one on the wire: the
+  // plugin's artifact is the only thing that launches it.
   await recordFirstPartyProviderBridgeArtifacts(pluginHostArtifacts);
+  const aiServices = createAiServiceRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -306,6 +298,7 @@ async function startIntegrationServer(
     machineAuth,
     providerRegistry,
     pluginHostArtifacts,
+    aiServices,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -319,7 +312,9 @@ async function startIntegrationServer(
     appVersion,
     bbAppManagedConfig,
     providerRegistry,
+    providerNativeRoots: createProviderNativeRootsCache(),
     pluginHostArtifacts,
+    aiServices,
     config,
     db,
     hub,
@@ -332,6 +327,7 @@ async function startIntegrationServer(
     telemetry,
     terminalSessions,
     watchInterests,
+    workspaceReadCaches,
   });
 
   let addressInfo: ListeningAddress | null = null;
@@ -341,8 +337,8 @@ async function startIntegrationServer(
       // 127.0.0.1 too. If we leave the host unspecified, this server can end
       // up on ::1 while another local process owns 127.0.0.1 on the same
       // port, and the client will hit that other process instead.
-      hostname: TEST_SERVER_HOST,
-      port: 0,
+      hostname: options.bindHost ?? TEST_SERVER_HOST,
+      port: options.serverPort ?? 0,
       fetch: app.fetch,
     },
     (info) => {
@@ -365,6 +361,7 @@ async function startIntegrationServer(
     db,
     hub,
     machineAuth,
+    providerRegistry,
     async close(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -397,15 +394,7 @@ async function startHarnessDaemon(
     // enrollment. Once that succeeds, persist the generated host ID so daemon
     // restarts stay attached to the same host.
     await persistHostId({ dataDir, hostId: identity.hostId });
-    const adapterFactory = resolveAdapterFactory(options);
     const daemonApp = await createHostDaemonApp({
-      createRuntime: adapterFactory
-        ? (runtimeOptions) =>
-            createAgentRuntimeWithAdapters({
-              ...runtimeOptions,
-              adapterFactory,
-            })
-        : undefined,
       dataDir,
       hostKey,
       hostId: identity.hostId,
@@ -416,7 +405,6 @@ async function startHarnessDaemon(
       logger: testLogger,
       releaseLock,
       serverUrl: server.baseUrl,
-      threadStorageRootPath,
     });
     for (
       let attempt = 1;
@@ -556,11 +544,7 @@ export async function createIntegrationHarness(
   }
 
   try {
-    server = await startIntegrationServer(
-      tmpRoot,
-      threadStorageRootPath,
-      options,
-    );
+    server = await startIntegrationServer(tmpRoot, options);
     const api = createPublicApiClient(server.baseUrl, {
       fetch: createIntegrationFetch(),
     });

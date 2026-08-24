@@ -16,7 +16,7 @@ import {
   ConversationAttachments,
   type ConversationAttachmentItems,
 } from "./ConversationAttachments.js";
-import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
+import { computeMutedPrefixLength } from "@bb/client-core";
 import {
   clipMentionTextToVisibleRange,
   shiftMentionsToTextRange,
@@ -31,17 +31,18 @@ import type {
   ThreadTimelineLinkHandler,
   ThreadTimelineLocalFileLinkHandler,
 } from "./types.js";
-import { turnRequestLabel } from "./conversation-turn-request-label.js";
+import { turnRequestLabel } from "@bb/client-core";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { useOverflowMeasurement } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
+import { getThreadRoutePath } from "@/lib/route-paths";
 import {
   boundedMarkdownPreview,
   closeUnterminatedMarkdownCodeSpan,
   endsInsideExactRawThreadIdCodeSpan,
   GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
-} from "./conversation-message-limits.js";
+} from "@bb/client-core";
 
 interface GeneratedConversationMessageProps {
   attachmentItems: ConversationAttachmentItems;
@@ -64,6 +65,7 @@ interface GeneratedConversationMessageProps {
   // ignored by the source-kind switch — so the props stay non-optional.
   sourceKind: GeneratedConversationSourceKind;
   sourceName: string;
+  sourceProjectId: string | null;
   sourceThreadId: string | null;
   /** The source is a side-chat plugin hidden fork: its name carries no route
    * link because its title action opens the plugin's panel tab instead. */
@@ -331,9 +333,7 @@ function generatedConversationEmptyText(
   }
 }
 
-export function systemMessageIconName(
-  systemMessageKind: SystemMessageKind,
-): IconName {
+function systemMessageIconName(systemMessageKind: SystemMessageKind): IconName {
   switch (systemMessageKind) {
     case "ownership-assigned":
       return "UserRoundPlus";
@@ -377,6 +377,7 @@ interface GeneratedAgentSourceTitleProps {
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   sourceIsPluginSideChat: boolean;
   sourceName: string;
+  sourceProjectId: string | null;
   sourceThreadId: string | null;
   title: TimelineTitle;
 }
@@ -386,6 +387,7 @@ function GeneratedAgentSourceTitle({
   resolveSegmentLinkHref,
   sourceIsPluginSideChat,
   sourceName,
+  sourceProjectId,
   sourceThreadId,
   title,
 }: GeneratedAgentSourceTitleProps) {
@@ -395,8 +397,16 @@ function GeneratedAgentSourceTitle({
   // A side chat opens in the plugin's panel (a title action), so its name
   // carries no route link; other sources navigate to the source thread.
   const sourceLinkHref =
-    sourceThreadId !== null && !sourceIsPluginSideChat && resolveSegmentLinkHref
-      ? resolveSegmentLinkHref({ kind: "thread", threadId: sourceThreadId })
+    sourceThreadId !== null && !sourceIsPluginSideChat
+      ? sourceProjectId !== null
+        ? getThreadRoutePath({
+            projectId: sourceProjectId,
+            threadId: sourceThreadId,
+          })
+        : (resolveSegmentLinkHref?.({
+            kind: "thread",
+            threadId: sourceThreadId,
+          }) ?? null)
       : null;
   const leadIn = title.segments[0]?.text ?? "Message from";
 
@@ -417,6 +427,7 @@ function GeneratedAgentSourceTitle({
           resource={{
             kind: "thread",
             threadId: sourceThreadId,
+            ...(sourceProjectId === null ? {} : { projectId: sourceProjectId }),
             label: sourceDisplayName,
           }}
           serializedText={`@thread:${sourceThreadId}`}
@@ -471,6 +482,7 @@ export const GeneratedConversationMessage = memo(
     onTitleAction,
     sourceKind,
     sourceName,
+    sourceProjectId,
     sourceThreadId,
     sourceIsPluginSideChat,
     systemMessageKind,
@@ -521,6 +533,7 @@ export const GeneratedConversationMessage = memo(
           resolveSegmentLinkHref={resolveSegmentLinkHref}
           sourceIsPluginSideChat={sourceIsPluginSideChat}
           sourceName={sourceName}
+          sourceProjectId={sourceProjectId}
           sourceThreadId={sourceThreadId}
           title={title}
         />

@@ -134,7 +134,7 @@ describe("plugin catalog routes", () => {
         : new Response(VALID_SVG, { status: 200 }),
     );
     await catalog.refresh(1_000);
-    const hash = catalog.icon("bb-community", "widgets")?.hash;
+    const hash = (await catalog.icon("bb-community", "widgets"))?.hash;
     expect(hash).toBeDefined();
 
     const hashed = await app.request(

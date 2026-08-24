@@ -25,15 +25,12 @@ import {
   PERMISSION_LABELS,
   PERMISSION_MODES,
   PresetDialog,
+  describeError,
   describePresetEnvironment,
   savePresetDraft,
   type PresetDraft,
 } from "./preset-dialog.js";
 import { ColorSwatchPicker, DEFAULT_COLOR } from "./shared.js";
-
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 // ---------------------------------------------------------------------------
 // Labels
@@ -256,7 +253,6 @@ function LabelsSection() {
             : "This label isn't used by any tasks."
         }
         confirmLabel="Delete label"
-        destructive
         onConfirm={() => {
           const target = confirmDelete;
           if (target) {
@@ -316,6 +312,7 @@ function PresetsSection() {
               <th className="px-3 py-2 font-medium">Provider</th>
               <th className="px-3 py-2 font-medium">Model</th>
               <th className="px-3 py-2 font-medium">Reasoning</th>
+              <th className="px-3 py-2 font-medium">Tier</th>
               <th className="px-3 py-2 font-medium">Permissions</th>
               <th className="px-3 py-2 font-medium">Environment</th>
               <th className="px-3 py-2 font-medium">Instructions</th>
@@ -346,6 +343,9 @@ function PresetsSection() {
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {preset.reasoningLevel}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {preset.serviceTier ?? "—"}
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">
                     {permission
@@ -440,11 +440,13 @@ function FolderRow({
   rootFolders,
   onRename,
   onMove,
+  onDelete,
 }: {
   folder: Folder;
   rootFolders: Folder[];
   onRename: (name: string) => Promise<void>;
   onMove: (parentFolderId: string | null) => Promise<void>;
+  onDelete: () => void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(folder.name);
@@ -524,6 +526,15 @@ function FolderRow({
           >
             <Icon name="Edit" className="size-3.5" />
           </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="size-6 text-muted-foreground hover:text-destructive"
+            aria-label={`Delete folder ${folder.name}`}
+            onClick={onDelete}
+          >
+            <Icon name="Trash2" className="size-3.5" />
+          </Button>
         </>
       )}
     </div>
@@ -533,7 +544,9 @@ function FolderRow({
 function FoldersSection() {
   const rpc = useTasksRpc();
   const folders = useFolders();
+  const projects = useProjects();
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Folder | null>(null);
   const folderList = folders.data ?? [];
   // The sidebar nests folders one level deep, so only roots can be parents.
   const rootFolders = useMemo(
@@ -549,6 +562,47 @@ function FoldersSection() {
       setError(describeError(actionError));
     }
   };
+
+  // The folder and project queries load independently, so the impact text
+  // waits for both rather than treating a still-loading project list as "no
+  // projects". A failed refresh keeps the previous rows in `data`, and those
+  // may be stale, so an error on either query also withholds the impact and
+  // blocks confirming until a refresh succeeds.
+  const impactError = folders.error ?? projects.error;
+  const impactReady =
+    impactError === null &&
+    folders.data !== undefined &&
+    !folders.isLoading &&
+    projects.data !== undefined &&
+    !projects.isLoading;
+
+  // Deleting a folder only unfiles what it held: the schema's ON DELETE SET
+  // NULL moves its projects and subfolders to the top level. Nothing else is
+  // removed, so the confirmation names the move rather than warning about loss.
+  function describeDeleteImpact(folder: Folder): string {
+    if (!impactReady) {
+      return impactError !== null
+        ? `Could not load the folder's contents: ${impactError}`
+        : "Checking what the folder contains…";
+    }
+    const projectCount = (projects.data ?? []).filter(
+      (project) => project.folderId === folder.id,
+    ).length;
+    const subfolderCount = folderList.filter(
+      (entry) => entry.parentFolderId === folder.id,
+    ).length;
+    const moved = [
+      projectCount > 0
+        ? `${projectCount} project${projectCount > 1 ? "s" : ""}`
+        : null,
+      subfolderCount > 0
+        ? `${subfolderCount} subfolder${subfolderCount > 1 ? "s" : ""}`
+        : null,
+    ].filter((part) => part !== null);
+    return moved.length === 0
+      ? "The folder is empty."
+      : `${moved.join(" and ")} move to the top level. No tasks are deleted.`;
+  }
 
   return (
     <div className="space-y-3">
@@ -576,6 +630,10 @@ function FoldersSection() {
                   }),
                 )
               }
+              onDelete={() => {
+                setError(null);
+                setConfirmDelete(folder);
+              }}
             />
           ))}
         </div>
@@ -585,6 +643,34 @@ function FoldersSection() {
           {error}
         </p>
       ) : null}
+      <ConfirmDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+        title={`Delete folder “${confirmDelete?.name ?? ""}”?`}
+        description={confirmDelete ? describeDeleteImpact(confirmDelete) : ""}
+        confirmLabel="Delete folder"
+        confirmDisabled={!impactReady}
+        onConfirm={() => {
+          const target = confirmDelete;
+          if (target) {
+            void run(async () => {
+              const result = await rpc.call("deleteFolder", {
+                folderId: target.id,
+              });
+              if (!result.deleted) {
+                // Another client removed the folder first. The server publishes
+                // nothing in that case, so pull fresh rows and surface the
+                // conflict instead of reporting a silent success.
+                folders.refresh();
+                projects.refresh();
+                throw new Error(`Folder “${target.name}” was already deleted.`);
+              }
+            });
+          }
+        }}
+      />
     </div>
   );
 }

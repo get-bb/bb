@@ -6,7 +6,7 @@ import {
   type ConnectCredential,
 } from "@bb/connect-client";
 
-export const CREATE_MACHINE_CODE_RPC = "createMachineCode";
+const CREATE_MACHINE_CODE_RPC = "createMachineCode";
 
 const machineCodeRpcSchema = z
   .object({
@@ -29,17 +29,17 @@ const rpcFailureSchema = z.object({
   error: z.object({ code: z.string(), message: z.string() }),
 });
 
-export type EnrollDesktopMachineFailureCode =
+type EnrollDesktopMachineFailureCode =
   | "machine_limit"
   | "not_paired"
   | "network"
   | "invalid_response";
 
-export type EnrollDesktopMachineResult =
+type EnrollDesktopMachineResult =
   | { ok: true; credential: ConnectCredential }
   | { code: EnrollDesktopMachineFailureCode; detail: string; ok: false };
 
-export interface EnrollDesktopMachineArgs {
+interface EnrollDesktopMachineArgs {
   fetchImpl?: typeof fetch;
   /** Local builtin server origin, e.g. `http://127.0.0.1:38886`. */
   localServerUrl: string;

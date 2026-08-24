@@ -3,9 +3,9 @@ import {
   type BbDesktopVersionFeedPlatform,
 } from "@bb/desktop-contract";
 
-export type DesktopReleaseChannel = "latest" | "nightly";
+type DesktopReleaseChannel = "latest" | "nightly";
 
-export interface DesktopReleaseInfo {
+interface DesktopReleaseInfo {
   applicationName: "bb" | "bb Nightly";
   channel: DesktopReleaseChannel;
   iconFileName: "icon.png" | "icon-nightly.png";
@@ -49,9 +49,8 @@ export const DESKTOP_RELEASE_CHANNEL = resolveBuiltDesktopReleaseChannel(
 export const DESKTOP_RELEASE_INFO = createDesktopReleaseInfo(
   DESKTOP_RELEASE_CHANNEL,
 );
-export const DESKTOP_UPDATE_RELEASE_BASE_URL =
+const DESKTOP_UPDATE_RELEASE_BASE_URL =
   DESKTOP_RELEASE_INFO.updateReleaseBaseUrl;
-export const DESKTOP_UPDATE_CHANNEL = DESKTOP_RELEASE_CHANNEL;
 
 export function createDesktopUpdateFeedUrl(
   platform: BbDesktopVersionFeedPlatform,
@@ -66,12 +65,12 @@ export interface DesktopAutoUpdateFeedConfig {
 }
 
 export const DESKTOP_AUTO_UPDATE_FEED_CONFIG: DesktopAutoUpdateFeedConfig = {
-  channel: DESKTOP_UPDATE_CHANNEL,
+  channel: DESKTOP_RELEASE_CHANNEL,
   provider: "generic",
   url: DESKTOP_UPDATE_RELEASE_BASE_URL,
 };
 
-export interface DesktopUpdateSupport {
+interface DesktopUpdateSupport {
   /**
    * electron-updater can download a replacement build and install it. Linux
    * only qualifies inside an AppImage, which is the one Linux target that can
@@ -82,7 +81,7 @@ export interface DesktopUpdateSupport {
   versionCheck: boolean;
 }
 
-export interface ResolveDesktopUpdateSupportArgs {
+interface ResolveDesktopUpdateSupportArgs {
   /**
    * Whether the AppImage at this path can actually be replaced in place.
    * Injected so the decision stays testable without touching a real file.

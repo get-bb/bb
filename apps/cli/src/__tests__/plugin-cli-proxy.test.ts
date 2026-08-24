@@ -1,5 +1,8 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Command } from "commander";
+import { Agent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 
 import { registerEnvironmentCommands } from "../commands/environment.js";
@@ -18,6 +21,7 @@ import {
   findDisabledPluginForCommand,
   findPluginCliCommand,
   pluginProxyCandidate,
+  PLUGIN_CLI_HEADERS_TIMEOUT_MS,
   runPluginCliCommand,
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
@@ -28,7 +32,7 @@ function buildProgram(): Command {
   registerStatusCommand(program, getUrl);
   registerProjectCommands(program, getUrl);
   registerProviderCommands(program, getUrl);
-  registerManagerCommands(program, getUrl);
+  registerManagerCommands(program);
   registerThreadCommands(program, getUrl);
   registerEnvironmentCommands(program, getUrl);
   registerThemeCommands(program, getUrl);
@@ -554,4 +558,69 @@ describe("runPluginCliCommand", () => {
       { channel: "stderr", value: "warning\n" },
     ]);
   });
+
+  // Issue #1621: `bb secret request` holds POST /plugins/secrets/cli open
+  // while a human fills the form. Node's default undici headersTimeout
+  // (300 s) rejected that fetch with a bare "fetch failed" and the server
+  // then aborted the interaction. The plugin dispatch must not inherit the
+  // global headers timeout, but it keeps its own finite deadline above the
+  // longest server interaction. The global timeout is scaled down here
+  // (undici timers have ~1 s granularity) so the test finishes in seconds.
+  it("outlives the global fetch headers timeout while a plugin command waits on a human", async () => {
+    const RESPONSE_DELAY_MS = 1500;
+    const server: Server = createServer((request, response) => {
+      setTimeout(() => {
+        response.setHeader("content-type", "application/json");
+        response.end(
+          JSON.stringify({
+            exitCode: 0,
+            stdout: `${request.method} ${request.url}`,
+          }),
+        );
+      }, RESPONSE_DELAY_MS);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const previousDispatcher = getGlobalDispatcher();
+    setGlobalDispatcher(new Agent({ headersTimeout: 200 }));
+    try {
+      // The bare fetch every other CLI call uses dies on the shortened
+      // headers timeout, which is the failure the reporter saw at 300 s.
+      await expect(
+        fetch(`${baseUrl}/api/v1/plugins/secrets/cli`, { method: "POST" }),
+      ).rejects.toMatchObject({
+        message: "fetch failed",
+        cause: { code: "UND_ERR_HEADERS_TIMEOUT" },
+      });
+
+      const writes: string[] = [];
+      const stream = {
+        write(value: string, callback: (error?: Error | null) => void) {
+          writes.push(value);
+          callback();
+          return true;
+        },
+      };
+      const exitCode = await runPluginCliCommand(
+        baseUrl,
+        "secrets",
+        ["request", "--purpose", "Testing the transport \u2014 an em dash"],
+        { stdout: stream, stderr: stream },
+      );
+
+      expect(exitCode).toBe(0);
+      expect(writes).toEqual(["POST /api/v1/plugins/secrets/cli\n"]);
+      // Finite, and above ui.requestInput's 60-minute maximum so the server's
+      // interaction deadline (which resolves the form cleanly) fires first.
+      expect(PLUGIN_CLI_HEADERS_TIMEOUT_MS).toBeGreaterThan(60 * 60 * 1000);
+      expect(PLUGIN_CLI_HEADERS_TIMEOUT_MS).toBeLessThanOrEqual(
+        2 * 60 * 60 * 1000,
+      );
+    } finally {
+      setGlobalDispatcher(previousDispatcher);
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 15_000);
 });

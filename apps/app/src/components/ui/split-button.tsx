@@ -155,4 +155,4 @@ function SplitButton({
 }
 
 export { SplitButton };
-export type { SplitButtonAction, SplitButtonProps };
+export type { SplitButtonAction };

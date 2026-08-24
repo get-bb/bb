@@ -21,19 +21,20 @@ import {
  * is async and only delivers callbacks when a sentinel actually crosses
  * the visible boundary, so it doesn't pile up work during animations.
  */
-export interface ScrollOverflowSentinelRefs<TElement extends HTMLElement> {
+interface ScrollOverflowSentinelRefs<TElement extends HTMLElement> {
   scrollRef: RefObject<TElement | null>;
   topSentinelRef: RefObject<HTMLDivElement | null>;
   bottomSentinelRef: RefObject<HTMLDivElement | null>;
 }
 
-export interface ScrollOverflowStateBinding<TElement extends HTMLElement>
-  extends ScrollOverflowSentinelRefs<TElement> {
+interface ScrollOverflowStateBinding<
+  TElement extends HTMLElement,
+> extends ScrollOverflowSentinelRefs<TElement> {
   aboveOverflow: boolean;
   belowOverflow: boolean;
 }
 
-export interface UseScrollOverflowStateOptions {
+interface UseScrollOverflowStateOptions {
   /**
    * Enables observation after a conditionally-rendered scroll region mounts.
    * Disable it while the region is absent so reopening rebinds fresh nodes.
@@ -53,9 +54,7 @@ interface OverflowFlags {
   below: boolean;
 }
 
-export function useScrollOverflowState<
-  TElement extends HTMLElement,
->(
+export function useScrollOverflowState<TElement extends HTMLElement>(
   options: UseScrollOverflowStateOptions = {},
 ): ScrollOverflowStateBinding<TElement> {
   const scrollRef = useRef<TElement>(null);

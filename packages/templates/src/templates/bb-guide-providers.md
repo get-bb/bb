@@ -42,15 +42,15 @@ provider's global configuration.
 
 Subscription limit recovery
 
-The opt-in builtin Provider retry plugin recognizes structured Codex and Claude
-Code subscription windows. Enable it under Extensions → Plugins or run
-`bb plugin enable provider-retry`. If a provider terminally rejects an accepted
-turn whose execution settings remain available, the plugin waits in memory
-until the reported reset plus a short buffer, then starts one agent-only
-`Please continue.` turn on the existing provider conversation. Prior output or
-tool activity does not block recovery. Threads sharing a machine/provider
-subscription are released one at a time. Provider-native retries remain
-authoritative while the provider reports that it will retry on its own.
+The builtin Provider retry plugin is enabled on fresh installations and
+recognizes structured Codex and Claude Code subscription windows. If a provider
+terminally rejects an accepted turn whose execution settings remain available,
+the plugin waits in memory until the reported reset plus a short buffer, then
+starts one agent-only `Please continue.` turn on the existing provider
+conversation. Prior output or tool activity does not block recovery. Threads
+sharing a machine/provider subscription are released one at a time.
+Provider-native retries remain authoritative while the provider reports that
+it will retry on its own.
 
 Automatic waits default to a maximum of six hours. Longer reset windows are not
 scheduled. Set `maximumWait` to `24 hours` or `No limit` under the plugin
@@ -60,12 +60,12 @@ settings, or run:
 
   bb provider-retry status [thread-id] [--json]    Inspect in-memory waits
   bb provider-retry cancel <thread-id> [--json]    Cancel an automatic retry
-  bb thread retry [id] [--request-id <id>]         Core continuation
+  bb provider-retry retry <thread-id> [--json]     Request a manual retry
 
 Timed waits exist only while the current bb server/plugin process remains
 running. Disabling/reloading the plugin or restarting the server clears them;
-the original failed thread remains available for `bb thread retry`. Credit and
-spend-control exhaustion without a reset time is ignored by the plugin.
+the original failed thread remains available for `bb provider-retry retry`.
+Credit and spend-control exhaustion without a reset time is manual-only.
 
 Claude Code's native Workflow tool can be disabled separately on its provider
 page. This preference also defaults off and applies to newly started, resumed,
@@ -106,23 +106,35 @@ entry with a warning. The entry then appears in bb provider models output and
 in the model picker, but the provider must still accept the id: claude-code
 and codex accept unlisted ids, while an ACP agent can reject an id it does
 not know at session start. OpenCode rejects unlisted ids, so add an OpenCode
-model to the OpenCode config instead. Like customAcpAgents, edit the JSON and
-run bb-app config refresh; there is no set/unset CLI surface.
+model to the OpenCode config instead. Edit the JSON and run bb-app config
+refresh; there is no set/unset CLI surface. The streamerMode
+General setting hides every entry from these lists; see the customization
+chapter.
 
-Custom ACP agents are configured in the app data-dir config.json under
-customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
-and run bb-app config refresh; there is no set/unset CLI surface for this list.
-Custom config wins if it uses the same provider id as a known ACP agent; for
-example, override acp-opencode with id opencode. Use modelCli for CLI model
-listing/selection, reasoningCli for launch-time reasoning flags, and
-nativeReasoning for ACP session/set_config_option reasoning. Optional logo
-accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
-Use nativeSkillRoots to add native skills to the composer. User roots resolve
-from the target host home directory. Project roots resolve from the selected
-workspace. Each root must use a relative path without dot segments. Set
-supportsManualCompaction to true only if the agent accepts an explicit
-compaction request; it defaults to false, and bb hides the /compact command
-for agents that do not declare it.
+Custom ACP agents live in the ACP providers plugin's customAgents setting, a
+JSON array. Set it with bb plugin config provider-acp set customAgents '[...]'.
+Each entry needs id (lowercase letters, digits and dashes), displayName, and
+command. bb derives provider id acp-<id> from the slug id. The id is permanent.
+The id cursor is reserved because bb always lists that agent. The ids opencode,
+omp, grok and hermes-agent are not reserved, so an entry with one of those ids
+replaces the shipped agent. Use args, env, and cwd for the launch, modelCli
+for CLI model listing/selection, reasoningCli for launch-time reasoning flags,
+nativeReasoning for ACP session/set_config_option reasoning, permissionCli for
+permission-mode launch flags, and dialect (cursor or grok) for the vendor side
+channels bb reads. Use nativeSkillRoots to add native skills to the composer.
+Give it a user list and a project list. User roots resolve from the target host
+home directory. Project roots resolve from the selected workspace. Each root
+must use a relative path without dot segments. Set supportsManualCompaction to true only
+if the agent accepts an explicit compaction request; it defaults to false, and
+bb hides the /compact command for agents that do not declare it. The plugin
+re-registers its providers as soon as the setting changes, so no restart or
+config refresh is needed.
+
+The old customAcpAgents array in the app data-dir config.json is deprecated. bb
+still reads it and logs a warning for each agent it finds, until 0.41. Move each
+entry into the customAgents setting. The shapes match except for logo, which the
+setting does not accept: bb drops that field when it reads the old array, and a
+configured agent shows the generic tool glyph.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots

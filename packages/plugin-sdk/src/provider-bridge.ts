@@ -14,18 +14,23 @@
  * grouped the way a bridge consumes it:
  *
  *   1. the bridge entry contract (how a module declares itself a bridge),
- *   2. the protocol — request/notification vocabulary and param schemas,
+ *   2. the protocol — request/notification vocabulary, the `thread/delta`
+ *      grammar, and param schemas,
  *   3. the bridge kit — the authoring helpers (JSON-RPC framing, tool-call and
- *      interaction codecs, id scoping, visibility, translation helpers),
- *   4. the event vocabulary the protocol's payloads are made of.
+ *      interaction codecs, visibility, dialect-parsing helpers),
+ *   4. the domain vocabulary the protocol's payloads reference.
  *
- * On (4): those shapes live in `@bb/domain`, which is bb's persisted-thread
- * vocabulary shared by the server, the app and the runtime — moving it into
- * this package would invert the dependency and make the plugin SDK own the
- * product's core domain. So the SDK names them here instead, and the published
- * bundle inlines them, exactly as the root export already does for
- * `PromptInput` and friends. See `docs/api_to_audit.md` for the audit this
- * owes before the surface stabilizes.
+ * On (4): the protocol owns its own timeline vocabulary (the delta grammar in
+ * section 2) — bridges no longer construct `ThreadEvent`s, so the domain
+ * event vocabulary is NOT re-exported here. What remains from `@bb/domain` is
+ * the command-plane and interaction surface the protocol's params are made of
+ * (PromptInput, permission/interaction payloads, dynamic tools, rate limits,
+ * reasoning levels) plus the enum/status types the delta shapes reference
+ * (item status, turn status, plan steps, usage breakdowns). Those live in
+ * `@bb/domain` — bb's persisted vocabulary shared by the server, the app and
+ * the runtime — so the SDK names them here and the published bundle inlines
+ * them, exactly as the root export already does for `PromptInput` and
+ * friends.
  *
  * Runtime, not stubs: unlike `@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/host`
  * — whose host-artifact members are build-time stubs because their real
@@ -58,8 +63,49 @@ export {
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V2,
+  THREAD_DELTA_GRAMMAR_V3,
+  THREAD_DELTA_NOTIFICATION_METHOD,
+  bridgeCapabilitiesSchema,
+  bridgeGrammarVersionsSchema,
+  bridgeSteerModeSchema,
+  deltaBackgroundTaskShapeSchema,
+  deltaDelegationShapeSchema,
+  deltaExtensionShapeSchema,
+  deltaFileChangeSchema,
+  deltaFileReadShapeSchema,
+  deltaItemKeySchema,
+  deltaItemShapeSchema,
+  deltaNoTurnFallbackSchema,
+  deltaOutputChannelSchema,
+  deltaPlanStepsShapeSchema,
+  deltaPresentationSchema,
+  deltaProgressSnapshotSchema,
+  deltaSearchShapeSchema,
+  deltaTextChannelSchema,
+  providerRecoveryHintSchema,
+  providerRecoveryNotificationSchema,
+  bridgeErrorDataSchema,
+  threadDeltaNotificationParamsSchema,
+  threadDeltaSchema,
   initializeParamsSchema,
   modelListParamsSchema,
+  providerHealthResultSchema,
+  providerHealthSchema,
+  providerInstallationActionKindSchema,
+  providerInstallationActionSchema,
+  providerInstallationCommandSchema,
+  providerInstallationRunParamsSchema,
+  providerInstallationStatusParamsSchema,
+  providerInstallationRequirementSchema,
+  providerInstallationRunResultSchema,
+  providerInstallationSourceSchema,
+  providerInstallationStatusSchema,
+  providerInstallationVerificationSchema,
+  providerMaintenanceParamsSchema,
+  providerUsageResultSchema,
+  providerUsageSchema,
+  providerUsageWindowSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
@@ -72,11 +118,50 @@ export {
   threadUnarchiveParamsSchema,
   turnStartParamsSchema,
   turnSteerParamsSchema,
-  threadEventNotificationSchema,
 } from "@bb/provider-bridge-protocol";
 export type {
+  BridgeCapabilities,
   BridgeExecutionOptions,
+  BridgeGrammarVersions,
+  BridgeSteerMode,
+  DeltaBackgroundTaskShape,
+  DeltaDelegationShape,
+  DeltaExtensionShape,
+  DeltaFileChange,
+  DeltaFileReadShape,
+  DeltaItemKey,
+  DeltaItemShape,
+  DeltaItemShapeType,
+  DeltaNoTurnFallback,
+  DeltaOutputChannel,
+  DeltaPlanStepsShape,
+  DeltaPresentation,
+  DeltaProgressSnapshot,
+  DeltaSearchShape,
+  DeltaTextChannel,
+  ProviderRecoveryHint,
+  ProviderRecoveryNotification,
+  BridgeErrorData,
+  ProviderHealth,
+  ProviderHealthResult,
+  ProviderInstallationAction,
+  ProviderInstallationActionKind,
+  ProviderInstallationCommand,
+  ProviderInstallationRunParams,
+  ProviderInstallationRunResult,
+  ProviderInstallationRequirement,
+  ProviderInstallationSource,
+  ProviderInstallationStatus,
+  ProviderInstallationStatusParams,
+  ProviderInstallationVerification,
+  ProviderMaintenanceParams,
+  ProviderUsage,
+  ProviderUsageResult,
+  ProviderUsageWindow,
   InitializeResult,
+  ThreadDelta,
+  ThreadDeltaKind,
+  ThreadDeltaNotificationParams,
 } from "@bb/provider-bridge-protocol";
 
 // ---------------------------------------------------------------------------
@@ -84,39 +169,54 @@ export type {
 // ---------------------------------------------------------------------------
 
 export {
-  UNSTAMPED_THREAD_ID,
+  COMPACTION_PRESENTATION as experimental_COMPACTION_PRESENTATION,
+  REASONING_PRESENTATION as experimental_REASONING_PRESENTATION,
+  ZERO_TOKEN_USAGE,
+  addTokenUsage,
   bashArgsSchema,
+  BridgeRecoveryError as experimental_BridgeRecoveryError,
+  clampPercent as experimental_clampPercent,
+  commandOutput as experimental_commandOutput,
+  compareVersions as experimental_compareVersions,
   bridgeRequestEnvelopeSchema,
-  buildAcceptedUserMessageEvent,
-  buildEditDiff,
+  buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
   buildShellEnvOverrides,
-  buildFileChangeItem,
-  buildGenericToolCallItem,
-  buildToolResultItem,
-  buildUnhandledProviderEvents,
-  completeStartedToolItem,
   createBridgeIo,
   createBridgeLineHandler,
   createPendingToolCallTracker,
-  createProviderTurnStateRegistry,
   createProviderVisibilityMetadata,
-  createScopedItemIdFactory,
-  createUnhandledProviderEvent,
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
+  downloadedInstallerCommand as experimental_downloadedInstallerCommand,
   errorEnvelopeSchema,
+  experimental_isProviderBridgeRecording,
+  experimental_recordProviderChildIo,
   extractResultText,
+  fileReadPresentation as experimental_fileReadPresentation,
+  formatCommand as experimental_formatCommand,
   getRawSdkMessage,
   getRecordProperty,
   getStringProperty,
+  installationVerification as experimental_installationVerification,
   isRecord,
   jsonRpcEnvelopeSchema,
   mimeTypeFromExtension,
   normalizeProviderCommandOutput,
-  queueAcceptedUserMessage,
-  resolveProviderTerminalTurn,
+  npmCommand as experimental_npmCommand,
+  npmGlobalInstallCommand as experimental_npmGlobalInstallCommand,
+  npmGlobalInstallSource as experimental_npmGlobalInstallSource,
+  npmLatestVersion as experimental_npmLatestVersion,
+  planStepsPresentation as experimental_planStepsPresentation,
+  presentationDetail as experimental_presentationDetail,
+  presentationFileName as experimental_presentationFileName,
+  presentationTitle as experimental_presentationTitle,
+  probeNpmGlobalPackage as experimental_probeNpmGlobalPackage,
+  readBoundedLines as experimental_readBoundedLines,
+  readCliVersion as experimental_readCliVersion,
+  resolveExecutablePath as experimental_resolveExecutablePath,
   runBridgeRequest,
   sdkMessageEnvelopeSchema,
+  searchPresentation as experimental_searchPresentation,
   shouldAutoDenyInteractiveRequest,
   textBlockSchema,
   threadContextWindowUsageEnvelopeSchema,
@@ -124,18 +224,23 @@ export {
   toNonNegativeNumber,
   toOptionalRecord,
   toOptionalString,
-  withParentToolCallId,
+  toolPresentation as experimental_toolPresentation,
+  versionFrom as experimental_versionFrom,
+  webFetchPresentation as experimental_webFetchPresentation,
+  webSearchPresentation as experimental_webSearchPresentation,
+  withTitle as experimental_withTitle,
   withoutBridgeRuntimeEnv,
   ProviderRequestDecodeError,
   ProviderResponseEncodeError,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 export type {
-  AcceptedUserMessageState,
+  BoundedLineReaderArgs,
   BridgeJsonRpcResponse,
+  NpmGlobalPackageProbe,
+  BridgeSendError,
   BridgeToolCallRequest,
   BuildInteractiveResponseArgs,
   DecodedInteractiveRequest,
-  EnsureProviderTurnStartedArgs,
   JsonRpcMessage,
   PreparedProviderCommandDispatch,
   ProviderInboundRequest,
@@ -143,7 +248,6 @@ export type {
   ProviderRawEventCoverage,
   ProviderRawEventDescription,
   ProviderRuntimeEvent,
-  ProviderTurnStateRegistry,
   ProviderVisibilityMetadata,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 
@@ -154,32 +258,17 @@ export type {
  */
 export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 
-/**
- * The ACP launch spec: the one core wire shape a bridge parses directly. It
- * arrives as provider-scoped static options (opaque to the runtime, meaningful
- * only to the bridge that declares the ACP tier), so its schema has to be
- * reachable from bridge code.
- */
-export {
-  hostDaemonAcpLaunchSpecSchema,
-  normalizeHostDaemonAcpLaunchSpec,
-} from "@bb/host-daemon-contract";
-export type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-
 // ---------------------------------------------------------------------------
-// 4. The event vocabulary
+// 4. The domain vocabulary the protocol's payloads reference
 // ---------------------------------------------------------------------------
 
 export {
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_ENDPOINT,
   HIGH_REASONING_EFFORT,
   LOCAL_BASH_TASK_TYPE,
   LOCAL_WORKFLOW_TASK_TYPE,
   LOW_REASONING_EFFORT,
   MAX_REASONING_EFFORT,
   MEDIUM_REASONING_EFFORT,
-  NONE_REASONING_EFFORT,
   ULTRACODE_REASONING_EFFORT,
   USER_QUESTION_MAX_OPTIONS,
   USER_QUESTION_MAX_QUESTIONS,
@@ -188,17 +277,13 @@ export {
   acpPermissionCliSchema,
   acpReasoningCliSchema,
   backgroundTaskItemStatus,
-  claudeCodeMockCliTrafficConfigSchema,
-  claudeTaskToolNameSchema,
-  claudeTaskToolOutputSchema,
-  createStandaloneBuiltinCompactCommandInput,
   dynamicToolSchema,
-  getThreadEventScopeTurnId,
   instructionModeValues,
+  approvalInteractionOutcomeSchema,
+  isApprovalInteractionOutcome,
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isBackgroundAgentTaskType,
-  isClaudeCodeMockCliTrafficEndpoint,
   isSettledBackgroundTaskStatus,
   isStandaloneBuiltinCompactCommand,
   isUserQuestionPendingInteractionPayload,
@@ -210,27 +295,37 @@ export {
   pendingInteractionNetworkPermissionsSchema,
   pendingInteractionRequestedPermissionProfileSchema,
   pendingInteractionResolutionSchema,
+  providerInteractionOutcomeSchema,
+  userQuestionInteractionOutcomeSchema,
   permissionEscalationValues,
+  extensionKindSchema,
+  interactionRequestPayloadSchema,
+  isExtensionKind,
+  providerRawEventSchema,
+  providerRecoveryKindSchema,
+  providerRecoveryKindValues,
+  threadEventItemPresentationSchema,
+  threadEventSearchModeSchema,
   reasoningEffortsForLevels,
   reasoningLevelSchema,
   reasoningLevelValues,
   removeCommandMentionsFromPromptInput,
-  requireThreadEventScopeTurnId,
   runtimePermissionScopeValues,
-  threadScope,
   toPositiveNumber,
-  turnScope,
 } from "@bb/domain";
 export type {
+  ApprovalInteractionOutcome,
   ApprovalPendingInteractionPayload,
   AvailableModel,
   BackgroundTaskStatus,
   BackgroundTaskUsage,
-  ClaudeCodeMockCliTrafficConfig,
-  ClaudeTaskToolOutput,
   ClientTurnRequestId,
   DynamicTool,
+  ExtensionKind,
   InstructionMode,
+  InteractionRequestPayload,
+  ProviderInteractionOutcome,
+  UserQuestionInteractionOutcome,
   JsonObject,
   JsonValue,
   ModelReasoningEffort,
@@ -248,27 +343,23 @@ export type {
   PromptInput,
   ProviderErrorCategory,
   ProviderErrorInfo,
+  ProviderRawEvent,
   ProviderRateLimitState,
   ProviderRateLimitStatus,
   ProviderRateLimitWindow,
+  ProviderRecoveryKind,
   ReasoningLevel,
   RuntimePermissionPolicy,
   RuntimePermissionScope,
   ServiceTier,
-  ThreadEvent,
-  ThreadEventBackgroundTaskItem,
   ThreadEventContextWindowUsage,
-  ThreadEventItem,
-  ThreadEventItemApprovalStatus,
+  ThreadEventItemPresentation,
   ThreadEventItemStatus,
   ThreadEventPlanStep,
-  ThreadEventScope,
-  ThreadEventTokenUsage,
+  ThreadEventSearchMode,
   ThreadEventTokenUsageBreakdown,
   ThreadEventTurnStatus,
   ThreadEventUserContent,
-  ThreadEventWebFetchItem,
-  ThreadEventWebSearchItem,
   UserQuestionPendingInteractionPayload,
   UserQuestionPendingInteractionResolution,
   WorkflowAgentSnapshot,
@@ -276,3 +367,37 @@ export type {
   WorkflowPhaseSnapshot,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
+
+// ---------------------------------------------------------------------------
+// 5. Scheduled removals (next major)
+// ---------------------------------------------------------------------------
+//
+// Names 0.4.x published on this subpath that no longer have a consumer in
+// this repository. Each stays an alias of its current definition until the
+// next major version: a bridge compiled against an earlier SDK may import it,
+// and dropping a published name is a breaking change (docs/api_to_audit.md,
+// "Scheduled removals"). The unprefixed domain re-exports listed there sit in
+// section 4 with their neighbours; these are the ones whose definition moved.
+
+/**
+ * The ACP launch spec and its normalizer, once a host-daemon wire shape. The
+ * schema now lives with the ACP bridge kit — a plugin that declares an ACP
+ * agent reads `experimental_acpLaunchSpecSchema` / `AcpLaunchSpec` from
+ * `@get-bb/plugin-sdk/provider-bridge/acp` instead.
+ */
+export {
+  acpLaunchSpecSchema as hostDaemonAcpLaunchSpecSchema,
+  normalizeAcpLaunchSpec as normalizeHostDaemonAcpLaunchSpec,
+} from "@bb/provider-bridge-acp/launch-spec";
+export type { AcpLaunchSpec as HostDaemonAcpLaunchSpec } from "@bb/provider-bridge-acp/launch-spec";
+
+/**
+ * The Claude Code task-tool names and outputs core once shared with the
+ * claude-code runtime. The claude-code plugin owns its own vocabulary now;
+ * there is no replacement.
+ */
+export {
+  claudeTaskToolNameSchema,
+  claudeTaskToolOutputSchema,
+} from "./claude-task-tools.js";
+export type { ClaudeTaskToolOutput } from "./claude-task-tools.js";

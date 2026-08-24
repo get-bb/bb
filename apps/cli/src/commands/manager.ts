@@ -30,10 +30,7 @@ function registerRemovedManagerSubcommand(
     }));
 }
 
-export function registerManagerCommands(
-  program: Command,
-  _getUrl: () => string,
-): void {
+export function registerManagerCommands(program: Command): void {
   const manager = program
     .command("manager")
     .description("Compatibility notice for removed manager commands")

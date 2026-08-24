@@ -20,7 +20,7 @@ export interface MessageProseSelection {
   sourceSeqEnd?: number;
 }
 
-export interface SelectableMessageProseProps {
+interface SelectableMessageProseProps {
   children: ReactNode;
   className?: string;
   /**
@@ -63,7 +63,7 @@ export function isSelectionWithinNode(
   );
 }
 
-function firstClientRect(range: Range): DOMRect | null {
+export function firstClientRect(range: Range): DOMRect | null {
   const rects = range.getClientRects();
   for (let index = 0; index < rects.length; index += 1) {
     const rect = rects.item(index);
@@ -133,9 +133,7 @@ export function anchorPointFromMouseEvent(
   return { x: event.clientX, y: event.clientY };
 }
 
-export function usesLiveSelectionRange(
-  pointerType: string | undefined,
-): boolean {
+function usesLiveSelectionRange(pointerType: string | undefined): boolean {
   return (
     pointerType !== undefined && pointerType !== "" && pointerType !== "mouse"
   );

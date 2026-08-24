@@ -1,6 +1,6 @@
 import type { ThreadListEntry } from "@bb/domain";
 
-export interface ParentSelectorOption {
+interface ParentSelectorOption {
   label: string;
   value: string;
 }
@@ -16,7 +16,7 @@ interface CollectDescendantThreadIdsArgs {
   threads: readonly ThreadListEntry[];
 }
 
-export interface BuildParentSelectorOptionsArgs {
+interface BuildParentSelectorOptionsArgs {
   currentThreadId: string | undefined;
   parentThreads: readonly ThreadListEntry[];
   parentThreadDisplayName: string | null | undefined;

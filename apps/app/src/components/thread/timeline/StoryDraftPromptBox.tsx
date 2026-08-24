@@ -4,7 +4,7 @@ import {
   PromptBoxInternal,
   type HistoryConfig,
 } from "@/components/promptbox/PromptBoxInternal";
-import { appendQuoteToDraftText } from "@/lib/prompt-draft";
+import { appendQuoteToDraftText } from "@bb/client-core";
 import {
   makeAttachmentsConfig,
   makeTypeaheadConfig,
@@ -17,7 +17,7 @@ interface StoryPromptDraft {
   mentionRanges: PromptTextMention[];
 }
 
-export interface StoryPromptDraftController extends StoryPromptDraft {
+interface StoryPromptDraftController extends StoryPromptDraft {
   focusEndKey: number;
   addQuote: (text: string) => void;
   onChange: (text: string, mentionRanges: PromptTextMention[]) => void;

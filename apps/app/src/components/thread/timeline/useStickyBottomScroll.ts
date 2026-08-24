@@ -9,7 +9,7 @@ import {
   type WheelEventHandler,
 } from "react";
 
-export interface StickyBottomScrollBinding<TElement extends HTMLElement> {
+interface StickyBottomScrollBinding<TElement extends HTMLElement> {
   /**
    * Attach to an element that wraps the scrolled content. The scroll port's
    * box is fixed, so content-only height changes (an image load, a
@@ -25,7 +25,7 @@ export interface StickyBottomScrollBinding<TElement extends HTMLElement> {
   ref: RefObject<TElement | null>;
 }
 
-export interface UseStickyBottomScrollArgs {
+interface UseStickyBottomScrollArgs {
   contentKey: string;
   // When false, the hook is dormant: the scroll-to-bottom effect doesn't fire
   // on contentKey changes and the window pointer-tracking listeners aren't

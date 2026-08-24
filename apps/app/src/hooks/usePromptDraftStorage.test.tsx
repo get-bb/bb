@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  getPromptDraftAccessor,
   usePromptDraftInputThreadIds,
   usePromptDraftStorage,
 } from "./usePromptDraftStorage";
@@ -32,9 +33,108 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("usePromptDraftStorage", () => {
+  it("keeps deferred text writes readable and serializes at the persist boundary", () => {
+    vi.useFakeTimers();
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      result.current.setTextAndMentions("large pending draft", []);
+    });
+
+    expect(result.current.text).toBe("large pending draft");
+    expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
+    act(() => vi.advanceTimersByTime(249));
+    expect(window.localStorage.getItem(result.current.storageKey)).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("large pending draft"),
+    );
+  });
+
+  it("lets an immediate write replace a pending deferred write", () => {
+    vi.useFakeTimers();
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      result.current.setTextAndMentions("stale pending draft", []);
+      result.current.setDraft({
+        text: "immediate replacement",
+        mentions: [],
+        attachments: [],
+      });
+    });
+
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("immediate replacement"),
+    );
+    act(() => vi.advanceTimersByTime(250));
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("immediate replacement"),
+    );
+  });
+
+  it("keeps the in-memory draft when localStorage rejects the write", () => {
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+    act(() => {
+      result.current.setDraft({ text: "small", mentions: [], attachments: [] });
+    });
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("small"),
+    );
+
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new DOMException("quota", "QuotaExceededError");
+      });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      act(() => {
+        result.current.setDraft({
+          text: "too large for storage",
+          mentions: [],
+          attachments: [],
+        });
+      });
+    } finally {
+      setItem.mockRestore();
+    }
+
+    // Storage still holds the old draft, but readers see the newer one.
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("small"),
+    );
+    expect(result.current.text).toBe("too large for storage");
+    expect(result.current.getCurrent().text).toBe("too large for storage");
+    expect(getPromptDraftAccessor(scope).getCurrent().text).toBe(
+      "too large for storage",
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it("flushes a deferred write when the page is hidden", () => {
+    vi.useFakeTimers();
+    const scope = uniqueScope();
+    const { result } = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      result.current.setTextAndMentions("flush before leaving", []);
+      window.dispatchEvent(new Event("pagehide"));
+    });
+
+    expect(window.localStorage.getItem(result.current.storageKey)).toBe(
+      storedDraft("flush before leaving"),
+    );
+  });
+
   it("subscribes to draft presence for a batch of threads", () => {
     const projectId = "proj-batch-drafts";
     const threadRefs = [
@@ -64,6 +164,59 @@ describe("usePromptDraftStorage", () => {
 
     act(() => result.current.draft.clear());
     expect([...result.current.inputThreadIds]).toEqual([]);
+  });
+
+  it("does not re-read storage or re-render the batch when a draft edit keeps presence", () => {
+    const projectId = "proj-batch-keystrokes";
+    const threadRefs = Array.from({ length: 30 }, (_, index) => ({
+      id: `thr-batch-${index}`,
+      projectId,
+    }));
+    const composer = getPromptDraftAccessor({
+      kind: "thread",
+      projectId,
+      threadId: "thr-batch-3",
+    });
+    let batchRenders = 0;
+    const { result, rerender } = renderHook(() => {
+      batchRenders += 1;
+      return usePromptDraftInputThreadIds(threadRefs);
+    });
+    act(() => {
+      composer.setDraft({ text: "first", mentions: [], attachments: [] });
+    });
+    expect([...result.current]).toEqual(["thr-batch-3"]);
+
+    const getItem = vi.spyOn(Storage.prototype, "getItem");
+    const presenceReads = () =>
+      getItem.mock.calls.filter(([key]) => String(key).includes(projectId))
+        .length;
+    // The sidebar re-renders for unrelated reasons constantly; the presence
+    // snapshot must come from the cache, not 30 localStorage reads.
+    rerender();
+    expect(presenceReads()).toBe(0);
+
+    // A keystroke in an already-present draft: presence did not flip, so the
+    // batch subscriber is not notified (no sidebar render) and only the edited
+    // key is consulted.
+    const rendersBefore = batchRenders;
+    act(() => {
+      composer.setDraft({
+        text: "first keystroke",
+        mentions: [],
+        attachments: [],
+      });
+    });
+    expect(presenceReads()).toBeLessThanOrEqual(1);
+    expect(batchRenders).toBe(rendersBefore);
+
+    // Clearing flips presence: one notification, one render, one read.
+    act(() => {
+      composer.setDraft({ text: "", mentions: [], attachments: [] });
+    });
+    expect([...result.current]).toEqual([]);
+    expect(batchRenders).toBe(rendersBefore + 1);
+    getItem.mockRestore();
   });
 
   it("uses project-agnostic storage for new-thread prompt contents", () => {
@@ -128,6 +281,36 @@ describe("usePromptDraftStorage", () => {
 });
 
 describe("usePromptDraftStorage addQuote", () => {
+  it("keeps an imperative draft-action consumer unsubscribed from composer writes", () => {
+    const scope = uniqueScope();
+    let consumerRenders = 0;
+    let draftActions: ReturnType<typeof getPromptDraftAccessor> | undefined;
+
+    function DraftActionConsumer() {
+      consumerRenders += 1;
+      draftActions = getPromptDraftAccessor(scope);
+      return null;
+    }
+
+    render(<DraftActionConsumer />);
+    const rendersBeforeTyping = consumerRenders;
+    const composer = renderHook(() => usePromptDraftStorage(scope));
+
+    act(() => {
+      composer.result.current.setTextAndMentions("typed reply", []);
+    });
+
+    expect(consumerRenders).toBe(rendersBeforeTyping);
+    expect(draftActions?.storageKey).toBe(composer.result.current.storageKey);
+
+    act(() => {
+      draftActions?.addQuote("selected text");
+    });
+
+    expect(composer.result.current.text).toBe("typed reply\n> selected text\n");
+    expect(consumerRenders).toBe(rendersBeforeTyping);
+  });
+
   it("appends a trimmed quote as a '> ' block to the draft text and persists", () => {
     const scope = uniqueScope();
     const { result } = renderHook(() => usePromptDraftStorage(scope));

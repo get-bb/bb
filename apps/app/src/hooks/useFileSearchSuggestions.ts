@@ -18,7 +18,7 @@ export interface FilePathSearchSuggestion {
 
 export type FileSearchSuggestion = FilePathSearchSuggestion;
 
-export interface UseFileSearchSuggestionsArgs {
+interface UseFileSearchSuggestionsArgs {
   projectId: string | undefined;
   query: string | null;
   limit?: number;
@@ -27,7 +27,7 @@ export interface UseFileSearchSuggestionsArgs {
   currentThreadId?: string;
 }
 
-export interface UseFileSearchSuggestionsResult {
+interface UseFileSearchSuggestionsResult {
   suggestions: FileSearchSuggestion[];
   isLoading: boolean;
   /** Workspace/thread-storage path search failed. Only ever true with a query. */

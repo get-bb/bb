@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSectionThreadList,
   CHRONOLOGICAL_CONTAINER_ID,
-} from "./projectThreadGroups";
+} from "@bb/client-core";
 import {
   collectSectionThreadDndLookup,
   PINNED_THREAD_PARENT_KEY,

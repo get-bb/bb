@@ -103,6 +103,8 @@ describe("timeline response helpers", () => {
         workKind: "delegation",
         callId: "call_test",
         toolName: "spawnAgent",
+        childRef: null,
+        background: false,
         subagentType: null,
         description: null,
         output: "",

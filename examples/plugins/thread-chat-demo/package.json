@@ -5,7 +5,7 @@
   "type": "module",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.3"
+    "bbPluginSdk": ">=0.4.10"
   },
   "bb": {
     "name": "ThreadChat demo",

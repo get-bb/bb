@@ -33,14 +33,12 @@ import {
   hostDaemonSessionOpenRequestSchema,
   hostDaemonSessionOpenResponseSchema,
   hostDaemonTerminalOutputChunkSchema,
-  normalizeHostDaemonAcpLaunchSpec,
   threadStopCommandSchema,
-  type HostDaemonAcpLaunchSpec,
   type HostDaemonSettledCommandType,
 } from "../src/index.js";
 
 const CLIENT_REQUEST_ID = "creq_23456789ab";
-const ACP_LAUNCH_SPEC: HostDaemonAcpLaunchSpec = {
+const ACP_LAUNCH_SPEC = {
   displayName: "Local ACP",
   command: "local-acp",
   args: ["serve"],
@@ -297,6 +295,16 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       kind: "local",
     },
   },
+  "host.list_branch_options": {
+    branches: ["main"],
+    branchesTruncated: false,
+    remoteBranches: ["origin/main"],
+    remoteBranchesTruncated: false,
+    selectedBranch: {
+      name: "main",
+      kind: "local",
+    },
+  },
   "host.file_metadata": {
     path: "/tmp/report.html",
     modifiedAtMs: 1234,
@@ -343,18 +351,23 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
     selectedOnlyModels: [],
   },
-  "known_acp_agents.status": {
-    agents: [
-      {
-        id: "acp-opencode",
-        executableName: "opencode",
-        installed: true,
-        executablePath: "/opt/homebrew/bin/opencode",
-      },
-    ],
+  "provider.health": {
+    supported: true,
+    health: {
+      status: "ready",
+      statusMessage: null,
+      accountEmail: "agent@example.com",
+      planLabel: "Pro",
+      installedVersion: "1.2.3",
+      minimumSupportedVersion: "1.0.0",
+      canInstall: true,
+      canUpdate: true,
+      loginCommand: "agent login",
+    },
   },
   "provider.usage": {
-    codex: {
+    supported: true,
+    usage: {
       status: "ok",
       accountEmail: "codex@example.com",
       planLabel: "Pro",
@@ -366,67 +379,26 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         },
       ],
     },
-    claudeCode: { status: "unauthenticated" },
-    cursor: { status: "not_installed" },
   },
-  "provider_cli.status": {
-    codex: {
-      displayName: "Codex",
-      executableName: "codex",
-      executablePath: null,
-      installed: false,
-      installSource: "notInstalled",
-      currentVersion: null,
-      latestVersion: "0.136.0",
-      minimumSupportedVersion: "0.136.0",
-      npmPackageName: "@openai/codex",
-      npmGlobalPackageVersion: null,
-      installAction: {
-        kind: "install",
-        label: "Install",
-        commandKind: "exec",
-        command: "npm install -g @openai/codex@latest",
-      },
-      needsUpdate: false,
-      versionUnsupported: false,
+  "provider.installation.status": {
+    executableName: "codex",
+    executablePath: null,
+    installed: false,
+    installSource: "notInstalled",
+    currentVersion: null,
+    latestVersion: "0.136.0",
+    minimumSupportedVersion: "0.136.0",
+    npmPackageName: "@openai/codex",
+    npmGlobalPackageVersion: null,
+    installAction: {
+      kind: "install",
+      label: "Install",
+      command: "npm install -g @openai/codex@latest",
     },
-    claudeCode: {
-      displayName: "Claude Code",
-      executableName: "claude",
-      executablePath: "/opt/homebrew/bin/claude",
-      installed: true,
-      installSource: "external",
-      currentVersion: "1.0.0",
-      latestVersion: null,
-      minimumSupportedVersion: null,
-      npmPackageName: null,
-      npmGlobalPackageVersion: null,
-      installAction: null,
-      needsUpdate: false,
-      versionUnsupported: false,
-    },
-    cursor: {
-      displayName: "Cursor",
-      executableName: "cursor-agent",
-      executablePath: null,
-      installed: false,
-      installSource: "notInstalled",
-      currentVersion: null,
-      latestVersion: null,
-      minimumSupportedVersion: null,
-      npmPackageName: "@cursor/agent",
-      npmGlobalPackageVersion: null,
-      installAction: {
-        kind: "install",
-        label: "Install",
-        commandKind: "shell",
-        command: "curl https://cursor.com/install | bash",
-      },
-      needsUpdate: false,
-      versionUnsupported: false,
-    },
+    needsUpdate: false,
+    versionUnsupported: false,
   },
-  "provider_cli.install": {
+  "provider.installation.run": {
     events: [
       {
         type: "started",
@@ -441,19 +413,6 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         success: true,
       },
     ],
-  },
-  "workspace.discover_repos": {
-    repos: [
-      {
-        path: "/home/user/projects/bb",
-        name: "bb",
-        lastActivityAt: "2026-08-05T00:00:00.000Z",
-        originUrl: "https://github.com/example/bb",
-        agentSeen: true,
-        agentSeenAt: "2026-08-04T00:00:00.000Z",
-      },
-    ],
-    truncated: false,
   },
   "workspace.status": WORKSPACE_UNAVAILABLE_RESULT,
   "workspace.diff": WORKSPACE_UNAVAILABLE_RESULT,
@@ -505,14 +464,6 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "thread.archive": {},
   "thread.unarchive": {},
   "interactive.resolve": {},
-  "codex.inference.complete": {
-    model: "gpt-5",
-    value: { title: "Short title" },
-  },
-  "codex.voice.transcribe": {
-    model: "gpt-5-transcribe",
-    text: "hello world",
-  },
   "environment.provision": {
     path: "/tmp/env",
     isGitRepo: true,
@@ -686,38 +637,6 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
-  "hostDaemonCommandSchema.acpLaunchSpec":
-    "thread.start and turn.submit include an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
-  "hostDaemonCommandSchema.acpLaunchSpec.cwd":
-    "dynamic ACP launch specs may omit cwd so the daemon uses the thread workspace cwd.",
-  "hostDaemonCommandSchema.acpLaunchSpec.modelCli":
-    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonCommandSchema.acpLaunchSpec.modelCli.selectFlag":
-    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli":
-    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
-    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
-    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning":
-    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
-    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonCommandSchema.acpLaunchSpec.nativeSkillRoots":
-    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli":
-    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.full":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.readonly":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonCommandSchema.checkout":
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
@@ -728,102 +647,42 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "host.write_file may omit mode to preserve existing permissions; when present it only controls newly created files.",
   "hostDaemonOnlineRpcCommandSchema.mergeBaseBranch":
     "workspace.status may omit mergeBaseBranch when the caller only needs working-tree state.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec":
-    "provider.list_models includes an ACP launch spec only for dynamic ACP providers; built-ins resolve from daemon-side profiles.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.detail":
+    "a tool_use approval's presentation has a detail only when the bridge summarized the call; a missing detail means the label and title are the whole summary, not an empty string.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.suppress":
+    "a tool_use approval's presentation marks suppress only for low-value rows the bridge wants collapsed; absence means render normally.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.tint":
+    "a tool_use approval's presentation carries a tint only when the bridge wants an accent colour; absence means the neutral row tint, which is not a colour value.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.subject.presentation.title":
+    "a tool_use approval's presentation has a title only when the call has a headline (a path, a query); absence means the label stands alone.",
   "hostDaemonOnlineRpcCommandSchema.cwd":
     "provider.list_models may omit cwd when only user-level provider configuration applies.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.cwd":
-    "dynamic ACP launch specs may omit cwd so the daemon uses the caller's workspace cwd.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli":
-    "dynamic ACP agents may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.modelCli.selectFlag":
-    "dynamic ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli":
-    "dynamic ACP agents may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.defaultLevel":
-    "ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.reasoningCli.levelValues":
-    "ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning":
-    "dynamic ACP agents may omit nativeReasoning when they advertise thought_level themselves or do not support bb-managed ACP reasoning.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeReasoning.levelValues":
-    "ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.nativeSkillRoots":
-    "dynamic ACP agents may omit nativeSkillRoots when they do not expose provider-native skills.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli":
-    "dynamic ACP agents may omit permissionCli when their own prompt policy does not need launch-time permission flags.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.full":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.workspaceWrite":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.readonly":
-    "ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonOnlineRpcCommandSchema.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
   "hostDaemonOnlineRpcCommandSchema.query":
     "host.list_files may omit a search string to list files without filtering.",
   "hostDaemonOnlineRpcCommandSchema.path":
     "host.browse_directory may omit path to list the host's home directory, which a remote caller cannot resolve.",
   "hostDaemonOnlineRpcCommandSchema.ref":
     "host.read_file may omit ref to read from disk; setting ref switches to git history at that ref.",
+  "hostDaemonOnlineRpcCommandSchema.requirement":
+    "provider installation status omits requirement for general compatibility and names one only when checking a specific operation.",
   "hostDaemonOnlineRpcCommandSchema.rootPath":
     "host.read_file and host.file_metadata may omit rootPath only for explicit absolute disk reads; ref-based reads still require it.",
   "hostDaemonOnlineRpcCommandSchema.selectedBranch":
     "host.list_branches may omit exact selected-branch classification when the caller only needs a branch option page.",
-  "hostDaemonOnlineRpcCommandSchema.nativeSkillRoots":
-    "host skill discovery may omit nativeSkillRoots for providers with daemon-owned discovery rules.",
   "hostDaemonCommandSchema.threadStoragePath":
     "thread.start may include a storage path so the daemon creates the directory before the agent starts.",
   "hostDaemonCommandSchema.fork":
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
+  "hostDaemonCommandSchema.fork.sourceProviderCheckpointId":
+    "thread.start.fork names a checkpoint only when the clone should stop at an earlier source turn; absent means clone the session tip.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonCommandSchema.disallowedTools":
     "thread runtime context may omit provider-specific built-in tool removals for providers that do not need them.",
-  "hostDaemonCommandSchema.options.claudeCodeMockCliTraffic":
-    "thread runtime options may omit mock CLI traffic settings unless the server explicitly enables Claude traffic replay.",
-  "hostDaemonCommandSchema.options.claudeCodePermissionMode":
-    "thread runtime options may omit the Claude Code native permission override unless a provider command requests plan mode.",
-  "hostDaemonCommandSchema.options.memoryEnabled":
-    "legacy runtime commands may omit provider memory policy; current servers always send the persisted provider preference.",
-  "hostDaemonCommandSchema.options.providerSubagentsEnabled":
-    "legacy runtime commands may omit provider subagent policy; current servers always send the persisted provider preference.",
+  "hostDaemonCommandSchema.options.promptMode":
+    "thread runtime options carry a prompt mode only when the prompt entered one through the provider's declared composer action.",
   "hostDaemonCommandSchema.resumeContext.disallowedTools":
     "turn.submit resume context may omit provider-specific built-in tool removals for providers that do not need them.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec":
-    "turn.submit resume context carries an ACP launch spec only for dynamic ACP providers that may need lazy resume.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.cwd":
-    "resume-context ACP launch specs may omit cwd so the daemon uses the resumed thread workspace cwd.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli":
-    "resume-context ACP launch specs may omit modelCli so ACP uses the shared default-model sentinel path.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.modelCli.selectFlag":
-    "resume-context ACP model selection omits selectFlag when the agent cannot pin a model at launch.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli":
-    "resume-context ACP launch specs may omit reasoningCli when reasoning is protocol-native, encoded in model ids, or agent-managed.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.defaultLevel":
-    "resume-context ACP reasoning CLI config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.reasoningCli.levelValues":
-    "resume-context ACP reasoning CLI config only needs levelValues when bb reasoning levels differ from the agent's CLI vocabulary.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning":
-    "resume-context ACP launch specs may omit nativeReasoning when the agent advertises thought_level itself or does not support bb-managed ACP reasoning.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.defaultLevel":
-    "resume-context ACP native reasoning config may omit defaultLevel so the bridge uses medium when supported or the first supported level.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeReasoning.levelValues":
-    "resume-context ACP native reasoning config only needs levelValues when bb reasoning levels differ from the agent's ACP config vocabulary.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.nativeSkillRoots":
-    "resume-context ACP launch specs may omit nativeSkillRoots when the agent does not expose provider-native skills.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli":
-    "resume-context ACP launch specs may omit permissionCli when the agent's prompt policy does not need launch-time permission flags.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.full":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.workspaceWrite":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.readonly":
-    "resume-context ACP permission CLI config only needs args for modes that differ from the agent default.",
-  "hostDaemonCommandSchema.resumeContext.acpLaunchSpec.permissionCli.insertAfterArgs":
-    "resume-context ACP permission CLI config omits insertAfterArgs when permission args should be inserted before all configured agent args.",
 };
 
 describe("host-daemon local schemas", () => {
@@ -1060,14 +919,16 @@ describe("host-daemon local schemas", () => {
 });
 
 /**
- * Every bridge-bound command carries a `bridgeLaunch`. Schema-shape tests use
- * the daemon-bundled variant (the shorter of the two sources); the artifact
- * variant has its own round-trip test.
+ * Every bridge-bound command carries a `bridgeLaunch` naming the plugin's
+ * artifact; the artifact variant's edge cases have their own round-trip test.
  */
 const BRIDGE_LAUNCH = {
   pluginId: "provider-pi",
-  source: { kind: "daemon-bundled", id: "pi" },
+  source: { kind: "artifact", digest: "a".repeat(64), byteLength: 4096 },
+  providerOptions: {},
+  envPassthrough: [],
   capabilities: {
+    providerInstallation: false,
     supportsServiceTier: false,
     permissionModes: ["full"],
     supportsThreadArchive: false,
@@ -1076,11 +937,36 @@ const BRIDGE_LAUNCH = {
   },
 } as const;
 
+/**
+ * An ACP provider's launch: the agent's spec is declared bridge options, so
+ * it rides the same opaque `providerOptions` bag every provider's statics do.
+ */
+const ACP_BRIDGE_LAUNCH = {
+  ...BRIDGE_LAUNCH,
+  pluginId: "provider-acp",
+  providerOptions: { acpLaunchSpec: ACP_LAUNCH_SPEC },
+} as const;
+
 describe("host-daemon command schemas", () => {
+  // Version 154 removes the codex AI-service commands: helper inference and
+  // voice transcription are plugin host RPC methods now.
+  // Version 153 removes the `daemon-bundled` bridge source: every bridge,
+  // pi's included, is its plugin's `bb.host` artifact, so `bridgeLaunch.source`
+  // is the artifact variant only and a daemon refuses the removed variant.
+  // Version 151 makes auto/steer turn targeting use the daemon's live turn
+  // state, so the same command can report steer where an older daemon reported
+  // new-turn.
+  // Version 142 moves built-in ACP discovery into provider bridges and carries
+  // provider-owned static bridge options plus installation capability facts.
+  // Version 138 adds the provider-targeted provider.health command, changes
+  // provider.usage from one fixed aggregate into a provider bridge query, and
+  // moves maintenance capability authority from bridge initialization to
+  // provider registration. Older daemons cannot parse the new command shapes
+  // and would still apply the removed initialization gates.
   // Version 130 makes every provider plugin-declared on the wire: a REQUIRED
   // `bridgeLaunch` field beside every `acpLaunchSpec` site (thread.start, the
   // resume contexts, thread.goal.clear, thread.archive, thread.unarchive,
-  // provider.list_models) naming the delivery path (`artifact` or
+  // provider.list_models) naming the delivery path (then `artifact` or
   // `daemon-bundled`) plus the owning `pluginId`, the plugin host artifact's
   // `digest` vocabulary for the artifact variant, and the server-validated
   // capabilities, plus the collapse
@@ -1122,10 +1008,25 @@ describe("host-daemon command schemas", () => {
   // Version 118 rejects successful provider update results when the daemon
   // cannot verify a version change. Older daemons can report a no-op Claude
   // update as successful, so enrolled machines must update for honest results.
-  // Version 132 deduplicates exact Codex terminal-item retries before they
-  // cross the daemon boundary. Version 131 preserves Pi provider identity on
-  // bridge resume. Version 117 adds thread/context/cleared to the provider
-  // event wire model.
+  // Version 134 keeps replayed Codex resume/fork usage snapshots off turn ids
+  // bb never stored a turn/started for (token usage dropped, context usage
+  // thread-scoped).
+  // Version 140 reports the daemon's browser-local helper port during session
+  // open so remote pages can discover helpers on non-primary machines.
+  // Version 139 keeps resumed Claude task notifications from claiming newly
+  // accepted human input before the SDK prompt iterator consumes it.
+  // Version 137 removes the `claudeCodeMockCliTraffic` runtime option with
+  // the Claude Code mock CLI traffic experiment.
+  // Version 136 ships the narrow-grammar provider bridges: served bridge
+  // artifacts speak bridge-protocol v2 (`thread/delta` only), which an older
+  // daemon's runtime would ignore as unknown notifications and render empty
+  // timelines, so enrolled machines must update before receiving the new
+  // artifacts.
+  // Version 133 suppresses Claude's terminal-failure drain before it can open
+  // a provider-only turn. Version 132 deduplicates exact Codex terminal-item
+  // retries before they cross the daemon boundary. Version 131 preserves Pi
+  // provider identity on bridge resume. Version 117 adds
+  // thread/context/cleared to the provider event wire model.
   // Version 116 reports provider exits that happen while a turn start is
   // pending. Older daemons can leave the server thread active until the live
   // command timeout, so enrolled machines must update before handling turns.
@@ -1138,7 +1039,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(132);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(164);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1235,39 +1136,6 @@ describe("host-daemon command schemas", () => {
       usedPercent: 10,
       resetsAt: null,
       cost: { usedUsdCents: 500, limitUsdCents: 5_000 },
-    });
-  });
-
-  it("normalizes ACP launch specs at the contract boundary", () => {
-    expect(
-      normalizeHostDaemonAcpLaunchSpec({
-        displayName: "Custom ACP",
-        command: "custom-agent",
-        args: [],
-        env: {},
-        modelCli: {
-          listArgs: [],
-          selectFlag: "--model",
-          primaryModels: ["model-a"],
-        },
-        reasoningCli: {
-          flag: "--reasoning-effort",
-          supportedLevels: ["low", "medium", "high"],
-          levelValues: { max: "high" },
-          defaultLevel: "high",
-        },
-      }),
-    ).toEqual({
-      displayName: "Custom ACP",
-      command: "custom-agent",
-      args: [],
-      env: {},
-      reasoningCli: {
-        flag: "--reasoning-effort",
-        supportedLevels: ["low", "medium", "high"],
-        levelValues: { max: "high" },
-        defaultLevel: "high",
-      },
     });
   });
 
@@ -1485,23 +1353,50 @@ describe("host-daemon command schemas", () => {
       includeDirectories: true,
     });
 
+    // Version 162: the daemon scans exactly the provider's declared skill and
+    // command roots (per-root options explicit) and what its plugin resolved.
+    // Version 163: a declared side is `user` or `project` only; host-absolute
+    // roots arrive as resolved roots.
+    const root = (path: string, options: Partial<{ recursive: boolean; ancestors: boolean; namePrefix: string }> = {}) => ({
+      path,
+      recursive: false,
+      ancestors: false,
+      namePrefix: "",
+      ...options,
+    });
+    const emptyRoots = { user: [], project: [] };
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_commands",
         providerId: "acp-amp",
         cwd: "/tmp/workspace",
-        nativeSkillRoots: {
-          user: [".agents/skills"],
-          project: [".amp/skills"],
+        nativeRoots: {
+          skills: {
+            user: [root(".agents/skills")],
+            project: [root(".amp/skills", { recursive: true, ancestors: true })],
+          },
+          commands: { ...emptyRoots, project: [root(".amp/commands")] },
+          resolved: {
+            skills: [
+              {
+                path: "/home/dev/.amp/plugins/one/skills",
+                origin: "user",
+                recursive: false,
+                ancestors: false,
+                namePrefix: "one:",
+                shape: "skills",
+              },
+            ],
+            commands: [],
+          },
         },
       }),
     ).toMatchObject({
       type: "host.list_commands",
       providerId: "acp-amp",
-      cwd: "/tmp/workspace",
-      nativeSkillRoots: {
-        user: [".agents/skills"],
-        project: [".amp/skills"],
+      nativeRoots: {
+        skills: { project: [{ path: ".amp/skills", recursive: true, ancestors: true }] },
+        resolved: { skills: [{ namePrefix: "one:", shape: "skills" }] },
       },
     });
 
@@ -1510,18 +1405,70 @@ describe("host-daemon command schemas", () => {
         type: "host.list_skills",
         providerId: "bb-shared",
         cwd: "/tmp/workspace",
-        nativeSkillRoots: {
-          user: [".agents/skills"],
-          project: [".agents/skills"],
+        nativeRoots: {
+          skills: { ...emptyRoots, user: [root(".agents/skills")] },
+          commands: emptyRoots,
+          resolved: { skills: [], commands: [] },
         },
       }),
     ).toMatchObject({
       type: "host.list_skills",
-      providerId: "bb-shared",
-      nativeSkillRoots: {
-        user: [".agents/skills"],
-        project: [".agents/skills"],
+      nativeRoots: { skills: { user: [{ path: ".agents/skills" }] } },
+    });
+
+    // The old optional string lists are gone: the field is required and strict.
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_commands",
+        providerId: "pi",
+        cwd: "/tmp/workspace",
+        nativeSkillRoots: { user: [".pi/agent/skills"], project: [] },
+      }),
+    ).toThrow();
+    const withRoots = (skills: Record<string, unknown>) => ({
+      type: "host.list_commands",
+      providerId: "pi",
+      cwd: "/tmp/workspace",
+      nativeRoots: {
+        skills: { ...emptyRoots, ...skills },
+        commands: emptyRoots,
+        resolved: { skills: [], commands: [] },
       },
+    });
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ absolute: [root("/home/dev/.pi/agent/skills")] })),
+    ).toThrow(/Unrecognized key[^\n]*absolute/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ user: [root("/home/dev/.pi/agent/skills")] })),
+    ).toThrow(/relative paths without dot segments/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ user: [root(".pi/skills", { ancestors: true })] })),
+    ).toThrow(/Only project roots may walk ancestors/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ user: [root(".pi/skills"), root(".pi/skills")] })),
+    ).toThrow(/must not repeat a path/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root(".pi/skills", { namePrefix: "bad prefix" })] }),
+      ),
+    ).toThrow(/ending in ':'/u);
+
+    expect(
+      hostDaemonOnlineRpcCommandSchema.parse({
+        type: "host.list_branch_options",
+        path: "/tmp/workspace",
+        query: "release",
+        selectedBranch: "origin/main",
+        limit: 50,
+        remoteRefresh: "background",
+      }),
+    ).toMatchObject({
+      type: "host.list_branch_options",
+      path: "/tmp/workspace",
+      query: "release",
+      selectedBranch: "origin/main",
+      limit: 50,
+      remoteRefresh: "background",
     });
 
     expect(
@@ -1604,16 +1551,6 @@ describe("host-daemon command schemas", () => {
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
-        type: "known_acp_agents.status",
-        agents: [{ id: "acp-opencode", executableName: "opencode" }],
-      }),
-    ).toMatchObject({
-      type: "known_acp_agents.status",
-      agents: [{ id: "acp-opencode", executableName: "opencode" }],
-    });
-
-    expect(
-      hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_files",
         path: "/tmp/bb-data/thread-storage/thread-123",
         limit: 100,
@@ -1645,57 +1582,23 @@ describe("host-daemon command schemas", () => {
         decision: "allow_for_session",
       },
     });
+  });
 
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "codex.inference.complete",
-        model: "gpt-5.4-mini",
-        reasoningEffort: "none",
-        prompt: "Return a JSON object with a short title.",
-        outputSchema: {
-          type: "object",
-          additionalProperties: false,
-          required: ["title"],
-          properties: {
-            title: { type: "string" },
-          },
-        },
-        timeoutMs: 10000,
-      }),
-    ).toMatchObject({
-      type: "codex.inference.complete",
-      model: "gpt-5.4-mini",
-      reasoningEffort: "none",
-    });
-
-    for (const reasoningEffort of [undefined, "medium"]) {
+  // Version 154: AI services ride `plugin.host.call`; the codex-specific
+  // daemon commands are gone with the daemon-bundled ChatGPT client.
+  it("rejects the removed codex AI-service command names", () => {
+    for (const type of ["codex.inference.complete", "codex.voice.transcribe"]) {
       expect(() =>
         hostDaemonCommandSchema.parse({
-          type: "codex.inference.complete",
-          model: "gpt-5.6-luna",
-          reasoningEffort,
+          type,
+          model: "gpt-5.4-mini",
+          reasoningEffort: "none",
           prompt: "Return a short title.",
           outputSchema: { type: "object" },
           timeoutMs: 10000,
         }),
       ).toThrow();
     }
-
-    expect(
-      hostDaemonCommandSchema.parse({
-        type: "codex.voice.transcribe",
-        model: "gpt-4o-mini-transcribe",
-        audioBase64: Buffer.from("audio").toString("base64"),
-        mimeType: "audio/webm",
-        filename: "prompt.webm",
-        prompt: null,
-        timeoutMs: 30000,
-      }),
-    ).toMatchObject({
-      type: "codex.voice.transcribe",
-      model: "gpt-4o-mini-transcribe",
-      mimeType: "audio/webm",
-    });
   });
 
   it("rejects old provider-agnostic AI command names", () => {
@@ -1733,6 +1636,12 @@ describe("host-daemon command schemas", () => {
         includeDirectories: true,
       },
       {
+        type: "host.list_branch_options",
+        path: "/tmp/workspace",
+        limit: 50,
+        remoteRefresh: "none",
+      },
+      {
         type: "host.list_branches",
         path: "/tmp/workspace",
         limit: 50,
@@ -1757,10 +1666,6 @@ describe("host-daemon command schemas", () => {
         type: "provider.list_models",
         providerId: "codex",
         bridgeLaunch: BRIDGE_LAUNCH,
-      },
-      {
-        type: "known_acp_agents.status",
-        agents: [{ id: "acp-opencode", executableName: "opencode" }],
       },
       {
         type: "workspace.status",
@@ -1794,37 +1699,6 @@ describe("host-daemon command schemas", () => {
     }
   });
 
-  it("requires Codex inference schemas and results to be JSON objects", () => {
-    for (const outputSchema of [null, "object", ["object"]]) {
-      expect(() =>
-        hostDaemonCommandSchema.parse({
-          type: "codex.inference.complete",
-          model: "gpt-5.4-mini",
-          reasoningEffort: "none",
-          prompt: "Return a title",
-          outputSchema,
-          timeoutMs: 10000,
-        }),
-      ).toThrow();
-    }
-
-    expect(() =>
-      hostDaemonCommandResultSchemaByType["codex.inference.complete"].parse({
-        model: "gpt-5.4-mini",
-        value: null,
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonCommandResultSchemaByType["codex.inference.complete"].parse({
-        model: "gpt-5.4-mini",
-        value: { title: "Short title" },
-      }),
-    ).toEqual({
-      model: "gpt-5.4-mini",
-      value: { title: "Short title" },
-    });
-  });
 
   it("rejects malformed environment.provision commands at parse time", () => {
     expect(() =>
@@ -1902,7 +1776,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -1928,7 +1802,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -1988,7 +1862,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -2059,7 +1933,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default" as const,
           reasoningLevel: "medium" as const,
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode,
           permissionScope,
           approvalReviewer,
@@ -2112,7 +1986,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -2172,7 +2046,7 @@ describe("host-daemon command schemas", () => {
         model: "gpt-5",
         serviceTier: "default",
         reasoningLevel: "medium",
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -2207,7 +2081,7 @@ describe("host-daemon command schemas", () => {
         model: "gpt-5",
         serviceTier: "default",
         reasoningLevel: "medium",
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -2234,12 +2108,14 @@ describe("host-daemon command schemas", () => {
     );
   });
 
-  it("round-trips dynamic ACP launch specs on provider.list_models, thread.start, and turn.submit", () => {
+  // An ACP agent's launch spec is declared bridge options now, so it rides
+  // `bridgeLaunch.providerOptions` — the same opaque bag every provider's
+  // static options use. The commands carry no provider-named field at all.
+  it("round-trips a provider's declared launch spec on provider.list_models, thread.start, and turn.submit", () => {
     const providerListModelsCommand = {
       type: "provider.list_models",
-      bridgeLaunch: BRIDGE_LAUNCH,
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
       providerId: "acp-local",
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
       cwd: "/tmp/workspace",
     };
     const providerListModelsRoundTrip = JSON.parse(
@@ -2263,7 +2139,7 @@ describe("host-daemon command schemas", () => {
 
     const threadStartCommand = {
       type: "thread.start",
-      bridgeLaunch: BRIDGE_LAUNCH,
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       workspaceContext: {
@@ -2272,14 +2148,13 @@ describe("host-daemon command schemas", () => {
       },
       projectId: "proj_123",
       providerId: "acp-local",
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
       requestId: CLIENT_REQUEST_ID,
       input: [{ type: "text", text: "hello", mentions: [] }],
       options: {
         model: "acp-default",
         serviceTier: "default",
         reasoningLevel: "medium",
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -2298,7 +2173,7 @@ describe("host-daemon command schemas", () => {
 
     const turnSubmitCommand = {
       type: "turn.submit",
-      bridgeLaunch: BRIDGE_LAUNCH,
+      bridgeLaunch: ACP_BRIDGE_LAUNCH,
       environmentId: "env_123",
       threadId: "thr_123",
       requestId: CLIENT_REQUEST_ID,
@@ -2307,15 +2182,14 @@ describe("host-daemon command schemas", () => {
         model: "acp-default",
         serviceTier: "default",
         reasoningLevel: "medium",
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
         permissionEscalation: null,
       },
-      acpLaunchSpec: ACP_LAUNCH_SPEC,
       resumeContext: {
-        bridgeLaunch: BRIDGE_LAUNCH,
+        bridgeLaunch: ACP_BRIDGE_LAUNCH,
         workspaceContext: {
           workspacePath: "/tmp/workspace",
           workspaceProvisionType: "unmanaged",
@@ -2323,7 +2197,6 @@ describe("host-daemon command schemas", () => {
         projectId: "proj_123",
         providerId: "acp-local",
         providerThreadId: "provider_123",
-        acpLaunchSpec: ACP_LAUNCH_SPEC,
         instructions: "Be a helpful thread.",
         dynamicTools: [],
         injectedSkillSources: [],
@@ -2359,12 +2232,15 @@ describe("host-daemon command schemas", () => {
         byteLength: 4096,
       },
       capabilities: {
+        providerInstallation: true,
         supportsServiceTier: true,
         permissionModes: ["accept-edits", "full"],
         supportsThreadArchive: false,
         supportsThreadRename: false,
         fork: "tip",
       },
+      providerOptions: { launch: { command: "echo-agent" } },
+      envPassthrough: ["BB_ECHO_AGENT_EXECUTABLE"],
     };
 
     const providerListModelsCommand = {
@@ -2396,7 +2272,7 @@ describe("host-daemon command schemas", () => {
         model: "echo-default",
         serviceTier: "default",
         reasoningLevel: "medium",
-        workflowsEnabled: false,
+        providerOptions: {},
         permissionMode: "full",
         permissionScope: "full",
         approvalReviewer: null,
@@ -2439,14 +2315,16 @@ describe("host-daemon command schemas", () => {
     ).toEqual(goalClearCommand);
 
     // Never execute unverifiable bytes: a malformed digest, a non-positive
-    // byte length, and an unknown source kind all fail the parse. So does a
-    // launch with no owning plugin — it names neither an artifact to fetch nor
-    // a directory to scope the bridge process to.
+    // byte length, an unknown source kind, and the removed `daemon-bundled`
+    // source (version 153) all fail the parse. So does a launch with no
+    // owning plugin — it names neither an artifact to fetch nor a directory
+    // to scope the bridge process to.
     for (const source of [
       { kind: "artifact", digest: "not-a-hash", byteLength: 4096 },
       { kind: "artifact", digest: "A".repeat(64), byteLength: 4096 },
       { kind: "artifact", digest: "a".repeat(64), byteLength: 0 },
       { kind: "bundled" },
+      { kind: "daemon-bundled", id: "pi" },
     ]) {
       expect(
         hostDaemonCommandSchema.safeParse({
@@ -2558,7 +2436,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -2605,7 +2483,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -2645,7 +2523,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -2684,7 +2562,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -2716,7 +2594,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -2742,7 +2620,7 @@ describe("host-daemon command schemas", () => {
           model: "gpt-5",
           serviceTier: "default",
           reasoningLevel: "medium",
-          workflowsEnabled: false,
+          providerOptions: {},
           permissionMode: "full",
           permissionScope: "full",
           approvalReviewer: null,
@@ -3169,6 +3047,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
           {
@@ -3192,6 +3071,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: false,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: null,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [],
         loadedEnvironments: [
@@ -3217,6 +3097,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: [
           {
@@ -3235,6 +3116,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION - 1,
         activeThreads: [],
       }),
@@ -3251,6 +3133,7 @@ describe("host-daemon session schemas", () => {
         hasMachineCredential: true,
         platform: "darwin",
         dataDir: "/tmp/bb-data",
+        localApiPort: 38_887,
         protocolVersion: 0,
         activeThreads: [],
       }),
@@ -3421,48 +3304,39 @@ describe("host-daemon session schemas", () => {
       }),
     ).toThrow();
 
-    // Status labels are server-owned: the ingest enrichment leaves MCP,
-    // unknown, and unlabeled tool calls untouched, so a daemon that supplied
-    // its own labels would otherwise have them persisted and rendered.
-    for (const item of [
-      // MCP tool call — enrichment skips these on `server`.
-      {
-        type: "toolCall" as const,
-        id: "tool-1",
-        server: "some-mcp-server",
-        tool: "search",
-        status: "pending" as const,
-        statusLabels: { pending: "Spoofed", completed: "Spoofed" },
-      },
-      // Native tool with no registered plugin labels.
-      {
-        type: "toolCall" as const,
-        id: "tool-2",
-        tool: "Read",
-        status: "pending" as const,
-        statusLabels: { pending: "Spoofed", completed: "Spoofed" },
-      },
-    ]) {
-      expect(() =>
-        hostDaemonEventBatchRequestSchema.parse({
-          sessionId: "session_123",
-          eventGroups: [
+    // A `statusLabels` key on an item is not part of the wire any more (the
+    // bridge's presentation is the only label source); a daemon that sends
+    // one has it dropped rather than persisted.
+    const parsed = hostDaemonEventBatchRequestSchema.parse({
+      sessionId: "session_123",
+      eventGroups: [
+        {
+          threadId: "thr_123",
+          events: [
             {
+              type: "item/started",
               threadId: "thr_123",
-              events: [
-                {
-                  type: "item/started",
-                  threadId: "thr_123",
-                  providerThreadId: "provider-1",
-                  scope: threadScope(),
-                  item,
-                },
-              ],
+              providerThreadId: "provider-1",
+              scope: turnScope("turn-1"),
+              item: {
+                type: "toolCall",
+                id: "tool-2",
+                tool: "Read",
+                status: "pending",
+                statusLabels: { pending: "Spoofed", completed: "Spoofed" },
+              },
             },
           ],
-        }),
-      ).toThrow();
+        },
+      ],
+    });
+    const [group] = parsed.eventGroups;
+    const started = group?.events.find((event) => event.type === "item/started");
+    expect(started).toBeDefined();
+    if (started?.type !== "item/started") {
+      throw new Error("Expected the spoofed event to parse as item/started");
     }
+    expect(started.item).not.toHaveProperty("statusLabels");
 
     expect(() =>
       hostDaemonEventBatchResponseSchema.parse({

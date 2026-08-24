@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { SystemConfigResponse } from "@bb/server-contract";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   usePluginContributions,
   usePluginMentionSearch,
@@ -18,26 +13,6 @@ import {
 vi.mock("@/lib/sdk", () => ({
   sdk: { system: { config: vi.fn() } },
 }));
-
-function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
-    keybindings: [],
-    defaultKeybindings: [],
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    serverUrl: "http://localhost:38886",
-    primaryHostId: null,
-    primaryHostPlatform: null,
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
-}
 
 function mockFetchJsonOnce(body: unknown, init: { status?: number } = {}) {
   const status = init.status ?? 200;
@@ -59,7 +34,7 @@ afterEach(() => {
 
 describe("usePluginContributions", () => {
   it("fetches contributions and drops malformed entries", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.system.config).mockResolvedValue(makeSystemConfig());
     const fetchMock = mockFetchJsonOnce({
       cliCommands: [],
       mentionProviders: [
@@ -120,7 +95,7 @@ describe("usePluginContributions", () => {
   });
 
   it("shapes a failed contributions request as empty rather than an error", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.system.config).mockResolvedValue(makeSystemConfig());
     mockFetchJsonOnce({ ok: false }, { status: 503 });
 
     const { wrapper } = createQueryClientTestHarness();

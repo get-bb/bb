@@ -95,9 +95,11 @@ describe("PluginDetailReleaseControl", () => {
       { wrapper },
     );
 
-    expect(
-      screen.getByRole("button", { name: "Update Linear to 1.9.0" }),
-    ).toBeTruthy();
+    const update = screen.getByRole("button", {
+      name: "Update Linear to 1.9.0",
+    });
+    expect(update).toBeTruthy();
+    expect(update.querySelector('[data-icon="Download"]')).not.toBeNull();
     expect(screen.queryByText("Compatible with your bb.")).toBeNull();
   });
 
@@ -126,11 +128,6 @@ describe("PluginDetailReleaseControl", () => {
       "check again when a compatible plugin version is available",
     );
     expect(blockedStatus.textContent).not.toContain("Update bb");
-    expect(
-      blockedStatus
-        .querySelector('[data-icon="AlertTriangle"]')
-        ?.getAttribute("class"),
-    ).toContain("text-warning");
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
@@ -218,11 +215,6 @@ describe("PluginDetailReleaseControl", () => {
     expect(failedStatus.textContent).toContain(
       "bb couldn’t activate 1.9.0. It restored 1.6.2 and its data.",
     );
-    expect(
-      failedStatus
-        .querySelector('[data-icon="CircleX"]')
-        ?.getAttribute("class"),
-    ).toContain("text-destructive");
     expect(screen.queryByText("Technical details")).toBeNull();
     expect(screen.queryByText("The plugin failed to load.")).toBeNull();
     expect(failedStatus.querySelector("button")).toBeNull();

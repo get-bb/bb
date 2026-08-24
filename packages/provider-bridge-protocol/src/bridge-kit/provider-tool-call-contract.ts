@@ -10,6 +10,11 @@ const normalizedToolCallRequestSchema = z.object({
   callId: z.string().min(1),
   tool: z.string().min(1),
   arguments: z.unknown(),
+  /**
+   * turnId/callId are provider-native (thread/delta bridges hold no bb ids);
+   * the runtime adapter translates them through the delta assembler's maps.
+   */
+  providerNativeIds: z.boolean().optional(),
 });
 
 export function decodeNormalizedProviderToolCallRequest(

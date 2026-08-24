@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -27,7 +28,7 @@ import {
   SUCCESS_TEXT_STYLE,
 } from "./plugin-ui";
 
-export interface UpdatePluginDialogProps {
+interface UpdatePluginDialogProps {
   plugin: PluginListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -237,7 +238,9 @@ function UpdatePluginDialogContent({
           >
             {update.isPending ? (
               <Icon name="Spinner" className="animate-spin" />
-            ) : null}
+            ) : (
+              <Icon name={UPDATE_ACTION_ICON} aria-hidden />
+            )}
             Update
           </Button>
         </DialogFooter>
@@ -303,6 +306,7 @@ function UpdatePluginDialogContent({
             Close
           </Button>
           <Button type="button" disabled>
+            <Icon name={UPDATE_ACTION_ICON} aria-hidden />
             Update
           </Button>
         </DialogFooter>

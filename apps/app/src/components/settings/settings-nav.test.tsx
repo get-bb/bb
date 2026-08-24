@@ -35,16 +35,13 @@ afterEach(() => {
 });
 
 describe("useSettingsNavState", () => {
-  it("resolves Codex and Claude Code as separate provider pages", () => {
+  it("resolves the Providers bucket from its section route", () => {
     const { result } = renderHook(() => useSettingsNavState(), {
-      wrapper: wrapperFor("/settings/providers/claude-code"),
+      wrapper: wrapperFor("/settings/providers"),
     });
 
-    expect(result.current.activeProviderId).toBe("claude-code");
-    expect(result.current.activeSection).toBeNull();
-    expect(
-      result.current.providerEntries.map((provider) => provider.id),
-    ).toEqual(["codex", "claude-code"]);
+    expect(result.current.activeSection).toBe("providers");
+    expect(result.current.hasUnknownSection).toBe(false);
   });
 
   it("shows the Machines section", () => {

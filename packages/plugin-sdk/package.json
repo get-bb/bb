@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.4.8",
+  "version": "0.4.16",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
     "url": "https://github.com/get-bb/bb/issues"
@@ -26,11 +26,29 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./ai-services": {
+      "source": "./src/ai-services.ts",
+      "types": "./bundled-types/bb-plugin-sdk-ai-services.d.ts",
+      "import": "./dist/ai-services.js",
+      "default": "./dist/ai-services.js"
+    },
     "./provider-bridge": {
       "source": "./src/provider-bridge.ts",
       "types": "./bundled-types/bb-plugin-sdk-provider-bridge.d.ts",
       "import": "./dist/provider-bridge.js",
       "default": "./dist/provider-bridge.js"
+    },
+    "./provider-bridge/testing": {
+      "source": "./src/provider-bridge-testing.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts",
+      "import": "./dist/provider-bridge-testing.js",
+      "default": "./dist/provider-bridge-testing.js"
+    },
+    "./provider-bridge/acp": {
+      "source": "./src/provider-bridge-acp.ts",
+      "types": "./bundled-types/bb-plugin-sdk-provider-bridge-acp.d.ts",
+      "import": "./dist/provider-bridge-acp.js",
+      "default": "./dist/provider-bridge-acp.js"
     },
     "./app": {
       "source": "./src/app.ts",
@@ -55,6 +73,12 @@
       "types": "./bundled-types/bb-plugin-sdk-internal-composer-view.d.ts",
       "import": "./dist/internal/composer-view.js",
       "default": "./dist/internal/composer-view.js"
+    },
+    "./internal/file-navigation-validation": {
+      "source": "./src/internal/file-navigation-validation.ts",
+      "types": "./bundled-types/bb-plugin-sdk-internal-file-navigation-validation.d.ts",
+      "import": "./dist/internal/file-navigation-validation.js",
+      "default": "./dist/internal/file-navigation-validation.js"
     },
     "./internal/host-policy": {
       "source": "./src/internal/host-policy.ts",
@@ -89,16 +113,19 @@
   },
   "types": "./bundled-types/bb-plugin-sdk.d.ts",
   "scripts": {
-    "build": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
-    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "build": "node scripts/build-runtime.mjs",
+    "build:runtime": "node scripts/build-runtime.mjs",
+    "build:types": "node scripts/build-bundled-dts.mjs",
+    "clean": "rimraf bundled-types dist tsconfig.tsbuildinfo",
     "prepack": "node scripts/build-bundled-dts.mjs && node scripts/build-runtime.mjs",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "node scripts/build-bundled-dts.mjs --check && tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@bb/domain": "workspace:*",
     "@bb/host-daemon-contract": "workspace:*",
     "@bb/process-utils": "workspace:*",
+    "@bb/provider-bridge-acp": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/sdk": "workspace:*",
     "@bb/server-contract": "workspace:*",

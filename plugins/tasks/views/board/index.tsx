@@ -6,7 +6,6 @@ import {
   type ReactNode,
 } from "react";
 import {
-  TASK_STATUSES,
   type Label,
   type Task,
   type TaskStatus,
@@ -19,7 +18,7 @@ import {
   type TasksRpc,
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
-import { NewTaskDialog } from "../manage/index.js";
+import { NewTaskDialog } from "../manage/new-task-dialog.js";
 import {
   applyBoardMove,
   BOARD_STATUSES,
@@ -27,8 +26,10 @@ import {
   dropNeighborsForIndex,
   visibleBoardStatuses,
 } from "./drop-position.js";
-import { PriorityIcon, STATUS_LABELS, StatusIcon } from "./icons.js";
+import { PriorityIcon, StatusIcon } from "./icons.js";
+import { STATUS_LABELS } from "../list/lib.js";
 import { Button } from "@bb/shared-ui/button";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -255,23 +256,25 @@ function TaskCard({
 
 function BoardSkeleton() {
   return (
-    <div className="flex h-full items-start gap-3 overflow-x-auto p-4">
-      {BOARD_STATUSES.map((status) => (
-        <div
-          key={status}
-          className="flex w-[230px] shrink-0 flex-col gap-2 p-1"
-        >
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-20 w-full rounded-lg" />
-          <Skeleton className="h-20 w-full rounded-lg" />
-          <Skeleton className="h-14 w-full rounded-lg" />
-        </div>
-      ))}
-    </div>
+    <DelayedLoading>
+      <div className="flex h-full items-start gap-3 overflow-x-auto p-4">
+        {BOARD_STATUSES.map((status) => (
+          <div
+            key={status}
+            className="flex w-[230px] shrink-0 flex-col gap-2 p-1"
+          >
+            <Skeleton className="h-5 w-24" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+            <Skeleton className="h-20 w-full rounded-lg" />
+            <Skeleton className="h-14 w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+    </DelayedLoading>
   );
 }
 
-export interface BoardViewProps {
+interface BoardViewProps {
   projectId: string;
 }
 

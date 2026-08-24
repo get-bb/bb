@@ -385,10 +385,9 @@ export async function resolveNpmUpdate(args: {
   current: PluginResolvedUpdateVersion;
   appVersion: string;
   run: NpmResolverRun;
-  includePinned?: boolean;
 }): Promise<PluginUpdateResolution> {
   const devMode = semver.coerce(args.appVersion)?.version === "0.0.0";
-  if (args.intent.specKind === "exact" && args.includePinned !== true) {
+  if (args.intent.specKind === "exact") {
     return {
       outcome: "pinned",
       current: args.current,
@@ -602,7 +601,7 @@ export function selectGitSemverTag(args: {
  * each release against the running bb walks this list from the top, exactly
  * as {@link selectNpmCandidate} walks the allowed npm versions.
  */
-export function satisfyingGitSemverTags(args: {
+function satisfyingGitSemverTags(args: {
   tags: readonly GitSemverTag[];
   range: string;
 }): GitSemverTag[] {
@@ -621,7 +620,7 @@ export function satisfyingGitSemverTags(args: {
  * rewritten release: refuse it and let a person decide, rather than pulling
  * different code under a version the user already approved.
  */
-export function movedGitTagDetail(args: {
+function movedGitTagDetail(args: {
   url: string;
   tag: string;
   recordedCommit: string;
@@ -636,7 +635,7 @@ export function movedGitTagDetail(args: {
 }
 
 /** What an installed git plugin tracks, as recorded at install time. */
-export type GitUpdateIntent =
+type GitUpdateIntent =
   | { kind: "ref"; ref: string; refKind: GitRefKind }
   | {
       kind: "range";

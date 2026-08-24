@@ -15,7 +15,8 @@
   },
   "include": [
     "server.ts",
-    "server.test.ts",
+    "*.test.ts",
+    "*.test.tsx",
     "app.tsx",
     "vitest.config.ts",
     "components"

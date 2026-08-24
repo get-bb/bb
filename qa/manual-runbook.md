@@ -46,7 +46,8 @@ commands.
 
 - Thread recovery is validated with the existing lifecycle commands:
   `bb thread stop`, `bb thread tell`, `bb thread spawn`, archive/unarchive, and
-  the recovery checks below. `bb thread retry` is the manual path for a failed,
+  the recovery checks below. When the provider-retry plugin is enabled,
+  `bb provider-retry retry <thread-id>` is the manual path for a failed,
   accepted provider rate-limit turn; inspect the thread before using it. For
   other failed or interrupted threads, send a fresh turn with `bb thread tell`,
   or create a replacement with `bb thread spawn` when a new thread is the right
@@ -722,8 +723,8 @@ bb thread log "$SMOKE_THREAD_ID" --format json \
 Inspect logs and state:
 
 ```bash
-tail -n 200 "$LOGS_DIR/server.log"
-tail -n 200 "$LOGS_DIR/host-daemon.log"
+tail -n 200 "$SERVER_LOG_DIR"/server*.log
+tail -n 200 "$DAEMON_LOG_DIR"/host-daemon*.log
 curl -fsS "$BB_SERVER_URL/api/v1/threads/$SMOKE_THREAD_ID" | jq
 ```
 

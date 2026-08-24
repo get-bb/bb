@@ -1,18 +1,19 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
+import { join } from "node:path";
 import {
   sanitizeInheritedChildProcessEnv,
+  killProcessGroup,
   spawnPortablePipedProcess,
+  stopProcessGroupLeaderFirst,
+  supportsProcessGroups,
 } from "@bb/process-utils";
-import type {
-  ProviderAdapter,
-  ProviderAdapterFactory,
-} from "./provider-adapter.js";
+import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
+import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
 import { createProviderForId } from "./provider-registry.js";
-import { filterSkillRootsForProvider } from "./runtime-skill-roots.js";
 import {
   ignoredJsonRpcResultSchema,
+  PROVIDER_BRIDGE_RECORD_DIR_ENV,
   readBoundedLines,
   type PendingJsonRpcRequest,
   sendJsonRpcRequest,
@@ -26,7 +27,7 @@ import type {
 } from "./types.js";
 
 export interface RuntimeProviderProcess {
-  adapter: ProviderAdapter;
+  adapter: BridgeProtocolAdapter;
   child: ChildProcess;
   expectedShutdownExpectations: number;
   exitFinalized: Promise<void>;
@@ -39,14 +40,23 @@ export interface RuntimeProviderProcess {
   stderrTail: Buffer;
 }
 
-export interface RuntimeProviderProcessLineArgs {
+interface RuntimeProviderProcessLineArgs {
   line: string;
   providerProcess: RuntimeProviderProcess;
 }
 
-export interface RuntimeProviderProcessManagerArgs {
+interface RuntimeProviderProcessManagerArgs {
   additionalWorkspaceWriteRoots: readonly string[];
-  adapterFactory?: ProviderAdapterFactory;
+  /**
+   * Builds the adapter for a provider process. Defaults to the bridge
+   * registry (`createProviderForId`); the process-lifecycle tests substitute
+   * an adapter whose process spec points at a raw script, to exercise spawn,
+   * stderr and exit mechanics below the protocol.
+   */
+  createAdapter?: (
+    providerId: string,
+    options: CreateBridgeAdapterOptions,
+  ) => BridgeProtocolAdapter;
   bridgeBundleDir: string | undefined;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
@@ -65,31 +75,24 @@ export interface RuntimeProviderProcessManagerArgs {
   getNextRequestId: () => number;
   handleStdoutLine: (args: RuntimeProviderProcessLineArgs) => void;
   onProcessExit: AgentRuntimeOptions["onProcessExit"];
-  onProviderIdentityWaitersInterrupted: (
-    providerProcess: RuntimeProviderProcess,
-  ) => void;
-  onProviderThreadDetached: (
-    threadId: string,
-    providerProcess: RuntimeProviderProcess,
-  ) => void;
+  onProviderThreadDetached: (threadId: string) => void;
   onStderr: AgentRuntimeOptions["onStderr"];
   skillRoots: readonly AgentRuntimeSkillRoot[];
   workspacePath: string;
 }
 
-export interface EnsureRuntimeProviderArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+interface EnsureRuntimeProviderArgs {
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   processKey: string;
   providerId: string;
 }
 
-export interface RequireRuntimeProviderProcessArgs {
+interface RequireRuntimeProviderProcessArgs {
   processKey: string;
   providerId: string;
 }
 
-export interface ShutdownRuntimeProviderArgs {
+interface ShutdownRuntimeProviderArgs {
   processKey: string;
   providerId: string;
   timeoutMs?: number;
@@ -108,7 +111,7 @@ interface TerminateProviderProcessArgs {
 }
 
 interface SpawnProviderArgs {
-  adapter: ProviderAdapter;
+  adapter: BridgeProtocolAdapter;
   processKey: string;
   providerId: string;
 }
@@ -127,48 +130,7 @@ interface ProviderProcessExitedErrorArgs {
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const PROVIDER_PROCESS_CLOSE_GRACE_MS = 1_000;
 
-const BRIDGE_PROCESS_KEY_MARKER = "#bridge:";
-
-interface BridgeProcessKeyParts {
-  /** Everything before the artifact hash (provider id, thread-scoped prefix). */
-  base: string;
-  /** The plugin artifact hash the process was spawned from. */
-  hash: string;
-  /** Any launch-fingerprint suffix that follows the hash (e.g. `#acp:…`). */
-  suffix: string;
-}
-
-/**
- * Split a plugin-bridge process key into the parts that identify the same
- * provider configuration (`base` + `suffix`) and the artifact it was spawned
- * from (`hash`). Non-bridge keys return null.
- */
-function parseBridgeProcessKey(
-  processKey: string,
-): BridgeProcessKeyParts | null {
-  const markerIndex = processKey.indexOf(BRIDGE_PROCESS_KEY_MARKER);
-  if (markerIndex === -1) {
-    return null;
-  }
-  const base = processKey.slice(0, markerIndex);
-  const rest = processKey.slice(markerIndex + BRIDGE_PROCESS_KEY_MARKER.length);
-  const suffixIndex = rest.indexOf("#");
-  if (suffixIndex === -1) {
-    return { base, hash: rest, suffix: "" };
-  }
-  return {
-    base,
-    hash: rest.slice(0, suffixIndex),
-    suffix: rest.slice(suffixIndex),
-  };
-}
-
-/** Same provider configuration, any artifact/declaration generation. */
-function bridgeConfigurationKey(parts: BridgeProcessKeyParts): string {
-  return `${parts.base}\u0000${parts.suffix}`;
-}
-
-export class ProviderProcessExitedError extends Error {
+class ProviderProcessExitedError extends Error {
   constructor(args: ProviderProcessExitedErrorArgs) {
     const stderr = formatProviderStderr(args.stderrTail);
     super(
@@ -184,12 +146,12 @@ export class RuntimeProviderProcessManager {
   private readonly processes = new Map<string, RuntimeProviderProcess>();
   private readonly providerStarting = new Map<string, Promise<void>>();
   /**
-   * The artifact+declaration hash most recently ensured for each bridge
-   * configuration (`base` + `suffix` of the process key). A process whose own
-   * hash differs from this has been superseded by a plugin update and is kept
+   * The process key most recently ensured for each provider. The key carries
+   * the bridge artifact+declaration hash, so a process of the same provider
+   * under another key has been superseded by a plugin update and is kept
    * alive only by the threads that already run on it.
    */
-  private readonly currentBridgeHashByConfiguration = new Map<string, string>();
+  private readonly currentProcessKeyByProviderId = new Map<string, string>();
   private shuttingDown = false;
 
   constructor(args: RuntimeProviderProcessManagerArgs) {
@@ -221,7 +183,6 @@ export class RuntimeProviderProcessManager {
     const startPromise = (async () => {
       const adapter = this.getAdapter(
         args.providerId,
-        args.acpLaunchSpec,
         args.bridgeLaunch,
       );
       const providerProcess = this.spawnProvider({
@@ -241,18 +202,7 @@ export class RuntimeProviderProcessManager {
           );
         }
 
-        const initCmd = adapter.buildCommandPlan({ type: "initialize" });
-        if (initCmd.kind === "request") {
-          await sendJsonRpcRequest({
-            child: providerProcess.child,
-            message: initCmd,
-            pending: providerProcess.pending,
-            getNextId: this.args.getNextRequestId,
-            resultSchema: ignoredJsonRpcResultSchema,
-          });
-        }
-
-        for (const request of adapter.buildPostInitializeRequests?.() ?? []) {
+        for (const request of adapter.buildPostInitializeRequests()) {
           try {
             const result = await sendJsonRpcRequest({
               child: providerProcess.child,
@@ -267,14 +217,12 @@ export class RuntimeProviderProcessManager {
           }
         }
 
-        const providerSkillRoots = filterSkillRootsForProvider({
-          providerId: args.providerId,
-          skillRoots: this.args.skillRoots,
-        });
-        if (providerSkillRoots.length > 0) {
+        // One generic root shape for every provider; the bridge maps it to
+        // its own layout.
+        if (this.args.skillRoots.length > 0) {
           const skillRootsCmd = adapter.buildCommandPlan({
             type: "skills/configure",
-            skillRoots: providerSkillRoots,
+            skillRoots: this.args.skillRoots,
           });
           if (skillRootsCmd.kind === "request") {
             await sendJsonRpcRequest({
@@ -322,31 +270,14 @@ export class RuntimeProviderProcessManager {
   private async retireStaleBridgeProcesses(
     args: EnsureRuntimeProviderArgs,
   ): Promise<void> {
-    const current = parseBridgeProcessKey(args.processKey);
-    if (current === null) {
-      return;
-    }
-    this.currentBridgeHashByConfiguration.set(
-      bridgeConfigurationKey(current),
-      current.hash,
-    );
+    this.currentProcessKeyByProviderId.set(args.providerId, args.processKey);
     const staleKeys = [...this.processes.entries()]
-      .filter(([processKey, providerProcess]) => {
-        if (
-          processKey === args.processKey ||
-          providerProcess.providerId !== args.providerId ||
-          providerProcess.identity.threadIds.size > 0
-        ) {
-          return false;
-        }
-        const other = parseBridgeProcessKey(processKey);
-        return (
-          other !== null &&
-          other.base === current.base &&
-          other.suffix === current.suffix &&
-          other.hash !== current.hash
-        );
-      })
+      .filter(
+        ([processKey, providerProcess]) =>
+          processKey !== args.processKey &&
+          providerProcess.providerId === args.providerId &&
+          providerProcess.identity.threadIds.size === 0,
+      )
       .map(([processKey]) => processKey);
 
     for (const processKey of staleKeys) {
@@ -367,14 +298,10 @@ export class RuntimeProviderProcessManager {
     if (providerProcess.identity.threadIds.size > 0) {
       return;
     }
-    const parts = parseBridgeProcessKey(providerProcess.processKey);
-    if (parts === null) {
-      return;
-    }
-    const currentHash = this.currentBridgeHashByConfiguration.get(
-      bridgeConfigurationKey(parts),
+    const currentKey = this.currentProcessKeyByProviderId.get(
+      providerProcess.providerId,
     );
-    if (currentHash === undefined || currentHash === parts.hash) {
+    if (currentKey === undefined || currentKey === providerProcess.processKey) {
       return;
     }
     await this.shutdownProvider({
@@ -435,19 +362,13 @@ export class RuntimeProviderProcessManager {
 
     for (const [processKey, providerProcess] of this.processes) {
       if (!hasChildProcessExited(providerProcess.child)) {
+        // Leader first: the bridge handles SIGTERM by closing its CLI
+        // sessions gracefully. Group SIGTERM/SIGKILL only on escalation.
         shutdownPromises.push(
-          new Promise<void>((resolve) => {
-            const timer = setTimeout(() => {
-              providerProcess.child.kill("SIGKILL");
-              resolve();
-            }, 5000);
-
-            providerProcess.child.on("exit", () => {
-              clearTimeout(timer);
-              resolve();
-            });
-
-            providerProcess.child.kill("SIGTERM");
+          stopProcessGroupLeaderFirst({
+            child: providerProcess.child,
+            timeoutMs: 5000,
+            killGraceMs: 0,
           }),
         );
       }
@@ -455,10 +376,9 @@ export class RuntimeProviderProcessManager {
         pending.reject(new Error("Runtime shutting down"));
       }
       providerProcess.pending.clear();
-      this.args.onProviderIdentityWaitersInterrupted(providerProcess);
 
       for (const threadId of providerProcess.identity.threadIds) {
-        this.args.onProviderThreadDetached(threadId, providerProcess);
+        this.args.onProviderThreadDetached(threadId);
       }
       this.processes.delete(processKey);
     }
@@ -468,13 +388,11 @@ export class RuntimeProviderProcessManager {
 
   private getAdapter(
     providerId: string,
-    acpLaunchSpec: HostDaemonAcpLaunchSpec | undefined,
-    bridgeLaunch: AgentRuntimeBridgeLaunch | undefined,
-  ): ProviderAdapter {
+    bridgeLaunch: AgentRuntimeBridgeLaunch,
+  ): BridgeProtocolAdapter {
     const adapterOptions = {
       additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
-      ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
-      ...(bridgeLaunch !== undefined ? { bridgeLaunch } : {}),
+      bridgeLaunch,
       bridgeBundleDir: this.args.bridgeBundleDir,
       ...(this.args.bridgeNodeEnv !== undefined
         ? { bridgeNodeEnv: this.args.bridgeNodeEnv }
@@ -484,10 +402,10 @@ export class RuntimeProviderProcessManager {
         : {}),
     };
 
-    if (this.args.adapterFactory) {
-      return this.args.adapterFactory(providerId, adapterOptions);
-    }
-    return createProviderForId(providerId, adapterOptions);
+    return (this.args.createAdapter ?? createProviderForId)(
+      providerId,
+      adapterOptions,
+    );
   }
 
   private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {
@@ -497,11 +415,21 @@ export class RuntimeProviderProcessManager {
       ...this.args.env,
       ...processConfig.env,
     };
+    // Record mode: the daemon forwards one root directory; each bridge
+    // process records under its provider's subdirectory so the layout is
+    // `<root>/<providerId>/<threadId>/<direction>.ndjson`.
+    const recordRoot = env[PROVIDER_BRIDGE_RECORD_DIR_ENV];
+    if (recordRoot !== undefined && recordRoot !== "") {
+      env[PROVIDER_BRIDGE_RECORD_DIR_ENV] = join(recordRoot, args.providerId);
+    }
 
+    // Lead a process group so shutdown can also reap grandchildren the
+    // provider CLI starts (background dev servers, MCP servers, ...).
     const child = spawnPortablePipedProcess({
       command: processConfig.command,
       args: processConfig.args,
       cwd: this.args.workspacePath,
+      detached: supportsProcessGroups(),
       env,
     });
     let finalizeExit: () => void = () => undefined;
@@ -647,7 +575,6 @@ export class RuntimeProviderProcessManager {
       pending.reject(args.startupError);
     }
     args.providerProcess.pending.clear();
-    this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
     await this.terminateProviderProcess({
       providerProcess: args.providerProcess,
@@ -661,22 +588,12 @@ export class RuntimeProviderProcessManager {
       return;
     }
 
-    await new Promise<void>((resolve) => {
-      const timeoutMs = args.timeoutMs ?? 5000;
-      const softTimer = setTimeout(() => {
-        if (!hasChildProcessExited(args.providerProcess.child)) {
-          args.providerProcess.child.kill("SIGKILL");
-        }
-      }, timeoutMs);
-      const hardTimer = setTimeout(resolve, timeoutMs + 1000);
-
-      args.providerProcess.child.once("exit", () => {
-        clearTimeout(softTimer);
-        clearTimeout(hardTimer);
-        resolve();
-      });
-
-      args.providerProcess.child.kill("SIGTERM");
+    // Leader first: the bridge handles SIGTERM by closing its CLI sessions
+    // gracefully. Group SIGTERM/SIGKILL only on escalation.
+    await stopProcessGroupLeaderFirst({
+      child: args.providerProcess.child,
+      timeoutMs: args.timeoutMs ?? 5000,
+      killGraceMs: 1000,
     });
   }
 
@@ -694,7 +611,6 @@ export class RuntimeProviderProcessManager {
       );
     }
     args.providerProcess.pending.clear();
-    this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
     this.args.onProcessExit?.({
       providerId: args.providerId,
@@ -715,6 +631,13 @@ export class RuntimeProviderProcessManager {
       args.providerProcess,
     );
     this.processes.delete(args.providerProcess.processKey);
+    // The bridge led a process group, and its children (one provider CLI
+    // per thread, MCP servers, background dev servers) share it. A bridge
+    // that died on its own never ran its shutdown path, so nothing has told
+    // those children to stop: sweep the group, leader gone or not.
+    if (!expected) {
+      killProcessGroup({ child: args.providerProcess.child, signal: "SIGTERM" });
+    }
     const threadIds = [...args.providerProcess.identity.threadIds];
     // Snapshot per-thread state before detaching clears it; the exit
     // notification below is the last place this state is observable.
@@ -722,7 +645,7 @@ export class RuntimeProviderProcessManager {
       this.args.captureThreadExitState(threadId),
     );
     for (const threadId of threadIds) {
-      this.args.onProviderThreadDetached(threadId, args.providerProcess);
+      this.args.onProviderThreadDetached(threadId);
     }
     for (const [, pending] of args.providerProcess.pending) {
       pending.reject(
@@ -734,7 +657,6 @@ export class RuntimeProviderProcessManager {
       );
     }
     args.providerProcess.pending.clear();
-    this.args.onProviderIdentityWaitersInterrupted(args.providerProcess);
 
     this.args.onProcessExit?.({
       providerId: args.providerId,

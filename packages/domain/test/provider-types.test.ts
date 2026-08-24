@@ -4,8 +4,10 @@ import { providerInfoSchema } from "../src/provider-types.js";
 describe("provider info schema", () => {
   const baseProviderInfo = {
     id: "codex",
+    pluginId: "provider-codex",
     displayName: "Codex",
     logoUrl: null,
+    maintenance: { health: true, usage: true, installation: false },
     capabilities: {
       supportsThreadArchive: true,
       supportsThreadRename: true,
@@ -13,6 +15,7 @@ describe("provider info schema", () => {
       supportsNativeUserQuestion: false,
       supportsFork: true,
       supportsSessionRewind: true,
+      modelCatalogScope: "workspace",
       permissionModes: ["accept-edits", "auto", "full"],
     },
     available: true,

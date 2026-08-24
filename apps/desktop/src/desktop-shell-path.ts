@@ -26,12 +26,12 @@ export type SpawnLoginShellPath = (
   args: SpawnLoginShellPathArgs,
 ) => ShellPathSpawnResult;
 
-export type EnsurePackagedUserShellPathResult =
+type EnsurePackagedUserShellPathResult =
   | ShellPathSkippedResult
   | ShellPathUpdatedResult
   | ShellPathUnchangedResult;
 
-export interface EnsurePackagedUserShellPathArgs {
+interface EnsurePackagedUserShellPathArgs {
   env: NodeJS.ProcessEnv;
   isPackaged: boolean;
   logger: DesktopShellPathLogger;
@@ -39,17 +39,17 @@ export interface EnsurePackagedUserShellPathArgs {
   spawnLoginShellPath?: SpawnLoginShellPath;
 }
 
-export interface ShellPathSkippedResult {
+interface ShellPathSkippedResult {
   kind: "skipped";
   reason: "not-packaged" | "unsupported-platform";
 }
 
-export interface ShellPathUnchangedResult {
+interface ShellPathUnchangedResult {
   kind: "unchanged";
   reason: "empty-output" | "non-zero-status" | "shell-error" | "signal";
 }
 
-export interface ShellPathUpdatedResult {
+interface ShellPathUpdatedResult {
   kind: "updated";
   path: string;
 }

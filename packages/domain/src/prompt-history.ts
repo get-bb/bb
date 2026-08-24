@@ -3,8 +3,8 @@ import { promptInputSchema, type PromptInput } from "./shared-types.js";
 
 export const PROMPT_HISTORY_ENTRY_LIMIT = 50;
 
-export const promptHistoryScopeValues = ["project", "thread"] as const;
-export const promptHistoryScopeSchema = z.enum(promptHistoryScopeValues);
+const promptHistoryScopeValues = ["project", "thread"] as const;
+const promptHistoryScopeSchema = z.enum(promptHistoryScopeValues);
 export type PromptHistoryScope = z.infer<typeof promptHistoryScopeSchema>;
 
 export const promptHistoryEntrySchema = z.object({
@@ -14,7 +14,7 @@ export const promptHistoryEntrySchema = z.object({
 });
 export type PromptHistoryEntry = z.infer<typeof promptHistoryEntrySchema>;
 
-export interface PromptHistoryComparableEntry {
+interface PromptHistoryComparableEntry {
   input: readonly PromptInput[];
 }
 

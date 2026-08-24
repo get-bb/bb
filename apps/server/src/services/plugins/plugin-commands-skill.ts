@@ -28,7 +28,7 @@ export function pluginCommandsSkillDir(dataDir: string): string {
   return join(generatedSkillsRootPath(dataDir), SKILL_NAME);
 }
 
-export function renderPluginCommandsSkill(
+function renderPluginCommandsSkill(
   contributions: readonly PluginCliContribution[],
 ): string {
   const sections = contributions.map((contribution) => {

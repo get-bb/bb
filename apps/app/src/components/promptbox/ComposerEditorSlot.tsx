@@ -7,14 +7,16 @@ import {
   type PromptMentionLinkResolver,
 } from "./editor/prompt-mention-link";
 
-export type ComposerEditorLayout = "thread" | "root-compose";
+type ComposerEditorLayout = "thread" | "root-compose";
 
 const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
   ComposerEditorLayout,
   string
 > = {
-  thread: "50dvh",
-  "root-compose": "70dvh",
+  // Reserve the fixed action row and border so the standard prompt box does
+  // not grow beyond its intended viewport-relative cap.
+  thread: "calc(50dvh - 3rem)",
+  "root-compose": "calc(70dvh - 3rem)",
 };
 
 // TipTap's `blur` command defers to the next animation frame, so blur the
@@ -29,8 +31,6 @@ export function ComposerEditorSlot({
   editor,
   scrollContainerRef,
   inputLocked,
-  isZenMode,
-  hasCompactControls,
   isCompactLayout,
   minHeight,
   layout,
@@ -39,8 +39,6 @@ export function ComposerEditorSlot({
   editor: Editor | null;
   scrollContainerRef: RefObject<HTMLDivElement | null>;
   inputLocked: boolean;
-  isZenMode: boolean;
-  hasCompactControls: boolean;
   isCompactLayout: boolean;
   minHeight: number;
   layout: ComposerEditorLayout;
@@ -58,22 +56,14 @@ export function ComposerEditorSlot({
         // text size utilities as owning line-height and would otherwise drop
         // this, making Composer rows tighter than timeline messages.
         "leading-relaxed",
-        isZenMode && "min-h-0 flex-1",
-        hasCompactControls && !isZenMode && "pr-14",
         isCompactLayout && "h-12 overflow-hidden pb-0 pr-14 pt-0",
       )}
       style={{
-        minHeight: isZenMode
-          ? "0px"
-          : isCompactLayout
-            ? "48px"
-            : `${minHeight}px`,
-        height: isZenMode ? "100%" : isCompactLayout ? "48px" : undefined,
-        maxHeight: isZenMode
-          ? "none"
-          : isCompactLayout
-            ? "48px"
-            : COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout],
+        minHeight: isCompactLayout ? "48px" : `${minHeight}px`,
+        height: isCompactLayout ? "48px" : undefined,
+        maxHeight: isCompactLayout
+          ? "48px"
+          : COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout],
       }}
     >
       <PromptMentionLinkContext.Provider value={resolveMentionLink ?? null}>

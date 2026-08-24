@@ -12,12 +12,6 @@ import {
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
 
-export function findProjectionTerminalMessage(
-  messages: EventProjectionMessage[],
-): EventProjectionMessage | undefined {
-  return findLastTerminalTimelineMessage(messages);
-}
-
 function getProjectionMessageSummaryCount(
   message: EventProjectionMessage,
 ): number {
@@ -104,7 +98,7 @@ function applyTurnMessageDetail(
   const messages = (turn.messages ?? []).map((message) =>
     withChildProjectionDetail(message),
   );
-  const terminalMessage = findProjectionTerminalMessage(messages);
+  const terminalMessage = findLastTerminalTimelineMessage(messages);
   const summaryMessages = terminalMessage
     ? messages.slice(0, messages.indexOf(terminalMessage))
     : messages;

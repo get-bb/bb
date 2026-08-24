@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "subagent",
+  "threadId": "thr_9fdxpp588k",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "The agent delegates one task to a subagent (where the provider has one).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 41,
+    "provider→bridge": 76,
+    "bridge→provider": 5
+  }
+}

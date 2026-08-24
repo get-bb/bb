@@ -34,7 +34,7 @@ interface HostLookupDeps {
   hub: HostLookupHub;
 }
 
-export interface ThreadEnvironmentLookupResult {
+interface ThreadEnvironmentLookupResult {
   environment: Environment;
   thread: ThreadRow;
 }
@@ -269,7 +269,7 @@ function ensureThreadEnvironmentAvailable(environment: Environment): void {
   }
 }
 
-export function requireThreadEnvironmentAllowingDestroyed(
+function requireThreadEnvironmentAllowingDestroyed(
   db: DbConnection,
   threadId: string,
 ): ThreadEnvironmentLookupResult {
@@ -289,7 +289,7 @@ export function requireThreadEnvironment(
   return result;
 }
 
-export function requirePublicThreadEnvironmentAllowingDestroyed(
+function requirePublicThreadEnvironmentAllowingDestroyed(
   db: DbConnection,
   threadId: string,
 ): ThreadEnvironmentLookupResult {

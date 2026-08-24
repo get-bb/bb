@@ -17,13 +17,13 @@ import {
   hasPromptOptionValueChanged,
   mergeMissingPromptDraftAttachments,
   resolveNewThreadProjectDefaultsState,
+  resolveNewThreadSubmitDisabledReason,
   restorePromptDraftAfterOptionChange,
+  type ResolveNewThreadSubmitDisabledReasonArgs,
 } from "@/components/promptbox/NewThreadComposer";
-import { subscribeComposerFocusRequests } from "@/lib/composer-focus-requests";
-import { getProjectStoredPromptAttachmentPaths } from "@/lib/prompt-draft";
-import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@/lib/thread-handoff-request";
+import { getProjectStoredPromptAttachmentPaths } from "@bb/client-core";
+import { THREAD_HANDOFF_CREATE_SEED_LOCATION_STATE_KEY } from "@bb/client-core";
 import {
-  buildRootComposeNewTabFileTab,
   buildRootComposeTerminalSessions,
   buildMobileRecentThreads,
   canCreateRootComposeTerminal,
@@ -31,13 +31,11 @@ import {
   readSectionIdFromLocationState,
   readRootComposeSectionTargetFromLocationState,
   readInitialPromptFromLocationState,
-  requestRootComposePluginFocus,
-  resolveRootComposePanelThreadId,
-  shouldHideRootComposePanelOnTabClose,
   shouldReplaceInitialPromptFromLocationState,
   shouldStartComposingFromLocationState,
   shouldNavigateAfterThreadCreate,
 } from "./RootComposeView";
+import { resolveRootComposeProjectFileRouting } from "./RootComposePanelTabContent";
 import {
   resolveProjectSourceWorktreeDisabledReason,
   resolveComposeHostId,
@@ -46,63 +44,51 @@ import {
   resolveRootComposeProviderRouting,
 } from "./root-compose-environment-selection";
 
-describe("requestRootComposePluginFocus", () => {
-  it("routes host focus through the subscriber that reveals the root composer", () => {
-    let focusRequests = 0;
-    const unsubscribe = subscribeComposerFocusRequests(
-      "bb.promptDraft.new-thread",
-      () => {
-        focusRequests += 1;
-      },
-    );
-
-    requestRootComposePluginFocus("bb.promptDraft.new-thread");
-
-    expect(focusRequests).toBe(1);
-    unsubscribe();
+describe("root-compose project file routing", () => {
+  it("uses a persisted opener host instead of the newly selected context", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+          experimental_hostId: "host_opened",
+        },
+        selectedEnvironmentId: "env_selected",
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({ environmentId: null, hostId: "host_opened" });
   });
-});
 
-describe("new-thread right-panel tabs", () => {
-  it("renders the launcher as the same visible, closable tab used by threads", () => {
-    const onClose = () => undefined;
-    const onSelect = () => undefined;
-    const tab = buildRootComposeNewTabFileTab({
-      activeTabId: "new-tab",
-      onClose,
-      onSelect,
-      tabId: "new-tab",
+  it("keeps primary-host routing when a persisted opener omits a host", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+        },
+        selectedEnvironmentId: null,
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({ environmentId: null, hostId: null });
+  });
+
+  it("retains live routing for a native project file tab", () => {
+    expect(
+      resolveRootComposeProjectFileRouting({
+        fileOpenerSource: null,
+        selectedEnvironmentId: "env_selected",
+        selectedHostId: "host_selected",
+      }),
+    ).toEqual({
+      environmentId: "env_selected",
+      hostId: "host_selected",
     });
-
-    expect(tab.filename).toBe("New tab");
-    expect(tab.isActive).toBe(true);
-    expect(tab.isHidden).toBeUndefined();
-    expect(tab.onClose).toBe(onClose);
-    expect(tab.onSelect).toBe(onSelect);
-  });
-
-  it("hides the panel only when its launcher is the sole remaining tab", () => {
-    expect(
-      shouldHideRootComposePanelOnTabClose({
-        tabCount: 1,
-        tabKind: "new-tab",
-      }),
-    ).toBe(true);
-    expect(
-      shouldHideRootComposePanelOnTabClose({
-        tabCount: 2,
-        tabKind: "new-tab",
-      }),
-    ).toBe(false);
-    expect(
-      shouldHideRootComposePanelOnTabClose({
-        tabCount: 1,
-        tabKind: "browser",
-      }),
-    ).toBe(false);
   });
 });
-
 describe("resolveNewThreadProjectDefaultsState", () => {
   const storedDefaults = {
     providerId: "codex",
@@ -162,6 +148,97 @@ describe("resolveNewThreadProjectDefaultsState", () => {
         queryIsSuccess: true,
       }),
     ).toEqual({ status: "pending" });
+  });
+});
+
+describe("resolveNewThreadSubmitDisabledReason", () => {
+  const readyState = {
+    branchMutationBlockerTitle: null,
+    isCopyingAttachments: false,
+    isLoadingModels: false,
+    isSubmitting: false,
+    isUploading: false,
+    managedWorktreeUnavailableReason: null,
+    modelLoadError: null,
+    projectDefaultsStatus: "resolved",
+    projectDefaultsUnavailable: false,
+    promptInputEmpty: false,
+    providerDisplayName: "Codex",
+    selectedProviderId: "codex",
+    selectedThreadModel: "gpt-5.6-sol",
+    submissionEnvironmentUnavailable: false,
+  } satisfies ResolveNewThreadSubmitDisabledReasonArgs;
+
+  it.each<
+    [
+      label: string,
+      change: Partial<ResolveNewThreadSubmitDisabledReasonArgs>,
+      reason: string,
+    ]
+  >([
+    [
+      "model loading after a machine switch",
+      { isLoadingModels: true },
+      "Loading models from the selected machine...",
+    ],
+    [
+      "provider setup failure",
+      {
+        modelLoadError: {
+          providerId: "codex",
+          code: "auth_required",
+        },
+      },
+      "Could not load models for Codex. Authentication is required.",
+    ],
+    [
+      "project-default failure",
+      {
+        projectDefaultsStatus: "error",
+        projectDefaultsUnavailable: true,
+      },
+      "Could not load the project's execution defaults.",
+    ],
+    [
+      "an incomplete environment selection",
+      { submissionEnvironmentUnavailable: true },
+      "Select an environment.",
+    ],
+    [
+      "an unavailable worktree",
+      {
+        managedWorktreeUnavailableReason:
+          "Project source has no commits. Create an initial commit before creating a worktree",
+      },
+      "Project source has no commits. Create an initial commit before creating a worktree",
+    ],
+    [
+      "a blocked branch checkout",
+      { branchMutationBlockerTitle: "Checkout blocked by uncommitted changes" },
+      "Checkout blocked by uncommitted changes",
+    ],
+    [
+      "an empty prompt",
+      { promptInputEmpty: true },
+      "Enter a prompt or attach a file.",
+    ],
+  ])("reports %s", (_label, change, reason) => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({ ...readyState, ...change }),
+    ).toBe(reason);
+  });
+
+  it("returns no reason when every submission requirement is ready", () => {
+    expect(resolveNewThreadSubmitDisabledReason(readyState)).toBeNull();
+  });
+
+  it("allows a selected fallback model after a transient model-list failure", () => {
+    expect(
+      resolveNewThreadSubmitDisabledReason({
+        ...readyState,
+        modelLoadError: { providerId: "claude-code", code: "timeout" },
+      }),
+    ).toBeNull();
   });
 });
 
@@ -1069,49 +1146,6 @@ describe("buildRootComposeTerminalSessions", () => {
         },
       }),
     ).toEqual([matching]);
-  });
-});
-
-describe("resolveRootComposePanelThreadId", () => {
-  it("uses the most-recent thread from the selected reuse worktree", () => {
-    expect(
-      resolveRootComposePanelThreadId({
-        environmentId: "env_b",
-        reuseThreadOptions: [
-          {
-            environmentId: "env_a",
-            branchName: "main",
-            name: null,
-            threads: [{ id: "thr_a", title: "Thread A" }],
-          },
-          {
-            environmentId: "env_b",
-            branchName: "feature",
-            name: "Feature worktree",
-            threads: [
-              { id: "thr_b_recent", title: "Recent thread" },
-              { id: "thr_b_old", title: "Old thread" },
-            ],
-          },
-        ],
-      }),
-    ).toBe("thr_b_recent");
-  });
-
-  it("returns null without a selected reuse worktree", () => {
-    expect(
-      resolveRootComposePanelThreadId({
-        environmentId: null,
-        reuseThreadOptions: [
-          {
-            environmentId: "env_a",
-            branchName: "main",
-            name: null,
-            threads: [{ id: "thr_a", title: "Thread A" }],
-          },
-        ],
-      }),
-    ).toBeNull();
   });
 });
 

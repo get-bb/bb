@@ -32,14 +32,18 @@ import type {
   Options as ReactMarkdownOptions,
   UrlTransform,
 } from "react-markdown";
-import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import "katex/dist/katex.min.css";
 import { ImageLightbox } from "./image-lightbox.js";
+import { normalizeMathFences } from "./markdown-math-fences.js";
+import {
+  markdownMayContainMath,
+  useRehypeKatex,
+  type RehypeKatex,
+} from "./markdown-katex-loader.js";
 import { CopyButton } from "./copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { RouteAnchor } from "./app-route-anchor.js";
@@ -102,18 +106,16 @@ import {
   useRawThreadMentionResources,
 } from "@/components/thread/ThreadTitleMentions.js";
 
-export interface MarkdownPreviewProps {
+interface MarkdownPreviewProps {
   allowHtml?: boolean;
   className?: string;
   content: string;
-  expandedImageAlt?: string;
   /**
    * Controls whether Markdown image nodes mount browser image subresources.
    * Use `"alt-text"` for untrusted generated previews that should retain a
    * readable placeholder without issuing a request to the image URL.
    */
   imagePolicy?: MarkdownImagePolicy;
-  imageLightboxTitle?: string;
   linkRouting?: MarkdownLinkRouting;
   /**
    * When supplied, serialized `@thread:<id>` tokens and exact raw persisted
@@ -148,7 +150,7 @@ export interface MarkdownPreviewProps {
   urlTransform?: UrlTransform;
 }
 
-export type MarkdownImagePolicy = "alt-text" | "render";
+type MarkdownImagePolicy = "alt-text" | "render";
 
 export interface MarkdownThreadMentions {
   mentions: readonly PromptTextMention[];
@@ -297,7 +299,13 @@ type MarkdownTableHeaderProps = ComponentPropsWithoutRef<"th"> & ExtraProps;
 type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
 type MarkdownRehypePlugins = NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
-const MARKDOWN_TABLE_BREAKOUT_WIDTH = "max(100%, min(1100px, 100cqw - 2rem))";
+// A table may grow past its text column up to the container width, but never
+// past the nearest ancestor that clips or scrolls horizontally. The limit
+// variable is measured in `useMarkdownTableContentWidthVariable`; without it a
+// negative `marginInline` moves the table left of the scroll origin, where no
+// scroll can reach it (plan approval cards, message bubbles, side chat).
+const MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE = "--md-table-breakout-max";
+const MARKDOWN_TABLE_BREAKOUT_WIDTH = `max(100%, min(1100px, 100cqw - 2rem, var(${MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE}, 100cqw)))`;
 const MARKDOWN_CONTENT_WIDTH_VARIABLE = "--md-content-w";
 const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
   /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/iu;
@@ -314,12 +322,26 @@ const MARKDOWN_SOURCE_COLOR_SCHEME_MEDIA_PATTERN =
 const MARKDOWN_HTML_REHYPE_PLUGINS: MarkdownRehypePlugins = [
   rehypeRaw,
   rehypeSanitize,
-  rehypeKatex,
 ];
 
 // No raw HTML means nothing untrusted to sanitize, so KaTeX renders straight
 // from the `remark-math` wrappers.
-const MARKDOWN_MATH_REHYPE_PLUGINS: MarkdownRehypePlugins = [rehypeKatex];
+const MARKDOWN_PLAIN_REHYPE_PLUGINS: MarkdownRehypePlugins = [];
+
+// KaTeX loads on demand (`markdown-katex-loader`): until the chunk resolves,
+// math stays as the `remark-math` code wrappers.
+function resolveRehypePlugins({
+  allowHtml,
+  rehypeKatex,
+}: {
+  allowHtml: boolean;
+  rehypeKatex: RehypeKatex | null;
+}): MarkdownRehypePlugins {
+  const base = allowHtml
+    ? MARKDOWN_HTML_REHYPE_PLUGINS
+    : MARKDOWN_PLAIN_REHYPE_PLUGINS;
+  return rehypeKatex === null ? base : [...base, rehypeKatex];
+}
 
 function areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
   next,
@@ -452,11 +474,7 @@ const areMarkdownPreviewPropsEqual: MarkdownPreviewPropsEqual = (
   (previous.allowHtml ?? false) === (next.allowHtml ?? false) &&
   previous.className === next.className &&
   previous.content === next.content &&
-  (previous.expandedImageAlt ?? "Expanded image") ===
-    (next.expandedImageAlt ?? "Expanded image") &&
   (previous.imagePolicy ?? "render") === (next.imagePolicy ?? "render") &&
-  (previous.imageLightboxTitle ?? "Expanded image preview") ===
-    (next.imageLightboxTitle ?? "Expanded image preview") &&
   previous.urlTransform === next.urlTransform &&
   areMarkdownThreadMentionsEqual({
     next: next.threadMentions,
@@ -648,19 +666,19 @@ function MarkdownAnchor({
       return;
     }
 
-    // Let timeline/terminal hosts claim web links first. Absolute app-origin
-    // URLs can still be browser destinations even though they resolve to an
-    // app route.
+    // Internal BB destinations belong to RouteAnchor so they participate in
+    // SPA history. URL preference routing only sees non-route destinations.
+    if (isAppRouteHref) {
+      return;
+    }
+
+    // Let timeline/terminal/navigation hosts claim ordinary web links.
     if (
       linkRouting?.onOpenLink &&
       rewrittenHref &&
       linkRouting.onOpenLink({ href: rewrittenHref })
     ) {
       event.preventDefault();
-      return;
-    }
-
-    if (isAppRouteHref) {
       return;
     }
   };
@@ -1347,6 +1365,116 @@ function setMarkdownContentWidthVariable({
   element.style.setProperty(MARKDOWN_CONTENT_WIDTH_VARIABLE, `${width}px`);
 }
 
+interface MarkdownTableGeometryRegistration {
+  breakout: HTMLElement;
+  clip: HTMLElement | null;
+  content: HTMLElement;
+  lastClipWidth: number;
+  lastContentWidth: number;
+}
+
+type MarkdownTableBreakoutLimitMeasurement =
+  | { kind: "remove" }
+  | { kind: "set"; value: string }
+  | { kind: "unchanged" };
+
+interface MarkdownTableGeometryMeasurement {
+  breakout: HTMLElement;
+  breakoutLimit: MarkdownTableBreakoutLimitMeasurement;
+  contentWidth: number;
+}
+
+const markdownTableRegistrationsByElement = new Map<
+  HTMLElement,
+  Set<MarkdownTableGeometryRegistration>
+>();
+let sharedMarkdownTableResizeObserver: ResizeObserver | null = null;
+
+function measureMarkdownTableGeometry(
+  registrations: Iterable<MarkdownTableGeometryRegistration>,
+): void {
+  // Complete every geometry read before writing either CSS variable. Writing
+  // one table's variables first would make the next table's read recalculate
+  // layout while a long timeline's initial observer delivery is in progress.
+  const measurements: MarkdownTableGeometryMeasurement[] = [];
+  for (const registration of registrations) {
+    const { breakout, clip, content } = registration;
+    const contentWidth = content.getBoundingClientRect().width;
+    const clipWidth = clip?.clientWidth ?? -1;
+    if (
+      contentWidth === registration.lastContentWidth &&
+      clipWidth === registration.lastClipWidth
+    ) {
+      continue;
+    }
+    registration.lastContentWidth = contentWidth;
+    registration.lastClipWidth = clipWidth;
+    measurements.push({
+      breakout,
+      breakoutLimit: readMarkdownTableBreakoutLimit({ breakout, clip }),
+      contentWidth,
+    });
+  }
+
+  for (const { breakout, breakoutLimit, contentWidth } of measurements) {
+    setMarkdownContentWidthVariable({
+      element: breakout,
+      width: contentWidth,
+    });
+    applyMarkdownTableBreakoutLimit({ breakout, measurement: breakoutLimit });
+  }
+}
+
+function getSharedMarkdownTableResizeObserver(): ResizeObserver {
+  sharedMarkdownTableResizeObserver ??= new ResizeObserver((entries) => {
+    const registrations = new Set<MarkdownTableGeometryRegistration>();
+    for (const entry of entries) {
+      if (!(entry.target instanceof HTMLElement)) continue;
+      for (const registration of markdownTableRegistrationsByElement.get(
+        entry.target,
+      ) ?? []) {
+        registrations.add(registration);
+      }
+    }
+    measureMarkdownTableGeometry(registrations);
+  });
+  return sharedMarkdownTableResizeObserver;
+}
+
+function observeMarkdownTableGeometry(
+  registration: MarkdownTableGeometryRegistration,
+): () => void {
+  const elements =
+    registration.clip === null || registration.clip === registration.content
+      ? [registration.content]
+      : [registration.content, registration.clip];
+  const observer = getSharedMarkdownTableResizeObserver();
+  for (const element of elements) {
+    let registrations = markdownTableRegistrationsByElement.get(element);
+    if (!registrations) {
+      registrations = new Set();
+      markdownTableRegistrationsByElement.set(element, registrations);
+      observer.observe(element);
+    }
+    registrations.add(registration);
+  }
+
+  return () => {
+    for (const element of elements) {
+      const registrations = markdownTableRegistrationsByElement.get(element);
+      registrations?.delete(registration);
+      if (registrations?.size === 0) {
+        markdownTableRegistrationsByElement.delete(element);
+        sharedMarkdownTableResizeObserver?.unobserve(element);
+      }
+    }
+    if (markdownTableRegistrationsByElement.size === 0) {
+      sharedMarkdownTableResizeObserver?.disconnect();
+      sharedMarkdownTableResizeObserver = null;
+    }
+  };
+}
+
 function useMarkdownTableContentWidthVariable() {
   const breakoutRef = useRef<HTMLDivElement>(null);
 
@@ -1356,31 +1484,114 @@ function useMarkdownTableContentWidthVariable() {
     if (!breakout || !content) {
       return;
     }
-
-    setMarkdownContentWidthVariable({
-      element: breakout,
-      width: content.getBoundingClientRect().width,
-    });
+    const clip = findHorizontalClipAncestor(content);
+    const registration: MarkdownTableGeometryRegistration = {
+      breakout,
+      clip,
+      content,
+      lastClipWidth: -1,
+      lastContentWidth: -1,
+    };
 
     if (typeof ResizeObserver === "undefined") {
+      measureMarkdownTableGeometry([registration]);
       return;
     }
 
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) {
-        return;
-      }
-      setMarkdownContentWidthVariable({
-        element: breakout,
-        width: entry.contentRect.width,
-      });
-    });
-    observer.observe(content);
-    return () => observer.disconnect();
+    // The initial observer delivery gives us the geometry before paint without
+    // a synchronous layout read for every table while a long timeline mounts.
+    return observeMarkdownTableGeometry(registration);
   }, []);
 
   return breakoutRef;
+}
+
+const HORIZONTAL_CLIP_OVERFLOW_VALUES = new Set([
+  "hidden",
+  "clip",
+  "auto",
+  "scroll",
+]);
+
+/**
+ * The nearest element, starting at `element` itself, whose horizontal overflow
+ * is clipped or scrolled. A table breakout that extends past this element's
+ * padding box is lost: the clipped side is invisible and a scroll container
+ * cannot scroll to a negative offset. The preview root counts because callers
+ * can clip it through `className`.
+ */
+function findHorizontalClipAncestor(element: HTMLElement): HTMLElement | null {
+  let current: HTMLElement | null = element;
+  while (current && current !== document.body) {
+    if (
+      HORIZONTAL_CLIP_OVERFLOW_VALUES.has(getComputedStyle(current).overflowX)
+    ) {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Reads the widest breakout that keeps the table inside `clip`. The breakout
+ * is centered on its containing block (the breakout's parent), so the usable
+ * width is the parent content width plus twice the smaller side gap.
+ */
+function readMarkdownTableBreakoutLimit({
+  breakout,
+  clip,
+}: {
+  breakout: HTMLElement;
+  clip: HTMLElement | null;
+}): MarkdownTableBreakoutLimitMeasurement {
+  const parent = breakout.parentElement;
+  if (!clip || !parent) {
+    return { kind: "remove" };
+  }
+  // Positions are taken at scroll offset 0 of `clip`, so a horizontally
+  // scrolled container does not change the result.
+  const parentStyle = getComputedStyle(parent);
+  const parentPaddingLeft =
+    parent.getBoundingClientRect().left + parent.clientLeft + clip.scrollLeft;
+  const parentLeft = parentPaddingLeft + cssPixels(parentStyle.paddingLeft);
+  const parentRight =
+    parentPaddingLeft +
+    parent.clientWidth -
+    cssPixels(parentStyle.paddingRight);
+  const parentWidth = parentRight - parentLeft;
+  if (parentWidth <= 0) {
+    return { kind: "unchanged" };
+  }
+  const clipLeft = clip.getBoundingClientRect().left + clip.clientLeft;
+  const clipRight = clipLeft + clip.clientWidth;
+  const room = Math.max(
+    0,
+    Math.min(parentLeft - clipLeft, clipRight - parentRight),
+  );
+  return { kind: "set", value: `${parentWidth + 2 * room}px` };
+}
+
+function applyMarkdownTableBreakoutLimit({
+  breakout,
+  measurement,
+}: {
+  breakout: HTMLElement;
+  measurement: MarkdownTableBreakoutLimitMeasurement;
+}): void {
+  if (measurement.kind === "remove") {
+    breakout.style.removeProperty(MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE);
+  } else if (measurement.kind === "set") {
+    breakout.style.setProperty(
+      MARKDOWN_TABLE_BREAKOUT_LIMIT_VARIABLE,
+      measurement.value,
+    );
+  }
+}
+
+function cssPixels(value: string): number {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 const FRONTMATTER_PATTERN =
@@ -1449,9 +1660,7 @@ function MarkdownPreviewComponent({
   allowHtml = false,
   className,
   content,
-  expandedImageAlt = "Expanded image",
   imagePolicy = "render",
-  imageLightboxTitle = "Expanded image preview",
   linkRouting,
   threadMentions,
   promptMentions,
@@ -1502,10 +1711,13 @@ function MarkdownPreviewComponent({
         : markdownContent,
     [markdownContent, promptMentions],
   );
-  const { frontmatter, body } = useMemo(
-    () => splitMarkdownFrontmatter(promptMarkdownContent),
-    [promptMarkdownContent],
-  );
+  const { frontmatter, body } = useMemo(() => {
+    const split = splitMarkdownFrontmatter(promptMarkdownContent);
+    return {
+      frontmatter: split.frontmatter,
+      body: normalizeMathFences(split.body),
+    };
+  }, [promptMarkdownContent]);
   // The remark transform fills this shared mount table on every parse. Keep it
   // stable while assistant text streams so the custom React component type
   // also stays stable and an already-complete directive does not remount when
@@ -1612,11 +1824,15 @@ function MarkdownPreviewComponent({
     [localFileRouting, localImageRouting, urlTransform],
   );
 
+  const rehypeKatex = useRehypeKatex(markdownMayContainMath(body));
+  const rehypePlugins = useMemo(
+    () => resolveRehypePlugins({ allowHtml, rehypeKatex }),
+    [allowHtml, rehypeKatex],
+  );
+
   const renderedMarkdown = (
     <ReactMarkdown
-      rehypePlugins={
-        allowHtml ? MARKDOWN_HTML_REHYPE_PLUGINS : MARKDOWN_MATH_REHYPE_PLUGINS
-      }
+      rehypePlugins={rehypePlugins}
       remarkPlugins={remarkPlugins}
       components={markdownComponents}
       urlTransform={resolvedUrlTransform}
@@ -1648,8 +1864,8 @@ function MarkdownPreviewComponent({
 
       <ImageLightbox
         imageSrc={expandedImageUrl}
-        imageAlt={expandedImageAlt}
-        title={imageLightboxTitle}
+        imageAlt="Expanded image"
+        title="Expanded image preview"
         onClose={() => setExpandedImageUrl(null)}
       />
     </>

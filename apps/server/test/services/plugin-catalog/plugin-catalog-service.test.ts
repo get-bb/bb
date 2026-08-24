@@ -269,7 +269,80 @@ describe("plugin catalog service", () => {
     expect(warnings.some((warning) => warning.includes("broken"))).toBe(true);
   });
 
+  it("serves a bundled entry's own compact icon from the catalog route", async () => {
+    const registrations = listBundledPluginRegistrations();
+    const withSvg = registrations.find(
+      (plugin) => plugin.name === "provider-acp",
+    );
+    const withGlyph = registrations.find(
+      (plugin) => plugin.name === "workflows",
+    );
+    if (withSvg === undefined || withGlyph === undefined) {
+      throw new Error("expected bundled registrations");
+    }
+    const catalog = service({ bundledPlugins: [withSvg, withGlyph] });
+
+    const results = await catalog.search("");
+    const svgEntry = results.find((entry) => entry.entryId === withSvg.name);
+    const glyphEntry = results.find(
+      (entry) => entry.entryId === withGlyph.name,
+    );
+    // A path-shaped branding.icon is not a host glyph name, so without a
+    // served URL the browse card falls back to the generic icon.
+    expect(svgEntry?.icon?.startsWith("./")).toBe(true);
+    const icon = await catalog.icon("bb-community", withSvg.name);
+    expect(icon?.contentType).toBe("image/svg+xml");
+    expect(svgEntry?.iconUrl).toBe(
+      `/api/v1/plugin-catalog/icons/bb-community/${withSvg.name}?h=${icon?.hash}`,
+    );
+    expect(new TextDecoder().decode(icon?.bytes)).toContain("<svg");
+    // The compact icon is single-color artwork; the app masks it.
+    expect(svgEntry?.iconTinted).toBe(true);
+
+    expect(glyphEntry?.iconUrl).toBeNull();
+    expect(glyphEntry?.iconTinted).toBe(false);
+    expect(await catalog.icon("bb-community", withGlyph.name)).toBeUndefined();
+  });
+
   describe("refresh", () => {
+    it("tints a catalog SVG but keeps a raster icon's own colors", async () => {
+      const PNG = Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+      ]);
+      const fetchImpl: MarketplaceFetch = async (url) => {
+        if (url === MANIFEST_URL) {
+          return jsonResponse(
+            manifest([
+              remoteEntry({ id: "raster", icon: { url: "./icons/raster.png" } }),
+              remoteEntry({ id: "glyph", icon: { url: "./icons/glyph.svg" } }),
+            ]),
+          );
+        }
+        return url.endsWith(".png")
+          ? new Response(PNG, {
+              status: 200,
+              headers: { "content-type": "image/png" },
+            })
+          : new Response(VALID_SVG, {
+              status: 200,
+              headers: { "content-type": "image/svg+xml" },
+            });
+      };
+      const catalog = service({ fetch: fetchImpl });
+
+      await catalog.refresh(1_000);
+      const tinted = Object.fromEntries(
+        (await catalog.search("")).map((entry) => [
+          entry.entryId,
+          { iconUrl: entry.iconUrl !== null, iconTinted: entry.iconTinted },
+        ]),
+      );
+      expect(tinted).toMatchObject({
+        raster: { iconUrl: true, iconTinted: false },
+        glyph: { iconUrl: true, iconTinted: true },
+      });
+    });
+
     it("replaces the catalog, caches icons, and revalidates with the ETag", async () => {
       const requests: Array<{ url: string; headers: Headers }> = [];
       const fetchImpl: MarketplaceFetch = async (url, init) => {
@@ -300,11 +373,14 @@ describe("plugin catalog service", () => {
       });
       expect(results[0]?.iconUrl).toBe(
         "/api/v1/plugin-catalog/icons/bb-community/widgets?h=" +
-          catalog.icon("bb-community", "widgets")?.hash,
+          (await catalog.icon("bb-community", "widgets"))?.hash,
       );
-      expect(catalog.icon("bb-community", "widgets")).toMatchObject({
+      expect(await catalog.icon("bb-community", "widgets")).toMatchObject({
         contentType: "image/svg+xml",
       });
+      // A catalog SVG is tinted by default, like a plugin's own compact icon,
+      // so a black-on-transparent glyph stays visible on a dark theme (#1941).
+      expect(results[0]?.iconTinted).toBe(true);
       // The seeded entries are gone: the published manifest is authoritative.
       expect((await catalog.search("thread-hover-cards")).length).toBe(0);
       expect(requests[1]?.url).toBe(ICON_URL);
@@ -401,7 +477,7 @@ describe("plugin catalog service", () => {
       await catalog.refresh(1_000);
       const [entry] = await catalog.search("widgets");
       expect(entry).toMatchObject({ entryId: "widgets", iconUrl: null });
-      expect(catalog.icon("bb-community", "widgets")).toBeUndefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeUndefined();
       expect(warnings.some((warning) => warning.includes("widgets"))).toBe(
         true,
       );
@@ -417,7 +493,7 @@ describe("plugin catalog service", () => {
             : new Response(Buffer.alloc(300 * 1024, 0x41), { status: 200 }),
       });
       await catalog.refresh(1_000);
-      expect(catalog.icon("bb-community", "widgets")).toBeUndefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeUndefined();
       expect(
         warnings.some((warning) => warning.includes("exceeds 262144 bytes")),
       ).toBe(true);
@@ -452,13 +528,13 @@ describe("plugin catalog service", () => {
         },
       });
       await catalog.refresh(1_000);
-      expect(catalog.icon("bb-community", "widgets")).toBeDefined();
-      expect(catalog.icon("bb-community", "gadgets")).toBeUndefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeDefined();
+      expect(await catalog.icon("bb-community", "gadgets")).toBeUndefined();
 
       await catalog.refresh(2_000);
       // The cached icon survives the unchanged manifest; the failed one retries.
-      expect(catalog.icon("bb-community", "widgets")).toBeDefined();
-      expect(catalog.icon("bb-community", "gadgets")).toBeDefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeDefined();
+      expect(await catalog.icon("bb-community", "gadgets")).toBeDefined();
     });
 
     it("drops a cached icon the refreshed manifest no longer lists", async () => {
@@ -474,10 +550,10 @@ describe("plugin catalog service", () => {
             : new Response(VALID_SVG, { status: 200 }),
       });
       await catalog.refresh(1_000);
-      expect(catalog.icon("bb-community", "widgets")).toBeDefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeDefined();
       listIcon = false;
       await catalog.refresh(2_000);
-      expect(catalog.icon("bb-community", "widgets")).toBeUndefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeUndefined();
     });
 
     it("drops a cached icon when its replacement URL fails", async () => {
@@ -496,11 +572,11 @@ describe("plugin catalog service", () => {
         },
       });
       await catalog.refresh(1_000);
-      expect(catalog.icon("bb-community", "widgets")).toBeDefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeDefined();
 
       iconUrl = "./icons/replacement.svg";
       await catalog.refresh(2_000);
-      expect(catalog.icon("bb-community", "widgets")).toBeUndefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeUndefined();
     });
 
     it("keeps the prior snapshot when an icon-table commit fails", async () => {
@@ -741,7 +817,7 @@ describe("plugin catalog service", () => {
 
       await catalog.refresh(1_000);
       expect(iconRequests).toEqual([]);
-      expect(catalog.icon("bb-community", "widgets")).toBeUndefined();
+      expect(await catalog.icon("bb-community", "widgets")).toBeUndefined();
       expect(warnings.join("\n")).toMatch(/non-public address 127\.0\.0\.1/u);
     });
 

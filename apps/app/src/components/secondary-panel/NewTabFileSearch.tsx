@@ -69,11 +69,13 @@ export interface NewTabFileSearchProps {
 export type OpenBrowserHandler = () => void;
 export type StartTerminalHandler = () => void;
 
-export interface NewTabActionsProps {
+interface NewTabActionsProps {
   /** Open a session-based side chat of the current thread in its own tab. */
   /** Desktop-only: open a new in-panel browser tab. Absent ⇒ no Browser entry. */
   onOpenBrowser?: OpenBrowserHandler;
   onStartTerminal?: StartTerminalHandler;
+  startTerminalDisabled?: boolean;
+  startTerminalTrailing?: ReactNode;
   /** Plugin `threadPanelAction` rows, rendered after the built-in entries. */
   pluginActions?: readonly PluginPanelActionEntry[];
 }
@@ -118,7 +120,6 @@ interface FileSearchSectionItem {
 
 interface FileSearchSection {
   kind: FileSearchSectionKind;
-  label: string;
   items: FileSearchSectionItem[];
 }
 
@@ -144,6 +145,7 @@ interface LauncherTileProps {
 }
 
 interface NewTabActionTileProps {
+  disabled?: boolean;
   id: string;
   iconName: IconName;
   label: string;
@@ -151,6 +153,7 @@ interface NewTabActionTileProps {
   onActivate: () => void;
   onSelect: () => void;
   shortcut?: AppShortcutPresentation;
+  trailing?: ReactNode;
 }
 
 interface ShowMoreToggleProps {
@@ -163,7 +166,6 @@ const FILE_SEARCH_LIMIT = 20;
 const FILE_SEARCH_SECTION_ORDER: readonly FileSearchSectionKind[] = [
   "files",
   "recent",
-  "actions",
 ];
 
 const FILE_SEARCH_SECTION_LABELS = {
@@ -201,12 +203,6 @@ function getFileSearchResultTitle(suggestion: FileSearchSuggestion): string {
   return `${FILE_SEARCH_SOURCE_LABELS[suggestion.source]}: ${suggestion.path}`;
 }
 
-function getFileSearchSectionKind(
-  suggestion: FileSearchSuggestion,
-): FileSearchSectionKind {
-  return "files";
-}
-
 function groupFileSearchSections({
   recentEntries,
   suggestions,
@@ -222,7 +218,6 @@ function groupFileSearchSections({
     }
     const created: FileSearchSection = {
       kind: sectionKind,
-      label: FILE_SEARCH_SECTION_LABELS[sectionKind],
       items: [],
     };
     sectionsByKind.set(sectionKind, created);
@@ -230,7 +225,7 @@ function groupFileSearchSections({
   };
 
   for (const suggestion of suggestions) {
-    ensureSection(getFileSearchSectionKind(suggestion)).items.push({
+    ensureSection("files").items.push({
       entry: { kind: "suggestion", suggestion },
       index: 0,
     });
@@ -325,6 +320,7 @@ function LauncherTile({
 }
 
 function NewTabActionTile({
+  disabled = false,
   id,
   iconName,
   label,
@@ -332,7 +328,44 @@ function NewTabActionTile({
   onActivate,
   onSelect,
   shortcut,
+  trailing,
 }: NewTabActionTileProps) {
+  if (trailing !== undefined) {
+    return (
+      <div
+        id={id}
+        className={cn(
+          LAUNCHER_ACTION_ROW_BASE_CLASS,
+          "relative scroll-mt-7",
+          isActive ? "bg-state-active" : disabled ? "" : "hover:bg-state-hover",
+        )}
+      >
+        <button
+          type="button"
+          aria-label={label}
+          aria-keyshortcuts={shortcut?.ariaKeyshortcuts}
+          disabled={disabled}
+          onClick={onSelect}
+          onMouseEnter={onActivate}
+          className="absolute inset-0 rounded focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-default"
+        />
+        <span className={cn(LAUNCHER_ROW_ICON_CLASS, "pointer-events-none")}>
+          <Icon
+            name={iconName}
+            className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS}
+            aria-hidden
+          />
+        </span>
+        <span className="pointer-events-none min-w-0 flex-1 truncate text-foreground">
+          {label}
+        </span>
+        <div className="relative z-10 ml-auto flex min-w-0 shrink-0 items-center">
+          {trailing}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <LauncherTile
       id={id}
@@ -792,6 +825,8 @@ export function NewTabActions({
   onOpenBrowser,
   onStartTerminal,
   pluginActions,
+  startTerminalDisabled,
+  startTerminalTrailing,
 }: NewTabActionsProps) {
   const terminalShortcut = useAppCommandShortcut("terminal.open");
   const showOpenBrowserEntry =
@@ -835,6 +870,7 @@ export function NewTabActions({
           ) : null}
           {showStartTerminalEntry ? (
             <NewTabActionTile
+              disabled={startTerminalDisabled}
               id={START_TERMINAL_ENTRY_ID}
               iconName="Terminal"
               label="Start terminal"
@@ -842,6 +878,7 @@ export function NewTabActions({
               onActivate={() => undefined}
               onSelect={handleStartTerminal}
               shortcut={terminalShortcut ?? undefined}
+              trailing={startTerminalTrailing}
             />
           ) : null}
           {pluginActions?.map((action) => (

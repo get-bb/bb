@@ -109,7 +109,7 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     const onEngage = vi.fn();
     const onEnd = vi.fn();
     const config = baseConfig({ onEngage, onEnd });
-    beginSplitDrag(20, 300, config);
+    beginSplitDrag(config);
 
     fireWindowPointer("pointermove", 30, 302); // still inside the sidebar
     expect(escapeKeydowns).toBe(0);
@@ -132,7 +132,7 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
 
   it("a vertical in-sidebar drag never engages: reorder is untouched, no drop", () => {
     const config = baseConfig();
-    beginSplitDrag(20, 300, config);
+    beginSplitDrag(config);
 
     fireWindowPointer("pointermove", 24, 380);
     fireWindowPointer("pointermove", 26, 520);
@@ -146,7 +146,7 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     const onEngage = vi.fn();
     const onEnd = vi.fn();
     const config = baseConfig({ onEngage, onEnd });
-    beginSplitDrag(20, 300, config);
+    beginSplitDrag(config);
     fireWindowPointer("pointerup", 20, 300);
     expect(config.onDrop).not.toHaveBeenCalled();
     expect(escapeKeydowns).toBe(0);
@@ -158,7 +158,7 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     const onEngage = vi.fn();
     const onEnd = vi.fn();
     const config = baseConfig({ onEngage, onEnd });
-    beginSplitDrag(20, 300, config);
+    beginSplitDrag(config);
 
     fireWindowPointer("pointermove", 900, 400);
     fireWindowPointer("pointercancel", 900, 400);
@@ -183,7 +183,7 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     const config = baseConfig({
       fallback: { paneId: "pane-1", container },
     });
-    beginSplitDrag(20, 300, config);
+    beginSplitDrag(config);
     fireWindowPointer("pointermove", 900, 400); // engage
     fireWindowPointer("pointermove", 1150, 400); // right zone via the fallback rect
     fireWindowPointer("pointerup", 1150, 400);

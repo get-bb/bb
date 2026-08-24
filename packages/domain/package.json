@@ -2,6 +2,7 @@
   "name": "@bb/domain",
   "version": "0.0.1",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -22,6 +23,11 @@
       "source": "./src/thread-visibility.ts",
       "types": "./src/thread-visibility.ts",
       "default": "./src/thread-visibility.ts"
+    },
+    "./update-state": {
+      "source": "./src/update-state.ts",
+      "types": "./src/update-state.ts",
+      "default": "./src/update-state.ts"
     },
     "./plugin-cli": {
       "source": "./src/plugin-cli.ts",

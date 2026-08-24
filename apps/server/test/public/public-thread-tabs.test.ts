@@ -46,6 +46,7 @@ const ALL_TAB_KINDS: readonly ThreadTab[] = [
   },
   {
     environmentId: "env_1",
+    hostId: null,
     id: "host-file",
     kind: "host-file-preview",
     lineRange: null,
@@ -128,6 +129,69 @@ describe("public thread tabs", () => {
       expect(
         threadTabsResponseSchema.parse(await readJson(persistedResponse)),
       ).toEqual({ revision: 2, tabs: [] });
+    });
+  });
+
+  it("omits a null hostId on the wire so strict older clients still parse", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const tabs: readonly ThreadTab[] = [
+        {
+          environmentId: "env_1",
+          hostId: null,
+          id: "host-file-default",
+          kind: "host-file-preview",
+          lineRange: null,
+          path: "/tmp/default.png",
+          threadId: thread.id,
+        },
+        {
+          environmentId: null,
+          hostId: "host_1",
+          id: "host-file-explicit",
+          kind: "host-file-preview",
+          lineRange: null,
+          path: "/tmp/explicit.png",
+          threadId: null,
+        },
+        {
+          actionId: "inspect",
+          fileOpenerOwner: {
+            environmentId: "env_1",
+            hostId: null,
+            kind: "host-file-preview",
+            tab: { lineRange: null, path: "/tmp/owned.png" },
+            threadId: thread.id,
+          },
+          id: "plugin-panel",
+          kind: "plugin-panel",
+          paramsJson: null,
+          pluginId: "example",
+          title: "Inspector",
+        },
+      ];
+
+      const updateResponse = await putTabs(harness, thread.id, {
+        expectedRevision: 0,
+        tabs,
+      });
+      expect(updateResponse.status).toBe(200);
+      const getResponse = await getTabs(harness, thread.id);
+      expect(getResponse.status).toBe(200);
+
+      for (const body of [
+        await readJson(updateResponse),
+        await readJson(getResponse),
+      ]) {
+        const wire = body as {
+          tabs: Array<Record<string, unknown> & { fileOpenerOwner?: object }>;
+        };
+        expect(wire.tabs[0]).not.toHaveProperty("hostId");
+        expect(wire.tabs[1]).toHaveProperty("hostId", "host_1");
+        expect(wire.tabs[2]?.fileOpenerOwner).not.toHaveProperty("hostId");
+        // Current clients still read the omission back as null.
+        expect(threadTabsResponseSchema.parse(body).tabs).toEqual(tabs);
+      }
     });
   });
 

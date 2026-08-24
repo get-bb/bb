@@ -13,6 +13,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -74,6 +75,7 @@ describe("plugin background services", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-bg-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -139,6 +141,7 @@ describe("plugin background services", () => {
     }));
     const interruptPluginInteractions = vi.fn(() => []);
     const local = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -150,6 +153,7 @@ describe("plugin background services", () => {
       pendingInteractions: {
         requestPluginInteraction,
         interruptPluginInteractions,
+        setPluginDirectory: () => {},
       },
       dataDir: join(workDir, "data-dispose-request"),
       appVersion: "0.9.0",
@@ -200,6 +204,7 @@ describe("plugin background services", () => {
     // Own instance: the stop bound must exceed the service's stop delay so
     // the slow stop is a legitimate (non-hung) dispose in progress.
     const local = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -273,18 +278,70 @@ describe("plugin background services", () => {
       `,
     });
     await service.installPath(rootDir);
-    await service.reload("stubborn");
+    const outcome = await service.reload("stubborn");
     const entry = service.list().find((p) => p.id === "stubborn");
     expect(entry?.status).toBe("degraded");
     expect(entry?.statusDetail).toContain("service socket did not stop");
     // Not re-loaded: that would double-start the hung service.
     expect(service.getApi("stubborn")).toBeUndefined();
+    // The plugin is unusable after this reload (#2029): the outcome must say
+    // so instead of resolving as success while `bb stubborn` is gone.
+    expect(outcome).toEqual({
+      ok: false,
+      error: 'plugin "stubborn" reload failed: service socket did not stop',
+      plugins: service.list(),
+    });
 
     // Still degraded on a second reload attempt.
-    await service.reload("stubborn");
+    const again = await service.reload("stubborn");
     expect(service.list().find((p) => p.id === "stubborn")?.status).toBe(
       "degraded",
     );
+    expect(again.ok).toBe(false);
+  });
+
+  it("reports a failed reload that kept the previous instance", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-keeper",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.cli.register({ name: "keeper", summary: "keeper", run() { return { exitCode: 0, stdout: "ok" }; } });
+        }
+      `,
+    });
+    const installed = await service.installPath(rootDir);
+    expect(installed.status).toBe("running");
+    const healthy = await service.reload("keeper");
+    expect(healthy.ok).toBe(true);
+
+    // A broken edit: the new sources do not load, so the host keeps the
+    // previous instance serving. The reload still did not apply.
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `export default function plugin() { throw new Error("boom on load"); }`,
+    );
+    const outcome = await service.reload("keeper");
+    const entry = service.list().find((p) => p.id === "keeper");
+    expect(entry?.status).toBe("running");
+    expect(entry?.statusDetail).toBe("reload failed: boom on load");
+    expect(service.getApi("keeper")).toBeDefined();
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) throw new Error("unreachable");
+    expect(outcome.error).toBe(
+      'plugin "keeper" reload failed: boom on load (the previous instance is still running)',
+    );
+
+    // Reloading every plugin reports the same failure; the fixed plugin
+    // reloads cleanly.
+    expect((await service.reload()).ok).toBe(false);
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `export default function plugin(bb: any) { bb.cli.register({ name: "keeper", summary: "keeper", run() { return { exitCode: 0, stdout: "ok" }; } }); }`,
+    );
+    expect((await service.reload("keeper")).ok).toBe(true);
+    expect(
+      service.list().find((p) => p.id === "keeper")?.statusDetail,
+    ).toBeNull();
   });
 
   it("restarts a crashed service with backoff", async () => {
@@ -317,6 +374,71 @@ describe("plugin background services", () => {
         { name: "flaky", state: "running" },
       ]);
     });
+  });
+
+  it("routes an uncaught exception from a service's async context to the supervisor", async () => {
+    // An unlistened EventEmitter 'error' fired from a timer never reaches the
+    // start() promise: Node raises it as a process-level uncaughtException.
+    // Without attribution the server exits and crash-loops (#1746).
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-emitter",
+      serverSource: `
+        import { EventEmitter } from "node:events";
+        export default function plugin(bb: any) {
+          const g = globalThis as any;
+          g.__emitterStarts = 0;
+          g.__emitterAborts = 0;
+          bb.background.service("imap", {
+            async start(signal: any) {
+              g.__emitterStarts += 1;
+              if (g.__emitterStarts === 1) {
+                const client = new EventEmitter(); // no client.on("error")
+                setTimeout(() => client.emit("error", new Error("Socket timeout")), 5);
+              }
+              await new Promise<void>((resolve) =>
+                signal.addEventListener("abort", () => {
+                  g.__emitterAborts += 1;
+                  resolve();
+                }));
+            },
+          });
+        }
+      `,
+    });
+    // Stand in for the server's process listener (start-server.ts). vitest's
+    // own listener would report the exception as an unhandled error, so it
+    // steps aside for the duration of this test.
+    const vitestListeners = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    const unclaimed: unknown[] = [];
+    process.on("uncaughtException", (error) => {
+      if (!service.handleUncaughtException(error)) unclaimed.push(error);
+    });
+    try {
+      await service.installPath(rootDir);
+      await vi.waitFor(
+        () => {
+          expect(globals.__emitterStarts).toBe(2);
+        },
+        { timeout: 2000 },
+      );
+      // The first instance was aborted before the second one started.
+      expect(globals.__emitterAborts).toBe(1);
+      await vi.waitFor(() => {
+        expect(
+          service.list().find((p) => p.id === "emitter")?.services,
+        ).toEqual([{ name: "imap", state: "running" }]);
+      });
+      expect(unclaimed).toEqual([]);
+      expect(service.list().find((p) => p.id === "emitter")?.status).toBe(
+        "running",
+      );
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const listener of vitestListeners) {
+        process.on("uncaughtException", listener);
+      }
+    }
   });
 
   it("NeedsConfigurationError maps to needs-configuration and stops restarts", async () => {
@@ -400,6 +522,7 @@ describe("plugin schedules", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sched-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {

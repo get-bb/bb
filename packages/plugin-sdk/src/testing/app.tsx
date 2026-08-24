@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ComponentType,
   type ReactElement,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
@@ -29,10 +30,12 @@ import {
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
+  type PluginDiffRendererRegistration,
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
   type PluginProviderIconRegistration,
+  type PluginTimelineRendererRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
   type PluginSdkApp,
@@ -43,7 +46,9 @@ import {
   type PluginSidebarThreadActions,
   type PluginSidebarThreadPullRequestState,
   type PluginSidebarThreadSplit,
+  type PluginProvidersState,
   type PluginSidebarThreadsState,
+  type PluginSourceCodeRendererRegistration,
   type PluginThreadHeaderActionRegistration,
   type PluginThreadListRegistration,
   type PluginThreadPanelActionRegistration,
@@ -51,12 +56,24 @@ import {
   type PluginRpcResult,
   type StandardSchemaV1InferInput,
   type MarkdownProps,
+  type UrlLinkProps,
+  type ExperimentalFileLinkProps,
+  type ExperimentalFileOpenOptions,
+  type ExperimentalAppPanel,
+  type ExperimentalFixedTabTargetState,
+  type ExperimentalOpenFixedTabOptions,
+  type ExperimentalPluginFixedTabReference,
   type NewThreadComposerProps,
+  type ExperimentalPermissionModePickerProps,
+  type ExperimentalProviderModelPickerProps,
   type ThreadChatProps,
+  type DiffProps,
+  type SourceCodeProps,
   type JsonValue,
 } from "@get-bb/plugin-sdk";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import { normalizePluginThreadRowStatus } from "../internal/composer-customization-validation.js";
+import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { collectPluginAppRegistrations } from "../internal/plugin-app-collector.js";
 
 /**
@@ -107,7 +124,23 @@ export type NavigateCall =
   | {
       method: "openThreadPanel";
       options: Parameters<BbNavigate["openThreadPanel"]>[0];
+    }
+  | { method: "openUrl"; url: string }
+  | {
+      method: "experimental_openFilePreview";
+      options: ExperimentalFileOpenOptions;
+    }
+  | {
+      method: "experimental_openFileExternally";
+      options: ExperimentalFileOpenOptions;
     };
+
+export interface ExperimentalFixedTabOpenCall {
+  surface: ExperimentalOpenFixedTabOptions<JsonValue>["surface"];
+  panelId: string;
+  tabId: string;
+  target?: JsonValue;
+}
 
 export interface ComposerLog {
   /** Latest plain text in this isolated composer scope. */
@@ -145,12 +178,27 @@ interface SlotEnv {
   bbContext: BbContext;
   navigate: BbNavigate;
   navigateCalls: NavigateCall[];
+  appPanel: ExperimentalAppPanel;
+  experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
+  fixedTabTarget: TestFixedTabTargetStore;
   composer: TestComposerStore;
   composerLog: ComposerLog;
   sidebarThreads: PluginSidebarThreadsState;
   sidebarActions: PluginSidebarThreadActions;
   sidebarActionCalls: SidebarActionCall[];
   sidebarPullRequests: ReadonlyMap<string, PluginSidebarPullRequest>;
+  providers: PluginProvidersState;
+}
+
+interface TestFixedTabTargetStore {
+  clear(sequence: number): void;
+  getSnapshot(): {
+    panelId: string;
+    sequence: number;
+    tabId: string;
+    target: JsonValue;
+  } | null;
+  subscribe(listener: () => void): () => void;
 }
 
 /** One recorded `experimental_useSidebarThreadActions()` call. */
@@ -285,6 +333,97 @@ function TestMarkdown({ content, className }: MarkdownProps) {
   );
 }
 
+/** Anchor-faithful stand-in backed by the same navigation recorder as the hook. */
+function TestUrlLink({
+  href,
+  onClick,
+  rel,
+  target,
+  ...anchorProps
+}: UrlLinkProps) {
+  const navigate = useSlotEnv("UrlLink").navigate;
+  const normalizedTarget = target?.toLowerCase();
+  const opensNewBrowsingContext =
+    normalizedTarget !== undefined &&
+    normalizedTarget !== "" &&
+    normalizedTarget !== "_self" &&
+    normalizedTarget !== "_parent" &&
+    normalizedTarget !== "_top" &&
+    normalizedTarget !== "_unfencedtop";
+  const relTokens = rel?.split(/\s+/u).filter(Boolean) ?? [];
+  const normalizedRelTokens = relTokens.map((token) => token.toLowerCase());
+  const resolvedRel =
+    opensNewBrowsingContext && !normalizedRelTokens.includes("opener")
+      ? [
+          ...relTokens,
+          ...(normalizedRelTokens.includes("noopener") ? [] : ["noopener"]),
+          ...(normalizedRelTokens.includes("noreferrer") ? [] : ["noreferrer"]),
+        ].join(" ")
+      : rel;
+  return (
+    <a
+      {...anchorProps}
+      href={href}
+      target={target}
+      rel={resolvedRel}
+      onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+        onClick?.(event);
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          event.currentTarget.hasAttribute("download") ||
+          event.currentTarget.hasAttribute("target")
+        ) {
+          return;
+        }
+        if (navigate.openUrl(href)) event.preventDefault();
+      }}
+    />
+  );
+}
+
+/** Anchor-faithful file-link stand-in backed by the navigation recorder. */
+function TestFileLink({
+  target,
+  location = null,
+  onClick,
+  ...anchorProps
+}: ExperimentalFileLinkProps) {
+  const navigate = useSlotEnv("experimental_FileLink").navigate;
+  const options = normalizeExperimentalFileOpenOptions({ target, location });
+  const href =
+    options === null
+      ? undefined
+      : `./${encodeURIComponent(options.target.path)}`;
+  return (
+    <a
+      {...anchorProps}
+      href={href}
+      onClick={(event: ReactMouseEvent<HTMLAnchorElement>) => {
+        onClick?.(event);
+        if (
+          options === null ||
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          event.shiftKey ||
+          event.currentTarget.hasAttribute("download")
+        ) {
+          return;
+        }
+        event.preventDefault();
+        navigate.experimental_openFilePreview(options);
+      }}
+    />
+  );
+}
+
 /**
  * Stand-in for the host-owned new-thread composer: a textarea plus a submit
  * button that calls `onSubmit` with a fixed, obviously-synthetic request, so
@@ -360,6 +499,204 @@ function TestNewThreadComposer({
   );
 }
 
+function TestProviderModelPicker({
+  value,
+  onChange,
+  routing,
+  allowProviderChange = true,
+  align = "start",
+  disabled,
+  className,
+}: ExperimentalProviderModelPickerProps) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  const reasoningLevels = [
+    "none",
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "ultracode",
+    "max",
+    "ultra",
+  ] as const;
+
+  return (
+    <div
+      data-testid="bb-provider-model-picker"
+      data-routing-kind={routing?.kind ?? "primary"}
+      data-routing-id={
+        routing === undefined
+          ? ""
+          : routing.kind === "host"
+            ? routing.hostId
+            : routing.environmentId
+      }
+      data-disabled={disabled ? "true" : "false"}
+      data-provider-change-allowed={allowProviderChange ? "true" : "false"}
+      data-align={align}
+      className={className}
+    >
+      <fieldset disabled={disabled} className="contents">
+        <input
+          aria-label="Provider ID"
+          disabled={!allowProviderChange}
+          value={draft.providerId}
+          onChange={(event) =>
+            setDraft((current) => ({
+              ...current,
+              providerId: event.target.value,
+            }))
+          }
+        />
+        <input
+          aria-label="Model"
+          value={draft.model}
+          onChange={(event) =>
+            setDraft((current) => ({ ...current, model: event.target.value }))
+          }
+        />
+        <input
+          aria-label="Reasoning level"
+          value={draft.reasoningLevel}
+          onChange={(event) => {
+            const reasoningLevel = reasoningLevels.find(
+              (candidate) => candidate === event.target.value,
+            );
+            if (reasoningLevel === undefined) return;
+            setDraft((current) => ({ ...current, reasoningLevel }));
+          }}
+        />
+        <select
+          aria-label="Service tier"
+          value={draft.serviceTier ?? ""}
+          onChange={(event) =>
+            setDraft((current) => {
+              const serviceTier = event.target.value;
+              if (serviceTier !== "fast" && serviceTier !== "default") {
+                const next = { ...current };
+                delete next.serviceTier;
+                return next;
+              }
+              return { ...current, serviceTier };
+            })
+          }
+        >
+          <option value="">Unsupported</option>
+          <option value="default">Default</option>
+          <option value="fast">Fast</option>
+        </select>
+        <button type="button" onClick={() => onChange(draft)}>
+          Apply execution selection
+        </button>
+      </fieldset>
+    </div>
+  );
+}
+
+function TestPermissionModePicker({
+  providerId,
+  value,
+  onChange,
+  routing,
+  align = "end",
+  disabled,
+  className,
+}: ExperimentalPermissionModePickerProps) {
+  return (
+    <select
+      aria-label="Permission mode"
+      value={value}
+      disabled={disabled}
+      data-testid="bb-permission-mode-picker"
+      data-provider-id={providerId}
+      data-align={align}
+      data-routing-kind={routing?.kind ?? "primary"}
+      data-routing-id={
+        routing === undefined
+          ? ""
+          : routing.kind === "host"
+            ? routing.hostId
+            : routing.environmentId
+      }
+      className={className}
+      onChange={(event) => {
+        const permissionMode = event.target.value;
+        if (
+          permissionMode === "accept-edits" ||
+          permissionMode === "auto" ||
+          permissionMode === "full"
+        ) {
+          onChange(permissionMode);
+        }
+      }}
+    >
+      <option value="accept-edits">Accept Edits</option>
+      <option value="auto">Approve for me</option>
+      <option value="full">Full Access</option>
+    </select>
+  );
+}
+
+/**
+ * Stand-in for the host-owned source viewer: emits the raw source in a
+ * recognizable wrapper carrying the resolved presentation, so plugin tests can
+ * assert what they asked the host to render without the real highlighter.
+ */
+function TestSourceCode({
+  content,
+  path,
+  overflow = "scroll",
+  highlightedLines = null,
+  className,
+}: SourceCodeProps) {
+  return (
+    <pre
+      data-testid="bb-source-code"
+      data-path={path}
+      data-overflow={overflow}
+      data-highlighted-lines={
+        highlightedLines === null
+          ? ""
+          : `${highlightedLines.start}-${highlightedLines.end}`
+      }
+      className={className}
+    >
+      {content}
+    </pre>
+  );
+}
+
+/**
+ * Stand-in for the host-owned diff viewer: emits the raw patch in a
+ * recognizable wrapper carrying the resolved presentation.
+ */
+function TestDiff({
+  patch,
+  path,
+  view = "unified",
+  overflow = "scroll",
+  showLineNumbers = true,
+  experimental_fullFileContents,
+  className,
+}: DiffProps) {
+  return (
+    <pre
+      data-testid="bb-diff"
+      data-path={path}
+      data-view={view}
+      data-overflow={overflow}
+      data-show-line-numbers={showLineNumbers ? "true" : "false"}
+      data-has-full-file-contents={
+        experimental_fullFileContents === undefined ? "false" : "true"
+      }
+      className={className}
+    >
+      {patch}
+    </pre>
+  );
+}
+
 const testPluginSdkApp = {
   definePluginApp,
   useRpc<
@@ -406,6 +743,37 @@ const testPluginSdkApp = {
   useBbNavigate(): BbNavigate {
     return useSlotEnv("useBbNavigate").navigate;
   },
+  experimental_useAppPanel(): ExperimentalAppPanel {
+    return useSlotEnv("experimental_useAppPanel").appPanel;
+  },
+  experimental_useFixedTabTarget<Target extends JsonValue>(
+    tab: ExperimentalPluginFixedTabReference<Target>,
+  ): ExperimentalFixedTabTargetState<Target> | null {
+    const store = useSlotEnv("experimental_useFixedTabTarget").fixedTabTarget;
+    const state = useSyncExternalStore(
+      store.subscribe,
+      store.getSnapshot,
+      store.getSnapshot,
+    );
+    if (
+      state === null ||
+      state.panelId !== tab.panelId ||
+      state.tabId !== tab.id ||
+      tab.experimental_target === undefined
+    ) {
+      return null;
+    }
+    try {
+      if (!tab.experimental_target.validate(state.target)) return null;
+    } catch {
+      return null;
+    }
+    return {
+      clear: () => store.clear(state.sequence),
+      sequence: state.sequence,
+      target: state.target,
+    };
+  },
   useComposer(): PluginComposerApi {
     const composer = useSlotEnv("useComposer").composer;
     const version = useSyncExternalStore(
@@ -424,9 +792,18 @@ const testPluginSdkApp = {
   },
   ThreadChat: TestThreadChat,
   Markdown: TestMarkdown,
+  experimental_FileLink: TestFileLink,
+  UrlLink: TestUrlLink,
   experimental_NewThreadComposer: TestNewThreadComposer,
+  experimental_ProviderModelPicker: TestProviderModelPicker,
+  experimental_PermissionModePicker: TestPermissionModePicker,
+  experimental_SourceCode: TestSourceCode,
+  experimental_Diff: TestDiff,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
+  },
+  experimental_useProviders(): PluginProvidersState {
+    return useSlotEnv("experimental_useProviders").providers;
   },
   experimental_useSidebarThreadActions(): PluginSidebarThreadActions {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
@@ -515,9 +892,12 @@ export interface CapturedPluginApp {
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
+  sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
+  diffRenderers: PluginDiffRendererRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
+  timelineRenderers: PluginTimelineRendererRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -727,6 +1107,11 @@ export interface RenderSlotOptions<
    */
   sidebarThreads?: Partial<PluginSidebarThreadsState>;
   /**
+   * The provider directory `experimental_useProviders()` reports. Omitted →
+   * a ready, empty list. Pass `{ status: "loading" }` to test that branch.
+   */
+  providers?: Partial<PluginProvidersState>;
+  /**
    * Pull requests `experimental_useSidebarThreadPullRequest()` reports, keyed
    * by thread id. Omitted → every thread reports none.
    */
@@ -735,6 +1120,20 @@ export interface RenderSlotOptions<
   openThreadPanel?: (
     options: Parameters<BbNavigate["openThreadPanel"]>[0],
   ) => boolean;
+  /** Host acceptance for URL intents from the hook or `UrlLink`. */
+  openUrl?: (url: string) => boolean;
+  /** Host acceptance for preview intents from the hook or file link. */
+  openFilePreview?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for preferred-external file intents. */
+  openFileExternally?: (options: ExperimentalFileOpenOptions) => boolean;
+  /** Host acceptance for an owner-scoped fixed-tab selection. */
+  experimental_openFixedTab?: (call: ExperimentalFixedTabOpenCall) => boolean;
+  /** Initial session target visible to `experimental_useFixedTabTarget`. */
+  experimental_fixedTabTarget?: {
+    panelId: string;
+    tabId: string;
+    target: JsonValue;
+  };
 }
 
 /** Host-originated inputs a slot test can drive deterministically. */
@@ -760,6 +1159,8 @@ export interface RenderedSlotInspectionState {
   readonly rpcCalls: RpcCall[];
   /** Every `useBbNavigate()` call, in order. */
   readonly navigateCalls: NavigateCall[];
+  /** Every validated `experimental_useAppPanel().openFixedTab` call. */
+  readonly experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[];
   /** Every `experimental_useSidebarThreadActions()` call, in order. */
   readonly sidebarActionCalls: SidebarActionCall[];
   /** Everything written through `useComposer()`. */
@@ -881,6 +1282,73 @@ export function renderSlot<
   };
 
   const navigateCalls: NavigateCall[] = [];
+  const experimental_fixedTabOpenCalls: ExperimentalFixedTabOpenCall[] = [];
+  let fixedTabTargetSnapshot =
+    options.experimental_fixedTabTarget === undefined
+      ? null
+      : {
+          panelId: options.experimental_fixedTabTarget.panelId,
+          sequence: 1,
+          tabId: options.experimental_fixedTabTarget.tabId,
+          target: strictJsonRoundTrip(
+            options.experimental_fixedTabTarget.target,
+            "fixed tab target",
+          ),
+        };
+  const fixedTabTargetListeners = new Set<() => void>();
+  const fixedTabTarget: TestFixedTabTargetStore = {
+    getSnapshot: () => fixedTabTargetSnapshot,
+    subscribe(listener) {
+      fixedTabTargetListeners.add(listener);
+      return () => fixedTabTargetListeners.delete(listener);
+    },
+    clear(sequence) {
+      if (fixedTabTargetSnapshot?.sequence !== sequence) return;
+      fixedTabTargetSnapshot = null;
+      for (const listener of fixedTabTargetListeners) listener();
+    },
+  };
+  const appPanel: ExperimentalAppPanel = {
+    openFixedTab(panelOptions) {
+      let target: JsonValue | undefined;
+      if (panelOptions.target !== undefined) {
+        try {
+          target = strictJsonRoundTrip(
+            panelOptions.target,
+            "fixed tab open target",
+          );
+        } catch {
+          return false;
+        }
+        if (panelOptions.tab.experimental_target === undefined) return false;
+        try {
+          if (!panelOptions.tab.experimental_target.validate(target)) {
+            return false;
+          }
+        } catch {
+          return false;
+        }
+      }
+      const call: ExperimentalFixedTabOpenCall = {
+        surface: panelOptions.surface,
+        panelId: panelOptions.tab.panelId,
+        tabId: panelOptions.tab.id,
+        ...(target === undefined ? {} : { target }),
+      };
+      experimental_fixedTabOpenCalls.push(call);
+      const accepted = options.experimental_openFixedTab?.(call) ?? false;
+      if (accepted && target !== undefined) {
+        fixedTabTargetSnapshot = {
+          panelId: panelOptions.tab.panelId,
+          sequence: (fixedTabTargetSnapshot?.sequence ?? 0) + 1,
+          tabId: panelOptions.tab.id,
+          target,
+        };
+        for (const listener of fixedTabTargetListeners) listener();
+      }
+      return accepted;
+    },
+  };
   const sidebarActionCalls: SidebarActionCall[] = [];
   const sidebarPullRequests = new Map(
     Object.entries(options.sidebarPullRequests ?? {}),
@@ -889,6 +1357,10 @@ export function renderSlot<
     status: options.sidebarThreads?.status ?? "ready",
     threads: options.sidebarThreads?.threads ?? [],
     projects: options.sidebarThreads?.projects ?? [],
+  };
+  const providers: PluginProvidersState = {
+    status: options.providers?.status ?? "ready",
+    providers: options.providers?.providers ?? [],
   };
   const sidebarActions: PluginSidebarThreadActions = {
     open(threadId, openOptions) {
@@ -946,6 +1418,24 @@ export function renderSlot<
         options: panelOptions,
       });
       return options.openThreadPanel?.(panelOptions) ?? false;
+    },
+    openUrl(url) {
+      navigateCalls.push({ method: "openUrl", url });
+      return options.openUrl?.(url) ?? false;
+    },
+    experimental_openFilePreview(fileOptions) {
+      navigateCalls.push({
+        method: "experimental_openFilePreview",
+        options: fileOptions,
+      });
+      return options.openFilePreview?.(fileOptions) ?? false;
+    },
+    experimental_openFileExternally(fileOptions) {
+      navigateCalls.push({
+        method: "experimental_openFileExternally",
+        options: fileOptions,
+      });
+      return options.openFileExternally?.(fileOptions) ?? false;
     },
   };
 
@@ -1055,12 +1545,16 @@ export function renderSlot<
     bbContext: { projectId, threadId },
     navigate,
     navigateCalls,
+    appPanel,
+    experimental_fixedTabOpenCalls,
+    fixedTabTarget,
     composer,
     composerLog,
     sidebarThreads,
     sidebarActions,
     sidebarActionCalls,
     sidebarPullRequests,
+    providers,
   };
 
   const releaseComposerOwnership = (): void => {
@@ -1129,6 +1623,7 @@ export function renderSlot<
     setComposerText,
     setComposerScope,
     navigateCalls,
+    experimental_fixedTabOpenCalls,
     sidebarActionCalls,
     composer: composerLog,
     behavior: {
@@ -1140,6 +1635,7 @@ export function renderSlot<
     inspection: {
       rpcCalls,
       navigateCalls,
+      experimental_fixedTabOpenCalls,
       sidebarActionCalls,
       composer: composerLog,
     },

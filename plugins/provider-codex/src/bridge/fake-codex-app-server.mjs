@@ -23,12 +23,20 @@
  * behavior below is unchanged.
  */
 
-import { readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { createInterface } from "node:readline";
 
 let threadCounter = 0;
 let turnCounter = 0;
 const openTurnIdsByThreadId = new Map();
+const processInstanceId = `${process.pid}-${Date.now()}-${Math.random()}`;
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -59,6 +67,9 @@ const ZERO_WORK_PROMPT_TEXT = "/clear";
 const LATE_TURN_START_PROMPT_TEXT = "/late-start";
 const LATE_TURN_START_DELAY_MS = 60;
 
+/** A prompt that stays open until the client sends turn/interrupt. */
+const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
+
 /**
  * A prompt that spawns a native subagent (open thread work) and then dies with
  * the subagent still running — the crash/OOM shape. The bridge has to settle
@@ -71,6 +82,24 @@ function firstInputText(input) {
   const first = Array.isArray(input) ? input[0] : undefined;
   return first && first.type === "text" ? first.text : undefined;
 }
+
+const FIXED_TOKEN_USAGE = {
+  total: {
+    totalTokens: 39970,
+    inputTokens: 39960,
+    cachedInputTokens: 0,
+    outputTokens: 10,
+    reasoningOutputTokens: 0,
+  },
+  last: {
+    totalTokens: 19993,
+    inputTokens: 19988,
+    cachedInputTokens: 0,
+    outputTokens: 5,
+    reasoningOutputTokens: 0,
+  },
+  modelContextWindow: 258400,
+};
 
 function runScriptedTurn(threadId) {
   turnCounter += 1;
@@ -91,6 +120,15 @@ function runScriptedTurn(threadId) {
     turnId,
     item: { type: "agentMessage", id: itemId, text },
   });
+  if (String(threadId).startsWith("usage-replay-")) {
+    // Usage-replay threads also report the turn's own usage, like the real
+    // app-server, so tests can tell a replay from live turn usage (#1727).
+    notify("thread/tokenUsage/updated", {
+      threadId,
+      turnId,
+      tokenUsage: FIXED_TOKEN_USAGE,
+    });
+  }
   notify("turn/completed", {
     threadId,
     turn: { id: turnId, status: "completed" },
@@ -101,10 +139,89 @@ function runScriptedTurn(threadId) {
 // argv, not an env var: the bridge builds its child's environment from an
 // allowlist, so an env var set by a test never reaches this process.
 const scriptPath = process.argv[2];
-const scriptedTurns = scriptPath
-  ? JSON.parse(readFileSync(scriptPath, "utf8")).turns
-  : null;
+const script = scriptPath ? JSON.parse(readFileSync(scriptPath, "utf8")) : null;
+const scriptedTurns = script?.turns ?? null;
+const modelListFailOnceMarkerPath = script?.modelListFailOnceMarkerPath ?? null;
+/**
+ * `archiveStatePath`: a JSON file of archived thread ids shared by every fake
+ * child the bridge spawns from one script. The real app-server keeps archive
+ * state on disk (the rollout moves to an archived dir), so an archive seen by
+ * one child must refuse a resume in the next — the bridge kills a thread's
+ * child on archive and resumes on a fresh one.
+ */
+const archiveStatePath = script?.archiveStatePath ?? null;
+/**
+ * `renameEmptyRolloutFailures`: how many `thread/name/set` calls fail with the
+ * real app-server's "rollout … is empty" error before one succeeds — the
+ * window between a rollout file's creation and its first record.
+ */
+let renameEmptyRolloutFailuresLeft = script?.renameEmptyRolloutFailures ?? 0;
+const archivedThreadIds = new Set();
+/**
+ * `processLogPath`: one line per child lifecycle step (`spawn:<pid>:<ppid>`,
+ * `exit:<pid>:<ppid>`), so a test can count how many app-server children the
+ * bridge runs, how many bridge processes spawned them (distinct ppids), and
+ * see the children die on release, archive, and bridge shutdown.
+ */
+const processLogPath = script?.processLogPath ?? null;
+/** `startDelayMs`: answer `thread/start` only after this many milliseconds. */
+const startDelayMs = script?.startDelayMs ?? 0;
+
+function logProcessStep(step) {
+  if (processLogPath === null) {
+    return;
+  }
+  appendFileSync(processLogPath, `${step}:${process.pid}:${process.ppid}\n`);
+}
+
+logProcessStep("spawn");
+process.on("SIGTERM", () => {
+  logProcessStep("exit");
+  process.exit(0);
+});
 let scriptedTurnIndex = 0;
+
+function readArchivedThreadIds() {
+  if (archiveStatePath === null) {
+    return archivedThreadIds;
+  }
+  if (!existsSync(archiveStatePath)) {
+    return new Set();
+  }
+  return new Set(JSON.parse(readFileSync(archiveStatePath, "utf8")));
+}
+
+function setThreadArchived(threadId, archived) {
+  const ids = readArchivedThreadIds();
+  if (archived) {
+    ids.add(threadId);
+  } else {
+    ids.delete(threadId);
+  }
+  if (archiveStatePath === null) {
+    return;
+  }
+  writeFileSync(archiveStatePath, JSON.stringify([...ids]));
+}
+
+function isThreadArchived(threadId) {
+  return readArchivedThreadIds().has(threadId);
+}
+
+function shouldFailThisModelList() {
+  if (modelListFailOnceMarkerPath === null) {
+    return false;
+  }
+  try {
+    closeSync(openSync(modelListFailOnceMarkerPath, "wx"));
+    return true;
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "EEXIST") {
+      return false;
+    }
+    throw error;
+  }
+}
 
 /** Rewrite every `threadId` to the id this process minted for the session. */
 function withThreadId(value, threadId) {
@@ -142,9 +259,29 @@ function requestFromClient(method, params) {
   });
 }
 
+/**
+ * `turnCursorPath`: persists the scripted-turn cursor across child processes,
+ * so a script whose Nth turn must run on a REBUILT child (the bridge replaces
+ * a thread's app-server after a terminal account error) keeps counting where
+ * the previous child stopped.
+ */
+const turnCursorPath = script?.turnCursorPath ?? null;
+
+function takeScriptedTurnIndex() {
+  if (turnCursorPath === null) {
+    const index = scriptedTurnIndex;
+    scriptedTurnIndex += 1;
+    return index;
+  }
+  const index = existsSync(turnCursorPath)
+    ? Number(readFileSync(turnCursorPath, "utf8"))
+    : 0;
+  writeFileSync(turnCursorPath, String(index + 1));
+  return index;
+}
+
 async function runScriptFileTurn(threadId) {
-  const turn = scriptedTurns[scriptedTurnIndex] ?? [];
-  scriptedTurnIndex += 1;
+  const turn = scriptedTurns[takeScriptedTurnIndex()] ?? [];
   for (const entry of turn) {
     const params = withThreadId(entry.params ?? {}, threadId);
     if (entry.kind === "request") {
@@ -161,6 +298,14 @@ async function runScriptFileTurn(threadId) {
   }
 }
 
+function replayLastTurnUsage(threadId) {
+  notify("thread/tokenUsage/updated", {
+    threadId,
+    turnId: "turn-fx-1",
+    tokenUsage: FIXED_TOKEN_USAGE,
+  });
+}
+
 async function handleRequest(message) {
   const { id, method } = message;
   const params = message.params ?? {};
@@ -171,10 +316,34 @@ async function handleRequest(message) {
     case "account/rateLimits/read":
       respond(id, { rateLimits: {} });
       return;
+    case "model/list":
+      if (shouldFailThisModelList()) {
+        respond(id, { data: [] });
+        return;
+      }
+      respond(id, {
+        data: [
+          {
+            id: `fake-model-${processInstanceId}`,
+            model: `fake-model-${processInstanceId}`,
+            displayName: "Fake model",
+            description: "Hermetic bridge fixture model",
+            supportedReasoningEfforts: [
+              { reasoningEffort: "medium", description: "Medium" },
+            ],
+            defaultReasoningEffort: "medium",
+            isDefault: true,
+          },
+        ],
+      });
+      return;
     case "skills/extraRoots/set":
       respond(id, {});
       return;
     case "thread/start": {
+      if (startDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, startDelayMs));
+      }
       threadCounter += 1;
       const threadId = `codex-fx-${process.pid}-${threadCounter}`;
       notify("thread/started", { thread: { id: threadId } });
@@ -185,7 +354,10 @@ async function handleRequest(message) {
       // Scripted archived-session rejection: the real app-server refuses to
       // resume an archived thread with an error naming the session. Tests use
       // an `archived-` provider-thread-id prefix to trigger it.
-      if (String(params.threadId).startsWith("archived-")) {
+      if (
+        String(params.threadId).startsWith("archived-") ||
+        isThreadArchived(params.threadId)
+      ) {
         respondError(
           id,
           -32603,
@@ -193,13 +365,42 @@ async function handleRequest(message) {
         );
         return;
       }
+      // Mirror the real app-server (codex-cli 0.147.0, observed live for
+      // #1727): thread/resume replays the rollout's last-turn token usage,
+      // scoped to that PREVIOUS turn's id, before any new turn is started.
+      // Opt-in via a `usage-replay-` provider-thread-id prefix.
+      if (String(params.threadId).startsWith("usage-replay-")) {
+        replayLastTurnUsage(params.threadId);
+      }
       respond(id, { thread: { id: params.threadId } });
       return;
     }
     case "thread/fork": {
+      // The real app-server reads the source rollout; an archived source is
+      // refused with the same wording a resume gets.
+      if (
+        String(params.threadId).startsWith("archived-") ||
+        isThreadArchived(params.threadId)
+      ) {
+        respondError(
+          id,
+          -32603,
+          `session ${params.threadId} is archived; unarchive it and retry`,
+        );
+        return;
+      }
       threadCounter += 1;
-      const threadId = `codex-fx-${process.pid}-fork-${threadCounter}`;
+      const replaysUsage = String(params.threadId).startsWith("usage-replay-");
+      const threadId = replaysUsage
+        ? `usage-replay-fork-${process.pid}-${threadCounter}`
+        : `codex-fx-${process.pid}-fork-${threadCounter}`;
       respond(id, { thread: { id: threadId } });
+      // thread/fork replays the source rollout's last-turn usage the same way,
+      // after the response, under the NEW thread id but the SOURCE turn id
+      // (#1727).
+      if (replaysUsage) {
+        replayLastTurnUsage(threadId);
+      }
       return;
     }
     case "turn/start": {
@@ -241,6 +442,17 @@ async function handleRequest(message) {
         );
         return;
       }
+      if (firstInputText(params.input) === INTERRUPTIBLE_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        openTurnIdsByThreadId.set(params.threadId, turnId);
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "inProgress" },
+        });
+        respond(id, {});
+        return;
+      }
       if (scriptedTurns) {
         await runScriptFileTurn(params.threadId);
       } else {
@@ -264,10 +476,45 @@ async function handleRequest(message) {
       respond(id, {});
       return;
     }
-    case "thread/compact/start":
     case "thread/archive":
+      // The real app-server moves the rollout into its archived dir, so a
+      // second archive finds no live rollout; the reverse holds for unarchive.
+      if (isThreadArchived(params.threadId)) {
+        respondError(
+          id,
+          -32603,
+          `no rollout found for thread id ${params.threadId}`,
+        );
+        return;
+      }
+      setThreadArchived(params.threadId, true);
+      respond(id, {});
+      return;
     case "thread/unarchive":
+      if (!isThreadArchived(params.threadId)) {
+        respondError(
+          id,
+          -32603,
+          `no archived rollout found for thread id ${params.threadId}`,
+        );
+        return;
+      }
+      setThreadArchived(params.threadId, false);
+      respond(id, {});
+      return;
     case "thread/name/set":
+      if (renameEmptyRolloutFailuresLeft > 0) {
+        renameEmptyRolloutFailuresLeft -= 1;
+        respondError(
+          id,
+          -32603,
+          `failed to set thread name: rollout at /tmp/${params.threadId}.jsonl is empty`,
+        );
+        return;
+      }
+      respond(id, {});
+      return;
+    case "thread/compact/start":
     case "thread/goal/clear":
       respond(id, {});
       return;
@@ -305,5 +552,6 @@ stdinLines.on("line", (line) => {
   }
 });
 stdinLines.on("close", () => {
+  logProcessStep("exit");
   process.exit(0);
 });

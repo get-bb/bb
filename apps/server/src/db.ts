@@ -1,21 +1,20 @@
-import { createConnection, migrate } from "@bb/db";
+import { createConnection, ensurePersonalProject, migrate } from "@bb/db";
 import type {
   DbConnection,
   MigrationWarningLogger,
   SlowDbQueryLogger,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
-import { ensurePersonalProjectBootstrap } from "./services/projects/personal-project.js";
 import {
   exportLegacyAutomationsForPluginImport,
   hasLegacyAutomationsToExport,
 } from "./legacy-automations-export.js";
 
-export type InitDbLogger = MigrationWarningLogger &
+type InitDbLogger = MigrationWarningLogger &
   SlowDbQueryLogger &
   Pick<Logger, "error" | "info">;
 
-export interface InitDbOptions {
+interface InitDbOptions {
   dataDir?: string;
   logger?: InitDbLogger;
 }
@@ -42,6 +41,6 @@ export function initDb(
     deferDestructiveLegacyCleanup: true,
     logger: options.logger,
   });
-  ensurePersonalProjectBootstrap(db);
+  ensurePersonalProject(db);
   return db;
 }

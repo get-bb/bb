@@ -8,6 +8,11 @@
       "types": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./provider-maintenance": {
+      "source": "./src/provider-maintenance.ts",
+      "types": "./src/provider-maintenance.ts",
+      "default": "./src/provider-maintenance.ts"
+    },
     "./bridge-kit": {
       "source": "./src/bridge-kit/index.ts",
       "types": "./src/bridge-kit/index.ts",
@@ -18,10 +23,20 @@
       "types": "./src/conformance/index.ts",
       "default": "./src/conformance/index.ts"
     },
+    "./assembler": {
+      "source": "./src/assembler/index.ts",
+      "types": "./src/assembler/index.ts",
+      "default": "./src/assembler/index.ts"
+    },
     "./testing": {
       "source": "./src/testing/index.ts",
       "types": "./src/testing/index.ts",
       "default": "./src/testing/index.ts"
+    },
+    "./testing/parity": {
+      "source": "./src/testing/parity-entry.ts",
+      "types": "./src/testing/parity-entry.ts",
+      "default": "./src/testing/parity-entry.ts"
     },
     "./bridge-worker-entry": {
       "source": "./src/bridge-worker-entry.ts",

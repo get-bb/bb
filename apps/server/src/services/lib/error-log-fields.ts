@@ -1,17 +1,15 @@
 import { ApiError } from "../../errors.js";
 import type { ServerRuntimeConfig } from "../../types.js";
 
-export interface ProductionErrorLogFields {
+interface ProductionErrorLogFields {
   errorCode?: string;
   errorMessage: string;
   errorName: string;
   errorStatus?: number;
 }
 
-export type LoggableError = unknown;
-export type RuntimeErrorLogFields =
-  | { err: LoggableError }
-  | ProductionErrorLogFields;
+type LoggableError = unknown;
+type RuntimeErrorLogFields = { err: LoggableError } | ProductionErrorLogFields;
 
 export function productionErrorLogFields(
   error: LoggableError,

@@ -5,11 +5,11 @@ import {
   type LogLevelConfig,
 } from "./common.js";
 
-export interface LoggerConfig extends LogLevelConfig {
+interface LoggerConfig extends LogLevelConfig {
   BB_DATA_DIR: string;
 }
 
-export interface LoadLoggerConfigArgs extends LoadCommonConfigArgs {
+interface LoadLoggerConfigArgs extends LoadCommonConfigArgs {
   dataDir?: string;
 }
 

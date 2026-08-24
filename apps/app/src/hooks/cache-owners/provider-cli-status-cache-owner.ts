@@ -1,7 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { hostProviderCliStatusQueryKey } from "../queries/query-keys";
 
-export interface InvalidateHostProviderCliStatusArgs {
+interface InvalidateHostProviderCliStatusArgs {
   queryClient: QueryClient;
   hostId: string;
 }

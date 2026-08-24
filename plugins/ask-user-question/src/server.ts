@@ -1,5 +1,9 @@
 import type { BbPluginApi, PluginAgentToolResult } from "@get-bb/plugin-sdk";
-import { interactionResponseSchema, toolInputSchema } from "./contracts.js";
+import {
+  ASK_USER_QUESTION_RENDERER_ID,
+  interactionResponseSchema,
+  toolInputSchema,
+} from "./contracts.js";
 import {
   TOOL_DESCRIPTION,
   TOOL_INPUT_JSON_SCHEMA,
@@ -14,8 +18,7 @@ import {
 } from "./translate.js";
 
 export const TOOL_NAME = "AskUserQuestion";
-export const RENDERER_ID = "ask-user-question";
-
+export const RENDERER_ID = ASK_USER_QUESTION_RENDERER_ID;
 
 function errorResult(message: string): PluginAgentToolResult {
   return { content: [{ type: "text", text: message }], isError: true };
@@ -25,6 +28,13 @@ export default function plugin(bb: BbPluginApi) {
   bb.agents.registerTool({
     name: TOOL_NAME,
     description: TOOL_DESCRIPTION,
+    // The question is fully represented by its interaction row; the tool
+    // row beside it would read as a duplicate, so clients collapse it.
+    presentation: {
+      label: { pending: "Asking a question", completed: "Asked a question" },
+      icon: { glyph: "MessageQuestion" },
+      suppress: true,
+    },
     parameters: toolInputSchema,
     async execute(input, ctx) {
       const invalid = validateToolInput(input);

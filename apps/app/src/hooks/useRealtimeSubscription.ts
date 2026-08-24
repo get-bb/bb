@@ -14,7 +14,7 @@ const ENVIRONMENT_LIST_TARGET = {
 const HOST_LIST_TARGET = { kind: "host-list" } satisfies RealtimeSubscriptionTarget;
 const SYSTEM_TARGET = { kind: "system" } satisfies RealtimeSubscriptionTarget;
 
-export function useRealtimeSubscription(
+function useRealtimeSubscription(
   target: RealtimeSubscriptionTarget | null,
   options?: RealtimeSubscriptionOptions,
 ): void {
@@ -41,29 +41,6 @@ export function useThreadDetailRealtimeSubscription(
     [threadId],
   );
   useRealtimeSubscription(target, options);
-}
-
-export function useThreadDetailRealtimeSubscriptions(
-  threadIds: readonly string[],
-  options?: RealtimeSubscriptionOptions,
-): void {
-  const enabled = options?.enabled ?? true;
-  const serializedIds = threadIds.join("\0");
-
-  useEffect(() => {
-    if (!enabled || serializedIds.length === 0) {
-      return;
-    }
-    const ids = serializedIds.split("\0");
-    for (const threadId of ids) {
-      wsManager.subscribe({ kind: "thread-detail", threadId });
-    }
-    return () => {
-      for (const threadId of ids) {
-        wsManager.unsubscribe({ kind: "thread-detail", threadId });
-      }
-    };
-  }, [enabled, serializedIds]);
 }
 
 export function useEnvironmentDetailRealtimeSubscription(

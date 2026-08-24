@@ -1,8 +1,8 @@
-export interface GetMarkdownCodeLanguageArgs {
+interface GetMarkdownCodeLanguageArgs {
   className: string | undefined;
 }
 
-export interface IsMarkdownCodeBlockArgs {
+interface IsMarkdownCodeBlockArgs {
   codeText: string;
   language: string | null;
 }

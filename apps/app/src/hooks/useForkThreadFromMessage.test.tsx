@@ -1,19 +1,39 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
+import type { ReactNode } from "react";
 import type { Thread } from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY,
   type ForkThreadCreateSeed,
-} from "@/lib/fork-thread-request";
+} from "@bb/client-core";
 import { getRootComposeRoutePath } from "@/lib/route-paths";
+import { RouteNavigationProvider } from "@/components/ui/app-route-anchor";
 import { useForkThreadFromMessage } from "./useForkThreadFromMessage";
 
 const mocks = vi.hoisted(() => ({
   fetchQuery: vi.fn(),
   navigate: vi.fn(),
   setRootComposeProjectId: vi.fn(),
+  queryClient: {
+    fetchQuery: (...args: unknown[]) => mocks.fetchQuery(...args),
+    // findCachedProviderInfo scans cached execution-options responses for
+    // the source provider's fork capability.
+    getQueriesData: () => [
+      [
+        ["systemExecutionOptions"],
+        {
+          providers: [
+            {
+              id: "codex",
+              capabilities: { supportsFork: true },
+            },
+          ],
+        },
+      ],
+    ],
+  },
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -28,24 +48,8 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@tanstack/react-query")>();
   return {
     ...actual,
-    useQueryClient: () => ({
-      fetchQuery: mocks.fetchQuery,
-      // findCachedProviderInfo scans cached execution-options responses for
-      // the source provider's fork capability.
-      getQueriesData: () => [
-        [
-          ["systemExecutionOptions"],
-          {
-            providers: [
-              {
-                id: "codex",
-                capabilities: { supportsFork: true },
-              },
-            ],
-          },
-        ],
-      ],
-    }),
+    // One stable client per test run, like the real provider hands out.
+    useQueryClient: () => mocks.queryClient,
   };
 });
 
@@ -84,6 +88,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+function Wrapper({ children }: { children: ReactNode }) {
+  return <RouteNavigationProvider>{children}</RouteNavigationProvider>;
+}
+
 describe("useForkThreadFromMessage", () => {
   it("opens the root composer with the source thread display title in the fork seed", async () => {
     mocks.fetchQuery.mockResolvedValue({
@@ -93,10 +101,12 @@ describe("useForkThreadFromMessage", () => {
       serviceTier: "fast",
     });
 
-    const { result } = renderHook(() =>
-      useForkThreadFromMessage({
-        sourceThread: makeThread(),
-      }),
+    const { result } = renderHook(
+      () =>
+        useForkThreadFromMessage({
+          sourceThread: makeThread(),
+        }),
+      { wrapper: Wrapper },
     );
 
     await act(async () => {
@@ -129,5 +139,35 @@ describe("useForkThreadFromMessage", () => {
       sourceThreadId: "thr_source",
       sourceThreadTitle: "Fallback fork title",
     });
+  });
+  it("keeps one handler identity across thread refetches and reads the latest thread", async () => {
+    mocks.fetchQuery.mockResolvedValue({
+      model: "gpt-5",
+      permissionMode: "accept-edits",
+      reasoningLevel: "high",
+      serviceTier: "fast",
+    });
+    const { result, rerender } = renderHook(
+      ({ sourceThread }: { sourceThread: Thread | null }) =>
+        useForkThreadFromMessage({ sourceThread }),
+      { initialProps: { sourceThread: makeThread() }, wrapper: Wrapper },
+    );
+    const first = result.current;
+
+    // A refetch hands the hook a new thread object (same id, new title): the
+    // handler feeds the timeline static context, so its identity must hold.
+    rerender({ sourceThread: makeThread({ title: "Renamed source" }) });
+    expect(result.current).toBe(first);
+
+    await act(async () => {
+      await first({ sourceSeqEnd: 3 });
+    });
+    const navigateState = mocks.navigate.mock.calls[0]?.[1]?.state as
+      | Record<string, unknown>
+      | undefined;
+    const seed = navigateState?.[FORK_THREAD_CREATE_SEED_LOCATION_STATE_KEY] as
+      | ForkThreadCreateSeed
+      | undefined;
+    expect(seed?.sourceThreadTitle).toBe("Renamed source");
   });
 });

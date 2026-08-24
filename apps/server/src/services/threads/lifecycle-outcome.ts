@@ -4,16 +4,19 @@ import {
   type ApplyThreadLifecycleEventArgs,
   type ApplyThreadLifecycleEventOutcome,
   type DbConnection,
-  type DbNotifier,
   type DbTransaction,
 } from "@bb/db";
 import type { ServerLogger } from "../../types.js";
+import type { NotificationHub } from "../../ws/hub.js";
 import { emitPluginThreadLifecycleOutcome } from "../plugins/plugin-thread-events.js";
+import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 
 interface ApplyLoggedThreadLifecycleEventDeps {
   db: DbConnection;
-  hub: DbNotifier;
+  hub: Pick<NotificationHub, "getDaemonSessionIdForHost" | "notifyThread">;
   logger: ServerLogger;
+  providerRegistry: ProviderRegistryService;
 }
 
 interface ApplyLoggedThreadLifecycleEventTransactionDeps {
@@ -41,15 +44,23 @@ function logUnappliedThreadLifecycleEvent(
 }
 
 /**
- * Applies a thread lifecycle event in its own transaction (the db writer
- * notifies status-changed when applied) and logs every non-applied outcome so
- * stale events are observable instead of silently swallowed.
+ * Applies a thread lifecycle event in its own transaction, notifies
+ * status-changed with the post-transition row when applied, and logs every
+ * non-applied outcome so stale events are observable instead of silently
+ * swallowed.
  */
 export function applyLoggedThreadLifecycleEvent(
   deps: ApplyLoggedThreadLifecycleEventDeps,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
-  const outcome = applyThreadLifecycleEvent(deps.db, deps.hub, args);
+  const outcome = applyThreadLifecycleEvent(deps.db, args);
+  if (outcome.applied) {
+    deps.hub.notifyThread(
+      args.threadId,
+      ["status-changed"],
+      buildThreadStatusChangeMetadata(deps, outcome.thread),
+    );
+  }
   logUnappliedThreadLifecycleEvent(deps.logger, args, outcome);
   emitPluginThreadLifecycleOutcome(outcome);
   return outcome;

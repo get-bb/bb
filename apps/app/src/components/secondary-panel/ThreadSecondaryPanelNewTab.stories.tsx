@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
+import type { Host } from "@bb/domain";
 import type {
   ThreadStoragePathListResponse,
   WorkspacePathEntry,
@@ -13,7 +14,7 @@ import {
   threadStoragePathsQueryKey,
 } from "@/hooks/queries/query-keys";
 import { ThreadSecondaryPanel } from "./ThreadSecondaryPanel";
-import type { SecondaryPanelFileTab } from "./ThreadSecondaryPanel";
+import type { SecondaryPanelRenderableTab } from "./ThreadSecondaryPanel";
 import { NewTabPage } from "./NewTabPage";
 import type { FileSearchSelection } from "./useThreadFileTabs";
 import { Icon } from "@bb/shared-ui/icon";
@@ -24,12 +25,16 @@ import {
 import {
   createNewTabFixedPanelTab,
   createTerminalFixedPanelTab,
-  type SecondaryFixedPanelTab,
+  type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
   getFileNameFromPath,
   resolveRightPanelFileVisual,
 } from "./rightPanelFileVisuals";
+import {
+  resolveTerminalHost,
+  TerminalHostSelector,
+} from "./TerminalHostSelector";
 
 export default {
   title: "right-panel/New tab",
@@ -39,22 +44,37 @@ const PROJECT_ID = "proj_bb";
 const ENVIRONMENT_ID = "env_open_file_story";
 const STORY_SOURCE_LIMIT = 40;
 const BLANK_THREAD_ID = "thr_new_tab_blank_story";
+const SINGLE_HOST_THREAD_ID = "thr_new_tab_single_host_story";
+const MULTIPLE_HOSTS_THREAD_ID = "thr_new_tab_multiple_hosts_story";
 const RECENTS_THREAD_ID = "thr_new_tab_recents_story";
 const LONG_RECENTS_THREAD_ID = "thr_new_tab_long_recents_story";
 const SEARCH_THREAD_ID = "thr_new_tab_search_story";
 const STORY_TERMINAL_ID = "term_new_tab_story";
 
-const noop = () => {};
-
-const NEW_TAB: SecondaryPanelFileTab = {
-  id: "new-tab",
-  filename: "New tab",
-  isActive: true,
-  leadingVisual: <Icon name="NewTab" className="size-3.5" aria-hidden />,
-  statusLabel: null,
-  onSelect: noop,
-  onClose: noop,
+const MAC_STUDIO: Host = {
+  id: "host_mac_studio",
+  name: "Mac Studio",
+  type: "persistent",
+  status: "connected",
+  lastSeenAt: null,
+  maxPermissionMode: "full",
+  lastRejectedProtocolVersion: null,
+  createdAt: 0,
+  updatedAt: 0,
 };
+const MACBOOK_PRO: Host = {
+  ...MAC_STUDIO,
+  id: "host_macbook_pro",
+  name: "MacBook Pro",
+};
+const BUILD_SERVER: Host = {
+  ...MAC_STUDIO,
+  id: "host_build_server",
+  name: "Build server",
+  status: "disconnected",
+};
+
+const noop = () => {};
 
 const WORKSPACE_PATH_RESULTS: WorkspacePathEntry[] = [
   {
@@ -208,17 +228,18 @@ interface NewTabPanelStoryProps {
   threadStoragePaths: readonly WorkspacePathEntry[];
   workspacePaths: readonly WorkspacePathEntry[];
   presentation?: "card" | "sidebar";
+  terminalHosts?: readonly Host[];
 }
 
 type NewTabStoryOutcome =
   | { kind: "file"; selection: FileSearchSelection }
   | { kind: "browser" }
-  | { kind: "terminal" };
+  | { kind: "terminal"; hostName: string | null };
 
 function createStoryActiveTab(
   outcome: NewTabStoryOutcome | null,
   currentThreadId: string,
-): SecondaryFixedPanelTab {
+): SecondaryFileFixedPanelTab {
   if (outcome === null) {
     return createNewTabFixedPanelTab();
   }
@@ -282,6 +303,8 @@ interface SeededNewTabPageProps {
   onStartTerminal: () => void;
   projectId: string | undefined;
   recentItems: readonly ThreadRecentItem[];
+  startTerminalDisabled?: boolean;
+  startTerminalTrailing?: ReactNode;
 }
 
 function PanelStage({ children, presentation = "card" }: PanelStageProps) {
@@ -387,6 +410,8 @@ function SeededNewTabPage({
   onStartTerminal,
   projectId,
   recentItems,
+  startTerminalDisabled,
+  startTerminalTrailing,
 }: SeededNewTabPageProps) {
   // Story-only: seed before NewTabPage mounts so atomWithStorage reads fixtures.
   seedThreadRecentItems({ currentThreadId, recentItems });
@@ -402,6 +427,8 @@ function SeededNewTabPage({
       onSelect={onSelect}
       onOpenBrowser={onOpenBrowser}
       onStartTerminal={onStartTerminal}
+      startTerminalDisabled={startTerminalDisabled}
+      startTerminalTrailing={startTerminalTrailing}
     />
   );
 }
@@ -415,8 +442,17 @@ function NewTabPanelStory({
   threadStoragePaths,
   workspacePaths,
   presentation,
+  terminalHosts,
 }: NewTabPanelStoryProps) {
   const [outcome, setOutcome] = useState<NewTabStoryOutcome | null>(null);
+  const [preferredTerminalHostId, setPreferredTerminalHostId] = useState<
+    string | null
+  >(null);
+  const selectedTerminalHost = resolveTerminalHost({
+    hosts: terminalHosts ?? [],
+    preferredHostId: preferredTerminalHostId,
+    primaryHostId: terminalHosts?.[0]?.id ?? null,
+  });
   const queryClient = useStoryQueryClient({
     currentThreadId,
     initialQuery,
@@ -430,68 +466,15 @@ function NewTabPanelStory({
     setOutcome({ kind: "browser" });
   }, []);
   const handleStartTerminal = useCallback(() => {
-    setOutcome({ kind: "terminal" });
-  }, []);
+    setOutcome({
+      kind: "terminal",
+      hostName: selectedTerminalHost?.name ?? null,
+    });
+  }, [selectedTerminalHost]);
   const handleOpenNewTab = useCallback(() => {
     setOutcome(null);
   }, []);
   const activeTab = createStoryActiveTab(outcome, currentThreadId);
-  const fileTabs = useMemo<SecondaryPanelFileTab[]>(() => {
-    if (outcome === null) {
-      return [NEW_TAB];
-    }
-    if (outcome.kind === "browser") {
-      return [
-        {
-          id: "browser",
-          filename: "Browser",
-          isActive: true,
-          leadingVisual: <Icon name="Globe" className="size-3.5" aria-hidden />,
-          statusLabel: null,
-          onSelect: noop,
-          onClose: () => setOutcome(null),
-        },
-      ];
-    }
-    if (outcome.kind === "terminal") {
-      const terminalTab = createTerminalFixedPanelTab({
-        terminalId: STORY_TERMINAL_ID,
-      });
-      return [
-        {
-          id: terminalTab.id,
-          filename: "Terminal",
-          isActive: true,
-          leadingVisual: (
-            <Icon name="Terminal" className="size-3.5" aria-hidden />
-          ),
-          statusLabel: null,
-          onSelect: noop,
-          onClose: () => setOutcome(null),
-        },
-      ];
-    }
-    const { selection } = outcome;
-    return [
-      {
-        id: `${selection.source}:${selection.path}`,
-        filename: getFileNameFromPath({ path: selection.path }),
-        isActive: true,
-        leadingVisual: (
-          <Icon
-            name={
-              resolveRightPanelFileVisual({ path: selection.path }).iconName
-            }
-            className="size-3.5"
-            aria-hidden
-          />
-        ),
-        statusLabel: null,
-        onSelect: noop,
-        onClose: () => setOutcome(null),
-      },
-    ];
-  }, [outcome]);
   const content =
     outcome === null ? (
       <QueryClientProvider client={queryClient}>
@@ -503,6 +486,21 @@ function NewTabPanelStory({
           onOpenBrowser={showOpenBrowser ? handleOpenBrowser : undefined}
           onSelect={handleSelect}
           onStartTerminal={handleStartTerminal}
+          startTerminalDisabled={
+            terminalHosts !== undefined &&
+            selectedTerminalHost?.status !== "connected"
+          }
+          startTerminalTrailing={
+            terminalHosts === undefined ? undefined : (
+              <TerminalHostSelector
+                disabled={false}
+                hosts={terminalHosts}
+                isLoading={false}
+                onChange={setPreferredTerminalHostId}
+                selectedHostId={selectedTerminalHost?.id ?? null}
+              />
+            )
+          }
         />
       </QueryClientProvider>
     ) : outcome.kind === "browser" ? (
@@ -517,7 +515,8 @@ function NewTabPanelStory({
       <div className="flex min-h-full flex-col justify-center bg-neutral-950 px-4 font-mono text-xs text-emerald-100">
         <p>$ bb terminal start</p>
         <p className="pt-1 text-emerald-300">
-          Terminal tab opened from the New tab page.
+          Terminal tab opened from the New tab page
+          {outcome.hostName === null ? "." : ` on ${outcome.hostName}.`}
         </p>
       </div>
     ) : (
@@ -533,6 +532,39 @@ function NewTabPanelStory({
         </p>
       </div>
     );
+  const panelTab: SecondaryPanelRenderableTab = {
+    contentFillsRegion: outcome?.kind === "terminal",
+    label:
+      outcome === null
+        ? "New tab"
+        : outcome.kind === "browser"
+          ? "Browser"
+          : outcome.kind === "terminal"
+            ? "Terminal"
+            : getFileNameFromPath({ path: outcome.selection.path }),
+    leadingVisual:
+      outcome === null ? (
+        <Icon name="NewTab" className="size-3.5" aria-hidden />
+      ) : outcome.kind === "browser" ? (
+        <Icon name="Globe" className="size-3.5" aria-hidden />
+      ) : outcome.kind === "terminal" ? (
+        <Icon name="Terminal" className="size-3.5" aria-hidden />
+      ) : (
+        <Icon
+          name={
+            resolveRightPanelFileVisual({ path: outcome.selection.path })
+              .iconName
+          }
+          className="size-3.5"
+          aria-hidden
+        />
+      ),
+    onClose: outcome === null ? noop : () => setOutcome(null),
+    onSelect: noop,
+    renderContent: () => content,
+    statusLabel: null,
+    tab: activeTab,
+  };
 
   return (
     <PanelStage presentation={presentation}>
@@ -541,20 +573,18 @@ function NewTabPanelStory({
         canUseGitUi
         requestedMergeBaseBranch="main"
         environmentId={ENVIRONMENT_ID}
-        fileTabs={fileTabs}
-        fileTabContent={content}
+        tabs={[panelTab]}
+        fixedTabs={[]}
         isOpen
         metadataContent={null}
         onCollapse={noop}
         onClose={noop}
-        onFileTabReorder={noop}
+        onTabReorder={noop}
         onOpenNewTab={handleOpenNewTab}
-        onPanelChange={noop}
         onPanelFocus={noop}
         isConversationCollapsed={false}
         onToggleConversationCollapse={noop}
         renderAsDrawer
-        showGitDiffTab
       />
     </PanelStage>
   );
@@ -593,6 +623,36 @@ export function NewTab() {
             projectId={PROJECT_ID}
             recentItems={[]}
             showOpenBrowser
+            threadStoragePaths={[]}
+            workspacePaths={[]}
+          />
+        </StoryRow>
+        <StoryRow
+          label="one machine"
+          hint="the terminal action shows its only machine as a quiet value"
+        >
+          <NewTabPanelStory
+            currentThreadId={SINGLE_HOST_THREAD_ID}
+            initialQuery=""
+            projectId={PROJECT_ID}
+            recentItems={[]}
+            showOpenBrowser
+            terminalHosts={[MAC_STUDIO]}
+            threadStoragePaths={[]}
+            workspacePaths={[]}
+          />
+        </StoryRow>
+        <StoryRow
+          label="multiple machines"
+          hint="the terminal action includes a compact machine selector"
+        >
+          <NewTabPanelStory
+            currentThreadId={MULTIPLE_HOSTS_THREAD_ID}
+            initialQuery=""
+            projectId={PROJECT_ID}
+            recentItems={[]}
+            showOpenBrowser
+            terminalHosts={[MAC_STUDIO, MACBOOK_PRO, BUILD_SERVER]}
             threadStoragePaths={[]}
             workspacePaths={[]}
           />

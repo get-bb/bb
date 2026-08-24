@@ -4,11 +4,13 @@ import { Profiler, type ProfilerOnRenderCallback } from "react";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { threadsQueryKey } from "@/hooks/queries/query-keys";
 import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import { sdk } from "@/lib/sdk";
 
 // The query cache notifies through notifyManager's scheduler (a macrotask),
 // so cache writes only reach subscribers after a timer tick.
@@ -68,9 +70,29 @@ function renderProfiledTimeline(queryClient: QueryClient) {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 describe("ThreadTimelineRows render stability", () => {
+  it("routes a personal-project sender pill directly from sender metadata", async () => {
+    const getThread = vi.spyOn(sdk.threads, "get");
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(threadsQueryKey(), [
+      makeThreadListEntry({
+        id: "thr_sender",
+        projectId: PERSONAL_PROJECT_ID,
+        title: "Personal sender",
+      }),
+    ]);
+    const { view } = renderProfiledTimeline(queryClient);
+
+    expect(
+      view.getByRole("link", { name: "Personal sender" }).getAttribute("href"),
+    ).toBe("/threads/thr_sender");
+    await flushCacheNotifications();
+    expect(getThread).not.toHaveBeenCalled();
+  });
+
   it("does not re-render the timeline when cache events carry equal thread metadata", async () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(threadsQueryKey(), [

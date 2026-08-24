@@ -78,7 +78,7 @@
                 "url": {
                   "type": "string",
                   "minLength": 1,
-                  "$comment": "Absolute https URL, or a URL relative to this manifest. The path must end in .svg, .png, or .webp.",
+                  "$comment": "Absolute https URL, or a URL relative to this manifest. The path must end in .svg, .png, or .webp. BB masks an SVG with the surrounding text color, so single-color artwork follows the theme; PNG and WebP keep their own colors.",
                   "pattern": "^(?:(?![A-Za-z][A-Za-z0-9+.-]*:)|(?=[Hh][Tt][Tt][Pp][Ss]:))[^\\s]*\\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp])(?:[?#][^\\s]*)?$"
                 }
               }

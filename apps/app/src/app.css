@@ -55,6 +55,19 @@
     overscroll-behavior-y: none;
   }
 
+  /*
+   * App chrome (sidebar, page headers, composer toolbars) opts out of text
+   * selection with `select-none` so drags and Select All only pick up
+   * content. `user-select: auto` resolves from the parent, so WebKit would
+   * carry that opt-out into editable controls inside those regions (the
+   * sidebar thread search, the inline thread-title rename) and refuse to
+   * select their text. Restore native selection on the controls themselves.
+   */
+  .select-none
+    :where(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    user-select: text;
+  }
+
   .chat-prompt-box {
     padding-bottom: 0.5rem;
   }
@@ -98,10 +111,28 @@
   }
 
   /* Keep the drag cursor stable while crossing rows whose normal pointer
-   * cursor would otherwise override the cursor inherited from the body. */
-  body[data-sidebar-dragging="true"],
-  body[data-sidebar-dragging="true"] * {
-    cursor: grabbing !important;
+   * cursor would otherwise override the cursor inherited from the body.
+   * Only the sidebar panel's rows carry their own cursor rules, so the
+   * descendant override is scoped to that panel rather than the whole
+   * document, and the rules exist only for fine pointers: a touch drag has
+   * no cursor, and a document-wide `*` rule would restyle every mounted
+   * timeline node when the body attribute flips at drag start and end. */
+  @media (pointer: fine) {
+    body[data-sidebar-dragging="true"],
+    body[data-sidebar-dragging="true"] [data-sidebar="panel"] * {
+      cursor: grabbing !important;
+    }
+  }
+
+  /* A sidebar drag projects the dragged row into the hovered list, which can
+   * grow or shrink content above the scrolled viewport. Scroll anchoring would
+   * then move scrollTop to keep the visible rows still, but dnd-kit offsets
+   * its measured droppable rects by that scroll delta even though nothing
+   * moved on screen, so `over` resolves against the wrong rows and the
+   * projection flips back and forth (#1830). Keep scrollTop stable while a
+   * sidebar drag is active so the measured geometry matches the pointer. */
+  body[data-sidebar-dragging="true"] [data-sidebar="content"] {
+    overflow-anchor: none;
   }
 }
 
@@ -416,16 +447,12 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    ) {
+    [data-promptbox]:not([data-promptbox-voice-active]) {
     overflow: hidden;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-action-row] {
     position: absolute;
     inset-block: 0;
@@ -435,25 +462,19 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-main] {
     height: 3rem;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-expanded-only] {
     display: none !important;
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-scroll] {
     height: 3rem !important;
     min-height: 3rem !important;
@@ -465,9 +486,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content] {
     display: flex;
     align-items: center;
@@ -475,9 +494,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable] {
     width: 100%;
@@ -489,16 +506,12 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     > *,
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     :where(blockquote, h1, h2, h3, h4, h5, h6, li, ol, p, ul) {
@@ -515,26 +528,20 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     > *
     + *::before,
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     :where(blockquote, li)
     > *
     + *::before,
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     :where(ol, ul)
@@ -544,9 +551,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     br {
@@ -555,9 +560,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror[contenteditable]
     br::after {
@@ -565,9 +568,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .prompt-mention-pill
     > span:last-child {
@@ -575,9 +576,7 @@
   }
 
   [data-follow-up-composer]:not([data-follow-up-composer-expanded])
-    [data-promptbox]:not([data-promptbox-zen]):not(
-      [data-promptbox-voice-active]
-    )
+    [data-promptbox]:not([data-promptbox-voice-active])
     [data-promptbox-editor-content]
     .ProseMirror
     p.is-editor-empty:first-child::before {

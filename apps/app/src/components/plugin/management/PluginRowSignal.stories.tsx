@@ -61,7 +61,7 @@ function StateRow({
 /**
  * Every state of the installed row's status/action slot around updates,
  * following the multi-state pattern: scroll one story, review the surface.
- * The control is a quiet neutral button whose tinted up-arrow carries the
+ * The control is a quiet neutral button whose tinted download mark carries the
  * tone; it names a version only when the version is readable — git sources
  * report commit hashes, which belong (shortened) in the dialog, not the row.
  */

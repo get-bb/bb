@@ -15,7 +15,10 @@ import {
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import semver from "semver";
-import { spawnPortableOutputProcess } from "@bb/process-utils";
+import {
+  omitNpmScriptPolicyEnv,
+  spawnPortableOutputProcess,
+} from "@bb/process-utils";
 
 /**
  * What a `git:` spec asks for.
@@ -27,7 +30,7 @@ import { spawnPortableOutputProcess } from "@bb/process-utils";
  *   and a spec that is both is refused rather than guessed. See
  *   {@link isGitSemverRangeSpec}.
  */
-export type ParsedGitSelector =
+type ParsedGitSelector =
   | { kind: "ref"; ref: string }
   | { kind: "range"; range: string; tagPrefix: string }
   | { kind: "ref-or-range"; ref: string; range: string };
@@ -36,7 +39,7 @@ export type ParsedGitSelector =
  * Parsed `bb plugin install` source spec (design §6). The original spec is
  * retained for display/diagnostics; normalized persistence is authoritative.
  */
-export type ParsedPluginSource =
+type ParsedPluginSource =
   | { kind: "path"; path: string }
   | { kind: "builtin"; name: string }
   | {
@@ -93,7 +96,7 @@ function assertSafeSegments(value: string, label: string): void {
  * semver ranges, but they are how repositories actually name tags, so they
  * keep resolving as the literal tag. Write `semver:v1` to range over them.
  */
-export function isGitSemverRangeSpec(spec: string): boolean {
+function isGitSemverRangeSpec(spec: string): boolean {
   return (
     semver.validRange(spec) !== null &&
     semver.valid(spec) === null &&
@@ -672,8 +675,6 @@ export async function promoteGitPluginArtifact(args: {
     : await hashInstallDir(targetRoot);
 }
 
-export const INSTALL_COMMAND_TIMEOUT_MS = 5 * 60_000;
-
 /**
  * Run a materialization command (git/npm), buffering output. Throws a clear
  * error when the binary is missing, the command times out, or it exits
@@ -683,7 +684,6 @@ export async function runInstallCommand(
   command: string,
   args: string[],
   options?: {
-    timeoutMs?: number;
     notFoundHint?: string;
     /**
      * Keep the whole output up to this size and fail past it, for commands
@@ -693,8 +693,12 @@ export async function runInstallCommand(
     maxStdoutBytes?: number;
   },
 ): Promise<string> {
-  const timeoutMs = options?.timeoutMs ?? INSTALL_COMMAND_TIMEOUT_MS;
-  const child = spawnPortableOutputProcess({ command, args });
+  const timeoutMs = 5 * 60_000;
+  const child = spawnPortableOutputProcess({
+    command,
+    args,
+    env: omitNpmScriptPolicyEnv(process.env),
+  });
   let stderr = "";
   let stdout = "";
   let stdoutBytes = 0;

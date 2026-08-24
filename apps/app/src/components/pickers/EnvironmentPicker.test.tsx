@@ -265,10 +265,18 @@ describe("EnvironmentPickerUI multi-machine menu", () => {
     expect(placeholder.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("names a non-primary machine in the trigger label", () => {
+  it("names the primary machine in the trigger label when multiple machines exist", () => {
+    renderMachineMenu({ value: `host:${thisMachine.id}:worktree` });
+
+    expect(screen.getByText("MacBook Pro · New worktree")).toBeTruthy();
+    expect(screen.getByText("Worktree")).toBeTruthy();
+  });
+
+  it("names another selected machine in the trigger label", () => {
     renderMachineMenu({ value: `host:${studio.id}:worktree` });
 
     expect(screen.getByText("Mac Studio · New worktree")).toBeTruthy();
+    expect(screen.getByText("Worktree")).toBeTruthy();
   });
 
   it("keeps the single-host menu when only one host exists", () => {

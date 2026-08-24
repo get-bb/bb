@@ -13,7 +13,7 @@ import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 // animates the jump (see HeightTransition's ResizeObserver).
 const INDICATOR_HEADER_HEIGHT_CLASS = "min-h-7 items-center";
 
-export interface TimelineWorkingIndicatorProps {
+interface TimelineWorkingIndicatorProps {
   label?: string;
   isThinking?: boolean;
   details?: string;

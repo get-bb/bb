@@ -104,6 +104,11 @@
       "types": "./src/components/ui/dialog.tsx",
       "default": "./src/components/ui/dialog.tsx"
     },
+    "./delayed-loading": {
+      "source": "./src/components/ui/delayed-loading.tsx",
+      "types": "./src/components/ui/delayed-loading.tsx",
+      "default": "./src/components/ui/delayed-loading.tsx"
+    },
     "./drawer": {
       "source": "./src/components/ui/drawer.tsx",
       "types": "./src/components/ui/drawer.tsx",
@@ -133,6 +138,16 @@
       "source": "./src/components/ui/icon.tsx",
       "types": "./src/components/ui/icon.tsx",
       "default": "./src/components/ui/icon.tsx"
+    },
+    "./icon-extended": {
+      "source": "./src/components/ui/icon-extended.tsx",
+      "types": "./src/components/ui/icon-extended.tsx",
+      "default": "./src/components/ui/icon-extended.tsx"
+    },
+    "./icon-registry": {
+      "source": "./src/components/ui/icon-registry.ts",
+      "types": "./src/components/ui/icon-registry.ts",
+      "default": "./src/components/ui/icon-registry.ts"
     },
     "./input-otp": {
       "source": "./src/components/ui/input-otp.tsx",

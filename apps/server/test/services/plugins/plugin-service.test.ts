@@ -9,9 +9,16 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createConnection, migrate, type DbConnection } from "@bb/db";
+import {
+  createConnection,
+  getInstalledPlugin,
+  migrate,
+  upsertInstalledPlugin,
+  type DbConnection,
+} from "@bb/db";
 import type { SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -20,6 +27,7 @@ import { testLogger } from "../../helpers/test-app.js";
 import { pluginInstalledTelemetryEvent } from "../../../src/services/plugins/plugin-registration.js";
 import type { TelemetryEvent } from "../../../src/services/system/telemetry.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
+import { createProviderRegistryService } from "../../../src/services/providers/provider-registry.js";
 
 const logger = testLogger as unknown as Logger;
 
@@ -107,6 +115,7 @@ describe("plugin service", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -120,6 +129,26 @@ describe("plugin service", () => {
       loadTimeoutMs: 2000,
     });
   });
+
+  function createTelemetryTrackedService(
+    captured: TelemetryEvent[],
+  ): PluginService {
+    return createPluginService({
+      aiServices: createAiServiceRegistry(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      telemetry: { capture: (event) => captured.push(event) },
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      bundledPlugins: [],
+      loadTimeoutMs: 2000,
+    });
+  }
 
   afterEach(async () => {
     await service.stop();
@@ -550,8 +579,78 @@ describe("plugin service", () => {
     expect(service.getApi("vanishing")).toBeDefined();
   });
 
+  it("logs a warning when a host upgrade makes an installed plugin incompatible (#1915)", async () => {
+    const lines: string[] = [];
+    const push = (level: string) => (message: unknown) => {
+      lines.push(`${level} ${String(message)}`);
+    };
+    const capturing = {
+      debug: push("debug"),
+      info: push("info"),
+      warn: push("warn"),
+      error: push("error"),
+    } as unknown as Logger;
+    const makeService = (appVersion: string) =>
+      createPluginService({
+      aiServices: createAiServiceRegistry(),
+        telemetry: createNoopTelemetryService(),
+        db,
+        hub: {
+          getDaemonSessionIdForHost: () => null,
+          notifyPluginSignal: () => 0,
+          notifySystem: () => {},
+        },
+        logger: capturing,
+        dataDir: join(workDir, "data"),
+        appVersion,
+        loadTimeoutMs: 2000,
+        bundledPlugins: [],
+      });
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-notify",
+      version: "0.2.1",
+      engines: ">=0.38.0 <0.39.0",
+      serverSource: `export default function plugin() {}`,
+    });
+
+    // Persist the registration left behind by bb 0.38.5. Loading plugin source
+    // belongs to install-path coverage; this regression is specifically about
+    // compatibility being re-evaluated when the host version changes.
+    upsertInstalledPlugin(db, {
+      id: "notify",
+      source: `path:${rootDir}`,
+      provenance: { kind: "direct" },
+      sourceIntent: { kind: "path", canonicalPath: rootDir },
+      exactResolution: { kind: "path" },
+      updateState: {
+        lastCheckAt: null,
+        availableCompatibleVersion: null,
+        newestIncompatibleVersion: null,
+        statusDetail: null,
+      },
+      activeArtifactId: null,
+      rootDir,
+      version: "0.2.1",
+      enabled: true,
+    });
+
+    // bb 0.39.0 starts against the same database (= the user upgraded bb).
+    const after = makeService("0.39.0");
+    await after.start();
+    const entry = after.list().find((p) => p.id === "notify");
+    expect(entry?.status).toBe("incompatible");
+    expect(entry?.statusDetail).toBe(
+      "requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+    );
+    expect(lines).toContain(
+      "warn plugin notify not loaded (incompatible): requires bb >=0.38.0 <0.39.0, this is 0.39.0",
+    );
+    await after.stop();
+  });
+
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
     const devService = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -576,24 +675,14 @@ describe("plugin service", () => {
 
   it("reports one anonymous plugin_installed event per user install", async () => {
     const captured: TelemetryEvent[] = [];
-    const tracked = createPluginService({
-      db,
-      hub: {
-        getDaemonSessionIdForHost: () => null,
-        notifyPluginSignal: () => 0,
-        notifySystem: () => {},
-      },
-      logger,
-      telemetry: { capture: (event) => captured.push(event) },
-      dataDir: join(workDir, "data"),
-      appVersion: "0.9.0",
-      loadTimeoutMs: 2000,
-    });
+    const tracked = createTelemetryTrackedService(captured);
+    // Keep unrelated bundled plugins out of this telemetry-focused lifecycle.
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-tracked",
-      serverSource: `export default function plugin() {}`,
+      serverSource: "export default function plugin() {}",
     });
-    await tracked.installPath(rootDir);
+    const installed = await tracked.installPath(rootDir);
+    expect(installed.status).toBe("running");
     // A direct install may point at private code, so it reports no id.
     expect(captured).toEqual([
       {
@@ -606,13 +695,36 @@ describe("plugin service", () => {
         },
       },
     ]);
-    // Reload, enable, and boot-time reconcile are not installs.
+    // Reload and enablement are not installs.
     await tracked.reload("tracked");
-    await tracked.setEnabled("tracked", false);
-    await tracked.setEnabled("tracked", true);
-    await tracked.stop();
-    await tracked.start();
+    expect(tracked.list().find((entry) => entry.id === "tracked")?.status).toBe(
+      "running",
+    );
+    expect((await tracked.setEnabled("tracked", false))?.status).toBe(
+      "disabled",
+    );
+    expect((await tracked.setEnabled("tracked", true))?.status).toBe("running");
     expect(captured).toHaveLength(1);
+    await tracked.stop();
+  });
+
+  it("does not report plugin_installed during boot-time reconcile", async () => {
+    const captured: TelemetryEvent[] = [];
+    const tracked = createTelemetryTrackedService(captured);
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-reconciled",
+      serverSource: "export default function plugin() {}",
+    });
+    await tracked.installPath(rootDir);
+    await tracked.stop();
+    captured.length = 0;
+
+    await tracked.start();
+
+    expect(captured).toEqual([]);
+    expect(
+      tracked.list().find((entry) => entry.id === "reconciled")?.status,
+    ).toBe("running");
     await tracked.stop();
   });
 
@@ -717,6 +829,220 @@ describe("plugin service", () => {
     expect(service.getApi("reinstalled")).toBeDefined();
   });
 
+  it("reports a settings change to the server once the plugin's own listeners ran", async () => {
+    const changed: string[] = [];
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-observed",
+      serverSource: `
+        export default function plugin(bb) {
+          const settings = bb.settings.define({
+            floor: { type: "string", label: "Floor", default: "60" },
+          });
+          settings.onChange((next) => {
+            globalThis.__observedFloor = next.floor;
+          });
+        }`,
+    });
+    const observing = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      bundledPlugins: [],
+      loadTimeoutMs: 2000,
+      onSettingsChanged: (pluginId) => {
+        // The plugin's listeners ran first: a server cache that re-reads the
+        // plugin on invalidation sees the new values.
+        changed.push(
+          `${pluginId}:${String((globalThis as Record<string, unknown>).__observedFloor)}`,
+        );
+      },
+    });
+    try {
+      await observing.installPath(rootDir);
+      await observing.updateSettings("observed", { floor: "1" });
+      expect(changed).toEqual(["observed:1"]);
+      // Writing the same effective values fires nothing.
+      await observing.updateSettings("observed", { floor: "1" });
+      expect(changed).toEqual(["observed:1"]);
+      await observing.updateSettings("observed", { floor: null });
+      expect(changed).toEqual(["observed:1", "observed:60"]);
+    } finally {
+      await observing.stop();
+    }
+  });
+
+  it("re-points a path plugin at a new checkout and keeps its settings, secrets, and schedules", async () => {
+    // Two checkouts of the same plugin (same package name, so same id).
+    const serverSource = (marker: string) => `
+      export default function plugin(bb) {
+        bb.settings.define({
+          floor: { type: "string", label: "Floor", default: "60" },
+          token: { type: "string", label: "Token", secret: true },
+        });
+        bb.background.schedule("sweep", "0 * * * *", async () => {});
+        globalThis.__movedCheckout = "${marker}";
+      }`;
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-moved",
+      serverSource: serverSource("a"),
+    });
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-moved",
+      serverSource: serverSource("b"),
+    });
+    await service.installPath(checkoutA);
+    await service.updateSettings("moved", { floor: "1", token: "s3cret" });
+    expect(
+      db.$client
+        .prepare("SELECT name FROM plugin_schedules WHERE plugin_id = ?")
+        .all("moved"),
+    ).toEqual([{ name: "sweep" }]);
+
+    // The same id from a different local directory replaces the registration
+    // in place instead of demanding a remove (which would delete settings).
+    const moved = await service.installPath(checkoutB);
+
+    expect(moved).toMatchObject({
+      id: "moved",
+      status: "running",
+      source: `path:${checkoutB}`,
+      rootDir: checkoutB,
+    });
+    expect((globalThis as Record<string, unknown>).__movedCheckout).toBe("b");
+    expect(getInstalledPlugin(db, "moved")).toMatchObject({
+      sourceKind: "path",
+      sourcePath: checkoutB,
+      rootDir: checkoutB,
+    });
+    expect((await service.getSettings("moved"))?.values).toEqual({
+      floor: "1",
+      token: { set: true },
+    });
+    expect(
+      db.$client
+        .prepare("SELECT name FROM plugin_schedules WHERE plugin_id = ?")
+        .all("moved"),
+    ).toEqual([{ name: "sweep" }]);
+
+    // A broken new checkout is refused before the live install is touched.
+    const checkoutC = join(workDir, "c", "bb-plugin-moved");
+    await mkdir(checkoutC, { recursive: true });
+    await writeFile(join(checkoutC, "package.json"), "{ not json");
+    await expect(service.installPath(checkoutC)).rejects.toThrowError();
+    expect(getInstalledPlugin(db, "moved")?.rootDir).toBe(checkoutB);
+    expect(service.list().find((p) => p.id === "moved")?.status).toBe(
+      "running",
+    );
+    expect((await service.getSettings("moved"))?.values).toEqual({
+      floor: "1",
+      token: { set: true },
+    });
+  });
+
+  it("keeps a moved path plugin disabled instead of starting it", async () => {
+    const serverSource = (marker: string) => `
+      export default function plugin() {
+        globalThis.__disabledMoveStarted = "${marker}";
+      }`;
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-dormant",
+      serverSource: serverSource("a"),
+    });
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-dormant",
+      serverSource: serverSource("b"),
+    });
+    await service.installPath(checkoutA);
+    expect(await service.setEnabled("dormant", false)).toMatchObject({
+      enabled: false,
+      status: "disabled",
+    });
+    delete (globalThis as Record<string, unknown>).__disabledMoveStarted;
+
+    const moved = await service.installPath(checkoutB);
+
+    expect(moved).toMatchObject({
+      id: "dormant",
+      enabled: false,
+      status: "disabled",
+      source: `path:${checkoutB}`,
+    });
+    expect(getInstalledPlugin(db, "dormant")).toMatchObject({
+      enabled: false,
+      rootDir: checkoutB,
+    });
+    expect(
+      (globalThis as Record<string, unknown>).__disabledMoveStarted,
+    ).toBeUndefined();
+    expect(service.getApi("dormant")).toBeUndefined();
+
+    // Re-enabling runs the new checkout.
+    expect(await service.setEnabled("dormant", true)).toMatchObject({
+      status: "running",
+    });
+    expect((globalThis as Record<string, unknown>).__disabledMoveStarted).toBe(
+      "b",
+    );
+  });
+
+  it("rejects a path move whose new checkout fails to start and keeps the old install running", async () => {
+    const checkoutA = await writePlugin(join(workDir, "a"), {
+      name: "bb-plugin-brittle",
+      version: "0.2.0",
+      serverSource: `
+        export default function plugin(bb) {
+          bb.settings.define({
+            token: { type: "string", label: "Token", secret: true },
+          });
+          globalThis.__brittleCheckout = "a";
+        }`,
+    });
+    // A valid package whose factory throws: validation passes, loading fails.
+    const checkoutB = await writePlugin(join(workDir, "b"), {
+      name: "bb-plugin-brittle",
+      version: "0.3.0",
+      serverSource: `
+        export default function plugin() {
+          globalThis.__brittleCheckout = "b";
+          throw new Error("boom at startup");
+        }`,
+    });
+    await service.installPath(checkoutA);
+    await service.updateSettings("brittle", { token: "s3cret" });
+
+    await expect(service.installPath(checkoutB)).rejects.toThrowError(
+      /failed to start from path:.*boom at startup.*was kept/,
+    );
+
+    // The old registration and instance are back, with their configuration.
+    expect(getInstalledPlugin(db, "brittle")).toMatchObject({
+      sourcePath: checkoutA,
+      rootDir: checkoutA,
+      version: "0.2.0",
+      enabled: true,
+    });
+    expect(service.list().find((p) => p.id === "brittle")).toMatchObject({
+      source: `path:${checkoutA}`,
+      version: "0.2.0",
+      status: "running",
+    });
+    expect((globalThis as Record<string, unknown>).__brittleCheckout).toBe(
+      "a",
+    );
+    expect(service.getApi("brittle")).toBeDefined();
+    expect((await service.getSettings("brittle"))?.values).toEqual({
+      token: { set: true },
+    });
+  });
+
   it("warns when a path plugin is installed from inside a managed workspace", async () => {
     const warnSpy = vi.spyOn(logger, "warn");
     // dataDir is <workDir>/data; install from <dataDir>/personal-workspaces/env_X/...
@@ -749,6 +1075,7 @@ describe("plugins-changed broadcast", () => {
   let notifySystem: ReturnType<
     typeof vi.fn<(changes: SystemChangeKind[]) => void>
   >;
+  let providerRegistry: ReturnType<typeof createProviderRegistryService>;
   let service: PluginService;
 
   beforeEach(async () => {
@@ -756,7 +1083,9 @@ describe("plugins-changed broadcast", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-notify-test-"));
     notifySystem = vi.fn<(changes: SystemChangeKind[]) => void>();
+    providerRegistry = createProviderRegistryService();
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -765,6 +1094,7 @@ describe("plugins-changed broadcast", () => {
         notifySystem,
       },
       logger,
+      providerRegistry,
       dataDir: join(workDir, "data"),
       appVersion: "0.9.0",
       loadTimeoutMs: 2000,

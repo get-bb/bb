@@ -2,12 +2,11 @@ import type { AriaRole, ReactNode } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export type PluginBannerTone = "destructive" | "warning" | "success";
+type PluginBannerTone = "destructive" | "warning";
 
 const TONE_ICON: Record<PluginBannerTone, string> = {
   destructive: "text-destructive",
   warning: "text-warning",
-  success: "text-success",
 };
 
 /**
@@ -30,7 +29,6 @@ export function PluginBannerBar({
   detail,
   action,
   separator = true,
-  testId,
   role,
 }: {
   tone: PluginBannerTone;
@@ -39,13 +37,11 @@ export function PluginBannerBar({
   detail?: ReactNode;
   action?: ReactNode;
   separator?: boolean;
-  testId?: string;
   role?: AriaRole;
 }) {
   return (
     <div
       role={role}
-      data-testid={testId}
       className={cn(
         "bg-surface-recessed/55",
         separator && "border-b border-border",

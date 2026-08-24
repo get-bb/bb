@@ -15,7 +15,7 @@ export type {
   ParcelWatcherSubscribeOptions,
 } from "./parcel-watcher-backend.js";
 
-export interface RootSubscriptionArgs {
+interface RootSubscriptionArgs {
   rootPath: string;
   subscribeOptions?: ParcelWatcherSubscribeOptions;
   retryDelayMs: number;

@@ -1,4 +1,4 @@
-export type TweetMedia =
+type TweetMedia =
   | { kind: "image"; src: string; width: number; height: number }
   | {
       kind: "video";
@@ -20,7 +20,7 @@ export type Tweet = {
   media?: TweetMedia;
 };
 
-export const TWEETS: Record<string, Tweet> = {
+const TWEETS: Record<string, Tweet> = {
   "2084345751266857079": {
     id: "2084345751266857079",
     href: "https://x.com/brian_lovin/status/2084345751266857079",

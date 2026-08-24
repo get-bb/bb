@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import {
   resolveWorkspaceChangedFileOpenTarget,
   resolveEnvironmentOpenContext,
-  resolveThreadWorkspacePreviewRootPath,
   resolveThreadWorkspaceOpenPath,
 } from "./threadWorkspaceOpenPath";
 
@@ -125,12 +124,6 @@ describe("resolveThreadWorkspaceOpenPath", () => {
         hasWorkspaceOpenTargets: false,
       }),
     ).toBeNull();
-  });
-
-  it("keeps the workspace preview root independent from local editor availability", () => {
-    expect(
-      resolveThreadWorkspacePreviewRootPath({ environment: makeEnvironment() }),
-    ).toBe("/tmp/workspace");
   });
 
   it("still resolves when the environment is not ready, as long as it has a path", () => {

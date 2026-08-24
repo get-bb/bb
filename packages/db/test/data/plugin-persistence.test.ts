@@ -1,30 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createConnection,
   createPluginArtifact,
   deletePluginArtifact,
   deleteInstalledPlugin,
   getInstalledPluginRegistration,
   getInstalledPlugin,
   listPluginArtifacts,
-  migrate,
-  setInstalledPluginActiveArtifact,
   upsertInstalledPlugin,
   type DbConnection,
 } from "../../src/index.js";
+import type { UpsertInstalledPluginInput } from "../../src/data/plugins.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 describe("normalized plugin persistence", () => {
   let db: DbConnection;
 
   beforeEach(() => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
   });
 
   afterEach(() => db.$client.close());
 
   it("persists typed plugin intent and an active artifact reference", () => {
-    upsertInstalledPlugin(db, {
+    const linearPlugin: UpsertInstalledPluginInput = {
       id: "linear",
       source: "npm:bb-plugin-linear@1.2.3",
       provenance: {
@@ -54,7 +52,8 @@ describe("normalized plugin persistence", () => {
       rootDir: "/plugins/linear",
       version: "1.2.3",
       enabled: true,
-    });
+    };
+    upsertInstalledPlugin(db, linearPlugin);
     createPluginArtifact(db, {
       id: "artifact-1",
       pluginId: "linear",
@@ -68,9 +67,7 @@ describe("normalized plugin persistence", () => {
       validationResult: "valid",
       validatedAt: 100,
     });
-    expect(setInstalledPluginActiveArtifact(db, "linear", "artifact-1")).toBe(
-      true,
-    );
+    upsertInstalledPlugin(db, { ...linearPlugin, activeArtifactId: "artifact-1" });
     expect(getInstalledPlugin(db, "linear")?.rootDir).toBe(
       "/cache/artifact-1.tgz",
     );
@@ -172,7 +169,7 @@ describe("normalized plugin persistence", () => {
   });
 
   it("retains artifact records when a plugin registration is removed", () => {
-    upsertInstalledPlugin(db, {
+    const retainedPlugin: UpsertInstalledPluginInput = {
       id: "retained",
       source: "git:/repo@main",
       provenance: { kind: "direct" },
@@ -193,7 +190,8 @@ describe("normalized plugin persistence", () => {
       rootDir: "/cache/repo/abcdef1234567",
       version: "1.0.0",
       enabled: true,
-    });
+    };
+    upsertInstalledPlugin(db, retainedPlugin);
     createPluginArtifact(db, {
       id: "retained-artifact",
       pluginId: "retained",
@@ -207,7 +205,7 @@ describe("normalized plugin persistence", () => {
       validationResult: "valid",
       validatedAt: Date.now(),
     });
-    expect(setInstalledPluginActiveArtifact(db, "retained", "retained-artifact")).toBe(true);
+    upsertInstalledPlugin(db, { ...retainedPlugin, activeArtifactId: "retained-artifact" });
 
     expect(deleteInstalledPlugin(db, "retained")).toBe(true);
     expect(listPluginArtifacts(db, "retained")).toHaveLength(1);

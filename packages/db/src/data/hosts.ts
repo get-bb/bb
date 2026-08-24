@@ -147,18 +147,6 @@ export function listPublicHosts(db: DbConnection) {
     .all();
 }
 
-export function listHostsByIds(db: DbConnection, hostIds: readonly string[]) {
-  if (hostIds.length === 0) {
-    return [];
-  }
-
-  return db
-    .select()
-    .from(hosts)
-    .where(inArray(hosts.id, [...hostIds]))
-    .all();
-}
-
 export function listNonDestroyedHostsByIds(
   db: DbConnection,
   hostIds: readonly string[],
@@ -209,14 +197,6 @@ export function updateHost(
 }
 
 export function deleteHost(
-  db: DbConnection,
-  notifier: DbNotifier,
-  hostId: string,
-) {
-  return deleteHostRecord(db, notifier, hostId);
-}
-
-export function deleteHostRecord(
   db: DbConnection,
   notifier: DbNotifier,
   hostId: string,

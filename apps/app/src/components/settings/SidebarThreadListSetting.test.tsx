@@ -7,11 +7,11 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
+import { threadListProviderAtom } from "@/components/sidebar/threadListProvider";
 import {
-  AUTOMATIC_THREAD_LIST_PROVIDER,
-  BUILT_IN_THREAD_LIST_PROVIDER,
-  threadListProviderAtom,
-} from "@/components/sidebar/threadListProvider";
+  AUTOMATIC_REPLACEMENT_PROVIDER,
+  BUILT_IN_REPLACEMENT_PROVIDER,
+} from "@/lib/plugin-replacement-preference";
 import { SidebarThreadListSetting } from "./SidebarThreadListSetting";
 
 afterEach(() => {
@@ -46,7 +46,7 @@ describe("SidebarThreadListSetting", () => {
     );
 
     expect(store.get(threadListProviderAtom)).toBe(
-      AUTOMATIC_THREAD_LIST_PROVIDER,
+      AUTOMATIC_REPLACEMENT_PROVIDER,
     );
     const trigger = screen.getByRole("button", {
       name: "Sidebar thread list",
@@ -57,7 +57,7 @@ describe("SidebarThreadListSetting", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: /built-in/u }));
 
     expect(store.get(threadListProviderAtom)).toBe(
-      BUILT_IN_THREAD_LIST_PROVIDER,
+      BUILT_IN_REPLACEMENT_PROVIDER,
     );
   });
 });

@@ -1,3 +1,4 @@
+import { LEGACY_CODEX_GOAL_EXTENSION_KIND } from "@bb/domain";
 import type { ThreadEvent } from "@bb/domain";
 
 interface PendingGoalClearWaiter {
@@ -6,7 +7,7 @@ interface PendingGoalClearWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-export interface WaitForGoalClearArgs {
+interface WaitForGoalClearArgs {
   afterRevision: number;
   threadId: string;
   timeoutMs: number;
@@ -67,7 +68,12 @@ export class RuntimeThreadGoalState {
   }
 
   observe(event: ThreadEvent): void {
-    if (event.type !== "thread/goal/cleared") {
+    // The codex plugin's goal state: a `null` snapshot is the cleared goal.
+    if (
+      event.type !== "thread/extensionState/updated" ||
+      event.kind !== LEGACY_CODEX_GOAL_EXTENSION_KIND ||
+      event.payload !== null
+    ) {
       return;
     }
 

@@ -3,15 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
-import type { AgentRuntime } from "./types.js";
-import { createFakeAdapter, fakeProviderScriptPath } from "./test/index.js";
-import { fullRuntimeOptions, wait } from "./test/runtime-test-harness.js";
+import {
+  createScriptedEchoRuntime,
+  fullRuntimeOptions,
+  wait,
+  type LaunchBoundAgentRuntime,
+} from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
 
 describe("turn-start watchdog", () => {
   let tmpDir: string;
-  let runtime: AgentRuntime | null = null;
+  let runtime: LaunchBoundAgentRuntime | null = null;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-watchdog-"));
@@ -42,24 +44,15 @@ describe("turn-start watchdog", () => {
 
   it("surfaces a visible error when an accepted turn never starts", async () => {
     const events: ThreadEvent[] = [];
-    runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({ contentItems: [], success: true }),
-      turnStartWatchdog: { thresholdMs: 120, intervalMs: 25 },
-      adapterFactory: () => {
-        const base = createFakeAdapter({ scriptPath: fakeProviderScriptPath });
-        return {
-          ...base,
-          // The provider ACKs the dispatch (a benign request the script
-          // answers) but never emits turn/started — the #1156/#1234 stall
-          // shape the watchdog exists for.
-          buildCommandPlan: (command) =>
-            command.type === "turn/start"
-              ? { kind: "request", method: "model/list", params: {} }
-              : base.buildCommandPlan(command),
-        };
+    runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        turnStartWatchdog: { thresholdMs: 120, intervalMs: 25 },
       },
+      // The provider ACKs the dispatch but never opens the turn — the
+      // #1156/#1234 stall shape the watchdog exists for.
+      launch: { scripted: { swallowTurnStart: true } },
     });
 
     await runtime.startThread({
@@ -84,6 +77,7 @@ describe("turn-start watchdog", () => {
       ),
     );
     expect(watchdogEvent.threadId).toBe("t1");
+    expect(events.some((event) => event.type === "turn/started")).toBe(false);
 
     // One visible failure per stalled dispatch, not one per sweep.
     await wait(120);
@@ -98,13 +92,12 @@ describe("turn-start watchdog", () => {
 
   it("stays silent when the turn starts within the threshold", async () => {
     const events: ThreadEvent[] = [];
-    runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({ contentItems: [], success: true }),
-      turnStartWatchdog: { thresholdMs: 150, intervalMs: 25 },
-      adapterFactory: () =>
-        createFakeAdapter({ scriptPath: fakeProviderScriptPath }),
+    runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        turnStartWatchdog: { thresholdMs: 150, intervalMs: 25 },
+      },
     });
 
     await runtime.startThread({

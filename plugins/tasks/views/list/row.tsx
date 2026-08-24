@@ -109,7 +109,7 @@ function LabelChips({
   );
 }
 
-export interface TaskRowProps {
+interface TaskRowProps {
   /** Task with any pending optimistic edit already applied. */
   task: Task;
   meta: TaskRowMeta | undefined;

@@ -5,7 +5,7 @@ import {
 import {
   createFilePreviewLineRange,
   type FilePreviewLineRange,
-} from "@/lib/file-preview";
+} from "@bb/client-core";
 
 export interface MarkdownPreviewLocalFileLink {
   lineRange: FilePreviewLineRange | null;
@@ -24,11 +24,11 @@ export type MarkdownPreviewLocalFileLinkHandler = (
   link: MarkdownPreviewLocalFileLink,
 ) => boolean;
 
-export interface MarkdownTrustedAbsoluteLocalFileLinkRouting {
+interface MarkdownTrustedAbsoluteLocalFileLinkRouting {
   kind: "trusted-host";
 }
 
-export interface MarkdownContainedAbsoluteLocalFileLinkRouting {
+interface MarkdownContainedAbsoluteLocalFileLinkRouting {
   kind: "contained";
   rootPath: string;
 }
@@ -65,12 +65,11 @@ interface ParseLineRangeArgs {
   startValue: string;
 }
 
-export interface ResolveRelativeLocalFileHrefArgs
-  extends MarkdownRelativeLocalFileLinkRouting {
+interface ResolveRelativeLocalFileHrefArgs extends MarkdownRelativeLocalFileLinkRouting {
   href: string | undefined;
 }
 
-export interface ParseLocalFileHrefArgs {
+interface ParseLocalFileHrefArgs {
   absoluteLinks: MarkdownAbsoluteLocalFileLinkRouting;
   href: string | undefined;
 }
@@ -273,6 +272,15 @@ function parseAbsoluteLocalFileHref(
 // `Cargo.lock:14:33` and `foo.md:5` remain relative file links.
 const URI_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z0-9+.-]*:/u;
 
+// Shell-style home paths (`~`, `~/…`, `~user/…`) are neither absolute nor
+// workspace-relative; the renderer has no home directory to expand them
+// against. Names that merely start with `~` (`~notes.md`) stay relative.
+const HOME_RELATIVE_PATH_PATTERN = /^~(?:[^/]*\/|$)/u;
+
+function isHomeRelativePath(path: string): boolean {
+  return HOME_RELATIVE_PATH_PATTERN.test(path);
+}
+
 /**
  * Resolves a relative markdown link against the previewed file's directory so
  * links authored relative to a file on disk become absolute paths the local
@@ -297,6 +305,7 @@ export function resolveRelativeLocalFileHref({
     parsedHref === null ||
     parsedHref.path.length === 0 ||
     parsedHref.path.startsWith("/") ||
+    isHomeRelativePath(parsedHref.path) ||
     parsedHref.path.startsWith("#") ||
     parsedHref.path.startsWith("?") ||
     URI_SCHEME_PATTERN.test(parsedHref.path)
@@ -362,8 +371,7 @@ function isLinkContainedInRoot({
 export function parseLocalFileHref({
   absoluteLinks,
   href,
-}: ParseLocalFileHrefArgs,
-): MarkdownPreviewLocalFileLink | null {
+}: ParseLocalFileHrefArgs): MarkdownPreviewLocalFileLink | null {
   if (!href) {
     return null;
   }

@@ -1,0 +1,39 @@
+{
+  "name": "bb-plugin-plugin-api-tester",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Exercise and inspect bb plugin API surfaces during development.",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.10"
+  },
+  "bb": {
+    "name": "Plugin API Tester",
+    "description": "Exercise and inspect bb plugin API surfaces during development.",
+    "branding": {
+      "icon": "Beaker"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

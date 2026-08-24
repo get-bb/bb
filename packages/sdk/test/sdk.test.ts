@@ -142,6 +142,34 @@ describe("@bb/sdk", () => {
     expect("on" in sdk).toBe(false);
   });
 
+  it("maps thread event filters and reverse pagination onto the public query", async () => {
+    const queue = createFetchQueue([{ body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(
+      sdk.threads.events.list({
+        beforeSeq: "10",
+        limit: "2",
+        order: "desc",
+        threadId: "thr_test",
+        types: ["system/error", "turn/completed"],
+      }),
+    ).resolves.toEqual([]);
+    expect(queue.requests).toEqual([
+      {
+        bodyText: undefined,
+        method: "GET",
+        url: "http://bb.test/api/v1/threads/thr_test/events?beforeSeq=10&limit=2&order=desc&types=system%2Ferror%2Cturn%2Fcompleted",
+      },
+    ]);
+  });
+
   it("forwards read abort signals to fetch", async () => {
     const controller = new AbortController();
     let receivedSignal: AbortSignal | null | undefined;
@@ -527,7 +555,7 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.providers.list({ hostId: "host_remote" }),
+      sdk.providers.list({ capability: "usage", hostId: "host_remote" }),
     ).resolves.toEqual([]);
     await expect(
       sdk.providers.models({
@@ -540,7 +568,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/providers?hostId=host_remote",
+        url: "http://bb.test/api/v1/system/providers?capability=usage&hostId=host_remote",
       },
       {
         bodyText: undefined,
@@ -553,8 +581,8 @@ describe("@bb/sdk", () => {
   it("targets provider usage at an explicit machine", async () => {
     const usage = {
       codex: { status: "unauthenticated" as const },
-      claudeCode: { status: "unauthenticated" as const },
-      cursor: { status: "unauthenticated" as const },
+      "claude-code": { status: "unauthenticated" as const },
+      "acp-cursor": { status: "unauthenticated" as const },
     };
     const queue = createFetchQueue([{ body: usage }]);
     const sdk = createBbSdk({
@@ -566,20 +594,23 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.system.usageLimits({ hostId: "host_remote" }),
+      sdk.system.usageLimits({
+        hostId: "host_remote",
+        providerId: "codex",
+      }),
     ).resolves.toEqual(usage);
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote",
+        url: "http://bb.test/api/v1/system/usage-limits?hostId=host_remote&providerId=codex",
       },
     ]);
   });
 
   it("routes onboarding agent status through a reused environment", async () => {
-    const overview = { agents: [] };
-    const queue = createFetchQueue([{ body: overview }]);
+    const states = { providers: [] };
+    const queue = createFetchQueue([{ body: states }]);
     const sdk = createBbSdk({
       transport: createHttpTransport({
         baseUrl: "http://bb.test",
@@ -589,13 +620,13 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.system.onboardingAgents({ environmentId: "env_remote" }),
-    ).resolves.toEqual(overview);
+      sdk.system.providerStates({ environmentId: "env_remote" }),
+    ).resolves.toEqual(states);
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/onboarding/agents?environmentId=env_remote",
+        url: "http://bb.test/api/v1/system/providers/state?environmentId=env_remote",
       },
     ]);
   });
@@ -1317,6 +1348,8 @@ describe("@bb/sdk", () => {
       app: { hasApp: false, bundle: null },
       logoUrl: null,
       logoDarkUrl: null,
+      providerIds: [],
+      icons: {},
     };
     const catalog = {
       pluginCount: 1,
@@ -1422,7 +1455,6 @@ describe("@bb/sdk", () => {
       {
         bodyText: JSON.stringify({
           source: "npm:@bb/notes@^1",
-          selection: { kind: "root" },
         }),
         method: "POST",
         url: "http://bb.test/api/v1/plugins/install",

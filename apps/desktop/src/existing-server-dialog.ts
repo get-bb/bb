@@ -6,9 +6,9 @@ import {
 } from "./existing-server-dialog-ipc.js";
 import type { ForeignRuntimeDetails } from "./foreign-runtime.js";
 
-export type ExistingServerDialogChoice = "connect" | "quit" | "replace";
+type ExistingServerDialogChoice = "connect" | "quit" | "replace";
 
-export interface OpenExistingServerDialogArgs {
+interface OpenExistingServerDialogArgs {
   /** Null when the running bb is too old to describe itself. */
   details: ForeignRuntimeDetails | null;
   parentWindow: BrowserWindow | null;
@@ -69,7 +69,7 @@ function buildDetailRows(args: {
   return rows;
 }
 
-export interface RenderExistingServerDialogHtmlArgs {
+interface RenderExistingServerDialogHtmlArgs {
   details: ForeignRuntimeDetails | null;
   now: Date;
   serverUrl: string;

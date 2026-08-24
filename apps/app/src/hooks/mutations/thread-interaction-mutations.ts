@@ -4,7 +4,7 @@ import type { ResolvePendingInteractionRequest } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
 import { invalidateThreadPendingInteractionResolutionQueries } from "../cache-owners/mutation-cache-effects";
 
-export interface ResolveThreadPendingInteractionMutationRequest {
+interface ResolveThreadPendingInteractionMutationRequest {
   threadId: string;
   interactionId: string;
   resolution: ResolvePendingInteractionRequest;

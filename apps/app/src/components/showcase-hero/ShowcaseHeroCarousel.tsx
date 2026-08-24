@@ -7,6 +7,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
@@ -16,7 +17,6 @@ import { getThreadRoutePath } from "@/lib/route-paths";
 import { ShowcaseFrame } from "./ShowcaseFrame";
 import type { ShowcaseArchetype, ShowcaseScenes } from "./showcase-archetype";
 import { accentInk, accentTint, neutral } from "./showcase-tokens";
-import { useReducedMotion } from "./use-reduced-motion";
 
 const SLIDE_MS = 5000;
 
@@ -64,7 +64,7 @@ export interface ShowcaseHeroComposerConfig {
   draftKey: string;
 }
 
-export interface ShowcaseHeroCarouselProps {
+interface ShowcaseHeroCarouselProps {
   archetypes: readonly ShowcaseArchetype[];
   scenes: ShowcaseScenes;
   copy: ShowcaseHeroCopy;
@@ -115,7 +115,7 @@ export function ShowcaseHeroCarousel({
   openRequest = null,
   onComposingChange,
 }: ShowcaseHeroCarouselProps) {
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = usePrefersReducedMotion();
   const navigate = useNavigate();
   const createThread = useCreateThread();
   // The composer restores its saved draft on mount and only falls back to
@@ -198,7 +198,7 @@ export function ShowcaseHeroCarousel({
     // setState — during render. A request carrying a seed is an explicit
     // choice (a card, a menu example), so it replaces the stored draft; a
     // seedless request behaves like the blank CTA and restores it.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // oxlint-disable-next-line react/set-state-in-effect
     setSeedAndNotify(
       openRequest.close === true
         ? null

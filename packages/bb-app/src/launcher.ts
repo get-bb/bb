@@ -2,7 +2,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -28,6 +28,7 @@ import {
   APP_SURFACE_WEB,
   DEFAULT_APP_SURFACE,
   parseAppSurface,
+  type AppSurface,
 } from "@bb/config/app-surface";
 import {
   BB_APP_MANAGED_CONFIG_KEYS,
@@ -55,11 +56,14 @@ import {
 } from "@bb/config/inference-model";
 import { validateLogLevel } from "@bb/config/log-level";
 import { validateOptionalUrl } from "@bb/config/public-url";
-import { parseServerBindHost } from "@bb/config/server";
+import { parseServerBindHost, type ServerBindHost } from "@bb/config/server";
+import { toOptionalString } from "@bb/config/strings";
 import {
   BB_PROD_HOST_DAEMON_PORT,
   BB_LOOPBACK_HOST,
   BB_PROD_SERVER_PORT,
+  parseDataDirEnvValue,
+  parsePortValue,
   resolveConfiguredDataDir,
   resolveDataDirDatabasePath,
   resolvePortFromEnv,
@@ -99,8 +103,9 @@ const MANAGED_CONFIG_KEYS = BB_APP_MANAGED_CONFIG_KEYS;
 const MANAGED_CONFIG_KEY_VALUES = new Set<string>(MANAGED_CONFIG_KEYS);
 const STARTUP_ONLY_MANAGED_CONFIG_KEYS = new Set<string>(["BB_LOG_LEVEL"]);
 // Keep this in sync with loadServerConfig and direct process.env reads made
-// while assembling the server. BB_APP_VERSION and NODE_ENV are omitted because
-// the launcher owns and overwrites them rather than applying env.json values.
+// while assembling the server. BB_APP_VERSION, BB_SERVER_LAUNCH_ID, and
+// NODE_ENV are omitted because the launcher owns and overwrites them rather
+// than applying env.json values.
 const STARTUP_ONLY_MANAGED_ENV_KEYS = new Set<string>([
   "BB_APP_SURFACE",
   "BB_APP_URL",
@@ -150,6 +155,13 @@ const hostDaemonStatusSchema = z
   })
   .passthrough();
 
+const serverHealthResponseSchema = z
+  .object({
+    ok: z.boolean(),
+    launchId: z.string().min(1).optional(),
+  })
+  .passthrough();
+
 const clientHostSchema = z
   .object({
     id: z.string().min(1),
@@ -163,12 +175,12 @@ const apiErrorResponseSchema = z.object({
   message: z.string(),
 });
 
-export type HostEnrollKeyResponse = z.infer<typeof hostEnrollKeyResponseSchema>;
+type HostEnrollKeyResponse = z.infer<typeof hostEnrollKeyResponseSchema>;
 type ClientHost = z.infer<typeof clientHostSchema>;
-export type ManagedConfigValues = BbAppManagedConfigValues;
-export type ManagedEnvConfig = BbAppManagedEnvConfig;
-export type ManagedEnvFile = BbAppManagedEnvFile;
-export type ManagedConfig = BbAppManagedConfig;
+type ManagedConfigValues = BbAppManagedConfigValues;
+type ManagedEnvConfig = BbAppManagedEnvConfig;
+type ManagedEnvFile = BbAppManagedEnvFile;
+type ManagedConfig = BbAppManagedConfig;
 // Write flows carry customAcpAgents and customModels as raw JSON: the parser
 // skips invalid entries with a warning, and a rewrite from the parsed view
 // would silently delete them from the user's file.
@@ -180,37 +192,42 @@ type ManagedConfigForWrite = Omit<
   customModels?: unknown[];
 };
 
-export interface HostEnrollKeyRequestBody {
+interface HostEnrollKeyRequestBody {
   hostId?: string;
 }
 
-export interface CreateHostEnrollKeyRequestBodyArgs {
+interface CreateHostEnrollKeyRequestBodyArgs {
   requestedHostId: string | null;
 }
 
-export interface ResolveDataDirArgs {
+interface ResolveDataDirArgs {
   env: NodeJS.ProcessEnv;
   homeDir: string;
 }
 
-export interface ResolvePortArgs {
-  defaultPort: number;
-  env: NodeJS.ProcessEnv;
-  name: string;
-}
-
-export interface ResolveBbAppStartContextArgs {
+interface ResolveBbAppStartContextArgs {
   entrypointUrl: string;
   env: NodeJS.ProcessEnv;
   homeDir: string;
 }
 
-export interface ResolveBbAppRuntimeContextArgs {
-  entrypointUrl: string;
+interface WorktreeRuntimePolicy {
+  dataDir: string;
+  devAppPort: null;
+  hostDaemonPort: number;
+  inheritedSkillsRoots: string;
+  serverBindHost: ServerBindHost;
+  serverPort: number;
+  telemetry: false;
+}
+
+interface ResolveWorktreeRuntimePolicyArgs {
   env: NodeJS.ProcessEnv;
   homeDir: string;
-  options: LauncherCliOptions;
-  serverUrlMode: "local" | "managed";
+}
+
+interface RunBbAppOptions {
+  worktreePolicy: WorktreeRuntimePolicy | null;
 }
 
 export interface BbAppStartContext {
@@ -232,23 +249,18 @@ export interface BbAppStartContext {
   serverUrl: string;
 }
 
-export interface BbAppRuntimeState {
+interface BbAppRuntimeState {
   config: ManagedConfig;
   context: BbAppStartContext;
   env: NodeJS.ProcessEnv;
   serverEnv: NodeJS.ProcessEnv;
 }
 
-export interface IsMainModuleArgs {
-  entrypointPath: string | undefined;
-  moduleUrl: string;
-}
-
-export interface StartCommand {
+interface StartCommand {
   kind: "start";
 }
 
-export interface StopCommand {
+interface StopCommand {
   kind: "stop";
 }
 
@@ -257,31 +269,31 @@ export interface HostDaemonCommand {
   kind: "host-daemon";
 }
 
-export interface ClientCommand {
+interface ClientCommand {
   args: string[];
   kind: "client";
 }
 
-export interface ConfigCommand {
+interface ConfigCommand {
   args: string[];
   kind: "config";
 }
 
-export interface EnvCommand {
+interface EnvCommand {
   args: string[];
   kind: "env";
 }
 
-export interface HelpCommand {
+interface HelpCommand {
   kind: "help";
 }
 
-export interface InvalidCommand {
+interface InvalidCommand {
   command: string;
   kind: "invalid";
 }
 
-export interface LauncherCliOptions {
+interface LauncherCliOptions {
   autoUpdate?: boolean;
   dataDir?: string;
   enrollKey?: string;
@@ -296,7 +308,7 @@ export interface LauncherCliOptions {
   serverUrl?: string;
 }
 
-export interface ParsedLauncherArgs {
+interface ParsedLauncherArgs {
   options: LauncherCliOptions;
   positionals: string[];
 }
@@ -404,7 +416,7 @@ interface RestartManagedProcessArgs {
   start: StartManagedProcess;
 }
 
-export interface SuperviseFullStackProcessesArgs {
+interface SuperviseFullStackProcessesArgs {
   context: BbAppStartContext;
   delayMilliseconds: DelayMillisecondsFn;
   isShutdownRequested: () => boolean;
@@ -413,12 +425,12 @@ export interface SuperviseFullStackProcessesArgs {
   startServer: StartManagedProcess;
 }
 
-export interface TerminateManagedFullStackProcessesArgs {
+interface TerminateManagedFullStackProcessesArgs {
   processes: ManagedFullStackProcesses;
   signal: NodeJS.Signals;
 }
 
-export interface CompleteFullStackSupervisionArgs {
+interface CompleteFullStackSupervisionArgs {
   shutdownPromise: Promise<void> | null;
   supervisionResult: FullStackSupervisionResult;
 }
@@ -432,8 +444,10 @@ export interface DelayMillisecondsArgs {
   ms: number;
 }
 
-interface WaitForHealthArgs {
+interface WaitForServerHealthArgs {
   childProcess: ChildProcess | null;
+  /** Launch id handed to the server child; only a /health echoing it counts. */
+  expectedLaunchId: string;
   timeoutMs?: number;
   url: string;
 }
@@ -564,6 +578,7 @@ interface ResolveBbAppRuntimeStateArgs {
   homeDir: string;
   options: LauncherCliOptions;
   serverUrlMode: "local" | "managed";
+  worktreePolicy?: WorktreeRuntimePolicy;
 }
 
 interface RunConfigCommandArgs {
@@ -581,10 +596,12 @@ interface RunEnvCommandArgs {
 interface RunClientCommandArgs {
   args: string[];
   dataDir: string;
+  hostId?: string;
   json: boolean;
 }
 
 interface ResolveClientSshTargetHostIdArgs {
+  requestedHostId?: string;
   serverOrigin: string;
 }
 
@@ -689,21 +706,13 @@ function createDefaultLauncherOptions(): LauncherCliOptions {
   return { help: false, json: false };
 }
 
-function trimToUndefined(value: string | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
 function readStringOption(
   value: boolean | string | string[] | undefined,
 ): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
-  return trimToUndefined(value);
+  return toOptionalString(value);
 }
 
 function readBooleanOption(
@@ -803,8 +812,70 @@ export function resolveDataDir(args: ResolveDataDirArgs): string {
   });
 }
 
-export function resolvePort(args: ResolvePortArgs): number {
-  return resolvePortFromEnv(args);
+function requireWorktreePolicyEnvValue(
+  env: NodeJS.ProcessEnv,
+  name: string,
+): string {
+  const value = env[name];
+  if (value === undefined) {
+    throw new Error(`${name} is required for worktree startup`);
+  }
+  return value;
+}
+
+export function resolveWorktreeRuntimePolicy(
+  args: ResolveWorktreeRuntimePolicyArgs,
+): WorktreeRuntimePolicy {
+  const rawDataDir = requireWorktreePolicyEnvValue(args.env, "BB_DATA_DIR");
+  const rawHostDaemonPort = requireWorktreePolicyEnvValue(
+    args.env,
+    "BB_HOST_DAEMON_PORT",
+  );
+  const inheritedSkillsRoots = requireWorktreePolicyEnvValue(
+    args.env,
+    "BB_INHERITED_SKILLS_ROOTS",
+  );
+  const rawServerPort = requireWorktreePolicyEnvValue(
+    args.env,
+    "BB_SERVER_PORT",
+  );
+  return {
+    dataDir: parseDataDirEnvValue({
+      homeDir: args.homeDir,
+      rawDataDir,
+    }),
+    devAppPort: null,
+    hostDaemonPort: parsePortValue({
+      name: "BB_HOST_DAEMON_PORT",
+      rawPort: rawHostDaemonPort,
+    }),
+    inheritedSkillsRoots,
+    serverBindHost: parseServerBindHost(
+      args.env.BB_SERVER_BIND_HOST ?? BB_LOOPBACK_HOST,
+    ),
+    serverPort: parsePortValue({
+      name: "BB_SERVER_PORT",
+      rawPort: rawServerPort,
+    }),
+    telemetry: false,
+  };
+}
+
+function applyWorktreeRuntimePolicy(
+  env: NodeJS.ProcessEnv,
+  policy: WorktreeRuntimePolicy,
+): NodeJS.ProcessEnv {
+  const nextEnv: NodeJS.ProcessEnv = {
+    ...env,
+    BB_DATA_DIR: policy.dataDir,
+    BB_HOST_DAEMON_PORT: String(policy.hostDaemonPort),
+    BB_INHERITED_SKILLS_ROOTS: policy.inheritedSkillsRoots,
+    BB_SERVER_BIND_HOST: policy.serverBindHost,
+    BB_SERVER_PORT: String(policy.serverPort),
+    BB_TELEMETRY: String(policy.telemetry),
+  };
+  delete nextEnv.BB_DEV_APP_PORT;
+  return nextEnv;
 }
 
 function createEnvFromOptions(
@@ -846,9 +917,9 @@ function createEnvFromOptions(
 
 function resolveServerUrl(args: ResolveServerUrlArgs): string {
   return (
-    trimToUndefined(args.optionServerUrl) ??
+    toOptionalString(args.optionServerUrl) ??
     args.config.serverUrl ??
-    trimToUndefined(args.env.BB_SERVER_URL) ??
+    toOptionalString(args.env.BB_SERVER_URL) ??
     args.defaultServerUrl
   );
 }
@@ -1253,12 +1324,12 @@ export function resolveBbAppStartContext(
   const workspaceRoot = resolve(packageRoot, "..", "..");
   const runsFromSourceCheckout = entrypointDir === resolve(packageRoot, "src");
   const dataDir = resolveDataDir({ env: args.env, homeDir: args.homeDir });
-  const serverPort = resolvePort({
+  const serverPort = resolvePortFromEnv({
     defaultPort: BB_PROD_SERVER_PORT,
     env: args.env,
     name: "BB_SERVER_PORT",
   });
-  const daemonPort = resolvePort({
+  const daemonPort = resolvePortFromEnv({
     defaultPort: BB_PROD_HOST_DAEMON_PORT,
     env: args.env,
     name: "BB_HOST_DAEMON_PORT",
@@ -1290,7 +1361,7 @@ export function resolveBbAppStartContext(
     serverEntry,
     serverPort,
     serverUrl:
-      trimToUndefined(args.env.BB_SERVER_URL) ??
+      toOptionalString(args.env.BB_SERVER_URL) ??
       `http://${BB_LOOPBACK_HOST}:${serverPort}`,
   };
 }
@@ -1309,21 +1380,28 @@ export async function resolveBbAppRuntimeState(
   });
   const config = await readManagedConfig({ dataDir: initialContext.dataDir });
   const envFile = await readManagedEnvFile({ dataDir: initialContext.dataDir });
-  const managedEnv = applyManagedConfigEnv({
+  const persistedEnv = applyManagedConfigEnv({
     config,
     envFile,
     env: initialEnv,
   });
+  const applyRuntimePolicy = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv =>
+    args.worktreePolicy === undefined
+      ? env
+      : applyWorktreeRuntimePolicy(env, args.worktreePolicy);
+  const managedEnv = applyRuntimePolicy(persistedEnv);
 
   if (args.serverUrlMode === "local") {
     const localEnv = { ...managedEnv };
     const localServerEnv = stripThreadContextEnv(
-      createServerBaseEnv({
-        config,
-        envFile,
-        env: initialEnv,
-        serverBindHostOverride: args.options.serverBindHost,
-      }),
+      applyRuntimePolicy(
+        createServerBaseEnv({
+          config,
+          envFile,
+          env: initialEnv,
+          serverBindHostOverride: args.options.serverBindHost,
+        }),
+      ),
     );
     delete localEnv.BB_SERVER_URL;
     delete localServerEnv.BB_SERVER_URL;
@@ -1357,20 +1435,16 @@ export async function resolveBbAppRuntimeState(
     }),
     env: finalEnv,
     serverEnv: stripThreadContextEnv(
-      createServerBaseEnv({
-        config,
-        envFile,
-        env: initialEnv,
-        serverBindHostOverride: args.options.serverBindHost,
-      }),
+      applyRuntimePolicy(
+        createServerBaseEnv({
+          config,
+          envFile,
+          env: initialEnv,
+          serverBindHostOverride: args.options.serverBindHost,
+        }),
+      ),
     ),
   };
-}
-
-export async function resolveBbAppRuntimeContext(
-  args: ResolveBbAppRuntimeContextArgs,
-): Promise<BbAppStartContext> {
-  return (await resolveBbAppRuntimeState(args)).context;
 }
 
 export function createHostEnrollKeyRequestBody(
@@ -1390,7 +1464,7 @@ export function createHostEnrollKeyRequestBody(
  * an embedded runtime that passes no script argument.
  */
 function resolveLauncherEntryPath(): string {
-  const scriptArgument = trimToUndefined(process.argv[1]);
+  const scriptArgument = toOptionalString(process.argv[1]);
   return scriptArgument ?? fileURLToPath(import.meta.url);
 }
 
@@ -1498,8 +1572,8 @@ function printClientHelp(dataDir: string): void {
 
 Usage:
   bb-app client ssh-target list [--json]
-  bb-app client ssh-target set <server-origin> <ssh-target>
-  bb-app client ssh-target remove <server-origin>
+  bb-app client ssh-target set <server-origin> <ssh-target> [--host-id <id>]
+  bb-app client ssh-target remove <server-origin> [--host-id <id>]
 
 Config file:
   ${formatClientConfigPath(dataDir)}
@@ -1634,6 +1708,9 @@ function formatClientHost(host: ClientHost): string {
 async function resolveClientSshTargetHostId(
   args: ResolveClientSshTargetHostIdArgs,
 ): Promise<string> {
+  if (args.requestedHostId !== undefined) {
+    return args.requestedHostId;
+  }
   const serverOrigin = normalizeClientServerOrigin(args.serverOrigin);
   const hostsUrl = new URL("/api/v1/hosts", serverOrigin);
   const response = await fetch(hostsUrl);
@@ -1658,6 +1735,7 @@ async function resolveClientSshTargetHostId(
     [
       `Expected exactly one host on ${serverOrigin}, but found ${candidates.length}.`,
       `Hosts: ${candidates.map(formatClientHost).join(", ")}`,
+      "Pass --host-id <id> to select one.",
     ].join(" "),
   );
 }
@@ -1687,11 +1765,27 @@ function setClientSshTarget(
 function removeClientSshTarget(
   config: ClientConfig,
   rawServerOrigin: string,
+  hostId?: string,
 ): ClientConfig {
   const serverOrigin = normalizeClientServerOrigin(rawServerOrigin);
   const nextServers = { ...config.servers };
-  delete nextServers[serverOrigin];
-  return { servers: nextServers };
+  if (hostId === undefined) {
+    delete nextServers[serverOrigin];
+    return { servers: nextServers };
+  }
+
+  const serverConfig = nextServers[serverOrigin];
+  if (serverConfig === undefined) {
+    return { servers: nextServers };
+  }
+  const nextHosts = { ...serverConfig.hosts };
+  delete nextHosts[hostId];
+  if (Object.keys(nextHosts).length === 0) {
+    delete nextServers[serverOrigin];
+  } else {
+    nextServers[serverOrigin] = { hosts: nextHosts };
+  }
+  return parseClientConfig({ servers: nextServers });
 }
 
 function formatClientSshTargets(config: ClientConfig, json: boolean): string {
@@ -1974,7 +2068,7 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
   if (subcommand === SET_COMMAND) {
     if (commandArgs.length !== 4) {
       throw new Error(
-        "Usage: bb-app client ssh-target set <server-origin> <ssh-target>",
+        "Usage: bb-app client ssh-target set <server-origin> <ssh-target> [--host-id <id>]",
       );
     }
     const serverOrigin = commandArgs[2];
@@ -1983,6 +2077,7 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
       throw new Error("SSH target must not be empty");
     }
     const hostId = await resolveClientSshTargetHostId({
+      ...(args.hostId !== undefined ? { requestedHostId: args.hostId } : {}),
       serverOrigin,
     });
     const nextConfig = setClientSshTarget(
@@ -2003,12 +2098,15 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
 
   if (subcommand === REMOVE_COMMAND) {
     if (commandArgs.length !== 3) {
-      throw new Error("Usage: bb-app client ssh-target remove <server-origin>");
+      throw new Error(
+        "Usage: bb-app client ssh-target remove <server-origin> [--host-id <id>]",
+      );
     }
     await writeClientConfigFile({
       config: removeClientSshTarget(
         await readClientConfig({ dataDir: args.dataDir }),
         commandArgs[2],
+        args.hostId,
       ),
       dataDir: args.dataDir,
     });
@@ -2029,10 +2127,6 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
     { label: "host daemon entry", path: context.daemonEntry },
     { label: "bundled bb CLI", path: join(context.daemonBundleDir, "bb") },
     {
-      label: "Pi bridge",
-      path: join(context.daemonBundleDir, "bb-pi-bridge.mjs"),
-    },
-    {
       label: "provider bridge worker",
       path: join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
     },
@@ -2040,11 +2134,15 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
       label: "parcel watcher child",
       path: join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
     },
+    {
+      label: "plugin host worker",
+      path: join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
+    },
     { label: "web app", path: join(context.appDistDir, "index.html") },
   ];
 }
 
-export function assertBbAppArtifacts(context: BbAppStartContext): void {
+function assertBbAppArtifacts(context: BbAppStartContext): void {
   const missingArtifact = requiredArtifactPaths(context).find(
     (artifact) => !existsSync(artifact.path),
   );
@@ -2093,7 +2191,7 @@ async function requireExpectedHostDaemonId(args: {
   env: NodeJS.ProcessEnv;
 }): Promise<string> {
   const hostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
+    toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.dataDir)) ??
     (await readPersistedHostAuthId(args.dataDir));
   if (hostId === null) {
@@ -2102,7 +2200,7 @@ async function requireExpectedHostDaemonId(args: {
   return hostId;
 }
 
-export async function requestHostEnrollKey(
+async function requestHostEnrollKey(
   args: RequestHostEnrollKeyArgs,
 ): Promise<HostEnrollKeyResponse> {
   const response = await fetch(`${args.serverUrl}/internal/hosts/enroll-key`, {
@@ -2127,10 +2225,10 @@ export async function requestHostEnrollKey(
   return hostEnrollKeyResponseSchema.parse(await response.json());
 }
 
-export async function maybeAddAutoJoinEnv(
+async function maybeAddAutoJoinEnv(
   args: MaybeAddAutoJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
-  if (trimToUndefined(args.env.BB_HOST_ENROLL_KEY) !== undefined) {
+  if (toOptionalString(args.env.BB_HOST_ENROLL_KEY) !== undefined) {
     return args.env;
   }
   if (await pathExists(join(args.dataDir, HOST_AUTH_FILE_NAME))) {
@@ -2138,7 +2236,7 @@ export async function maybeAddAutoJoinEnv(
   }
 
   const requestedHostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
+    toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.dataDir));
   const enrollKeyResponse = await requestHostEnrollKey({
     requestedHostId,
@@ -2161,28 +2259,64 @@ export async function maybeAddAutoJoinEnv(
   };
 }
 
-async function waitForHealth(args: WaitForHealthArgs): Promise<void> {
+async function readServerHealthLaunchId(
+  response: Response,
+): Promise<string | null> {
+  try {
+    const health = serverHealthResponseSchema.safeParse(await response.json());
+    return health.success ? (health.data.launchId ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Polls the server child's /health until it answers with the launch id the
+ * launcher handed it. A 200 alone proves only that something listens on the
+ * port: when another bb server already owns it, that server answers on the
+ * first poll while the child is still booting and about to die with
+ * EADDRINUSE. Accepting it would make the launcher enroll its daemon against
+ * the wrong server (get-bb/bb#1558).
+ */
+export async function waitForServerHealth(
+  args: WaitForServerHealthArgs,
+): Promise<void> {
   const timeoutMs = args.timeoutMs ?? HEALTH_CHECK_TIMEOUT_MS;
   const deadline = Date.now() + timeoutMs;
+  let foreignServerAnswered = false;
+  const describeFailure = (reason: string): string =>
+    foreignServerAnswered
+      ? `${reason}: another server is already answering at ${args.url}`
+      : reason;
   while (Date.now() <= deadline) {
     if (
       args.childProcess &&
       (args.childProcess.exitCode !== null ||
         args.childProcess.signalCode !== null)
     ) {
-      throw new Error("Process exited before becoming healthy");
+      throw new Error(
+        describeFailure("Process exited before becoming healthy"),
+      );
     }
     try {
-      const response = await fetch(args.url);
+      const response = await fetch(args.url, {
+        signal: AbortSignal.timeout(HEALTH_CHECK_REQUEST_TIMEOUT_MS),
+      });
       if (response.ok) {
-        return;
+        const launchId = await readServerHealthLaunchId(response);
+        if (launchId === args.expectedLaunchId) {
+          return;
+        }
+        foreignServerAnswered = true;
       }
     } catch {}
     await new Promise<void>((resolvePromise) => {
       setTimeout(resolvePromise, HEALTH_CHECK_INTERVAL_MS);
     });
   }
-  throw new Error(`Timed out waiting for health at ${args.url}`);
+  throw new Error(
+    describeFailure(`Timed out waiting for health at ${args.url}`),
+  );
 }
 
 function normalizeServerUrlForComparison(serverUrl: string): string {
@@ -2430,11 +2564,21 @@ function createSharedEnv(args: CreateSharedEnvArgs): NodeJS.ProcessEnv {
   };
 }
 
-function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
+/**
+ * Surface the server reports for telemetry. The desktop shell spawns this
+ * launcher with `BB_APP_SURFACE=desktop`, so an inherited (or env.json) value
+ * wins; a plain `bb-app` start has none and is the web surface. Overwriting
+ * this with `web` unconditionally made every desktop launch report `web`.
+ */
+function resolveServerAppSurface(env: NodeJS.ProcessEnv): AppSurface {
+  return parseAppSurface(env[APP_SURFACE_ENV_NAME]) ?? APP_SURFACE_WEB;
+}
+
+export function createServerEnv(args: CreateServerEnvArgs): NodeJS.ProcessEnv {
   return {
     ...args.env,
     BB_APP_VERSION: args.context.appVersion,
-    [APP_SURFACE_ENV_NAME]: APP_SURFACE_WEB,
+    [APP_SURFACE_ENV_NAME]: resolveServerAppSurface(args.env),
     // The daemon bundle holds the bb CLI. Server-side features that shell out
     // — script automations put it on the script's PATH — otherwise have no way
     // to find it: bb lives in the bundle directory, which is on no shell PATH.
@@ -2478,7 +2622,7 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
     NODE_ENV: "production",
   };
 
-  if (trimToUndefined(cliEnv.BB_SERVER_URL) === undefined) {
+  if (toOptionalString(cliEnv.BB_SERVER_URL) === undefined) {
     cliEnv.BB_SERVER_URL = args.context.serverUrl;
   }
 
@@ -2488,7 +2632,7 @@ function createCliEnv(args: CreateCliEnvArgs): NodeJS.ProcessEnv {
 function resolveHostDaemonServerUrl(
   args: ResolveHostDaemonServerUrlArgs,
 ): string {
-  return trimToUndefined(args.env.BB_SERVER_URL) ?? args.context.serverUrl;
+  return toOptionalString(args.env.BB_SERVER_URL) ?? args.context.serverUrl;
 }
 
 function createHostDaemonOnlyEnv(
@@ -2509,7 +2653,7 @@ function createHostDaemonOnlyEnv(
 function resolveEnrollmentRequirements(
   args: ResolveEnrollmentRequirementsArgs,
 ): EnrollmentRequirements {
-  const enrollKey = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
+  const enrollKey = toOptionalString(args.env.BB_HOST_ENROLL_KEY);
   return {
     enrolled: existsSync(join(args.context.dataDir, HOST_AUTH_FILE_NAME)),
     ...(enrollKey !== undefined ? { enrollKey } : {}),
@@ -2534,13 +2678,13 @@ export async function createHostDaemonJoinEnv(
   args: CreateHostDaemonJoinEnvArgs,
 ): Promise<NodeJS.ProcessEnv> {
   const requestedHostId =
-    trimToUndefined(args.env.BB_HOST_ID) ??
+    toOptionalString(args.env.BB_HOST_ID) ??
     (await readPersistedHostId(args.context.dataDir));
-  const suppliedJoinCode = trimToUndefined(args.env.BB_HOST_ENROLL_KEY);
-  const machineCredential = trimToUndefined(
+  const suppliedJoinCode = toOptionalString(args.env.BB_HOST_ENROLL_KEY);
+  const machineCredential = toOptionalString(
     args.env.BB_CONNECT_MACHINE_CREDENTIAL,
   );
-  const connectMachineId = trimToUndefined(args.env.BB_CONNECT_MACHINE_ID);
+  const connectMachineId = toOptionalString(args.env.BB_CONNECT_MACHINE_ID);
   if (suppliedJoinCode !== undefined) {
     if (requestedHostId === null) {
       throw new Error("--host-id is required when --join-code is supplied");
@@ -2594,7 +2738,7 @@ export async function runBundledCliCommand(
 ): Promise<number> {
   // Prefer the daemon-injected absolute CLI when present so packaged `bb`
   // trampolines match the running host daemon (dev workspace or this install).
-  const bbCliOverride = trimToUndefined(args.env.BB_CLI);
+  const bbCliOverride = toOptionalString(args.env.BB_CLI);
   const cliPath = bbCliOverride ?? join(args.context.daemonBundleDir, "bb");
   const childProcess = spawn(cliPath, args.args, {
     cwd: process.cwd(),
@@ -2851,19 +2995,6 @@ function installTerminationSignalForwarding(
   };
 }
 
-export function isMainModule(args: IsMainModuleArgs): boolean {
-  if (args.entrypointPath === undefined) {
-    return false;
-  }
-
-  const modulePath = fileURLToPath(args.moduleUrl);
-  try {
-    return realpathSync(args.entrypointPath) === realpathSync(modulePath);
-  } catch {
-    return resolve(args.entrypointPath) === resolve(modulePath);
-  }
-}
-
 function printBbAppHelp(): void {
   process.stdout.write(`bb-app
 
@@ -2874,7 +3005,7 @@ Usage:
   bb-app config set <key> <value>
   bb-app config refresh
   bb-app env set <key> <value>
-  bb-app client ssh-target set <server-origin> <ssh-target>
+  bb-app client ssh-target set <server-origin> <ssh-target> [--host-id <id>]
   bb-app host-daemon [--server-url <url>] [--host-daemon-port <port>] [--host-id <id>] [--host-type <type>] [--enroll-key <key>] [--auto-update]
   bb-app host-daemon join --server-url <url> [--host-daemon-port <port>] [--join-code <code> --host-id <id>] [--auto-update]
 
@@ -2895,25 +3026,28 @@ function logManagedProcessStartupFailureContext(
   log(" ", dim(`logs: ${args.context.logDir}/`));
 }
 
-async function startFullStackServerProcess(
+export async function startFullStackServerProcess(
   args: StartFullStackServerProcessArgs,
 ): Promise<ManagedProcessRun> {
+  // Fresh per spawn: the probe must match this child, not any earlier one.
+  const launchId = randomUUID();
   const serverRun = spawnNamedManagedProcess({
     args: [args.context.serverEntry],
     command: process.execPath,
-    env: args.env,
+    env: { ...args.env, BB_SERVER_LAUNCH_ID: launchId },
     outputBuffer: args.outputBuffer,
     processName: "server",
   });
   args.processes.serverRun = serverRun;
 
   try {
-    await waitForHealth({
+    await waitForServerHealth({
       childProcess: serverRun.childProcess,
+      expectedLaunchId: launchId,
       url: `${args.context.serverUrl}/health`,
     });
     return serverRun;
-  } catch {
+  } catch (error) {
     await terminateProcessIfRunning({
       childProcess: serverRun.childProcess,
       processName: "server",
@@ -2922,7 +3056,9 @@ async function startFullStackServerProcess(
     if (args.processes.serverRun === serverRun) {
       args.processes.serverRun = null;
     }
-    throw new Error("Server failed to become healthy");
+    throw new Error(
+      `Server failed to become healthy: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 }
 
@@ -3156,6 +3292,7 @@ async function runStopCommand(args: { dataDir: string }): Promise<void> {
 
 export async function runBbApp(
   cliArgs: string[] = process.argv.slice(2),
+  options: RunBbAppOptions = { worktreePolicy: null },
 ): Promise<void> {
   const parsedArgs = parseLauncherArgs(cliArgs);
 
@@ -3187,6 +3324,9 @@ export async function runBbApp(
       command.kind === "host-daemon"
         ? "managed"
         : "local",
+    ...(options.worktreePolicy === null
+      ? {}
+      : { worktreePolicy: options.worktreePolicy }),
   });
 
   if (command.kind === "start") {
@@ -3239,6 +3379,9 @@ export async function runBbApp(
     await runClientCommand({
       args: command.args,
       dataDir: runtime.context.dataDir,
+      ...(parsedArgs.options.hostId !== undefined
+        ? { hostId: parsedArgs.options.hostId }
+        : {}),
       json: parsedArgs.options.json === true,
     });
     return;
@@ -3334,8 +3477,9 @@ export async function runBbApp(
     beginStep("Starting server");
     try {
       await startServer();
-    } catch {
-      endStep(red("✗"), "Server failed to start (health check timed out)");
+    } catch (error) {
+      endStep(red("✗"), "Server failed to start");
+      log(" ", dim(error instanceof Error ? error.message : String(error)));
       logManagedProcessStartupFailureContext({
         context,
         processName: "server",

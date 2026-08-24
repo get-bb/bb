@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -51,30 +52,33 @@ export function PluginRowSignalView({
 }) {
   if (signal.kind === "update") {
     // The row only ever says what is offered — a readable version when there
-    // is one — and the dialog carries the (shortened) hash detail.
+    // is one — and the dialog carries the (shortened) hash detail. The control
+    // is an icon key like the status one beside it; the tooltip and the
+    // accessible name carry the words.
     const readableVersion = isReadablePluginVersion(signal.version)
       ? signal.version
       : null;
+    const updateDescription =
+      readableVersion === null ? "Update available" : `Update to ${readableVersion}`;
     return (
-      <button
-        type="button"
-        className={cn(
-          "flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-border",
-          "bg-transparent px-2 py-1 text-2xs font-medium text-foreground",
-          "hover:bg-state-hover focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none",
-        )}
-        aria-label={`Update available${readableVersion === null ? "" : `: version ${readableVersion}`}`}
-        onClick={onUpdateClick}
-      >
-        <span
-          className="flex shrink-0 items-center"
-          style={UPDATE_ICON_STYLE}
-          aria-hidden
-        >
-          <Icon name="ArrowUp" className="size-3.5" />
-        </span>
-        {readableVersion === null ? "Update" : `Update to ${readableVersion}`}
-      </button>
+      <TooltipProvider delayDuration={250}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7 shrink-0 rounded-full"
+              style={UPDATE_ICON_STYLE}
+              aria-label={updateDescription}
+              onClick={onUpdateClick}
+            >
+              <Icon name={UPDATE_ACTION_ICON} className="size-4" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{updateDescription}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     );
   }
 

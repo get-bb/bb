@@ -17,7 +17,7 @@ import {
   AUTOMATION_PROMPT_ACTION,
   CREATE_PLUGIN_PROMPT_ACTION,
 } from "@/components/promptbox/PromptBoxActionsMenu";
-import { CodexCliVersionBanner } from "@/components/promptbox/banner/CodexCliVersionBanner";
+import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
@@ -168,7 +168,6 @@ function DefaultRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
-        zenModeStorageKey="bb.story.new-thread.default"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -195,7 +194,6 @@ function SubmittingRow() {
         onSubmit={noop}
         isSubmitting
         disabled
-        zenModeStorageKey="bb.story.new-thread.submitting"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -221,7 +219,6 @@ function LoadingModelsRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
-        zenModeStorageKey="bb.story.new-thread.loading-models"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -256,7 +253,6 @@ function ModelLoadFailedRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
-        zenModeStorageKey="bb.story.new-thread.model-load-failed"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -294,7 +290,6 @@ function UnsupportedCodexCliRow() {
         isSubmitting={false}
         disabled
         autoFocus={false}
-        zenModeStorageKey="bb.story.new-thread.unsupported-codex-cli"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -302,7 +297,8 @@ function UnsupportedCodexCliRow() {
         modeConfig={{
           ...baseModeConfig,
           banner: (
-            <CodexCliVersionBanner
+            <ProviderCliVersionBanner
+              displayName="Codex"
               currentVersion="0.135.0"
               minimumSupportedVersion="0.136.0"
               canUpdate
@@ -332,7 +328,6 @@ function MissingCodexCliRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
-        zenModeStorageKey="bb.story.new-thread.missing-codex-cli"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -369,7 +364,6 @@ function GenericModelRequestFailedRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
-        zenModeStorageKey="bb.story.new-thread.model-request-failed"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -412,7 +406,6 @@ function NoModelsAvailableRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled
-        zenModeStorageKey="bb.story.new-thread.no-models"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -447,7 +440,6 @@ function CustomModelAfterLoadErrorRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
-        zenModeStorageKey="bb.story.new-thread.custom-model-after-load-error"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -487,7 +479,6 @@ function ClaudeProviderRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
-        zenModeStorageKey="bb.story.new-thread.claude"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -528,7 +519,6 @@ function FullAccessRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
-        zenModeStorageKey="bb.story.new-thread.full-access"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}
@@ -555,7 +545,6 @@ function ProjectlessThreadRow() {
         onSubmit={noop}
         isSubmitting={false}
         disabled={false}
-        zenModeStorageKey="bb.story.new-thread.projectless"
         history={baseHistory}
         typeahead={makeTypeahead()}
         attachments={makeAttachments()}

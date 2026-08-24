@@ -2,10 +2,13 @@ import {
   mkdtemp,
   mkdir,
   readFile,
+  readdir,
+  readlink,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -18,6 +21,7 @@ import {
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
 import { registerPluginRoutes } from "../../../src/routes/plugins.js";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -27,6 +31,19 @@ import { testLogger } from "../../helpers/test-app.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
+
+/** Count the open fds of this process that point at `file` (Linux only). */
+async function countOpenFdsFor(file: string): Promise<number> {
+  let count = 0;
+  for (const fd of await readdir("/proc/self/fd")) {
+    try {
+      if ((await readlink(join("/proc/self/fd", fd))) === file) count += 1;
+    } catch {
+      // The fd closed between readdir and readlink.
+    }
+  }
+  return count;
+}
 
 async function writePlugin(
   dir: string,
@@ -65,6 +82,7 @@ describe("plugin settings + storage", () => {
     dataDir = join(workDir, "data");
     systemBroadcasts = [];
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -394,6 +412,58 @@ describe("plugin settings + storage", () => {
         .db.prepare("SELECT COUNT(*) AS count FROM items")
         .get();
       expect(rerunRow.count).toBe(1);
+    });
+
+    // Regression for #1919: every database() call opened a new better-sqlite3
+    // connection and only the dispose/reload path closed them, so a plugin
+    // that calls database() per request leaked fds without bound.
+    it("returns one reused handle per plugin load instead of a connection per call", async () => {
+      const CALLS = 200;
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-chatty",
+        serverSource: `
+          export default function plugin(bb: any) {
+            const g = globalThis as any;
+            g.__chatty = { handles: [] as unknown[], reopened: [] as unknown[] };
+            for (let i = 0; i < ${CALLS}; i++) {
+              const db = bb.storage.database();
+              db.prepare("SELECT 1").get();
+              g.__chatty.handles.push(db);
+            }
+            // A plugin that closes the handle itself gets a fresh one next.
+            for (let i = 0; i < 3; i++) {
+              const db = bb.storage.database();
+              db.close();
+              g.__chatty.reopened.push(db);
+            }
+            g.__chatty.final = bb.storage.database();
+          }
+        `,
+      });
+      const entry = await service.installPath(rootDir);
+      expect(entry.status).toBe("running");
+
+      const state = (globalThis as Record<string, unknown>).__chatty as {
+        handles: unknown[];
+        reopened: unknown[];
+        final: { open: boolean; prepare(sql: string): { get(): unknown } };
+      };
+      expect(state.handles).toHaveLength(CALLS);
+      expect(new Set(state.handles).size).toBe(1);
+      // The first close round closes the shared handle; every later call
+      // vends a new handle, never a closed one: 1 shared + 2 reopened + final.
+      expect(
+        new Set([...state.handles, ...state.reopened, state.final]).size,
+      ).toBe(4);
+      expect(state.final.open).toBe(true);
+      expect(state.final.prepare("SELECT 1 AS one").get()).toEqual({ one: 1 });
+
+      // procfs is Linux-only and not always mounted; the identity assertion
+      // above already covers the regression without it.
+      if (existsSync("/proc/self/fd")) {
+        const dbFile = join(dataDir, "plugins", "chatty", "data.db");
+        expect(await countOpenFdsFor(dbFile)).toBeLessThanOrEqual(1);
+      }
     });
   });
 

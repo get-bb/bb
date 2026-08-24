@@ -17,15 +17,13 @@ import { ensureHostSessionReadyForWork } from "./host-lifecycle.js";
 
 const HOST_DAEMON_REGISTRATION_WAIT_MS = 1_000;
 
-export interface CallHostOnlineRpcArgs<
-  TCommand extends HostDaemonRpcCommand,
-> {
+interface CallHostOnlineRpcArgs<TCommand extends HostDaemonRpcCommand> {
   command: TCommand;
   hostId: string;
   timeoutMs: number;
 }
 
-export interface CallHostRetryableOnlineRpcArgs<
+interface CallHostRetryableOnlineRpcArgs<
   TCommand extends HostDaemonRetryableOnlineRpcCommand,
 > {
   command: TCommand;
@@ -150,13 +148,18 @@ function requestHostOnlineRpcResponse(
   });
 }
 
+/** The error a host command raises when its timeout elapses. */
+export function hostCommandTimeoutError(): ApiError {
+  return new ApiError(
+    504,
+    "command_timeout",
+    "Timed out waiting for command result",
+  );
+}
+
 function throwOnlineRpcError(error: unknown): never {
   if (error instanceof HostOnlineRpcTimeoutError) {
-    throw new ApiError(
-      504,
-      "command_timeout",
-      "Timed out waiting for command result",
-    );
+    throw hostCommandTimeoutError();
   }
 
   if (error instanceof HostOnlineRpcUnavailableError) {

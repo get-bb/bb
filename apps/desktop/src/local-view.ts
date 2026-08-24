@@ -6,26 +6,26 @@ export type LocalViewModel =
   | LoadingViewModel
   | StartupErrorViewModel;
 
-export interface LoadingViewModel {
+interface LoadingViewModel {
   kind: "loading";
   message: string;
   title: string;
 }
 
-export interface InfoViewModel {
+interface InfoViewModel {
   kind: "info";
   message: string;
   title: string;
 }
 
-export interface StartupErrorViewModel {
+interface StartupErrorViewModel {
   details: string;
   kind: "error";
   logText: string;
   title: string;
 }
 
-export interface CreateLocalViewUrlArgs {
+interface CreateLocalViewUrlArgs {
   viewModel: LocalViewModel;
 }
 

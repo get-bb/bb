@@ -1,35 +1,20 @@
-import { threadEventSchema } from "@bb/domain";
 import { z } from "zod";
+import { providerRecoveryHintSchema } from "./errors.js";
 
 /**
- * Bridge → runtime notifications. Everything that is a bb `ThreadEvent`
- * (assistant text, tool calls, token usage, context-window usage, …) rides
- * `thread/event` already translated and already stamped with bridge-minted
- * turn/item ids. The remaining notifications are runtime signals that are not
- * timeline events.
+ * Bridge → runtime notifications. Everything timeline-bound (assistant text,
+ * tool calls, token usage, context-window usage, …) rides `thread/delta`
+ * (see thread-delta.ts) as parsed semantic deltas the runtime's assembler
+ * turns into canonical `ThreadEvent`s. The notifications here are runtime
+ * signals that are not timeline events.
  */
 export const BRIDGE_NOTIFICATION_METHODS = {
-  threadEvent: "thread/event",
   threadIdentity: "thread/identity",
   sessionReplaced: "session/replaced",
-  threadOpenWork: "thread/openWork",
   providerRaw: "provider/raw",
+  providerRecovery: "provider/recovery",
   error: "error",
 } as const;
-
-export type BridgeNotificationMethod =
-  (typeof BRIDGE_NOTIFICATION_METHODS)[keyof typeof BRIDGE_NOTIFICATION_METHODS];
-
-export const threadEventNotificationSchema = z
-  .object({
-    threadId: z.string().min(1),
-    event: threadEventSchema,
-  })
-  .passthrough();
-
-export type ThreadEventNotification = z.infer<
-  typeof threadEventNotificationSchema
->;
 
 export const threadIdentityNotificationSchema = z
   .object({
@@ -40,18 +25,14 @@ export const threadIdentityNotificationSchema = z
   })
   .passthrough();
 
-export type ThreadIdentityNotification = z.infer<
-  typeof threadIdentityNotificationSchema
->;
-
 /**
  * A provider session was torn down and rebuilt. Mandatory whenever the bridge
  * replaces a live session for any reason (execution-option change it cannot
  * apply in place, resume fallback, internal recovery). A silent rebuild is a
  * conformance failure: invisible session replacement is how hours of
  * background work died in #1268. The runtime surfaces this in the thread
- * timeline; any events settling in-flight work must be emitted (as
- * `thread/event`) before this notification.
+ * timeline; any deltas settling in-flight work must be emitted (as
+ * `thread/delta`) before this notification.
  */
 export const sessionReplacedNotificationSchema = z
   .object({
@@ -64,36 +45,6 @@ export const sessionReplacedNotificationSchema = z
     contextLost: z.boolean().default(false),
   })
   .passthrough();
-
-export type SessionReplacedNotification = z.infer<
-  typeof sessionReplacedNotificationSchema
->;
-
-/**
- * Whether the thread still owns provider work that outlives its turn and that
- * the bb timeline cannot see.
- *
- * Backgrounded tasks the bridge reports as `backgroundTask` items are already
- * visible to the runtime's own tracker; this covers work a provider models as
- * something else entirely (codex reports native subagents as tool calls, so an
- * idle-looking thread can still have a child agent running). Without it the
- * session reaper stops the parent process and kills that work.
- *
- * Level-triggered, not edge-triggered: the bridge sends the current value and
- * the runtime keeps the last one it heard, so a missed intermediate state
- * cannot leave the runtime permanently wrong. Absence reads as no open work,
- * which is what every bridge that never sends it means.
- */
-export const threadOpenWorkNotificationSchema = z
-  .object({
-    threadId: z.string().min(1),
-    open: z.boolean(),
-  })
-  .passthrough();
-
-export type ThreadOpenWorkNotification = z.infer<
-  typeof threadOpenWorkNotificationSchema
->;
 
 /**
  * Droppable diagnostics. The bridge classifies its provider's raw traffic
@@ -110,8 +61,35 @@ export const providerRawNotificationSchema = z
   })
   .passthrough();
 
-export type ProviderRawNotification = z.infer<
-  typeof providerRawNotificationSchema
+/**
+ * A typed recovery hint: the bridge tells the runtime WHAT went wrong in the
+ * runtime's own vocabulary, so the runtime never matches provider error text
+ * (the codex regex set, the account-restart list, the archive idempotency
+ * string match all go away in WS4). A runtime signal, not a timeline item —
+ * the user-visible consequence, when there is one, is the `provider/error`
+ * delta the bridge emits alongside, and the timeline stays free of
+ * "restarting the bridge" noise. Lives here with `session/replaced` rather
+ * than in `thread/delta` for the same reason `provider/raw` does: it is
+ * consumed by the runtime's recovery logic, never persisted.
+ *
+ * `threadId` is absent for provider-wide conditions (`authRequired`,
+ * `rateLimited` at the account level) and present when the hint is about one
+ * session (`sessionArchived`, `staleTurn`). `retryable` says whether the
+ * runtime may retry the failed command after acting on the hint.
+ *
+ * Unsolicited hints only: a condition that is the reason a runtime request
+ * failed rides that request's error response as `error.data.recovery`
+ * (see `bridgeErrorDataSchema`), never this notification as well.
+ */
+export const providerRecoveryNotificationSchema = z
+  .object({
+    threadId: z.string().min(1).optional(),
+    ...providerRecoveryHintSchema.shape,
+  })
+  .passthrough();
+
+export type ProviderRecoveryNotification = z.infer<
+  typeof providerRecoveryNotificationSchema
 >;
 
 export const errorNotificationSchema = z
@@ -120,5 +98,3 @@ export const errorNotificationSchema = z
     message: z.string().min(1),
   })
   .passthrough();
-
-export type ErrorNotification = z.infer<typeof errorNotificationSchema>;

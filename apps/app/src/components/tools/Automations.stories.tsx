@@ -1,35 +1,21 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { AutomationDetailView } from "bb-plugin-automations/detail-view";
 import {
   AutomationOverviewView,
   type AutomationCollectionMode,
 } from "bb-plugin-automations/overview-view";
 import type {
-  AutomationExecutionOptionsResponse,
   AutomationResponse,
   AutomationRunResponse,
   AutomationsOverviewResponse,
 } from "bb-plugin-automations/rpc-types";
 import { ResourceListState } from "@bb/shared-ui/resource-list";
-import { AppBreadcrumbs } from "@/components/layout/AppBreadcrumbs";
-import { resolveAutomationBreadcrumbs } from "@/components/tools/tools-navigation";
 
 export default {
   title: "Automations",
 };
 
 const noop = () => {};
-const executionOptions: AutomationExecutionOptionsResponse = {
-  models: [
-    {
-      id: "claude:claude-opus-5",
-      model: "claude-opus-5",
-      displayName: "Opus 5",
-    },
-  ],
-  permissionModes: ["accept-edits", "auto", "full"],
-};
 const now = new Date(2027, 0, 15, 9).getTime();
 
 function automation(
@@ -52,6 +38,7 @@ function automation(
       prompt: `Run ${name.toLowerCase()}.`,
       providerId: "claude",
       model: "claude-opus-5",
+      reasoningLevel: "medium",
       permissionMode: "auto",
       environment: { type: "host", workspace: { type: "personal" } },
     },
@@ -189,81 +176,6 @@ export function BrowseTemplates() {
   return <Overview initialMode="browse" />;
 }
 
-const AUTOMATIONS_ROOT = "/plugins/automations/automations";
-const AUTOMATION_DETAIL = `${AUTOMATIONS_ROOT}/proj_personal/nightly-digest`;
-const AUTOMATION_MISSING = `${AUTOMATIONS_ROOT}/proj_personal/missing-automation`;
-
-function BreadcrumbFlowHarness() {
-  const location = useLocation();
-  const loadedLabel =
-    location.pathname === AUTOMATION_DETAIL ? "Nightly digest" : null;
-  const breadcrumbs = resolveAutomationBreadcrumbs(
-    location.pathname,
-    loadedLabel,
-  );
-
-  return (
-    <StoryFrame>
-      <div className="space-y-6">
-        <div className="w-full overflow-hidden rounded-md border border-border bg-surface-scrim px-4 py-2">
-          {breadcrumbs ? (
-            <AppBreadcrumbs
-              breadcrumbs={breadcrumbs}
-              usesDesktopChrome={false}
-            />
-          ) : null}
-        </div>
-        <nav
-          aria-label="Automation story destinations"
-          className="flex flex-wrap gap-2"
-        >
-          {[
-            ["Installed", AUTOMATIONS_ROOT],
-            ["Browse", `${AUTOMATIONS_ROOT}/browse`],
-            ["Loaded detail", AUTOMATION_DETAIL],
-            ["Loading or missing detail", AUTOMATION_MISSING],
-          ].map(([label, to]) => (
-            <Link
-              key={to}
-              to={to}
-              className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground hover:bg-state-hover hover:text-foreground"
-            >
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <p className="text-sm text-muted-foreground">
-          Current route: <code>{location.pathname}</code>
-        </p>
-        <section className="max-w-72 space-y-2">
-          <h2 className="text-sm font-medium text-foreground">
-            Narrow detail header
-          </h2>
-          <div className="overflow-hidden rounded-md border border-border bg-surface-scrim px-4 py-2">
-            <AppBreadcrumbs
-              breadcrumbs={
-                resolveAutomationBreadcrumbs(
-                  AUTOMATION_DETAIL,
-                  "Nightly digest with a deliberately long descriptive name",
-                ) ?? []
-              }
-              usesDesktopChrome={false}
-            />
-          </div>
-        </section>
-      </div>
-    </StoryFrame>
-  );
-}
-
-export function BreadcrumbNavigation() {
-  const navigate = useNavigate();
-  useEffect(() => {
-    navigate(`${AUTOMATIONS_ROOT}/browse`, { replace: true });
-  }, [navigate]);
-  return <BreadcrumbFlowHarness />;
-}
-
 const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
   trigger: {
     triggerType: "schedule",
@@ -275,6 +187,7 @@ const DETAIL_AUTOMATION = automation("nightly-digest", "Nightly digest", {
     prompt: "Summarize yesterday's commits and open pull requests.",
     providerId: "claude",
     model: "claude-opus-5[1m]",
+    reasoningLevel: "medium",
     permissionMode: "auto",
     environment: { type: "host", workspace: { type: "personal" } },
   },
@@ -295,6 +208,7 @@ const PROJECT_AUTOMATION: AutomationResponse = {
     prompt: "Summarize yesterday's commits and open pull requests.",
     providerId: "claude",
     model: "claude-opus-5[1m]",
+    reasoningLevel: "medium",
     permissionMode: "auto",
     environment: {
       type: "host",
@@ -321,6 +235,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "codex",
         model: "gpt-5.6-sol",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -334,6 +249,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "pi",
         model: "pi-model",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -347,6 +263,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "acp-cursor",
         model: "cursor-small",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -360,6 +277,7 @@ const PROVIDER_AUTOMATIONS = [
         prompt: "Summarize yesterday's commits and open pull requests.",
         providerId: "custom-provider",
         model: "custom-model-v2",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -521,9 +439,6 @@ function AutomationDetail({
       }}
       actionPending={false}
       editing={false}
-      executionOptions={executionOptions}
-      permissionModes={["accept-edits", "auto", "full"]}
-      executionOptionsError={null}
       onToggle={noop}
       onEdit={noop}
       onCancelEdit={noop}

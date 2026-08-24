@@ -4,13 +4,13 @@ import type { ResolvedWorkflowExecutionSelection } from "./cache.js";
 import type { JsonValue, WorkflowAgentOptions } from "./types.js";
 
 export type Db = Database.Database;
-export type WorkflowRunStatus =
+type WorkflowRunStatus =
   | "queued"
   | "running"
   | "succeeded"
   | "failed"
   | "cancelled";
-export type WorkflowCallStatus =
+type WorkflowCallStatus =
   | "queued"
   | "running"
   | "succeeded"
@@ -83,7 +83,7 @@ export interface WorkflowCallCounts {
   cancelled: number;
 }
 
-export type StoreStructuredResultOutcome =
+type StoreStructuredResultOutcome =
   | "accepted"
   | "idempotent"
   | "conflict"
@@ -545,14 +545,6 @@ export function listTimedOutRuns(
     )
     .all(now, limit)
     .map(runRow);
-}
-
-export function getResumeCall(
-  db: Db,
-  resumedFromRunId: string,
-  callIndex: number,
-): WorkflowCallRow | null {
-  return getCall(db, resumedFromRunId, callIndex);
 }
 
 export function startCall(

@@ -17,7 +17,7 @@ import {
   resolveRelativeLocalFileHref,
 } from "@/components/ui/markdown-local-file-link.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
-import { computeMutedPrefixLength } from "./compute-muted-prefix-length.js";
+import { computeMutedPrefixLength } from "@bb/client-core";
 import type {
   TimelineTitleActionResolver,
   TimelineTitleLinkResolver,
@@ -50,8 +50,9 @@ import {
   boundedMarkdownPreview,
   closeUnterminatedMarkdownCodeSpan,
   USER_MESSAGE_CHAR_CAP,
-} from "./conversation-message-limits.js";
-import { turnRequestLabel } from "./conversation-turn-request-label.js";
+} from "@bb/client-core";
+import { turnRequestLabel } from "@bb/client-core";
+import { splitStreamingMarkdown } from "./streaming-markdown-split.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import { MessageActionBar } from "./MessageActionBar.js";
 import {
@@ -63,7 +64,7 @@ import {
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import { buildThreadHostFileContentUrl } from "@/lib/file-content-urls";
 
 interface ConversationMessageContentBaseProps {
@@ -77,7 +78,7 @@ interface ConversationMessageContentBaseProps {
   text: string;
 }
 
-export interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
+interface ConversationMessageContentUserProps extends ConversationMessageContentBaseProps {
   role: "user";
   /** Mobile presentation for the regular user message's action footer. */
   mobileActionDisplay?: "inline" | "overflow";
@@ -96,6 +97,8 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
   onOpenLink?: ThreadTimelineLinkHandler;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
+  /** Present when sender metadata identifies the source thread's project. */
+  senderThreadProjectId?: string;
   senderThreadTitle: string | null;
   /** The sender thread is one of the side-chat plugin's hidden forks, so the
    * row reads "Replying to side chat" and its name opens the plugin panel. */
@@ -116,7 +119,7 @@ export interface ConversationMessageContentUserProps extends ConversationMessage
  */
 type AssistantMessageRowIdentity = Pick<
   TimelineRowBase,
-  "id" | "threadId" | "turnId" | "sourceSeqStart" | "sourceSeqEnd"
+  "id" | "threadId" | "turnId"
 >;
 
 const COLLAPSED_MESSAGE_FADE_STYLE: CSSProperties = {
@@ -131,7 +134,17 @@ const ASSISTANT_THREAD_MENTIONS: MarkdownThreadMentions = {
   preserveSoftBreaks: false,
 };
 
-export interface ConversationMessageContentAssistantProps
+// The settled prefix and live tail of a streaming message are two sibling
+// markdown documents. Their block margins collapse across the wrapper
+// boundary like siblings inside one document, except for the `last:mb-0` on a
+// trailing paragraph and the `first:mt-0` on a leading heading, which would
+// otherwise remove the gap at the seam and shift the layout when the finished
+// message re-renders as one document. Restore those margins at the seam only.
+const STREAMING_SETTLED_MARKDOWN_CLASS_NAME = "[&>p:last-child]:mb-2";
+const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
+  "[&>h1:first-child]:mt-4 [&>h2:first-child]:mt-4 [&>h3:first-child]:mt-3 [&>h4:first-child]:mt-3 [&>h5:first-child]:mt-2 [&>h6:first-child]:mt-2";
+
+interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
   // Assistant content and generated system rows render through MarkdownPreview,
@@ -168,7 +181,12 @@ export interface ConversationMessageContentAssistantProps
   showActions: boolean;
   /** Mobile presentation for this message's action footer. */
   mobileActionDisplay: "inline" | "overflow";
-  turnRequest: null;
+  /**
+   * The message is still receiving text deltas. The body then renders as a
+   * settled prefix plus a live tail (two memoized markdown documents) so each
+   * delta re-parses only the tail. A completed message renders one document.
+   */
+  streaming: boolean;
   workspaceRootPath?: string;
 }
 
@@ -179,7 +197,7 @@ export interface ConversationMessageContentAssistantProps
  * fields to hide defaults") and lets the renderer drop optional-chain
  * defenses on contract-required fields.
  */
-export type ConversationMessageContentProps =
+type ConversationMessageContentProps =
   | ConversationMessageContentUserProps
   | ConversationMessageContentAssistantProps;
 
@@ -200,6 +218,7 @@ interface UserConversationMessageProps {
   resolveSegmentLinkHref?: TimelineTitleLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
+  senderThreadProjectId: string | null;
   senderThreadTitle: string | null;
   senderIsPluginSideChat: boolean;
   systemMessageKind: TimelineUserConversationRow["systemMessageKind"];
@@ -223,6 +242,7 @@ interface AssistantConversationMessageProps extends AssistantMessageRowIdentity 
   projectId?: string;
   showActions: boolean;
   mobileActionDisplay: "inline" | "overflow";
+  streaming: boolean;
   text: string;
   workspaceRootPath?: string;
 }
@@ -351,7 +371,6 @@ function CollapsibleMessageText({
       {showToggle ? (
         <ConversationMessageOverflowToggle
           expanded={isExpanded}
-          labels={{ collapsed: "Show more", expanded: "Show less" }}
           onToggle={() => setIsExpanded((prev) => !prev)}
         />
       ) : null}
@@ -399,6 +418,7 @@ function UserConversationMessage({
   resolveSegmentLinkHref,
   onTitleAction,
   senderThreadId,
+  senderThreadProjectId,
   senderThreadTitle,
   senderIsPluginSideChat,
   systemMessageKind,
@@ -428,6 +448,7 @@ function UserConversationMessage({
         sourceName={
           senderIsPluginSideChat ? "side chat" : (senderThreadTitle ?? "Agent")
         }
+        sourceProjectId={senderThreadProjectId}
         sourceThreadId={senderThreadId}
         sourceIsPluginSideChat={senderIsPluginSideChat}
         systemMessageKind={systemMessageKind}
@@ -458,6 +479,7 @@ function UserConversationMessage({
         onTitleAction={onTitleAction}
         sourceKind="system"
         sourceName="BB"
+        sourceProjectId={null}
         sourceThreadId={null}
         sourceIsPluginSideChat={false}
         systemMessageKind={systemMessageKind}
@@ -473,8 +495,10 @@ function UserConversationMessage({
   const requestLabel = turnRequestLabel(turnRequest);
 
   return (
-    <div className="w-full">
-      <div className="group/message ml-auto w-fit max-w-[70%]">
+    // `data-message-column` marks the full timeline width for the action row,
+    // which expands into this column's empty gutter on touch.
+    <div className="w-full" data-message-column="">
+      <div className="group/message ml-auto flex w-fit max-w-[70%] flex-col items-end">
         {requestLabel ? (
           <div className="mb-1 flex justify-end">
             <TurnRequestLabel
@@ -483,42 +507,50 @@ function UserConversationMessage({
             />
           </div>
         ) : null}
-        <div className="rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
-          {messageText ? (
-            <CollapsibleMessageText
-              mentions={mentions}
-              resolveMentionLink={resolveMentionLink}
-              resolveSegmentLinkHref={resolveSegmentLinkHref}
-              onOpenLink={onOpenLink}
-              text={text}
-              mutePrefixLength={mutePrefixLength || undefined}
+        {/*
+          Sub-column sized by the bubble alone (the action bar below fills it
+          without contributing intrinsic width), so the bar's measured slot is
+          exactly the bubble's width and its actions can never extend past the
+          bubble.
+        */}
+        <div className="flex w-fit max-w-full flex-col items-end">
+          <div className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
+            {messageText ? (
+              <CollapsibleMessageText
+                mentions={mentions}
+                resolveMentionLink={resolveMentionLink}
+                resolveSegmentLinkHref={resolveSegmentLinkHref}
+                onOpenLink={onOpenLink}
+                text={text}
+                mutePrefixLength={mutePrefixLength || undefined}
+              />
+            ) : (
+              <p className="text-muted-foreground">Sent attachments</p>
+            )}
+            <ConversationAttachments
+              align="end"
+              filePaths={attachmentItems.filePaths}
+              imageItems={attachmentItems.imageItems}
+              onOpenLocalFileLink={onOpenLocalFileLink}
+              projectId={projectId}
             />
-          ) : (
-            <p className="text-muted-foreground">Sent attachments</p>
-          )}
-          <ConversationAttachments
-            align="end"
-            filePaths={attachmentItems.filePaths}
-            imageItems={attachmentItems.imageItems}
-            onOpenLocalFileLink={onOpenLocalFileLink}
-            projectId={projectId}
+          </div>
+          {/*
+            The bar's slot sits in normal flow and reserves the row's height
+            whether or not the hover-revealed actions are showing; it renders
+            nothing at all when the message has no action. `MessageActionBar`
+            is the one place that decides which of those two cases holds.
+          */}
+          <MessageActionBar
+            messageText={messageText}
+            alignment="end"
+            mobileActionDisplay={mobileActionDisplay}
+            addToChatAttachments={addToChatAttachments}
+            onAddToChat={onAddToChat}
+            onEdit={onEdit}
+            pluginActions={pluginActions}
           />
         </div>
-        {/*
-          The bar sits in normal flow: it is hidden by opacity, so it occupies
-          its own height whether or not it is revealed, and it renders nothing
-          at all when the message has no action. `MessageActionBar` is the one
-          place that decides which of those two cases holds.
-        */}
-        <MessageActionBar
-          messageText={messageText}
-          alignment="end"
-          mobileActionDisplay={mobileActionDisplay}
-          addToChatAttachments={addToChatAttachments}
-          onAddToChat={onAddToChat}
-          onEdit={onEdit}
-          pluginActions={pluginActions}
-        />
       </div>
     </div>
   );
@@ -540,11 +572,18 @@ function AssistantConversationMessage({
   projectId,
   showActions,
   mobileActionDisplay,
+  streaming,
   text,
   threadId,
   turnId,
   workspaceRootPath,
 }: AssistantConversationMessageProps) {
+  // While streaming, everything before the last safe blank line is settled and
+  // keeps its memoized render; only the tail document re-parses per delta.
+  const streamingSplit = useMemo(
+    () => (streaming ? splitStreamingMarkdown(text) : null),
+    [streaming, text],
+  );
   const linkRouting = useMemo<MarkdownLinkRouting>(() => {
     const localImage: NonNullable<MarkdownLinkRouting["localImage"]> = {
       absolutePaths: {
@@ -638,7 +677,10 @@ function AssistantConversationMessage({
   ]);
 
   return (
-    <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
+    <div
+      className="group/message w-full px-2 text-sm font-normal leading-relaxed"
+      data-message-column=""
+    >
       {/*
         Reports in-bounds text selections up to the timeline-level controller
         that drives the single floating selection menu (Add to chat / Reply in
@@ -646,11 +688,25 @@ function AssistantConversationMessage({
       */}
       <SelectableMessageProse onSelect={onSelectProse}>
         <MarkdownPreview
-          content={text}
+          className={
+            streamingSplit === null
+              ? undefined
+              : STREAMING_SETTLED_MARKDOWN_CLASS_NAME
+          }
+          content={streamingSplit === null ? text : streamingSplit.settled}
           linkRouting={linkRouting}
           messageDirectives={messageDirectives}
           threadMentions={ASSISTANT_THREAD_MENTIONS}
         />
+        {streamingSplit === null ? null : (
+          <MarkdownPreview
+            className={STREAMING_TAIL_MARKDOWN_CLASS_NAME}
+            content={streamingSplit.tail}
+            linkRouting={linkRouting}
+            messageDirectives={messageDirectives}
+            threadMentions={ASSISTANT_THREAD_MENTIONS}
+          />
+        )}
       </SelectableMessageProse>
       <ConversationAttachments
         filePaths={attachmentItems.filePaths}
@@ -726,6 +782,7 @@ export function ConversationMessageContent(
         resolveSegmentLinkHref={props.resolveSegmentLinkHref}
         onTitleAction={props.onTitleAction}
         senderThreadId={props.senderThreadId}
+        senderThreadProjectId={props.senderThreadProjectId ?? null}
         senderThreadTitle={props.senderThreadTitle}
         senderIsPluginSideChat={props.senderIsPluginSideChat}
         systemMessageKind={props.systemMessageKind}
@@ -753,8 +810,7 @@ export function ConversationMessageContent(
       projectId={projectId}
       showActions={props.showActions}
       mobileActionDisplay={props.mobileActionDisplay}
-      sourceSeqEnd={props.sourceSeqEnd}
-      sourceSeqStart={props.sourceSeqStart}
+      streaming={props.streaming}
       text={text}
       threadId={props.threadId}
       turnId={props.turnId}

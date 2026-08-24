@@ -18,6 +18,7 @@ import type {
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import { reconnectProvisionArgsFromWorkspaceContext } from "./workspace-provision-target.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
 type StopWatching = () => void | Promise<void>;
 
@@ -56,6 +57,7 @@ export interface WatchManagerOptions {
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
   refreshWorkspace?: (args: RefreshWorkspaceArgs) => Promise<HostWorkspace>;
+  shellEnv?: () => NodeJS.ProcessEnv;
   threadStorageRootPath?: string | null;
   onThreadStorageChanged?: (args: {
     environmentId: string;
@@ -123,11 +125,15 @@ export class WatchManager {
 
   constructor(private readonly options: WatchManagerOptions = {}) {
     this.hostWatcher = options.hostWatcher;
-    this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
+    const provision = options.provisionWorkspace ?? provisionWorkspace;
+    this.provisionWorkspace = (args: ProvisionWorkspaceArgs) =>
+      provision({
+        ...args,
+        ...userExecutableProcessOptions(options.shellEnv?.() ?? {}),
+      });
     this.refreshWorkspace =
       options.refreshWorkspace ??
-      ((args: RefreshWorkspaceArgs) =>
-        this.provisionWorkspace(args.provision));
+      ((args: RefreshWorkspaceArgs) => this.provisionWorkspace(args.provision));
   }
 
   async replaceWatchSet(watchSet: HostDaemonWatchSet): Promise<void> {

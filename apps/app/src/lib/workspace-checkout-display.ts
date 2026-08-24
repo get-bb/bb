@@ -12,7 +12,7 @@ export interface WorkspaceCheckoutDisplay {
   title: string;
 }
 
-export interface FormatWorkspaceCheckoutDisplayArgs {
+interface FormatWorkspaceCheckoutDisplayArgs {
   checkout: GitCheckoutRef;
 }
 

@@ -11,7 +11,7 @@ import {
 } from "./browserViewVisibilityCoordinator";
 import type { UpdateBrowserTabArgs } from "./useThreadFileTabs";
 
-export interface BrowserTabDeckProps {
+interface BrowserTabDeckProps {
   browserTabs: readonly BrowserFixedPanelTab[];
   activeBrowserTabId: string | null;
   addressFocusRequest?: BrowserAddressFocusRequest | null;
@@ -23,8 +23,20 @@ export interface BrowserTabDeckProps {
    * for drawer animation completion plus the post-open bounds sync.
    */
   canShowNativeBrowserView: boolean;
+  /**
+   * Whether this deck owns browser keyboard commands. Split panes can keep
+   * several native views visible at once, but commands must follow pane focus.
+   * Defaults to the visibility gate for the unchanged single-pane surface.
+   */
+  canHandleBrowserCommands?: boolean;
+  onNativeFocus?: () => void;
   threadId: string;
   onUpdate: (args: UpdateBrowserTabArgs) => void;
+}
+
+interface BrowserTabLifecycleObserverProps {
+  browserTabs: readonly BrowserFixedPanelTab[];
+  threadId: string;
 }
 
 interface BrowserTabIdSnapshot {
@@ -40,6 +52,39 @@ export function buildBrowserTabIdSet({
   browserTabs,
 }: BuildBrowserTabIdSetArgs): ReadonlySet<string> {
   return new Set(browserTabs.map((tab) => tab.id));
+}
+
+/**
+ * Owns explicit browser-tab destruction independently of whichever browser
+ * surface is currently rendered. There must be exactly one observer per
+ * thread: pane-local decks may mount and unmount as tabs move, maximize, or
+ * close, but none of those presentation changes transfers lifecycle ownership.
+ */
+export function BrowserTabLifecycleObserver({
+  browserTabs,
+  threadId,
+}: BrowserTabLifecycleObserverProps) {
+  const desktopBrowser = useMemo(() => getDesktopBrowserApi(), []);
+  const previousTabIdsRef = useRef<BrowserTabIdSnapshot | null>(null);
+
+  useEffect(() => {
+    const tabIds = buildBrowserTabIdSet({ browserTabs });
+    const previous = previousTabIdsRef.current;
+    if (
+      desktopBrowser !== null &&
+      previous !== null &&
+      previous.threadId === threadId
+    ) {
+      for (const tabId of previous.tabIds) {
+        if (!tabIds.has(tabId)) {
+          destroyPersistedBrowserView({ desktopBrowser, tabId });
+        }
+      }
+    }
+    previousTabIdsRef.current = { tabIds, threadId };
+  }, [browserTabs, desktopBrowser, threadId]);
+
+  return null;
 }
 
 /**
@@ -80,11 +125,12 @@ export function BrowserTabDeck({
   onAddressFocusRequestConsumed,
   environmentId,
   canShowNativeBrowserView,
+  canHandleBrowserCommands = canShowNativeBrowserView,
+  onNativeFocus,
   threadId,
   onUpdate,
 }: BrowserTabDeckProps) {
   const desktopBrowser = useMemo(() => getDesktopBrowserApi(), []);
-  const previousTabIdsRef = useRef<BrowserTabIdSnapshot | null>(null);
   const visibilityCoordinator = useMemo(
     () =>
       desktopBrowser === null
@@ -92,23 +138,6 @@ export function BrowserTabDeck({
         : createBrowserViewVisibilityCoordinator(desktopBrowser),
     [desktopBrowser],
   );
-
-  useEffect(() => {
-    const tabIds = buildBrowserTabIdSet({ browserTabs });
-    const previous = previousTabIdsRef.current;
-    if (
-      desktopBrowser !== null &&
-      previous !== null &&
-      previous.threadId === threadId
-    ) {
-      for (const tabId of previous.tabIds) {
-        if (!tabIds.has(tabId)) {
-          destroyPersistedBrowserView({ desktopBrowser, tabId });
-        }
-      }
-    }
-    previousTabIdsRef.current = { tabIds, threadId };
-  }, [browserTabs, desktopBrowser, threadId]);
 
   const activeBrowserTab = selectActiveBrowserTab(
     browserTabs,
@@ -131,6 +160,8 @@ export function BrowserTabDeck({
         }
         onAddressFocusRequestConsumed={onAddressFocusRequestConsumed}
         canShowNativeBrowserView={canShowNativeBrowserView}
+        canHandleBrowserCommands={canHandleBrowserCommands}
+        onNativeFocus={onNativeFocus}
         visibilityCoordinator={visibilityCoordinator}
         environmentId={environmentId}
         threadId={threadId}

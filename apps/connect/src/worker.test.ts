@@ -685,6 +685,118 @@ describe("machine gate auth", () => {
   );
 });
 
+describe("bb mobile app-link association files", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // No cookie, no machine header: these must never reach the session gate.
+    mockParseCookie.mockReturnValue(null);
+    mockResolveLabel.mockResolvedValue(resolvedServer());
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    "/.well-known/apple-app-site-association",
+    "/.well-known/assetlinks.json",
+  ])(
+    "serves %s on a bare label without a session and without proxying",
+    async (path) => {
+      const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+      const response = await worker.fetch(
+        visitorRequest("sawyer.getbb.app", path),
+        env as never,
+        ctx,
+      );
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("application/json");
+      expect(captured).toHaveLength(0);
+      expect(mockResolveLabel).not.toHaveBeenCalled();
+      expect(mockVerifySession).not.toHaveBeenCalled();
+    },
+  );
+
+  it("serves the AASA on bare labels that do not resolve yet (Apple fetches anonymously before a claim)", async () => {
+    mockResolveLabel.mockResolvedValue(null);
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const unknown = await worker.fetch(
+      visitorRequest(
+        "nobody-here.getbb.app",
+        "/.well-known/apple-app-site-association",
+      ),
+      env as never,
+      ctx,
+    );
+    expect(unknown.status).toBe(200);
+    const body = (await unknown.json()) as {
+      applinks: { details: { appIDs: string[] }[] };
+    };
+    expect(body.applinks.details[0]?.appIDs).toEqual([
+      "9QCU24SXK5.app.getbb.mobile",
+    ]);
+    expect(captured).toHaveLength(0);
+  });
+
+  it.each([
+    "/.well-known/apple-app-site-association",
+    "/.well-known/assetlinks.json",
+  ])(
+    "does not claim %s on share hosts — they front arbitrary local apps, so the file falls through to the session gate",
+    async (path) => {
+      const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+      const share = await worker.fetch(
+        visitorRequest("sawyer--8000.getbb.app", path),
+        env as never,
+        ctx,
+      );
+      // Anonymous (Apple CDN / Android) fetch → 401 sign-in page, i.e. no
+      // association for `<label>--<port>` hosts; never proxied without a session.
+      expect(share.status).toBe(401);
+      expect(share.headers.get("content-type")).not.toBe("application/json");
+      expect(captured).toHaveLength(0);
+    },
+  );
+
+  it("reads Android fingerprints from the env and serves an empty list otherwise", async () => {
+    const { env, ctx } = makeEnv(() => new Response("origin"));
+    const empty = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/.well-known/assetlinks.json"),
+      env as never,
+      ctx,
+    );
+    const emptyBody = (await empty.json()) as {
+      target: { sha256_cert_fingerprints: string[] };
+    }[];
+    expect(emptyBody[0]?.target.sha256_cert_fingerprints).toEqual([]);
+
+    const withEnv = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/.well-known/assetlinks.json"),
+      { ...env, ASSETLINKS_SHA256_FINGERPRINTS: "aa:bb,cc:dd" } as never,
+      ctx,
+    );
+    const withEnvBody = (await withEnv.json()) as {
+      target: { package_name: string; sha256_cert_fingerprints: string[] };
+    }[];
+    expect(withEnvBody[0]?.target.package_name).toBe("app.getbb.mobile");
+    expect(withEnvBody[0]?.target.sha256_cert_fingerprints).toEqual([
+      "AA:BB",
+      "CC:DD",
+    ]);
+  });
+
+  it("leaves other .well-known paths to the session gate", async () => {
+    const { env, ctx, captured } = makeEnv(() => new Response("origin"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/.well-known/openid-configuration"),
+      env as never,
+      ctx,
+    );
+    expect(response.status).toBe(401);
+    expect(captured).toHaveLength(0);
+  });
+});
+
 describe("gate worker share hosts", () => {
   beforeEach(() => {
     vi.clearAllMocks();

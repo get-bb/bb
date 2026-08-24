@@ -8,7 +8,7 @@ import type {
 import { formatDiffStatsText } from "@bb/thread-view";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 
-export interface ChangeTally {
+interface ChangeTally {
   filesCount: number;
   insertions: number;
   deletions: number;
@@ -24,7 +24,7 @@ export function toChangeTally(stats: WorkspaceChangeStats): ChangeTally {
   };
 }
 
-export function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
+function formatWorkspaceChangedFilesLabel(changedFiles: number): string {
   return `${changedFiles} file${changedFiles === 1 ? "" : "s"}`;
 }
 
@@ -76,7 +76,7 @@ export function renderChangeSummary(tally: ChangeTally): ReactNode {
   );
 }
 
-export type WorkspaceChangedFilesSectionKind =
+type WorkspaceChangedFilesSectionKind =
   | "uncommitted"
   | "untracked"
   | "committed";

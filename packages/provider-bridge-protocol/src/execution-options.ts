@@ -1,4 +1,5 @@
 import {
+  promptModeSchema,
   reasoningLevelSchema,
   runtimePermissionPolicySchema,
   serviceTierSchema,
@@ -24,6 +25,12 @@ export const bridgeExecutionOptionsSchema = z
     model: z.string().min(1).optional(),
     serviceTier: serviceTierSchema.optional(),
     reasoningLevel: reasoningLevelSchema.optional(),
+    /**
+     * BB prompt mode (`"plan"`), present only when the prompt entered one
+     * through the provider's declared composer action. Each bridge maps it
+     * onto the agent's native equivalent.
+     */
+    promptMode: promptModeSchema.optional(),
     /** Frozen for the life of a provider session; applied at construction. */
     instructions: z.string().optional(),
     envVars: z.record(z.string(), z.string()).optional(),

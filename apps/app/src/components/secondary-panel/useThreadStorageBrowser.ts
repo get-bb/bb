@@ -5,10 +5,25 @@ import {
   useRef,
   useState,
 } from "react";
-import { useFileTree, type UseFileTreeResult } from "@pierre/trees/react";
 import type { WorkspaceFile } from "@bb/server-contract";
+import { createRetryingModuleLoader } from "@/lib/plugin-frontend-lazy";
+// Type-only: the runtime edge to `@pierre/trees` is the dynamic `import()`
+// below, so the tree library stays out of the thread route's static closure
+// (bundle-budget.json forbids it there).
+import type { ThreadStorageTreeModel } from "./ThreadStorageFileTree";
 
 const EMPTY_STORAGE_FILES: readonly WorkspaceFile[] = [];
+
+type ThreadStorageFileTreeModule = typeof import("./ThreadStorageFileTree");
+
+/**
+ * Loads the tree chunk once and re-tries after a failed fetch, so a flaky
+ * network cannot leave the storage browser without a tree for good.
+ */
+const loadThreadStorageFileTree =
+  createRetryingModuleLoader<ThreadStorageFileTreeModule>(
+    () => import("./ThreadStorageFileTree"),
+  );
 
 export type ThreadStoragePathSelectHandler = (path: string) => void;
 
@@ -23,7 +38,8 @@ export interface ThreadStorageBrowserController {
   filteredFiles: readonly WorkspaceFile[];
   isSearchOpen: boolean;
   loadedFiles: readonly WorkspaceFile[];
-  model: UseFileTreeResult["model"];
+  /** `null` until the lazily loaded tree chunk has created the model. */
+  model: ThreadStorageTreeModel | null;
   openSearch: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -48,13 +64,17 @@ function buildDirectoryPaths(paths: readonly string[]): string[] {
 /**
  * Owns the thread storage browser's tree model and related UI state.
  *
- * Pierre tree's `useFileTree` destroys its model on the owning component's
- * unmount (`model.cleanUp()` unsubscribes the selection listener and destroys
- * the controller — see packages/trees/src/react/useFileTree.ts and
- * render/FileTree.ts in pierrecomputer/pierre). The storage tab content
- * unmounts whenever a file tab covers it, so this hook must live in a parent
- * that survives that toggle (e.g., ThreadDetailView), with the model and
- * search state passed down to the presentational browser.
+ * The tree model is destroyed when this hook's owner unmounts
+ * (`model.cleanUp()` unsubscribes the selection listener and destroys the
+ * controller — see render/FileTree.ts in pierrecomputer/pierre). The storage
+ * tab content unmounts whenever a file tab covers it, so this hook must live
+ * in a parent that survives that toggle (e.g., ThreadDetailView), with the
+ * model and search state passed down to the presentational browser.
+ *
+ * The model arrives asynchronously: the tree chunk is imported on demand,
+ * and only once there are files to show (with no files the browser
+ * renders an empty state and never mounts a tree). `model` is `null` until
+ * then and the sync effects below wait for it.
  */
 export function useThreadStorageBrowser({
   files,
@@ -107,13 +127,31 @@ export function useThreadStorageBrowser({
     [],
   );
 
-  const { model } = useFileTree({
-    density: "compact",
-    initialExpansion: "closed",
-    onSelectionChange: handleTreeSelectionChange,
-    paths: [],
-    search: false,
-  });
+  const [model, setModel] = useState<ThreadStorageTreeModel | null>(null);
+  const shouldLoadTree = loadedFiles.length > 0;
+  useEffect(() => {
+    if (!shouldLoadTree) return;
+    let cancelled = false;
+    let createdModel: ThreadStorageTreeModel | null = null;
+    void loadThreadStorageFileTree().then(
+      ({ createThreadStorageTreeModel }) => {
+        if (cancelled) return;
+        createdModel = createThreadStorageTreeModel(handleTreeSelectionChange);
+        setModel(createdModel);
+      },
+      (error: unknown) => {
+        if (cancelled) return;
+        console.warn(
+          `thread storage tree load failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      },
+    );
+    return () => {
+      cancelled = true;
+      createdModel?.cleanUp();
+      setModel(null);
+    };
+  }, [handleTreeSelectionChange, shouldLoadTree]);
 
   const isSearching = searchQuery.trim().length > 0;
   const expandedDirectoryPaths = useMemo(
@@ -121,12 +159,14 @@ export function useThreadStorageBrowser({
     [isSearching, filePaths],
   );
   useEffect(() => {
+    if (model === null) return;
     model.resetPaths(filePaths, {
       initialExpandedPaths: expandedDirectoryPaths,
     });
   }, [expandedDirectoryPaths, filePaths, model]);
 
   useEffect(() => {
+    if (model === null) return;
     const currentSelectedPaths = model.getSelectedPaths();
     const selectedPathIsVisible =
       selectedPath !== null && filePathSet.has(selectedPath);

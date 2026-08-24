@@ -1,0 +1,272 @@
+{
+  "background-agents.ndjson": {
+    "items": {
+      "backgroundTask": 3,
+      "commandExecution": 116,
+      "delegation": 3
+    },
+    "tools": {},
+    "presented": {
+      "backgroundTask": 3,
+      "commandExecution": 116,
+      "delegation": 3
+    },
+    "planSnapshots": 0,
+    "unhandled": 6,
+    "turns": {
+      "completed": 1,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "bb-workflow-run.ndjson": {
+    "items": {
+      "commandExecution": 7,
+      "fileChange": 2,
+      "toolCall": 3
+    },
+    "tools": {
+      "bb:bb_workflow_run": 1,
+      "Skill": 1,
+      "ToolSearch": 1
+    },
+    "presented": {
+      "commandExecution": 7,
+      "fileChange": 2,
+      "toolCall": 3
+    },
+    "planSnapshots": 0,
+    "unhandled": 0,
+    "turns": {
+      "completed": 2,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "compaction-workflow.ndjson": {
+    "items": {
+      "commandExecution": 7,
+      "fileChange": 2,
+      "toolCall": 2
+    },
+    "tools": {
+      "TaskStop": 1,
+      "Workflow": 1
+    },
+    "presented": {
+      "commandExecution": 7,
+      "fileChange": 2,
+      "toolCall": 2
+    },
+    "planSnapshots": 0,
+    "unhandled": 0,
+    "turns": {
+      "completed": 2,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "foreground-agent-api-retry.ndjson": {
+    "items": {
+      "backgroundTask": 1,
+      "commandExecution": 34,
+      "delegation": 1,
+      "fileChange": 6,
+      "fileRead": 7
+    },
+    "tools": {},
+    "presented": {
+      "backgroundTask": 1,
+      "commandExecution": 34,
+      "delegation": 1,
+      "fileChange": 6,
+      "fileRead": 7
+    },
+    "planSnapshots": 0,
+    "unhandled": 1,
+    "turns": {
+      "completed": 1,
+      "failed": 1,
+      "interrupted": 0
+    }
+  },
+  "plan-mode-question.ndjson": {
+    "items": {
+      "commandExecution": 1,
+      "fileChange": 1,
+      "toolCall": 3
+    },
+    "tools": {
+      "AskUserQuestion": 1,
+      "ExitPlanMode": 1,
+      "ToolSearch": 1
+    },
+    "presented": {
+      "commandExecution": 1,
+      "fileChange": 1,
+      "toolCall": 3
+    },
+    "planSnapshots": 0,
+    "unhandled": 0,
+    "turns": {
+      "completed": 2,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "schedule-wakeup-workflow.ndjson": {
+    "items": {
+      "commandExecution": 7,
+      "toolCall": 3
+    },
+    "tools": {
+      "ScheduleWakeup": 2,
+      "Workflow": 1
+    },
+    "presented": {
+      "commandExecution": 7,
+      "toolCall": 3
+    },
+    "planSnapshots": 0,
+    "unhandled": 1,
+    "turns": {
+      "completed": 2,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "send-message-edits.ndjson": {
+    "items": {
+      "commandExecution": 3,
+      "fileChange": 5,
+      "fileRead": 3,
+      "toolCall": 1
+    },
+    "tools": {
+      "SendMessage": 1
+    },
+    "presented": {
+      "commandExecution": 3,
+      "fileChange": 5,
+      "fileRead": 3,
+      "toolCall": 1
+    },
+    "planSnapshots": 0,
+    "unhandled": 0,
+    "turns": {
+      "completed": 1,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "task-output.ndjson": {
+    "items": {
+      "commandExecution": 15,
+      "toolCall": 2
+    },
+    "tools": {
+      "TaskOutput": 2
+    },
+    "presented": {
+      "commandExecution": 15,
+      "toolCall": 2
+    },
+    "planSnapshots": 0,
+    "unhandled": 0,
+    "turns": {
+      "completed": 1,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "task-plan-model-fallback.ndjson": {
+    "items": {
+      "commandExecution": 33,
+      "toolCall": 28
+    },
+    "tools": {
+      "TaskCreate": 13,
+      "TaskUpdate": 14,
+      "ToolSearch": 1
+    },
+    "presented": {
+      "commandExecution": 33,
+      "toolCall": 28
+    },
+    "planSnapshots": 19,
+    "unhandled": 0,
+    "turns": {
+      "completed": 1,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "web-fetch-reads.ndjson": {
+    "items": {
+      "commandExecution": 20,
+      "fileRead": 5,
+      "toolCall": 1,
+      "webFetch": 4
+    },
+    "tools": {
+      "ToolSearch": 1
+    },
+    "presented": {
+      "commandExecution": 20,
+      "fileRead": 5,
+      "toolCall": 1,
+      "webFetch": 4
+    },
+    "planSnapshots": 0,
+    "unhandled": 0,
+    "turns": {
+      "completed": 1,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "web-search.ndjson": {
+    "items": {
+      "toolCall": 1,
+      "webSearch": 3
+    },
+    "tools": {
+      "ToolSearch": 1
+    },
+    "presented": {
+      "toolCall": 1,
+      "webSearch": 3
+    },
+    "planSnapshots": 0,
+    "unhandled": 0,
+    "turns": {
+      "completed": 2,
+      "failed": 0,
+      "interrupted": 0
+    }
+  },
+  "workflow-task-stop.ndjson": {
+    "items": {
+      "commandExecution": 29,
+      "toolCall": 6
+    },
+    "tools": {
+      "AskUserQuestion": 1,
+      "Monitor": 1,
+      "TaskStop": 1,
+      "ToolSearch": 2,
+      "Workflow": 1
+    },
+    "presented": {
+      "commandExecution": 29,
+      "toolCall": 6
+    },
+    "planSnapshots": 0,
+    "unhandled": 15,
+    "turns": {
+      "completed": 16,
+      "failed": 0,
+      "interrupted": 0
+    }
+  }
+}

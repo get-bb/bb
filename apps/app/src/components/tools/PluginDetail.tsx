@@ -22,6 +22,7 @@ import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { Link } from "react-router-dom";
 import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import {
   PluginDetailReleaseControl,
   PluginDetailReleaseStatus,
@@ -33,6 +34,7 @@ import {
   PluginLogo,
 } from "@/components/plugin/management/plugin-ui";
 import { pluginRuntimeStatusPresentation } from "@/components/plugin/management/plugin-status";
+import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import {
   PluginHealthBanner,
   PluginIncludes,
@@ -77,6 +79,18 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin) ? "Remove from bb" : "Uninstall";
 }
 
+/**
+ * What a removal deletes, matching the server's `remove`: settings, secrets,
+ * and schedules go with the registration on every source kind; only managed
+ * git/npm files are deleted from disk. Moving a local plugin is an install of
+ * the new path, which keeps that configuration.
+ */
+export function pluginRemovalDescription(plugin: PluginListItem): string {
+  return pluginIsLocalSource(plugin)
+    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
+    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
+}
+
 function PluginPath({ path }: { path: string }) {
   const { copied, copy } = useClipboardCopy({
     text: path,
@@ -110,6 +124,14 @@ function PluginPath({ path }: { path: string }) {
 }
 
 /**
+ * The repository link's text: the URL without its scheme, so a GitHub entry
+ * reads as `github.com/owner/repo` and a reader knows the destination.
+ */
+function repositoryLinkLabel(url: string): string {
+  return url.replace(/^https?:\/\//u, "").replace(/\/+$/u, "");
+}
+
+/**
  * Read-only detail for an uninstalled catalog entry.
  *
  * The catalog exposes identity, category, description, and compatibility. It
@@ -138,15 +160,26 @@ export function CatalogPluginDetail({
               {entry.author.url === null ? (
                 entry.author.name
               ) : (
-                <a
+                <PluginUrlLink
                   href={entry.author.url}
-                  target="_blank"
-                  rel="noreferrer"
                   className="underline underline-offset-2"
                 >
                   {entry.author.name}
-                </a>
+                </PluginUrlLink>
               )}
+            </span>
+          )}
+          {entry.repositoryUrl === null ? null : (
+            <span>
+              {" · "}
+              <a
+                href={entry.repositoryUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
+                {repositoryLinkLabel(entry.repositoryUrl)}
+              </a>
             </span>
           )}
         </>
@@ -189,39 +222,10 @@ export function CatalogPluginDetailBanner({
   );
 }
 
-/**
- * The installed plugin page's highest-priority runtime condition.
- *
- * These render outside ToolsScrollPage rather than inside the detail column.
- * Only present-tense operational health belongs in this selector; acquisition
- * compatibility uses CatalogPluginDetailBanner, while release opportunities
- * and history stay with the version controls in the detail page.
- */
-export type PluginDetailBannerKind =
-  | "failed"
-  | "degraded"
-  | "incompatible"
-  | "missing"
-  | "needs-configuration";
-
-export function pluginDetailBannerKind(
-  plugin: PluginListItem,
-  hasFrontendFailure: boolean,
-): PluginDetailBannerKind | null {
-  if (!plugin.enabled) return null;
-  if (plugin.status === "error") return "failed";
-  if (plugin.status === "degraded") return "degraded";
-  if (plugin.status === "incompatible") return "incompatible";
-  if (plugin.status === "missing") return "missing";
-  if (plugin.status === "needs-configuration") return "needs-configuration";
-  if (hasFrontendFailure) return "failed";
-  return null;
-}
-
 function pluginHealthBannerState(
   plugin: PluginListItem,
   frontendDiagnostic: PluginFrontendDiagnostic | undefined,
-): { plugin: PluginListItem; reloadable?: boolean } | null {
+): { plugin: PluginListItem } | null {
   if (!plugin.enabled) return null;
   if (pluginRuntimeStatusPresentation(plugin) !== null) return { plugin };
 
@@ -259,7 +263,6 @@ export function PluginDetailBanners({ plugin }: { plugin: PluginListItem }) {
     <PluginHealthBanner
       plugin={banner.plugin}
       runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
-      reloadable={banner.reloadable}
     />
   );
 }
@@ -393,12 +396,10 @@ export function PluginDetail({
         />
       }
       overflowMenu={
-        overflowItems.length > 0 ? (
-          <ResourceOverflowMenu
-            label={`${pluginName} actions`}
-            items={overflowItems}
-          />
-        ) : undefined
+        <ResourceOverflowMenu
+          label={`${pluginName} actions`}
+          items={overflowItems}
+        />
       }
     >
       <ResourceDetailStack>
@@ -436,6 +437,11 @@ export function PluginDetail({
           actions={
             hasReleaseControl ? (
               <PluginDetailReleaseControl plugin={plugin} />
+            ) : hasUpdateManagement ? (
+              <CheckPluginUpdatesButton
+                pluginId={plugin.id}
+                appearance="inline"
+              />
             ) : undefined
           }
         >

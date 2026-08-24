@@ -1,3 +1,9 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  assertAiServiceRegistrable,
+  providerWithoutBridgeMessage,
+  type NormalizedPluginProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import { createHash, randomUUID } from "node:crypto";
 import {
   createReadStream,
@@ -16,6 +22,7 @@ import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import {
   isPluginOwnedIconPath,
+  parseNamespacedGlyph,
   PLUGIN_SDK_MAJOR,
   PLUGIN_SDK_VERSION,
   type Thread,
@@ -25,11 +32,10 @@ import {
   buildPluginHost,
   isIgnoredPluginDevPath,
 } from "@bb/plugin-build";
-import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
-import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
 import {
   getInstalledPlugin,
   listInstalledPlugins,
@@ -50,7 +56,10 @@ import {
 import { parsePluginSource } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { buildPluginProviderRegistration } from "../providers/plugin-provider-registration.js";
-import { reservedProviderIdProblem } from "../providers/provider-registry.js";
+import type { ProviderInstallRank } from "../providers/provider-registry.js";
+import { BUNDLED_PLUGINS } from "./builtin-registry.js";
+import { readPluginSettingsValuesSync } from "./plugin-settings.js";
+import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -198,9 +207,11 @@ const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
  * snapshot — a named host glyph (`"Zap"`) has no file at all — and on any
  * failure for a plugin-owned path (missing file, unsupported extension, path
  * escaping the plugin root): the provider registers without a servable icon
- * rather than failing the plugin load.
+ * rather than failing the plugin load. The bytes are not parsed: an SVG is
+ * served as declared behind the provider logo route's headers, which keep
+ * it inert, and `bb plugin build` cannot reach a path named only in code.
  */
-function readPluginProviderIcon(
+export function readPluginProviderIcon(
   rootDir: string,
   icon: string | undefined,
 ): { bytes: Uint8Array; contentType: string } | null {
@@ -310,12 +321,18 @@ function releaseMutableRoots(rootUrls: Iterable<string>): void {
 }
 
 /** Which build target a dev build problem belongs to. */
-export type PluginDevBuildKind = "frontend" | "host";
+type PluginDevBuildKind = "frontend" | "host";
 
 const DEV_BUILD_PROBLEM_LABELS: Record<PluginDevBuildKind, string> = {
   frontend: "frontend bundle build failed",
   host: "host bundle build failed",
 };
+
+/**
+ * Suffix on a reload problem when the new sources did not load and the
+ * previous instance keeps serving (status stays "running").
+ */
+const PREVIOUS_INSTANCE_KEPT = "the previous instance is still running";
 
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
@@ -324,13 +341,44 @@ const SERVICE_RESTART_MAX_MS = 60_000;
 /** A crash after this much healthy runtime resets the backoff sequence. */
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
 
-export interface PluginRuntimeContext {
+/** One run of a background service, from runService to its settlement. */
+interface ServiceInstance {
+  id: string;
+  service: ServiceRuntime;
+  controller: AbortController;
+  /** Set once an uncaught exception from this run has been claimed. */
+  uncaughtError: { error: unknown } | undefined;
+}
+
+interface PluginRuntimeContext {
   deps: PluginServiceDeps;
   nextCronRunAt: (cron: string, now: number) => number;
   settledWithin: (
     promise: Promise<unknown>,
     timeoutMs: number,
   ) => Promise<boolean>;
+}
+
+/**
+ * Keyed promise-chain mutex: calls for the same key run strictly serialized,
+ * calls for different keys run independently. The chain entry is dropped once
+ * its last task settles.
+ */
+function createKeyedLock() {
+  const chains = new Map<string, Promise<void>>();
+  return <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+    const previous = chains.get(key) ?? Promise.resolve();
+    const result = previous.then(fn);
+    const tail = result.then(
+      () => {},
+      () => {},
+    );
+    chains.set(key, tail);
+    void tail.then(() => {
+      if (chains.get(key) === tail) chains.delete(key);
+    });
+    return result;
+  };
 }
 
 export function createPluginRuntime(context: PluginRuntimeContext) {
@@ -343,6 +391,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     deps.serviceRestartBaseMs ?? DEFAULT_SERVICE_RESTART_BASE_MS;
 
   const loaded = new Map<string, LoadedPlugin>();
+  // A provider's plugin-defined request is accepted only while its plugin
+  // is loaded here.
+  deps.pendingInteractions?.setPluginDirectory({
+    isLoaded: (pluginId) => loaded.has(pluginId),
+  });
   // A provider declaration remains useful when its host artifact fails: the
   // picker can keep a stable tab and explain that the provider is unavailable.
   // These registrations are deliberately separate from `loaded`, so no other
@@ -356,61 +409,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   // stopServices finishes, so without this a concurrent reload/enable/
   // install could enter loadOne mid-dispose (no loaded entry, no hung
   // marker yet) and double-start the plugin's services.
-  const lifecycleChains = new Map<string, Promise<void>>();
-  const artifactChains = new Map<string, Promise<void>>();
-  const pluginOperationChains = new Map<string, Promise<void>>();
+  const withLifecycleLock = createKeyedLock();
+  const withArtifactLock = createKeyedLock();
+  const withPluginOperationLock = createKeyedLock();
   const REGISTRATION_MUTATION_KEY = "plugin-registration-mutations";
   const disposingPluginIds = new Set<string>();
   const builtinSourceWatchers: FSWatcher[] = [];
   /** Mutable roots this runtime registered, released when it stops. */
   const ownedRootUrls = new Set<string>();
 
-  function withLifecycleLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
-    const previous = lifecycleChains.get(id) ?? Promise.resolve();
-    const result = previous.then(fn);
-    const tail = result.then(
-      () => {},
-      () => {},
-    );
-    lifecycleChains.set(id, tail);
-    void tail.then(() => {
-      if (lifecycleChains.get(id) === tail) lifecycleChains.delete(id);
-    });
-    return result;
-  }
-
-  function withArtifactLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const previous = artifactChains.get(key) ?? Promise.resolve();
-    const result = previous.then(fn);
-    const tail = result.then(
-      () => {},
-      () => {},
-    );
-    artifactChains.set(key, tail);
-    void tail.then(() => {
-      if (artifactChains.get(key) === tail) artifactChains.delete(key);
-    });
-    return result;
-  }
-
-  function withPluginOperationLock<T>(
-    id: string,
-    fn: () => Promise<T>,
-  ): Promise<T> {
-    const previous = pluginOperationChains.get(id) ?? Promise.resolve();
-    const result = previous.then(fn);
-    const tail = result.then(
-      () => {},
-      () => {},
-    );
-    pluginOperationChains.set(id, tail);
-    void tail.then(() => {
-      if (pluginOperationChains.get(id) === tail) {
-        pluginOperationChains.delete(id);
-      }
-    });
-    return result;
-  }
   const statuses = new Map<
     string,
     { status: PluginRuntimeStatus; detail: string | null }
@@ -553,22 +560,94 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return undefined;
   }
 
+  /**
+   * The service instance whose async context is executing. Plugins run
+   * in-process, so an error a service raises outside its start() promise
+   * (an unlistened EventEmitter 'error', a throw in a timer callback, a
+   * detached rejection) reaches the process as an uncaught exception, not
+   * the promise chain runService watches. The store follows every timer,
+   * socket callback, and promise the service creates, so
+   * handleUncaughtException can hand the error back to the supervisor.
+   */
+  const serviceContext = new AsyncLocalStorage<ServiceInstance>();
+
   /** Start (or restart) one background service instance. */
   function runService(id: string, service: ServiceRuntime): void {
     const controller = new AbortController();
     service.controller = controller;
     service.state = "running";
     service.startedAt = Date.now();
+    const instance: ServiceInstance = {
+      id,
+      service,
+      controller,
+      uncaughtError: undefined,
+    };
     // The async wrapper normalizes sync throws from start() into rejections.
-    const current = (async () => {
+    const current = serviceContext.run(instance, async () => {
       await service.record.start(controller.signal);
-    })();
+    });
     service.current = current;
     current.then(
-      () => onServiceSettled(id, service, { crashed: false }),
+      () =>
+        instance.uncaughtError === undefined
+          ? onServiceSettled(id, service, { crashed: false })
+          : onServiceSettled(id, service, {
+              crashed: true,
+              error: instance.uncaughtError.error,
+            }),
       (error: unknown) =>
-        onServiceSettled(id, service, { crashed: true, error }),
+        onServiceSettled(id, service, {
+          crashed: true,
+          // The out-of-band error came first; a rejection after the abort
+          // is its consequence.
+          error: instance.uncaughtError?.error ?? error,
+        }),
     );
+  }
+
+  /**
+   * Claims an uncaught exception raised from a service's async context.
+   * Returns false when no service owns it, so the caller keeps Node's
+   * default and exits. A live instance is aborted; its settlement then
+   * takes the crash path (backoff + restart) with this error as the cause.
+   */
+  function handleUncaughtException(error: unknown): boolean {
+    const instance = serviceContext.getStore();
+    if (instance === undefined) return false;
+    const { id, service, controller } = instance;
+    const name = service.record.name;
+    const message = error instanceof Error ? error.message : String(error);
+    if (service.controller !== controller || service.disposed) {
+      // A previous run (restarted or disposed) left a timer or emitter behind.
+      logger.warn(
+        `[plugin:${id}] service ${name} raised an uncaught exception from a stopped run: ${message}`,
+      );
+      return true;
+    }
+    if (instance.uncaughtError !== undefined) return true;
+    instance.uncaughtError = { error };
+    logger.warn(
+      { err: error },
+      `[plugin:${id}] service ${name} raised an uncaught exception outside start(): ${message} — aborting it`,
+    );
+    const current = service.current;
+    controller.abort();
+    if (current === null) return true;
+    void settledWithin(current, serviceStopTimeoutMs).then((settled) => {
+      if (settled || service.controller !== controller || service.disposed) {
+        return;
+      }
+      setStatus(
+        id,
+        "degraded",
+        `service ${name} did not stop after an uncaught exception`,
+      );
+      logger.warn(
+        `[plugin:${id}] service ${name} did not stop within ${serviceStopTimeoutMs}ms of its uncaught exception — plugin degraded until it does`,
+      );
+    });
+    return true;
   }
 
   function onServiceSettled(
@@ -764,15 +843,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (pending.size === 0) pendingInvocations.delete(id);
   }
 
-  async function invokeThreadEventHandler<E extends PluginThreadEventName>(
-    id: string,
-    event: E,
-    handler: (payload: PluginThreadEventPayloads[E]) => void | Promise<void>,
-    payload: PluginThreadEventPayloads[E],
-  ): Promise<void> {
-    await invokeWrapped(id, `${event} handler`, () => handler(payload));
-  }
-
   /**
    * Fire-and-forget dispatch: the lifecycle seam returns immediately; the
    * payload is assembled and handlers run on the next macrotask, after the
@@ -797,7 +867,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       for (const [id, plugin] of loaded) {
         for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
-          void invokeThreadEventHandler(id, event, handler, payload);
+          void invokeWrapped(id, `${event} handler`, () => handler(payload));
         }
       }
     });
@@ -870,40 +940,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
   }
 
-  function builtinName(row: InstalledPluginRow): string | null {
-    return row.sourceKind === "builtin" ? row.sourceBuiltinName : null;
-  }
-
-  function isPackagedBuiltinAppEntry(args: {
+  function isPackagedBuiltinEntry(args: {
     kind: ReturnType<typeof sourceKind>;
     manifest: PluginManifest;
     rootDir: string;
+    artifact: "app" | "server" | "host";
   }): boolean {
+    const entry = {
+      app: args.manifest.appEntry,
+      server: args.manifest.serverEntry,
+      host: args.manifest.hostEntry,
+    }[args.artifact];
     return (
       args.kind === "builtin" &&
-      args.manifest.appEntry === resolve(args.rootDir, "dist", "app.js")
-    );
-  }
-
-  function isPackagedBuiltinServerEntry(args: {
-    kind: ReturnType<typeof sourceKind>;
-    manifest: PluginManifest;
-    rootDir: string;
-  }): boolean {
-    return (
-      args.kind === "builtin" &&
-      args.manifest.serverEntry === resolve(args.rootDir, "dist", "server.js")
-    );
-  }
-
-  function isPackagedBuiltinHostEntry(args: {
-    kind: ReturnType<typeof sourceKind>;
-    manifest: PluginManifest;
-    rootDir: string;
-  }): boolean {
-    return (
-      args.kind === "builtin" &&
-      args.manifest.hostEntry === resolve(args.rootDir, "dist", "host.js")
+      entry === resolve(args.rootDir, "dist", `${args.artifact}.js`)
     );
   }
 
@@ -913,10 +963,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   ): Promise<string | null> {
     const kind = sourceKind(row.source);
     if (
-      !isPackagedBuiltinServerEntry({
+      !isPackagedBuiltinEntry({
         kind,
         manifest,
         rootDir: row.rootDir,
+        artifact: "server",
       })
     ) {
       return null;
@@ -942,11 +993,25 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     const serverProblem = await validate("server");
     if (serverProblem !== null) return serverProblem;
-    if (isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })) {
+    if (
+      isPackagedBuiltinEntry({
+        kind,
+        manifest,
+        rootDir: row.rootDir,
+        artifact: "app",
+      })
+    ) {
       const appProblem = await validate("app");
       if (appProblem !== null) return appProblem;
     }
-    if (isPackagedBuiltinHostEntry({ kind, manifest, rootDir: row.rootDir })) {
+    if (
+      isPackagedBuiltinEntry({
+        kind,
+        manifest,
+        rootDir: row.rootDir,
+        artifact: "host",
+      })
+    ) {
       return validate("host");
     }
     return null;
@@ -1031,10 +1096,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (
       row.sourceKind === "path" ||
       (row.sourceKind === "builtin" &&
-        !isPackagedBuiltinServerEntry({
+        !isPackagedBuiltinEntry({
           kind: row.sourceKind,
           manifest,
           rootDir: row.rootDir,
+          artifact: "server",
         }))
     ) {
       return manifest.serverEntry;
@@ -1086,7 +1152,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const kind = row.sourceKind;
     if (
       (kind === "path" || kind === "builtin") &&
-      !isPackagedBuiltinAppEntry({ kind, manifest, rootDir: row.rootDir })
+      !isPackagedBuiltinEntry({
+        kind,
+        manifest,
+        rootDir: row.rootDir,
+        artifact: "app",
+      })
     ) {
       const meta = await readPluginAppBundleMeta(row.rootDir);
       const sdkChanged = meta?.sdkVersion !== PLUGIN_SDK_VERSION;
@@ -1131,7 +1202,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const kind = row.sourceKind;
     if (
       (kind === "path" || kind === "builtin") &&
-      !isPackagedBuiltinHostEntry({ kind, manifest, rootDir: row.rootDir })
+      !isPackagedBuiltinEntry({
+        kind,
+        manifest,
+        rootDir: row.rootDir,
+        artifact: "host",
+      })
     ) {
       await buildPluginHost(
         row.rootDir,
@@ -1221,32 +1297,80 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     for (const registration of registrations) registration.dispose();
   }
 
+  /**
+   * Where this plugin sits in install order: bundled plugins rank by their
+   * bundled position (they install first, at bootstrap), everything else by
+   * install time. This is the provider picker's order absent a user setting.
+   */
+  function providerInstallRank(row: InstalledPluginRow): ProviderInstallRank {
+    const name = row.sourceKind === "builtin" ? row.sourceBuiltinName : null;
+    const bundledIndex =
+      name === null
+        ? -1
+        : BUNDLED_PLUGINS.findIndex((plugin) => plugin.name === name);
+    return {
+      bundledIndex: bundledIndex === -1 ? null : bundledIndex,
+      installedAt: row.installedAt,
+    };
+  }
+
   function registerPluginProvider(args: {
     available: boolean;
-    declaration: PluginProviderDeclaration;
+    declaration: NormalizedPluginProviderDeclaration;
     row: InstalledPluginRow;
+    settingsDescriptors: PluginSettingDescriptors;
+    /** This load's branding snapshots; the declared icons live here. */
+    brandingAssets: PluginBrandingAssetSet;
   }): { dispose(): void } {
     if (!deps.providerRegistry) {
       throw new Error("the provider registry is unavailable in this host");
     }
-    const icon = readPluginProviderIcon(
-      args.row.rootDir,
-      args.declaration.icon,
-    );
+    const declaredIcon =
+      args.declaration.icon === undefined
+        ? null
+        : parseNamespacedGlyph(args.declaration.icon);
+    let icon: { bytes: Uint8Array; contentType: string } | null;
+    if (declaredIcon !== null) {
+      // "<pluginId>/<name>": the plugin api already refused a foreign plugin
+      // id or an undeclared name at the register call, so a miss here is a
+      // programming error, not a plugin authoring error.
+      const asset =
+        declaredIcon.pluginId === args.row.id
+          ? args.brandingAssets.icons.get(declaredIcon.name)
+          : undefined;
+      if (asset === undefined) {
+        throw new Error(
+          `provider "${args.declaration.id}" icon "${args.declaration.icon}" is not an icon declared by plugin "${args.row.id}"`,
+        );
+      }
+      icon = { bytes: asset.bytes, contentType: asset.contentType };
+    } else {
+      icon = readPluginProviderIcon(args.row.rootDir, args.declaration.icon);
+    }
     return deps.providerRegistry.register({
       ...buildPluginProviderRegistration({
         available: args.available,
         pluginId: args.row.id,
         declaration: args.declaration,
+        readSettings: () =>
+          readPluginSettingsValuesSync({
+            db: deps.db,
+            pluginId: args.row.id,
+            descriptors: args.settingsDescriptors,
+          }),
       }),
       ...(icon === null ? {} : { icon }),
       pluginId: args.row.id,
+      iconNames: new Set(args.brandingAssets.icons.keys()),
+      installRank: providerInstallRank(args.row),
     });
   }
 
   function replaceUnavailableProviderRegistrations(
     row: InstalledPluginRow,
-    declarations: readonly PluginProviderDeclaration[],
+    declarations: readonly NormalizedPluginProviderDeclaration[],
+    settingsDescriptors: PluginSettingDescriptors,
+    brandingAssets: PluginBrandingAssetSet,
   ): void {
     disposeUnavailableProviderRegistrations(row.id);
     const registrations: Array<{ dispose(): void }> = [];
@@ -1257,6 +1381,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             available: false,
             declaration,
             row,
+            settingsDescriptors,
+            brandingAssets,
           }),
         );
       }
@@ -1269,65 +1395,80 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
   }
 
-  async function loadOne(row: InstalledPluginRow): Promise<void> {
+  function hungServicesDetail(hung: ReadonlySet<string>): string {
+    return `service ${[...hung].join(", ")} did not stop`;
+  }
+
+  /**
+   * Load `row`'s current sources. Resolves null when they are now the running
+   * instance (or the plugin stays disabled by the user's switch), else the
+   * reason they are not: a failed first load, a failed reload that kept the
+   * previous instance serving, or a hung service that blocks the load. The
+   * status is recorded either way; the return value lets the caller that
+   * asked for this load (`bb plugin reload`) report the outcome instead of
+   * success (#2029).
+   */
+  async function loadOne(row: InstalledPluginRow): Promise<string | null> {
     // Refresh identity first so even a disabled/incompatible/errored plugin
     // keeps its name, icon, and logo in the list.
     await populateIdentity(row);
     if (!row.enabled) {
       setStatus(row.id, "disabled");
-      return;
+      return null;
     }
     const previous = loaded.get(row.id);
     function failBeforeFactory(
       status: PluginRuntimeStatus,
       detail: string,
-    ): void {
+    ): string {
+      // Every non-running outcome must leave a log line: without one, an
+      // engines mismatch after a host upgrade leaves the plugin gone with
+      // no trace outside the in-memory status (#1915).
       if (previous !== undefined) {
         setStatus(row.id, "running", `reload failed: ${detail}`);
-      } else {
-        setStatus(row.id, status, detail);
+        logger.warn(
+          `plugin ${row.id} reload failed (kept previous instance): ${detail}`,
+        );
+        return `${detail} (${PREVIOUS_INSTANCE_KEPT})`;
       }
+      setStatus(row.id, status, detail);
+      logger.warn(`plugin ${row.id} not loaded (${status}): ${detail}`);
+      return detail;
     }
     const hung = hungServices.get(row.id);
     if (hung !== undefined && hung.size > 0) {
       // A previous instance's service never stopped; loading now would
       // double-start it (design §3: degraded rather than double-starting).
-      setStatus(
-        row.id,
-        "degraded",
-        `service ${[...hung].join(", ")} did not stop`,
-      );
-      return;
+      const detail = hungServicesDetail(hung);
+      setStatus(row.id, "degraded", detail);
+      logger.warn(`plugin ${row.id} not loaded (degraded): ${detail}`);
+      return detail;
     }
     try {
       await stat(row.rootDir);
     } catch {
-      failBeforeFactory(
+      return failBeforeFactory(
         "missing",
         `plugin directory not found: ${row.rootDir} (reinstall)`,
       );
-      return;
     }
     let manifest: PluginManifest;
     try {
       manifest = await readPluginManifest(row.rootDir);
     } catch (error) {
-      failBeforeFactory(
+      return failBeforeFactory(
         "error",
         error instanceof Error ? error.message : String(error),
       );
-      return;
     }
     const engineProblem =
       checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
     if (engineProblem) {
-      failBeforeFactory("incompatible", engineProblem);
-      return;
+      return failBeforeFactory("incompatible", engineProblem);
     }
     const artifactProblem = await packagedBuiltinArtifactProblem(row, manifest);
     if (artifactProblem !== null) {
-      failBeforeFactory("incompatible", artifactProblem);
-      return;
+      return failBeforeFactory("incompatible", artifactProblem);
     }
     // Build candidate assets without publishing them; a failed reload keeps
     // the previous backend and frontend registration sets together.
@@ -1340,8 +1481,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       hostArtifactProblem =
         error instanceof Error ? error.message : String(error);
       if (previous !== undefined) {
-        failBeforeFactory("error", hostArtifactProblem);
-        return;
+        return failBeforeFactory("error", hostArtifactProblem);
       }
     }
     // Branding refresh rides every load too, so `bb plugin reload` picks up a
@@ -1350,6 +1490,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       row.id,
       manifest,
     );
+    const settingsDescriptorsRef: { current: PluginSettingDescriptors } = {
+      current: {},
+    };
     const handle = createPluginApi({
       pluginId: row.id,
       logger: deps.logger,
@@ -1422,39 +1565,94 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           artifact: hostArtifactCandidate,
         });
       },
+      registerAiService: (declaration, binding) => {
+        if (binding.artifact === null) {
+          // A load whose host artifact failed to build fails below, before
+          // activate() flushes its staged registrations, so this is
+          // unreachable by construction. It is also the invariant that keeps
+          // an unbound service uncallable: it never reaches the registry
+          // core routes `BB_INFERENCE` / `BB_TRANSCRIPTION` through.
+          throw new Error(
+            `AI service "${declaration.id}" cannot go live: its host artifact failed to build: ${binding.problem}`,
+          );
+        }
+        const artifact = binding.artifact;
+        if (!deps.callPluginHost) {
+          throw new Error("host plugin transport is unavailable");
+        }
+        const callPluginHost = deps.callPluginHost;
+        const call = (
+          method: keyof typeof experimental_aiServicesHostContract,
+          input: unknown,
+          options: { hostId: string; timeoutMs: number; signal?: AbortSignal },
+        ): Promise<unknown> =>
+          callPluginHost({
+            pluginId: row.id,
+            contract: experimental_aiServicesHostContract,
+            method,
+            input,
+            hostId: options.hostId,
+            timeoutMs: options.timeoutMs,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+            artifact,
+          });
+        // Parse the host's answer with the contract's own output schema:
+        // the transport validates it, but the binding is where the type is
+        // claimed.
+        return deps.aiServices.register({
+          ...declaration,
+          pluginId: row.id,
+          completeInference: async (input, options) =>
+            experimental_aiServicesHostContract["ai.inference.complete"].output.parse(
+              await call("ai.inference.complete", input, options),
+            ),
+          transcribeVoice: async (input, options) =>
+            experimental_aiServicesHostContract["ai.voice.transcribe"].output.parse(
+              await call("ai.voice.transcribe", input, options),
+            ),
+        });
+      },
       registerProvider: (declaration) => {
         return registerPluginProvider({
           available: true,
           declaration,
           row,
+          // Bound once the handle exists (below); registrations only flush
+          // at activate(), after the factory — and therefore after
+          // `bb.settings.define` — has run.
+          settingsDescriptors: settingsDescriptorsRef.current,
+          brandingAssets: brandingAssetCandidate,
         });
       },
+      declaredIconNames: new Set(manifest.branding.icons.keys()),
       assertProviderRegistrable: (providerId) => {
-        // Reserved first-party ids, checked at call time so a staged
-        // registration fails the factory (the registry enforces the same rule
-        // for live registrations).
-        const reserved = reservedProviderIdProblem({
-          pluginId: row.id,
-          providerId,
-        });
-        if (reserved !== null) {
-          throw new Error(reserved);
-        }
         // A declaration is metadata; the implementation is the bridge this
-        // plugin declares in its manifest (or, for pi, the bridge the daemon
-        // bundles). A failed artifact build still stages the declaration so
-        // the provider can be listed as unavailable; no declared bridge at all
-        // remains a plugin authoring error.
-        if (
-          manifest.hostEntry !== undefined ||
-          DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS.includes(providerId)
-        ) {
+        // plugin declares in its manifest. A failed artifact build still
+        // stages the declaration so the provider can be listed as
+        // unavailable; no declared bridge at all remains a plugin authoring
+        // error.
+        if (manifest.hostEntry !== undefined) {
           return;
         }
-        throw new Error(
-          `provider "${providerId}" has no bridge to run on: this plugin declares no "bb.host" entry in its manifest`,
-        );
+        throw new Error(providerWithoutBridgeMessage(providerId));
       },
+      isAiServiceIdTaken: (serviceId) => {
+        const existing = deps.aiServices.get(serviceId);
+        return existing !== null && existing.pluginId !== row.id;
+      },
+      // Checked at the register call: a reserved id, or a plugin with no
+      // bb.host entry, fails the factory — and the load — like a bridgeless
+      // provider declaration. A declared entry that failed to build stages
+      // the service unbound instead, so the factory completes and the
+      // host-artifact failure below can retain this plugin's provider
+      // declarations as unavailable; that load fails before activate() would
+      // flush the staged service, so it never goes live.
+      assertAiServiceRegistrable: (serviceId) =>
+        assertAiServiceRegistrable({
+          id: serviceId,
+          hostArtifact: hostArtifactCandidate,
+          hostArtifactProblem,
+        }),
       isProviderIdTaken: (providerId) => {
         if (!deps.providerRegistry) {
           throw new Error("the provider registry is unavailable in this host");
@@ -1463,9 +1661,12 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         // reload they are disposed before the staged replacements flush, so
         // re-declaring the same id is not a collision.
         const existing = deps.providerRegistry.get(providerId);
-        return existing !== null && existing.source.pluginId !== row.id;
+        return existing !== null && existing.pluginId !== row.id;
       },
     });
+    // `settings.define` mutates this record in place, so binding the
+    // reference once is enough for later per-command reads.
+    settingsDescriptorsRef.current = handle.settings.descriptors;
     // Mutable trees are edited between loads, so invalidate the previous
     // generation's URLs before importing (managed git:/npm: artifacts are
     // immutable after promotion and keep their cached modules).
@@ -1525,14 +1726,22 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       logger.warn(
         `plugin ${row.id} failed to load: ${statuses.get(row.id)?.detail}`,
       );
-      return;
+      return previous !== undefined
+        ? `${message} (${PREVIOUS_INSTANCE_KEPT})`
+        : message;
     }
     if (hostArtifactProblem !== null) {
+      // The factory ran against a missing artifact (a first install whose
+      // bb.host entry failed to build): keep its provider declarations
+      // listed as unavailable, and publish nothing else it staged — the AI
+      // services it registered stay unbound and never flush.
       rollbackGeneration?.();
       try {
         replaceUnavailableProviderRegistrations(
           row,
           handle.listProviderDeclarations(),
+          handle.settings.descriptors,
+          brandingAssetCandidate,
         );
       } catch (error) {
         hostArtifactProblem += `; failed to retain provider declaration: ${
@@ -1549,9 +1758,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       handle.invalidate();
       setStatus(row.id, "error", hostArtifactProblem);
       logger.warn(`plugin ${row.id} failed to load: ${hostArtifactProblem}`);
-      return;
+      return hostArtifactProblem;
     }
-    const loadedBuiltinName = builtinName(row);
     const plugin: LoadedPlugin = {
       manifest,
       handle,
@@ -1565,12 +1773,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         startedAt: 0,
         disposed: false,
       })),
-      isBuiltin: loadedBuiltinName !== null,
-      builtinName: loadedBuiltinName,
     };
     if (previous !== undefined) {
       await disposePluginInstance(row.id, previous);
-      if ((hungServices.get(row.id)?.size ?? 0) > 0) {
+      const hungAfterDispose = hungServices.get(row.id);
+      if (hungAfterDispose !== undefined && hungAfterDispose.size > 0) {
         loaded.delete(row.id);
         deps.sharedPorts?.clearDeclarationsForOwner(row.id);
         for (const database of handle.databaseHandles.splice(0)) {
@@ -1581,7 +1788,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           }
         }
         handle.invalidate();
-        return;
+        return hungServicesDetail(hungAfterDispose);
       }
     }
     // One map replacement is the registration commit point. Until this line,
@@ -1632,6 +1839,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
     }
     logger.info(`plugin ${row.id}@${manifest.version} loaded`);
+    return null;
   }
 
   async function disposePluginInstance(
@@ -1717,18 +1925,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     ownedRootUrls.clear();
   }
 
-  function clearRuntimeState(id: string): void {
-    disposeUnavailableProviderRegistrations(id);
-    statuses.delete(id);
-    baseStatuses.delete(id);
-    devBuildProblems.delete(id);
-    appBundles.delete(id);
-    hostArtifacts.delete(id);
-    brandingAssets.delete(id);
-    needsConfiguration.delete(id);
-    agentToolProblems.delete(id);
-  }
-
   async function loadAll(): Promise<void> {
     const rows = listInstalledPlugins(deps.db).sort((a, b) =>
       a.id.localeCompare(b.id),
@@ -1779,21 +1975,20 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     builtinSourceWatchers,
     checkEngineRange,
     checkPluginSdkRange,
-    clearRuntimeState,
     disposeAll,
     disposeOne,
     emitThreadEvent,
     handlerStats,
+    handleUncaughtException,
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,
     identities,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     loadAll,
     loaded,
     loadOne,
     brandingAssets,
-    needsConfiguration,
     setDevBuildProblem,
     setStatus,
     sourceKind,

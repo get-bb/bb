@@ -96,7 +96,6 @@ export const parentThreadInvalidReasonSchema = z.enum([
   "not_found",
   "archived",
   "deleted",
-  "wrong_project",
   "self",
   "cycle",
   "too_deep",

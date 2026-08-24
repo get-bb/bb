@@ -1,50 +1,15 @@
 import { useAtom } from "jotai";
+import {
+  REWRITE_LOCALHOST_LINKS_DEFAULT,
+  REWRITE_LOCALHOST_LINKS_STORAGE_KEY,
+} from "@bb/client-core";
 import { createBooleanPreferenceAtom } from "./browser-storage";
 
-export const REWRITE_LOCALHOST_LINKS_STORAGE_KEY = "bb.rewriteLocalhostLinks";
+// The pure rewrite rule and preference constants live in @bb/client-core so the
+// native markdown renderer applies the same rewrite; the jotai atom stays here.
+export { rewriteLocalhostLinkHref } from "@bb/client-core";
 
-export const REWRITE_LOCALHOST_LINKS_DEFAULT = true;
-
-interface RewriteLocalhostLinkHrefArgs {
-  currentHostname: string | undefined;
-  enabled: boolean;
-  href: string | undefined;
-}
-
-const LOOPBACK_LINK_HOSTNAMES = new Set(["127.0.0.1", "localhost"]);
-
-function isRewriteableLoopbackLink(url: URL): boolean {
-  return (
-    (url.protocol === "http:" || url.protocol === "https:") &&
-    LOOPBACK_LINK_HOSTNAMES.has(url.hostname.toLowerCase())
-  );
-}
-
-export function rewriteLocalhostLinkHref({
-  currentHostname,
-  enabled,
-  href,
-}: RewriteLocalhostLinkHrefArgs): string | undefined {
-  if (!enabled || href === undefined || currentHostname === undefined) {
-    return href;
-  }
-
-  let url: URL;
-  try {
-    url = new URL(href);
-  } catch {
-    return href;
-  }
-
-  if (!isRewriteableLoopbackLink(url)) {
-    return href;
-  }
-
-  url.hostname = currentHostname;
-  return url.toString();
-}
-
-export const rewriteLocalhostLinksPreferenceAtom = createBooleanPreferenceAtom(
+const rewriteLocalhostLinksPreferenceAtom = createBooleanPreferenceAtom(
   REWRITE_LOCALHOST_LINKS_STORAGE_KEY,
   REWRITE_LOCALHOST_LINKS_DEFAULT,
 );

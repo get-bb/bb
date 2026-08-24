@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
@@ -101,6 +101,7 @@ describe("task detail pull request pills", () => {
       app.navPanels[0]!,
       { subPath: "task/TSK-5" },
       {
+        openUrl: () => true,
         rpc: detailRpc({
           listTaskPullRequests: () => ({
             pullRequests: [
@@ -127,6 +128,8 @@ describe("task detail pull request pills", () => {
     expect(link.target).toBe("_blank");
     expect(link.rel).toContain("noopener");
     expect(link.textContent).toContain("#12");
+    fireEvent.click(link);
+    expect(slot.navigateCalls).toEqual([]);
   });
 
   it("marks threads whose PR lookup failed and stays quiet otherwise", async () => {
@@ -153,6 +156,39 @@ describe("task detail pull request pills", () => {
     expect(slot.getAllByText("PR unavailable")).toHaveLength(1);
     // The healthy thread with no PR renders no pill and no link.
     expect(slot.queryByRole("link")).toBeNull();
+  });
+
+  it("detaches a thread from its card after confirmation and refetches the list", async () => {
+    let detached = false;
+    const slot = renderSlot(
+      app.navPanels[0]!,
+      { subPath: "task/TSK-5" },
+      {
+        rpc: detailRpc({
+          listTaskThreads: () => ({
+            taskThreads: detached
+              ? []
+              : [taskThreadRow(THREAD_ROW_ID, "thr_worker000", "Worker")],
+          }),
+          taskThreadsDetach: (input: { threadId: string }) => {
+            detached = true;
+            return { threadId: input.threadId };
+          },
+        }),
+      },
+    );
+
+    fireEvent.click(await slot.findByRole("button", { name: "Detach Worker" }));
+    fireEvent.click(await slot.findByRole("button", { name: "Detach" }));
+
+    await waitFor(() => {
+      expect(slot.rpcCalls).toContainEqual({
+        method: "taskThreadsDetach",
+        input: { taskId: TASK_ID, threadId: "thr_worker000" },
+      });
+    });
+    // The section disappears with its last thread.
+    await waitFor(() => expect(slot.queryByText("Worker")).toBeNull());
   });
 
   it("revalidates PR state on window focus without a task-thread mutation", async () => {

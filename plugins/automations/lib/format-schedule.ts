@@ -11,7 +11,7 @@ const SCHEDULE_RUN_FORMATTER = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-export interface FormatScheduleStatusLabelArgs {
+interface FormatScheduleStatusLabelArgs {
   enabled: boolean;
   nextRunAt: number | null;
   trigger?: AutomationTrigger;
@@ -20,14 +20,14 @@ export interface FormatScheduleStatusLabelArgs {
   now?: number;
 }
 
-export interface OverviewScheduleMetadata {
+interface OverviewScheduleMetadata {
   isNextRun: boolean;
   text: string;
 }
 
 export type AutomationStatusFilter = "active" | "paused";
 
-export interface OneShotLifecycleArgs {
+interface OneShotLifecycleArgs {
   enabled: boolean;
   trigger: AutomationTrigger;
   runCount: number;
@@ -35,7 +35,7 @@ export interface OneShotLifecycleArgs {
   now?: number;
 }
 
-export type OneShotLifecycle =
+type OneShotLifecycle =
   | "scheduled"
   | "paused"
   | "expired"
@@ -60,7 +60,7 @@ const DAY_ABBREVIATION: Record<string, string> = {
  * verbose phrasing. Falls back to a neutral label when the expression can't be
  * parsed.
  */
-export function formatCronCadence(cron: string): string {
+function formatCronCadence(cron: string): string {
   let text: string;
   try {
     text = cronstrueToString(cron, { verbose: false });

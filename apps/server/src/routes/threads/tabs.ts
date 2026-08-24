@@ -4,12 +4,48 @@ import {
   threadTabsSchema,
   typedRoutes,
   type PublicApiSchema,
+  type ThreadTab,
   type ThreadTabsResponse,
+  type ThreadTabsWireResponse,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
 import { ApiError } from "../../errors.js";
 import { requirePublicThread } from "../../services/lib/entity-lookup.js";
 import type { AppDeps } from "../../types.js";
+
+type WireThreadTab = ThreadTabsWireResponse["tabs"][number];
+
+/**
+ * Omit `hostId` from the wire when it is `null`. The field arrived with a
+ * `.default(null)` after mobile builds had already shipped a `.strict()` copy
+ * of this schema, and installed apps cannot update with the server: an
+ * unknown key makes their SDK reject every tabs response, and the panel
+ * stops syncing ("Couldn't sync tabs"). Current clients parse the omission
+ * back to `null` through the default, so nothing is lost on the wire.
+ */
+function toWireThreadTab(tab: ThreadTab): WireThreadTab {
+  if (tab.kind === "host-file-preview") {
+    const { hostId, ...rest } = tab;
+    return hostId === null ? rest : tab;
+  }
+  if (
+    tab.kind === "plugin-panel" &&
+    tab.fileOpenerOwner?.kind === "host-file-preview"
+  ) {
+    const { hostId, ...owner } = tab.fileOpenerOwner;
+    return hostId === null ? { ...tab, fileOpenerOwner: owner } : tab;
+  }
+  return tab;
+}
+
+function toWireThreadTabsResponse(
+  response: ThreadTabsResponse,
+): ThreadTabsWireResponse {
+  return {
+    revision: response.revision,
+    tabs: response.tabs.map(toWireThreadTab),
+  };
+}
 
 function readThreadTabs(deps: AppDeps, threadId: string): ThreadTabsResponse {
   const stored = getStoredThreadTabs(deps.db, threadId);
@@ -33,7 +69,9 @@ export function registerThreadTabRoutes(app: Hono, deps: AppDeps): void {
 
   get(routes.tabs, (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    return context.json(readThreadTabs(deps, thread.id));
+    return context.json(
+      toWireThreadTabsResponse(readThreadTabs(deps, thread.id)),
+    );
   });
 
   put(routes.updateTabs, (context, payload) => {
@@ -52,6 +90,11 @@ export function registerThreadTabRoutes(app: Hono, deps: AppDeps): void {
       );
     }
     deps.hub.notifyThread(thread.id, ["tabs-changed"]);
-    return context.json({ revision: result.revision, tabs: payload.tabs });
+    return context.json(
+      toWireThreadTabsResponse({
+        revision: result.revision,
+        tabs: payload.tabs,
+      }),
+    );
   });
 }

@@ -433,84 +433,6 @@ describe("Tasks RPC domain API", () => {
     await harness.dispose();
   });
 
-  it("lists providers and provider models from the BB SDK", async () => {
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: {
-        providers: {
-          list: async () => [
-            {
-              id: "codex",
-              displayName: "Codex",
-              capabilities: {
-                permissionModes: ["accept-edits", "auto", "full"],
-              },
-            },
-            {
-              id: "claude-code",
-              displayName: "Claude Code",
-              capabilities: {
-                permissionModes: ["accept-edits", "auto", "full"],
-              },
-            },
-          ],
-          models: async () => ({
-            models: [
-              {
-                model: "gpt-5.6-sol",
-                displayName: "GPT-5.6",
-                isDefault: true,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "medium" },
-                  { reasoningEffort: "high" },
-                ],
-              },
-              {
-                model: "gpt-5.5",
-                displayName: "GPT-5.5",
-                isDefault: false,
-                supportedReasoningEfforts: [
-                  { reasoningEffort: "low" },
-                  { reasoningEffort: "high" },
-                ],
-              },
-            ],
-          }),
-        },
-      },
-    });
-    registerTasksApi(bb, createStore(bb));
-
-    await expect(harness.callRpc("listProviders", {})).resolves.toEqual({
-      providers: [
-        {
-          id: "codex",
-          name: "Codex",
-          permissionModes: ["accept-edits", "auto", "full"],
-        },
-        {
-          id: "claude-code",
-          name: "Claude Code",
-          permissionModes: ["accept-edits", "auto", "full"],
-        },
-      ],
-    });
-    await expect(
-      harness.callRpc("listProviderModels", { providerId: "codex" }),
-    ).resolves.toEqual({
-      models: [
-        { id: "gpt-5.6-sol", name: "GPT-5.6", isDefault: true },
-        { id: "gpt-5.5", name: "GPT-5.5", isDefault: false },
-      ],
-      reasoningLevels: ["low", "medium", "high"],
-    });
-    expect(harness.sdk.callsTo("providers.list")).toEqual([[]]);
-    expect(harness.sdk.callsTo("providers.models")).toEqual([
-      [{ providerId: "codex" }],
-    ]);
-    await harness.dispose();
-  });
-
   it("lists machines as id/name options from the BB SDK", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
@@ -541,34 +463,6 @@ describe("Tasks RPC domain API", () => {
     });
     expect(harness.sdk.callsTo("hosts.list")).toEqual([[]]);
 
-    await harness.dispose();
-  });
-
-  it("falls back to the standard reasoning levels when models omit metadata", async () => {
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "tasks",
-      sdk: {
-        providers: {
-          models: async () => ({
-            models: [
-              {
-                model: "model-without-efforts",
-                displayName: "Model without efforts",
-                isDefault: true,
-                supportedReasoningEfforts: [],
-              },
-            ],
-          }),
-        },
-      },
-    });
-    registerTasksApi(bb, createStore(bb));
-
-    await expect(
-      harness.callRpc("listProviderModels", { providerId: "test" }),
-    ).resolves.toMatchObject({
-      reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
-    });
     await harness.dispose();
   });
 
@@ -1204,6 +1098,7 @@ describe("Tasks RPC domain API", () => {
       providerId: "claude-code",
       modelId: "claude-sonnet-5",
       reasoningLevel: "high",
+      serviceTier: null,
       permissionMode: "full",
       environmentKind: "project-default",
       baseBranch: null,

@@ -58,7 +58,7 @@ export async function readBoundedMarketplaceIconFile(
  * Every icon of one marketplace together. The per-icon cap alone still lets a
  * large catalog store tens of megabytes of BLOB data in one refresh.
  */
-export const MARKETPLACE_ICON_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
+const MARKETPLACE_ICON_TOTAL_MAX_BYTES = 8 * 1024 * 1024;
 
 /**
  * Icon requests that run at the same time. Serial fetches multiply the
@@ -99,7 +99,7 @@ export function marketplaceIconContentType(
 }
 
 /** The same validation for an icon read from disk, keyed on its file name. */
-export function marketplaceIconContentTypeForPath(
+function marketplaceIconContentTypeForPath(
   filePath: string,
   bytes: Uint8Array,
 ): string {

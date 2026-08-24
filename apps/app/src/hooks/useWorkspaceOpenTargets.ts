@@ -13,44 +13,53 @@ import {
   fetchWorkspaceOpenTargets,
   openInTarget as daemonOpenInTarget,
 } from "@/lib/api-host-daemon";
-import { useAsyncAtomValue } from "@/lib/use-async-atom-value";
+import { useAsyncAtomState } from "@/lib/use-async-atom-value";
 
 const disabledLocalHostDaemonReachableAtom = atom(false);
 const disabledHostDaemonPortAtom = atom<number | null>(null);
 const disabledWorkspaceOpenTargetsAtom = atom<WorkspaceOpenTarget[]>([]);
 const NO_WORKSPACE_OPEN_TARGETS: WorkspaceOpenTarget[] = [];
 
-export interface UseWorkspaceOpenTargetsArgs {
+interface UseWorkspaceOpenTargetsArgs {
   enabled: boolean;
 }
 
-export interface UseWorkspaceOpenTargetsResult {
+interface UseWorkspaceOpenTargetsResult {
   fetchWorkspaceOpenTargetsForPath:
     | ((path: string) => Promise<WorkspaceOpenTarget[]>)
     | null;
   openWorkspace: ((request: OpenInTargetRequest) => Promise<void>) | null;
+  isLoading: boolean;
   workspaceOpenTargets: WorkspaceOpenTarget[];
 }
 
 export function useWorkspaceOpenTargets(
   args: UseWorkspaceOpenTargetsArgs,
 ): UseWorkspaceOpenTargetsResult {
-  const localHostDaemonReachable = useAsyncAtomValue(
+  const localHostDaemonReachableState = useAsyncAtomState(
     args.enabled
       ? localHostDaemonReachableAtom
       : disabledLocalHostDaemonReachableAtom,
     false,
   );
-  const daemonPort = useAsyncAtomValue(
+  const daemonPortState = useAsyncAtomState(
     args.enabled ? hostDaemonPortAtom : disabledHostDaemonPortAtom,
     null,
   );
-  const workspaceOpenTargets = useAsyncAtomValue(
+  const workspaceOpenTargetsState = useAsyncAtomState(
     args.enabled
       ? localWorkspaceOpenTargetsAtom
       : disabledWorkspaceOpenTargetsAtom,
     NO_WORKSPACE_OPEN_TARGETS,
   );
+  const localHostDaemonReachable = localHostDaemonReachableState.data;
+  const daemonPort = daemonPortState.data;
+  const workspaceOpenTargets = workspaceOpenTargetsState.data;
+  const isLoading =
+    args.enabled &&
+    (localHostDaemonReachableState.isLoading ||
+      daemonPortState.isLoading ||
+      workspaceOpenTargetsState.isLoading);
 
   const openWorkspace = useMemo(() => {
     if (
@@ -80,6 +89,7 @@ export function useWorkspaceOpenTargets(
 
   return {
     fetchWorkspaceOpenTargetsForPath,
+    isLoading,
     openWorkspace,
     workspaceOpenTargets,
   };

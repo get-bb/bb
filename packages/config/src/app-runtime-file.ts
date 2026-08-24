@@ -12,9 +12,9 @@ import { z } from "zod";
  * simply writes nothing; readers must treat a missing file as "unknown", not as
  * "not running".
  */
-export const BB_APP_RUNTIME_FILE_NAME = "bb-app-runtime.json";
+const BB_APP_RUNTIME_FILE_NAME = "bb-app-runtime.json";
 
-export const bbAppRuntimeFileSchema = z.object({
+const bbAppRuntimeFileSchema = z.object({
   /** Absolute path of the entry module. Readers verify it against `ps`. */
   entryPath: z.string().min(1),
   /** PID of the launcher process that supervises the server and daemon. */
@@ -28,7 +28,7 @@ export const bbAppRuntimeFileSchema = z.object({
 
 export type BbAppRuntimeFile = z.infer<typeof bbAppRuntimeFileSchema>;
 
-export interface WriteBbAppRuntimeFileArgs {
+interface WriteBbAppRuntimeFileArgs {
   dataDir: string;
   entryPath: string;
   pid: number;
@@ -97,7 +97,7 @@ export async function claimBbAppRuntimeFile(
   return true;
 }
 
-export async function clearBbAppRuntimeFile(dataDir: string): Promise<void> {
+async function clearBbAppRuntimeFile(dataDir: string): Promise<void> {
   await rm(formatBbAppRuntimeFilePath(dataDir), { force: true });
 }
 

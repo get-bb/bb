@@ -3,7 +3,7 @@ import { z } from "zod";
 /**
  * How completely a provider can clone one of its sessions — the single
  * vocabulary shared by the provider declaration
- * (`bb.agents.experimental_registerProvider`), the server→daemon
+ * (`bb.providers.register`), the server→daemon
  * `bridgeLaunch`, and the bridge's `initialize` handshake.
  *
  * - `"none"`: sessions cannot be cloned at all.

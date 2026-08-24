@@ -1,28 +1,26 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  PendingInteractionCreate,
   PendingInteractionResolution,
   ThreadEvent,
-  ToolCallResponse,
 } from "@bb/domain";
 import { promptTextInput } from "./test/prompt-input.js";
 import { parseJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
-import type {
-  DecodedInteractiveRequest,
-  JsonRpcMessage,
-  ProviderInboundRequest,
-} from "@bb/provider-bridge-protocol/bridge-kit";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
+import type { JsonRpcMessage } from "@bb/provider-bridge-protocol/bridge-kit";
+import { createProviderForId } from "./provider-registry.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
 import {
-  createInteractiveRequestAdapter,
-  createInvalidInteractiveRequestAdapter,
+  createScriptedEchoLaunch,
+  createScriptedEchoRuntime,
   fullRuntimeOptions,
-  waitForRuntimeState,
+  scriptedEchoProcessEnv,
   waitForThreadAgentMessageText,
+  waitForThreadTurnCompleted,
+  waitForThreadTurnStarted,
 } from "./test/runtime-test-harness.js";
 
 type ChildStdoutChunk = Buffer | string;
@@ -39,6 +37,104 @@ function readChildStdoutLine(child: ChildProcess): Promise<string> {
   });
 }
 
+/** A canonical command-approval `interaction/request`, as a bridge sends it. */
+function commandApprovalRequest(
+  id: number,
+  overrides: { turnId?: string | null } = {},
+): JsonRpcMessage {
+  return {
+    jsonrpc: "2.0",
+    id,
+    method: "interaction/request",
+    params: {
+      providerThreadId: "prov-1",
+      threadId: "t1",
+      turnId: overrides.turnId === undefined ? "turn-1" : overrides.turnId,
+      payload: {
+        kind: "approval",
+        subject: {
+          kind: "command",
+          itemId: "item-1",
+          command: "git push",
+          cwd: "/tmp/project",
+          actions: [],
+          sessionGrant: null,
+        },
+        reason: "Needs approval",
+        availableDecisions: ["allow_once", "allow_for_session", "deny"],
+      },
+    },
+  };
+}
+
+const deniedEscalationOptions = {
+  ...fullRuntimeOptions,
+  permissionMode: "auto",
+  permissionScope: "workspace",
+  approvalReviewer: "automatic",
+  permissionEscalation: "deny",
+} as const;
+
+/**
+ * Drive `handleRuntimeProviderRequest` directly: the real bridge-protocol
+ * adapter decodes the request and a pipe child echoes the runtime's answer
+ * back so the test can read exactly what the bridge would receive.
+ */
+async function answerDirectRequest(args: {
+  rawRequest: JsonRpcMessage;
+  handshake?: Record<string, unknown>;
+  getActiveTurnId?: (threadId: string) => string | null;
+  getThreadExecutionOptions?: () => typeof deniedEscalationOptions | undefined;
+  onInteractiveRequest?:
+    | ((
+        request: PendingInteractionCreate,
+      ) => Promise<PendingInteractionResolution>)
+    | undefined;
+}): Promise<unknown> {
+  const child = spawn(process.execPath, [
+    "-e",
+    "process.stdin.pipe(process.stdout)",
+  ]);
+  const adapter = createProviderForId("fake", {
+    additionalWorkspaceWriteRoots: [],
+    bridgeLaunch: createScriptedEchoLaunch(),
+  });
+  // The handshake decides where approval policy is enforced.
+  const [initialize] = adapter.buildPostInitializeRequests();
+  initialize?.onResult({
+    protocolVersion: 2,
+    capabilities: { grammarVersions: [3, 3], ...args.handshake },
+  });
+  const id = args.rawRequest.id;
+  if (typeof id !== "string" && typeof id !== "number") {
+    throw new Error("request needs an id");
+  }
+  try {
+    handleRuntimeProviderRequest({
+      getActiveTurnId: args.getActiveTurnId ?? (() => "bb-turn-1"),
+      getThreadExecutionOptions:
+        args.getThreadExecutionOptions ?? (() => undefined),
+      onInteractiveRequest: args.onInteractiveRequest,
+      onToolCall: async () => ({
+        contentItems: [{ type: "inputText", text: "tool result" }],
+        success: true,
+      }),
+      parsedId: id,
+      parsedMethod: String(args.rawRequest.method),
+      providerProcess: { adapter, child, interactiveRequestScope: "scope-1" },
+      rawRequest: args.rawRequest,
+      resolveThreadId: () => "t1",
+    });
+    const parsed = parseJsonRpcLine((await readChildStdoutLine(child)).trim());
+    if (parsed.kind !== "response") {
+      throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
+    }
+    return parsed.parsed;
+  } finally {
+    child.kill();
+  }
+}
+
 describe("createAgentRuntime interactive requests", () => {
   let tmpDir: string;
 
@@ -51,149 +147,20 @@ describe("createAgentRuntime interactive requests", () => {
   });
 
   it("routes interactive requests through onInteractiveRequest and sends the encoded response back", async () => {
-    const interactiveScriptPath = join(tmpDir, "interactive-provider.cjs");
-    writeFileSync(
-      interactiveScriptPath,
-      `
-const readline = require("node:readline");
-const threads = new Map();
-const pendingInteractive = new Map();
-let nextThreadId = 1;
-let nextRequestId = 1;
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-function completeTurn(providerThreadId, turnId, text) {
-  send({
-    jsonrpc: "2.0",
-    method: "item/completed",
-    params: {
-      threadId: providerThreadId,
-      turnId,
-      item: {
-        type: "agentMessage",
-        id: "msg-" + turnId,
-        text,
-      },
-    },
-  });
-  send({
-    jsonrpc: "2.0",
-    method: "turn/completed",
-    params: {
-      threadId: providerThreadId,
-      turnId,
-      status: "completed",
-      providerThreadId,
-    },
-  });
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-
-  if (message.id !== undefined && !message.method) {
-    const pending = pendingInteractive.get(message.id);
-    if (!pending) {
-      return;
-    }
-    pendingInteractive.delete(message.id);
-    const decision =
-      message.result && message.result.resolution
-        ? message.result.resolution.decision
-        : "unknown";
-    completeTurn(pending.providerThreadId, pending.turnId, "interactive:" + decision);
-    return;
-  }
-
-  if (message.method === "initialize" || message.method === "model/list") {
-    send({ jsonrpc: "2.0", id: message.id, result: message.method === "model/list" ? [] : {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const threadId = message.params.threadId;
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    threads.set(threadId, { providerThreadId, turnCount: 0 });
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId } });
-    send({ jsonrpc: "2.0", method: "thread/identity", params: { threadId, providerThreadId } });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    const threadId = message.params.threadId;
-    const providerThreadId = message.params.providerThreadId || threadId;
-    const thread = threads.get(threadId);
-    thread.turnCount += 1;
-    const turnId = "turn-" + String(thread.turnCount);
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId: providerThreadId, turnId, providerThreadId },
-    });
-    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
-    const requestId = nextRequestId++;
-    pendingInteractive.set(requestId, { providerThreadId, turnId });
-    send({
-      jsonrpc: "2.0",
-      id: requestId,
-      method: "request_interaction",
-      params: {
-        threadId: providerThreadId,
-        turnId,
-        itemId: "item-1",
-        kind: "command_approval",
-        command: "git push",
-        cwd: "/tmp/project",
-        reason: "Needs approval",
-      },
-    });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const requests: Array<{
-      threadId: string;
-      providerThreadId: string;
-      turnId: string;
-    }> = [];
+    const requests: PendingInteractionCreate[] = [];
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      onInteractiveRequest: async (request) => {
-        requests.push({
-          threadId: request.threadId,
-          providerThreadId: request.providerThreadId,
-          turnId: request.turnId,
-        });
-        return {
-          decision: "allow_for_session",
-          grantedPermissions: null,
-        };
-      },
-      adapterFactory: () => {
-        const adapter = createInteractiveRequestAdapter(interactiveScriptPath);
-        return {
-          ...adapter,
-          decodeInteractiveRequest(request) {
-            const decoded = adapter.decodeInteractiveRequest?.(request);
-            return decoded ? { ...decoded, turnId: null } : null;
-          },
-        };
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: async (request) => {
+          requests.push(request);
+          return { decision: "allow_once", grantedPermissions: null };
+        },
       },
     });
 
-    await runtime.startThread({
+    const { providerThreadId } = await runtime.startThread({
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -201,273 +168,98 @@ rl.on("line", (line) => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
-      clientRequestId: "creq_222222224i",
+      clientRequestId: "creq_222222224h",
       threadId: "t1",
-      input: [promptTextInput({ text: "trigger interactive request" })],
+      input: [promptTextInput({ text: "approve:command ship it" })],
       options: fullRuntimeOptions,
     });
-    await waitForRuntimeState({
+    const { turnId } = await waitForThreadTurnStarted({
       events,
-      label: "interactive request handled",
-      predicate: () =>
-        requests.length === 1 &&
-        events.some(
-          (event) =>
-            event.type === "item/completed" &&
-            event.item.type === "agentMessage" &&
-            event.item.text === "interactive:allow_for_session",
-        ),
       providerId: "fake",
       runtime,
       threadId: "t1",
     });
-
-    expect(requests).toEqual([
-      {
-        threadId: "t1",
-        providerThreadId: "prov-1",
-        turnId: "turn-1",
-      },
-    ]);
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "agentMessage",
-          text: "interactive:allow_for_session",
-        }),
-      }),
-    );
-    await runtime.shutdown();
-  });
-
-  it("drops unresolved interactive requests when no active turn is known", async () => {
-    const child = spawn(process.execPath, [
-      "-e",
-      "process.stdin.pipe(process.stdout)",
-    ]);
-    const baseAdapter = createInteractiveRequestAdapter(
-      join(tmpDir, "unused-interactive-provider.cjs"),
-    );
-    const adapter = {
-      ...baseAdapter,
-      decodeInteractiveRequest(
-        request: ProviderInboundRequest,
-      ): DecodedInteractiveRequest | null {
-        const decoded = baseAdapter.decodeInteractiveRequest?.(request);
-        return decoded ? { ...decoded, turnId: null } : null;
-      },
-    };
-    const interactionResolution = {
-      decision: "deny",
-    } satisfies PendingInteractionResolution;
-    const toolCallResponse = {
-      contentItems: [{ type: "inputText", text: "tool result" }],
-      success: true,
-    } satisfies ToolCallResponse;
-    const onInteractiveRequest = vi.fn(async () => interactionResolution);
-    const rawRequest = {
-      jsonrpc: "2.0",
-      id: 77,
-      method: "request_interaction",
-      params: {
-        threadId: "prov-1",
-        turnId: "provider-turn-1",
-        itemId: "item-1",
-        kind: "command_approval",
-        command: "git push",
-        cwd: "/tmp/project",
-        reason: "Needs approval",
-      },
-    } satisfies JsonRpcMessage;
-
-    try {
-      handleRuntimeProviderRequest({
-        getActiveTurnId: () => null,
-        getThreadExecutionOptions: () => undefined,
-        onInteractiveRequest,
-        onToolCall: async () => toolCallResponse,
-        parsedId: rawRequest.id,
-        parsedMethod: rawRequest.method,
-        providerProcess: {
-          adapter,
-          child,
-          interactiveRequestScope: "scope-1",
-        },
-        rawRequest,
-        resolveThreadId: () => "t1",
-      });
-
-      const parsed = parseJsonRpcLine(
-        (await readChildStdoutLine(child)).trim(),
-      );
-      if (parsed.kind !== "response") {
-        throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
-      }
-      expect(parsed.parsed).toMatchObject({
-        jsonrpc: "2.0",
-        id: 77,
-        error: {
-          code: -32000,
-          message: expect.stringContaining("without a turn id"),
-        },
-      });
-      expect(onInteractiveRequest).not.toHaveBeenCalled();
-    } finally {
-      child.kill();
-    }
-  });
-
-  it("denies interactive requests when permission escalation is deny", async () => {
-    const interactiveScriptPath = join(tmpDir, "interactive-deny-provider.cjs");
-    writeFileSync(
-      interactiveScriptPath,
-      `
-const readline = require("node:readline");
-let nextThreadId = 1;
-let nextRequestId = 1;
-const threads = new Map();
-const pendingInteractive = new Map();
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-function completeTurn(providerThreadId, turnId, text) {
-  send({
-    jsonrpc: "2.0",
-    method: "item/completed",
-    params: {
-      threadId: providerThreadId,
-      turnId,
-      item: { type: "agentMessage", id: "msg-" + turnId, text },
-    },
-  });
-  send({
-    jsonrpc: "2.0",
-    method: "turn/completed",
-    params: { threadId: providerThreadId, turnId, status: "completed", providerThreadId },
-  });
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-
-  if (message.id !== undefined && !message.method) {
-    const pending = pendingInteractive.get(message.id);
-    if (!pending) return;
-    pendingInteractive.delete(message.id);
-    const decision =
-      message.result && message.result.resolution
-        ? message.result.resolution.decision
-        : "unknown";
-    completeTurn(pending.providerThreadId, pending.turnId, "interactive:" + decision);
-    return;
-  }
-
-  if (message.method === "initialize" || message.method === "model/list") {
-    send({ jsonrpc: "2.0", id: message.id, result: message.method === "model/list" ? [] : {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const threadId = message.params.threadId;
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    threads.set(threadId, { providerThreadId, turnCount: 0 });
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId } });
-    send({ jsonrpc: "2.0", method: "thread/identity", params: { threadId, providerThreadId } });
-    return;
-  }
-
-  if (message.method === "thread/resume") {
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId: message.params.threadId } });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    const providerThreadId = message.params.providerThreadId || message.params.threadId;
-    const thread = threads.get(message.params.threadId);
-    thread.turnCount += 1;
-    const turnId = "turn-" + String(thread.turnCount);
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId: providerThreadId, turnId, providerThreadId },
-    });
-    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
-    const requestId = nextRequestId++;
-    pendingInteractive.set(requestId, { providerThreadId, turnId });
-    send({
-      jsonrpc: "2.0",
-      id: requestId,
-      method: "request_interaction",
-      params: {
-        threadId: providerThreadId,
-        turnId,
-        itemId: "item-deny",
-        kind: "command_approval",
-        command: "git push",
-        cwd: "/tmp/project",
-        reason: "Needs approval",
-      },
-    });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const requests: string[] = [];
-    const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      onInteractiveRequest: async (request) => {
-        requests.push(request.providerRequestId);
-        return {
-          decision: "allow_once",
-          grantedPermissions: null,
-        };
-      },
-      adapterFactory: () =>
-        createInteractiveRequestAdapter(interactiveScriptPath),
-    });
-
-    await runtime.startThread({
-      environmentId: "env-1",
-      threadId: "t1",
-      projectId: "p1",
-      providerId: "fake",
-      options: {
-        ...fullRuntimeOptions,
-        permissionMode: "auto",
-        permissionScope: "workspace",
-        approvalReviewer: "automatic",
-        permissionEscalation: "deny",
-      },
-    });
-    await runtime.runTurn({
-      clientRequestId: "creq_222222224j",
-      threadId: "t1",
-      input: [promptTextInput({ text: "trigger denied interactive request" })],
-      options: {
-        ...fullRuntimeOptions,
-        permissionMode: "auto",
-        permissionScope: "workspace",
-        approvalReviewer: "automatic",
-        permissionEscalation: "deny",
-      },
-    });
+    // The allow reached the bridge as the canonical resolution: the scripted
+    // turn resumes with its answer instead of "Denied".
     await waitForThreadAgentMessageText({
       events,
       providerId: "fake",
       runtime,
-      text: "interactive:deny",
+      text: "Response to: approve:command ship it",
+      threadId: "t1",
+    });
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      threadId: "t1",
+      turnId,
+      providerId: "fake",
+      providerThreadId,
+      payload: {
+        kind: "approval",
+        subject: { kind: "command", command: "echo hi" },
+      },
+    });
+    await runtime.shutdown();
+  });
+
+  it("drops unresolved interactive requests when no active turn is known", async () => {
+    const onInteractiveRequest = vi.fn(
+      async (): Promise<PendingInteractionResolution> => ({
+        decision: "allow_once",
+        grantedPermissions: null,
+      }),
+    );
+    const answer = await answerDirectRequest({
+      rawRequest: commandApprovalRequest(77, { turnId: null }),
+      getActiveTurnId: () => null,
+      onInteractiveRequest,
+    });
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 77,
+      error: {
+        code: -32000,
+        message: expect.stringContaining("without a turn id"),
+      },
+    });
+    expect(onInteractiveRequest).not.toHaveBeenCalled();
+  });
+
+  it("denies interactive requests when permission escalation is deny", async () => {
+    const requests: string[] = [];
+    const events: ThreadEvent[] = [];
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: async (request) => {
+          requests.push(request.providerRequestId);
+          return { decision: "allow_once", grantedPermissions: null };
+        },
+      },
+    });
+
+    await runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: deniedEscalationOptions,
+    });
+    await runtime.runTurn({
+      clientRequestId: "creq_222222224j",
+      threadId: "t1",
+      input: [promptTextInput({ text: "approve:command denied" })],
+      options: deniedEscalationOptions,
+    });
+    // The runtime answered the bridge with a denial itself; the handler
+    // never saw the request and the scripted turn resumed denied.
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: "fake",
+      runtime,
+      text: "Denied",
       threadId: "t1",
     });
 
@@ -476,536 +268,91 @@ rl.on("line", (line) => {
   });
 
   it("does not reclassify provider-filtered approvals against mutable thread settings", async () => {
-    const child = spawn(process.execPath, [
-      "-e",
-      "process.stdin.pipe(process.stdout)",
-    ]);
-    const adapter = {
-      ...createInteractiveRequestAdapter(
-        join(tmpDir, "unused-provider-filtered-approval.cjs"),
-      ),
-      approvalEnforcedBy: "provider" as const,
-    };
-    const onInteractiveRequest = vi.fn(async () => ({
-      decision: "allow_once" as const,
-      grantedPermissions: null,
-    }));
-    const rawRequest = {
-      jsonrpc: "2.0",
-      id: 78,
-      method: "request_interaction",
-      params: {
-        threadId: "prov-1",
-        turnId: "turn-1",
-        itemId: "item-provider-filtered",
-        kind: "command_approval",
-        command: "git push",
-        cwd: "/tmp/project",
-        reason: "Needs approval",
-      },
-    } satisfies JsonRpcMessage;
-
-    try {
-      handleRuntimeProviderRequest({
-        getActiveTurnId: () => null,
-        getThreadExecutionOptions: () => ({
-          ...fullRuntimeOptions,
-          permissionMode: "auto",
-          permissionScope: "workspace",
-          approvalReviewer: "automatic",
-          permissionEscalation: "deny",
-        }),
-        onInteractiveRequest,
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "tool result" }],
-          success: true,
-        }),
-        parsedId: rawRequest.id,
-        parsedMethod: rawRequest.method,
-        providerProcess: {
-          adapter,
-          child,
-          interactiveRequestScope: "scope-provider-filtered",
-        },
-        rawRequest,
-        resolveThreadId: () => "t1",
-      });
-
-      const parsed = parseJsonRpcLine(
-        (await readChildStdoutLine(child)).trim(),
-      );
-      if (parsed.kind !== "response") {
-        throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
-      }
-      expect(parsed.parsed).toMatchObject({
-        jsonrpc: "2.0",
-        id: 78,
-        result: {
-          resolution: {
-            decision: "allow_once",
-          },
-        },
-      });
-      expect(onInteractiveRequest).toHaveBeenCalledTimes(1);
-    } finally {
-      child.kill();
-    }
-  });
-
-  it("routes user-question interactive requests through the handler when permission escalation is deny", async () => {
-    const child = spawn(process.execPath, [
-      "-e",
-      "process.stdin.pipe(process.stdout)",
-    ]);
-    const baseAdapter = createInteractiveRequestAdapter(
-      join(tmpDir, "unused-user-question-provider.cjs"),
-    );
-    const adapter = {
-      ...baseAdapter,
-      decodeInteractiveRequest(
-        request: ProviderInboundRequest,
-      ): DecodedInteractiveRequest | null {
-        if (request.method !== "request_user_question") {
-          return null;
-        }
-        if (typeof request.id !== "string" && typeof request.id !== "number") {
-          return null;
-        }
-        return {
-          requestId: request.id,
-          method: request.method,
-          providerThreadId: "prov-1",
-          turnId: "turn-1",
-          payload: {
-            kind: "user_question",
-            questions: [
-              {
-                id: "q1",
-                prompt: "Which deployment target?",
-                shortLabel: "Target",
-                multiSelect: false,
-                options: [{ value: "staging", label: "Staging" }],
-                allowFreeText: true,
-              },
-            ],
-          },
-        };
-      },
-    };
-    const userAnswerResolution: PendingInteractionResolution = {
-      kind: "user_answer",
-      answers: {
-        q1: {
-          selected: ["staging"],
-        },
-      },
-    };
-    const onInteractiveRequest = vi.fn(async () => userAnswerResolution);
-    const rawRequest = {
-      jsonrpc: "2.0",
-      id: 78,
-      method: "request_user_question",
-      params: {},
-    } satisfies JsonRpcMessage;
-
-    try {
-      handleRuntimeProviderRequest({
-        getActiveTurnId: () => null,
-        getThreadExecutionOptions: () => ({
-          ...fullRuntimeOptions,
-          permissionMode: "auto",
-          permissionScope: "workspace",
-          approvalReviewer: "automatic",
-          permissionEscalation: "deny",
-        }),
-        onInteractiveRequest,
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "tool result" }],
-          success: true,
-        }),
-        parsedId: rawRequest.id,
-        parsedMethod: rawRequest.method,
-        providerProcess: {
-          adapter,
-          child,
-          interactiveRequestScope: "scope-1",
-        },
-        rawRequest,
-        resolveThreadId: () => "t1",
-      });
-
-      const parsed = parseJsonRpcLine(
-        (await readChildStdoutLine(child)).trim(),
-      );
-      if (parsed.kind !== "response") {
-        throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
-      }
-      expect(parsed.parsed).toMatchObject({
-        jsonrpc: "2.0",
-        id: 78,
-        result: {
-          resolution: {
-            kind: "user_answer",
-            answers: {
-              q1: {
-                selected: ["staging"],
-              },
-            },
-          },
-        },
-      });
-      expect(onInteractiveRequest).toHaveBeenCalledTimes(1);
-    } finally {
-      child.kill();
-    }
-  });
-
-  it("sends a provider error for user-question interactive requests without a handler", async () => {
-    const child = spawn(process.execPath, [
-      "-e",
-      "process.stdin.pipe(process.stdout)",
-    ]);
-    const baseAdapter = createInteractiveRequestAdapter(
-      join(tmpDir, "unused-missing-user-question-handler.cjs"),
-    );
-    const adapter = {
-      ...baseAdapter,
-      decodeInteractiveRequest(
-        request: ProviderInboundRequest,
-      ): DecodedInteractiveRequest | null {
-        if (request.method !== "request_user_question") {
-          return null;
-        }
-        if (typeof request.id !== "string" && typeof request.id !== "number") {
-          return null;
-        }
-        return {
-          requestId: request.id,
-          method: request.method,
-          providerThreadId: "prov-1",
-          turnId: "turn-1",
-          payload: {
-            kind: "user_question",
-            questions: [
-              {
-                id: "q1",
-                prompt: "Which deployment target?",
-                shortLabel: "Target",
-                multiSelect: false,
-                options: [{ value: "staging", label: "Staging" }],
-                allowFreeText: true,
-              },
-            ],
-          },
-        };
-      },
-    };
-    const rawRequest = {
-      jsonrpc: "2.0",
-      id: 79,
-      method: "request_user_question",
-      params: {},
-    } satisfies JsonRpcMessage;
-
-    try {
-      handleRuntimeProviderRequest({
-        getActiveTurnId: () => null,
-        getThreadExecutionOptions: () => undefined,
-        onInteractiveRequest: undefined,
-        onToolCall: async () => ({
-          contentItems: [{ type: "inputText", text: "tool result" }],
-          success: true,
-        }),
-        parsedId: rawRequest.id,
-        parsedMethod: rawRequest.method,
-        providerProcess: {
-          adapter,
-          child,
-          interactiveRequestScope: "scope-1",
-        },
-        rawRequest,
-        resolveThreadId: () => "t1",
-      });
-
-      const parsed = parseJsonRpcLine(
-        (await readChildStdoutLine(child)).trim(),
-      );
-      if (parsed.kind !== "response") {
-        throw new Error(`Expected JSON-RPC response, got ${parsed.kind}`);
-      }
-      expect(parsed.parsed).toMatchObject({
-        jsonrpc: "2.0",
-        id: 79,
-        error: {
-          code: -32000,
-          message: expect.stringContaining(
-            "No interactive request handler is configured",
-          ),
-        },
-      });
-    } finally {
-      child.kill();
-    }
-  });
-
-  it("sends JSON-RPC error back when onInteractiveRequest throws", async () => {
-    const interactiveScriptPath = join(
-      tmpDir,
-      "interactive-error-provider.cjs",
-    );
-    writeFileSync(
-      interactiveScriptPath,
-      `
-const readline = require("node:readline");
-const threads = new Map();
-const pendingInteractive = new Map();
-let nextThreadId = 1;
-let nextRequestId = 1;
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-function completeTurn(providerThreadId, turnId, text) {
-  send({
-    jsonrpc: "2.0",
-    method: "item/completed",
-    params: {
-      threadId: providerThreadId,
-      turnId,
-      item: { type: "agentMessage", id: "msg-" + turnId, text },
-    },
-  });
-  send({
-    jsonrpc: "2.0",
-    method: "turn/completed",
-    params: {
-      threadId: providerThreadId,
-      turnId,
-      status: "completed",
-      providerThreadId,
-    },
-  });
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-
-  if (message.id !== undefined && !message.method) {
-    const pending = pendingInteractive.get(message.id);
-    if (!pending) {
-      return;
-    }
-    pendingInteractive.delete(message.id);
-    completeTurn(
-      pending.providerThreadId,
-      pending.turnId,
-      message.error ? message.error.message : "missing error",
-    );
-    return;
-  }
-
-  if (message.method === "initialize" || message.method === "model/list") {
-    send({ jsonrpc: "2.0", id: message.id, result: message.method === "model/list" ? [] : {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const threadId = message.params.threadId;
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    threads.set(threadId, { providerThreadId, turnCount: 0 });
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId } });
-    send({ jsonrpc: "2.0", method: "thread/identity", params: { threadId, providerThreadId } });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    const threadId = message.params.threadId;
-    const providerThreadId = message.params.providerThreadId || threadId;
-    const thread = threads.get(threadId);
-    thread.turnCount += 1;
-    const turnId = "turn-" + String(thread.turnCount);
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId: providerThreadId, turnId, providerThreadId },
-    });
-    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
-    const requestId = nextRequestId++;
-    pendingInteractive.set(requestId, { providerThreadId, turnId });
-    send({
-      jsonrpc: "2.0",
-      id: requestId,
-      method: "request_interaction",
-      params: {
-        threadId: providerThreadId,
-        turnId,
-        itemId: "item-error",
-        kind: "command_approval",
-        command: "git push",
-        cwd: "/tmp/project",
-        reason: "Needs approval",
-      },
-    });
-  }
-});
-`,
-      "utf8",
-    );
-
-    const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
+    const onInteractiveRequest = vi.fn(
+      async (): Promise<PendingInteractionResolution> => ({
+        decision: "allow_once",
+        grantedPermissions: null,
       }),
-      onInteractiveRequest: async () => {
-        throw new Error("Interaction failed");
-      },
-      adapterFactory: () =>
-        createInteractiveRequestAdapter(interactiveScriptPath),
+    );
+    // The bridge's handshake says the provider already enforced the policy
+    // before forwarding: the runtime must hand the request to the user even
+    // though the thread's current settings would auto-deny it.
+    const answer = await answerDirectRequest({
+      rawRequest: commandApprovalRequest(78),
+      handshake: { approvalEnforcedBy: "provider" },
+      getThreadExecutionOptions: () => deniedEscalationOptions,
+      onInteractiveRequest,
     });
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 78,
+      result: { decision: "allow_once" },
+    });
+    expect(onInteractiveRequest).toHaveBeenCalledTimes(1);
+  });
 
+  it("reaches the user through a provider-enforcing bridge end to end", async () => {
+    const requests: PendingInteractionCreate[] = [];
+    const events: ThreadEvent[] = [];
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        env: scriptedEchoProcessEnv({ approvalEnforcedBy: "provider" }),
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: async (request) => {
+          requests.push(request);
+          return { decision: "allow_once", grantedPermissions: null };
+        },
+      },
+    });
     await runtime.startThread({
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
       providerId: "fake",
-      options: fullRuntimeOptions,
+      options: deniedEscalationOptions,
     });
     await runtime.runTurn({
       clientRequestId: "creq_222222224k",
       threadId: "t1",
-      input: [promptTextInput({ text: "trigger interactive request failure" })],
-      options: fullRuntimeOptions,
+      input: [promptTextInput({ text: "approve:command provider-enforced" })],
+      options: deniedEscalationOptions,
     });
     await waitForThreadAgentMessageText({
       events,
       providerId: "fake",
       runtime,
-      text: "Interaction failed",
+      text: "Response to: approve:command provider-enforced",
       threadId: "t1",
     });
-
+    expect(requests).toHaveLength(1);
     await runtime.shutdown();
   });
 
-  it("responds to unsupported interactive requests with a JSON-RPC error instead of dropping them", async () => {
-    const unsupportedScriptPath = join(
-      tmpDir,
-      "unsupported-interactive-provider.cjs",
-    );
-    writeFileSync(
-      unsupportedScriptPath,
-      `
-const readline = require("node:readline");
-const threads = new Map();
-const pendingInteractive = new Map();
-let nextThreadId = 1;
-let nextRequestId = 1;
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-function completeTurn(providerThreadId, turnId, text) {
-  send({
-    jsonrpc: "2.0",
-    method: "item/completed",
-    params: {
-      threadId: providerThreadId,
-      turnId,
-      item: {
-        type: "agentMessage",
-        id: "msg-" + turnId,
-        text,
-      },
-    },
-  });
-  send({
-    jsonrpc: "2.0",
-    method: "turn/completed",
-    params: {
-      threadId: providerThreadId,
-      turnId,
-      status: "completed",
-      providerThreadId,
-    },
-  });
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-
-  if (message.id !== undefined && !message.method) {
-    const pending = pendingInteractive.get(message.id);
-    if (!pending) {
-      return;
-    }
-    pendingInteractive.delete(message.id);
-    const errorMessage = message.error ? message.error.message : "missing error";
-    completeTurn(pending.providerThreadId, pending.turnId, errorMessage);
-    return;
-  }
-
-  if (message.method === "initialize" || message.method === "model/list") {
-    send({ jsonrpc: "2.0", id: message.id, result: message.method === "model/list" ? [] : {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    const threadId = message.params.threadId;
-    const providerThreadId = "prov-" + String(nextThreadId++);
-    threads.set(threadId, { providerThreadId, turnCount: 0 });
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId } });
-    send({ jsonrpc: "2.0", method: "thread/identity", params: { threadId, providerThreadId } });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    const threadId = message.params.threadId;
-    const providerThreadId = message.params.providerThreadId || threadId;
-    const thread = threads.get(threadId);
-    thread.turnCount += 1;
-    const turnId = "turn-" + String(thread.turnCount);
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId: providerThreadId, turnId, providerThreadId },
-    });
-    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
-    const requestId = nextRequestId++;
-    pendingInteractive.set(requestId, { providerThreadId, turnId });
-    send({
-      jsonrpc: "2.0",
-      id: requestId,
-      method: "request_unsupported",
-      params: {
-        threadId: providerThreadId,
-        turnId,
-        itemId: "item-unsupported",
-      },
-    });
-  }
-});
-`,
-      "utf8",
-    );
-
+  it("routes user-question interactive requests through the handler when permission escalation is deny", async () => {
+    const requests: PendingInteractionCreate[] = [];
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () =>
-        createInteractiveRequestAdapter(unsupportedScriptPath),
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: async (request) => {
+          requests.push(request);
+          if (request.payload.kind !== "user_question") {
+            throw new Error("expected a user question");
+          }
+          const question = request.payload.questions[0];
+          if (question === undefined) {
+            throw new Error("expected one question");
+          }
+          return {
+            kind: "user_answer",
+            answers: {
+              [question.id]: { selected: ["staging"], freeText: "Go slow." },
+            },
+          };
+        },
+      },
     });
 
     await runtime.startThread({
@@ -1013,128 +360,80 @@ rl.on("line", (line) => {
       threadId: "t1",
       projectId: "p1",
       providerId: "fake",
-      options: fullRuntimeOptions,
+      options: deniedEscalationOptions,
     });
+    // Escalation policy governs approvals only: a question is never
+    // auto-denied, it always reaches the user.
     await runtime.runTurn({
       clientRequestId: "creq_222222224m",
       threadId: "t1",
-      input: [
-        promptTextInput({ text: "trigger unsupported interactive request" }),
-      ],
-      options: fullRuntimeOptions,
+      input: [promptTextInput({ text: "ask_user" })],
+      options: deniedEscalationOptions,
     });
     await waitForThreadAgentMessageText({
       events,
       providerId: "fake",
       runtime,
-      text: 'Unsupported provider request "request_unsupported"',
+      text: "Question answered: staging, Go slow.",
       threadId: "t1",
     });
-
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "agentMessage",
-          text: 'Unsupported provider request "request_unsupported"',
-        }),
-      }),
-    );
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.payload).toMatchObject({
+      kind: "user_question",
+      questions: [{ prompt: expect.stringContaining("deployment path") }],
+    });
     await runtime.shutdown();
   });
 
-  it("responds to invalid interactive request params with a JSON-RPC invalid params error", async () => {
-    const invalidScriptPath = join(tmpDir, "invalid-interactive-provider.cjs");
-    writeFileSync(
-      invalidScriptPath,
-      `
-const readline = require("node:readline");
-let pendingInteractive = null;
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\\n");
-}
-
-function completeTurn(text) {
-  send({
-    jsonrpc: "2.0",
-    method: "item/completed",
-    params: {
-      threadId: "prov-t1",
-      turnId: "turn-1",
-      item: {
-        type: "agentMessage",
-        id: "msg-turn-1",
-        text,
+  it("sends a provider error for user-question interactive requests without a handler", async () => {
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 79,
+        method: "interaction/request",
+        params: {
+          providerThreadId: "prov-1",
+          threadId: "t1",
+          turnId: "turn-1",
+          payload: {
+            kind: "user_question",
+            questions: [
+              {
+                id: "q1",
+                prompt: "Which deployment target?",
+                shortLabel: "Target",
+                multiSelect: false,
+                options: [{ value: "staging", label: "Staging" }],
+                allowFreeText: true,
+              },
+            ],
+          },
+        },
       },
-    },
-  });
-  send({
-    jsonrpc: "2.0",
-    method: "turn/completed",
-    params: {
-      threadId: "prov-t1",
-      turnId: "turn-1",
-      status: "completed",
-      providerThreadId: "prov-t1",
-    },
-  });
-}
-
-const rl = readline.createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const message = JSON.parse(line);
-
-  if (message.id !== undefined && !message.method) {
-    if (!pendingInteractive || pendingInteractive !== message.id) {
-      return;
-    }
-    pendingInteractive = null;
-    completeTurn(String(message.error && message.error.code));
-    return;
-  }
-
-  if (message.method === "initialize" || message.method === "model/list") {
-    send({ jsonrpc: "2.0", id: message.id, result: message.method === "model/list" ? [] : {} });
-    return;
-  }
-
-  if (message.method === "thread/start") {
-    send({ jsonrpc: "2.0", id: message.id, result: { providerThreadId: "prov-t1" } });
-    send({ jsonrpc: "2.0", method: "thread/identity", params: { threadId: message.params.threadId, providerThreadId: "prov-t1" } });
-    return;
-  }
-
-  if (message.method === "turn/start") {
-    send({ jsonrpc: "2.0", id: message.id, result: { ok: true } });
-    send({
-      jsonrpc: "2.0",
-      method: "turn/started",
-      params: { threadId: "prov-t1", turnId: "turn-1", providerThreadId: "prov-t1" },
+      onInteractiveRequest: undefined,
     });
-    pendingInteractive = 101;
-    send({
+    expect(answer).toMatchObject({
       jsonrpc: "2.0",
-      id: pendingInteractive,
-      method: "request_interaction",
-      params: { broken: true },
+      id: 79,
+      error: {
+        code: -32000,
+        message: expect.stringContaining(
+          "No interactive request handler is configured",
+        ),
+      },
     });
-  }
-});
-`,
-      "utf8",
-    );
+  });
 
+  it("sends JSON-RPC error back when onInteractiveRequest throws", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({
-        contentItems: [{ type: "inputText", text: "ok" }],
-        success: true,
-      }),
-      adapterFactory: () =>
-        createInvalidInteractiveRequestAdapter(invalidScriptPath),
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: async () => {
+          throw new Error("Interactive handler failed");
+        },
+      },
     });
 
     await runtime.startThread({
@@ -1147,26 +446,142 @@ rl.on("line", (line) => {
     await runtime.runTurn({
       clientRequestId: "creq_222222224n",
       threadId: "t1",
-      input: [promptTextInput({ text: "trigger invalid interactive request" })],
+      input: [promptTextInput({ text: "approve:command boom" })],
       options: fullRuntimeOptions,
     });
-    await waitForThreadAgentMessageText({
+    await waitForThreadTurnCompleted({
       events,
       providerId: "fake",
       runtime,
-      text: "-32602",
       threadId: "t1",
     });
-
+    // The bridge received the error answer and surfaced it as a failed turn.
     expect(events).toContainEqual(
       expect.objectContaining({
-        type: "item/completed",
-        item: expect.objectContaining({
-          type: "agentMessage",
-          text: "-32602",
-        }),
+        type: "provider/error",
+        threadId: "t1",
+        message: expect.stringContaining("Interactive handler failed"),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        threadId: "t1",
+        status: "failed",
       }),
     );
     await runtime.shutdown();
+  });
+
+  it("forwards a plugin-defined request even under a deny escalation and returns its answer", async () => {
+    // A request is open: no policy auto-answers it, so a deny escalation that
+    // would auto-deny an approval still reaches the handler.
+    const onInteractiveRequest = vi.fn(
+      async (): Promise<PendingInteractionResolution> => ({
+        kind: "request_answer",
+        value: { TOKEN: "x" },
+      }),
+    );
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 90,
+        method: "interaction/request",
+        params: {
+          providerThreadId: "prov-1",
+          threadId: "t1",
+          turnId: "turn-1",
+          payload: {
+            kind: "secrets/secret-request",
+            title: "Add a token",
+            data: { fields: ["TOKEN"] },
+          },
+        },
+      },
+      handshake: { approvalEnforcedBy: "runtime" },
+      getThreadExecutionOptions: () => deniedEscalationOptions,
+      onInteractiveRequest,
+    });
+    expect(onInteractiveRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ kind: "secrets/secret-request" }),
+      }),
+    );
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 90,
+      result: { kind: "request_answer", value: { TOKEN: "x" } },
+    });
+  });
+
+  it("refuses a plugin-defined request whose data exceeds 64 KiB at the wire", async () => {
+    const onInteractiveRequest = vi.fn(
+      async (): Promise<PendingInteractionResolution> => ({
+        kind: "request_answer",
+        value: null,
+      }),
+    );
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 91,
+        method: "interaction/request",
+        params: {
+          providerThreadId: "prov-1",
+          threadId: "t1",
+          turnId: "turn-1",
+          payload: {
+            kind: "secrets/secret-request",
+            title: "Add a token",
+            data: { blob: "x".repeat(64 * 1024) },
+          },
+        },
+      },
+      onInteractiveRequest,
+    });
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 91,
+      error: { code: expect.any(Number) },
+    });
+    expect(onInteractiveRequest).not.toHaveBeenCalled();
+  });
+
+  it("responds to unsupported interactive requests with a JSON-RPC error instead of dropping them", async () => {
+    // A request method outside the bridge protocol's inbound vocabulary.
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 80,
+        method: "interaction/unsupported",
+        params: { providerThreadId: "prov-1", turnId: "turn-1" },
+      },
+    });
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 80,
+      error: { code: expect.any(Number) },
+    });
+  });
+
+  it("responds to invalid interactive request params with a JSON-RPC invalid params error", async () => {
+    // The right method, a payload the canonical schema refuses.
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 81,
+        method: "interaction/request",
+        params: {
+          providerThreadId: "prov-1",
+          turnId: "turn-1",
+          payload: { kind: "approval", subject: { kind: "nonsense" } },
+        },
+      },
+    });
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 81,
+      error: { code: expect.any(Number) },
+    });
   });
 });

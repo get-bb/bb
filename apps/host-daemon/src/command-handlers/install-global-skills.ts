@@ -23,13 +23,13 @@ const GLOBAL_SKILL_ROOT_SEGMENTS: readonly (readonly string[])[] = [
   [".claude", "skills"],
 ];
 
-export interface InstallGlobalSkillsOptions {
+interface InstallGlobalSkillsOptions {
   dataDir: string;
   fetchSkillTree?: FetchSkillTree;
   homeDir?: string;
 }
 
-export interface GlobalSkillsStatusOptions {
+interface GlobalSkillsStatusOptions {
   /** Defaults to this host's home directory; injected by tests. */
   homeDir?: string;
 }

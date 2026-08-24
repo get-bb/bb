@@ -7,7 +7,7 @@ import {
   type SidebarOrganizationMode,
   type SidebarSectionId,
 } from "./sidebarCollapsedAtoms";
-import type { LegacySidebarEntityAnchor } from "./sidebarSectionOrder";
+import type { LegacySidebarEntityAnchor } from "@bb/client-core";
 import { usePersistedSidebarSectionOrder } from "./usePersistedSidebarSectionOrder";
 
 const MODE_SECTION_ORDER_CONFIG: Record<

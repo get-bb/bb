@@ -1,9 +1,9 @@
 /**
  * JSON-RPC 2.0 endpoint over a spawned `codex app-server` child's stdio.
  *
- * The codex bridge supervises one app-server child per bb thread (plus
- * short-lived maintenance children). This module owns the child-process
- * exit races the runtime learned in #1402:
+ * The codex bridge supervises one app-server child per bb thread, a reusable
+ * model-list child, and short-lived thread-maintenance children. This module
+ * owns the child-process exit races the runtime learned in #1402:
  *
  * - Exit is finalized on `close`, not `exit`, with a bounded grace so a
  *   descendant holding an inherited pipe cannot delay teardown forever —
@@ -16,6 +16,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface } from "node:readline";
+import { experimental_recordProviderChildIo } from "@get-bb/plugin-sdk/provider-bridge";
 import type { z } from "zod";
 
 const STDERR_TAIL_MAX_CHUNKS = 40;
@@ -40,6 +41,11 @@ interface CreateCodexAppServerConnectionOptions {
   args: string[];
   cwd: string;
   env: Record<string, string | undefined>;
+  /**
+   * The bb thread this child serves, for record mode; null for process-level
+   * children (model-list probes, maintenance).
+   */
+  recordThreadId: string | null;
   onNotification(method: string, params: unknown): void;
   onRequest(
     method: string,
@@ -112,6 +118,9 @@ export function createCodexAppServerConnection(
     cwd: options.cwd,
     env: options.env,
     stdio: ["pipe", "pipe", "pipe"],
+  });
+  experimental_recordProviderChildIo(child, {
+    threadId: options.recordThreadId,
   });
 
   const pending = new Map<number, PendingChildRequest>();

@@ -10,9 +10,6 @@ export const serverUrlDialogSubmitRequestSchema = z
     url: z.string().max(4096),
   })
   .strict();
-export type ServerUrlDialogSubmitRequest = z.infer<
-  typeof serverUrlDialogSubmitRequestSchema
->;
 
 export const serverUrlDialogSubmitResponseSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true) }).strict(),

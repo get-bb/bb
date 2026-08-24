@@ -23,10 +23,12 @@ interface FakeCliPackageOptions {
   executablePath?: string;
   executable?: boolean;
   writeEntry?: boolean;
+  writeRuntime?: boolean;
 }
 
 interface FakeCliPackage {
   cliEntryPath: string;
+  cliRuntimePath: string;
 }
 
 interface FakeShellEnvSpawn {
@@ -76,6 +78,7 @@ async function createFakeCliPackage(
   const cliPackageRoot = await makeTempDir("bb-cli-package-");
   const executablePath = options.executablePath ?? "./dist/bin/bb";
   const cliEntryPath = path.resolve(cliPackageRoot, executablePath);
+  const cliRuntimePath = path.resolve(cliPackageRoot, "dist/index.js");
 
   if (options.writeEntry ?? true) {
     await fs.mkdir(path.dirname(cliEntryPath), { recursive: true });
@@ -87,8 +90,14 @@ async function createFakeCliPackage(
     await fs.chmod(cliEntryPath, options.executable ? 0o755 : 0o644);
   }
 
+  if (options.writeRuntime) {
+    await fs.mkdir(path.dirname(cliRuntimePath), { recursive: true });
+    await fs.writeFile(cliRuntimePath, "process.stdout.write('bb')\n", "utf8");
+  }
+
   return {
     cliEntryPath,
+    cliRuntimePath,
   };
 }
 
@@ -146,15 +155,32 @@ afterEach(async () => {
 
 describe("resolveLocalBbExecutablePath", () => {
   it("returns the built CLI executable path", async () => {
-    const { cliEntryPath } = await createFakeCliPackage({
+    const { cliEntryPath, cliRuntimePath } = await createFakeCliPackage({
+      executable: true,
+      writeRuntime: true,
+    });
+
+    await expect(
+      resolveLocalBbExecutablePath({
+        cliExecutablePath: cliEntryPath,
+        cliRuntimePath,
+      }),
+    ).resolves.toBe(cliEntryPath);
+  });
+
+  it("fails before startup when the source CLI runtime is unbuilt", async () => {
+    const { cliEntryPath, cliRuntimePath } = await createFakeCliPackage({
       executable: true,
     });
 
     await expect(
       resolveLocalBbExecutablePath({
         cliExecutablePath: cliEntryPath,
+        cliRuntimePath,
       }),
-    ).resolves.toBe(cliEntryPath);
+    ).rejects.toThrow(
+      `Missing built bb CLI runtime at ${cliRuntimePath}. Build @bb/cli before starting the host daemon.`,
+    );
   });
 
   it("fails clearly when the built CLI entry is missing", async () => {

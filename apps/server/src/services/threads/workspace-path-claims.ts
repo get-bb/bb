@@ -13,12 +13,12 @@ import { isBbManagedWorkspacePath } from "./worktree-paths.js";
  * answer those questions across every project.
  */
 
-export interface UnmanagedAttachRefusal {
+interface UnmanagedAttachRefusal {
   reason: "foreign-managed" | "live-thread";
   message: string;
 }
 
-export interface UnmanagedAttachCheckArgs {
+interface UnmanagedAttachCheckArgs {
   /** Host data directory, for recognizing bb's own workspace roots. */
   dataDir: string | null;
   /** Set when the request also checks out a branch, which rewrites the tree. */

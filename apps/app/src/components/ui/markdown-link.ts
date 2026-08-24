@@ -1,4 +1,4 @@
-export interface MarkdownPreviewLink {
+interface MarkdownPreviewLink {
   /** The anchor's resolved (sanitized) href. */
   href: string;
 }

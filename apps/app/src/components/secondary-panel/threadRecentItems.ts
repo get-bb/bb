@@ -5,10 +5,10 @@ import { atomFamily } from "jotai-family";
 import { z } from "zod";
 import { createLocalStorageSyncStorage } from "@/lib/browser-storage";
 
-export const THREAD_RECENT_ITEMS_STORAGE_PREFIX = "bb.thread.recentItems";
-export const THREAD_RECENT_ITEMS_STORAGE_VERSION = 1;
+const THREAD_RECENT_ITEMS_STORAGE_PREFIX = "bb.thread.recentItems";
+const THREAD_RECENT_ITEMS_STORAGE_VERSION = 1;
 /** How many recent items we persist per thread before dropping the oldest. */
-export const THREAD_RECENT_ITEMS_MAX_STORED = 24;
+const THREAD_RECENT_ITEMS_MAX_STORED = 24;
 /** How many recent rows the launcher shows before the "Show more" toggle. */
 export const THREAD_RECENT_ITEMS_VISIBLE_LIMIT = 6;
 
@@ -18,7 +18,7 @@ export const THREAD_RECENT_ITEMS_VISIBLE_LIMIT = 6;
  * a previewable file path, so a recent row reopens through the exact same
  * open-in-panel path as a file-search result.
  */
-export type RecentItemSource = "workspace" | "thread-storage";
+type RecentItemSource = "workspace" | "thread-storage";
 
 export interface ThreadRecentItem {
   source: RecentItemSource;

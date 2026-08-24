@@ -1,4 +1,4 @@
-export interface FormatRelativeTimeArgs {
+interface FormatRelativeTimeArgs {
   /** The past instant being described, in epoch milliseconds. */
   timestamp: number;
   /** The reference "now", in epoch milliseconds. Passed in for testability. */
@@ -16,7 +16,10 @@ const WEEK_MS = 7 * DAY_MS;
  * date once the gap exceeds a few weeks. Future timestamps collapse to
  * "just now" so a small clock skew never renders a negative duration.
  */
-export function formatRelativeTime({ timestamp, now }: FormatRelativeTimeArgs): string {
+export function formatRelativeTime({
+  timestamp,
+  now,
+}: FormatRelativeTimeArgs): string {
   const diffMs = now - timestamp;
   if (diffMs < MINUTE_MS) {
     return "just now";

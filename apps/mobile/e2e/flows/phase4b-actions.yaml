@@ -1,0 +1,87 @@
+# Phase 4b actions on the thread screen: open the thread named by
+# THREAD_TITLE → the header shows the environment line (project · host ·
+# workspace) → "…" → Rename through the sheet → the title updates →
+# long-press the user message → Copy text toasts "Copied" → long-press again
+# → Add to chat quotes it into the follow-up composer ("> …").
+#
+# Create an idle thread titled "P4b actions" first (see phase4b-send.yaml):
+#   maestro test e2e/flows/phase4b-actions.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "P4b actions"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- scrollUntilVisible:
+    element: "${THREAD_TITLE}"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "${THREAD_TITLE}"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-title"
+      text: "${THREAD_TITLE}"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "thread-composer-input"
+    timeout: 30000
+- takeScreenshot: phase4b-actions-thread
+# Rename through the "…" sheet; its header carries the environment line
+# (project · host · workspace).
+- tapOn:
+    id: "thread-actions-button"
+- extendedWaitUntil:
+    visible:
+      id: "thread-action-rename"
+    timeout: 10000
+- assertVisible: "Mobile E2E Project.*"
+- tapOn:
+    id: "thread-action-rename"
+- extendedWaitUntil:
+    visible:
+      id: "thread-rename-input"
+    timeout: 10000
+- tapOn:
+    id: "thread-rename-input"
+- eraseText: 60
+- inputText: "${THREAD_TITLE} renamed"
+- tapOn:
+    id: "thread-rename-submit"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-title"
+      text: "${THREAD_TITLE} renamed"
+    timeout: 15000
+- takeScreenshot: phase4b-actions-renamed
+# Long-press the user message → Copy text.
+- longPressOn:
+    id: "conversation-user-bubble"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "action-sheet-copy"
+    timeout: 10000
+- assertVisible:
+    id: "action-sheet-add-to-chat"
+- takeScreenshot: phase4b-actions-message-sheet
+- tapOn:
+    id: "action-sheet-copy"
+- extendedWaitUntil:
+    visible: "Copied"
+    timeout: 10000
+# Long-press again → Add to chat quotes the message into the composer.
+- longPressOn:
+    id: "conversation-user-bubble"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "action-sheet-add-to-chat"
+    timeout: 10000
+- tapOn:
+    id: "action-sheet-add-to-chat"
+- extendedWaitUntil:
+    visible: "> Reply with exactly READY.*"
+    timeout: 10000
+- takeScreenshot: phase4b-actions-quoted

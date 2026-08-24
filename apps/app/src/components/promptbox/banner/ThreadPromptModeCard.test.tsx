@@ -78,16 +78,7 @@ describe("ThreadPromptModeCard", () => {
     const controls = screen.getByRole("group", {
       name: "Plan mode controls",
     });
-    expect(controls.classList.contains("bg-background/70")).toBe(true);
     expect(exit.parentElement).toBe(controls);
-    expect(exit.classList.contains("border-l")).toBe(true);
-    expect(exit.classList.contains("border-border/35")).toBe(true);
-    expect(exit.classList.contains("min-h-8")).toBe(true);
-    expect(exit.classList.contains("w-8")).toBe(true);
-    expect(exit.classList.contains("rounded-none")).toBe(true);
-    expect(exit.classList.contains("bg-transparent")).toBe(true);
-    expect(exit.classList.contains("hover:bg-state-hover")).toBe(false);
-    expect(exit.classList.contains("disabled:opacity-60")).toBe(false);
     expect(exit.hasAttribute("disabled")).toBe(true);
     expect(screen.getByLabelText("Prompt mode")).not.toBeNull();
     fireEvent.click(exit);

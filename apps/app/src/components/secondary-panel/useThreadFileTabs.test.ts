@@ -15,6 +15,7 @@ import {
   serializeFixedPanelTabsState,
   FIXED_PANEL_TABS_STATE_STORAGE_VERSION,
 } from "@/lib/fixed-panel-tabs-state";
+import { buildFileOpenerPanelTab } from "@/components/plugin/file-opener-tabs";
 import { useThreadFileTabs } from "./useThreadFileTabs";
 import {
   resetPluginSlotStoreForTest,
@@ -202,6 +203,77 @@ describe("useThreadFileTabs terminal pruning", () => {
 });
 
 describe("useThreadFileTabs active owners", () => {
+  it("restores a project opener from its persisted file source", () => {
+    const panelStateId = "restored-project-file-opener";
+    const openerTab = buildFileOpenerPanelTab(
+      { id: "pdf", pluginId: "pdf-preview" },
+      {
+        path: "reports/quarterly.pdf",
+        source: {
+          kind: "workspace",
+          threadId: null,
+          environmentId: null,
+          projectId: "proj_opened",
+          experimental_hostId: "host_opened",
+        },
+      },
+      {
+        environmentId: null,
+        kind: "workspace-file-preview",
+        projectId: "proj_opened",
+        tab: {
+          lineRange: null,
+          path: "reports/quarterly.pdf",
+          source: { kind: "working-tree" },
+          statusLabel: null,
+        },
+        threadId: null,
+      },
+    );
+    window.localStorage.setItem(
+      getFixedPanelTabsStateStorageKey({ threadId: panelStateId }),
+      serializeFixedPanelTabsState({
+        state: createEmptyFixedPanelTabsState({
+          secondary: {
+            activeTabId: openerTab.id,
+            isOpen: true,
+            tabs: [openerTab],
+          },
+          lastUsedAt: Date.now(),
+        }),
+      }),
+    );
+
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId,
+        syncThreadId: null,
+        environmentId: "env_selected",
+        preserveWorkspaceTabsAcrossContexts: true,
+        projectHostId: "host_selected",
+        projectId: "proj_selected",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    expect(result.current.activeFileOpenerFile).toEqual({
+      path: "reports/quarterly.pdf",
+      source: {
+        kind: "workspace",
+        threadId: null,
+        environmentId: null,
+        projectId: "proj_opened",
+        experimental_hostId: "host_opened",
+      },
+    });
+    expect(result.current.activeWorkspaceFileEnvironmentId).toBeNull();
+    expect(result.current.activeWorkspaceFileProjectId).toBe("proj_opened");
+    expect(result.current.activeWorkspaceFilePath).toBe(
+      "reports/quarterly.pdf",
+    );
+  });
+
   it("returns owner ids for an active restored host file tab", () => {
     const threadId = "root-compose-ownerful";
     const hostTab = createHostFilePreviewFixedPanelTab({
@@ -535,6 +607,7 @@ describe("useThreadFileTabs file opener diversion", () => {
     expect(result.current.activeFileOpenerOwner).toEqual({
       kind: "host-file-preview",
       environmentId: "env_1",
+      hostId: null,
       tab: {
         lineRange: { startLineNumber: 11, endLineNumber: 12 },
         path: "/tmp/readme.md",
@@ -613,6 +686,139 @@ describe("useThreadFileTabs file opener diversion", () => {
     );
     expect(result.current.activePluginPanelTab).toBeNull();
     expect(result.current.activeWorkspaceFilePath).toBe("src/index.ts");
+  });
+
+  // File search replaces the new-tab screen rather than appending a tab, but
+  // it must use the same opener resolution as links and `bb thread open`.
+  it("diverts a workspace file picked from the file search", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-search",
+        syncThreadId: "opener-search",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "workspace",
+        path: "notes/todo.md",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toMatchObject({
+      kind: "plugin-panel",
+      pluginId: "notes",
+      actionId: "file-opener:editor",
+      title: "todo.md",
+    });
+    const params = JSON.parse(
+      result.current.activePluginPanelTab?.paramsJson ?? "null",
+    ) as { path: string; source: { kind: string; environmentId: string | null } };
+    expect(params.path).toBe("notes/todo.md");
+    expect(params.source).toMatchObject({
+      kind: "workspace",
+      environmentId: "env_1",
+    });
+    // The new-tab screen is replaced, not appended to.
+    expect(result.current.isNewTabActive).toBe(false);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
+    ).toEqual(["plugin-panel"]);
+  });
+
+  it("diverts a thread-storage file picked from the file search", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-storage-search",
+        syncThreadId: "thr_storage_search",
+        environmentId: "env_1",
+        storageFiles: [{ path: "artifacts/notes.md" }],
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "thread-storage",
+        path: "artifacts/notes.md",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toMatchObject({
+      kind: "plugin-panel",
+      pluginId: "notes",
+      actionId: "file-opener:editor",
+      title: "notes.md",
+      fileOpenerOwner: {
+        kind: "thread-storage-file-preview",
+        environmentId: "env_1",
+        threadId: "thr_storage_search",
+        tab: { path: "artifacts/notes.md" },
+      },
+    });
+    expect(result.current.isNewTabActive).toBe(false);
+    expect(
+      result.current.orderedSecondaryFileTabs.map((tab) => tab.kind),
+    ).toEqual(["plugin-panel"]);
+  });
+
+  it("keeps the built-in preview for an unmatched file search extension", () => {
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-search-unmatched",
+        syncThreadId: "opener-search-unmatched",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "workspace",
+        path: "src/main.rs",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("src/main.rs");
+  });
+
+  it("honors a pinned built-in preference from the file search", () => {
+    window.localStorage.setItem(
+      "bb.fileOpenerByExtension",
+      JSON.stringify({ md: "__builtin__" }),
+    );
+    registerNotesOpener();
+    const { result } = renderThreadHook(() =>
+      useThreadFileTabs({
+        panelStateId: "opener-search-pinned",
+        syncThreadId: "opener-search-pinned",
+        environmentId: "env_1",
+        storageFiles: undefined,
+        terminalSessions: undefined,
+      }),
+    );
+
+    act(() => result.current.openTab({ kind: "new-tab" }));
+    act(() =>
+      result.current.selectFileSearchResult({
+        source: "workspace",
+        path: "notes/todo.md",
+      }),
+    );
+
+    expect(result.current.activePluginPanelTab).toBeNull();
+    expect(result.current.activeWorkspaceFilePath).toBe("notes/todo.md");
   });
 
   it("falls back to the built-in preview when no opener is registered", () => {

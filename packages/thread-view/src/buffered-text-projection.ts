@@ -23,7 +23,7 @@ import {
 
 type BufferedTextEventProjectionMessage = EventProjectionAssistantTextMessage;
 
-export interface BufferedTextProjectionRefs<
+interface BufferedTextProjectionRefs<
   TMessage extends BufferedTextEventProjectionMessage,
 > {
   finalizedKeys: Set<string>;
@@ -32,7 +32,7 @@ export interface BufferedTextProjectionRefs<
   visibleKeys: Set<string>;
 }
 
-export interface ProjectBufferedTextEventArgs<
+interface ProjectBufferedTextEventArgs<
   TMessage extends BufferedTextEventProjectionMessage,
 > {
   createMessage: (messageKey: string) => TMessage;
@@ -58,7 +58,7 @@ type UpsertBufferedTextMessageArgs<
   "createMessage" | "meta" | "refs"
 > & { messageKey: string };
 
-export interface ProjectReasoningTextEventArgs {
+interface ProjectReasoningTextEventArgs {
   identity: BufferedTextInstanceIdentity | null;
   mode: "delta" | "final";
   state: ProjectionState;

@@ -12,6 +12,7 @@
 import { useEffect, type ReactNode } from "react";
 import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
 import {
   act,
   cleanup,
@@ -31,10 +32,14 @@ import {
   NewThreadComposer,
   type NewThreadComposerState,
 } from "@/components/promptbox/NewThreadComposer";
-import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
+import {
+  encodeReuseValue,
+  REUSE_VALUE_WITHOUT_ENVIRONMENT,
+} from "@/components/pickers/environment-picker-value";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { buildThreadHandoffLocationState } from "@/lib/thread-handoff-request";
+import { buildThreadHandoffLocationState } from "@bb/client-core";
+import { makeThreadListEntry } from "@/test/fixtures/thread-list-entries";
 import { RootComposeView } from "@/views/RootComposeView";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
 
@@ -42,7 +47,13 @@ const mocks = vi.hoisted(() => ({
   promptBoxProps: [] as Array<Record<string, any>>,
   copyAttachments: vi.fn(),
   uploadAttachment: vi.fn(),
-  threadsLoading: false,
+  projectThreads: [] as ThreadListEntry[],
+  sidebarNavigationSettled: true,
+  // When true, the settled data is a replayed placeholder from the last page
+  // load (TanStack reports `isSuccess` for placeholders too).
+  sidebarNavigationReplayed: false,
+  extraProjects: [] as Array<Record<string, unknown>>,
+  promptHistoryQueryOptions: [] as Array<{ enabled?: boolean } | undefined>,
 }));
 
 vi.mock("@/components/promptbox/NewThreadPromptBox", () => ({
@@ -91,19 +102,34 @@ const OTHER_PROJECT = {
 };
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
-  useSidebarNavigation: () => ({
-    data: {
-      projects: [PROJECT, OTHER_PROJECT],
-      personalProject: {
-        id: "personal",
-        name: "Personal",
-        sources: [],
-        threads: [],
-      },
-    },
-    isError: false,
-    isSuccess: true,
-  }),
+  useSidebarNavigation: () =>
+    mocks.sidebarNavigationSettled
+      ? {
+          data: {
+            projects: [
+              { ...PROJECT, threads: mocks.projectThreads },
+              OTHER_PROJECT,
+              ...mocks.extraProjects,
+            ],
+            personalProject: {
+              id: "personal",
+              name: "Personal",
+              sources: [],
+              threads: [],
+            },
+          },
+          isError: false,
+          isLoading: false,
+          isSuccess: true,
+          isPlaceholderData: mocks.sidebarNavigationReplayed,
+        }
+      : {
+          data: undefined,
+          isError: false,
+          isLoading: true,
+          isSuccess: false,
+          isPlaceholderData: false,
+        },
 }));
 
 vi.mock("@/hooks/queries/host-queries", () => ({
@@ -115,7 +141,9 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
-  useOnboardingAgents: () => ({ data: undefined, isPending: false }),
+  useSystemProviderStates: () => ({ data: undefined, isPending: false }),
+  // No roster in this suite's cache, which is the cold-cache answer.
+  useKnownProviderModelCatalogScope: () => undefined,
   useHostProviderCliStatus: () => ({ data: undefined }),
   useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
   useSystemExecutionOptions: () => ({
@@ -173,7 +201,6 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [], isLoading: mocks.threadsLoading }),
   useThreadStorageFiles: () => ({
     data: undefined,
     error: null,
@@ -189,7 +216,13 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
 
 vi.mock("@/hooks/queries/project-queries", () => ({
   stripProjectThreads: (project: unknown) => project,
-  useProjectPromptHistory: () => ({ data: [] }),
+  useProjectPromptHistory: (
+    _projectId: unknown,
+    options?: { enabled?: boolean },
+  ) => {
+    mocks.promptHistoryQueryOptions.push(options);
+    return { data: [] };
+  },
   useProjectSourceBranches: () => ({
     data: {
       branches: ["main", "release"],
@@ -296,9 +329,7 @@ function ForkSeedSurface({ composer }: { composer: NewThreadComposerState }) {
   useEffect(() => {
     seedEnvironmentSelectionValue(encodeReuseValue("env-source"));
   }, [seedEnvironmentSelectionValue]);
-  return composer.renderPromptBox({
-    zenModeStorageKey: "bb.promptbox.zen-mode.test-root-fork",
-  });
+  return composer.renderPromptBox({});
 }
 
 function composerElement(
@@ -367,9 +398,13 @@ async function submit(): Promise<void> {
 describe("PluginNewThreadComposer seeding", () => {
   beforeEach(() => {
     mocks.promptBoxProps.length = 0;
+    mocks.promptHistoryQueryOptions.length = 0;
     mocks.copyAttachments.mockReset();
     mocks.uploadAttachment.mockReset();
-    mocks.threadsLoading = false;
+    mocks.projectThreads = [];
+    mocks.sidebarNavigationSettled = true;
+    mocks.sidebarNavigationReplayed = false;
+    mocks.extraProjects = [];
     window.localStorage.clear();
     getPromptDraftAccessor({ kind: "new-thread" }).setDraft({
       text: "",
@@ -401,6 +436,120 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(submitted[0]).toEqual(STORED_REQUEST);
     await waitFor(() => {
       expect(latestPromptBoxProps().value).toBe("");
+    });
+  });
+
+  it("binds plugin draft actions to the hosted composer instance", async () => {
+    renderComposer(STORED_REQUEST, () => undefined, "host-binding");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    const host = latestPromptBoxProps().pluginComposerHost;
+    expect(host.scope).toEqual({ kind: "new-thread", projectId: "proj_1" });
+    expect(host.getCurrent().text).toBe("review every PR for slop");
+
+    act(() => {
+      host.setDraft({
+        ...host.getCurrent(),
+        text: "updated through the Composer API",
+      });
+    });
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().value).toBe(
+        "updated through the Composer API",
+      );
+    });
+  });
+
+  it("does not demote a project the replayed bootstrap does not know yet", async () => {
+    // A replayed bootstrap is a snapshot from the last page load. A project
+    // created since is absent from it. The composer must hold the requested
+    // project (picker loading, submit blocked) instead of treating it as
+    // personal, so the thread lands in the right project once live data
+    // arrives.
+    mocks.sidebarNavigationReplayed = true;
+    const submitted: NewThreadRequest[] = [];
+    const onSubmit = (request: NewThreadRequest) => {
+      submitted.push(request);
+    };
+    const seed = { ...STORED_REQUEST, projectId: "proj_new" };
+    const { rerender } = render(
+      composerElement(seed, onSubmit, "replay-unknown-project"),
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_new");
+    });
+    expect(latestPromptBoxProps().project.isLoading).toBe(true);
+    expect(latestPromptBoxProps().disabled).toBe(true);
+
+    mocks.sidebarNavigationReplayed = false;
+    mocks.extraProjects = [
+      {
+        ...PROJECT,
+        id: "proj_new",
+        name: "Project New",
+        sources: [
+          { ...PROJECT.sources[0], id: "src_new", projectId: "proj_new" },
+        ],
+      },
+    ];
+    rerender(composerElement(seed, onSubmit, "replay-unknown-project"));
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.isLoading).toBe(false);
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.projectId).toBe("proj_new");
+  });
+
+  it("treats a replayed bootstrap that knows the project as settled", async () => {
+    mocks.sidebarNavigationReplayed = true;
+    renderComposer(STORED_REQUEST, () => {}, "replay-known-project");
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    expect(latestPromptBoxProps().project.isLoading).toBe(false);
+    expect(latestPromptBoxProps().project.value).toBe("proj_1");
+  });
+
+  it("allows submitting a projectless thread", async () => {
+    const submitted: NewThreadRequest[] = [];
+    renderComposer(
+      STORED_REQUEST,
+      (request) => {
+        submitted.push(request);
+      },
+      "projectless",
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().disabled).toBe(false);
+      expect(latestPromptBoxProps().project.allowNoProject).toBe(true);
+    });
+    await act(async () => {
+      await latestPromptBoxProps().project.onChange(null);
+    });
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBeNull();
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toMatchObject({
+      projectId: PERSONAL_PROJECT_ID,
+      environment: {
+        type: "host",
+        hostId: "host_1",
+        workspace: { type: "personal" },
+      },
     });
   });
 
@@ -600,8 +749,21 @@ describe("PluginNewThreadComposer seeding", () => {
     );
   });
 
-  it("submits a fork with its seeded environment while reuse options load", async () => {
-    mocks.threadsLoading = true;
+  it("derives reuse options from the sidebar bootstrap so a fork keeps its seeded worktree", async () => {
+    // No separate `GET /threads?projectId=` backs the worktree picker: the
+    // sidebar bootstrap rows are the source, so the seeded reuse environment
+    // resolves as soon as the bootstrap holds the source thread.
+    mocks.projectThreads = [
+      makeThreadListEntry({
+        id: "thr_source",
+        projectId: "proj_1",
+        environmentId: "env-source",
+        environmentHostId: "host_1",
+        environmentName: "source",
+        environmentBranchName: "feature/source",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+      }),
+    ];
     const submitted: NewThreadRequest[] = [];
     render(
       <Provider>
@@ -639,6 +801,132 @@ describe("PluginNewThreadComposer seeding", () => {
       type: "reuse",
       environmentId: "env-source",
     });
+  });
+
+  it("renders the root composer with a loading project picker before the sidebar bootstrap settles", () => {
+    mocks.sidebarNavigationSettled = false;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "/", element: <RootComposeView /> }],
+      { initialEntries: ["/"] },
+    );
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+    // The composer is on screen immediately (no "Loading…" gate) ...
+    expect(screen.getByTestId("new-thread-prompt-box")).toBeTruthy();
+    expect(latestPromptBoxProps().project.isLoading).toBe(true);
+    // ... while the projectId-keyed prompt-history query waits for the
+    // settled project id, so a cold start never fetches history for a
+    // candidate project that may fall back to Personal once the bootstrap
+    // lands. (Worktree-reuse options derive from the bootstrap itself, so
+    // there is no separate threads request to gate.)
+    expect(mocks.promptHistoryQueryOptions.length).toBeGreaterThan(0);
+    expect(
+      mocks.promptHistoryQueryOptions.every(
+        (options) => options?.enabled === false,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a seeded fork's reuse selection pending until the sidebar bootstrap settles", async () => {
+    // The worktree picker's reuse options come from the sidebar bootstrap.
+    // While it is in flight the options are "loading", not "empty": a seeded
+    // reuse selection must stay pending (`reuse`) instead of being discarded
+    // as unknown, then resolve once the bootstrap holds the source thread.
+    mocks.sidebarNavigationSettled = false;
+    const submitted: NewThreadRequest[] = [];
+    const seed = {
+      initialPrompt: "fork prompt",
+      environment: { type: "reuse" as const, environmentId: "env-source" },
+    };
+    const onSubmit = (request: NewThreadRequest) => {
+      submitted.push(request);
+    };
+    // A fresh element per render so React re-renders the composer (an
+    // identical element reference would bail out) and re-reads the mocks.
+    const element = () => (
+      <Provider>
+        <MemoryRouter>
+          <NewThreadComposer
+            projectId="proj_1"
+            onProjectChange={() => undefined}
+            draftStorage={{ kind: "new-thread" }}
+            selectionScope="new-thread"
+            seed={seed}
+            resetKey="thr_source"
+            onSubmit={onSubmit}
+          >
+            {(composer) => <ForkSeedSurface composer={composer} />}
+          </NewThreadComposer>
+        </MemoryRouter>
+      </Provider>
+    );
+    const { rerender } = render(element());
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        REUSE_VALUE_WITHOUT_ENVIRONMENT,
+      );
+    });
+    expect(latestPromptBoxProps().modeConfig.worktree.options).toEqual([]);
+
+    mocks.sidebarNavigationSettled = true;
+    mocks.projectThreads = [
+      makeThreadListEntry({
+        id: "thr_source",
+        projectId: "proj_1",
+        environmentId: "env-source",
+        environmentHostId: "host_1",
+        environmentName: "source",
+        environmentBranchName: "feature/source",
+        environmentWorkspaceDisplayKind: "managed-worktree",
+      }),
+    ];
+    rerender(element());
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        encodeReuseValue("env-source"),
+      );
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0].environment).toEqual({
+      type: "reuse",
+      environmentId: "env-source",
+    });
+  });
+
+  it("enables the project picker and prompt-history query once the sidebar bootstrap settles", () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "/", element: <RootComposeView /> }],
+      { initialEntries: ["/"] },
+    );
+    render(
+      <Provider>
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+
+    expect(latestPromptBoxProps().project.isLoading).toBe(false);
+    expect(mocks.promptHistoryQueryOptions.at(-1)?.enabled).toBe(true);
   });
 
   it("keeps an unrelated draft attachment out of a RootComposeView handoff", async () => {

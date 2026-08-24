@@ -64,6 +64,7 @@ export function AllBanners() {
               <ProviderRetryBannerView
                 cancelling={false}
                 onCancel={() => undefined}
+                providerName="Claude Code"
                 view={view}
               />
             </div>

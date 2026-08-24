@@ -1,0 +1,138 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@import "nativewind/theme";
+
+/*
+ * Tailwind class vocabulary for the bb mobile app.
+ *
+ * Every `--color-*` below points at a CSS variable (`--background`, `--border`,
+ * …) that `src/theme/ThemeProvider.tsx` supplies at runtime through
+ * NativeWind's variable context, per palette × light/dark, using the values
+ * generated into `src/theme/theme.native.ts`. The token names mirror the
+ * `@theme inline` block in `apps/app/src/components/ui/theme.css` so class
+ * names port from the web app unchanged (`bg-background`, `text-foreground`,
+ * `border-border`, `bg-sidebar-accent`, …). `src/theme/theme-vars.test.ts`
+ * fails when this list drifts from the web token list.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-readback-foreground: var(--readback-foreground);
+  --color-timeline-accent: var(--timeline-accent);
+  --color-version-upgrade: var(--version-upgrade);
+  --color-file-accent: var(--file-accent);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-state-hover: var(--state-hover);
+  --color-state-active: var(--state-active);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-text: var(--destructive-text);
+  --color-attention: var(--attention);
+  --color-warning: var(--warning);
+  --color-warning-text: var(--warning-text);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-diff-added: var(--diff-added);
+  --color-pr-merged: var(--pr-merged);
+  --color-diff-removed: var(--diff-removed);
+  --color-border: var(--border);
+  --color-border-hairline: var(--border-hairline);
+  --color-border-seam: var(--border-seam);
+  --color-border-seam-vertical: var(--border-seam-vertical);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface-recessed: var(--surface-recessed);
+  --color-surface-recessed-solid: var(--surface-recessed-solid);
+  --color-surface-recessed-soft-solid: var(--surface-recessed-soft-solid);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-raised-solid: var(--surface-raised-solid);
+  --color-surface-scrim: var(--surface-scrim);
+  --color-surface-destructive: var(--surface-destructive);
+  --color-surface-destructive-border: var(--surface-destructive-border);
+  --color-surface-attention: var(--surface-attention);
+  --color-surface-selected: var(--surface-selected);
+  --color-surface-selected-border: var(--surface-selected-border);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  /* Mobile-only additions (not in the web @theme block): the anchors, the
+     sidebar search match, the pill chrome and the shadow color are exposed so
+     screens can use them as classes too. */
+  --color-canvas: var(--canvas);
+  --color-ink: var(--ink);
+  --color-pill-foreground: var(--pill-foreground);
+  --color-pill-icon: var(--pill-icon);
+  --color-pill-surface-border: var(--pill-surface-border);
+  --color-pill-surface-selected-border: var(--pill-surface-selected-border);
+  --color-sidebar-search-match: var(--sidebar-search-match);
+  --color-sidebar-search-match-border: var(--sidebar-search-match-border);
+  --color-shadow-color: var(--shadow-color);
+
+  /*
+   * Fonts. Expo Google Fonts register one family name per weight, so the
+   * `font-sans-*` / `font-mono-*` utilities select the weight-specific family.
+   * `<Text weight="…">` (src/ui/Text.tsx) picks the right family for you and
+   * also derives it from web-style `font-medium|semibold|bold` classes.
+   */
+  --font-sans: "Inter_400Regular";
+  --font-sans-medium: "Inter_500Medium";
+  --font-sans-semibold: "Inter_600SemiBold";
+  --font-sans-bold: "Inter_700Bold";
+  --font-mono: "FiraCode_400Regular";
+  --font-mono-medium: "FiraCode_500Medium";
+  --font-mono-semibold: "FiraCode_600SemiBold";
+  --font-mono-bold: "FiraCode_700Bold";
+
+  /* Radii mirror `--radius: 0.5rem` and its steps (nativeRadii). */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+}
+
+/*
+ * Typography scale: the touch (coarse-pointer) values from theme.css, which
+ * the mobile PWA renders on a phone. Sizes are px so react-native-css does
+ * not depend on the rem multiplier. Line heights are unitless ratios
+ * (`calc(line-height / font-size)`): Tailwind emits them as the fallback of
+ * `var(--tw-leading, …)`, and react-native-css drops the unit inside that
+ * fallback and treats the number as an em multiplier at runtime (`22px`
+ * became `22 × 15 = 330`). A ratio survives that path and yields the px value.
+ * Mirrors nativeTypography in theme.native.ts.
+ */
+@theme {
+  --text-2xs: 11px;
+  --text-2xs--line-height: calc(15 / 11);
+  --text-xs: 14px;
+  --text-xs--line-height: calc(20 / 14);
+  --text-sm: 15px;
+  --text-sm--line-height: calc(22 / 15);
+  --text-base: 16px;
+  --text-base--line-height: calc(24 / 16);
+}
+
+/*
+ * react-native-css inlines `rem` at compile time and defaults to 14px; the
+ * web app uses the browser default of 16px, so Tailwind spacing (`--spacing:
+ * 0.25rem`) must resolve to the same 4px grid here.
+ */
+:root {
+  font-size: 16px;
+}

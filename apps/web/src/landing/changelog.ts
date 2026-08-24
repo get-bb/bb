@@ -8,7 +8,7 @@ export type ReleaseBlock =
   | { kind: "paragraph"; text: string }
   | { kind: "list"; items: string[] };
 
-export type ReleaseSection = {
+type ReleaseSection = {
   title: string;
   blocks: ReleaseBlock[];
 };
@@ -21,7 +21,7 @@ export type Release = {
 };
 
 /** Presentation extras that don't belong in CHANGELOG.md itself. */
-export type ReleaseMeta = {
+type ReleaseMeta = {
   /** Human-readable ship date, e.g. "July 14, 2026". */
   date: string;
   /** Marketing headline shown instead of the bare version number. */
@@ -29,6 +29,10 @@ export type ReleaseMeta = {
 };
 
 export const RELEASE_META: Record<string, ReleaseMeta> = {
+  "0.39.0": {
+    date: "August 19, 2026",
+    headline: "Faster large threads and a long list of fixes",
+  },
   "0.38.0": {
     date: "August 15, 2026",
     headline: "Extensions Page and Plugin Marketplaces",

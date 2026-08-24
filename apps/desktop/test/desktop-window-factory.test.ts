@@ -65,8 +65,6 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
   public readonly contextMenuListeners: Parameters<
     DesktopContextMenuWebContents["on"]
   >[1][] = [];
-  public readonly executedScripts: string[] = [];
-  public readonly insertedTexts: string[] = [];
   public readonly replacedMisspellings: string[] = [];
   public windowOpenHandler: DesktopWindowOpenHandler | null = null;
   public readonly zoomFactors: number[] = [];
@@ -79,15 +77,6 @@ class FakeDesktopWindowWebContents implements DesktopWindowWebContents {
     if (options.mode === "detach") {
       this.devToolsOpenCount += 1;
     }
-  }
-
-  executeJavaScript(script: string): Promise<unknown> {
-    this.executedScripts.push(script);
-    return Promise.resolve(null);
-  }
-
-  insertText(text: string): void {
-    this.insertedTexts.push(text);
   }
 
   send(channel: string, payload: unknown): void {

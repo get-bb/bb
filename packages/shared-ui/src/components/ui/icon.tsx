@@ -1,228 +1,57 @@
+import type { CSSProperties } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
-  AiContentGenerator01Icon,
   Alert02Icon,
   AlertCircleIcon,
   Archive03Icon,
   ArrowDown01Icon,
-  ArrowDown02Icon,
-  ArrowDownDoubleIcon,
   ArrowLeft01Icon,
-  ArrowMoveDownLeftIcon,
-  ArrowMoveDownRightIcon,
   ArrowRight01Icon,
-  ArrowRight02Icon,
-  ArrowReloadHorizontalIcon,
-  ArrowUp01Icon,
-  ArrowUp02Icon,
-  ArrowUpDoubleIcon,
-  ArrowUpDownIcon,
-  ArrowTurnBackwardIcon,
-  ArrowTurnForwardIcon,
-  ArrowUpRight01Icon,
-  AttachmentIcon,
-  AudioWaveIcon,
-  BrowserIcon,
+  BotIcon,
   BubbleChatAddIcon,
   BubbleChatIcon,
-  BubbleChatQuestionIcon,
-  Calendar03Icon,
-  CalendarCheckOut02Icon,
-  CalendarSyncIcon,
+  Bug01Icon,
   Cancel01Icon,
   CancelCircleIcon,
-  ChatFeedback01Icon,
-  Bug01Icon,
-  ChartColumnIcon,
   CheckListIcon,
   CheckmarkCircle02Icon,
-  CircleArrowShrink01Icon,
   CircleIcon,
-  CleanIcon,
-  Clock01Icon,
-  CloudIcon,
-  CollapseIcon,
-  Book02Icon,
-  BrainIcon,
   ComputerTerminal01Icon,
   Copy01Icon,
-  DashedLine02Icon,
   DashedLineCircleIcon,
-  DateTimeIcon,
   Delete02Icon,
   Download01Icon,
-  DiscordIcon,
-  GithubIcon,
-  DragDropHorizontalIcon,
-  DragDropVerticalIcon,
   Edit02Icon,
-  Edit04Icon,
-  ElectricPlugsIcon,
-  ExpandIcon,
-  ViewIcon,
-  ViewOffIcon,
-  File01Icon,
-  FileAttachmentIcon,
-  FileEmpty02Icon,
-  FileQuestionMarkIcon,
-  FileXIcon,
-  Folder02Icon,
   FolderAddIcon,
+  FolderExportIcon,
   FolderGitTwoIcon,
   FolderIcon,
-  FolderRemoveIcon,
-  GitBranchIcon,
-  GitForkIcon,
-  GitMergeIcon,
-  GitPullRequestArrow,
-  GitPullRequestClosedIcon,
-  GitPullRequestDraftIcon,
-  GitPullRequestIcon,
-  GridViewIcon,
   HelpCircleIcon,
-  Idea01Icon,
   InformationCircleIcon,
-  InternetIcon,
-  LaptopIcon,
-  Layers01Icon,
-  LightbulbOffIcon,
-  ListViewIcon,
-  LockIcon,
   Loading03Icon,
-  LayoutThreeRowIcon,
-  LayoutTwoColumnIcon,
-  LayoutTwoRowIcon,
-  LinkSquare02Icon,
-  Mail02Icon,
-  MailOpen01Icon,
-  Menu02Icon,
-  MessageAdd02Icon,
   MessageQuestionIcon,
-  Mic02Icon,
   MoreHorizontalIcon,
-  PackageReceiveIcon,
-  PauseIcon,
-  PinIcon,
-  PinOffIcon,
-  PlayIcon,
-  PlusMinusSquare01Icon,
-  PlusSignIcon,
-  PuzzleIcon,
-  Refresh01Icon,
-  RepeatIcon,
   Search01Icon,
-  SentIcon,
   Settings01Icon,
-  SidebarBottomIcon,
   SidebarLeftIcon,
-  SidebarRightIcon,
   SlidersHorizontalIcon,
-  SmartPhone01Icon,
-  Sorting01Icon,
   SourceCodeIcon,
-  SquareIcon,
-  StarIcon,
   Target02Icon,
-  TestTube01Icon,
-  TextWrapIcon,
   Tick02Icon,
-  TimeScheduleIcon,
   ToolboxIcon,
   ToolCaseIcon,
-  Unarchive03Icon,
   UserAdd01Icon,
-  UserIcon,
   WorkflowCircle03Icon,
   ZapIcon,
-  ZoomInAreaIcon,
-  ZoomOutAreaIcon,
 } from "@hugeicons/core-free-icons";
+import { useSyncExternalStore } from "react";
 import { cn } from "../../lib/utils";
-
-// The free hugeicons set ships no artist-palette glyph (its `Palette` export
-// is a pen nib), so this inlines the stroke-rounded palette artwork in the
-// same element format the set uses.
-const PaletteStrokeRoundedIcon: IconSvgElement = [
-  [
-    "path",
-    {
-      d: "M21.8205 10.4127C22.062 11.8519 22.1827 12.5715 21.2423 13.9326C21.1459 14.0722 20.8966 14.3713 20.777 14.4911C19.6103 15.6586 18.4308 15.6586 16.0716 15.6586H14.1392C13.5085 15.6586 13.1931 15.6586 12.9639 15.7142C11.9586 15.9581 11.3031 16.9391 11.453 17.9755C11.4872 18.2118 11.6043 18.5085 11.8386 19.102C11.9345 19.3449 11.9824 19.4664 12.0136 19.7304C12.1292 20.7084 11.0869 21.9508 10.1158 21.9926C9.85358 22.0039 9.83681 22.0002 9.80326 21.9926C7.66174 21.51 5.66204 20.3123 4.18389 18.4421C0.736789 14.0808 1.43146 7.71364 5.73548 4.22064C10.0395 0.727643 16.323 1.43156 19.7701 5.79289C20.868 7.1819 21.5457 8.77438 21.8205 10.4127Z",
-      fill: "none",
-      fillRule: "evenodd",
-      clipRule: "evenodd",
-      stroke: "currentColor",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "0",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M7.36719 7.74976H7.24219M7.49219 7.74976C7.49219 7.88783 7.38026 7.99976 7.24219 7.99976C7.10412 7.99976 6.99219 7.88783 6.99219 7.74976C6.99219 7.61169 7.10412 7.49976 7.24219 7.49976C7.38026 7.49976 7.49219 7.61169 7.49219 7.74976Z",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "1",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M7.36719 15.7498H7.24219M7.49219 15.7498C7.49219 15.8878 7.38026 15.9998 7.24219 15.9998C7.10412 15.9998 6.99219 15.8878 6.99219 15.7498C6.99219 15.6117 7.10412 15.4998 7.24219 15.4998C7.38026 15.4998 7.49219 15.6117 7.49219 15.7498Z",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "2",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M11.8672 5.74976H11.7422M11.9922 5.74976C11.9922 5.88783 11.8803 5.99976 11.7422 5.99976C11.6041 5.99976 11.4922 5.88783 11.4922 5.74976C11.4922 5.61169 11.6041 5.49976 11.7422 5.49976C11.8803 5.49976 11.9922 5.61169 11.9922 5.74976Z",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "3",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M16.3672 7.74976H16.2422M16.4922 7.74976C16.4922 7.88783 16.3803 7.99976 16.2422 7.99976C16.1041 7.99976 15.9922 7.88783 15.9922 7.74976C15.9922 7.61169 16.1041 7.49976 16.2422 7.49976C16.3803 7.49976 16.4922 7.61169 16.4922 7.74976Z",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "4",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M18.3672 11.7498H18.2422M18.4922 11.7498C18.4922 11.8878 18.3803 11.9998 18.2422 11.9998C18.1041 11.9998 17.9922 11.8878 17.9922 11.7498C17.9922 11.6117 18.1041 11.4998 18.2422 11.4998C18.3803 11.4998 18.4922 11.6117 18.4922 11.7498Z",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "5",
-    },
-  ],
-  [
-    "path",
-    {
-      d: "M5.86719 11.7498H5.74219M5.99219 11.7498C5.99219 11.8878 5.88026 11.9998 5.74219 11.9998C5.60412 11.9998 5.49219 11.8878 5.49219 11.7498C5.49219 11.6117 5.60412 11.4998 5.74219 11.4998C5.88026 11.4998 5.99219 11.6117 5.99219 11.7498Z",
-      stroke: "currentColor",
-      strokeLinecap: "round",
-      strokeLinejoin: "round",
-      strokeWidth: "1.5",
-      key: "6",
-    },
-  ],
-];
+import {
+  EXTENDED_ICON_NAMES,
+  type ExtendedIconName,
+  getExtendedIcons,
+  subscribeExtendedIcons,
+} from "./icon-registry";
 
 // Custom "new section" glyph: the set's ListView rows with the middle and
 // bottom rows shortened so the plus owns the lower-right quadrant, matching
@@ -272,160 +101,105 @@ const SectionAddStrokeRoundedIcon: IconSvgElement = [
   ],
 ];
 
-const ICON_MAP = {
-  AiContentGenerator01: AiContentGenerator01Icon,
+// Core map: the glyphs the app shell renders before or at first paint
+// (sidebar rows and controls, header, toasts, menus, plugin chrome). Keep it
+// small: everything here is on the boot path of every page load. Any other
+// named icon belongs in `./icon-extended`, which loads with the first route
+// that needs it.
+const CORE_ICON_MAP = {
   AlertCircle: AlertCircleIcon,
   AlertTriangle: Alert02Icon,
-  AlignLeft: Menu02Icon,
-  AppWindow: BrowserIcon,
   Archive: Archive03Icon,
-  ArchiveRestore: Unarchive03Icon,
-  ArrowDown: ArrowDown02Icon,
-  ArrowRight: ArrowRight02Icon,
-  ArrowReloadHorizontal: ArrowReloadHorizontalIcon,
-  ArrowUp: ArrowUp02Icon,
-  ArrowUpDown: ArrowUpDownIcon,
-  ArrowTurnBackward: ArrowTurnBackwardIcon,
-  ArrowTurnForward: ArrowTurnForwardIcon,
-  ArrowUpRight: ArrowUpRight01Icon,
-  AudioLines: AudioWaveIcon,
-  Beaker: TestTube01Icon,
-  BubbleChatQuestion: BubbleChatQuestionIcon,
-  Browser: BrowserIcon,
-  Brain: BrainIcon,
+  Bot: BotIcon,
   Bug: Bug01Icon,
-  Calendar: Calendar03Icon,
-  CalendarCheckOut02: CalendarCheckOut02Icon,
-  CalendarSync: CalendarSyncIcon,
-  ChatFeedback: ChatFeedback01Icon,
-  ChartColumn: ChartColumnIcon,
   Check: Tick02Icon,
   ChevronDown: ArrowDown01Icon,
   ChevronLeft: ArrowLeft01Icon,
   ChevronRight: ArrowRight01Icon,
-  ChevronUp: ArrowUp01Icon,
-  ChevronsDown: ArrowDownDoubleIcon,
-  ChevronsUp: ArrowUpDoubleIcon,
   Circle: CircleIcon,
-  CircleArrowShrink: CircleArrowShrink01Icon,
   CircleCheck: CheckmarkCircle02Icon,
-  CircleDashed: DashedLineCircleIcon,
   CircleQuestion: HelpCircleIcon,
   CircleX: CancelCircleIcon,
-  Clean: CleanIcon,
-  Clock: Clock01Icon,
+  ClosePluginPane: Cancel01Icon,
+  CloseThreadPane: Cancel01Icon,
   Code: SourceCodeIcon,
   ComputerTerminal01: ComputerTerminal01Icon,
-  Columns2: LayoutTwoColumnIcon,
-  Container: CloudIcon,
   Copy: Copy01Icon,
-  CornerDownLeft: ArrowMoveDownLeftIcon,
-  CornerDownRight: ArrowMoveDownRightIcon,
-  Discord: DiscordIcon,
-  DateTime: DateTimeIcon,
-  Github: GithubIcon,
-  DragDropHorizontal: DragDropHorizontalIcon,
-  DragDropVertical: DragDropVerticalIcon,
   Download: Download01Icon,
   Edit: Edit02Icon,
-  EditFile: Edit04Icon,
-  ElectricPlugs: ElectricPlugsIcon,
-  Eye: ViewIcon,
-  EyeOff: ViewOffIcon,
-  Explore: Book02Icon,
-  ExternalLink: LinkSquare02Icon,
-  FileDiff: PlusMinusSquare01Icon,
-  File: FileEmpty02Icon,
-  FileAttachment: FileAttachmentIcon,
-  FileQuestion: FileQuestionMarkIcon,
-  FileText: File01Icon,
-  FileX2: FileXIcon,
   Folder: FolderIcon,
+  FolderExport: FolderExportIcon,
   FolderGit: FolderGitTwoIcon,
-  FolderOpen: Folder02Icon,
-  FolderMinus: FolderRemoveIcon,
   FolderPlus: FolderAddIcon,
-  Fork: GitForkIcon,
-  GitBranch: GitBranchIcon,
-  GitMerge: GitMergeIcon,
-  GitPullRequest: GitPullRequestIcon,
-  GitPullRequestArrow: GitPullRequestArrow,
-  GitPullRequestClosed: GitPullRequestClosedIcon,
-  GitPullRequestDraft: GitPullRequestDraftIcon,
-  Globe: InternetIcon,
-  GridView: GridViewIcon,
   Info: InformationCircleIcon,
-  Laptop: LaptopIcon,
-  Layers: Layers01Icon,
-  ListView: ListViewIcon,
-  SectionAdd: SectionAddStrokeRoundedIcon,
   ListTodo: CheckListIcon,
   Loading: Loading03Icon,
-  Lock: LockIcon,
-  Mail: Mail02Icon,
-  MailOpen: MailOpen01Icon,
-  Maximize2: ExpandIcon,
   MessageQuestion: MessageQuestionIcon,
   MessageCirclePlus: BubbleChatAddIcon,
   MessageSquarePlus: BubbleChatAddIcon,
   MessageSquare: BubbleChatIcon,
-  Mic: Mic02Icon,
-  Minimize2: CollapseIcon,
   MoreHorizontal: MoreHorizontalIcon,
-  NewTab: DashedLine02Icon,
-  PackageReceive: PackageReceiveIcon,
-  Palette: PaletteStrokeRoundedIcon,
-  PanelBottom: SidebarBottomIcon,
   PanelLeft: SidebarLeftIcon,
-  PanelRight: SidebarRightIcon,
-  Paperclip: AttachmentIcon,
-  Pause: PauseIcon,
-  Pin: PinIcon,
-  PinOff: PinOffIcon,
-  Play: PlayIcon,
-  Plus: PlusSignIcon,
-  Puzzle: PuzzleIcon,
-  Repeat: RepeatIcon,
-  RotateCcw: Refresh01Icon,
-  Rows2: LayoutTwoRowIcon,
-  Rows3: LayoutThreeRowIcon,
   Search: Search01Icon,
-  Sent: SentIcon,
+  SectionAdd: SectionAddStrokeRoundedIcon,
   Settings: Settings01Icon,
-  SideChat: MessageAdd02Icon,
-  ClosePluginPane: Cancel01Icon,
-  CloseThreadPane: Cancel01Icon,
   SlidersHorizontal: SlidersHorizontalIcon,
-  Smartphone: SmartPhone01Icon,
-  Sort: Sorting01Icon,
   Spinner: DashedLineCircleIcon,
-  Idea: Idea01Icon,
-  LightbulbOff: LightbulbOffIcon,
-  Square: SquareIcon,
-  Star: StarIcon,
   Target: Target02Icon,
   Terminal: ComputerTerminal01Icon,
-  TextWrap: TextWrapIcon,
-  TimeSchedule: TimeScheduleIcon,
   Toolbox: ToolboxIcon,
   ToolCase: ToolCaseIcon,
   Trash2: Delete02Icon,
-  UserRound: UserIcon,
   UserRoundPlus: UserAdd01Icon,
   Workflow: WorkflowCircle03Icon,
   X: Cancel01Icon,
   Zap: ZapIcon,
-  ZoomIn: ZoomInAreaIcon,
-  ZoomOut: ZoomOutAreaIcon,
 } as const satisfies Record<string, IconSvgElement>;
 
-export type IconName = keyof typeof ICON_MAP;
+type CoreIconName = keyof typeof CORE_ICON_MAP;
 
-export const ICON_NAMES = Object.keys(ICON_MAP) as readonly IconName[];
+export type IconName = CoreIconName | ExtendedIconName;
+
+// Object.keys loses the literal key type; the map's own keys are the source
+// of truth for CoreIconName, so this is the one place the cast is exact.
+const CORE_ICON_NAMES = Object.keys(CORE_ICON_MAP) as readonly CoreIconName[];
+
+/** Every renderable icon name (core and extended), without loading artwork. */
+export const ICON_NAMES: readonly IconName[] = [
+  ...CORE_ICON_NAMES,
+  ...EXTENDED_ICON_NAMES,
+];
+
+// Widened view of the core map so a union-typed name can be looked up
+// without a cast; extended names simply miss.
+const CORE_ICON_LOOKUP: Readonly<Record<string, IconSvgElement | undefined>> =
+  CORE_ICON_MAP;
+
+let extendedIconsLoad: Promise<void> | null = null;
+
+/**
+ * Loads the extended glyph registry. Idempotent; a failed load (for example an
+ * offline chunk fetch) is retried on the next call.
+ */
+export function preloadExtendedIcons(): Promise<void> {
+  if (getExtendedIcons() !== null) return Promise.resolve();
+  extendedIconsLoad ??= import("./icon-extended").then(
+    () => undefined,
+    (error: unknown) => {
+      extendedIconsLoad = null;
+      throw error;
+    },
+  );
+  return extendedIconsLoad;
+}
+
+const EMPTY_ICON: IconSvgElement = [];
 
 export interface IconProps {
   name: IconName;
   className?: string;
+  /** Inline style for data-driven accents (a bridge's per-theme tint). */
+  style?: CSSProperties;
   "aria-hidden"?: boolean | "true" | "false";
   "aria-label"?: string;
 }
@@ -433,16 +207,69 @@ export interface IconProps {
 export function Icon({
   name,
   className,
+  style,
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: IconProps) {
+  const coreIcon = CORE_ICON_LOOKUP[name];
+  if (coreIcon !== undefined) {
+    return (
+      <HugeiconsIcon
+        icon={coreIcon}
+        className={cn(className)}
+        style={style}
+        aria-hidden={ariaHidden}
+        aria-label={ariaLabel}
+        data-icon={name}
+      />
+    );
+  }
+  return (
+    <ExtendedIcon
+      name={name}
+      className={className}
+      style={style}
+      aria-hidden={ariaHidden}
+      aria-label={ariaLabel}
+    />
+  );
+}
+
+/**
+ * Renders an extended-registry glyph. Until the registry has loaded it renders
+ * the same-size empty svg (no layout shift), kicks off the load, and
+ * re-renders once the artwork is registered.
+ */
+function ExtendedIcon({
+  name,
+  className,
+  style,
+  "aria-hidden": ariaHidden,
+  "aria-label": ariaLabel,
+}: IconProps) {
+  // Widened like CORE_ICON_LOOKUP so the union-typed name needs no cast.
+  const extendedIcons: Readonly<
+    Record<string, IconSvgElement | undefined>
+  > | null = useSyncExternalStore(
+    subscribeExtendedIcons,
+    getExtendedIcons,
+    getExtendedIcons,
+  );
+  const icon = extendedIcons?.[name];
+  if (icon === undefined) {
+    // Fire-and-forget: the store notifies subscribers when it lands, and
+    // preloadExtendedIcons handles the retry on failure.
+    void preloadExtendedIcons().catch(() => undefined);
+  }
   return (
     <HugeiconsIcon
-      icon={ICON_MAP[name]}
+      icon={icon ?? EMPTY_ICON}
       className={cn(className)}
+      style={style}
       aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       data-icon={name}
+      data-icon-pending={icon === undefined ? "" : undefined}
     />
   );
 }

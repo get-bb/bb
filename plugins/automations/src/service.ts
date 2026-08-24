@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
@@ -31,8 +32,6 @@ import {
   automationsOverviewResponseSchema,
   type AgentExecutionUpdate,
   type AutomationExecution,
-  type AutomationExecutionOptionsResponse,
-  type AutomationPermissionOptionsResponse,
   type AutomationRunListResponse,
   type AutomationRunRpcResponse,
   type AutomationResponse,
@@ -49,6 +48,7 @@ import {
   validateScheduleDefinition,
 } from "./schedule-helpers.js";
 import {
+  automationScriptDir,
   deleteAutomationScriptDir,
   deleteAutomationScriptFile,
   readAutomationScript,
@@ -59,8 +59,7 @@ import { executeAgentRun, executeScriptRun } from "./run.js";
 type ServiceApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: {
     projects: Pick<BbPluginApi["sdk"]["projects"], "get" | "list">;
-    providers: Pick<BbPluginApi["sdk"]["providers"], "list"> &
-      Partial<Pick<BbPluginApi["sdk"]["providers"], "models">>;
+    providers: Pick<BbPluginApi["sdk"]["providers"], "list">;
     threads: Pick<BbPluginApi["sdk"]["threads"], "get" | "send" | "spawn">;
   };
 };
@@ -72,14 +71,6 @@ export interface AutomationService {
     projectId: string;
     automationId: string;
   }): Promise<AutomationResponse>;
-  executionOptions(input: {
-    projectId: string;
-    automationId: string;
-  }): Promise<AutomationExecutionOptionsResponse>;
-  permissionOptions(input: {
-    projectId: string;
-    automationId: string;
-  }): Promise<AutomationPermissionOptionsResponse>;
   create(input: ResolvedCreateAutomationInput): Promise<AutomationResponse>;
   update(input: UpdateAutomationInput): Promise<AutomationResponse>;
   delete(input: {
@@ -194,11 +185,44 @@ async function discardUncommittedScript(args: {
   }
 }
 
+/**
+ * Adds `storedScriptPath` (the absolute path of the private copy that runs
+ * execute) to script automations that have a stored script file.
+ */
+function withStoredScriptPath(
+  pluginDataDir: string,
+  automation: AutomationResponse,
+): AutomationResponse {
+  if (
+    automation.execution.mode !== "script" ||
+    automation.execution.scriptFile === undefined
+  ) {
+    return automation;
+  }
+  return {
+    ...automation,
+    execution: {
+      ...automation.execution,
+      storedScriptPath: join(
+        automationScriptDir(pluginDataDir, automation.id),
+        automation.execution.scriptFile,
+      ),
+    },
+  };
+}
+
+function toStoredAutomationResponse(
+  pluginDataDir: string,
+  row: AutomationRow,
+): AutomationResponse {
+  return withStoredScriptPath(pluginDataDir, toAutomationResponse(row));
+}
+
 async function toEditableAutomationResponse(args: {
   pluginDataDir: string;
   row: AutomationRow;
 }): Promise<AutomationResponse> {
-  const automation = toAutomationResponse(args.row);
+  const automation = toStoredAutomationResponse(args.pluginDataDir, args.row);
   if (
     automation.execution.mode !== "script" ||
     automation.execution.scriptFile === undefined
@@ -272,11 +296,22 @@ function applyAgentExecutionUpdate(
   const next = {
     ...execution,
     ...(update.prompt !== undefined ? { prompt: update.prompt } : {}),
+    ...(update.providerId !== undefined
+      ? { providerId: update.providerId }
+      : {}),
     ...(update.model !== undefined ? { model: update.model } : {}),
+    ...(update.reasoningLevel !== undefined
+      ? { reasoningLevel: update.reasoningLevel }
+      : {}),
     ...(update.permissionMode !== undefined
       ? { permissionMode: update.permissionMode }
       : {}),
   };
+  if (update.serviceTier === null) {
+    delete next.serviceTier;
+  } else if (update.serviceTier !== undefined) {
+    next.serviceTier = update.serviceTier;
+  }
   if (update.target === undefined) return next;
   if (update.target.type === "target-thread") {
     return { ...next, targetThreadId: update.target.threadId };
@@ -372,7 +407,7 @@ export function createAutomationService(args: {
             if (projects.size > 0 && projectName === undefined) return null;
             try {
               return {
-                automation: toAutomationResponse(row),
+                automation: toStoredAutomationResponse(pluginDataDir, row),
                 project: {
                   id: row.projectId,
                   name: projectName ?? row.projectId,
@@ -393,8 +428,8 @@ export function createAutomationService(args: {
     },
 
     list(input) {
-      return listAutomationsForProject(db, input.projectId).map(
-        toAutomationResponse,
+      return listAutomationsForProject(db, input.projectId).map((row) =>
+        toStoredAutomationResponse(pluginDataDir, row),
       );
     },
 
@@ -403,68 +438,6 @@ export function createAutomationService(args: {
         pluginDataDir,
         row: requireProjectAutomation(db, input),
       });
-    },
-
-    async executionOptions(input) {
-      const automation = requireProjectAutomation(db, input);
-      const execution = parseAutomationExecution(automation.execution);
-      if (execution.mode !== "agent") {
-        throw new Error(
-          "Execution options are only available for agent automations",
-        );
-      }
-      const routing = providerRoutingForEnvironment(execution.environment);
-      const loadModels = bb.sdk.providers.models;
-      if (loadModels === undefined) {
-        throw new Error("Provider model discovery is unavailable.");
-      }
-      const options = await loadModels({
-        ...routing,
-        providerId: execution.providerId,
-      });
-      const provider = options.providers.find(
-        (candidate) => candidate.id === execution.providerId,
-      );
-      if (provider === undefined || !provider.available) {
-        throw new Error(`Provider ${execution.providerId} is not available.`);
-      }
-      const seenModels = new Set<string>();
-      const models = [...options.selectedOnlyModels, ...options.models]
-        .filter((model) => {
-          if (seenModels.has(model.model)) return false;
-          seenModels.add(model.model);
-          return true;
-        })
-        .map(({ id, model, displayName }) => ({ id, model, displayName }));
-      const permissionModes = provider.capabilities.permissionModes;
-      return { models, permissionModes };
-    },
-
-    async permissionOptions(input) {
-      const automation = requireProjectAutomation(db, input);
-      const execution = parseAutomationExecution(automation.execution);
-      if (execution.mode !== "agent") {
-        throw new Error(
-          "Permission options are only available for agent automations",
-        );
-      }
-      const environment = execution.environment;
-      const routing =
-        environment.type === "reuse"
-          ? { environmentId: environment.environmentId }
-          : environment.type === "host" && environment.hostId !== undefined
-            ? { hostId: environment.hostId }
-            : {};
-      const providers = await bb.sdk.providers.list(routing);
-      const provider = providers.find(
-        (candidate) => candidate.id === execution.providerId,
-      );
-      if (provider === undefined || provider.available === false) {
-        throw new Error(`Provider ${execution.providerId} is not available.`);
-      }
-      return {
-        permissionModes: provider.capabilities.permissionModes,
-      };
     },
 
     async create(payload) {
@@ -514,7 +487,7 @@ export function createAutomationService(args: {
         throw error;
       }
       publishAutomationChange(bb, payload.projectId, "automations-changed");
-      return toAutomationResponse(created);
+      return toStoredAutomationResponse(pluginDataDir, created);
     },
 
     async update(input) {
@@ -557,7 +530,11 @@ export function createAutomationService(args: {
           currentExecution,
           input.agent,
         );
-        if (input.agent.permissionMode !== undefined) {
+        if (
+          input.agent.providerId !== undefined ||
+          input.agent.permissionMode !== undefined ||
+          input.agent.target?.type === "environment"
+        ) {
           if (currentExecution.mode !== "agent") {
             throw new Error(
               "Agent execution options can only update agent automations",
@@ -566,7 +543,7 @@ export function createAutomationService(args: {
           await resolvePermissionMode(
             bb,
             updatedExecution.providerId,
-            input.agent.permissionMode,
+            updatedExecution.permissionMode,
             providerRoutingForEnvironment(updatedExecution.environment),
           );
         }
@@ -607,7 +584,7 @@ export function createAutomationService(args: {
         });
       }
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toAutomationResponse(updated);
+      return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
     async delete(input) {
@@ -634,7 +611,7 @@ export function createAutomationService(args: {
       });
       if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toAutomationResponse(updated);
+      return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
     resume(input) {
@@ -652,7 +629,7 @@ export function createAutomationService(args: {
       });
       if (!updated) throw new Error("Automation not found");
       publishAutomationChange(bb, input.projectId, "automations-changed");
-      return toAutomationResponse(updated);
+      return toStoredAutomationResponse(pluginDataDir, updated);
     },
 
     async run(input) {

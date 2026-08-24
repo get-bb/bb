@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
+  experimental_useProviders,
   useComposerView,
   useRealtime,
   useRealtimeConnectionState,
@@ -82,10 +83,20 @@ function ProviderRetryBannerForThread({ threadId }: { threadId: string }) {
     if (reconnected) void load().catch(() => undefined);
   }, [connection, load]);
 
+  // The host's provider directory names the provider; this plugin vendors
+  // no provider names of its own.
+  const { providers } = experimental_useProviders();
+  const providerName =
+    view === null
+      ? ""
+      : (providers.find((provider) => provider.id === view.providerId)
+          ?.displayName ?? view.providerId);
+
   return view === null ? null : (
     <ProviderRetryBannerView
       cancelling={cancelling}
       onCancel={cancel}
+      providerName={providerName}
       view={view}
     />
   );

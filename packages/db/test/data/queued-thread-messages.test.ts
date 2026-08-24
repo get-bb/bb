@@ -1,17 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PromptInput } from "@bb/domain";
-import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   claimNextQueuedThreadMessageGroup,
   claimQueuedThreadMessage,
   claimQueuedThreadMessageGroup,
-  claimNextQueuedThreadMessage,
   createQueuedThreadMessage,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
-  deleteClaimedQueuedThreadMessage,
-  deleteClaimedQueuedThreadMessageInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
   listQueuedThreadMessages,
@@ -24,6 +19,7 @@ import {
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function textInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
@@ -33,8 +29,7 @@ const defaultInput = textInput("hello");
 const altInput = textInput("world");
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",
@@ -313,9 +308,8 @@ describe("queued thread messages", () => {
     expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(firstClaim.claimToken);
     expect(
       db.transaction((tx) =>
-        deleteClaimedQueuedThreadMessageInTransaction(tx, {
-          id: queuedMessage.id,
-          claimToken: "qclaim_staleowner",
+        deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+          queuedMessages: [{ id: queuedMessage.id, claimToken: "qclaim_staleowner" }],
         }),
       ),
     ).toBe(false);
@@ -333,24 +327,18 @@ describe("queued thread messages", () => {
     expect(secondClaim.claimToken).not.toBe(firstClaim.claimToken);
     expect(
       db.transaction((tx) =>
-        deleteClaimedQueuedThreadMessageInTransaction(tx, {
-          id: queuedMessage.id,
-          claimToken: firstClaim.claimToken,
+        deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+          queuedMessages: [{ id: queuedMessage.id, claimToken: firstClaim.claimToken }],
         }),
       ),
     ).toBe(false);
-    expect(
-      deleteClaimedQueuedThreadMessage(db, noopNotifier, {
-        id: queuedMessage.id,
-        claimToken: firstClaim.claimToken,
-      }),
-    ).toBe(false);
     expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(secondClaim.claimToken);
     expect(
-      deleteClaimedQueuedThreadMessage(db, noopNotifier, {
-        id: queuedMessage.id,
-        claimToken: secondClaim.claimToken,
-      }),
+      db.transaction((tx) =>
+        deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+          queuedMessages: [{ id: queuedMessage.id, claimToken: secondClaim.claimToken }],
+        }),
+      ),
     ).toBe(true);
     expect(getQueuedThreadMessage(db, queuedMessage.id)).toBeNull();
   });
@@ -477,7 +465,7 @@ describe("queued thread messages", () => {
         serviceTier: "default",
       });
 
-      const claimedQueuedMessage = claimNextQueuedThreadMessage(db, noopNotifier, thread.id);
+      const claimedQueuedMessage = claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.[0];
       expect(claimedQueuedMessage?.id).toBe(firstQueuedMessage.id);
       expect(listQueuedThreadMessages(db, thread.id).map((queuedMessage) => queuedMessage.id)).toEqual([
         secondQueuedMessage.id,
@@ -1125,11 +1113,11 @@ describe("queued thread messages", () => {
       }).kind,
     ).toBe("reordered");
 
-    const claimedQueuedMessage = claimNextQueuedThreadMessage(
+    const claimedQueuedMessage = claimNextQueuedThreadMessageGroup(
       db,
       noopNotifier,
       thread.id,
-    );
+    )?.[0];
     expect(claimedQueuedMessage?.id).toBe(secondQueuedMessage.id);
     expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
       firstQueuedMessage.id,

@@ -17,7 +17,7 @@ import { publishAutomationChange } from "./realtime.js";
 import { executeStoredScript, mapScriptResultToRun } from "./script-runner.js";
 import type { AutomationExecution } from "./rpc-types.js";
 
-export type RunFailureHandler = (error: unknown) => void;
+type RunFailureHandler = (error: unknown) => void;
 type AgentThreadsSdk = {
   get(
     args: Parameters<BbPluginApi["sdk"]["threads"]["get"]>[0],
@@ -117,6 +117,10 @@ export async function executeAgentRun(
         title: args.automation.name,
         providerId: args.execution.providerId,
         model: args.execution.model,
+        reasoningLevel: args.execution.reasoningLevel,
+        ...(args.execution.serviceTier === undefined
+          ? {}
+          : { serviceTier: args.execution.serviceTier }),
         permissionMode: args.execution.permissionMode,
       }),
     );

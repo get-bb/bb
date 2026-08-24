@@ -1,0 +1,127 @@
+# Phase 4b thread actions + context banner: add the harness server → open
+# the thread named by THREAD_TITLE (create it first; see README) → header
+# title tap opens the rename sheet → rename → "…" menu lists the thread
+# actions (Copy link toasts) → the git button opens the git sheet (when the
+# worktree is dirty) → the context banner's changed-files row expands.
+#
+# Setup (the flow asserts the banner's git row, which needs a dirty
+# worktree): create a managed-worktree thread through the API, write a file
+# into its worktree, and pass the title:
+#   maestro test -e THREAD_TITLE="P4b banner parent" e2e/flows/phase4b-thread-actions.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "P4b banner parent"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- extendedWaitUntil:
+    visible: "${THREAD_TITLE}"
+    timeout: 30000
+- tapOn: "${THREAD_TITLE}"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-screen"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-title"
+      text: "${THREAD_TITLE}"
+    timeout: 30000
+# Context chips: the dirty worktree shows the changed-files chip; open its sheet.
+- extendedWaitUntil:
+    visible:
+      id: "thread-chip-changes"
+    timeout: 30000
+- tapOn:
+    id: "thread-chip-changes"
+- extendedWaitUntil:
+    visible:
+      id: "workspace-changes-list"
+    timeout: 10000
+- assertVisible:
+    id: "thread-chip-merge-base"
+- takeScreenshot: phase4b-changes-sheet
+# Tap the backdrop to close the sheet before the header menu.
+- tapOn:
+    point: "50%,15%"
+- extendedWaitUntil:
+    notVisible:
+      id: "thread-chip-changes-sheet"
+    timeout: 10000
+# Git sheet from the "…" menu (the header has no second row).
+- tapOn:
+    id: "thread-actions-button"
+- extendedWaitUntil:
+    visible:
+      id: "thread-git-button"
+    timeout: 10000
+- tapOn:
+    id: "thread-git-button"
+- extendedWaitUntil:
+    visible:
+      id: "thread-git-sheet"
+    timeout: 10000
+- assertVisible:
+    id: "thread-git-action-commit"
+- takeScreenshot: phase4b-git-sheet
+- tapOn:
+    point: "50%,15%"
+- extendedWaitUntil:
+    notVisible:
+      id: "thread-git-sheet"
+    timeout: 10000
+# Rename through the title.
+- tapOn:
+    id: "thread-detail-title"
+- extendedWaitUntil:
+    visible:
+      id: "thread-rename-input"
+    timeout: 10000
+- tapOn:
+    id: "thread-rename-input"
+- eraseText: 60
+- inputText: "${THREAD_TITLE} renamed"
+- tapOn:
+    id: "thread-rename-submit"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-title"
+      text: "${THREAD_TITLE} renamed"
+    timeout: 15000
+# Actions menu: copy link.
+- tapOn:
+    id: "thread-actions-button"
+- extendedWaitUntil:
+    visible:
+      id: "thread-action-copy-link"
+    timeout: 10000
+- assertVisible:
+    id: "thread-action-handoff"
+- assertVisible:
+    id: "thread-action-pin"
+- assertVisible:
+    id: "thread-action-delete"
+- takeScreenshot: phase4b-thread-menu
+- tapOn:
+    id: "thread-action-copy-link"
+- extendedWaitUntil:
+    visible: "Link copied"
+    timeout: 10000
+# Long-press an assistant message: the action sheet offers Copy text + Fork.
+- longPressOn:
+    id: "conversation-assistant-body"
+- extendedWaitUntil:
+    visible:
+      id: "action-sheet-copy"
+    timeout: 10000
+- assertVisible:
+    id: "action-sheet-fork"
+- takeScreenshot: phase4b-message-actions
+- tapOn:
+    id: "action-sheet-fork"
+- extendedWaitUntil:
+    visible:
+      id: "compose-fork-hint"
+    timeout: 30000
+- takeScreenshot: phase4b-fork-compose

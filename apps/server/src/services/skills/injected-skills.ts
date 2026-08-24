@@ -7,6 +7,7 @@ import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import { z } from "zod";
 import type { ServerLogger } from "../../types.js";
+import { isFsErrorWithCode } from "../lib/fs-errors.js";
 import { REGISTRY_SKILL_PROVENANCE_FILE_NAME } from "./registry-skill-provenance.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
@@ -51,7 +52,7 @@ export interface ResolveInjectedSkillSourcesArgs {
   skillTreeRegistry: SkillTreeRegistry;
 }
 
-export interface PluginSkillRoot {
+interface PluginSkillRoot {
   pluginId: string;
   rootPath: string;
 }
@@ -84,7 +85,7 @@ export function discoverPluginSkillIds(
   );
 }
 
-export type SkillCatalogProvenance =
+type SkillCatalogProvenance =
   | { kind: "builtin" }
   | { kind: "plugin"; pluginId: string }
   | { kind: "project" }
@@ -95,7 +96,7 @@ export interface ResolvedSkillCatalogEntry {
   runtimeSource: HostDaemonInjectedSkillSource;
 }
 
-export interface ResolveServerOwnedSkillCatalogEntriesArgs {
+interface ResolveServerOwnedSkillCatalogEntriesArgs {
   builtinSkillsRootPath: string;
   dataDir: string;
   logger: ServerLogger;
@@ -117,7 +118,7 @@ export interface SkillTreeEntry {
   path: string;
 }
 
-export interface SkillTreeManifest {
+interface SkillTreeManifest {
   entries: readonly SkillTreeEntry[];
   treeHash: string;
 }
@@ -164,10 +165,6 @@ interface SkillCollisionLogArgs {
   colliding: readonly HostDaemonInjectedSkillSource[];
   logger: ServerLogger;
   name: string;
-}
-
-function isFsErrorWithCode(error: Error, code: string): boolean {
-  return "code" in error && error.code === code;
 }
 
 function compactZodIssues(issues: z.ZodIssue[]): string {

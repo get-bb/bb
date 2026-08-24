@@ -45,19 +45,28 @@ const GH_PR_VIEW_JSON_FIELDS = [
   "mergeable",
 ].join(",");
 
-interface GetPullRequestForCurrentBranchArgs {
+export interface GitHostCliOptions {
+  /**
+   * Resolved user login-shell PATH. When omitted, `gh` inherits the parent
+   * process PATH, which is useful for direct library consumers but may be the
+   * minimal service PATH inside the host daemon.
+   */
+  shellPath?: string;
+}
+
+interface GetPullRequestForCurrentBranchArgs extends GitHostCliOptions {
   cwd: string;
   localBranch: string;
 }
 
-export type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
+type GitHostPullRequestMergeMethod = "merge" | "squash" | "rebase";
 
 export type GitHostPullRequestAction =
   | { operation: "ready" }
   | { operation: "draft" }
   | { operation: "merge"; method: GitHostPullRequestMergeMethod };
 
-interface RunPullRequestActionForCurrentBranchArgs {
+interface RunPullRequestActionForCurrentBranchArgs extends GitHostCliOptions {
   cwd: string;
   localBranch: string;
   action: GitHostPullRequestAction;
@@ -533,6 +542,7 @@ async function getPullRequestTarget(
       ],
       {
         cwd: args.cwd,
+        ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
         allowFailure: true,
         timeoutMs: GIT_UPSTREAM_LOOKUP_TIMEOUT_MS,
       },
@@ -620,8 +630,8 @@ async function getPullRequestTarget(
  * failure (`gh` not installed, not authenticated, no GitHub remote, a timeout,
  * unparseable output) is `outcome: "unavailable"` so callers can distinguish
  * "no PR" from "could not check". The inherited environment preserves
- * `PATH`/`HOME`/token vars so `gh` auth resolves the same way it would in the
- * user's shell.
+ * `HOME`/token vars and substitutes the resolved login-shell PATH when the
+ * caller supplies it, so daemon probes resolve the same `gh` as the user.
  */
 export async function getPullRequestForCurrentBranch(
   args: GetPullRequestForCurrentBranchArgs,
@@ -642,7 +652,10 @@ export async function getPullRequestForCurrentBranch(
     ({ stdout } = await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,
       encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+      env: sanitizeInheritedChildProcessEnv({
+        env: process.env,
+        ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+      }),
       timeout: GH_PR_VIEW_TIMEOUT_MS,
       maxBuffer: GH_PR_VIEW_MAX_BUFFER_BYTES,
     }));
@@ -679,7 +692,10 @@ export async function runPullRequestActionForCurrentBranch(
     await execFileAsync("gh", ghArgs, {
       cwd: args.cwd,
       encoding: "utf8",
-      env: sanitizeInheritedChildProcessEnv({ env: process.env }),
+      env: sanitizeInheritedChildProcessEnv({
+        env: process.env,
+        ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+      }),
       timeout: GH_PR_ACTION_TIMEOUT_MS,
       maxBuffer: GH_PR_ACTION_MAX_BUFFER_BYTES,
     });

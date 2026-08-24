@@ -7,6 +7,7 @@ import {
 } from "@bb/server-contract";
 import semver from "semver";
 import { z } from "zod";
+import { formatIssues } from "../plugins/collection-manifest.js";
 import {
   gitRangeSourceSpec,
   gitSemverTagName,
@@ -39,7 +40,7 @@ export const BUILTIN_PUBLISHER_KEY = "builtin";
  * Entries one manifest may list. The 1 MiB document limit alone still allows
  * thousands of entries, and each entry costs an icon request and an icon row.
  */
-export const MARKETPLACE_MAX_ENTRIES = 256;
+const MARKETPLACE_MAX_ENTRIES = 256;
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 /**
@@ -111,6 +112,16 @@ const iconUrlSchema = z
     if (problem !== null) ctx.addIssue({ code: "custom", message: problem });
   });
 
+/**
+ * An SVG icon is single-color artwork: BB masks it with the surrounding text
+ * color, the same way it renders a plugin's own compact `branding.icon`, so a
+ * black-on-transparent glyph stays visible on a dark theme. Raster icons
+ * (PNG, WebP) keep their own colors: a mask reads alpha only and would
+ * flatten an opaque image into a solid block, and a raster is the form for
+ * multi-color artwork. The object stays strict: an older desktop rejects the
+ * whole manifest on an unknown field, so a per-entry opt-out needs a new
+ * schemaVersion.
+ */
 const iconSchema = z.union([
   z.string().regex(ICON_NAME_PATTERN, "must be a host icon name"),
   z.object({ url: iconUrlSchema }).strict(),
@@ -299,15 +310,6 @@ const marketplaceManifestSchema = z
 export type MarketplaceManifest = z.infer<typeof marketplaceManifestSchema>;
 export type MarketplaceEntry = MarketplaceManifest["plugins"][number];
 
-function formatIssues(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const path = issue.path.join(".");
-      return path.length === 0 ? issue.message : `${path}: ${issue.message}`;
-    })
-    .join("; ");
-}
-
 /**
  * Parse a marketplace manifest. The document is rejected whole: consumers see
  * either a fully validated catalog or the previous last-known-good one.
@@ -351,6 +353,15 @@ export function parseMarketplaceManifestJson(
 /** The entry's declared host icon name, or null when it ships an image. */
 export function entryIconName(entry: MarketplaceEntry): string | null {
   return typeof entry.icon === "string" ? entry.icon : null;
+}
+
+/**
+ * Whether BB masks a cached image icon with the surrounding text color. Only
+ * an SVG is tinted; see {@link iconSchema}. `contentType` is the validated
+ * type BB serves the cached bytes as.
+ */
+export function entryIconTinted(contentType: string): boolean {
+  return contentType === "image/svg+xml";
 }
 
 /**
@@ -403,6 +414,30 @@ export function resolveEntryIcon(
     path: join(base.root, ...relativePath.split("/")),
     relativePath,
   };
+}
+
+/**
+ * Where a person can read an entry's code before an install. A git entry
+ * links its repository; a subdirectory links the directory on GitHub, and the
+ * repository root elsewhere, because only GitHub's tree URL shape is known. An
+ * npm entry on the default registry links its public package page. A private
+ * registry has no public page bb can name, so that entry gets null.
+ */
+export function entryRepositoryUrl(entry: MarketplaceEntry): string | null {
+  if ("npm" in entry.source) {
+    return entry.source.npm.registry === undefined
+      ? `https://www.npmjs.com/package/${entry.source.npm.package}`
+      : null;
+  }
+  const git = entry.source.git;
+  const repository = git.url.replace(/\.git$/u, "");
+  if (git.subdir === undefined) return repository;
+  // The schema accepts `#` and `?` in a subdirectory; raw interpolation would
+  // turn them into a fragment or a query, so each segment is encoded.
+  const path = git.subdir.split("/").map(encodeURIComponent).join("/");
+  return new URL(repository).host === "github.com"
+    ? `${repository}/tree/HEAD/${path}`
+    : repository;
 }
 
 /** Human-readable source of an entry, shown before anything is installed. */

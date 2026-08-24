@@ -2,6 +2,7 @@ import type { TerminalSession } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   isVisibleTerminalSession,
+  pickActiveTerminalId,
   shouldAutoCloseCleanTerminalSession,
   shouldAutoCloseCleanTerminalSessionsForPanel,
   shouldCloseDisconnectedTerminalSession,
@@ -28,6 +29,16 @@ function terminalSession(overrides: Partial<TerminalSession>): TerminalSession {
 }
 
 describe("terminal visibility", () => {
+  it("does not replace an exact plugin tab with a sibling session", () => {
+    const sibling = terminalSession({ id: "term_sibling" });
+
+    expect(
+      pickActiveTerminalId([sibling], "term_missing", "term_missing"),
+    ).toBeNull();
+    expect(
+      pickActiveTerminalId([sibling], "term_sibling", "term_sibling"),
+    ).toBe("term_sibling");
+  });
   it("shows disconnected sessions only while retaining a mounted terminal view", () => {
     const disconnected = terminalSession({
       id: "term_disconnected",

@@ -1,11 +1,11 @@
 const MARKDOWN_FENCE_START_PATTERN = /^(?: {0,3})(`{3,}|~{3,})/u;
 
-interface MarkdownFence {
+export interface MarkdownFence {
   character: string;
   length: number;
 }
 
-function trimMarkdownLineCarriageReturn(line: string): string {
+export function trimMarkdownLineCarriageReturn(line: string): string {
   return line.endsWith("\r") ? line.slice(0, -1) : line;
 }
 
@@ -17,7 +17,7 @@ function isPromptMarkdownBlockquoteLine(line: string): boolean {
   return /^ {0,3}>/u.test(trimMarkdownLineCarriageReturn(line));
 }
 
-function parseMarkdownFenceStart(line: string): MarkdownFence | null {
+export function parseMarkdownFenceStart(line: string): MarkdownFence | null {
   const match = MARKDOWN_FENCE_START_PATTERN.exec(
     trimMarkdownLineCarriageReturn(line),
   );
@@ -28,7 +28,10 @@ function parseMarkdownFenceStart(line: string): MarkdownFence | null {
   return { character: marker[0]!, length: marker.length };
 }
 
-function isMarkdownFenceClose(line: string, fence: MarkdownFence): boolean {
+export function isMarkdownFenceClose(
+  line: string,
+  fence: MarkdownFence,
+): boolean {
   const value = trimMarkdownLineCarriageReturn(line);
   const leadingSpaces = /^ {0,3}/u.exec(value)?.[0].length ?? 0;
   let index = leadingSpaces;

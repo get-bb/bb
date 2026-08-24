@@ -7,7 +7,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
  * (matching the seed data's "blue"/"orange"/"violet"), so they must be valid
  * CSS colors without being hex literals.
  */
-export const COLOR_PALETTE = [
+const COLOR_PALETTE = [
   { value: "slateblue", label: "Indigo" },
   { value: "steelblue", label: "Blue" },
   { value: "lightseagreen", label: "Teal" },

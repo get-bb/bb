@@ -20,6 +20,7 @@ import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar";
 import { PromptBoxInternal } from "@/components/promptbox/PromptBoxInternal";
 import {
   PluginComposerHostProvider,
+  useComposerHostDraftNotifier,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import {
@@ -28,7 +29,7 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { setPluginThreadRowStatus } from "@/lib/plugin-thread-row-status";
-import type { PromptDraftState } from "@/lib/prompt-draft";
+import type { PromptDraftState } from "@bb/client-core";
 import {
   ThreadRow,
   type ThreadRowOptions,
@@ -237,16 +238,17 @@ function ThreadRowStatusFixture() {
   });
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const subscribeDraft = useComposerHostDraftNotifier(draft);
   const composerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "thread", threadId: THREAD_ID },
-      draft,
       textEffectKey: `story:${THREAD_ID}`,
       getCurrent: () => draftRef.current,
+      subscribeDraft,
       setDraft,
       focus: () => {},
     }),
-    [draft],
+    [subscribeDraft],
   );
   const [queryClient] = useState(
     () =>
@@ -272,6 +274,7 @@ function ThreadRowStatusFixture() {
                 <SidebarMenuItem>
                   <ThreadRow
                     projectId={PROJECT_ID}
+                    crossProjectId={null}
                     thread={makeThreadListEntry({
                       id: THREAD_ID,
                       projectId: PROJECT_ID,

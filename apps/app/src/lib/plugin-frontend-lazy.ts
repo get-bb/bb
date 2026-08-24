@@ -12,6 +12,12 @@
  * plugin management UI are already lazy and import it directly; they share
  * this module instance, so the reconcile state stays single-owner.
  */
+import {
+  markPluginFrontendBootStarted,
+  markPluginFrontendsSettled,
+} from "./plugin-frontend-boot-state";
+import { markProviderPluginFrontendWanted } from "./plugin-frontend-provider-gate";
+
 type PluginFrontendModule = typeof import("./plugin-frontend");
 
 /**
@@ -50,6 +56,9 @@ let bootRequested = false;
  */
 export async function bootPluginFrontends(): Promise<void> {
   bootRequested = true;
+  // An in-flight boot owns its own settle; the settle floor must not finish
+  // it while content scripts are still mounting.
+  markPluginFrontendBootStarted();
   try {
     const pluginFrontend = await loadPluginFrontend();
     await pluginFrontend.bootPluginFrontends();
@@ -57,6 +66,10 @@ export async function bootPluginFrontends(): Promise<void> {
     console.warn(
       `plugin runtime load failed: ${error instanceof Error ? error.message : String(error)}`,
     );
+  } finally {
+    // Either way the registrations are as complete as this load will make
+    // them; routes waiting on a plugin may now report it missing.
+    markPluginFrontendsSettled();
   }
 }
 
@@ -78,6 +91,26 @@ export function schedulePluginFrontendReconcile(): void {
       pluginFrontend.schedulePluginFrontendReconcile();
     } catch {
       // Plugin UI stays absent until the next plugins-changed broadcast.
+    }
+  })();
+}
+
+/**
+ * The thread view opened a thread of one of `pluginId`'s providers: record
+ * the demand in the boot-path-safe gate and, once the runtime is booting,
+ * have it reconcile so the deferred provider bundle loads. Before boot the
+ * gate alone is enough — boot's own reconcile reads it.
+ */
+export function requestProviderPluginFrontend(pluginId: string): void {
+  if (!markProviderPluginFrontendWanted(pluginId) || !bootRequested) return;
+  void (async () => {
+    try {
+      const pluginFrontend = await loadPluginFrontend();
+      await pluginFrontend.bootPluginFrontends();
+      pluginFrontend.schedulePluginFrontendReconcile();
+    } catch {
+      // The provider's rows keep their declarative base until the next
+      // reconcile.
     }
   })();
 }

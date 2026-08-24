@@ -435,11 +435,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="a.html"}'}
-              turnRequest={null}
               projectId="proj_a"
             />
           </MessageDirectiveRegistryProvider>
@@ -478,11 +475,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="charts/demo.html"}'}
-              turnRequest={null}
               projectId="proj_a"
               workspaceRootPath="/workspace/project"
               onOpenLocalFileLink={onOpenLocalFileLink}
@@ -520,11 +514,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="plan.md"}'}
-              turnRequest={null}
               projectId="proj_a"
               onOpenPluginPanel={onOpenPluginPanel}
             />
@@ -561,11 +552,8 @@ describe("ConversationMessageContent assistant directives", () => {
               id="msg_a"
               threadId="thr_a"
               turnId="turn_a"
-              sourceSeqStart={1}
-              sourceSeqEnd={1}
               showActions={false}
               text={'::inline-vis{file="../secret.html"}'}
-              turnRequest={null}
               workspaceRootPath="/workspace/project"
               onOpenLocalFileLink={onOpenLocalFileLink}
             />

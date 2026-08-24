@@ -38,7 +38,7 @@ import {
   timelineHasAssistantConversation,
 } from "../helpers/timeline-response.js";
 
-export type RealProviderId = "codex" | "claude-code" | "pi";
+type RealProviderId = "codex" | "claude-code" | "pi";
 
 export const REAL_PROVIDER_IDS: ReadonlyArray<RealProviderId> = [
   "codex",
@@ -57,7 +57,7 @@ type RealProviderExecutionTemplate = Omit<
   "model"
 >;
 
-export type ProviderSmokeHarness = Awaited<
+type ProviderSmokeHarness = Awaited<
   ReturnType<typeof createIntegrationHarness>
 >;
 
@@ -67,12 +67,12 @@ interface WaitForThreadEventArgs {
   threadId: string;
 }
 
-export interface WaitForTurnStartedResult {
+interface WaitForTurnStartedResult {
   sequence: number;
   turnId: string;
 }
 
-export interface WaitForInputAcceptedResult {
+interface WaitForInputAcceptedResult {
   clientRequestId: ClientTurnRequestId;
   sequence: number;
   turnId: string;
@@ -476,7 +476,7 @@ export function hasAssistantTimelineMessage(
 
 export async function createRealThread(args: CreateRealThreadArgs) {
   await assertProviderPrerequisites(args.providerId);
-  const harness = await createIntegrationHarness({ adapterFactory: undefined });
+  const harness = await createIntegrationHarness();
   const project = await createProjectFixture(harness, {
     name: `Real Provider ${args.providerId}`,
   });
@@ -485,9 +485,7 @@ export async function createRealThread(args: CreateRealThreadArgs) {
       harness,
       providerId: args.providerId,
     }),
-    input: [
-      { type: "text", text: REAL_PROVIDER_BOOTSTRAP_TEXT, mentions: [] },
-    ],
+    input: [{ type: "text", text: REAL_PROVIDER_BOOTSTRAP_TEXT, mentions: [] }],
     projectId: project.id,
     providerId: args.providerId,
     timeoutMs: TURN_TIMEOUT_MS,

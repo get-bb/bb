@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "approval-allow",
+  "threadId": "thr_9sbfdiaqjd",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "accept-edits mode; an out-of-sandbox command approved once.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 12,
+    "provider→bridge": 36,
+    "bridge→provider": 9
+  }
+}

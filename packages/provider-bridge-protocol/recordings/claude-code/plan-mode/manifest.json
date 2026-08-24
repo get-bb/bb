@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "plan-mode",
+  "threadId": "thr_aapvhwn8sw",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "A /plan turn (plan command mention).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 39,
+    "provider→bridge": 158,
+    "bridge→provider": 23
+  }
+}

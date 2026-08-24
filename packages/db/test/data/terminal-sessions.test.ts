@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   createTerminalSession,
@@ -14,6 +13,7 @@ import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { openSession } from "../../src/data/sessions.js";
 import { createThread } from "../../src/data/threads.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 type TestDb = ReturnType<typeof createConnection>;
 type TestHost = ReturnType<typeof upsertHost>;
@@ -175,7 +175,7 @@ function markDaemonTerminalSessionsDisconnected(
 }
 
 function openTestSession(db: TestDb, hostId: string): TestSession {
-  return openSession(db, noopNotifier, {
+  return openSession(db, {
     hostId,
     instanceId: "inst-1",
     hostName: "test-host",
@@ -188,8 +188,7 @@ function openTestSession(db: TestDb, hostId: string): TestSession {
 }
 
 function setup(): TerminalSessionFixture {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",

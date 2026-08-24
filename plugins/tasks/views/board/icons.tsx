@@ -5,15 +5,6 @@ import { cn } from "@bb/shared-ui/lib/utils";
 // progress-pie or priority-bars artwork, so these inline the mock's SVGs
 // (same approach as the custom glyphs in components/ui/icon.tsx).
 
-export const STATUS_LABELS: Record<TaskStatus, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  in_progress: "In Progress",
-  in_review: "In Review",
-  done: "Done",
-  canceled: "Canceled",
-};
-
 const STATUS_CLASS: Record<TaskStatus, string> = {
   backlog: "text-muted-foreground",
   todo: "text-muted-foreground",

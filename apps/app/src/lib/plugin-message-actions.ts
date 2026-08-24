@@ -13,7 +13,7 @@ import type { PluginMessageActionSlot } from "./plugin-slots";
  * (sidebarFooterAction, threadPanelAction).
  */
 
-export interface RunPluginMessageActionArgs {
+interface RunPluginMessageActionArgs {
   slot: PluginMessageActionSlot;
   threadId: string;
   message: ThreadChatMessageReference;
@@ -39,7 +39,15 @@ export function runPluginMessageAction({
     message,
     ...(selectedText !== undefined ? { selectedText } : {}),
     openPanel: (options) => {
-      if (openThreadPanel === undefined) return false;
+      if (openThreadPanel === undefined) {
+        // Reachable: only the main thread view supplies an opener, so a
+        // ThreadChat a plugin embeds in its own panel declines here. Logged
+        // so the false is diagnosable from the console.
+        console.warn(
+          `[plugin:${slot.pluginId}] messageAction "${slot.id}" openPanel declined: this surface has no thread side panel`,
+        );
+        return false;
+      }
       return openThreadPanel({ ...options, pluginId: slot.pluginId });
     },
   };

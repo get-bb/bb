@@ -14,11 +14,3 @@ export function getAdjacentPaneId(
   const nextIndex = (startIndex + offset + panes.length) % panes.length;
   return panes[nextIndex]?.paneId ?? null;
 }
-
-/** Resolve a one-based shortcut slot against pane reading order. */
-export function getPaneIdAtReadingIndex(
-  panes: readonly PaneNode[],
-  index: number,
-): string | null {
-  return panes[index]?.paneId ?? null;
-}

@@ -220,7 +220,6 @@ describe("Family B emit-site discriminator stamping", () => {
       await handleThreadOwnershipChange(harness.deps, {
         previousThread: { ...child, parentThreadId: null },
         updatedThread: { ...child, parentThreadId: fixture.parentThreadId },
-        queueParentMessages: true,
       });
 
       const stamped = await waitForStampedSystemMessage(
@@ -248,7 +247,6 @@ describe("Family B emit-site discriminator stamping", () => {
       await handleThreadOwnershipChange(harness.deps, {
         previousThread: { ...child, parentThreadId: fixture.parentThreadId },
         updatedThread: { ...child, parentThreadId: null },
-        queueParentMessages: true,
       });
 
       const stamped = await waitForStampedSystemMessage(

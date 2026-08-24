@@ -489,22 +489,6 @@ const descriptionCases: DescriptionCase[] = [
     },
   },
   {
-    name: "parent_thread_invalid wrong project",
-    body: {
-      code: "parent_thread_invalid",
-      message: "Parent thread is invalid",
-      details: {
-        reason: "wrong_project",
-        subject: "parent",
-      },
-    },
-    expected: {
-      title: "Parent thread unavailable",
-      body: "Choose a parent thread from this project.",
-      severity: "error",
-    },
-  },
-  {
     name: "parent_thread_invalid self",
     body: {
       code: "parent_thread_invalid",

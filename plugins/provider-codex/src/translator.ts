@@ -1,32 +1,33 @@
 /**
- * The stateful Codex event-translation pipeline.
+ * The stateful Codex event-translation pipeline (narrow-grammar deltas).
  *
  * `createCodexEventTranslator` holds every per-connection translation closure:
- * raw shell-output recovery, delegation/subagent correlation, accepted-user-
- * message correlation, and workspace-write git-root staging. Events leave in
- * Codex-native id space (Codex turn/item ids, Codex thread ids in
- * threadId/providerThreadId); the bridge stamps bridge-minted ids on top.
+ * raw shell-output recovery, delegation/subagent correlation, accepted-turn
+ * correlation, and workspace-write git-root staging. Events leave as
+ * `thread/delta` semantic deltas in Codex-native id space (codex turn ids as
+ * `providerTurnId`, codex item ids as `key.providerItemId`); the runtime's
+ * delta assembler mints the bb ids.
  */
 
 import {
-  getThreadEventScopeTurnId,
-  requireThreadEventScopeTurnId,
-  turnScope,
   type ClientTurnRequestId,
-  type ThreadEvent,
-  type ThreadEventItem,
+  type DeltaItemShape,
+  type ThreadDelta,
   type ThreadEventItemStatus,
   extractResultText,
-  type JsonRpcMessage,
   type PreparedProviderCommandDispatch,
   type ProviderPostInitializeRequest,
   type ProviderRuntimeEvent,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
+  clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
-  translateCodexEvent,
-} from "./event-translation.js";
+  setCodexInjectedTools,
+  translateCodexEventToDeltas,
+  type CodexInjectedTool,
+} from "./delta-translation.js";
 import {
   codexBridgeEnvelopeSchema,
   codexRateLimitReadResponseSchema,
@@ -44,14 +45,21 @@ import {
   type CodexThreadPermissionSettings,
 } from "./session-params.js";
 import type { JsonValue } from "./generated/codex-app-server/schema/serde_json/JsonValue.js";
+import { subAgentPresentation } from "./presentation.js";
 
 // Raw shell output recovery is a two-phase flow:
 // 1. `rawResponseItem/completed` for shell `function_call` and
 //    `function_call_output` events is consumed into per-thread state keyed by
 //    the provider's `call_id`.
-// 2. The later normalized `item/completed` commandExecution consumes that
-//    stored state to repair the authoritative final output.
+// 2. The later `item.close` command delta consumes that stored state to
+//    repair the authoritative final output.
 const CODEX_SHELL_TOOL_NAMES = new Set(["exec_command", "Bash", "bash"]);
+/**
+ * Codex's collab verbs that start or resume a child agent. A call that names
+ * its receiver is a `delegation` item already; one whose receiver is not
+ * known yet stays a tool item, and these names are how the bridge knows the
+ * next child turn on the multiplexed root thread belongs to it.
+ */
 const CODEX_DELEGATION_TOOL_NAMES = new Set(["spawnAgent", "resumeAgent"]);
 const TOOL_OUTPUT_MARKER_LINE = "Output:";
 const TOOL_OUTPUT_METADATA_PREFIXES = [
@@ -85,9 +93,14 @@ type CodexParsedCommandOutput =
   | CodexCapturedCommandOutput
   | CodexUnparseableCommandOutput;
 
+/** A close delta narrowed to a command shape (raw output repair target). */
+type CommandCloseDelta = Extract<ThreadDelta, { kind: "item.close" }> & {
+  item: Extract<DeltaItemShape, { type: "command" }>;
+};
+
 interface CodexRawCommandOutputState {
   capturedCommandOutputByCallId: Map<string, CodexCapturedCommandOutput>;
-  pendingCompletedEventByCallId: Map<string, ThreadEvent>;
+  pendingCloseDeltaByCallId: Map<string, CommandCloseDelta>;
   shellToolCallIds: Set<string>;
 }
 
@@ -102,6 +115,14 @@ interface CodexPendingDelegationTurnLink {
   parentTurnId: string;
 }
 
+/** The collab arguments a receiver-less spawn/resume tool call carries. */
+const codexDelegationArgsSchema = z
+  .object({
+    receiverThreadIds: z.array(z.string()).optional(),
+    senderThreadId: z.string().optional(),
+  })
+  .passthrough();
+
 function collectStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -112,96 +133,123 @@ function collectStringArray(value: unknown): string[] {
 }
 
 function getCodexDelegationToolCall(
-  event: ThreadEvent,
+  delta: ThreadDelta,
 ): CodexDelegationToolCall | null {
   if (
-    (event.type !== "item/started" && event.type !== "item/completed") ||
-    event.item.type !== "toolCall" ||
-    !CODEX_DELEGATION_TOOL_NAMES.has(event.item.tool)
+    (delta.kind !== "item.open" && delta.kind !== "item.close") ||
+    delta.key.providerItemId === undefined
   ) {
     return null;
   }
+  // A delegation names its child directly; the child's turns map to the
+  // call through that id.
+  if (delta.item.type === "delegation") {
+    return {
+      callId: delta.key.providerItemId,
+      receiverThreadIds: [delta.item.childRef],
+    };
+  }
+  // A spawn/resume collab call that named no receiver yet: the child turn
+  // that follows on the multiplexed root thread belongs to it (FIFO).
+  if (
+    delta.item.type !== "tool" ||
+    !CODEX_DELEGATION_TOOL_NAMES.has(delta.item.tool)
+  ) {
+    return null;
+  }
+  const args = codexDelegationArgsSchema.safeParse(delta.item.args);
 
   return {
-    callId: event.item.id,
+    callId: delta.key.providerItemId,
     receiverThreadIds: collectStringArray(
-      event.item.arguments?.receiverThreadIds,
+      args.success ? args.data.receiverThreadIds : undefined,
     ),
     senderThreadId:
-      typeof event.item.arguments?.senderThreadId === "string" &&
-      event.item.arguments.senderThreadId.length > 0
-        ? event.item.arguments.senderThreadId
+      args.success &&
+      typeof args.data.senderThreadId === "string" &&
+      args.data.senderThreadId.length > 0
+        ? args.data.senderThreadId
         : undefined,
   };
 }
 
-function getCodexEventProviderThreadId(event: ThreadEvent): string | undefined {
-  if (
-    "providerThreadId" in event &&
-    typeof event.providerThreadId === "string" &&
-    event.providerThreadId.length > 0
-  ) {
-    return event.providerThreadId;
-  }
-  return undefined;
+/** The vouched provider turn id a delta is scoped to, when it names one. */
+function getDeltaProviderTurnId(delta: ThreadDelta): string | undefined {
+  return "providerTurnId" in delta ? delta.providerTurnId : undefined;
 }
 
-function getCodexEventParentToolCallId(event: ThreadEvent): string | undefined {
-  switch (event.type) {
-    case "item/started":
-    case "item/completed":
-      return event.item.parentToolCallId;
-    case "turn/started":
-    case "item/agentMessage/delta":
-    case "item/commandExecution/outputDelta":
-    case "item/fileChange/outputDelta":
-    case "item/reasoning/summaryTextDelta":
-    case "item/reasoning/textDelta":
-    case "item/plan/delta":
-    case "item/mcpToolCall/progress":
-    case "item/toolCall/progress":
-    case "provider/unhandled":
-      return event.parentToolCallId;
+function getDeltaParentRef(delta: ThreadDelta): string | undefined {
+  switch (delta.kind) {
+    case "turn.open":
+      return delta.parentRef;
+    case "item.open":
+    case "item.close":
+    case "item.progress":
+    case "item.textDelta":
+    case "item.outputDelta":
+      return delta.key.parentRef;
+    case "unhandled":
+      return delta.parentRef;
     default:
       return undefined;
   }
 }
 
-function withCodexParentToolCallId(
-  event: ThreadEvent,
-  parentToolCallId: string,
-): ThreadEvent {
-  if (getCodexEventParentToolCallId(event)) {
-    return event;
+function withDeltaParentRef(
+  delta: ThreadDelta,
+  parentRef: string,
+): ThreadDelta {
+  if (getDeltaParentRef(delta)) {
+    return delta;
   }
 
-  switch (event.type) {
-    case "turn/started":
-    case "item/agentMessage/delta":
-    case "item/commandExecution/outputDelta":
-    case "item/fileChange/outputDelta":
-    case "item/reasoning/summaryTextDelta":
-    case "item/reasoning/textDelta":
-    case "item/plan/delta":
-    case "item/mcpToolCall/progress":
-    case "item/toolCall/progress":
-    case "provider/unhandled":
-      return { ...event, parentToolCallId };
-    case "item/started":
-    case "item/completed":
-      return {
-        ...event,
-        item: { ...event.item, parentToolCallId },
-      };
+  switch (delta.kind) {
+    case "turn.open":
+      return { ...delta, parentRef };
+    case "item.open":
+    case "item.close":
+    case "item.progress":
+    case "item.textDelta":
+    case "item.outputDelta":
+      return { ...delta, key: { ...delta.key, parentRef } };
+    case "unhandled":
+      return { ...delta, parentRef };
     default:
-      return event;
+      return delta;
   }
+}
+
+/**
+ * The codex thread id a notification belongs to (`params.threadId`, or the
+ * started thread's own id). Undefined for account-scoped traffic.
+ */
+const codexProviderThreadIdParamsSchema = z
+  .object({
+    threadId: z.string().min(1).optional(),
+    thread: z.object({ id: z.string().min(1) }).passthrough().optional(),
+  })
+  .passthrough();
+
+function extractCodexProviderThreadId(
+  event: ProviderRuntimeEvent,
+): string | undefined {
+  const envelope = codexBridgeEnvelopeSchema.safeParse(event);
+  if (!envelope.success) {
+    return undefined;
+  }
+  const params = codexProviderThreadIdParamsSchema.safeParse(
+    envelope.data.params,
+  );
+  if (!params.success) {
+    return undefined;
+  }
+  return params.data.threadId ?? params.data.thread?.id;
 }
 
 function toCodexRawNotification(
   event: ProviderRuntimeEvent,
   expectedMethod?: string,
-): JsonRpcMessage | null {
+): { method: string; params: unknown } | null {
   const rawMethod = typeof event.method === "string" ? event.method : undefined;
   if (expectedMethod && rawMethod !== expectedMethod) {
     return null;
@@ -210,11 +258,7 @@ function toCodexRawNotification(
   if (!envelope.success) {
     return null;
   }
-  return {
-    jsonrpc: "2.0",
-    method: envelope.data.method,
-    ...(envelope.data.params ? { params: envelope.data.params } : {}),
-  };
+  return { method: envelope.data.method, params: envelope.data.params };
 }
 
 function normalizeCommandOutputNewlines(output: string): string {
@@ -490,7 +534,7 @@ export function createCodexEventTranslator(
         string,
         CodexCapturedCommandOutput
       >(),
-      pendingCompletedEventByCallId: new Map<string, ThreadEvent>(),
+      pendingCloseDeltaByCallId: new Map<string, CommandCloseDelta>(),
       shellToolCallIds: new Set<string>(),
     };
     rawCommandOutputStateByProviderThreadId.set(providerThreadId, nextState);
@@ -504,51 +548,60 @@ export function createCodexEventTranslator(
     }
     if (
       state.capturedCommandOutputByCallId.size === 0 &&
-      state.pendingCompletedEventByCallId.size === 0 &&
+      state.pendingCloseDeltaByCallId.size === 0 &&
       state.shellToolCallIds.size === 0
     ) {
       rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
     }
   }
 
-  function clearClosedThreadState(event: ProviderRuntimeEvent): void {
+  function clearClosedThreadState(event: ProviderRuntimeEvent): ThreadDelta[] {
     const rawEvent = toCodexRawNotification(event, "thread/closed");
     if (!rawEvent) {
-      return;
+      return [];
     }
     const paramsResult = codexThreadClosedParamsSchema.safeParse(
       rawEvent.params,
     );
     if (!paramsResult.success) {
-      return;
+      return [];
     }
-    clearExitedChildThreadState({
+    const closed = clearExitedChildThreadState({
       providerThreadId: paramsResult.data.threadId,
     });
+    clearCodexEventTranslationThreadState(
+      eventTranslationState,
+      paramsResult.data.threadId,
+    );
     clearGitWritableRootsByProviderThreadId({
       providerThreadId: paramsResult.data.threadId,
     });
+    return closed;
   }
 
   /**
    * Drop the state that only describes a live `codex app-server` child: raw
-   * command output in flight and the native-subagent tracking that answers
-   * `hasOpenThreadWork`. Called when the thread closes and when the child dies
-   * — otherwise a non-terminal tracked subagent keeps claiming open work for a
-   * process that no longer exists, and the runtime never reaps the thread.
+   * command output in flight and the native-subagent tracking. Called when
+   * the thread closes and when the child dies. Every delegation still open
+   * for that thread settles as failed — nothing runs behind a dead child —
+   * and the returned closes go on the wire, so the runtime's open-work view
+   * (open delegations are open work) lets the thread be reaped.
    */
   function clearExitedChildThreadState({
     providerThreadId,
   }: {
     providerThreadId: string;
-  }): void {
+  }): ThreadDelta[] {
     rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
-    clearCodexDelegationParentState(providerThreadId);
+    return clearCodexDelegationParentState(providerThreadId);
   }
 
-  function clearCodexDelegationParentState(providerThreadId: string): void {
+  function clearCodexDelegationParentState(
+    providerThreadId: string,
+  ): ThreadDelta[] {
     delegationParentToolCallIdsByProviderThreadId.delete(providerThreadId);
     pendingDelegationTurnLinksByProviderThreadId.delete(providerThreadId);
+    const closes: ThreadDelta[] = [];
     for (const [callId, tracked] of trackedSubAgentsByCallId) {
       if (
         tracked.parentProviderThreadId !== providerThreadId &&
@@ -556,6 +609,11 @@ export function createCodexEventTranslator(
       ) {
         continue;
       }
+      if (isTrackedSubAgentOpen(tracked)) {
+        closes.push(buildCodexSubAgentCloseDelta({ status: "failed", tracked }));
+      }
+      tracked.terminal = true;
+      tracked.pendingFollowups = 0;
       clearTrackedSubAgentLinks(tracked);
       if (
         trackedSubAgentCallIdsByAgentThreadId.get(tracked.agentThreadId) ===
@@ -565,6 +623,7 @@ export function createCodexEventTranslator(
       }
       trackedSubAgentsByCallId.delete(callId);
     }
+    return closes;
   }
 
   function queueNativeTurnStartClientRequestId(args: {
@@ -663,49 +722,46 @@ export function createCodexEventTranslator(
     return clientRequestId;
   }
 
-  function attachAcceptedUserMessageCorrelation(
-    event: ThreadEvent,
-  ): ThreadEvent[] {
-    if (event.type === "turn/completed") {
-      if (event.providerThreadId !== null) {
+  /**
+   * Accepted-input correlation: the native `turn/started` that consumed a
+   * queued dispatch is followed by an `input.accepted` against that vouched
+   * turn; a turn boundary clears the thread's whole queue (codex answered the
+   * turn, nothing queued can still be pending).
+   */
+  function attachAcceptedInputCorrelation(
+    delta: ThreadDelta,
+    providerThreadId: string | undefined,
+  ): ThreadDelta[] {
+    if (delta.kind === "turn.boundary") {
+      if (providerThreadId !== undefined) {
         nativeTurnStartClientRequestIdsByProviderThreadId.delete(
-          event.providerThreadId,
+          providerThreadId,
         );
       }
-      return [event];
+      return [delta];
     }
 
-    if (event.type === "turn/started") {
-      const clientRequestId = shiftNativeTurnStartClientRequestId(
-        event.providerThreadId,
-      );
+    if (
+      delta.kind === "turn.open" &&
+      delta.providerTurnId !== undefined &&
+      providerThreadId !== undefined
+    ) {
+      const clientRequestId =
+        shiftNativeTurnStartClientRequestId(providerThreadId);
       if (clientRequestId === undefined) {
-        return [event];
+        return [delta];
       }
-      const turnId = requireThreadEventScopeTurnId({
-        type: event.type,
-        scope: event.scope,
-      });
       return [
-        event,
+        delta,
         {
-          type: "turn/input/accepted",
-          threadId: event.threadId,
-          providerThreadId: event.providerThreadId,
-          scope: turnScope(turnId),
+          kind: "input.accepted",
           clientRequestId,
+          providerTurnId: delta.providerTurnId,
         },
       ];
     }
 
-    if (
-      (event.type !== "item/started" && event.type !== "item/completed") ||
-      event.item.type !== "userMessage"
-    ) {
-      return [event];
-    }
-
-    return [];
+    return [delta];
   }
 
   function enqueuePendingDelegationTurnLink(args: {
@@ -828,18 +884,21 @@ export function createCodexEventTranslator(
     return undefined;
   }
 
-  function attachCodexDelegationParentLink(event: ThreadEvent): ThreadEvent {
-    const providerThreadId = getCodexEventProviderThreadId(event);
-    const turnId = getThreadEventScopeTurnId(event.scope);
+  function attachCodexDelegationParentLink(
+    delta: ThreadDelta,
+    providerThreadId: string | undefined,
+  ): ThreadDelta {
+    const turnId = getDeltaProviderTurnId(delta);
     let parentToolCallId =
-      getCodexEventParentToolCallId(event) ??
+      getDeltaParentRef(delta) ??
       (turnId ? delegationParentToolCallIdsByTurnId.get(turnId) : undefined);
 
-    if (!parentToolCallId && event.type === "turn/started") {
-      const startedTurnId = requireThreadEventScopeTurnId({
-        type: event.type,
-        scope: event.scope,
-      });
+    if (
+      !parentToolCallId &&
+      delta.kind === "turn.open" &&
+      delta.providerTurnId !== undefined
+    ) {
+      const startedTurnId = delta.providerTurnId;
       const mappedFromProviderThread = providerThreadId
         ? delegationParentToolCallIdsByProviderThreadId.get(providerThreadId)
         : undefined;
@@ -864,28 +923,31 @@ export function createCodexEventTranslator(
         delegationParentToolCallIdsByProviderThreadId.get(providerThreadId);
     }
 
-    if (event.type === "turn/started" && parentToolCallId) {
+    if (
+      delta.kind === "turn.open" &&
+      delta.providerTurnId !== undefined &&
+      parentToolCallId
+    ) {
       delegationParentToolCallIdsByTurnId.set(
-        requireThreadEventScopeTurnId({
-          type: event.type,
-          scope: event.scope,
-        }),
+        delta.providerTurnId,
         parentToolCallId,
       );
     }
 
     return parentToolCallId
-      ? withCodexParentToolCallId(event, parentToolCallId)
-      : event;
+      ? withDeltaParentRef(delta, parentToolCallId)
+      : delta;
   }
 
-  function observeCodexDelegationToolCall(event: ThreadEvent): void {
-    const delegationToolCall = getCodexDelegationToolCall(event);
+  function observeCodexDelegationToolCall(
+    delta: ThreadDelta,
+    providerThreadId: string | undefined,
+  ): void {
+    const delegationToolCall = getCodexDelegationToolCall(delta);
     if (!delegationToolCall) {
       return;
     }
 
-    const providerThreadId = getCodexEventProviderThreadId(event);
     for (const receiverThreadId of delegationToolCall.receiverThreadIds) {
       if (
         receiverThreadId === providerThreadId ||
@@ -893,7 +955,7 @@ export function createCodexEventTranslator(
       ) {
         enqueuePendingDelegationTurnLink({
           callId: delegationToolCall.callId,
-          parentTurnId: getThreadEventScopeTurnId(event.scope),
+          parentTurnId: getDeltaProviderTurnId(delta),
           providerThreadId,
         });
         continue;
@@ -907,19 +969,23 @@ export function createCodexEventTranslator(
     if (delegationToolCall.receiverThreadIds.length === 0) {
       enqueuePendingDelegationTurnLink({
         callId: delegationToolCall.callId,
-        parentTurnId: getThreadEventScopeTurnId(event.scope),
+        parentTurnId: getDeltaProviderTurnId(delta),
         providerThreadId,
       });
     }
   }
 
   function attachCodexDelegationParentLinks(
-    events: ThreadEvent[],
-  ): ThreadEvent[] {
-    return events.map((event) => {
-      const parentLinkedEvent = attachCodexDelegationParentLink(event);
-      observeCodexDelegationToolCall(parentLinkedEvent);
-      return parentLinkedEvent;
+    deltas: ThreadDelta[],
+    providerThreadId: string | undefined,
+  ): ThreadDelta[] {
+    return deltas.map((delta) => {
+      const parentLinkedDelta = attachCodexDelegationParentLink(
+        delta,
+        providerThreadId,
+      );
+      observeCodexDelegationToolCall(parentLinkedDelta, providerThreadId);
+      return parentLinkedDelta;
     });
   }
 
@@ -953,10 +1019,22 @@ export function createCodexEventTranslator(
     });
   }
 
+  /**
+   * A tracked sub-agent is open work while it has not reached a terminal
+   * turn, or while it still owes a followup turn it was re-armed for. The
+   * delegation row mirrors exactly this predicate: it opens at the spawn,
+   * re-opens on a followup to a settled agent, and closes when the agent
+   * owes nothing more.
+   */
+  function isTrackedSubAgentOpen(tracked: CodexTrackedSubAgent): boolean {
+    return !tracked.terminal || tracked.pendingFollowups > 0;
+  }
+
   function completeCodexTrackedSubAgent(args: {
     status: "completed" | "failed" | "interrupted";
     tracked: CodexTrackedSubAgent;
-  }): ThreadEvent | null {
+  }): ThreadDelta | null {
+    const wasOpen = isTrackedSubAgentOpen(args.tracked);
     const alreadyTerminal = args.tracked.terminal;
     args.tracked.terminal = true;
     clearTrackedSubAgentLinks(args.tracked);
@@ -966,15 +1044,15 @@ export function createCodexEventTranslator(
     if (args.tracked.pendingFollowups > 0) {
       rearmTrackedSubAgent(args.tracked);
     }
-    if (alreadyTerminal) {
+    if (!wasOpen || isTrackedSubAgentOpen(args.tracked)) {
       return null;
     }
-    return buildCodexSubAgentCompletedEvent(args);
+    return buildCodexSubAgentCloseDelta(args);
   }
 
   function translateCodexSubAgentActivity(
     event: ProviderRuntimeEvent,
-  ): ThreadEvent[] | null {
+  ): ThreadDelta[] | null {
     const activity = parseCodexSubAgentActivityEvent(event);
     if (!activity) {
       return null;
@@ -1000,14 +1078,12 @@ export function createCodexEventTranslator(
           tracked.callId,
         );
 
-        const [startedEvent] = attachCodexDelegationParentLinks([
-          buildCodexSubAgentStartedEvent(tracked),
-        ]);
-        if (
-          startedEvent?.type === "item/started" &&
-          startedEvent.item.type === "toolCall"
-        ) {
-          tracked.parentToolCallId = startedEvent.item.parentToolCallId;
+        const [openDelta] = attachCodexDelegationParentLinks(
+          [buildCodexSubAgentOpenDelta(tracked)],
+          activity.providerThreadId,
+        );
+        if (openDelta?.kind === "item.open") {
+          tracked.parentToolCallId = openDelta.key.parentRef;
         }
         // Codex currently multiplexes child turns onto the root provider
         // thread, even though the activity includes a distinct agent thread
@@ -1017,7 +1093,7 @@ export function createCodexEventTranslator(
           parentTurnId: tracked.parentTurnId,
           providerThreadId: tracked.parentProviderThreadId,
         });
-        return startedEvent ? [startedEvent] : [];
+        return openDelta ? [openDelta] : [];
       }
       case "interacted": {
         // Messaging an existing agent is activity within the original
@@ -1032,8 +1108,14 @@ export function createCodexEventTranslator(
           activity.item.agentThreadId,
         );
         if (tracked?.terminal) {
+          const wasOpen = isTrackedSubAgentOpen(tracked);
           tracked.pendingFollowups += 1;
           rearmTrackedSubAgent(tracked);
+          if (!wasOpen) {
+            // The agent works again: re-open its delegation row (the
+            // assembler reuses the minted item id for a known provider id).
+            return [buildCodexSubAgentOpenDelta(tracked)];
+          }
         }
         return [];
       }
@@ -1057,37 +1139,35 @@ export function createCodexEventTranslator(
   }
 
   function completeFinishedCodexSubAgentTurns(
-    events: ThreadEvent[],
-  ): ThreadEvent[] {
-    const completedEvents: ThreadEvent[] = [];
-    for (const event of events) {
-      completedEvents.push(event);
-      if (event.type !== "turn/completed") {
+    deltas: ThreadDelta[],
+  ): ThreadDelta[] {
+    const completedDeltas: ThreadDelta[] = [];
+    for (const delta of deltas) {
+      completedDeltas.push(delta);
+      if (delta.kind !== "turn.boundary" || delta.providerTurnId === undefined) {
         continue;
       }
-      const turnId = requireThreadEventScopeTurnId({
-        type: event.type,
-        scope: event.scope,
-      });
-      const callId = delegationParentToolCallIdsByTurnId.get(turnId);
+      const callId = delegationParentToolCallIdsByTurnId.get(
+        delta.providerTurnId,
+      );
       const tracked = callId ? trackedSubAgentsByCallId.get(callId) : undefined;
       if (!tracked) {
         continue;
       }
       const completed = completeCodexTrackedSubAgent({
         tracked,
-        status: event.status,
+        status: delta.status,
       });
       if (completed) {
-        completedEvents.push(completed);
+        completedDeltas.push(completed);
       }
     }
-    return completedEvents;
+    return completedDeltas;
   }
 
   function consumeCodexRawResponseItem(
     event: ProviderRuntimeEvent,
-  ): ThreadEvent[] | null {
+  ): ThreadDelta[] | null {
     const rawEvent = toCodexRawNotification(event, "rawResponseItem/completed");
     if (!rawEvent) {
       return null;
@@ -1132,19 +1212,15 @@ export function createCodexEventTranslator(
       } else {
         rawCommandOutputState.shellToolCallIds.delete(item.call_id);
       }
-      const pendingCompletedEvent =
-        rawCommandOutputState.pendingCompletedEventByCallId.get(item.call_id);
-      if (pendingCompletedEvent) {
-        rawCommandOutputState.pendingCompletedEventByCallId.delete(
-          item.call_id,
-        );
+      const pendingCloseDelta =
+        rawCommandOutputState.pendingCloseDeltaByCallId.get(item.call_id);
+      if (pendingCloseDelta) {
+        rawCommandOutputState.pendingCloseDeltaByCallId.delete(item.call_id);
         const capturedOutput = consumeCapturedCommandOutput({
           commandExecutionId: item.call_id,
           providerThreadId,
         });
-        return [
-          repairCompletedCommandOutput(pendingCompletedEvent, capturedOutput),
-        ];
+        return [repairCommandCloseDelta(pendingCloseDelta, capturedOutput)];
       }
       pruneRawCommandOutputState(providerThreadId);
       return [];
@@ -1170,29 +1246,27 @@ export function createCodexEventTranslator(
     return [];
   }
 
+  /**
+   * Flush completed commands still held back for raw output before their
+   * turn's boundary: the item must settle inside the turn it belongs to.
+   */
   function reconcileRawCommandOutputLifecycle(
-    events: ThreadEvent[],
-  ): ThreadEvent[] {
-    const reconciledEvents: ThreadEvent[] = [];
-    for (const event of events) {
-      if (event.type === "turn/completed") {
-        if (event.providerThreadId !== null) {
-          const state = rawCommandOutputStateByProviderThreadId.get(
-            event.providerThreadId,
-          );
-          if (state) {
-            reconciledEvents.push(
-              ...state.pendingCompletedEventByCallId.values(),
-            );
-          }
-          rawCommandOutputStateByProviderThreadId.delete(
-            event.providerThreadId,
-          );
+    deltas: ThreadDelta[],
+    providerThreadId: string | undefined,
+  ): ThreadDelta[] {
+    const reconciledDeltas: ThreadDelta[] = [];
+    for (const delta of deltas) {
+      if (delta.kind === "turn.boundary" && providerThreadId !== undefined) {
+        const state =
+          rawCommandOutputStateByProviderThreadId.get(providerThreadId);
+        if (state) {
+          reconciledDeltas.push(...state.pendingCloseDeltaByCallId.values());
         }
+        rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
       }
-      reconciledEvents.push(event);
+      reconciledDeltas.push(delta);
     }
-    return reconciledEvents;
+    return reconciledDeltas;
   }
 
   function consumeCapturedCommandOutput(args: {
@@ -1218,80 +1292,73 @@ export function createCodexEventTranslator(
     return capturedOutput;
   }
 
-  function repairCompletedCommandOutput(
-    event: ThreadEvent,
+  function repairCommandCloseDelta(
+    delta: CommandCloseDelta,
     capturedOutput: CodexCapturedCommandOutput | undefined,
-  ): ThreadEvent {
-    if (
-      capturedOutput === undefined ||
-      event.type !== "item/completed" ||
-      event.item.type !== "commandExecution"
-    ) {
-      return event;
+  ): ThreadDelta {
+    if (capturedOutput === undefined) {
+      return delta;
     }
 
     if (
       capturedOutput.kind === "recovered" &&
-      event.item.aggregatedOutput === capturedOutput.output
+      delta.item.aggregatedOutput === capturedOutput.output
     ) {
-      return event;
+      return delta;
     }
 
     if (capturedOutput.kind === "empty") {
-      if (event.item.aggregatedOutput === undefined) {
-        return event;
+      if (delta.item.aggregatedOutput === undefined) {
+        return delta;
       }
-      const { aggregatedOutput: _aggregatedOutput, ...itemWithoutOutput } =
-        event.item;
-      return {
-        ...event,
-        item: itemWithoutOutput,
-      };
+      const { aggregatedOutput: _aggregatedOutput, ...shapeWithoutOutput } =
+        delta.item;
+      return { ...delta, item: shapeWithoutOutput };
     }
 
     return {
-      ...event,
-      item: {
-        ...event.item,
-        aggregatedOutput: capturedOutput.output,
-      },
+      ...delta,
+      item: { ...delta.item, aggregatedOutput: capturedOutput.output },
     };
   }
 
-  function applyRecoveredCommandOutput(events: ThreadEvent[]): ThreadEvent[] {
-    const repairedEvents: ThreadEvent[] = [];
-    for (const event of events) {
+  function isCommandCloseDelta(delta: ThreadDelta): delta is CommandCloseDelta {
+    return delta.kind === "item.close" && delta.item.type === "command";
+  }
+
+  function applyRecoveredCommandOutput(
+    deltas: ThreadDelta[],
+    providerThreadId: string | undefined,
+  ): ThreadDelta[] {
+    const repairedDeltas: ThreadDelta[] = [];
+    for (const delta of deltas) {
       if (
-        event.type !== "item/completed" ||
-        event.item.type !== "commandExecution"
+        !isCommandCloseDelta(delta) ||
+        delta.key.providerItemId === undefined ||
+        providerThreadId === undefined
       ) {
-        repairedEvents.push(event);
+        repairedDeltas.push(delta);
         continue;
       }
 
-      const rawCommandOutputState = rawCommandOutputStateByProviderThreadId.get(
-        event.providerThreadId,
-      );
-      if (
-        !rawCommandOutputState?.capturedCommandOutputByCallId.has(event.item.id)
-      ) {
-        if (rawCommandOutputState?.shellToolCallIds.has(event.item.id)) {
-          rawCommandOutputState.pendingCompletedEventByCallId.set(
-            event.item.id,
-            event,
-          );
+      const callId = delta.key.providerItemId;
+      const rawCommandOutputState =
+        rawCommandOutputStateByProviderThreadId.get(providerThreadId);
+      if (!rawCommandOutputState?.capturedCommandOutputByCallId.has(callId)) {
+        if (rawCommandOutputState?.shellToolCallIds.has(callId)) {
+          rawCommandOutputState.pendingCloseDeltaByCallId.set(callId, delta);
           continue;
         }
-        repairedEvents.push(event);
+        repairedDeltas.push(delta);
         continue;
       }
       const capturedOutput = consumeCapturedCommandOutput({
-        commandExecutionId: event.item.id,
-        providerThreadId: event.providerThreadId,
+        commandExecutionId: callId,
+        providerThreadId,
       });
-      repairedEvents.push(repairCompletedCommandOutput(event, capturedOutput));
+      repairedDeltas.push(repairCommandCloseDelta(delta, capturedOutput));
     }
-    return repairedEvents;
+    return repairedDeltas;
   }
 
   function buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[] {
@@ -1310,59 +1377,51 @@ export function createCodexEventTranslator(
     ];
   }
 
-  function translateEvent(event: ProviderRuntimeEvent): ThreadEvent[] {
-    clearClosedThreadState(event);
-    const rawResponseEvents = consumeCodexRawResponseItem(event);
-    if (rawResponseEvents !== null) {
-      return rawResponseEvents;
+  function translateEvent(event: ProviderRuntimeEvent): ThreadDelta[] {
+    const closedThreadDeltas = clearClosedThreadState(event);
+    if (closedThreadDeltas.length > 0) {
+      return closedThreadDeltas;
+    }
+    const rawResponseDeltas = consumeCodexRawResponseItem(event);
+    if (rawResponseDeltas !== null) {
+      return rawResponseDeltas;
     }
 
-    const subAgentActivityEvents = translateCodexSubAgentActivity(event);
-    if (subAgentActivityEvents !== null) {
+    const providerThreadId = extractCodexProviderThreadId(event);
+    const subAgentActivityDeltas = translateCodexSubAgentActivity(event);
+    if (subAgentActivityDeltas !== null) {
       return reconcileRawCommandOutputLifecycle(
-        applyRecoveredCommandOutput(subAgentActivityEvents),
+        applyRecoveredCommandOutput(subAgentActivityDeltas, providerThreadId),
+        providerThreadId,
       );
     }
 
-    const parentLinkedEvents = attachCodexDelegationParentLinks(
-      translateCodexEvent(event, eventTranslationState),
+    const parentLinkedDeltas = attachCodexDelegationParentLinks(
+      translateCodexEventToDeltas(event, eventTranslationState),
+      providerThreadId,
     );
-    const translatedEvents = parentLinkedEvents.flatMap(
-      attachAcceptedUserMessageCorrelation,
+    const translatedDeltas = parentLinkedDeltas.flatMap((delta) =>
+      attachAcceptedInputCorrelation(delta, providerThreadId),
     );
-    const completedSubAgentEvents =
-      completeFinishedCodexSubAgentTurns(translatedEvents);
+    const completedSubAgentDeltas =
+      completeFinishedCodexSubAgentTurns(translatedDeltas);
     return reconcileRawCommandOutputLifecycle(
-      applyRecoveredCommandOutput(completedSubAgentEvents),
+      applyRecoveredCommandOutput(completedSubAgentDeltas, providerThreadId),
+      providerThreadId,
     );
   }
 
-  // Codex reports native subagents as toolCall items rather than as BB
-  // background tasks, so the shared background-work state cannot see them.
-  // Report them here; a session release must not stop the parent process
-  // while a child agent still runs or still owes a followup turn.
-  function hasOpenThreadWork({
-    providerThreadId,
-  }: {
-    providerThreadId: string;
-  }): boolean {
-    for (const tracked of trackedSubAgentsByCallId.values()) {
-      if (tracked.parentProviderThreadId !== providerThreadId) {
-        continue;
-      }
-      if (!tracked.terminal || tracked.pendingFollowups > 0) {
-        return true;
-      }
-    }
-    return false;
+  /** The bb-injected tools this session was constructed with (Q31). */
+  function configureInjectedTools(tools: readonly CodexInjectedTool[]): void {
+    setCodexInjectedTools(eventTranslationState, tools);
   }
 
   return {
     activateThreadGitWritableRoots,
     buildPostInitializeRequests,
     clearExitedChildThreadState,
+    configureInjectedTools,
     getThreadGitWritableRoots,
-    hasOpenThreadWork,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
     translateEvent,
@@ -1422,55 +1481,56 @@ function parseCodexSubAgentActivityEvent(
   };
 }
 
-function buildSubAgentToolCallItem(
+/**
+ * The delegation a codex native sub-agent is (grammar v3): the agent thread
+ * is the child, its `agentPath` the label. Foreground, because the parent
+ * turn owns it — codex multiplexes the child's turns onto the parent session
+ * and the parent waits for them — and the close carries no summary because
+ * codex reports none for native sub-agents.
+ */
+function buildSubAgentDelegationShape(
   tracked: CodexTrackedSubAgent,
-  status: ThreadEventItemStatus,
-): Extract<ThreadEventItem, { type: "toolCall" }> {
+): DeltaItemShape {
   return {
-    type: "toolCall",
-    id: tracked.callId,
-    tool: "spawnAgent",
-    arguments: {
-      senderThreadId: tracked.parentProviderThreadId,
-      receiverThreadIds: [tracked.agentThreadId],
-      description: tracked.agentPath,
+    type: "delegation",
+    childRef: tracked.agentThreadId,
+    label: tracked.agentPath,
+    background: false,
+  };
+}
+
+function buildCodexSubAgentOpenDelta(
+  tracked: CodexTrackedSubAgent,
+): ThreadDelta {
+  return {
+    kind: "item.open",
+    key: {
+      providerItemId: tracked.callId,
+      ...(tracked.parentToolCallId
+        ? { parentRef: tracked.parentToolCallId }
+        : {}),
     },
-    status,
-    ...(tracked.parentToolCallId
-      ? { parentToolCallId: tracked.parentToolCallId }
-      : {}),
-    ...(status === "pending"
-      ? {}
-      : {
-          result: {
-            agentPath: tracked.agentPath,
-            agentThreadId: tracked.agentThreadId,
-          },
-        }),
+    item: buildSubAgentDelegationShape(tracked),
+    presentation: subAgentPresentation(tracked.agentPath),
+    providerTurnId: tracked.parentTurnId,
   };
 }
 
-function buildCodexSubAgentStartedEvent(
-  tracked: CodexTrackedSubAgent,
-): ThreadEvent {
-  return {
-    type: "item/started",
-    threadId: tracked.parentProviderThreadId,
-    providerThreadId: tracked.parentProviderThreadId,
-    scope: turnScope(tracked.parentTurnId),
-    item: buildSubAgentToolCallItem(tracked, "pending"),
-  };
-}
-
-function buildCodexSubAgentCompletedEvent(args: {
+function buildCodexSubAgentCloseDelta(args: {
   status: Exclude<ThreadEventItemStatus, "pending">;
   tracked: CodexTrackedSubAgent;
-}): ThreadEvent {
+}): ThreadDelta {
   return {
-    type: "item/completed",
-    threadId: args.tracked.parentProviderThreadId,
-    providerThreadId: args.tracked.parentProviderThreadId,
-    scope: turnScope(args.tracked.parentTurnId),
-    item: buildSubAgentToolCallItem(args.tracked, args.status),
+    kind: "item.close",
+    key: {
+      providerItemId: args.tracked.callId,
+      ...(args.tracked.parentToolCallId
+        ? { parentRef: args.tracked.parentToolCallId }
+        : {}),
+    },
+    status: args.status,
+    item: buildSubAgentDelegationShape(args.tracked),
+    presentation: subAgentPresentation(args.tracked.agentPath),
+    providerTurnId: args.tracked.parentTurnId,
   };
 }

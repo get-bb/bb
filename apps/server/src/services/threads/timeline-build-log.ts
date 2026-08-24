@@ -31,16 +31,16 @@ const SLOW_THREAD_TIMELINE_BUILD_LOG_INTERVAL_MS = 30_000;
 /** Bounds the throttle map on a server that views very many threads. */
 const SLOW_THREAD_TIMELINE_BUILD_LOG_MAX_TRACKED_THREADS = 256;
 
-export interface LogSlowThreadTimelineBuildArgs {
+interface LogSlowThreadTimelineBuildArgs {
   profile: ThreadTimelineBuildProfile;
   threadId: string;
 }
 
-export interface SlowThreadTimelineBuildLogger {
+interface SlowThreadTimelineBuildLogger {
   log(args: LogSlowThreadTimelineBuildArgs): void;
 }
 
-export interface CreateSlowThreadTimelineBuildLoggerOptions {
+interface CreateSlowThreadTimelineBuildLoggerOptions {
   logger: Pick<ServerLogger, "info">;
   /** Injectable for tests; defaults to wall clock. */
   now?: () => number;

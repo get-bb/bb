@@ -92,6 +92,51 @@ describe("bb thread spawn command output", () => {
     });
   });
 
+  it("bb thread spawn --plan opens the thread with the composer's /plan command mention", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-plan",
+      projectId: "proj-1",
+      providerId: "claude-code",
+    });
+    const post = vi.fn(async () => thread);
+    stubServerApi({ "v1.threads.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "spawn",
+        "--project",
+        "proj-1",
+        "--prompt",
+        "add a README",
+        "--plan",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      json: expect.objectContaining({
+        input: [
+          {
+            type: "text",
+            text: "/plan add a README",
+            mentions: [
+              expect.objectContaining({
+                start: 0,
+                end: 5,
+                resource: expect.objectContaining({
+                  kind: "command",
+                  trigger: "/",
+                  name: "plan",
+                }),
+              }),
+            ],
+          },
+        ],
+      }),
+    });
+  });
+
   it("bb thread spawn requires an explicit --project", async () => {
     vi.stubEnv("BB_PROJECT_ID", undefined);
     const post = vi.fn();

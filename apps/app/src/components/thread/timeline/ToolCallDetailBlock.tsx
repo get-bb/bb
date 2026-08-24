@@ -7,7 +7,7 @@ import {
 } from "./conversation-message-overflow.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 
-export interface ToolCallDetailBlockProps {
+interface ToolCallDetailBlockProps {
   toolName: string;
   args: TimelineToolArgs;
   output: string;

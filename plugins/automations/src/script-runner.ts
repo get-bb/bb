@@ -20,7 +20,7 @@ const SCRIPT_OUTPUT_MAX_BYTES = 1024 * 1024;
 let resolvedBbPath: string | null = null;
 
 /** Warning prepended to a script's output when bb could not be injected. */
-export const BB_NOT_INJECTED_WARNING =
+const BB_NOT_INJECTED_WARNING =
   "[bb] warning: could not locate the bb CLI, so `bb` is not on PATH for this script.";
 
 async function commandWorks(command: string, args: string[]): Promise<boolean> {
@@ -100,7 +100,7 @@ async function isExecutableFile(candidate: string): Promise<boolean> {
  * long, and spawning a process per entry — each with its own timeout — would
  * make a host without bb pay seconds on every run.
  */
-export async function resolveBbBinary(
+async function resolveBbBinary(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
   if (resolvedBbPath !== null) return resolvedBbPath;
@@ -159,7 +159,7 @@ export interface ScriptRunResult {
   timedOut: boolean;
 }
 
-export interface ScriptRunOutcome {
+interface ScriptRunOutcome {
   status: "succeeded" | "failed" | "skipped";
   output: string | null;
   exitCode: number | null;

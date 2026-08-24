@@ -1,4 +1,4 @@
-export const DEFAULT_PATH_LIST_LIMIT = 1000;
+const DEFAULT_PATH_LIST_LIMIT = 1000;
 
 export interface PathListOptions {
   limit: number;

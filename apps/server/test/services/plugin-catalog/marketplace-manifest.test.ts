@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  entryRepositoryUrl,
   entrySourceDisplay,
   parseMarketplaceManifest,
   resolveEntryIcon,
@@ -375,6 +376,84 @@ describe("marketplace manifest schema", () => {
     });
   });
 
+  describe("repository url", () => {
+    it("links a git repository without its .git suffix", () => {
+      expect(entryRepositoryUrl(firstEntry([entry()]))).toBe(
+        "https://github.com/acme/plugins",
+      );
+    });
+
+    it("links a GitHub subdirectory to its tree, other hosts to the root", () => {
+      const github = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://github.com/acme/plugins.git",
+              ref: "v1.0.0",
+              subdir: "plugins/widgets",
+            },
+          },
+        }),
+      ]);
+      expect(entryRepositoryUrl(github)).toBe(
+        "https://github.com/acme/plugins/tree/HEAD/plugins/widgets",
+      );
+      const gitlab = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://gitlab.com/acme/plugins",
+              ref: "v1.0.0",
+              subdir: "plugins/widgets",
+            },
+          },
+        }),
+      ]);
+      expect(entryRepositoryUrl(gitlab)).toBe(
+        "https://gitlab.com/acme/plugins",
+      );
+      // `#` and `?` pass the subdirectory check; raw they would change the
+      // URL's meaning.
+      const reserved = firstEntry([
+        entry({
+          source: {
+            git: {
+              url: "https://github.com/acme/plugins",
+              ref: "v1.0.0",
+              subdir: "plugins/c#/what?",
+            },
+          },
+        }),
+      ]);
+      expect(entryRepositoryUrl(reserved)).toBe(
+        "https://github.com/acme/plugins/tree/HEAD/plugins/c%23/what%3F",
+      );
+    });
+
+    it("links the public npm page only for the default registry", () => {
+      const publicPackage = firstEntry([
+        entry({
+          source: { npm: { package: "@acme/widgets", range: "^1.0.0" } },
+        }),
+      ]);
+      expect(entryRepositoryUrl(publicPackage)).toBe(
+        "https://www.npmjs.com/package/@acme/widgets",
+      );
+      const privatePackage = firstEntry([
+        entry({
+          source: {
+            npm: {
+              package: "bb-plugin-widgets",
+              range: "^1.0.0",
+              registry: "https://npm.acme.test",
+            },
+          },
+        }),
+      ]);
+      expect(entryRepositoryUrl(privatePackage)).toBeNull();
+    });
+  });
+
   describe("engines policy", () => {
     // A listing no longer declares compatibility: the ranges live in the
     // plugin's own package.json and the install pipeline enforces them there.
@@ -393,10 +472,7 @@ describe("marketplace manifest schema", () => {
 
   it("validates the bundled seed snapshot", () => {
     expect(() =>
-      parseMarketplaceManifest(
-        BUNDLED_CURATED_MARKETPLACE,
-        "bundled snapshot",
-      ),
+      parseMarketplaceManifest(BUNDLED_CURATED_MARKETPLACE, "bundled snapshot"),
     ).not.toThrow();
   });
 });

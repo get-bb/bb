@@ -16,8 +16,10 @@ const searchResult = {
   description: "Linear issue tools",
   icon: null,
   iconUrl: null,
+  iconTinted: false,
   category: "Developer tools",
   source: "builtin:linear",
+  repositoryUrl: null,
   marketplace: "bb-community",
   marketplaceDisplayName: "BB Official",
   publisherKey: "builtin",
@@ -92,6 +94,8 @@ const installedPlugin = {
   app: { hasApp: false, bundle: null },
   logoUrl: null,
   logoDarkUrl: null,
+  providerIds: [],
+  icons: {},
 };
 
 function json(value: object, status = 200): Response {
@@ -182,7 +186,7 @@ describe("bb plugin catalog", () => {
     );
     expect(
       JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
-    ).toEqual({ source, selection: { kind: "root" } });
+    ).toEqual({ source });
   });
 
   it("sends --plugin and --subdirectory as the install selection", async () => {
@@ -339,7 +343,10 @@ describe("bb plugin catalog", () => {
       .mockResolvedValueOnce(json({ plan: thirdPartyPlan }))
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
-    await runCommand(["plugin", "install", "notes@acme-plugins", "--yes"], register);
+    await runCommand(
+      ["plugin", "install", "notes@acme-plugins", "--yes"],
+      register,
+    );
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "http://server/api/v1/plugin-catalog/install-plan?entryId=notes&marketplace=acme-plugins",
@@ -380,7 +387,10 @@ describe("bb plugin catalog", () => {
       )
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
-    await runCommand(["plugin", "install", "notes@acme-plugins", "--yes"], register);
+    await runCommand(
+      ["plugin", "install", "notes@acme-plugins", "--yes"],
+      register,
+    );
 
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("npm package: bb-plugin-notes@beta");
@@ -405,7 +415,10 @@ describe("bb plugin catalog", () => {
       )
       .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
 
-    await runCommand(["plugin", "install", "notes@acme-plugins", "--yes"], register);
+    await runCommand(
+      ["plugin", "install", "notes@acme-plugins", "--yes"],
+      register,
+    );
 
     expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).toContain(
       "not resolved right now: no release tag matches ^1.0.0",

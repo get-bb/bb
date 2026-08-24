@@ -8,10 +8,10 @@ import { registerDelegation } from "./delegate";
 import { registerLifecycle } from "./lifecycle";
 import { registerMentions } from "./mentions";
 
-export const TASKS_PLUGIN_NAME = "Tasks";
-export const TASKS_PLUGIN_VERSION = "0.1.1";
+const TASKS_PLUGIN_NAME = "Tasks";
+export const TASKS_PLUGIN_VERSION = "0.1.2";
 
-export const tasksRpcContract = defineRpcContract({
+const tasksRpcContract = defineRpcContract({
   ping: {
     input: z.null(),
     output: z.object({ ok: z.literal(true), version: z.string() }),

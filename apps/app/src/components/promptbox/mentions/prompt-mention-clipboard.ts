@@ -3,19 +3,18 @@ import {
   promptMentionResourceSchema,
   type PromptMentionResource,
 } from "@bb/domain";
-import { PLUGIN_MENTION_TRIGGER_VALUES } from "@/lib/plugin-mention-triggers";
+import { PLUGIN_MENTION_TRIGGER_VALUES } from "@bb/client-core";
 
-export const PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR =
-  "data-prompt-mention-resource";
-export const PROMPT_MENTION_CLIPBOARD_SERIALIZED_TEXT_ATTR =
+const PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR = "data-prompt-mention-resource";
+const PROMPT_MENTION_CLIPBOARD_SERIALIZED_TEXT_ATTR =
   "data-prompt-mention-serialized-text";
 
-export interface PromptMentionClipboardPayload {
+interface PromptMentionClipboardPayload {
   resource: PromptMentionResource;
   serializedText: string;
 }
 
-export interface PromptMentionClipboardDataAttributes {
+interface PromptMentionClipboardDataAttributes {
   "data-prompt-mention": "true";
   "data-prompt-mention-resource": string;
   "data-prompt-mention-serialized-text": string;

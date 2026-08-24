@@ -7,11 +7,13 @@ type ExpectedBbPluginApiKey =
   | "background"
   | "cli"
   | "events"
+  | "experimental_aiServices"
   | "hosts"
   | "http"
   | "log"
   | "onDispose"
   | "pluginId"
+  | "providers"
   | "realtime"
   | "rpc"
   | "sdk"
@@ -24,11 +26,15 @@ type ExpectedBbPluginApiKey =
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
   "PluginAgents",
+  "PluginAiServiceDeclaration",
+  "PluginAiServiceKind",
+  "PluginAiServices",
   "PluginAgentConfiguration",
   "PluginAgentConfigurationContext",
   "PluginAgentToolContentPart",
   "PluginAgentToolContext",
-  "PluginAgentToolExperimentalStatusLabels",
+  "PluginAgentToolLabels",
+  "PluginAgentToolPresentation",
   "PluginAgentToolRegistrationBase",
   "PluginAgentToolResult",
   "PluginAgentToolSelection",
@@ -57,8 +63,18 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginProviderCapabilities",
   "PluginProviderComposerAction",
   "PluginProviderDeclaration",
+  "PluginProviderExtensionKindDeclaration",
+  "PluginProviderFallbackModel",
+  "PluginProviderMaintenance",
+  "PluginProviderModelCatalogScope",
+  "PluginProviderNativeRootEntry",
+  "PluginProviderNativeRoots",
+  "PluginProviderOptionDescriptor",
+  "PluginProviderOptionsContext",
   "PluginProviderPermissionMode",
   "PluginProviderReasoningLevel",
+  "PluginProviderStrings",
+  "PluginProviders",
   "PluginRealtime",
   "PluginRpc",
   "PluginServerApi",

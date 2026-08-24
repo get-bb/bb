@@ -30,7 +30,26 @@ const WORKSPACE_STATUS_WATCH_MAX_RETRY_DELAY_MS = 30_000;
 // Give up after a bounded number of attempts; the server recreates this watch
 // (resetting the count) when the watch set changes.
 const WORKSPACE_STATUS_WATCH_MAX_SETUP_RETRY_ATTEMPTS = 10;
+// Plain entries are paths relative to the watch root: `.git` only excludes
+// `<root>/.git`, the workspace's own repository.
 const WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS = [".git"];
+// Glob entries are matched against the root-relative path. On Linux parcel
+// tests every directory during its crawl and a match skips the whole subtree,
+// so no inotify watch is created below it. On macOS and Windows parcel tests
+// each event path instead, so the trailing `/**` is required: picomatch lets
+// it match zero segments, so `**/node_modules/**` matches both the directory
+// and everything inside it. The Git-derived ignore list below only covers the
+// root's own top-level ignored directories; an "umbrella" root with untracked
+// nested checkouts, or a root that is not a repository, otherwise gets one
+// inotify watch per nested directory and can OOM the host (get-bb/bb#1779).
+// `*/**/.git/**` skips nested repositories but keeps `<root>/.git` watchable
+// so a plain directory can still be promoted after `git init`.
+const WORKSPACE_ROOT_ALWAYS_IGNORED_GLOBS = [
+  "*/**/.git/**",
+  "**/node_modules/**",
+  "**/.cache/**",
+  "**/__pycache__/**",
+];
 const WORKSPACE_ROOT_IGNORE_STATUS_TIMEOUT_MS = 5_000;
 const WORKSPACE_ROOT_IGNORE_STATUS_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 
@@ -101,10 +120,21 @@ function collectIgnoredDirectoryPaths(statusOutput: string): string[] {
   return Array.from(ignoredDirectoryPaths).sort();
 }
 
+function createGitWorkspaceRootIgnores(): string[] {
+  return [
+    ...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS,
+    ...WORKSPACE_ROOT_ALWAYS_IGNORED_GLOBS,
+  ];
+}
+
+function createPlainWorkspaceRootIgnores(): string[] {
+  return [...WORKSPACE_ROOT_ALWAYS_IGNORED_GLOBS];
+}
+
 function mergeWorkspaceRootIgnores(gitIgnoredPaths: string[]): string[] {
   const ignoredPaths = new Set<string>();
   for (const ignoredPath of [
-    ...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS,
+    ...createGitWorkspaceRootIgnores(),
     ...gitIgnoredPaths,
   ]) {
     ignoredPaths.add(ignoredPath);
@@ -152,7 +182,7 @@ function isPathInsideDotGit(cwd: string, candidatePath: string): boolean {
   return relativePath === ".git" || relativePath.startsWith(`.git${path.sep}`);
 }
 
-export class WorkspaceStatusWatcher {
+class WorkspaceStatusWatcher {
   private readonly changedPaths = new Set<string>();
   private readonly changeKinds = new Set<WorkspaceStatusWatchChangeKind>();
   private disposed = false;
@@ -220,9 +250,11 @@ export class WorkspaceStatusWatcher {
     }
     if (!(await pathExists(path.join(this.args.cwd, ".git")))) {
       // A plain workspace can become a repository after `git init`. Watch the
-      // root without excluding `.git` until that marker appears.
+      // root without excluding `<root>/.git` until that marker appears, but
+      // still skip nested repositories and heavy directories.
       this.startWatchSubscription({
         kind: "workspace-root",
+        options: { ignore: createPlainWorkspaceRootIgnores() },
         rootPath,
       });
       return;
@@ -267,11 +299,11 @@ export class WorkspaceStatusWatcher {
       }
       this.reportWorkspaceRootSetupError(rootPath, error);
       // Ignore discovery is an optimization, not a correctness gate. Keep the
-      // workspace live with the mandatory `.git` exclusion even when Git is
-      // too slow or its metadata is temporarily unavailable.
+      // workspace live with the mandatory `.git` and nested-tree exclusions
+      // even when Git is too slow or its metadata is temporarily unavailable.
       this.startWatchSubscription({
         kind: "workspace-root",
-        options: { ignore: [...WORKSPACE_ROOT_ALWAYS_IGNORED_PATHS] },
+        options: { ignore: createGitWorkspaceRootIgnores() },
         rootPath,
       });
     }

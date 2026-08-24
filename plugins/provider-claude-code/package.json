@@ -14,8 +14,7 @@
       "icon": "./icons/claude-code.svg"
     },
     "server": "./server.ts",
-    "app": "./app.tsx",
-    "host": "./src/bridge/bridge.ts"
+    "host": "./src/host.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -28,8 +27,6 @@
     "@bb/domain": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "react": "^19.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"

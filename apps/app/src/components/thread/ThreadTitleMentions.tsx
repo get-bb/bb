@@ -25,13 +25,19 @@ import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
+/** The slice of a thread a title mention needs: its label and route. */
+type ThreadTitleMentionThread = Pick<
+  ThreadListEntry,
+  "id" | "projectId" | "title" | "titleFallback"
+>;
+
 export interface ThreadTitleMentionResources {
   sectionNamesById: ReadonlyMap<string, string>;
   projectNamesById: ReadonlyMap<string, string>;
-  threadById: ReadonlyMap<string, ThreadListEntry>;
+  threadById: ReadonlyMap<string, ThreadTitleMentionThread>;
 }
 
-const EMPTY_TITLE_MENTION_RESOURCES: ThreadTitleMentionResources = {
+export const EMPTY_TITLE_MENTION_RESOURCES: ThreadTitleMentionResources = {
   sectionNamesById: new Map(),
   projectNamesById: new Map(),
   threadById: new Map(),
@@ -39,6 +45,161 @@ const EMPTY_TITLE_MENTION_RESOURCES: ThreadTitleMentionResources = {
 
 const ThreadTitleMentionResourcesContext =
   createContext<ThreadTitleMentionResources>(EMPTY_TITLE_MENTION_RESOURCES);
+
+/** The resources of the nearest {@link ThreadTitleMentionResourcesProvider}. */
+export function useThreadTitleMentionResources(): ThreadTitleMentionResources {
+  return useContext(ThreadTitleMentionResourcesContext);
+}
+
+function areStringMapsEqual(
+  left: ReadonlyMap<string, string>,
+  right: ReadonlyMap<string, string>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) return false;
+  }
+  return true;
+}
+
+function retainStringMap(
+  previous: ReadonlyMap<string, string>,
+  next: ReadonlyMap<string, string>,
+): ReadonlyMap<string, string> {
+  return areStringMapsEqual(previous, next) ? previous : next;
+}
+
+function areThreadTitleMentionThreadsEqual(
+  left: ThreadTitleMentionThread,
+  right: ThreadTitleMentionThread,
+): boolean {
+  return (
+    left.id === right.id &&
+    left.projectId === right.projectId &&
+    left.title === right.title &&
+    left.titleFallback === right.titleFallback
+  );
+}
+
+/** The part of the sidebar bootstrap payload title mentions read. */
+export interface ThreadTitleMentionNavigationSource {
+  sections: readonly { id: string; name: string }[];
+  projects: readonly {
+    id: string;
+    name: string;
+    threads: readonly ThreadListEntry[];
+  }[];
+  personalProject: {
+    id: string;
+    name: string;
+    threads: readonly ThreadListEntry[];
+  };
+}
+
+/**
+ * Build the sidebar-derived mention resources, reusing the previous maps and
+ * per-thread entries whenever their values are unchanged. Sidebar refetches
+ * land every turn boundary with a new payload identity, but titles, project
+ * names and section names rarely change; without retention every refetch
+ * gave the context a new value and re-rendered every ThreadRow, mention pill
+ * and markdown link that reads it.
+ */
+export function buildThreadTitleMentionResources(
+  navigation: ThreadTitleMentionNavigationSource | undefined,
+  previous: ThreadTitleMentionResources,
+): ThreadTitleMentionResources {
+  if (navigation === undefined) {
+    return previous.threadById.size === 0 &&
+      previous.projectNamesById.size === 0 &&
+      previous.sectionNamesById.size === 0
+      ? previous
+      : EMPTY_TITLE_MENTION_RESOURCES;
+  }
+  const sectionNamesById = new Map<string, string>();
+  for (const section of navigation.sections) {
+    sectionNamesById.set(section.id, section.name);
+  }
+  const projectNamesById = new Map<string, string>();
+  for (const project of navigation.projects) {
+    projectNamesById.set(project.id, project.name);
+  }
+  projectNamesById.set(
+    navigation.personalProject.id,
+    navigation.personalProject.name,
+  );
+  const threadById = new Map<string, ThreadTitleMentionThread>();
+  let threadsChanged = false;
+  const addThread = (thread: ThreadListEntry): void => {
+    const previousEntry = previous.threadById.get(thread.id);
+    if (
+      previousEntry !== undefined &&
+      areThreadTitleMentionThreadsEqual(previousEntry, thread)
+    ) {
+      threadById.set(thread.id, previousEntry);
+      return;
+    }
+    threadsChanged = true;
+    threadById.set(thread.id, {
+      id: thread.id,
+      projectId: thread.projectId,
+      title: thread.title,
+      titleFallback: thread.titleFallback,
+    });
+  };
+  for (const project of navigation.projects) {
+    for (const thread of project.threads) addThread(thread);
+  }
+  for (const thread of navigation.personalProject.threads) addThread(thread);
+  if (threadById.size !== previous.threadById.size) threadsChanged = true;
+
+  const next: ThreadTitleMentionResources = {
+    sectionNamesById: retainStringMap(
+      previous.sectionNamesById,
+      sectionNamesById,
+    ),
+    projectNamesById: retainStringMap(
+      previous.projectNamesById,
+      projectNamesById,
+    ),
+    threadById: threadsChanged ? threadById : previous.threadById,
+  };
+  return next.sectionNamesById === previous.sectionNamesById &&
+    next.projectNamesById === previous.projectNamesById &&
+    next.threadById === previous.threadById
+    ? previous
+    : next;
+}
+
+/**
+ * Sidebar-derived mention resources with value retention (see
+ * {@link buildThreadTitleMentionResources}); the returned object only changes
+ * identity when a section name, project name or thread title/route changed.
+ */
+export function useSidebarThreadTitleMentionResources(
+  navigation: ThreadTitleMentionNavigationSource | undefined,
+): ThreadTitleMentionResources {
+  // Render-time cache keyed on the payload identity. The previous resources
+  // are the input to the next build, and a state-based "adjust during render"
+  // would loop if a caller ever handed in a fresh payload object per render,
+  // so this deliberately reads and writes a ref during render (the hook is
+  // small; the compiler bailout is confined to it).
+  const cacheRef = useRef<{
+    navigation: ThreadTitleMentionNavigationSource | undefined;
+    resources: ThreadTitleMentionResources;
+  } | null>(null);
+  /* oxlint-disable react/refs -- render-time cache, see above */
+  const cached = cacheRef.current;
+  if (cached !== null && cached.navigation === navigation) {
+    return cached.resources;
+  }
+  const resources = buildThreadTitleMentionResources(
+    navigation,
+    cached?.resources ?? EMPTY_TITLE_MENTION_RESOURCES,
+  );
+  cacheRef.current = { navigation, resources };
+  /* oxlint-enable react/refs */
+  return resources;
+}
 
 interface RawThreadMentionResolverContextValue {
   register: (threadId: string) => void;
@@ -157,18 +318,13 @@ function RawThreadMentionResolverProvider({
   );
 }
 
-interface RawThreadMentionBatchContextValue {
-  register: (threadId: string) => void;
-  resourceById: ReadonlyMap<string, PromptMentionResource>;
-}
-
-const EMPTY_RAW_THREAD_MENTION_BATCH: RawThreadMentionBatchContextValue = {
+const EMPTY_RAW_THREAD_MENTION_BATCH: RawThreadMentionResolverContextValue = {
   register: () => {},
   resourceById: new Map(),
 };
 
 const RawThreadMentionBatchContext =
-  createContext<RawThreadMentionBatchContextValue>(
+  createContext<RawThreadMentionResolverContextValue>(
     EMPTY_RAW_THREAD_MENTION_BATCH,
   );
 
@@ -227,7 +383,7 @@ export interface ThreadTitleMentionResourcesProviderProps {
   children: ReactNode;
   sectionNamesById: ReadonlyMap<string, string>;
   projectNamesById: ReadonlyMap<string, string>;
-  threadById: ReadonlyMap<string, ThreadListEntry>;
+  threadById: ReadonlyMap<string, ThreadTitleMentionThread>;
 }
 
 export function ThreadTitleMentionResourcesProvider({
@@ -256,19 +412,19 @@ export function ThreadTitleMentionResourcesProvider({
   );
 }
 
-function isMentionBoundary(text: string, index: number): boolean {
+export function isMentionBoundary(text: string, index: number): boolean {
   const previous = text[index - 1];
   return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
 }
 
-function isRawThreadIdBoundary(text: string, index: number): boolean {
+export function isRawThreadIdBoundary(text: string, index: number): boolean {
   const previous = text[index - 1];
   return (
     previous !== "/" && previous !== "\\" && isMentionBoundary(text, index)
   );
 }
 
-function isMentionEndBoundary(text: string, index: number): boolean {
+export function isMentionEndBoundary(text: string, index: number): boolean {
   const next = text[index];
   if (next === undefined) return true;
   if (next === ".") {
@@ -278,7 +434,7 @@ function isMentionEndBoundary(text: string, index: number): boolean {
   return !/[\p{L}\p{N}_.+\/-]/u.test(next);
 }
 
-function isRawThreadIdEndBoundary(text: string, index: number): boolean {
+export function isRawThreadIdEndBoundary(text: string, index: number): boolean {
   return text[index] !== "\\" && isMentionEndBoundary(text, index);
 }
 
@@ -468,6 +624,19 @@ export function useThreadTitleDisplayText(title: string): string {
     () => resolveThreadTitleDisplayText(title, resources),
     [resources, title],
   );
+}
+
+/**
+ * Looks up a project name from the sidebar's already-loaded metadata. Returns
+ * undefined outside the provider or for an unknown project.
+ */
+export function useSidebarProjectName(
+  projectId: string | null,
+): string | undefined {
+  const resources = useContext(ThreadTitleMentionResourcesContext);
+  return projectId === null
+    ? undefined
+    : resources.projectNamesById.get(projectId);
 }
 
 /** Resolves a thread mention from the sidebar's already-loaded metadata. */

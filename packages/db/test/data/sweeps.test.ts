@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { createConnection } from "../../src/connection.js";
 import type { DbConnection } from "../../src/connection.js";
 import { createEventId } from "../../src/ids.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
@@ -31,10 +29,10 @@ import {
   events,
   hostDaemonSessions,
 } from "../../src/schema.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",
@@ -419,7 +417,7 @@ describe("pruneClosedSessions", () => {
     hostId: string;
     instanceId: string;
   }): string {
-    const session = openSession(args.db, noopNotifier, {
+    const session = openSession(args.db, {
       hostId: args.hostId,
       instanceId: args.instanceId,
       hostName: "test-host",
@@ -458,7 +456,7 @@ describe("pruneClosedSessions", () => {
       hostId: host.id,
       instanceId: "inst-fresh",
     });
-    const active = openSession(db, noopNotifier, {
+    const active = openSession(db, {
       hostId: host.id,
       instanceId: "inst-active",
       hostName: "test-host",
@@ -497,7 +495,7 @@ describe("pruneClosedSessions", () => {
     const { db, host } = setup();
     const now = Date.now();
 
-    const active = openSession(db, noopNotifier, {
+    const active = openSession(db, {
       hostId: host.id,
       instanceId: "inst-active",
       hostName: "test-host",

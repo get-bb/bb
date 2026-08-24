@@ -4,50 +4,28 @@ interface NormalizeTerminalTitleArgs {
   title: string;
 }
 
-interface IsPathLikeTerminalTitlePathArgs {
-  path: string;
-}
-
-interface ParseShellPathTitleArgs {
-  title: string;
-}
-
-interface ShellPathTitleParts {
-  path: string;
-}
-
-type NormalizedTerminalTitle = string | null;
-
 export function normalizeTerminalTitle({
   title,
-}: NormalizeTerminalTitleArgs): NormalizedTerminalTitle {
+}: NormalizeTerminalTitleArgs): string | null {
   const trimmedTitle = title.trim();
   if (!trimmedTitle) {
     return null;
   }
 
-  const pathTitle = parseShellPathTitle({ title: trimmedTitle });
-  if (pathTitle !== null) {
+  if (isShellPathTitle(trimmedTitle)) {
     return null;
   }
 
   return trimmedTitle.slice(0, TERMINAL_TITLE_MAX_LENGTH);
 }
 
-function parseShellPathTitle({
-  title,
-}: ParseShellPathTitleArgs): ShellPathTitleParts | null {
+function isShellPathTitle(title: string): boolean {
   const match = /^[^@\s:]+@[^:\s]+:(.+)$/u.exec(title);
   const path = match?.[1]?.trimStart();
-  if (!path || !isPathLikeTerminalTitlePath({ path })) {
-    return null;
-  }
-  return { path };
+  return !!path && isPathLikeTerminalTitlePath(path);
 }
 
-function isPathLikeTerminalTitlePath({
-  path,
-}: IsPathLikeTerminalTitlePathArgs): boolean {
+function isPathLikeTerminalTitlePath(path: string): boolean {
   return (
     path === "~" ||
     path === "." ||

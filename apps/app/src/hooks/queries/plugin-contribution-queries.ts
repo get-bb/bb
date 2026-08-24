@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   normalizePluginMentionTriggers,
   type PluginMentionTrigger,
-} from "@/lib/plugin-mention-triggers";
+} from "@bb/client-core";
 import { pluginContributionsQueryKey } from "./query-keys";
 
 /**
@@ -13,14 +13,14 @@ import { pluginContributionsQueryKey } from "./query-keys";
  * {@link PluginContributions}.
  */
 /** One mention provider contributed by a plugin (design §4.9). */
-export interface PluginMentionProviderContribution {
+interface PluginMentionProviderContribution {
   pluginId: string;
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];
 }
 
-export interface PluginContributions {
+interface PluginContributions {
   mentionProviders: PluginMentionProviderContribution[];
 }
 
@@ -84,7 +84,7 @@ export function usePluginContributions() {
     staleTime: 30_000,
   });
 }
-export interface PluginMentionSearchItem {
+interface PluginMentionSearchItem {
   /** Opaque server-composed item reference; rides the mention resource. */
   itemId: string;
   title: string;
@@ -125,7 +125,7 @@ function isMentionSearchGroup(
   );
 }
 
-export interface PluginMentionSearchArgs {
+interface PluginMentionSearchArgs {
   trigger: PluginMentionTrigger;
   query: string;
   projectId: string | null;

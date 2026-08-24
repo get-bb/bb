@@ -69,6 +69,22 @@ npx bb-app@nightly
 Nightly versions are built from `main` and may be unstable. The `nightly`
 dist-tag moves independently of the stable `latest` tag.
 
+npm 12 and later block dependency install scripts by default. bb needs those
+scripts to build its native add-ons (`better-sqlite3`, `node-pty`,
+`@parcel/watcher`). Without them bb stops at startup with
+`Could not locate the bindings file`. If your npm version is 12 or later, allow
+the scripts for the install:
+
+```bash
+npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
+```
+
+Or set the policy once for all global installs:
+
+```bash
+npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=user
+```
+
 `npx bb-app@latest` downloads the published `bb-app` package, starts the server and
 local host daemon, and serves the web app. It stores bb-managed state under
 `~/.bb/` by default. If either managed child process exits unexpectedly, the
@@ -132,7 +148,7 @@ bb uses whichever providers you have configured. Common providers:
 | `codex`        | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                                                     |
 | `claude-code`  | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                                                      |
 | `cursor`       | Install [Cursor's agent CLI](https://cursor.com/cli) (`cursor-agent`) and authenticate per Cursor's docs.                                                                                 |
-| `pi`           | See the [Pi coding agent docs](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). BB includes a pinned Pi runtime, so it does not require an installed Pi executable. |
+| `pi`           | Install [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) with `npm install -g @earendil-works/pi-coding-agent` (0.84.0 or newer) and authenticate per its docs; BB can run the install from Settings.          |
 | `opencode`     | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                                                   |
 | `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                               |
 | `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`.    |
@@ -153,13 +169,15 @@ the workspace. An unresolved `ask` decision stays untrusted because BB has no Pi
 trust prompt.
 You can still use the Pi CLI and `/login` to create this configuration.
 
-Custom ACP agents can be configured through `customAcpAgents` in
-`~/.bb/config.json`; see the configuration docs for optional `modelCli` and
-`reasoningCli` or `nativeReasoning` reasoning settings. A `logo`
-field accepts an SVG, PNG, or WebP path for the provider picker icon.
-The optional `nativeSkillRoots` field adds provider-native skills to the
-composer. Its `user` paths resolve from the target host home directory. Its
-`project` paths resolve from the selected workspace.
+Custom ACP agents are configured through the ACP providers plugin's
+`customAgents` setting: `bb plugin config provider-acp set customAgents
+'[...]'`. See the configuration docs for the optional `modelCli` and
+`reasoningCli` or `nativeReasoning` reasoning settings. The optional
+`nativeSkillRoots` field adds provider-native skills to the composer. Its
+`user` paths resolve from the target host home directory. Its `project` paths
+resolve from the selected workspace. The `customAcpAgents` array in
+`~/.bb/config.json` is the deprecated form of the same list; bb reads it, warns
+about each entry, and stops reading it in 0.41.
 Top-level `sharedSkillRoots` uses the same `user` and `project` path format.
 BB lists these sources as read-only skills. BB injects them into Codex, Claude,
 Pi, and ACP threads. This permits one physical skill collection for BB and a
@@ -189,7 +207,7 @@ bb servers under `~/.bb/client.json`. The target is the value that works after
 `ssh`, such as `devbox` or `user@devbox`:
 
 ```bash
-npx bb-app client ssh-target set https://bb.example.test devbox
+npx bb-app client ssh-target set https://bb.example.test devbox --host-id host_abc
 npx bb-app client ssh-target list
 ```
 

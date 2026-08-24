@@ -24,28 +24,28 @@ const LOCAL_NO_FILE_OPEN_TARGETS_DESCRIPTION = "No local app can open files.";
 const LOCAL_NO_DIRECTORY_OPEN_TARGETS_DESCRIPTION =
   "No local app can open directories.";
 
-export interface UseLocalOpenTargetsArgs {
+interface UseLocalOpenTargetsArgs {
   enabled: boolean;
   openContext?: OpenInTargetContext;
 }
 
-export interface OpenLocalPathRequest {
+interface OpenLocalPathRequest {
   columnNumber?: number | null;
   lineNumber: number | null;
   path: string;
 }
 
-export interface OpenPathInDirectoryTargetArgs extends OpenLocalPathRequest {
+interface OpenPathInDirectoryTargetArgs extends OpenLocalPathRequest {
   rememberTarget: boolean;
   targetId: WorkspaceOpenTargetId;
 }
 
-export interface OpenPathInFileTargetArgs extends OpenLocalPathRequest {
+interface OpenPathInFileTargetArgs extends OpenLocalPathRequest {
   rememberTarget: boolean;
   targetId: WorkspaceOpenTargetId;
 }
 
-export interface OpenPathInPreferredTargetArgs extends OpenLocalPathRequest {}
+interface OpenPathInPreferredTargetArgs extends OpenLocalPathRequest {}
 
 interface OpenPathInAvailableTargetArgs extends OpenLocalPathRequest {
   rememberTarget: boolean;
@@ -53,11 +53,12 @@ interface OpenPathInAvailableTargetArgs extends OpenLocalPathRequest {
   targetKind: OpenUnavailableTargetKind;
 }
 
-export interface UseLocalOpenTargetsResult {
+interface UseLocalOpenTargetsResult {
   canOpenPreferredDirectoryTarget: boolean;
   canOpenPreferredFileTarget: boolean;
   directoryOpenTargets: WorkspaceOpenTarget[];
   fileOpenTargets: WorkspaceOpenTarget[];
+  isLoading: boolean;
   openPathInDirectoryTarget: (
     args: OpenPathInDirectoryTargetArgs,
   ) => Promise<boolean>;
@@ -211,14 +212,31 @@ function useOpenTargetResolution(
 export function useLocalOpenTargets(
   args: UseLocalOpenTargetsArgs,
 ): UseLocalOpenTargetsResult {
+  const openContextKind = args.openContext?.kind ?? "local";
+  const openContextHostId =
+    args.openContext?.kind === "remote-ssh" ? args.openContext.hostId : null;
+  const openContextServerOrigin =
+    args.openContext?.kind === "remote-ssh"
+      ? args.openContext.serverOrigin
+      : null;
   const openContext = useMemo<OpenInTargetContext>(
-    () => args.openContext ?? { kind: "local" },
-    [args.openContext],
+    () =>
+      openContextKind === "remote-ssh" &&
+      openContextHostId !== null &&
+      openContextServerOrigin !== null
+        ? {
+            kind: "remote-ssh",
+            hostId: openContextHostId,
+            serverOrigin: openContextServerOrigin,
+          }
+        : { kind: "local" },
+    [openContextHostId, openContextKind, openContextServerOrigin],
   );
   const contextKind = openContext.kind;
   const { hasDaemon } = useHostDaemon();
   const {
     fetchWorkspaceOpenTargetsForPath,
+    isLoading,
     openWorkspace,
     workspaceOpenTargets,
   } = useWorkspaceOpenTargets(args);
@@ -433,6 +451,7 @@ export function useLocalOpenTargets(
     canOpenPreferredFileTarget: preferredFileTarget !== null,
     directoryOpenTargets,
     fileOpenTargets,
+    isLoading,
     openPathInDirectoryTarget,
     openPathInFileTarget,
     openPathInPreferredDirectoryTarget,

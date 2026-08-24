@@ -24,8 +24,6 @@ const rpcMethods = [
   "automations_overview",
   "automations_list",
   "automations_get",
-  "automations_execution_options",
-  "automations_permission_options",
   "automations_create",
   "automations_update",
   "automations_delete",
@@ -85,28 +83,11 @@ async function bootAutomationsPlugin(
               : declaredPermissionModes;
           return [
             { id: "codex", capabilities: { permissionModes } },
+            {
+              id: "claude",
+              capabilities: { permissionModes: ["auto", "full"] },
+            },
           ] as never;
-        },
-        async models() {
-          return {
-            providers: [
-              {
-                id: "codex",
-                available: true,
-                capabilities: { permissionModes: declaredPermissionModes },
-              },
-            ],
-            permissionCeiling: "full",
-            models: [
-              {
-                id: "gpt-5.6-codex",
-                model: "gpt-5.6-codex",
-                displayName: "5.6 Sol",
-              },
-            ],
-            selectedOnlyModels: [],
-            modelLoadError: null,
-          } as never;
         },
       },
       threads: {
@@ -353,6 +334,10 @@ describe("automations server plugin harness", () => {
       "codex",
       "--model",
       "gpt-5",
+      "--reasoning",
+      "ultra",
+      "--service-tier",
+      "fast",
       "--permission-mode",
       "accept-edits",
       "--target-thread",
@@ -368,6 +353,8 @@ describe("automations server plugin harness", () => {
       prompt: "triage the inbox",
       providerId: "codex",
       model: "gpt-5",
+      reasoningLevel: "ultra",
+      serviceTier: "fast",
       permissionMode: "accept-edits",
       environment: { type: "project-default" },
       targetThreadId: THREAD_ID,
@@ -395,6 +382,9 @@ describe("automations server plugin harness", () => {
     expect(scriptUpdated.execution).toEqual({
       mode: "script",
       scriptFile: "script.sh",
+      storedScriptPath: expect.stringMatching(
+        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+      ),
       interpreter: "bash",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
@@ -408,6 +398,9 @@ describe("automations server plugin harness", () => {
     expect(updatedEditable.execution).toEqual({
       mode: "script",
       script: "echo updated",
+      storedScriptPath: expect.stringMatching(
+        new RegExp(`/scripts/${created.id}/script\\.sh$`),
+      ),
       interpreter: "bash",
       timeoutMs: 12_000,
       env: { CHANNEL: "qa" },
@@ -644,7 +637,10 @@ describe("automations server plugin harness", () => {
         automationId: created.id,
         agent: {
           prompt: "updated by RPC",
-          model: "gpt-5.6-codex",
+          providerId: "claude",
+          model: "claude-opus-5",
+          reasoningLevel: "ultra",
+          serviceTier: "fast",
           permissionMode: "full",
           target: { type: "target-thread", threadId: THREAD_ID },
         },
@@ -655,29 +651,14 @@ describe("automations server plugin harness", () => {
       execution: {
         mode: "agent",
         prompt: "updated by RPC",
-        providerId: "codex",
-        model: "gpt-5.6-codex",
+        providerId: "claude",
+        model: "claude-opus-5",
+        reasoningLevel: "ultra",
+        serviceTier: "fast",
         permissionMode: "full",
         environment: { type: "project-default" },
         targetThreadId: THREAD_ID,
       },
-    });
-
-    const options = await harness.callRpc("automations_execution_options", {
-      projectId: PROJECT_ID,
-      automationId: created.id,
-    });
-    expect(options).toMatchObject({
-      models: [{ model: "gpt-5.6-codex", displayName: "5.6 Sol" }],
-      permissionModes: ["accept-edits", "auto", "full"],
-    });
-    await expect(
-      harness.callRpc("automations_permission_options", {
-        projectId: PROJECT_ID,
-        automationId: created.id,
-      }),
-    ).resolves.toEqual({
-      permissionModes: ["accept-edits", "auto", "full"],
     });
 
     await expect(

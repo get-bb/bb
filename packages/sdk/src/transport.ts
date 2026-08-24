@@ -2,6 +2,7 @@ import type { ApiClient } from "@bb/server-contract";
 import type {
   FetchImplementation,
   JsonBodyOf,
+  SdkResponseLike,
 } from "./response.js";
 
 export type BbSdkRuntime = "node" | "browser";
@@ -12,13 +13,13 @@ export interface BbSdkTransport {
   fetch: FetchImplementation;
   realtimeUrl?: string;
   runtime: BbSdkRuntime;
-  readJson<TResponse extends Response>(
+  readJson<TResponse extends SdkResponseLike>(
     response: Promise<TResponse>,
   ): Promise<JsonBodyOf<TResponse>>;
-  readVoid<TResponse extends Response>(
+  readVoid<TResponse extends SdkResponseLike>(
     response: Promise<TResponse>,
   ): Promise<void>;
-  resolve<TResponse extends Response>(
+  resolve<TResponse extends SdkResponseLike>(
     response: Promise<TResponse>,
   ): Promise<TResponse>;
   websocket?: BbRealtimeSocketFactory;

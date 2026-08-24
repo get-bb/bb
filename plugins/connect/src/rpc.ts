@@ -98,6 +98,13 @@ const desktopSessionSchema: z.ZodType<DesktopSession> = z
   })
   .strict();
 
+const mobilePairingSchema = z
+  .object({
+    /** True when the `mobileApp` experiment is on (Settings → Experiments). */
+    enabled: z.boolean(),
+  })
+  .strict();
+
 const machineCodeSchema: z.ZodType<MachineCode> = z
   .object({
     code: z.string(),
@@ -128,6 +135,7 @@ export const connectRpcContract = defineRpcContract({
     output: listAccountServersResultSchema,
   },
   createDesktopSession: { input: z.null(), output: desktopSessionSchema },
+  mobilePairing: { input: z.null(), output: mobilePairingSchema },
   createMachineCode: { input: z.null(), output: machineCodeSchema },
   revokeMachine: {
     input: revokeMachineInputSchema,
@@ -135,11 +143,24 @@ export const connectRpcContract = defineRpcContract({
   },
 });
 
-export type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
+type ConnectRpcHandlers = PluginRpcHandlers<typeof connectRpcContract>;
+
+/**
+ * Mobile pairing (the "Add mobile device" card and `bb connect machine-code`)
+ * ships behind the user-toggled `mobileApp` experiment until the app is
+ * generally available. The gate is read at call time so a toggle applies
+ * without a plugin reload. It covers only those two mobile surfaces: the
+ * `createMachineCode` rpc itself stays open because the desktop app's own
+ * enrollment and the web "Add machine" dialog mint machine codes through it.
+ */
+export interface MobilePairingGate {
+  enabled(): Promise<boolean>;
+}
 
 export function createRpcHandlers(
   tunnel: ConnectTunnel,
   hostResolver: ShareHostResolver,
+  mobilePairing: MobilePairingGate,
 ): ConnectRpcHandlers {
   return {
     async pair(args) {
@@ -201,6 +222,9 @@ export function createRpcHandlers(
         }
         throw error;
       }
+    },
+    async mobilePairing() {
+      return { enabled: await mobilePairing.enabled() };
     },
     async createMachineCode() {
       try {

@@ -5,33 +5,13 @@ import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 interface ModelLoadErrorMessageProps {
   error: SystemExecutionOptionsModelLoadError;
   providerLabel: string;
+  /** The provider's declared `strings.installUrl`, when it declares one. */
+  installUrl?: string;
 }
 
 interface FormatModelLoadErrorTextArgs {
   error: SystemExecutionOptionsModelLoadError;
   providerLabel: string;
-}
-
-const PROVIDER_CLI_HELP_LINKS: Partial<
-  Record<string, { label: string; url: string }>
-> = {
-  codex: {
-    label: "Codex CLI",
-    url: "https://developers.openai.com/codex/cli",
-  },
-  "acp-cursor": {
-    label: "Cursor CLI",
-    url: "https://cursor.com/docs/cli/installation",
-  },
-};
-
-function providerCliLabel({
-  error,
-  providerLabel,
-}: FormatModelLoadErrorTextArgs): string {
-  return (
-    PROVIDER_CLI_HELP_LINKS[error.providerId]?.label ?? `${providerLabel} CLI`
-  );
 }
 
 export function formatModelLoadErrorText({
@@ -47,7 +27,7 @@ export function formatModelLoadErrorText({
   }
 
   if (error.code === "missing_executable") {
-    return `Could not load models for ${providerLabel}. Please make sure the ${providerCliLabel({ error, providerLabel })} is installed.`;
+    return `Could not load models for ${providerLabel}. Please make sure the ${providerLabel} CLI is installed.`;
   }
 
   if (error.code === "auth_required") {
@@ -60,28 +40,27 @@ export function formatModelLoadErrorText({
 export function ModelLoadErrorMessage({
   error,
   providerLabel,
+  installUrl,
 }: ModelLoadErrorMessageProps): ReactNode {
-  const helpLink =
-    error.code === "missing_executable"
-      ? PROVIDER_CLI_HELP_LINKS[error.providerId]
-      : undefined;
-  const handleHelpLinkClick = useUrlAnchorClickHandler(helpLink?.url);
+  const helpUrl =
+    error.code === "missing_executable" ? installUrl : undefined;
+  const handleHelpLinkClick = useUrlAnchorClickHandler(helpUrl);
 
   if (error.code === "missing_executable") {
-    if (!helpLink) {
+    if (helpUrl === undefined) {
       return formatModelLoadErrorText({ error, providerLabel });
     }
     return (
       <>
         Could not load models for {providerLabel}. Please make sure the{" "}
         <a
-          href={helpLink.url}
+          href={helpUrl}
           target="_blank"
           rel="noreferrer"
           onClick={handleHelpLinkClick}
           className="underline underline-offset-2 hover:text-foreground"
         >
-          {helpLink.label}
+          {providerLabel} CLI
         </a>{" "}
         is installed.
       </>

@@ -1,4 +1,4 @@
-/* eslint-disable */
+/* oxlint-disable */
 
 // @ts-nocheck
 
@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as BlogRouteImport } from './routes/blog'
@@ -16,6 +17,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as DownloadMacosRouteImport } from './routes/download.macos'
 import { Route as BlogSlugRouteImport } from './routes/blog_.$slug'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
+import { Route as DotwellKnownAssetlinksDotjsonRouteImport } from './routes/[.]well-known.assetlinks[.]json'
+import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known.apple-app-site-association'
 import { Route as MarketplaceV1SplatRouteImport } from './routes/marketplace.v1.$'
 import { Route as ApiConnectRevokeMachineRouteImport } from './routes/api.connect.revoke-machine'
 import { Route as ApiConnectRedeemMachineRouteImport } from './routes/api.connect.redeem-machine'
@@ -23,6 +26,11 @@ import { Route as ApiConnectRedeemRouteImport } from './routes/api.connect.redee
 import { Route as ApiConnectMachineCodeRouteImport } from './routes/api.connect.machine-code'
 import { Route as ApiAuthSplatRouteImport } from './routes/api.auth.$'
 
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -58,6 +66,18 @@ const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
   path: '/api/subscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownAssetlinksDotjsonRoute =
+  DotwellKnownAssetlinksDotjsonRouteImport.update({
+    id: '/.well-known/assetlinks.json',
+    path: '/.well-known/assetlinks.json',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const DotwellKnownAppleAppSiteAssociationRoute =
+  DotwellKnownAppleAppSiteAssociationRouteImport.update({
+    id: '/.well-known/apple-app-site-association',
+    path: '/.well-known/apple-app-site-association',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const MarketplaceV1SplatRoute = MarketplaceV1SplatRouteImport.update({
   id: '/marketplace/v1/$',
   path: '/marketplace/v1/$',
@@ -94,6 +114,9 @@ export interface FileRoutesByFullPath {
   '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
+  '/privacy': typeof PrivacyRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/download/macos': typeof DownloadMacosRoute
@@ -109,6 +132,9 @@ export interface FileRoutesByTo {
   '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
+  '/privacy': typeof PrivacyRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog/$slug': typeof BlogSlugRoute
   '/download/macos': typeof DownloadMacosRoute
@@ -125,6 +151,9 @@ export interface FileRoutesById {
   '/blog': typeof BlogRoute
   '/changelog': typeof ChangelogRoute
   '/dashboard': typeof DashboardRoute
+  '/privacy': typeof PrivacyRoute
+  '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
+  '/.well-known/assetlinks.json': typeof DotwellKnownAssetlinksDotjsonRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/blog_/$slug': typeof BlogSlugRoute
   '/download/macos': typeof DownloadMacosRoute
@@ -142,6 +171,9 @@ export interface FileRouteTypes {
     | '/blog'
     | '/changelog'
     | '/dashboard'
+    | '/privacy'
+    | '/.well-known/apple-app-site-association'
+    | '/.well-known/assetlinks.json'
     | '/api/subscribe'
     | '/blog/$slug'
     | '/download/macos'
@@ -157,6 +189,9 @@ export interface FileRouteTypes {
     | '/blog'
     | '/changelog'
     | '/dashboard'
+    | '/privacy'
+    | '/.well-known/apple-app-site-association'
+    | '/.well-known/assetlinks.json'
     | '/api/subscribe'
     | '/blog/$slug'
     | '/download/macos'
@@ -172,6 +207,9 @@ export interface FileRouteTypes {
     | '/blog'
     | '/changelog'
     | '/dashboard'
+    | '/privacy'
+    | '/.well-known/apple-app-site-association'
+    | '/.well-known/assetlinks.json'
     | '/api/subscribe'
     | '/blog_/$slug'
     | '/download/macos'
@@ -188,6 +226,9 @@ export interface RootRouteChildren {
   BlogRoute: typeof BlogRoute
   ChangelogRoute: typeof ChangelogRoute
   DashboardRoute: typeof DashboardRoute
+  PrivacyRoute: typeof PrivacyRoute
+  DotwellKnownAppleAppSiteAssociationRoute: typeof DotwellKnownAppleAppSiteAssociationRoute
+  DotwellKnownAssetlinksDotjsonRoute: typeof DotwellKnownAssetlinksDotjsonRoute
   ApiSubscribeRoute: typeof ApiSubscribeRoute
   BlogSlugRoute: typeof BlogSlugRoute
   DownloadMacosRoute: typeof DownloadMacosRoute
@@ -201,6 +242,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -248,6 +296,20 @@ declare module '@tanstack/react-router' {
       path: '/api/subscribe'
       fullPath: '/api/subscribe'
       preLoaderRoute: typeof ApiSubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/assetlinks.json': {
+      id: '/.well-known/assetlinks.json'
+      path: '/.well-known/assetlinks.json'
+      fullPath: '/.well-known/assetlinks.json'
+      preLoaderRoute: typeof DotwellKnownAssetlinksDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/.well-known/apple-app-site-association': {
+      id: '/.well-known/apple-app-site-association'
+      path: '/.well-known/apple-app-site-association'
+      fullPath: '/.well-known/apple-app-site-association'
+      preLoaderRoute: typeof DotwellKnownAppleAppSiteAssociationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/marketplace/v1/$': {
@@ -300,6 +362,10 @@ const rootRouteChildren: RootRouteChildren = {
   BlogRoute: BlogRoute,
   ChangelogRoute: ChangelogRoute,
   DashboardRoute: DashboardRoute,
+  PrivacyRoute: PrivacyRoute,
+  DotwellKnownAppleAppSiteAssociationRoute:
+    DotwellKnownAppleAppSiteAssociationRoute,
+  DotwellKnownAssetlinksDotjsonRoute: DotwellKnownAssetlinksDotjsonRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   BlogSlugRoute: BlogSlugRoute,
   DownloadMacosRoute: DownloadMacosRoute,

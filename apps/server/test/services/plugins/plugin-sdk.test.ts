@@ -11,6 +11,7 @@ import {
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginServiceDeps,
@@ -93,7 +94,6 @@ describe("plugin bb.sdk bind gate", () => {
     ) => ({ pong: true }),
   );
   const disposePluginHost = vi.fn(async () => undefined);
-
   beforeEach(async () => {
     db = createConnection(":memory:");
     migrate(db);
@@ -107,6 +107,7 @@ describe("plugin bb.sdk bind gate", () => {
     disposePluginHost.mockClear();
     pluginHostArtifacts = new PluginHostArtifactRegistry();
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       pluginHostArtifacts,

@@ -4,11 +4,8 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "../../shared/contract.js";
-import { TASK_SORTS, type TaskSort } from "../../shared/sort.js";
-import {
-  EMPTY_FILTERS,
-  type ListFilterState,
-} from "./filter-bar.js";
+import { TASK_SORTS, type TaskSort } from "../../shared/pagination.js";
+import { EMPTY_FILTERS, type ListFilterState } from "./filter-bar.js";
 
 /**
  * Client-local list filter/sort preferences. Stored in the browser profile so
@@ -21,10 +18,7 @@ import {
 export const LIST_PREFERENCE_STORAGE_KEY = "bb-tasks:list-preferences";
 export const LIST_PREFERENCE_VERSION = 1 as const;
 
-export type ListPreferenceScope =
-  | "all"
-  | "active"
-  | `project:${string}`;
+type ListPreferenceScope = "all" | "active" | `project:${string}`;
 
 export interface ListPreference {
   filters: ListFilterState;
@@ -171,10 +165,7 @@ function readStorage(): ParsedStorage | null {
     // Only v1 (or missing version with a scopes map from early experiments)
     // is a fully known shape. Future versions may still expose a scopes map
     // for best-effort reads of known fields.
-    if (
-      version !== null &&
-      version < LIST_PREFERENCE_VERSION
-    ) {
+    if (version !== null && version < LIST_PREFERENCE_VERSION) {
       // No older versions shipped; refuse rather than silently invent fields.
       return null;
     }

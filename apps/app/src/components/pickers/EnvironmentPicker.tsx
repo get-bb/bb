@@ -19,7 +19,6 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
-import { selectPrimaryHost } from "@/hooks/queries/host-queries";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { formatHostUpdateStatus } from "@/lib/host-update-status";
@@ -30,7 +29,7 @@ import {
   OPTION_MENU_CONTENT_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
 import {
   encodeHostValue,
   parseEnvironmentValue,
@@ -145,16 +144,11 @@ export function EnvironmentPickerUI({
 
   const parsed = useMemo(() => parseEnvironmentValue(value), [value]);
 
-  // Mockup A: the composer chip names the machine whenever the selection
-  // isn't on the primary host ("Mac Studio · New worktree").
+  // When the server knows multiple machines, name the selected one in the
+  // full composer chip ("Mac Studio · New worktree"). Single-machine and
+  // compact layouts use the shorter mode-only label.
   const selectedMachineName = useMemo(() => {
     if (!isMachineMenu || !machines || parsed?.type !== "host") return null;
-    if (
-      parsed.hostId ===
-      selectPrimaryHost(machines.hosts, machines.primaryHostId)?.id
-    ) {
-      return null;
-    }
     return (
       machines.hosts.find((machineHost) => machineHost.id === parsed.hostId)
         ?.name ?? null
@@ -202,7 +196,14 @@ export function EnvironmentPickerUI({
       compactModeLabel,
       icon,
     };
-  }, [parsed, localLabel, isLocal, hostUnavailableReason, host, selectedMachineName]);
+  }, [
+    parsed,
+    localLabel,
+    isLocal,
+    hostUnavailableReason,
+    host,
+    selectedMachineName,
+  ]);
 
   return (
     <DropdownMenu defaultOpen={defaultOpen} modal={modal}>
@@ -589,9 +590,7 @@ function EnvironmentMenuItem({
           )}
         />
         <span className="flex min-w-0 flex-col">
-          <span className="whitespace-normal break-words text-xs">
-            {label}
-          </span>
+          <span className="whitespace-normal break-words text-xs">{label}</span>
           {description ? (
             <span className="mt-0.5 whitespace-normal break-words text-xs leading-snug text-muted-foreground">
               {description}

@@ -43,8 +43,33 @@ import {
 } from "./ThreadTableOfContents";
 import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 
+/**
+ * Models the part of ResizeObserver the TOC depends on: `observe` delivers the
+ * target's current content box immediately, and the content box is the border
+ * box minus horizontal padding. The TOC reads that entry instead of forcing a
+ * style recalculation, so the arithmetic belongs here in the platform stand-in
+ * rather than in the component.
+ */
 class ResizeObserverMock implements ResizeObserver {
-  observe: ResizeObserver["observe"] = vi.fn();
+  constructor(private readonly callback: ResizeObserverCallback) {}
+
+  observe: ResizeObserver["observe"] = (target) => {
+    const element = target as HTMLElement;
+    const paddingX =
+      (Number.parseFloat(element.style.paddingLeft) || 0) +
+      (Number.parseFloat(element.style.paddingRight) || 0);
+    const inlineSize = Math.max(0, element.clientWidth - paddingX);
+    this.callback(
+      [
+        {
+          target,
+          contentBoxSize: [{ inlineSize, blockSize: 0 }],
+          contentRect: { width: inlineSize } as DOMRectReadOnly,
+        } as unknown as ResizeObserverEntry,
+      ],
+      this,
+    );
+  };
   unobserve: ResizeObserver["unobserve"] = vi.fn();
   disconnect: ResizeObserver["disconnect"] = vi.fn();
 }
@@ -80,6 +105,7 @@ function TocHost({
   hostPaddingX = 0,
   hostWidth = 1_200,
   loadOlderTimelineRows = () => {},
+  onNavigateToRow,
   threadId = "thr_toc_test",
   timelineRows,
 }: {
@@ -88,6 +114,7 @@ function TocHost({
   hostPaddingX?: number;
   hostWidth?: number;
   loadOlderTimelineRows?: () => void | Promise<void>;
+  onNavigateToRow?: (rowId: string) => void;
   threadId?: string;
   timelineRows: readonly TimelineRow[];
 }) {
@@ -111,6 +138,7 @@ function TocHost({
         timelineRows={timelineRows}
         hasOlderTimelineRows={hasOlderTimelineRows}
         loadOlderTimelineRows={loadOlderTimelineRows}
+        onNavigateToRow={onNavigateToRow}
       />
     </div>
   );
@@ -386,8 +414,9 @@ describe("ThreadTableOfContents", () => {
     );
   });
 
-  // The overlay pads itself, so `clientWidth` runs 24px ahead of the content
-  // box the `@container` rule measures. Both boundaries must agree with CSS.
+  // The overlay pads itself, so its border box runs 24px ahead of the content
+  // box both the `@container` rule and the ResizeObserver entry report. The JS
+  // boundary and the CSS breakpoint must agree.
   it("does not request the outline when padding hides the TOC", () => {
     render(
       <TocHost
@@ -661,6 +690,45 @@ describe("ThreadTableOfContents", () => {
     expect(screen.getByText("Agent messages")).not.toBeNull();
   });
 
+  it("merges live timeline messages into the cached full outline", async () => {
+    setOutline([
+      {
+        id: "row_user_1",
+        role: "user",
+        preview: "First cached question",
+        attachmentSummary: null,
+      },
+      {
+        id: "row_user_2",
+        role: "user",
+        preview: "Second cached question",
+        attachmentSummary: null,
+      },
+      {
+        id: "row_user_3",
+        role: "user",
+        preview: "Stale third question",
+        attachmentSummary: null,
+      },
+    ]);
+
+    render(
+      <TocHost
+        timelineRows={[userConversationRow(3), userConversationRow(4)]}
+      />,
+    );
+    openTocPanel();
+
+    expect(await screen.findByText("First cached question")).not.toBeNull();
+    expect(
+      screen.getByText("Loaded after client-side navigation 3"),
+    ).not.toBeNull();
+    expect(
+      screen.getByText("Loaded after client-side navigation 4"),
+    ).not.toBeNull();
+    expect(screen.queryByText("Stale third question")).toBeNull();
+  });
+
   it("renders an agent-to-agent message source as a thread mention", async () => {
     setOutline([
       {
@@ -769,6 +837,7 @@ describe("ThreadTableOfContents", () => {
   it("scrolls straight to a message already loaded in the window", async () => {
     scrollElement.appendChild(timelineRowElement("u2"));
     const loadOlder = vi.fn();
+    const onNavigateToRow = vi.fn();
     setOutline([
       {
         id: "u1",
@@ -795,12 +864,14 @@ describe("ThreadTableOfContents", () => {
         timelineRows={[]}
         hasOlderTimelineRows
         loadOlderTimelineRows={loadOlder}
+        onNavigateToRow={onNavigateToRow}
       />,
     );
     openTocPanel();
     fireEvent.click(await screen.findByText("Loaded question"));
 
     await waitFor(() => expect(scrollElementIntoView).toHaveBeenCalledTimes(1));
+    expect(onNavigateToRow).toHaveBeenCalledWith("u2");
     expect(loadOlder).not.toHaveBeenCalled();
   });
 

@@ -76,7 +76,7 @@ type PluginCollectionManifest = z.infer<
   typeof pluginCollectionManifestSchema
 >;
 
-function formatIssues(error: z.ZodError): string {
+export function formatIssues(error: z.ZodError): string {
   return error.issues
     .map((issue) => {
       const path = issue.path.join(".");

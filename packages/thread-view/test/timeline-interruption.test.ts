@@ -98,6 +98,75 @@ describe("timeline interruption projection", () => {
     );
   });
 
+  it("settles a skipped manual compaction from the provider warning", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderIdleTimeline([
+      event.turnStarted({ createdAt: 0 }),
+      event.contextCompactionStarted({ createdAt: 1_000 }),
+      event.providerWarning({
+        category: "compaction-skipped",
+        summary: "Context compaction skipped",
+        details: "Compaction failed: Nothing to compact (session too small)",
+        createdAt: 2_000,
+      }),
+      event.turnCompleted({ createdAt: 3_000 }),
+    ]);
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "completed",
+        title: "Context compaction skipped",
+        detail: "Compaction failed: Nothing to compact (session too small)",
+        completedAt: 2_000,
+      }),
+    );
+    expect(
+      timeline.messages.some(
+        (message) =>
+          message.kind === "operation" && message.opType === "warning",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a pending compaction and renders an unrelated warning in the same turn", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const timeline = renderTimelineFixture({
+      events: [
+        event.turnStarted({ createdAt: 0 }),
+        event.contextCompactionStarted({ createdAt: 1_000 }),
+        event.providerWarning({
+          summary: "Model fallback",
+          details: "Requested model unavailable; using a fallback.",
+          createdAt: 2_000,
+        }),
+      ],
+      projectionOptions: {
+        threadStatus: "active",
+        turnMessageDetail: "full",
+      },
+    });
+
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "compaction",
+        status: "pending",
+        title: "Compacting context",
+        completedAt: null,
+      }),
+    );
+    expect(timeline.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "operation",
+        opType: "warning",
+        title: "Model fallback",
+        detail: "Requested model unavailable; using a fallback.",
+      }),
+    );
+  });
+
   it("interrupts post-turn compaction when the thread is explicitly interrupted", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderIdleTimeline([

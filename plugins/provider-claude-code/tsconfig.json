@@ -4,7 +4,6 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "jsx": "react-jsx",
     "lib": ["ES2022", "DOM"],
     "noEmit": true,
     "skipLibCheck": true,
@@ -18,5 +17,5 @@
     },
     "types": ["node"]
   },
-  "include": ["server.ts", "app.tsx", "src", "vitest.config.ts"]
+  "include": ["server.ts", "src", "vitest.config.ts"]
 }

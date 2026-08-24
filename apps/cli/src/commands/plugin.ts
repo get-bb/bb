@@ -15,9 +15,8 @@ import type {
   PluginCatalogSearchResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
-import { installedPluginSchema } from "@bb/server-contract";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
-import { BbHttpError } from "@bb/sdk";
+import { BbHttpError, pluginMutationResponseSchema } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import {
   migratePluginToPackageLayout,
@@ -44,7 +43,7 @@ import { resolveBbCliVersion } from "../version.js";
 import { outputJson, type JsonOutputOptions } from "./helpers.js";
 import { renderBorderlessTable } from "../table.js";
 
-export interface NewPluginTarget {
+interface NewPluginTarget {
   packageName: string;
   directoryName: string;
 }
@@ -101,12 +100,6 @@ async function cliBuildToolchain(): Promise<PluginBuildToolchain> {
   });
 }
 
-const pluginMutationResultSchema = z.object({
-  ok: z.boolean(),
-  error: z.string().optional(),
-  plugin: installedPluginSchema.optional(),
-  plugins: z.array(installedPluginSchema).optional(),
-});
 async function searchCatalog(
   baseUrl: string,
   query: string,
@@ -1082,6 +1075,21 @@ export function registerPluginCommands(
               const pkg = pluginPackageSummarySchema.parse(raw);
               if (pkg.name !== undefined) {
                 summary = `Installing ${pkg.name}@${pkg.version ?? "?"} from ${path}`;
+                // The same id installed from another local directory is
+                // moved, not refused; name the install being replaced so
+                // the confirmation is about the move, not a fresh install.
+                const pluginId = derivePluginId(pkg.name);
+                const { plugins } = await createCliBbSdk(
+                  getUrl(),
+                ).plugins.list();
+                const installed = plugins.find((p) => p.id === pluginId);
+                if (
+                  installed !== undefined &&
+                  installed.source.startsWith("path:") &&
+                  installed.rootDir !== path
+                ) {
+                  summary = `${summary}\nThis moves "${pluginId}" from ${installed.rootDir}; its settings, secrets, and schedules are kept.`;
+                }
               }
             } catch {
               // fall through to the bare path summary
@@ -1225,7 +1233,7 @@ export function registerPluginCommands(
             if (!shouldAttempt) {
               if (result.outcome === "pinned") {
                 console.log(
-                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates.`,
+                  `${result.id}: skipped — pinned${detail ? ` (${detail})` : ""}; remove and reinstall with a tracking npm range, git branch, or git semver range to receive updates (remove deletes the plugin's settings, secrets, and schedules). A local path plugin updates with \`bb plugin reload\`; move it with \`bb plugin install path:<new directory>\`.`,
                 );
               } else if (result.outcome === "incompatible") {
                 console.log(
@@ -1531,7 +1539,7 @@ export function registerPluginCommands(
   plugin
     .command("dev [path]")
     .description(
-      "Watch a plugin's sources: rebuild its frontend, host, and provider-bridge bundles when declared, then reload it on every change (Ctrl+C to stop)",
+      "Watch a plugin's sources: rebuild its frontend (unminified, for readable stack traces), host, and provider-bridge bundles when declared, then reload it on every change (Ctrl+C to stop)",
     )
     .action(
       action(async (path: string | undefined) => {
@@ -1562,10 +1570,14 @@ export function registerPluginCommands(
           hasApp,
           hasHost,
           buildApp: async () => {
+            // Readable output while iterating: stack traces and the emitted
+            // CSS map back to source. `bb plugin build` and server installs
+            // minify.
             await buildPluginApp(
               rootDir,
               resolveBbCliVersion(),
               await cliBuildToolchain(),
+              { minify: false },
             );
           },
           buildHost: async () => {
@@ -1576,7 +1588,7 @@ export function registerPluginCommands(
             );
           },
           reloadPlugin: async () => {
-            const result = pluginMutationResultSchema.parse(
+            const result = pluginMutationResponseSchema.parse(
               await callPlugins(
                 getUrl(),
                 `/reload?id=${encodeURIComponent(entry.id)}`,
@@ -1620,7 +1632,7 @@ export function registerPluginCommands(
     .action(
       action(async (id: string | undefined, opts: JsonOutputOptions) => {
         const query = id ? `?id=${encodeURIComponent(id)}` : "";
-        const response = pluginMutationResultSchema.parse(
+        const response = pluginMutationResponseSchema.parse(
           await callPlugins(getUrl(), `/reload${query}`, "POST"),
         );
         const result =
@@ -1634,7 +1646,8 @@ export function registerPluginCommands(
           if (!result.ok) process.exit(1);
           return;
         }
-        if (!result.ok) exitWithError(result);
+        // A failed reload still carries the inventory: print the targeted
+        // entries (status and detail) before the error and the exit code.
         const reloaded =
           id === undefined
             ? (result.plugins ?? [])
@@ -1642,6 +1655,7 @@ export function registerPluginCommands(
         for (const entry of reloaded) {
           printPlugin(entry);
         }
+        if (!result.ok) exitWithError(result);
       }),
     );
 
@@ -1655,7 +1669,7 @@ export function registerPluginCommands(
       .option("--json", "Output JSON")
       .action(
         action(async (id: string, opts: JsonOutputOptions) => {
-          const result = pluginMutationResultSchema.parse(
+          const result = pluginMutationResponseSchema.parse(
             await callPlugins(
               getUrl(),
               `/${encodeURIComponent(id)}/${name}`,
@@ -1843,12 +1857,12 @@ export function registerPluginCommands(
   plugin
     .command("remove <id>")
     .description(
-      "Remove an installed plugin (git:/npm: managed files are deleted; local path sources are left alone)",
+      "Remove an installed plugin and delete its settings, secrets, and schedules (git:/npm: managed files are deleted; local path sources stay on disk). To move a local plugin to another directory, install the new path instead",
     )
     .option("--json", "Output JSON")
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
-        const result = pluginMutationResultSchema.parse(
+        const result = pluginMutationResponseSchema.parse(
           await callPlugins(getUrl(), `/${encodeURIComponent(id)}`, "DELETE"),
         );
         if (opts.json) {

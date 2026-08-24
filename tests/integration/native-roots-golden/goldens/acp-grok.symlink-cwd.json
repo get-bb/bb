@@ -1,0 +1,114 @@
+{
+  "providerId": "acp-grok",
+  "variant": "symlink-cwd",
+  "workspace": {
+    "commands": [
+      {
+        "name": "grok-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "grok-home-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-cwd-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-cwd-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-cwd-claude-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-cwd-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-cwd-cursor-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-cwd-cursor-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-cwd-grok-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-cwd-grok-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-grok-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-grok-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "grok-home-skill",
+        "description": "grok-home-skill skill",
+        "filePath": "<home>/.grok/skills/grok-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "linked-cwd-agents-skill",
+        "description": "linked-cwd-agents-skill skill",
+        "filePath": "<root>/ws/packages/app/.agents/skills/linked-cwd-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "linked-cwd-claude-skill",
+        "description": "linked-cwd-claude-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/linked-cwd-claude-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "linked-cwd-cursor-skill",
+        "description": "linked-cwd-cursor-skill skill",
+        "filePath": "<root>/ws/packages/app/.cursor/skills/linked-cwd-cursor-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "linked-cwd-grok-skill",
+        "description": "linked-cwd-grok-skill skill",
+        "filePath": "<root>/ws/packages/app/.grok/skills/linked-cwd-grok-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "ws-grok-skill",
+        "description": "ws-grok-skill skill",
+        "filePath": "<root>/ws/.grok/skills/ws-grok-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "grok-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "grok-home-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "grok-home-skill",
+        "description": "grok-home-skill skill",
+        "filePath": "<home>/.grok/skills/grok-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  }
+}

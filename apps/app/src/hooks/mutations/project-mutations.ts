@@ -6,6 +6,7 @@ import type {
   UploadedPromptAttachment,
 } from "@bb/server-contract";
 import { sdk } from "@/lib/sdk";
+import { registerLocalAttachmentPreview } from "@/lib/attachment-local-previews";
 import {
   applyProjectCreateResult,
   applyProjectDeleteResult,
@@ -194,11 +195,17 @@ export function useUploadPromptAttachment() {
       errorMessage: "Failed to upload attachment.",
       showErrorToast: false,
     },
-    mutationFn: ({
+    mutationFn: async ({
       projectId,
       file,
-    }: UploadPromptAttachmentRequest): Promise<UploadedPromptAttachment> =>
-      sdk.projects.attachments.upload({ projectId, clientFile: file }),
+    }: UploadPromptAttachmentRequest): Promise<UploadedPromptAttachment> => {
+      const uploaded = await sdk.projects.attachments.upload({
+        projectId,
+        clientFile: file,
+      });
+      registerLocalAttachmentPreview(uploaded.path, file);
+      return uploaded;
+    },
     retry: false,
   });
 }

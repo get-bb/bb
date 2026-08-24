@@ -21,7 +21,7 @@ export function getCompactionKey(
   }
   const turnId = getEventTurnId(decoded);
   if (decoded.type === "item/started" || decoded.type === "item/completed") {
-    return turnId ?? decoded.item.id ?? `seq-${meta.seq}`;
+    return turnId ?? decoded.item.id;
   }
   return turnId ?? `seq-${meta.seq}`;
 }

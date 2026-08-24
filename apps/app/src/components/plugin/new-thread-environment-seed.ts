@@ -11,7 +11,7 @@ import type { RootComposeSelectedBranch } from "@/views/root-compose-thread-envi
  * inverse of `resolveRootComposeThreadEnvironment`, up to the limits listed
  * on `NewThreadComposerProps.defaultEnvironment`.
  */
-export interface NewThreadEnvironmentSeed {
+interface NewThreadEnvironmentSeed {
   selectionValue: string;
   branch: RootComposeSelectedBranch | null;
 }

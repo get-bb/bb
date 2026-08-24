@@ -1,6 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import type { DbNotifier } from "../../src/notifier.js";
 import {
@@ -12,10 +10,10 @@ import {
 } from "../../src/data/environments.js";
 import { createProject } from "../../src/data/projects.js";
 import { upsertHost } from "../../src/data/hosts.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",

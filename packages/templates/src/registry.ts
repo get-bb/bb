@@ -3,9 +3,9 @@ import type { TemplateId } from "./generated/templates.generated.js";
 
 const TEMPLATE_KINDS = ["instruction", "prompt", "system-message"] as const;
 
-export type TemplateKind = (typeof TEMPLATE_KINDS)[number];
+type TemplateKind = (typeof TEMPLATE_KINDS)[number];
 
-export interface TemplateDefinition {
+interface TemplateDefinition {
   body: string;
   editingNotes?: string;
   fileName: string;
@@ -16,8 +16,6 @@ export interface TemplateDefinition {
   title?: string;
   variables: Record<string, string>;
 }
-
-export interface TemplateMetadata extends Omit<TemplateDefinition, "body"> {}
 
 function isTemplateId(value: string): value is TemplateId {
   return templateDefinitions.some((definition) => definition.id === value);

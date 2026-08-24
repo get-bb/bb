@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { SmilePlusIcon } from "@hugeicons/core-free-icons";
 import type { Task } from "../../shared/contract.js";
-import { useBbNavigate } from "@get-bb/plugin-sdk/app";
+import type { DelegationRpcContract } from "../../delegate/contract.js";
+import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
 import {
   listAllTasks,
   useMentionItems,
@@ -11,13 +12,14 @@ import {
 } from "../../shell/data.js";
 import { useTasksNavigation } from "../../shell/routes.js";
 import { TasksEditor } from "../../editor/tasks-editor.js";
-import { TaskActivity } from "../activity/index.js";
+import { TaskActivity } from "../activity/task-activity.js";
 import { AttachmentsGrid, uploadAttachment } from "./attachments.js";
 import {
   createDescriptionSaver,
   type DescriptionSaver,
 } from "./description-save.js";
-import { STATUS_LABELS, StatusIcon } from "./meta.js";
+import { StatusIcon } from "./meta.js";
+import { STATUS_LABELS } from "../list/lib.js";
 import {
   InlineProperties,
   PropertiesRail,
@@ -25,10 +27,11 @@ import {
 } from "./rail.js";
 import { ThreadsSection } from "./threads.js";
 import { DetailToasts, useDetailToasts } from "./toast.js";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import { Icon } from "@bb/shared-ui/icon";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 
-export interface DetailViewProps {
+interface DetailViewProps {
   /** Task key like TSK-4 (not the ULID). */
   taskKey: string;
 }
@@ -181,17 +184,20 @@ function SubTasksSection({
 
 function DetailSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-3xl px-8 py-12">
-      <Skeleton className="mb-4 h-7 w-2/3" />
-      <Skeleton className="mb-2 h-4 w-full" />
-      <Skeleton className="mb-2 h-4 w-5/6" />
-      <Skeleton className="h-4 w-1/2" />
-    </div>
+    <DelayedLoading>
+      <div className="mx-auto w-full max-w-3xl px-8 py-12">
+        <Skeleton className="mb-4 h-7 w-2/3" />
+        <Skeleton className="mb-2 h-4 w-full" />
+        <Skeleton className="mb-2 h-4 w-5/6" />
+        <Skeleton className="h-4 w-1/2" />
+      </div>
+    </DelayedLoading>
   );
 }
 
 function TaskDetail({ task }: { task: Task }) {
   const rpc = useTasksRpc();
+  const delegationRpc = useRpc<DelegationRpcContract>();
   const navigation = useTasksNavigation();
   const { toasts, push, dismiss } = useDetailToasts();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -216,7 +222,7 @@ function TaskDetail({ task }: { task: Task }) {
         ? { ok: true }
         : { ok: false, errorMessage: result.error.message };
     },
-    onError: (message) => pushRef.current("error", message),
+    onError: (message) => pushRef.current(message),
     delayMs: DESCRIPTION_SAVE_DELAY_MS,
   });
 
@@ -298,9 +304,9 @@ function TaskDetail({ task }: { task: Task }) {
         taskId: task.id,
         ...input,
       });
-      if (!result.ok) push("error", result.error.message);
+      if (!result.ok) push(result.error.message);
     } catch (error) {
-      push("error", error instanceof Error ? error.message : String(error));
+      push(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -325,7 +331,7 @@ function TaskDetail({ task }: { task: Task }) {
       try {
         await uploadAttachment(file, { taskId: task.id });
       } catch (error) {
-        push("error", error instanceof Error ? error.message : String(error));
+        push(error instanceof Error ? error.message : String(error));
       }
     }
     attachments.refresh();
@@ -340,13 +346,13 @@ function TaskDetail({ task }: { task: Task }) {
         status: "todo",
       });
       if (!result.ok) {
-        push("error", result.error.message);
+        push(result.error.message);
         return false;
       }
       subtasks.refresh();
       return true;
     } catch (error) {
-      push("error", error instanceof Error ? error.message : String(error));
+      push(error instanceof Error ? error.message : String(error));
       return false;
     }
   };
@@ -402,7 +408,7 @@ function TaskDetail({ task }: { task: Task }) {
             labels={labels.data}
             presets={presets.data}
             onUpdate={(update) => void updateTask(update)}
-            onError={(message) => push("error", message)}
+            onError={(message) => push(message)}
             className="mb-4 @[45rem]:hidden"
           />
 
@@ -458,7 +464,7 @@ function TaskDetail({ task }: { task: Task }) {
               if (!result.ok) throw new Error(result.error.message);
               attachments.refresh();
             }}
-            onError={(message) => push("error", message)}
+            onError={(message) => push(message)}
           />
 
           <SubTasksSection
@@ -478,6 +484,15 @@ function TaskDetail({ task }: { task: Task }) {
                 unavailableThreadIds={
                   pullRequests.data?.unavailableThreadIds ?? []
                 }
+                onDetach={async (thread) => {
+                  await delegationRpc.call("taskThreadsDetach", {
+                    taskId: task.id,
+                    threadId: thread.threadId,
+                  });
+                  threads.refresh();
+                  pullRequests.refresh();
+                }}
+                onError={(message) => push(message)}
               />
             </div>
           ) : null}
@@ -496,7 +511,7 @@ function TaskDetail({ task }: { task: Task }) {
           threads={threads.data ?? []}
           presets={presets.data}
           onUpdate={(update) => void updateTask(update)}
-          onError={(message) => push("error", message)}
+          onError={(message) => push(message)}
           className="hidden @[45rem]:block"
         />
       </div>

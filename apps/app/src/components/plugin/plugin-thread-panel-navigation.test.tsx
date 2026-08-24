@@ -1,80 +1,59 @@
 // @vitest-environment jsdom
 
-import { useState } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { useBbNavigate } from "@/lib/plugin-sdk-hooks";
-import { PluginSlotMount } from "./PluginSlotMount";
-import { PluginThreadPanelNavigationProvider } from "./plugin-thread-panel-navigation";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import {
+  getActiveThreadPanelOpener,
+  resetActiveThreadPanelOpenerForTest,
+  usePublishThreadPanelOpener,
+  type PluginThreadPanelOpenHandler,
+} from "./plugin-thread-panel-navigation";
 
-afterEach(cleanup);
+function Pane({
+  opener,
+  isFocused,
+}: {
+  opener: PluginThreadPanelOpenHandler;
+  isFocused: boolean;
+}) {
+  usePublishThreadPanelOpener(opener, isFocused);
+  return null;
+}
 
-function NavigationProbe() {
-  const navigate = useBbNavigate();
-  const [accepted, setAccepted] = useState<boolean | null>(null);
-  return (
+afterEach(() => {
+  cleanup();
+  resetActiveThreadPanelOpenerForTest();
+});
+
+it("publishes only the focused pane's opener", () => {
+  // A split mounts one thread view per pane, each with its own panel tabs, so
+  // an unscoped store would open a plugin's panel in whichever pane mounted
+  // last rather than the one the user is looking at.
+  const left = vi.fn(() => true);
+  const right = vi.fn(() => true);
+  const { rerender } = render(
     <>
-      <button
-        type="button"
-        onClick={() =>
-          setAccepted(
-            navigate.openThreadPanel({
-              actionId: "details",
-              title: "Run details",
-              params: { runId: "run_1" },
-            }),
-          )
-        }
-      >
-        Open details
-      </button>
-      <span>
-        {accepted === null ? "idle" : accepted ? "accepted" : "rejected"}
-      </span>
-    </>
+      <Pane opener={left} isFocused={true} />
+      <Pane opener={right} isFocused={false} />
+    </>,
   );
-}
 
-function PluginProbe() {
-  return (
-    <PluginSlotMount pluginId="workflows" slotKind="test" slotId="navigation">
-      <NavigationProbe />
-    </PluginSlotMount>
+  getActiveThreadPanelOpener()?.({ actionId: "a", pluginId: "p" });
+  expect(left).toHaveBeenCalledTimes(1);
+  expect(right).not.toHaveBeenCalled();
+
+  rerender(
+    <>
+      <Pane opener={left} isFocused={false} />
+      <Pane opener={right} isFocused={true} />
+    </>,
   );
-}
+  getActiveThreadPanelOpener()?.({ actionId: "a", pluginId: "p" });
+  expect(right).toHaveBeenCalledTimes(1);
+  expect(left).toHaveBeenCalledTimes(1);
+});
 
-describe("plugin thread-panel navigation", () => {
-  it("binds generic panel requests to the calling plugin", () => {
-    const openThreadPanel = vi.fn(() => true);
-    render(
-      <MemoryRouter>
-        <PluginThreadPanelNavigationProvider openThreadPanel={openThreadPanel}>
-          <PluginProbe />
-        </PluginThreadPanelNavigationProvider>
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Open details" }));
-
-    expect(openThreadPanel).toHaveBeenCalledWith({
-      pluginId: "workflows",
-      actionId: "details",
-      title: "Run details",
-      params: { runId: "run_1" },
-    });
-    expect(screen.getByText("accepted")).toBeTruthy();
-  });
-
-  it("returns false outside a thread-panel surface", () => {
-    render(
-      <MemoryRouter>
-        <PluginProbe />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Open details" }));
-
-    expect(screen.getByText("rejected")).toBeTruthy();
-  });
+it("reports no opener when no thread view is focused", () => {
+  render(<Pane opener={vi.fn(() => true)} isFocused={false} />);
+  expect(getActiveThreadPanelOpener()).toBeNull();
 });

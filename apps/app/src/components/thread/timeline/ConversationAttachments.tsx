@@ -12,7 +12,7 @@ import type {
   UserAttachmentImageSrcResolver,
 } from "./types.js";
 
-export interface ConversationImageItem {
+interface ConversationImageItem {
   alt: string;
   src: string;
 }
@@ -154,6 +154,7 @@ export function ConversationAttachments({
                   align === "end" ? "h-20 max-w-36" : "h-16 w-24",
                 )}
                 loading="lazy"
+                decoding="async"
               />
             </button>
           ))}

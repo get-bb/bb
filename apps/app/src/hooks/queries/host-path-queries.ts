@@ -3,7 +3,7 @@ import { skipToken, useQuery } from "@tanstack/react-query";
 import { sdk } from "@/lib/sdk";
 import { hostPathExistenceQueryKey } from "./query-keys";
 
-export type HostPathExistence = Record<string, boolean>;
+type HostPathExistence = Record<string, boolean>;
 
 /**
  * Probe the selected work host to check whether each given path still exists

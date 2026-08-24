@@ -11,7 +11,7 @@ import type {
   StoredServiceTier,
 } from "./persisted-selection-fields";
 
-export type ThreadCreationOptionsScope = "new-thread" | "component-local";
+type ThreadCreationOptionsScope = "new-thread" | "component-local";
 
 export interface ThreadPromptSelections {
   selectedProviderId: string;
@@ -31,12 +31,18 @@ export type ScopedExecutionInputSources =
 export interface UsePromptModelReasoningOptions {
   enabled?: boolean;
   environmentId?: string;
+  /**
+   * The machine the environment lives on. Component-local composers route
+   * host-scoped provider catalogs by host so threads in different
+   * environments on one machine share a single execution-options query.
+   */
+  environmentHostId?: string;
   scope?: ThreadCreationOptionsScope;
   resetKey?: string | number | null;
   initialProviderId?: string;
   /** When no project default or persisted choice exists, select the first
-   * connected provider reported by the routed machine. */
-  preferConnectedProviderWhenUnset?: boolean;
+   * ready provider reported by the routed machine. */
+  preferReadyProviderWhenUnset?: boolean;
   initialModel?: string;
   initialServiceTier?: ServiceTier;
   initialReasoningLevel?: ReasoningLevel;
@@ -56,7 +62,7 @@ export interface UseComponentLocalCreationOptions extends UsePromptModelReasonin
   scope: "component-local";
 }
 
-export interface StoredCreateExecutionValues {
+interface StoredCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
   serviceTier: StoredServiceTier;
@@ -64,7 +70,7 @@ export interface StoredCreateExecutionValues {
   permissionMode: StoredPermissionMode;
 }
 
-export interface EffectiveCreateExecutionValues {
+interface EffectiveCreateExecutionValues {
   selectedProviderId: string;
   selectedModel: string;
   serviceTier: ServiceTier | undefined;
@@ -72,7 +78,7 @@ export interface EffectiveCreateExecutionValues {
   permissionMode: PermissionMode;
 }
 
-export interface BuildExecutionInputSourcesArgs {
+interface BuildExecutionInputSourcesArgs {
   effectiveValues: EffectiveCreateExecutionValues;
   forceExplicitModel?: boolean;
   initialProviderSource?: ExecutionInputFieldSource;
@@ -81,13 +87,13 @@ export interface BuildExecutionInputSourcesArgs {
   touchedFields: ReadonlySet<ThreadPromptField>;
 }
 
-export interface SyncThreadPromptSelectionsArgs {
+interface SyncThreadPromptSelectionsArgs {
   currentSelections: ThreadPromptSelections;
   nextSelections: ThreadPromptSelections;
   touchedFields: ReadonlySet<ThreadPromptField>;
 }
 
-export interface UpdateThreadPromptSelectionsArgs {
+interface UpdateThreadPromptSelectionsArgs {
   currentSelections: ThreadPromptSelections;
   field: ThreadPromptField;
   value: ThreadPromptSelections[ThreadPromptField];

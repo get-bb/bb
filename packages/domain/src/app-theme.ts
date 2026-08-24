@@ -15,7 +15,7 @@ import {
  * a custom palette `themeId` is the theme's directory name and the resolved CSS
  * is read from that file by the server.
  */
-export const builtInThemeIdSchema = z.enum([
+const builtInThemeIdSchema = z.enum([
   "default",
   "nord",
   "dracula",
@@ -25,7 +25,7 @@ export const builtInThemeIdSchema = z.enum([
 ]);
 export type BuiltInThemeId = z.infer<typeof builtInThemeIdSchema>;
 
-export interface BuiltInThemeMeta {
+interface BuiltInThemeMeta {
   id: BuiltInThemeId;
   name: string;
   description: string;

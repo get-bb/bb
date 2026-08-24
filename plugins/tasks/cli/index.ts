@@ -21,8 +21,6 @@ import {
 import { delegationRpcContract } from "../delegate/contract";
 import { handlers as delegationHandlers } from "../delegate";
 import {
-  TASK_PRIORITIES,
-  TASK_STATUSES,
   tasksRpcContract,
   type Attachment,
   type Folder,
@@ -47,7 +45,7 @@ import {
   requirePositionals,
   type ParsedArgs,
 } from "./args";
-import { bytes, detail, json, table } from "./format";
+import { bytes, detail, table } from "./format";
 import { seedDemo } from "./seed";
 
 const ULID_PATTERN = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
@@ -61,7 +59,7 @@ const ROOT_HELP = `Usage: bb tasks <command> [options]
 Commands:
   status                         Show plugin status
   project create|list|show|update
-  folder create|list|update
+  folder create|list|update|delete
   create                         Create a task
   list                           List tasks
   show                           Show full task details
@@ -72,6 +70,7 @@ Commands:
   preset list|show|create|update|delete
   dispatch                       Dispatch a task to a new agent thread
   attach                         Attach an agent thread to a task
+  detach                         Detach an agent thread from a task
   threads                        List threads attached to a task
   seed-demo                      Create sample data (requires --yes)
 
@@ -86,7 +85,11 @@ const PROJECT_HELP = `Usage:
 const FOLDER_HELP = `Usage:
   bb tasks folder create --name <name> [--parent <id-or-name>] [--json]
   bb tasks folder list [--json]
-  bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]`;
+  bb tasks folder update <id-or-name> [--name <name>] [--parent <id-or-name> | --no-parent] [--json]
+  bb tasks folder delete <id-or-name> [--json]
+
+Deleting a folder moves its projects and subfolders to the top level. No
+tasks are deleted.`;
 
 const CREATE_HELP =
   "Usage: bb tasks create [--project <prefix-or-id>] --title <title> [--description <markdown> | --description-file <path>] [--priority <priority>] [--label <name>]... [--due YYYY-MM-DD] [--parent <key-or-id>] [--attach <path>]... [--machine <id-or-name>] [--json]";
@@ -112,13 +115,15 @@ Pass --machine to target another enrolled machine explicitly.`;
 const PRESET_HELP = `Usage:
   bb tasks preset list [--json]
   bb tasks preset show <name-or-id> [--json]
-  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <accept-edits|auto|full> [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
-  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
+  bb tasks preset create --name <name> --provider <id> --model <id> --reasoning <level> --permission <accept-edits|auto|full> [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
+  bb tasks preset update <name-or-id> [--name <name>] [--provider <id>] [--model <id>] [--reasoning <level>] [--permission <accept-edits|auto|full>] [--service-tier default|fast|none] [--environment project-default|worktree] [--base-branch <branch>] [--machine <id-or-name>] [--instructions <text>] [--json]
   bb tasks preset delete <name-or-id> [--json]`;
 const DISPATCH_HELP =
   "Usage: bb tasks dispatch <key> --preset <name> [--instructions <extra>] [--json]";
 const ATTACH_HELP =
   "Usage: bb tasks attach <key> [--thread <thread-id>] [--json]";
+const DETACH_HELP =
+  "Usage: bb tasks detach <key> [--thread <thread-id>] [--json]";
 const THREADS_HELP = "Usage: bb tasks threads <key> [--json]";
 
 interface PluginStatus {
@@ -442,6 +447,17 @@ function parsePresetEnvironment(
   );
 }
 
+function parsePresetServiceTier(
+  value: string | undefined,
+): "default" | "fast" | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === "default" || value === "fast") return value;
+  if (value === "none") return null;
+  throw new CliError(
+    `invalid --service-tier ${value}; expected default, fast, or none`,
+  );
+}
+
 async function resolveMachineId(
   domain: TasksDomain,
   address: string,
@@ -566,7 +582,7 @@ async function runProject(
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created project ${result.project.prefix}  ${result.project.name}`;
   }
 
@@ -578,7 +594,7 @@ async function runProject(
       await domain.listFolders(tasksRpcContract.listFolders.input.parse(null)),
     ).folders;
     return args.flags.has("json")
-      ? json({ projects })
+      ? JSON.stringify({ projects })
       : projectTable(projects, folders);
   }
 
@@ -593,7 +609,7 @@ async function runProject(
     const folder = project.folderId
       ? await resolveFolder(domain, project.folderId)
       : null;
-    if (args.flags.has("json")) return json({ project, folder });
+    if (args.flags.has("json")) return JSON.stringify({ project, folder });
     return detail([
       ["Project", `${project.prefix} — ${project.name}`],
       ["ID", project.id],
@@ -689,7 +705,7 @@ async function runProject(
     );
     publishProjectsChanged(bb, updated.id);
     return args.flags.has("json")
-      ? json({ project: updated })
+      ? JSON.stringify({ project: updated })
       : `Updated project ${updated.prefix}  ${updated.name}`;
   }
 
@@ -727,7 +743,7 @@ async function runFolder(
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created folder ${result.folder.name}  ${result.folder.id}`;
   }
 
@@ -741,7 +757,7 @@ async function runFolder(
       result.folders.map((folder) => [folder.id, folder.name]),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : table(
           ["NAME", "PARENT", "ID"],
           result.folders.map((folder) => [
@@ -803,8 +819,48 @@ async function runFolder(
     );
     publishProjectsChanged(bb, null);
     return args.flags.has("json")
-      ? json({ folder: updated })
+      ? JSON.stringify({ folder: updated })
       : `Updated folder ${updated.name}  ${updated.id}`;
+  }
+
+  if (action === "delete") {
+    assertAllowed(args, []);
+    const [address] = requirePositionals(
+      args,
+      1,
+      "bb tasks folder delete <id-or-name> [--json]",
+    );
+    const folder = await resolveFolder(domain, address!);
+    // Deleting a folder only unfiles what it held (ON DELETE SET NULL moves
+    // its projects and subfolders to the top level). The delete reports what
+    // it moved from its own transaction, so the summary matches what happened
+    // even if another client changed the folder after the lookup above.
+    const result = tasksRpcContract.deleteFolder.output.parse(
+      await domain.deleteFolder(
+        tasksRpcContract.deleteFolder.input.parse({ folderId: folder.id }),
+      ),
+    );
+    if (!result.deleted) {
+      throw new CliError(
+        `folder not found: ${address} (it was deleted by another client)`,
+      );
+    }
+    if (args.flags.has("json")) {
+      return JSON.stringify({ ...result, folder });
+    }
+    const projectCount = result.movedProjectIds.length;
+    const folderCount = result.movedFolderIds.length;
+    const moved = [
+      projectCount > 0
+        ? `${projectCount} project${projectCount > 1 ? "s" : ""}`
+        : null,
+      folderCount > 0
+        ? `${folderCount} subfolder${folderCount > 1 ? "s" : ""}`
+        : null,
+    ].filter((part) => part !== null);
+    return moved.length === 0
+      ? `Deleted folder ${folder.name}`
+      : `Deleted folder ${folder.name}; ${moved.join(" and ")} moved to the top level. No tasks were deleted.`;
   }
 
   throw new CliError(`unknown folder subcommand: ${action}`);
@@ -911,7 +967,7 @@ async function runCreate(
     }
   }
   const stdout = args.flags.has("json")
-    ? json({ task, attachments, failedAttachments })
+    ? JSON.stringify({ task, attachments, failedAttachments })
     : [
         `Created ${task.key}  ${task.title}`,
         ...attachments.map(
@@ -1036,7 +1092,7 @@ async function runList(
   }
   const limit = taskPageLimit(args);
   if (args.flags.has("json")) {
-    return json({ tasks, nextCursor: result.nextCursor, limit });
+    return JSON.stringify({ tasks, nextCursor: result.nextCursor, limit });
   }
   const output = table(
     ["KEY", "STATUS", "PRIORITY", "DUE", "TITLE", "LABELS", "AGENTS"],
@@ -1115,7 +1171,7 @@ async function runShow(domain: TasksDomain, argv: string[]): Promise<string> {
     pullRequestUnavailableThreadIds: unavailableThreadIds,
     comments,
   };
-  if (args.flags.has("json")) return json(payload);
+  if (args.flags.has("json")) return JSON.stringify(payload);
 
   const sections = [
     detail([
@@ -1293,7 +1349,7 @@ async function runUpdate(
   );
   const updated = unwrapTask(result);
   return args.flags.has("json")
-    ? json({ task: updated })
+    ? JSON.stringify({ task: updated })
     : `Updated ${updated.key}  ${updated.title}`;
 }
 
@@ -1340,7 +1396,7 @@ async function runComment(
     notify: args.flags.has("notify"),
   });
   return args.flags.has("json")
-    ? json({ comment })
+    ? JSON.stringify({ comment })
     : `Commented on ${task.key}  ${comment.id}`;
 }
 
@@ -1371,7 +1427,7 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created label ${result.label.name}  ${result.label.id}`;
   }
 
@@ -1384,7 +1440,7 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
     );
     const labels = await projectLabels(domain, project.id);
     return args.flags.has("json")
-      ? json({ labels })
+      ? JSON.stringify({ labels })
       : table(
           ["NAME", "COLOR", "ID"],
           labels.map((label) => [label.name, label.color, label.id]),
@@ -1413,7 +1469,7 @@ async function runLabel(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json({ ...result, label })
+      ? JSON.stringify({ ...result, label })
       : `Deleted label ${label.name}`;
   }
 
@@ -1463,7 +1519,7 @@ async function runAttachment(
       url: buildAttachmentUrl(attachment.id),
     };
     return args.flags.has("json")
-      ? json(payload)
+      ? JSON.stringify(payload)
       : `Added attachment ${attachment.fileName}  ${attachment.id}`;
   }
 
@@ -1483,7 +1539,7 @@ async function runAttachment(
     );
     await writeClientFile(bb, clientHostId, outPath, content);
     return args.flags.has("json")
-      ? json({ attachment, out: outPath })
+      ? JSON.stringify({ attachment, out: outPath })
       : `Saved ${attachment.fileName}  ${outPath}`;
   }
 
@@ -1519,7 +1575,7 @@ async function runAttachment(
     }
     const attachments = [...directAttachments, ...commentAttachments];
     return args.flags.has("json")
-      ? json({ task, attachments })
+      ? JSON.stringify({ task, attachments })
       : table(
           ["ID", "NAME", "TYPE", "SIZE"],
           attachments.map((attachment) => [
@@ -1552,7 +1608,7 @@ async function runAttachment(
       throw new CliError(`attachment not found: ${attachmentId}`);
     }
     return args.flags.has("json")
-      ? json({ deleted: true, attachment: result.attachment })
+      ? JSON.stringify({ deleted: true, attachment: result.attachment })
       : `Removed attachment ${result.attachment.fileName}  ${result.attachment.id}`;
   }
 
@@ -1570,13 +1626,14 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
     requirePositionals(args, 0, "bb tasks preset list [--json]");
     const presets = await listPresets(domain);
     return args.flags.has("json")
-      ? json({ presets })
+      ? JSON.stringify({ presets })
       : table(
           [
             "NAME",
             "PROVIDER",
             "MODEL",
             "REASONING",
+            "SERVICE TIER",
             "PERMISSION",
             "ENVIRONMENT",
             "BASE BRANCH",
@@ -1589,6 +1646,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
             preset.providerId,
             preset.modelId,
             preset.reasoningLevel,
+            preset.serviceTier ?? "-",
             preset.permissionMode,
             preset.environmentKind === "new-worktree"
               ? "worktree"
@@ -1611,12 +1669,13 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
     );
     const preset = resolvePreset(await listPresets(domain), address!);
     return args.flags.has("json")
-      ? json({ preset })
+      ? JSON.stringify({ preset })
       : detail([
           ["Name", preset.name],
           ["Provider", preset.providerId],
           ["Model", preset.modelId],
           ["Reasoning", preset.reasoningLevel],
+          ["Service tier", preset.serviceTier ?? "-"],
           ["Permission", preset.permissionMode],
           [
             "Environment",
@@ -1638,6 +1697,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "provider",
       "model",
       "reasoning",
+      "service-tier",
       "permission",
       "environment",
       "base-branch",
@@ -1659,6 +1719,8 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           providerId: requireOption(args, "provider"),
           modelId: requireOption(args, "model"),
           reasoningLevel: requireOption(args, "reasoning"),
+          serviceTier:
+            parsePresetServiceTier(option(args, "service-tier")) ?? null,
           permissionMode: requireOption(args, "permission"),
           environmentKind,
           baseBranch: baseBranch ?? null,
@@ -1671,7 +1733,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Created preset ${result.preset.name}  ${result.preset.id}`;
   }
 
@@ -1681,6 +1743,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       "provider",
       "model",
       "reasoning",
+      "service-tier",
       "permission",
       "environment",
       "base-branch",
@@ -1709,6 +1772,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
           providerId: option(args, "provider"),
           modelId: option(args, "model"),
           reasoningLevel: option(args, "reasoning"),
+          serviceTier: parsePresetServiceTier(option(args, "service-tier")),
           permissionMode: option(args, "permission"),
           environmentKind:
             environmentOption === undefined ? undefined : environmentKind,
@@ -1729,7 +1793,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json(result)
+      ? JSON.stringify(result)
       : `Updated preset ${result.preset.name}  ${result.preset.id}`;
   }
 
@@ -1747,7 +1811,7 @@ async function runPreset(domain: TasksDomain, argv: string[]): Promise<string> {
       ),
     );
     return args.flags.has("json")
-      ? json({ ...result, preset })
+      ? JSON.stringify({ ...result, preset })
       : `Deleted preset ${preset.name}`;
   }
 
@@ -1779,8 +1843,21 @@ async function runDispatch(
     ),
   );
   return args.flags.has("json")
-    ? json({ task, preset, ...result })
+    ? JSON.stringify({ task, preset, ...result })
     : result.threadId;
+}
+
+/** `--thread` wins; otherwise the invoking agent thread (env, then CLI ctx). */
+function resolveInvokingThreadId(
+  args: ParsedArgs,
+  ctx: PluginCliContext,
+): string {
+  const threadId =
+    option(args, "thread") ?? process.env.BB_THREAD_ID ?? ctx.threadId;
+  if (!threadId) {
+    throw new CliError("missing --thread and BB_THREAD_ID is not set");
+  }
+  return threadId;
 }
 
 async function runAttach(
@@ -1795,11 +1872,7 @@ async function runAttach(
   assertAllowed(args, ["thread"]);
   const [address] = requirePositionals(args, 1, ATTACH_HELP);
   const task = await resolveTask(domain, address!);
-  const threadId =
-    option(args, "thread") ?? process.env.BB_THREAD_ID ?? ctx.threadId;
-  if (!threadId) {
-    throw new CliError("missing --thread and BB_THREAD_ID is not set");
-  }
+  const threadId = resolveInvokingThreadId(args, ctx);
   const result = delegationRpcContract.taskThreadsAttach.output.parse(
     await delegationHandlers(bb, store).taskThreadsAttach(
       delegationRpcContract.taskThreadsAttach.input.parse({
@@ -1809,8 +1882,34 @@ async function runAttach(
     ),
   );
   return args.flags.has("json")
-    ? json({ task, ...result })
+    ? JSON.stringify({ task, ...result })
     : `Attached ${result.threadId} to ${task.key}`;
+}
+
+async function runDetach(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  domain: TasksDomain,
+  ctx: PluginCliContext,
+  argv: string[],
+): Promise<string> {
+  const args = parseArgs(argv);
+  if (args.flags.has("help")) return DETACH_HELP;
+  assertAllowed(args, ["thread"]);
+  const [address] = requirePositionals(args, 1, DETACH_HELP);
+  const task = await resolveTask(domain, address!);
+  const threadId = resolveInvokingThreadId(args, ctx);
+  const result = delegationRpcContract.taskThreadsDetach.output.parse(
+    await delegationHandlers(bb, store).taskThreadsDetach(
+      delegationRpcContract.taskThreadsDetach.input.parse({
+        taskId: task.id,
+        threadId,
+      }),
+    ),
+  );
+  return args.flags.has("json")
+    ? JSON.stringify({ task, ...result })
+    : `Detached ${result.threadId} from ${task.key}`;
 }
 
 async function runThreads(
@@ -1828,7 +1927,7 @@ async function runThreads(
     ),
   );
   return args.flags.has("json")
-    ? json({ task, taskThreads: result.taskThreads })
+    ? JSON.stringify({ task, taskThreads: result.taskThreads })
     : table(
         ["THREAD", "STATUS", "PRESET", "TITLE"],
         result.taskThreads.map((thread) => [
@@ -1890,7 +1989,7 @@ export function registerTasksCli(
       },
       {
         name: "folder",
-        summary: "Create, list, or update project folders",
+        summary: "Create, list, update, or delete project folders",
         usage: FOLDER_HELP,
       },
       {
@@ -1942,6 +2041,11 @@ export function registerTasksCli(
         name: "attach",
         summary: "Attach an existing agent thread to a task",
         usage: ATTACH_HELP,
+      },
+      {
+        name: "detach",
+        summary: "Detach an agent thread from a task",
+        usage: DETACH_HELP,
       },
       {
         name: "threads",
@@ -2014,6 +2118,9 @@ export function registerTasksCli(
           case "attach":
             stdout = await runAttach(bb, store, domain, ctx, rest);
             break;
+          case "detach":
+            stdout = await runDetach(bb, store, domain, ctx, rest);
+            break;
           case "threads":
             stdout = await runThreads(domain, rest);
             break;
@@ -2028,7 +2135,7 @@ export function registerTasksCli(
             }
             const result = await seedDemo(domain, ctx.projectId);
             stdout = args.flags.has("json")
-              ? json(result)
+              ? JSON.stringify(result)
               : detail([
                   ["Folders", result.foldersCreated],
                   ["Projects", result.projectsCreated],
@@ -2051,5 +2158,3 @@ export function registerTasksCli(
     },
   });
 }
-
-export { TASK_PRIORITIES, TASK_STATUSES };

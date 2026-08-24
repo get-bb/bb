@@ -3,21 +3,22 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   type ComponentPropsWithoutRef,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, type NavigateOptions } from "react-router-dom";
 import { isRoutePath, resolveRouteHref } from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 
-export interface RouteNavigationProviderProps {
+interface RouteNavigationProviderProps {
   children: ReactNode;
 }
 
-export interface RouteAnchorProps
-  extends Omit<ComponentPropsWithoutRef<"a">, "href"> {
+interface RouteAnchorProps extends Omit<ComponentPropsWithoutRef<"a">, "href"> {
   href: string | undefined;
 }
 
@@ -25,9 +26,39 @@ interface ShouldHandleRouteAnchorClickArgs {
   event: ReactMouseEvent<HTMLAnchorElement>;
 }
 
-type RouteNavigate = (path: string) => void;
+interface RouteNavigateOptions {
+  replace?: boolean;
+  state?: NavigateOptions["state"];
+}
+
+/** Navigate to an absolute app route (`/projects/...`); see {@link useRouteNavigate}. */
+type RouteNavigate = (path: string, options?: RouteNavigateOptions) => void;
 
 const RouteNavigationContext = createContext<RouteNavigate | null>(null);
+
+/**
+ * A `navigate` whose identity never changes and whose caller does not
+ * subscribe to the router's location.
+ *
+ * Under `<BrowserRouter>` react-router's `useNavigate()` reads `useLocation()`
+ * and rebuilds its function per pathname, so every component that calls it
+ * re-renders on every navigation and every callback listing it as a
+ * dependency is rebuilt. Sidebar rows, the thread-actions context and the fork
+ * handler only navigate to absolute app routes, so they read this one stable
+ * function from {@link RouteNavigationProvider} (mounted once at the app root,
+ * which holds the live `useNavigate()` in a ref) instead. Without a provider
+ * the returned function throws when called, so a misplaced consumer fails at
+ * the click, not silently.
+ */
+export function useRouteNavigate(): RouteNavigate {
+  return useContext(RouteNavigationContext) ?? navigateWithoutProvider;
+}
+
+function navigateWithoutProvider(path: string): void {
+  throw new Error(
+    `useRouteNavigate: no <RouteNavigationProvider> above the caller (navigating to "${path}")`,
+  );
+}
 
 function currentOrigin(): string | null {
   return typeof window === "undefined" ? null : window.location.origin;
@@ -55,12 +86,21 @@ export function RouteNavigationProvider({
   children,
 }: RouteNavigationProviderProps) {
   const navigate = useNavigate();
-  const navigateRoute = useCallback<RouteNavigate>(
-    (path) => {
-      navigate(path);
-    },
-    [navigate],
-  );
+  // The live `navigate` changes per pathname; the context value must not, or
+  // every consumer would re-render per navigation (the thing this exists to
+  // avoid). Layout effect: the ref is current before any child effect or
+  // event handler can navigate after a commit.
+  const navigateRef = useRef(navigate);
+  useLayoutEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+  const navigateRoute = useCallback<RouteNavigate>((path, options) => {
+    if (options === undefined) {
+      navigateRef.current(path);
+      return;
+    }
+    navigateRef.current(path, options);
+  }, []);
   useEffect(() => {
     const browserApi = getDesktopBrowserApi();
     if (browserApi === null) {

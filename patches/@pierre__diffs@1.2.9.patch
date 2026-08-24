@@ -1,0 +1,31 @@
+diff --git a/dist/worker/worker-portable.js b/dist/worker/worker-portable.js
+index 6da26a75fe78bd260c7b1292bc2d5062e6552d55..7d96564e225f2f4c560d02bd0d671a19ebfb0dd2 100644
+--- a/dist/worker/worker-portable.js
++++ b/dist/worker/worker-portable.js
+@@ -9987,7 +9987,7 @@ var r = String.raw;
+ var envFlags = {
+ 	flagGroups: (() => {
+ 		try {
+-			new RegExp("(?i:)");
++			Reflect.construct(RegExp, ["(?i:)"]);
+ 		} catch {
+ 			return false;
+ 		}
+@@ -9995,7 +9995,7 @@ var envFlags = {
+ 	})(),
+ 	unicodeSets: (() => {
+ 		try {
+-			new RegExp("[[]]", "v");
++			Reflect.construct(RegExp, ["[[]]", "v"]);
+ 		} catch {
+ 			return false;
+ 		}
+@@ -10004,7 +10004,7 @@ var envFlags = {
+ };
+ envFlags.bugFlagVLiteralHyphenIsRange = envFlags.unicodeSets ? (() => {
+ 	try {
+-		new RegExp(r`[\d\-a]`, "v");
++		Reflect.construct(RegExp, [r`[\d\-a]`, "v"]);
+ 	} catch {
+ 		return true;
+ 	}

@@ -5,11 +5,8 @@
  */
 
 import {
-  claudeCodeMockCliTrafficConfigSchema,
-  DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
   jsonValueSchema,
   removeCommandMentionsFromPromptInput,
-  type ClaudeCodeMockCliTrafficConfig,
   type DynamicTool,
   type InstructionMode,
   type PromptInput,
@@ -46,25 +43,12 @@ export interface ClaudeCodeSkillRoot {
   localPluginPath: string;
 }
 
-interface ClaudeSkillConfigEntryArgs {
-  skillRoot: ClaudeCodeSkillRoot;
-}
-
 function buildAdditionalWorkspaceWriteRootsParams(
   roots: readonly string[],
 ): AdditionalWorkspaceWriteRootsParams | undefined {
   return roots.length > 0
     ? { additionalWorkspaceWriteRoots: [...roots] }
     : undefined;
-}
-
-function buildClaudeSkillConfigEntry(
-  args: ClaudeSkillConfigEntryArgs,
-): ClaudeLocalPluginConfig {
-  return {
-    type: "local",
-    path: args.skillRoot.localPluginPath,
-  };
 }
 
 /**
@@ -81,8 +65,11 @@ function buildClaudeSkillConfigParams(
   }
 
   return {
-    plugins: skillRoots.map((skillRoot) =>
-      buildClaudeSkillConfigEntry({ skillRoot }),
+    plugins: skillRoots.map(
+      (skillRoot): ClaudeLocalPluginConfig => ({
+        type: "local",
+        path: skillRoot.localPluginPath,
+      }),
     ),
   };
 }
@@ -114,7 +101,6 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   instructions?: string | undefined;
   envVars?: Record<string, string> | undefined;
   claudeCodePermissionMode?: "plan" | undefined;
-  claudeCodeMockCliTraffic: ClaudeCodeMockCliTrafficConfig;
   workflowsEnabled: boolean;
   memoryEnabled?: boolean | undefined;
   providerSubagentsEnabled?: boolean | undefined;
@@ -164,7 +150,6 @@ function buildInternalSessionParams(
     threadId: args.threadId,
     cwd: args.cwd,
     instructionMode: args.instructionMode,
-    claudeCodeMockCliTraffic: args.options.claudeCodeMockCliTraffic,
     permissionMode: resolveClaudeSessionPermissionMode(args.options),
     approvedPlanPermissionMode: toClaudePermissionMode(permissionPolicy),
     permissionScope: permissionPolicy.permissionScope,
@@ -200,7 +185,6 @@ function buildInternalSessionParams(
 const claudeProviderOptionsSchema = z
   .object({
     claudeCodePermissionMode: z.literal("plan").optional(),
-    claudeCodeMockCliTraffic: claudeCodeMockCliTrafficConfigSchema.optional(),
     workflowsEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
     providerSubagentsEnabled: z.boolean().optional(),
@@ -218,7 +202,7 @@ const claudeProviderOptionsSchema = z
  * satisfied by the canonical wire options (`bridgeExecutionOptionsSchema`
  * output).
  */
-export type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
+type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   model?: string | undefined;
   reasoningLevel?: ReasoningLevel | undefined;
   instructions?: string | undefined;
@@ -226,7 +210,7 @@ export type ClaudeCanonicalExecutionOptions = RuntimePermissionPolicy & {
   providerOptions?: Record<string, unknown> | undefined;
 };
 
-export interface BuildClaudeSessionParamsArgs {
+interface BuildClaudeSessionParamsArgs {
   threadId: string;
   cwd: string;
   options: ClaudeCanonicalExecutionOptions;
@@ -269,9 +253,6 @@ export function buildClaudeSessionParams(
       ...args.options,
       skillRoots: args.skillRoots,
       claudeCodePermissionMode: providerOptions.claudeCodePermissionMode,
-      claudeCodeMockCliTraffic:
-        providerOptions.claudeCodeMockCliTraffic ??
-        DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
       workflowsEnabled: providerOptions.workflowsEnabled ?? false,
       memoryEnabled: providerOptions.memoryEnabled,
       providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
@@ -298,7 +279,7 @@ function stripClaudePlanCommandMentions(args: {
   });
 }
 
-export interface BuildClaudeTurnParamsArgs {
+interface BuildClaudeTurnParamsArgs {
   threadId: string;
   providerThreadId: string | null;
   expectedTurnId?: string | undefined;
@@ -336,5 +317,8 @@ export function buildClaudeTurnParams(
     memoryEnabled: providerOptions.memoryEnabled,
     providerSubagentsEnabled: providerOptions.providerSubagentsEnabled,
     permissionEscalation: args.options.permissionEscalation,
+    ...(providerOptions.claudeCodePermissionMode !== undefined
+      ? { claudeCodePermissionMode: providerOptions.claudeCodePermissionMode }
+      : {}),
   };
 }

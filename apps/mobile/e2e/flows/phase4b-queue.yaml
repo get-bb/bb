@@ -1,0 +1,78 @@
+# Phase 4b queue: open the idle thread named by THREAD_TITLE → send
+# "delay:30000 first" (the fake provider works for 30 s) → while the runtime
+# is active the composer offers Stop + Queue → type "second" and tap the
+# submit (queue) button → the message shows in the queued list under the
+# stack → Send now → it leaves the queue and is steered into the running
+# turn (the "second" user row appears in the timeline) → the turn finishes.
+# (The fake provider echoes only the turn's first message; a steer is
+# recorded as a user row but gets no "Response to:" of its own.)
+#
+# Create an idle thread titled "P4b queue" first (the seeded "Idle thread" gets
+# renamed by other flows), e.g. `POST /api/v1/threads` against the harness;
+# the flow's env block names the title (Maestro ignores `-e` overrides of keys
+# the flow defines):
+#   maestro test e2e/flows/phase4b-queue.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "P4b queue"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- scrollUntilVisible:
+    element: "${THREAD_TITLE}"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "${THREAD_TITLE}"
+- extendedWaitUntil:
+    visible:
+      id: "thread-composer-input"
+    timeout: 30000
+# The composer is a pill until focused; the pills render in the expanded card.
+- tapOn:
+    id: "thread-composer-input"
+- extendedWaitUntil:
+    visible:
+      id: "thread-execution-controls"
+    timeout: 30000
+- tapOn:
+    id: "thread-composer-input"
+- inputText: "delay:30000 first"
+- tapOn:
+    id: "thread-composer-submit"
+# Active: the stop button appears next to the (now "queue") submit.
+- extendedWaitUntil:
+    visible:
+      id: "thread-composer-stop"
+    timeout: 15000
+- inputText: "second"
+- takeScreenshot: phase4b-queue-active
+- tapOn:
+    id: "thread-composer-submit"
+# The queued list shows the message.
+- extendedWaitUntil:
+    visible:
+      id: "queued-messages-list"
+    timeout: 15000
+- assertVisible:
+    id: "queued-message-0"
+- assertVisible: "second"
+- takeScreenshot: phase4b-queue-queued
+# Send now: the message leaves the queue and the provider answers it.
+- tapOn:
+    id: "queued-message-send-now"
+    index: 0
+- extendedWaitUntil:
+    notVisible:
+      id: "queued-messages-list"
+    timeout: 30000
+# Delivered as a steer: the user row shows in the timeline.
+- extendedWaitUntil:
+    visible: "second"
+    timeout: 30000
+- takeScreenshot: phase4b-queue-delivered
+# The first turn finishes on its own.
+- extendedWaitUntil:
+    visible: "Response to: delay:30000 first"
+    timeout: 60000
+- takeScreenshot: phase4b-queue-done

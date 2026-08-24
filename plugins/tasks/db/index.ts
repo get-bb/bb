@@ -1,6 +1,6 @@
-export { initializeTasksSchema } from "./schema";
 export {
   createTasksStore,
+  escapeLike,
   TasksPageCursorError,
   type TasksStore,
 } from "./store";

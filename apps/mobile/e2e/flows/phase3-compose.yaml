@@ -1,0 +1,190 @@
+# Phase 3 compose: first run → add the harness server → deep link to
+# bb://compose (home opens its dock) → pick the seeded project → open the environment picker (screenshot)
+# → type a prompt → Create → lands on the thread placeholder with the title →
+# deep link to /projects/new → the machine picker lists the harness host and
+# the remote path browser lists that machine's folders.
+#
+# Requires Metro started with EXPO_PUBLIC_BB_E2E=1 (profiles/preferences are
+# wiped on launch) and the harness backend (seeds "Mobile E2E Project").
+# Optional: `-e REPO_PARENT_DIR=<dir>` (the folder that contains the harness
+# "test-project" checkout, printed by the backend as the parent of the
+# project source path) makes the browser step navigate there and assert the
+# repo folder is listed.
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+# Cold start: a warm reload keeps the previous deep link as the initial URL,
+# which would skip the first-run add-server screen.
+- runFlow: ../subflows/launch-app.yaml
+# First run: add the Direct server.
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+# Tapping static text dismisses the keyboard; Maestro's hideKeyboard swipe is
+# unreliable on this screen since the bb connect row lengthened it.
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+- extendedWaitUntil:
+    notVisible: "Connect to a bb server"
+    timeout: 30000
+# Compose via deep link: home opens its bottom dock (expanded: the top
+# pill row with the project picker is visible).
+- openLink: "bb://compose"
+# A fresh simulator confirms the first custom-scheme link.
+- runFlow:
+    when:
+      visible: "Open"
+    commands:
+      - tapOn: "Open"
+- extendedWaitUntil:
+    visible:
+      id: "home-compose-dock"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "compose-top-controls"
+    timeout: 15000
+# Project picker → the seeded project. Match the option by id as well as text:
+# the same project name is visible in the sidebar behind the sheet.
+- tapOn:
+    id: "project-picker"
+- extendedWaitUntil:
+    visible:
+      id: "project-picker-option-.*"
+      text: "(?i)mobile e2e project"
+    timeout: 15000
+- tapOn:
+    id: "project-picker-option-.*"
+    text: "(?i)mobile e2e project"
+- extendedWaitUntil:
+    visible:
+      id: "project-picker"
+      text: "(?i).*mobile e2e project.*"
+    timeout: 15000
+# Environment picker opens as a sheet listing the modes; screenshot it open.
+- extendedWaitUntil:
+    visible:
+      id: "environment-picker"
+    timeout: 10000
+- tapOn:
+    id: "environment-picker"
+- extendedWaitUntil:
+    visible:
+      id: "environment-picker-option-project-default"
+    timeout: 15000
+- assertVisible:
+    id: "environment-picker-option-local"
+- assertVisible:
+    id: "environment-picker-option-worktree"
+- takeScreenshot: phase3-compose-environment-picker
+- tapOn:
+    id: "environment-picker-option-project-default"
+# Model picker shows the fake provider's catalog once loaded.
+# The agent pill row scrolls horizontally; bring the model pill into view.
+- swipe:
+    from:
+      id: "compose-controls"
+    direction: LEFT
+- extendedWaitUntil:
+    visible:
+      id: "model-picker"
+    timeout: 10000
+- tapOn:
+    id: "model-picker"
+- extendedWaitUntil:
+    visible:
+      id: "model-picker-option-.*"
+    timeout: 30000
+- takeScreenshot: phase3-compose-model-picker
+- tapOn:
+    id: "model-picker-option-.*"
+# The model sheet stays open for reasoning/Fast edits; tap the backdrop.
+- tapOn:
+    point: "50%,20%"
+- extendedWaitUntil:
+    notVisible:
+      id: "model-picker-option-.*"
+    timeout: 10000
+# Prompt + create.
+- tapOn:
+    id: "compose-input"
+- inputText: "hello from mobile"
+- takeScreenshot: phase3-compose
+- tapOn:
+    id: "compose-submit"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-screen"
+    timeout: 30000
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-title"
+      text: "(?i).*hello from mobile.*"
+    timeout: 30000
+- takeScreenshot: phase3-compose-created-thread
+# New project: machine picker lists the harness host; path browser lists
+# that machine's folders.
+- openLink: "bb://projects/new"
+- runFlow:
+    when:
+      visible: "Open"
+    commands:
+      - tapOn: "Open"
+- extendedWaitUntil:
+    visible:
+      id: "new-project-screen"
+    timeout: 30000
+- tapOn:
+    id: "new-project-host"
+- extendedWaitUntil:
+    visible:
+      id: "new-project-host-picker-option-.*"
+    timeout: 15000
+- takeScreenshot: phase3-new-project-hosts
+- tapOn:
+    id: "new-project-host-picker-option-.*"
+- tapOn:
+    id: "new-project-path"
+- extendedWaitUntil:
+    visible:
+      id: "new-project-path-sheet-browser"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "new-project-path-sheet-browser-dir-.*"
+    timeout: 30000
+- runFlow:
+    when:
+      true: ${typeof REPO_PARENT_DIR !== "undefined" && REPO_PARENT_DIR !== ""}
+    commands:
+      # The sheet resizes as the listing lands; let it settle before tapping.
+      - waitForAnimationToEnd
+      - tapOn:
+          id: "new-project-path-sheet-browser-edit"
+      - extendedWaitUntil:
+          visible:
+            id: "new-project-path-sheet-browser-path-input"
+          timeout: 10000
+      - tapOn:
+          id: "new-project-path-sheet-browser-path-input"
+      # The editor opens pre-filled with the current folder.
+      - eraseText: 200
+      - inputText: "${REPO_PARENT_DIR}"
+      - tapOn:
+          id: "new-project-path-sheet-browser-path-go"
+      - extendedWaitUntil:
+          visible:
+            id: "new-project-path-sheet-browser-dir-test-project"
+          timeout: 30000
+- takeScreenshot: phase3-new-project-browser

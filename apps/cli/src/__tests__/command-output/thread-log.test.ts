@@ -237,6 +237,252 @@ describe("bb thread log command output", () => {
     expect(getEvents).not.toHaveBeenCalled();
   });
 
+  it("bb thread log --json caps at --limit and warns on stderr when more events exist", async () => {
+    // The server lists ascending by sequence, so a capped page is the OLDEST
+    // events. Without a warning a grep over the default page looks like a
+    // search over the whole thread (#1768).
+    const events = Array.from({ length: 4 }, (_, index) => ({
+      id: `evt-${index + 1}`,
+      scope: { kind: "thread" },
+      threadId: "thread-json-log",
+      type: "system/error",
+      data: { code: "provider_unavailable" },
+      createdAt: 20 + index,
+      seq: index + 1,
+    }));
+    const getEvents = vi.fn(async () => events);
+    stubServerApi({
+      "v1.threads.:id.events.$get": getEvents,
+    });
+
+    await runCommand(
+      ["thread", "log", "thread-json-log", "--json", "--limit", "3"],
+      register,
+    );
+
+    expect(getEvents).toHaveBeenCalledWith({
+      param: { id: "thread-json-log" },
+      query: { limit: "4" },
+    });
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(events.slice(0, 3));
+    const stderr = collectLogLines(vi.mocked(console.error)).join("\n");
+    expect(stderr).toContain("oldest 3 events");
+    expect(stderr).toContain("--after-seq 3");
+    expect(stderr).toContain("--all");
+  });
+
+  it("bb thread log --json stays quiet when the page is not full", async () => {
+    const events = [
+      {
+        id: "evt-1",
+        scope: { kind: "thread" },
+        threadId: "thread-json-log",
+        type: "system/error",
+        data: { code: "provider_unavailable" },
+        createdAt: 20,
+        seq: 1,
+      },
+    ];
+    stubServerApi({
+      "v1.threads.:id.events.$get": vi.fn(async () => events),
+    });
+
+    await runCommand(["thread", "log", "thread-json-log", "--json"], register);
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(events);
+    expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
+  });
+
+  it("bb thread log --json --all pages through every event with --after-seq", async () => {
+    const makeEvent = (seq: number) => ({
+      id: `evt-${seq}`,
+      scope: { kind: "thread" },
+      threadId: "thread-json-log",
+      type: "system/error",
+      data: { code: "provider_unavailable" },
+      createdAt: 20 + seq,
+      seq,
+    });
+    const getEvents = vi.fn(
+      async (input: { query: { afterSeq?: string; limit?: string } }) => {
+        const afterSeq = Number(input.query.afterSeq ?? 0);
+        const limit = Number(input.query.limit);
+        return Array.from({ length: 1203 }, (_, index) => makeEvent(index + 1))
+          .filter((event) => event.seq > afterSeq)
+          .slice(0, limit);
+      },
+    );
+    stubServerApi({
+      "v1.threads.:id.events.$get": getEvents,
+    });
+
+    await runCommand(
+      ["thread", "log", "thread-json-log", "--json", "--all"],
+      register,
+    );
+
+    const printed = JSON.parse(
+      String(vi.mocked(console.log).mock.calls[0]?.[0]),
+    ) as Array<{ seq: number }>;
+    expect(printed).toHaveLength(1203);
+    expect(printed[0]?.seq).toBe(1);
+    expect(printed[1202]?.seq).toBe(1203);
+    expect(getEvents.mock.calls.map((call) => call[0].query.afterSeq)).toEqual([
+      undefined,
+      "1000",
+    ]);
+    expect(collectLogLines(vi.mocked(console.error))).toEqual([]);
+  });
+
+  it("bb thread log prints an older-history notice when the timeline page is cut", async () => {
+    const getTimeline = vi.fn(async () => ({
+      ...fixtures.makeTimelineResponse([
+        fixtures.makePendingSteerTimelineRow(),
+      ]),
+      timelinePage: {
+        kind: "latest" as const,
+        segmentLimit: 20,
+        returnedSegmentCount: 20,
+        hasOlderRows: true,
+        olderCursor: { anchorSeq: 12, anchorId: "pending-steer-1" },
+      },
+    }));
+    stubServerApi({
+      "v1.threads.:id.timeline.$get": getTimeline,
+    });
+
+    await runCommand(["thread", "log", "thread-log"], register);
+
+    const output = String(vi.mocked(console.log).mock.calls[0]?.[0]);
+    expect(output).toContain("Please switch to the safer plan");
+    expect(output).toContain("newest 20 user-message turns");
+    expect(output).toContain("older history omitted");
+    expect(output).toContain("--all");
+  });
+
+  it("bb thread log --limit sets the timeline segment limit for human output", async () => {
+    const getTimeline = vi.fn(async () =>
+      fixtures.makeTimelineResponse([fixtures.makePendingSteerTimelineRow()]),
+    );
+    stubServerApi({
+      "v1.threads.:id.timeline.$get": getTimeline,
+    });
+
+    await runCommand(
+      ["thread", "log", "thread-log", "--format", "verbose", "--limit", "50"],
+      register,
+    );
+
+    expect(getTimeline).toHaveBeenCalledWith({
+      param: { id: "thread-log" },
+      query: { includeNestedRows: "true", segmentLimit: "50" },
+    });
+    const output = String(vi.mocked(console.log).mock.calls[0]?.[0]);
+    expect(output).toContain("Please switch to the safer plan");
+    expect(output).not.toContain("older history omitted");
+  });
+
+  it("bb thread log --all walks older timeline pages and prints them oldest first", async () => {
+    const makeUserRow = (id: string, seq: number, text: string) => ({
+      ...fixtures.makePendingSteerTimelineRow(),
+      ...fixtures.makeTimelineBase({ id, sourceSeqStart: seq }),
+      text,
+      turnRequest: {
+        isGrouped: false,
+        kind: "message" as const,
+        status: "accepted" as const,
+      },
+    });
+    const getTimeline = vi.fn(
+      async (input: {
+        query: { beforeAnchorSeq?: string; beforeAnchorId?: string };
+      }) => {
+        if (input.query.beforeAnchorSeq === undefined) {
+          return {
+            ...fixtures.makeTimelineResponse([
+              makeUserRow("user-3", 30, "third prompt"),
+            ]),
+            timelinePage: {
+              kind: "latest" as const,
+              segmentLimit: 100,
+              returnedSegmentCount: 1,
+              hasOlderRows: true,
+              olderCursor: { anchorSeq: 30, anchorId: "user-3" },
+            },
+          };
+        }
+        if (input.query.beforeAnchorSeq === "30") {
+          return {
+            ...fixtures.makeTimelineResponse([
+              makeUserRow("user-2", 20, "second prompt"),
+            ]),
+            timelinePage: {
+              kind: "older" as const,
+              segmentLimit: 100,
+              returnedSegmentCount: 1,
+              hasOlderRows: true,
+              olderCursor: { anchorSeq: 20, anchorId: "user-2" },
+            },
+          };
+        }
+        return {
+          ...fixtures.makeTimelineResponse([
+            makeUserRow("user-1", 10, "first prompt"),
+          ]),
+          timelinePage: {
+            kind: "older" as const,
+            segmentLimit: 100,
+            returnedSegmentCount: 1,
+            hasOlderRows: false,
+            olderCursor: null,
+          },
+        };
+      },
+    );
+    stubServerApi({
+      "v1.threads.:id.timeline.$get": getTimeline,
+    });
+
+    await runCommand(["thread", "log", "thread-log", "--all"], register);
+
+    expect(getTimeline.mock.calls.map((call) => call[0].query)).toEqual([
+      { segmentLimit: "100" },
+      { segmentLimit: "100", beforeAnchorSeq: "30", beforeAnchorId: "user-3" },
+      { segmentLimit: "100", beforeAnchorSeq: "20", beforeAnchorId: "user-2" },
+    ]);
+    const output = String(vi.mocked(console.log).mock.calls[0]?.[0]);
+    expect(output.indexOf("first prompt")).toBeGreaterThan(-1);
+    expect(output.indexOf("first prompt")).toBeLessThan(
+      output.indexOf("second prompt"),
+    );
+    expect(output.indexOf("second prompt")).toBeLessThan(
+      output.indexOf("third prompt"),
+    );
+    expect(output).not.toContain("older history omitted");
+  });
+
+  it("bb thread log rejects --all combined with --limit", async () => {
+    stubServerApi({
+      "v1.threads.:id.timeline.$get": vi.fn(async () =>
+        fixtures.makeTimelineResponse([]),
+      ),
+    });
+
+    await expect(
+      runCommand(
+        ["thread", "log", "thread-log", "--all", "--limit", "5"],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
+      "--all cannot be combined with --limit",
+    );
+  });
+
   it("bb thread log --self resolves from BB_THREAD_ID", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-log-self");
     const getEvents = vi.fn(async () => []);

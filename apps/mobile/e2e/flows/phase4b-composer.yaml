@@ -1,0 +1,93 @@
+# Phase 4b shared composer: the dev showcase (/dev/composer, Settings →
+# Developer) against the harness backend. Types an `@` query → the typeahead
+# opens above the input listing the seeded threads; picking one inserts a
+# pill and the serialized PromptInput carries `@thread:<id>`; backspace at the
+# pill end removes it whole; `/` lists provider commands; the "+" menu opens
+# with the attachment + prompt actions; then the compose screen creates a
+# thread through the composer.
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "settings-dev-composer"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "settings-dev-composer"
+- extendedWaitUntil:
+    visible:
+      id: "dev-composer-screen"
+    timeout: 30000
+# Mention typeahead: "@Rich" → the seeded "Rich thread" row; pick it → pill.
+- tapOn:
+    id: "dev-composer-input"
+- inputText: "ask @Rich"
+- extendedWaitUntil:
+    visible:
+      id: "dev-composer-typeahead"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "dev-composer-typeahead-row-0"
+    timeout: 15000
+- assertVisible: "Rich thread"
+- takeScreenshot: phase4b-composer-typeahead
+- tapOn:
+    id: "dev-composer-typeahead-row-0"
+- assertNotVisible:
+    id: "dev-composer-typeahead"
+- assertVisible: "(?s).*@thread:thr_.*"
+- takeScreenshot: phase4b-composer-pill
+# Backspace at the pill end removes the whole mention (the serialized input
+# loses the mention range).
+- inputText: " again"
+# 7 backspaces land at the pill end; the 8th deletes the whole pill.
+- eraseText: 7
+- assertVisible: "(?s).*@thread:thr_.*"
+- eraseText: 1
+- assertNotVisible: "(?s).*@thread:thr_.*"
+- assertVisible: '(?s).*"text": "ask".*'
+# Slash commands open the command menu (the harness provider is codex with a
+# skills trigger, so the discovered skills list).
+- eraseText: 20
+- inputText: "/"
+- extendedWaitUntil:
+    visible:
+      id: "dev-composer-typeahead-row-0"
+    timeout: 20000
+- assertVisible: "Skills"
+- takeScreenshot: phase4b-composer-commands
+- tapOn:
+    id: "dev-composer-typeahead-row-0"
+- assertVisible: '(?s).*"kind": "command".*'
+- eraseText: 30
+# "+" menu: attachment + prompt actions.
+- tapOn:
+    id: "dev-composer-actions"
+- assertVisible: "Photo library"
+- assertVisible: "Attach file"
+- takeScreenshot: phase4b-composer-actions
+- tapOn: "Cancel"
+# Submit in the ready mode reports the kind.
+- tapOn:
+    id: "dev-composer-input"
+- eraseText: 20
+- inputText: "hello"
+- tapOn:
+    id: "dev-composer-submit"
+- extendedWaitUntil:
+    visible:
+      id: "dev-composer-last-submit"
+    timeout: 5000
+- assertVisible: "(?s).*submitted: send.*"

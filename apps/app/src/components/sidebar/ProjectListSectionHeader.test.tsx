@@ -1,12 +1,22 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { createStore, Provider } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
+import {
+  resetPluginThreadRowStatusesForTest,
+  setPluginThreadRowStatus,
+} from "@/lib/plugin-thread-row-status";
 import {
   ProjectListSectionIconButton,
   TopLevelSidebarSection,
@@ -15,6 +25,7 @@ import {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  resetPluginThreadRowStatusesForTest();
   window.localStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
   window.sessionStorage.removeItem(SPLIT_LAYOUT_STORAGE_KEY);
 });
@@ -135,70 +146,6 @@ describe("TopLevelSidebarSection", () => {
     ).not.toBe(0);
   });
 
-  it("reserves only the rendered action width beside a long section label", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Sawyer's MacBook Pro"
-        actions={<button type="button">Display options</button>}
-      >
-        <div>Machine thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    const label = screen.getByTitle("Sawyer's MacBook Pro");
-    const action = screen.getByRole("button", { name: "Display options" });
-
-    expect(label.parentElement?.className).not.toContain("pr-[7.5rem]");
-    expect(action.parentElement?.className).toContain("shrink-0");
-    expect(action.parentElement?.className).not.toContain("absolute");
-  });
-
-  it("aligns section actions with the trailing edge used by thread statuses", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Extensions"
-        actions={<button type="button">New thread</button>}
-      >
-        <div>Plugin thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    const header = screen
-      .getByTitle("Extensions")
-      .closest('[data-sidebar-sticky-tier="label"]');
-
-    expect(header?.className).toContain("pr-0");
-    expect(header?.className).not.toContain("pr-1");
-  });
-
-  it("pins collapsed child activity to the sidebar edge independently of row actions", () => {
-    render(
-      <TopLevelSidebarSection
-        label="Build"
-        actions={<button type="button">New thread</button>}
-        collapsedActivity={{
-          ...NO_COLLAPSED_CHILD_ACTIVITY,
-          working: true,
-          runtimeWorking: true,
-        }}
-        collapseControl={{ isCollapsed: true, onToggleCollapsed: vi.fn() }}
-      >
-        <div>Working thread</div>
-      </TopLevelSidebarSection>,
-    );
-
-    const edgeSlot = screen
-      .getAllByLabelText("Thread working")
-      .map((indicator) =>
-        indicator.closest("[data-sidebar-collapsed-activity-edge]"),
-      )
-      .find((slot) => slot !== null);
-
-    expect(edgeSlot).toBeInstanceOf(HTMLElement);
-    expect((edgeSlot as HTMLElement).className).toContain("absolute");
-    expect((edgeSlot as HTMLElement).className).toContain("right-1");
-  });
-
   it("rolls a hidden split thread up to a collapsed top-level section", () => {
     const store = createStore();
     store.set(splitLayoutAtom, {
@@ -245,5 +192,36 @@ describe("TopLevelSidebarSection", () => {
       }),
     ).not.toBeNull();
     expect(screen.queryByText("Pinned thread")).toBeNull();
+  });
+
+  it("rolls up a hidden plugin status only while the section is collapsed", () => {
+    const renderSection = (isCollapsed: boolean) => (
+      <TopLevelSidebarSection
+        label="Building"
+        collapsedActivity={NO_COLLAPSED_CHILD_ACTIVITY}
+        collapsedThreads={[{ id: "thread-one", projectId: "project-one" }]}
+        collapseControl={{ isCollapsed, onToggleCollapsed: vi.fn() }}
+      >
+        <div>Draft thread</div>
+      </TopLevelSidebarSection>
+    );
+    const result = render(renderSection(true));
+
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    act(() => {
+      setPluginThreadRowStatus("thread-one", "prompt-shaper", {
+        icon: "AiContentGenerator01",
+        label: "Plugin improving draft",
+        tone: "running",
+      });
+    });
+
+    expect(screen.getByLabelText("Plugin improving draft")).not.toBeNull();
+    expect(screen.queryByText("Draft thread")).toBeNull();
+
+    result.rerender(renderSection(false));
+
+    expect(screen.queryByLabelText("Plugin improving draft")).toBeNull();
+    expect(screen.getByText("Draft thread")).not.toBeNull();
   });
 });

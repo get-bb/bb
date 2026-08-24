@@ -1,22 +1,17 @@
 import {
+  clipboard,
   Menu,
   type ContextMenuParams,
   type Event,
   type MenuItemConstructorOptions,
   type Session,
 } from "electron";
-import {
-  buildBbDesktopSpellcheckLookupScript,
-  parseBbDesktopSpellcheckCorrectionContext,
-} from "./desktop-spellcheck-contract.js";
 
 export interface DesktopContextMenuWebContents {
   on(
     eventName: "context-menu",
     listener: (event: Event, params: ContextMenuParams) => void,
   ): void;
-  executeJavaScript(script: string): Promise<unknown>;
-  insertText(text: string): Promise<void> | void;
   replaceMisspelling(text: string): void;
   session: Pick<
     Session,
@@ -24,22 +19,20 @@ export interface DesktopContextMenuWebContents {
   >;
 }
 
-export interface DesktopContextMenuSpellcheckContext {
+interface DesktopContextMenuSpellcheckContext {
   dictionarySuggestions: string[];
   misspelledWord: string;
-  replacementMode: "electron-misspelling" | "selected-text";
 }
 
-export interface BuildDesktopContextMenuTemplateArgs {
+interface BuildDesktopContextMenuTemplateArgs {
   params: ContextMenuParams;
-  spellcheckContext?: DesktopContextMenuSpellcheckContext | null;
   webContents: Pick<
     DesktopContextMenuWebContents,
-    "executeJavaScript" | "insertText" | "replaceMisspelling" | "session"
+    "replaceMisspelling" | "session"
   >;
 }
 
-export interface RegisterDesktopContextMenuArgs {
+interface RegisterDesktopContextMenuArgs {
   webContents: DesktopContextMenuWebContents;
 }
 
@@ -65,83 +58,29 @@ function trimTrailingSeparator(
 function getSpellcheckContextFromParams(
   params: ContextMenuParams,
 ): DesktopContextMenuSpellcheckContext | null {
-  if (
-    !params.isEditable ||
-    !params.spellcheckEnabled ||
-    params.misspelledWord.length === 0
-  ) {
+  if (!params.isEditable || params.misspelledWord.length === 0) {
     return null;
   }
   return {
     dictionarySuggestions: params.dictionarySuggestions,
     misspelledWord: params.misspelledWord,
-    replacementMode: "electron-misspelling",
   };
-}
-
-function selectedSpellcheckWord(params: ContextMenuParams): string | null {
-  const word = params.selectionText.trim();
-  if (word.length === 0 || word.length > 80 || /\s/u.test(word)) {
-    return null;
-  }
-  return word;
-}
-
-export async function resolveDesktopSpellcheckFallback({
-  params,
-  webContents,
-}: BuildDesktopContextMenuTemplateArgs): Promise<DesktopContextMenuSpellcheckContext | null> {
-  if (
-    getSpellcheckContextFromParams(params) !== null ||
-    !params.isEditable ||
-    !params.spellcheckEnabled
-  ) {
-    return null;
-  }
-  const word = selectedSpellcheckWord(params);
-  if (word === null) {
-    return null;
-  }
-  try {
-    const context = parseBbDesktopSpellcheckCorrectionContext(
-      await webContents.executeJavaScript(
-        buildBbDesktopSpellcheckLookupScript(word),
-      ),
-    );
-    return context === null
-      ? null
-      : {
-          ...context,
-          replacementMode: "selected-text",
-        };
-  } catch {
-    return null;
-  }
 }
 
 export function buildDesktopContextMenuTemplate({
   params,
-  spellcheckContext,
   webContents,
 }: BuildDesktopContextMenuTemplateArgs): MenuItemConstructorOptions[] {
   const template: MenuItemConstructorOptions[] = [];
-  const resolvedSpellcheckContext =
-    getSpellcheckContextFromParams(params) ?? spellcheckContext ?? null;
+  const spellcheckContext = getSpellcheckContextFromParams(params);
 
-  if (resolvedSpellcheckContext !== null) {
-    if (resolvedSpellcheckContext.dictionarySuggestions.length > 0) {
-      for (const suggestion of resolvedSpellcheckContext.dictionarySuggestions) {
+  if (spellcheckContext !== null) {
+    if (spellcheckContext.dictionarySuggestions.length > 0) {
+      for (const suggestion of spellcheckContext.dictionarySuggestions) {
         template.push({
           label: suggestion,
           click: () => {
-            if (
-              resolvedSpellcheckContext.replacementMode ===
-              "electron-misspelling"
-            ) {
-              webContents.replaceMisspelling(suggestion);
-              return;
-            }
-            void webContents.insertText(suggestion);
+            webContents.replaceMisspelling(suggestion);
           },
         });
       }
@@ -152,11 +91,21 @@ export function buildDesktopContextMenuTemplate({
       });
     }
     template.push({
-      label: `Add "${resolvedSpellcheckContext.misspelledWord}" to Dictionary`,
+      label: `Add "${spellcheckContext.misspelledWord}" to Dictionary`,
       click: () => {
         webContents.session.addWordToSpellCheckerDictionary(
-          resolvedSpellcheckContext.misspelledWord,
+          spellcheckContext.misspelledWord,
         );
+      },
+    });
+    pushSeparatorIfNeeded(template);
+  }
+
+  if (params.linkURL.length > 0) {
+    template.push({
+      label: "Copy Link",
+      click: () => {
+        clipboard.writeText(params.linkURL);
       },
     });
     pushSeparatorIfNeeded(template);
@@ -182,26 +131,20 @@ export function buildDesktopContextMenuTemplate({
     template.push({ role: "copy", enabled: true });
   }
   if (params.editFlags.canSelectAll) {
-    pushSeparatorIfNeeded(template);
     template.push({ role: "selectAll", enabled: true });
   }
 
   return trimTrailingSeparator(template);
 }
 
-async function showDesktopContextMenu({
+function showDesktopContextMenu({
   params,
   webContents,
 }: RegisterDesktopContextMenuArgs & {
   params: ContextMenuParams;
-}): Promise<void> {
-  const spellcheckContext = await resolveDesktopSpellcheckFallback({
-    params,
-    webContents,
-  });
+}): void {
   const template = buildDesktopContextMenuTemplate({
     params,
-    spellcheckContext,
     webContents,
   });
   if (template.length === 0) {
@@ -215,6 +158,6 @@ export function registerDesktopContextMenu({
 }: RegisterDesktopContextMenuArgs): void {
   webContents.session.setSpellCheckerEnabled(true);
   webContents.on("context-menu", (_event, params) => {
-    void showDesktopContextMenu({ params, webContents });
+    showDesktopContextMenu({ params, webContents });
   });
 }

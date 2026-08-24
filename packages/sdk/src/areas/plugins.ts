@@ -1,5 +1,6 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
+  installedPluginSchema,
   pluginCatalogInstallPlanResponseSchema,
   pluginCatalogInstallRequestSchema,
   pluginCatalogSearchResponseSchema,
@@ -13,10 +14,7 @@ import {
   pluginMarketplaceRemoveResponseSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
-  pluginInstallResponseSchema,
   pluginInstallSourceRequestSchema,
-  pluginListResponseSchema,
-  pluginReloadResponseSchema,
   pluginRemoveResponseSchema,
   pluginSettingsResponseSchema,
   pluginSettingsUpdateRequestSchema,
@@ -44,6 +42,43 @@ import {
 } from "@bb/server-contract";
 import { z } from "zod";
 import type { CreateSdkAreaArgs } from "./common.js";
+
+/**
+ * A server older than `providerIds` (bb-app < 0.39) or `icons` answers with
+ * the installed-plugin shape minus those fields. The contract keeps them
+ * required — the server fills them once at its boundary — so the tolerance
+ * lives here, on the response side only: the SDK never sends this shape,
+ * and a default on the contract would leak into request bodies.
+ */
+const installedPluginResponseSchema = installedPluginSchema.extend({
+  providerIds: z.array(z.string()).default([]),
+  icons: z.record(z.string(), z.string()).default({}),
+});
+const pluginListResponseSchema = z.object({
+  plugins: z.array(installedPluginResponseSchema),
+});
+const pluginInstallResponseSchema = z.object({
+  ok: z.literal(true),
+  plugin: installedPluginResponseSchema,
+});
+const pluginReloadResponseSchema = z.object({
+  ok: z.literal(true),
+  plugins: z.array(installedPluginResponseSchema),
+});
+
+/**
+ * The plugin mutation routes' answer as a CLI reads it: `ok` either way, an
+ * `error` on failure, the affected plugin(s) on success — with the same
+ * response-side tolerance for `providerIds`. The CLI parses through this
+ * instead of re-declaring the contract shape beside it.
+ */
+export const pluginMutationResponseSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  plugin: installedPluginResponseSchema.optional(),
+  plugins: z.array(installedPluginResponseSchema).optional(),
+});
+export type PluginMutationResponse = z.infer<typeof pluginMutationResponseSchema>;
 
 export interface PluginIdArgs {
   pluginId: string;
@@ -235,12 +270,20 @@ export interface PluginsArea {
   ): Promise<PluginUpdateSettingsResult>;
 }
 
-function pluginSourceSelection(args: PluginInstallArgs): PluginSourceSelection {
+/**
+ * Returns the explicit selection a caller asked for, or `undefined` for a
+ * plain root install. The server fills the root default itself, and older
+ * servers validate the install body with a strict `{ source }`-only schema,
+ * so the SDK must not send a `selection` key the caller did not ask for.
+ */
+function pluginSourceSelection(
+  args: PluginInstallArgs,
+): PluginSourceSelection | undefined {
   if (args.subdirectory !== undefined) {
     return { kind: "subdirectory", path: args.subdirectory };
   }
   if (args.plugin !== undefined) return { kind: "entry", name: args.plugin };
-  return { kind: "root" };
+  return undefined;
 }
 
 function pluginPath(pluginId: string, suffix = ""): string {
@@ -424,10 +467,14 @@ export function createPluginsArea(args: CreateSdkAreaArgs): PluginsArea {
           "plugin install accepts subdirectory or plugin, not both",
         );
       }
-      const body = pluginInstallSourceRequestSchema.parse({
-        source: input.source,
-        selection: pluginSourceSelection(input),
-      });
+      const selection = pluginSourceSelection(input);
+      // Send only the keys the caller set. `.parse` validates the body but
+      // its output would fill in the root default the server owns.
+      const body =
+        selection === undefined
+          ? { source: input.source }
+          : { source: input.source, selection };
+      pluginInstallSourceRequestSchema.parse(body);
       const response = await requestParsed(
         "/api/v1/plugins/install",
         pluginInstallResponseSchema,

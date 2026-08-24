@@ -88,7 +88,7 @@ registerStatusCommand(program, getUrl, getContext);
 registerSettingsCommands(program, getUrl);
 registerProjectCommands(program, getUrl);
 registerProviderCommands(program, getUrl);
-registerManagerCommands(program, getUrl);
+registerManagerCommands(program);
 registerMachineCommands(program, getUrl);
 registerUpdatesCommands(program, getUrl);
 registerTerminalCommands(program, getUrl);

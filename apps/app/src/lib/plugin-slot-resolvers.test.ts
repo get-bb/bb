@@ -4,7 +4,6 @@ import type {
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
   PluginPendingInteractionSlot,
-  PluginThreadListSlot,
 } from "./plugin-slots";
 import {
   BUILT_IN_FILE_OPENER_PREFERENCE,
@@ -15,11 +14,9 @@ import {
   resolveComposerEditorEffects,
   resolveComposerPlusMenuItems,
   resolveFileOpenerReplacement,
-  resolveMessageDirective,
   resolveMessageDirectiveRegistry,
   resolvePendingInteraction,
   resolveReplacement,
-  resolveThreadListReplacement,
 } from "./plugin-slot-resolvers";
 
 function Component() {
@@ -130,15 +127,6 @@ describe("keyed renderer resolvers", () => {
     const beta = { ...alpha, pluginId: "alpha" };
     const chart = { ...alpha, id: "chart" };
 
-    expect(resolveMessageDirective([alpha, chart], "chart")).toEqual({
-      status: "ok",
-      slot: chart,
-    });
-    expect(resolveMessageDirective([alpha, beta], "card")).toEqual({
-      status: "collision",
-      pluginIds: ["alpha", "zeta"],
-    });
-    expect(resolveMessageDirective([], "card")).toBeNull();
     expect(
       resolveMessageDirectiveRegistry([alpha, beta, chart]).get("card"),
     ).toEqual({ status: "collision", pluginIds: ["alpha", "zeta"] });
@@ -162,22 +150,6 @@ describe("replacement resolvers", () => {
       ),
     ).toEqual({ kind: "plugin", registration: gamma });
     expect(resolveReplacement([], () => true)).toEqual({ kind: "owner" });
-  });
-
-  it("automatically activates the first thread-list replacement", () => {
-    const threadList: PluginThreadListSlot = {
-      pluginId: "inbox",
-      generation: 1,
-      id: "threads",
-      title: "Inbox",
-      component: Component,
-    };
-
-    expect(resolveThreadListReplacement([threadList])).toEqual({
-      kind: "plugin",
-      registration: threadList,
-    });
-    expect(resolveThreadListReplacement([])).toEqual({ kind: "owner" });
   });
 
   it("activates the first matching file opener and preserves per-open overrides", () => {

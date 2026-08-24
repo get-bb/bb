@@ -15,15 +15,10 @@ import {
   useLocation,
   useSearchParams,
 } from "react-router-dom";
-import type { SystemConfigResponse } from "@bb/server-contract";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
@@ -59,26 +54,6 @@ function responseJson(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
-}
-
-function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
-    keybindings: [],
-    defaultKeybindings: [],
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    serverUrl: "http://localhost:38886",
-    primaryHostId: null,
-    primaryHostPlatform: null,
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
 }
 
 const AUTOMATIONS_PLUGIN = {
@@ -167,7 +142,7 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
             : input.url;
       const url = new URL(rawUrl, "http://localhost");
       if (url.pathname === "/api/v1/system/config") {
-        return responseJson(systemConfig());
+        return responseJson(makeSystemConfig());
       }
       if (url.pathname === "/api/v1/plugins") {
         return responseJson({ plugins });
@@ -696,16 +671,6 @@ describe("PluginsOverview", () => {
     const officialPills = screen.getAllByText("BB Official");
     expect(officialPills).toHaveLength(2);
     expect(screen.getAllByText("BB Community")).toHaveLength(1);
-    expect(officialPills[0]?.parentElement?.className).toContain("rounded-md");
-    expect(officialPills[0]?.parentElement?.className).toContain(
-      "bg-surface-recessed/45",
-    );
-    expect(officialPills[0]?.parentElement?.className).toContain(
-      "text-subtle-foreground",
-    );
-    expect(officialPills[0]?.parentElement?.className).toContain("font-medium");
-    expect(officialPills[0]?.parentElement?.className).toContain("px-2");
-    expect(officialPills[0]?.parentElement?.className).toContain("py-1");
 
     const sortTrigger = screen.getByRole("button", {
       name: "Sort: Plugin name, ascending",

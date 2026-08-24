@@ -1,7 +1,11 @@
-/* bb landing — editorial light, themed to match the bb app.
+/* bb landing — editorial, themed to match the bb app in both schemes.
    Tokens mirror apps/app/src/components/ui/theme.css: a neutral zero-chroma
    ink-over-canvas ramp, inverted-neutral primary button, and the app's own
    chromatic tokens (file-accent, success, diff-added/removed, warning-text).
+   Dark mode swaps the two anchors (--bg/--ink) plus the chromatic tokens in
+   the `.dark` block below — every surface, border, and state fill derives
+   from the anchors, so the ramp re-derives coherently. The `.dark` class is
+   set pre-paint by THEME_INIT in __root.tsx (bb.theme / system preference).
    All color-mix() interpolation is done `in oklab` (rectangular), never
    `in oklch` (polar) — mixing a chromatic accent toward white in oklch
    interpolates the hue through pink; oklab keeps the hue put. */
@@ -23,10 +27,21 @@
 }
 
 :root {
+  color-scheme: light;
   --bg: oklch(1 0 0);
   --ink: oklch(0.3211 0 0);
   --dim: oklch(0.44 0 0);
   --subtle: oklch(0.5 0 0);
+  /* Display type sits a step darker than the body ink (and a step lighter in
+     dark) so headings lead without a weight change; --ink-strong is the same
+     idea for emphasized body copy inside the app mocks. */
+  --heading: oklch(0.21 0 0);
+  --heading-sub: oklch(0.24 0 0);
+  --ink-strong: oklch(0.28 0 0);
+  /* Base color for drop shadows and scrims. Tracks the ink in light mode; the
+     dark block pins it to black — a light-ink shadow on a dark canvas would
+     read as a glow, not depth. */
+  --shade: var(--ink);
   --border: color-mix(in oklab, var(--ink) 14%, var(--bg));
   --border-soft: color-mix(in oklab, var(--ink) 8%, var(--bg));
   --surface: color-mix(in oklab, var(--ink) 3.5%, var(--bg));
@@ -48,6 +63,36 @@
     "Inter Variable", "Inter Fallback", Inter, -apple-system,
     BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-mono: "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* Dark theme: the two anchors flip (canvas and ink values match the app's
+   dark theme) and every derived mix re-resolves. Mix percentages step up like
+   the app's dark ramp — the same 8–14% that reads on white is near-invisible
+   on the dark canvas. Chromatic tokens are the app's dark values.
+   The achromatic text steps stay explicit rather than mixes of the anchors,
+   matching :root above: --heading, --heading-sub and --ink-strong are lighter
+   than --ink, so no ink-to-canvas mix can express them. */
+.dark {
+  color-scheme: dark;
+  --bg: oklch(0.195 0 0);
+  --ink: oklch(0.81 0 0);
+  --dim: oklch(0.75 0 0);
+  --subtle: oklch(0.68 0 0);
+  --heading: oklch(0.93 0 0);
+  --heading-sub: oklch(0.88 0 0);
+  --ink-strong: oklch(0.85 0 0);
+  --shade: oklch(0 0 0);
+  --border: color-mix(in oklab, var(--ink) 19.4%, var(--bg));
+  --border-soft: color-mix(in oklab, var(--ink) 11%, var(--bg));
+  --surface: color-mix(in oklab, var(--ink) 4.3%, var(--bg));
+  --surface-recessed: color-mix(in oklab, var(--ink) 8%, var(--bg));
+  --state-hover: color-mix(in oklab, var(--ink) 9%, var(--bg));
+  --accent: oklch(0.72 0.09 250); /* --timeline-accent (dark) */
+  --ok: oklch(0.74 0.15 155); /* --success (dark) */
+  --add: oklch(0.77 0.17 163); /* --diff-added (dark) */
+  --del: oklch(0.72 0.19 22); /* --diff-removed (dark) */
+  --spark: oklch(0.75 0.16 50); /* --warning-text (dark) */
+  --ph: oklch(0.66 0.14 32);
 }
 
 * {
@@ -96,6 +141,12 @@ code,
 /* ── Nav ────────────────────────────────────────────────────────── */
 
 .nav {
+  /* The filled entrance animation leaves the nav a stacking context, so its
+     theme menu's z-index only counts inside it; lift the nav above the hero
+     (whose animated children are z=0 contexts later in the DOM) so the open
+     menu paints over the announcement pill instead of under it. */
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -115,8 +166,26 @@ code,
   }
 }
 
-.logo img {
+/* The bb mark ships as two files: the light one is the app-icon tile (white,
+   baked into the PNG) which would glare on the dark canvas, the dark one is
+   the brand's white glyph on transparent, matching the dark favicons. Naming
+   them from two declarations means the browser only fetches the one the
+   winning rule needs — a pair of <img> toggled with display:none downloads
+   both, on every page, for one visible mark. */
+.bb-mark {
   display: block;
+  flex-shrink: 0;
+  background-image: url("../assets/bb-icon.png");
+  background-size: 100% 100%;
+}
+
+.dark .bb-mark {
+  background-image: url("../assets/bb-icon-dark.png");
+}
+
+.logo-mark {
+  width: 36px;
+  height: 36px;
 }
 
 .nav-links {
@@ -137,6 +206,131 @@ code,
 .nav-links .nav-current {
   color: var(--ink);
   font-weight: 500;
+}
+
+/* Theme control: the button shows the *preference* (sun / moon / monitor for
+   light / dark / system). All three glyphs are always in the DOM — SSR can't
+   know the preference, so this keeps hydration deterministic — and
+   html[data-theme-preference], stamped pre-paint by THEME_INIT, picks one;
+   no attribute (no JS) means the default, system. The button opens a
+   Light / Dark / System menu anchored to its right edge. */
+.theme-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: var(--state-hover);
+  color: var(--ink);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.theme-toggle svg {
+  width: 17px;
+  height: 17px;
+}
+
+.theme-toggle .theme-ic-sun,
+.theme-toggle .theme-ic-moon {
+  display: none;
+}
+
+html[data-theme-preference="light"] .theme-toggle .theme-ic-sun,
+html[data-theme-preference="dark"] .theme-toggle .theme-ic-moon {
+  display: block;
+}
+
+html[data-theme-preference="light"] .theme-toggle .theme-ic-system,
+html[data-theme-preference="dark"] .theme-toggle .theme-ic-system {
+  display: none;
+}
+
+.theme-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent),
+    0 12px 32px -12px color-mix(in oklab, var(--shade) 40%, transparent);
+  animation: theme-menu-in 0.12s ease-out;
+}
+
+@keyframes theme-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.theme-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-menu-item:hover {
+  background: var(--state-hover);
+}
+
+.theme-menu-item:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+
+.theme-menu-item[aria-checked="true"] {
+  font-weight: 500;
+}
+
+.theme-menu-ic {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--dim);
+}
+
+.theme-menu-check {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--ink);
 }
 
 /* ── Buttons ────────────────────────────────────────────────────── */
@@ -170,7 +364,7 @@ code,
 
 .btn-primary:hover {
   background: color-mix(in oklab, var(--ink) 90%, var(--bg));
-  box-shadow: 0 4px 14px color-mix(in oklab, var(--ink) 18%, transparent);
+  box-shadow: 0 4px 14px color-mix(in oklab, var(--shade) 18%, transparent);
 }
 
 .btn-ghost {
@@ -281,7 +475,7 @@ code,
   pointer-events: none;
   opacity: 0;
   transform: translateX(-50%) translateY(4px);
-  box-shadow: 0 8px 22px -8px color-mix(in oklab, var(--ink) 50%, transparent);
+  box-shadow: 0 8px 22px -8px color-mix(in oklab, var(--shade) 50%, transparent);
   transition:
     opacity 0.18s ease,
     transform 0.18s ease;
@@ -514,7 +708,7 @@ code,
   letter-spacing: -0.035em;
   max-width: 780px;
   margin: 0 auto;
-  color: oklch(0.21 0 0);
+  color: var(--heading);
   text-wrap: balance;
 }
 
@@ -717,6 +911,20 @@ code,
   opacity: 0.52;
 }
 
+/* Dark: invert after the grayscale so near-black marks flip light instead of
+   sinking into the canvas; grayscale-first keeps the invert luminance-only.
+   Marks that carry their own tile background are excluded — inverting one of
+   those flips the tile rather than the glyph, so Blackstone's black square
+   would come out white and Notion's white square black. They keep their own
+   contrast, which already reads on either canvas. */
+.dark .company-proof-company img {
+  opacity: 0.6;
+}
+
+.dark .company-proof-company img:not(.company-proof-tile) {
+  filter: grayscale(1) invert(1);
+}
+
 /* One cycle travels exactly one logo-list copy. The track holds
    --company-proof-copies identical copies, so -100% / copies keeps the loop
    seamless at every viewport width. */
@@ -733,8 +941,8 @@ code,
   background: var(--bg);
   overflow: hidden;
   box-shadow:
-    0 1px 0 color-mix(in oklab, var(--ink) 4%, transparent),
-    0 30px 70px -32px color-mix(in oklab, var(--ink) 34%, transparent);
+    0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent),
+    0 30px 70px -32px color-mix(in oklab, var(--shade) 34%, transparent);
 }
 
 /* ── Self-constructing mock ───────────────────────────────────────────
@@ -1253,7 +1461,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 .msg-say {
   font-size: 13.5px;
   line-height: 1.55;
-  color: oklch(0.28 0 0);
+  color: var(--ink-strong);
   max-width: 58ch;
 }
 
@@ -1778,7 +1986,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   letter-spacing: -0.03em;
   text-wrap: balance;
   overflow-wrap: break-word;
-  color: oklch(0.21 0 0);
+  color: var(--heading);
 }
 
 .band-copy p {
@@ -1825,7 +2033,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   border-radius: 18px;
   overflow: hidden;
   background: var(--bg);
-  box-shadow: 0 18px 50px -26px color-mix(in oklab, var(--ink) 32%, transparent);
+  box-shadow: 0 18px 50px -26px
+    color-mix(in oklab, var(--shade) 32%, transparent);
 }
 
 /* contact bar */
@@ -1883,8 +2092,11 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   object-fit: cover;
 }
 
-/* wallpaper + messages */
+/* wallpaper + messages. --tg-card is Telegram's own surface colour, not a bb
+   token: the mock imitates a foreign app, so its values are deliberately
+   literal in both schemes, like the wallpaper and the outgoing green bubble. */
 .tg-feed {
+  --tg-card: #fff;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1944,8 +2156,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 }
 
 .tg-in .tg-bubble {
-  background: #fff;
-  color: oklch(0.28 0 0);
+  background: var(--tg-card);
+  color: var(--ink-strong);
   border-bottom-left-radius: 5px;
 }
 
@@ -1979,7 +2191,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
 /* the bb thread card the bot spawns */
 .tg-thread {
   width: 100%;
-  background: #fff;
+  background: var(--tg-card);
   border: 1px solid var(--border-soft);
   border-radius: 12px;
   border-bottom-left-radius: 5px;
@@ -2135,6 +2347,21 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 }
 
+/* Telegram mock, dark: the wallpaper and incoming bubbles follow Telegram's
+   own dark appearance (dark green-tinted wallpaper, graphite bubbles) so the
+   foreign app stays recognizable instead of glaring white on the dark page.
+   The outgoing green bubble is Telegram's in both schemes and stays put. */
+.dark .tg-feed {
+  --tg-card: oklch(0.28 0 0);
+  background-color: oklch(0.24 0.02 150);
+  background-image:
+    radial-gradient(
+      color-mix(in oklab, oklch(0.75 0.06 150) 10%, transparent) 1px,
+      transparent 1.5px
+    ),
+    linear-gradient(165deg, oklch(0.26 0.025 155), oklch(0.2 0.03 140));
+}
+
 /* ── Band 3 visual: mobile bb app mock ──────────────────────────── */
 
 .mockup-wrap-customize {
@@ -2265,7 +2492,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   50% {
     transform: translateY(-1px) scale(1.04);
     box-shadow: 0 8px 18px -12px
-      color-mix(in oklab, var(--ink) 60%, transparent);
+      color-mix(in oklab, var(--shade) 60%, transparent);
   }
 }
 
@@ -2601,7 +2828,7 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   font-weight: 700;
   letter-spacing: -0.025em;
   margin-bottom: 12px;
-  color: oklch(0.21 0 0);
+  color: var(--heading);
 }
 
 .closer {
@@ -2925,7 +3152,8 @@ html.js .mock[data-construct]:not(.constructing):not(.constructed) {
   }
 
   .nav,
-  .hero > * {
+  .hero > *,
+  .theme-menu {
     animation: none;
   }
 

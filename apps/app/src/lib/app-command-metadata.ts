@@ -5,13 +5,15 @@ import {
   type AppCommandId,
 } from "@bb/domain";
 
-export interface AppCommandMetadata {
+interface AppCommandMetadata {
   command: AppCommandId;
   description: string;
   label: string;
+  /** Whether the quick palette lists it. Settings → Keyboard shows them all. */
+  paletteVisible: boolean;
 }
 
-export interface AppCommandGroup {
+interface AppCommandGroup {
   commands: readonly AppCommandMetadata[];
   label: string;
 }
@@ -21,7 +23,20 @@ function command(
   label: string,
   description: string,
 ): AppCommandMetadata {
-  return { command: id, description, label };
+  return { command: id, description, label, paletteVisible: true };
+}
+
+/**
+ * Rebindable, but no palette row: the numbered accelerator families (26
+ * near-identical rows), the relative cycle commands (meant to be repeated
+ * against visible feedback), and opening the palette itself.
+ */
+function paletteHiddenCommand(
+  id: AppCommandId,
+  label: string,
+  description: string,
+): AppCommandMetadata {
+  return { command: id, description, label, paletteVisible: false };
 }
 
 export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
@@ -55,7 +70,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Open the next visible sidebar thread.",
       ),
       ...THREAD_JUMP_APP_COMMAND_IDS.map((id, index) =>
-        command(
+        paletteHiddenCommand(
           id,
           `Open thread ${index + 1}`,
           `Open visible sidebar thread ${index + 1}.`,
@@ -66,6 +81,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
   {
     label: "Window and layout",
     commands: [
+      paletteHiddenCommand(
+        "palette.open",
+        "Open quick palette",
+        "Search and run bb commands from the keyboard.",
+      ),
       command("window.new", "New window", "Open another bb desktop window."),
       command("settings.open", "Open settings", "Open bb settings."),
       command(
@@ -104,7 +124,7 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Focus the next chat pane in reading order.",
       ),
       ...PANE_FOCUS_APP_COMMAND_IDS.map((id, index) =>
-        command(
+        paletteHiddenCommand(
           id,
           `Focus chat pane ${index + 1}`,
           `Focus chat pane ${index + 1} in reading order.`,
@@ -119,6 +139,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "pane.close",
         "Close focused chat pane",
         "Close the focused chat pane when more than one is open.",
+      ),
+      command(
+        "logs.openServerDaemon",
+        "Open server and daemon logs",
+        "Open the desktop log viewer for the bb server and host daemon.",
       ),
     ],
   },
@@ -160,32 +185,32 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Toggle model picker",
         "Open or close the focused composer's model picker.",
       ),
-      command(
+      paletteHiddenCommand(
         "modelPicker.cycleModel",
         "Cycle model forward",
         "Select the next model of the composer's provider, wrapping at the end.",
       ),
-      command(
+      paletteHiddenCommand(
         "modelPicker.cycleModelBackward",
         "Cycle model backward",
         "Select the previous model of the composer's provider, wrapping at the beginning.",
       ),
-      command(
+      paletteHiddenCommand(
         "modelPicker.cycleProvider",
         "Cycle provider forward",
         "Select the next provider for the composer, wrapping at the end.",
       ),
-      command(
+      paletteHiddenCommand(
         "modelPicker.cycleProviderBackward",
         "Cycle provider backward",
         "Select the previous provider for the composer, wrapping at the beginning.",
       ),
-      command(
+      paletteHiddenCommand(
         "modelPicker.cycleReasoning",
         "Cycle reasoning effort forward",
         "Select the next higher supported reasoning effort, wrapping after the highest.",
       ),
-      command(
+      paletteHiddenCommand(
         "modelPicker.cycleReasoningBackward",
         "Cycle reasoning effort backward",
         "Select the next lower supported reasoning effort, wrapping before the lowest.",
@@ -205,12 +230,17 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Reload page",
         "Reload the active embedded browser page.",
       ),
+      command(
+        "browser.find",
+        "Find in page",
+        "Open the find bar for the active embedded browser page.",
+      ),
     ],
   },
   {
     label: "Questions",
     commands: QUESTION_SELECT_APP_COMMAND_IDS.map((id, index) =>
-      command(
+      paletteHiddenCommand(
         id,
         `Choose answer ${index + 1}`,
         `Choose visible answer ${index + 1} when bb asks a question.`,

@@ -6,7 +6,7 @@
 /** pluginId of the builtin side-chat plugin (bb's builtin registry). */
 const SIDE_CHAT_PLUGIN_ID = "side-chat";
 
-export interface SideChatShapeThread {
+interface SideChatShapeThread {
   originKind: string | null;
   originPluginId: string | null;
   visibility: string;

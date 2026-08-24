@@ -131,7 +131,8 @@ export class ThreadEventGrammar {
         return OK;
       }
       case "item/completed":
-      case "item/backgroundTask/completed": {
+      case "item/backgroundTask/completed":
+      case "item/delegation/completed": {
         const itemId = event.item.id;
         if (state.settledItemIds.has(itemId)) {
           return violation(
@@ -144,7 +145,8 @@ export class ThreadEventGrammar {
         trim(state.settledItemIds);
         return OK;
       }
-      case "item/backgroundTask/progress": {
+      case "item/backgroundTask/progress":
+      case "item/delegation/progress": {
         return this.#checkOpenItem(state, event.type, event.item.id);
       }
       default: {

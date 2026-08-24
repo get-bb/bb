@@ -12,6 +12,7 @@ import {
   type PatchQueryIdentity,
   getDiffPatchEvictionGeneration,
   readDiffPatchEntry,
+  retainDiffPatchQueries,
   writeDiffPatchEntry,
 } from "../cache-owners/environment-diff-patch-cache-owner";
 import { environmentDiffTargetKey } from "./query-keys";
@@ -19,7 +20,7 @@ import { environmentDiffTargetKey } from "./query-keys";
 /** Debounce window for coalescing scroll-driven patch requests. */
 const PATCH_REQUEST_DEBOUNCE_MS = 80;
 
-export type DiffPatchStatus = "idle" | "loading" | "loaded" | "error";
+type DiffPatchStatus = "idle" | "loading" | "loaded" | "error";
 
 export interface DiffPatchState {
   status: DiffPatchStatus;
@@ -33,22 +34,22 @@ export interface DiffPatchState {
  * `visible` rows are fetched before `overscan` so on-screen content settles
  * first; a path present in both is treated as visible.
  */
-export interface RequestDiffPatchPathsArgs {
+interface RequestDiffPatchPathsArgs {
   visible: string[];
   overscan: string[];
 }
 
-export interface UseEnvironmentDiffPatchesArgs {
+interface UseEnvironmentDiffPatchesArgs {
   target?: WorkspaceDiffTarget;
 }
 
-export type RequestDiffPatchPaths = (args: RequestDiffPatchPathsArgs) => void;
-export type GetDiffPatchState = (path: string) => DiffPatchState;
+type RequestDiffPatchPaths = (args: RequestDiffPatchPathsArgs) => void;
+type GetDiffPatchState = (path: string) => DiffPatchState;
 export type RetryDiffPatchPath = (path: string) => void;
 export type LoadDiffPatchPath = (path: string) => void;
-export type SeedDiffPatchEntries = (entries: DiffPatchEntry[]) => void;
+type SeedDiffPatchEntries = (entries: DiffPatchEntry[]) => void;
 
-export interface UseEnvironmentDiffPatchesResult {
+interface UseEnvironmentDiffPatchesResult {
   requestPaths: RequestDiffPatchPaths;
   getPatchState: GetDiffPatchState;
   retry: RetryDiffPatchPath;
@@ -205,6 +206,15 @@ export function useEnvironmentDiffPatches(
       abortPatchRequests(abortControllers);
     };
   }, []);
+
+  // Cached patches have no query observers, so this reader lease is what keeps
+  // them resident; the last release schedules the bounded eviction.
+  useEffect(() => {
+    if (!environmentId) {
+      return;
+    }
+    return retainDiffPatchQueries({ queryClient, environmentId });
+  }, [environmentId, queryClient]);
 
   const fetchPage = useCallback(
     async (paths: string[], generationTarget: string) => {

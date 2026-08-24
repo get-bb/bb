@@ -10,9 +10,13 @@ import { sdk } from "@/lib/sdk";
 import {
   invalidateGeneralSettingsDependencies,
   invalidateSystemConfig,
+  invalidateSystemProviders,
+  resetModelCatalogsAfterStreamerModeChange,
 } from "../cache-owners/system-cache-effects";
 import {
   beginKeyboardSettingsCacheTransaction,
+  readCachedProviderOrder,
+  readCachedStreamerMode,
   rollbackKeyboardSettingsCacheTransaction,
 } from "../cache-owners/system-config-cache-owner";
 
@@ -50,8 +54,26 @@ export function useUpdateGeneralSettings() {
     },
     mutationFn: (settings: AppSettings) =>
       sdk.system.updateGeneralSettings(settings),
-    onSuccess: () => {
+    onSuccess: (_settings, written) => {
+      // Read the previous values before the config invalidation replaces them.
+      const previousStreamerMode = readCachedStreamerMode(queryClient);
+      const previousProviderOrder = readCachedProviderOrder(queryClient);
       invalidateGeneralSettingsDependencies({ queryClient });
+      // An unknown previous value also resets: a stale preload is the risk.
+      if (previousStreamerMode !== written.streamerMode) {
+        void resetModelCatalogsAfterStreamerModeChange({ queryClient });
+      }
+      const providerOrderChanged =
+        previousProviderOrder === undefined ||
+        previousProviderOrder.length !== written.providerOrder.length ||
+        previousProviderOrder.some(
+          (providerId, index) => providerId !== written.providerOrder[index],
+        );
+      if (providerOrderChanged) {
+        // Keep the reorder mutation pending until the server-sorted directory
+        // replaces the optimistic row order.
+        return invalidateSystemProviders({ queryClient });
+      }
     },
   });
 }
@@ -107,8 +129,7 @@ export function useUpdateAppearance() {
     meta: {
       errorMessage: "Failed to update appearance.",
     },
-    mutationFn: (selection: AppThemeSelection) =>
-      sdk.theme.set(selection),
+    mutationFn: (selection: AppThemeSelection) => sdk.theme.set(selection),
     onSuccess: () => {
       invalidateSystemConfig({ queryClient });
     },

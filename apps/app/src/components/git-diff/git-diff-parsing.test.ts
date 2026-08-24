@@ -6,7 +6,7 @@ import {
   getGitDiffFileChangeKind,
   getOpenableGitDiffPath,
   parseGitDiffFiles,
-  summarizeGitDiff,
+  summarizeGitDiffFile,
 } from "./git-diff-parsing";
 
 const SAMPLE_DIFF = [
@@ -100,21 +100,12 @@ describe("threadDetailGitDiff", () => {
     expect(formatGitDiffFileLabel(file)).toBe("src/new.ts");
   });
 
-  it("falls back to raw diff counting before parsed files are available", () => {
-    expect(summarizeGitDiff([], SAMPLE_DIFF)).toEqual({
-      filesCount: 1,
-      insertions: 1,
-      deletions: 1,
-    });
-  });
-
   it("summarizes parsed diffs from changed lines, not hunk range sizes", () => {
     const [file] = parseGitDiffFiles(DIFF_WITH_CONTEXT);
     expect(file).toBeDefined();
     if (!file) return;
 
-    expect(summarizeGitDiff([file], DIFF_WITH_CONTEXT)).toEqual({
-      filesCount: 1,
+    expect(summarizeGitDiffFile(file)).toEqual({
       insertions: 1,
       deletions: 1,
     });
@@ -185,5 +176,60 @@ describe("threadDetailGitDiff", () => {
     expect(secondHunk.additionLineIndex).toBe(7);
     expect(secondHunk.deletionLineIndex).toBe(7);
     expect(secondHunk.collapsedBefore).toBe(5);
+  });
+
+  it.each([
+    {
+      name: "empty contents",
+      oldFile: { name: "src/context.ts", contents: "" },
+      newFile: { name: "src/context.ts", contents: "" },
+    },
+    {
+      name: "unrelated contents",
+      oldFile: {
+        name: "src/context.ts",
+        contents: "not the old file\n",
+      },
+      newFile: {
+        name: "src/context.ts",
+        contents: "not the new file\n",
+      },
+    },
+    {
+      name: "swapped contents",
+      oldFile: {
+        name: "src/context.ts",
+        contents: `${NEW_CONTEXT_CONTENT}\n`,
+      },
+      newFile: {
+        name: "src/context.ts",
+        contents: `${OLD_CONTEXT_CONTENT}\n`,
+      },
+    },
+    {
+      name: "mismatched paths",
+      oldFile: {
+        name: "src/another.ts",
+        contents: `${OLD_CONTEXT_CONTENT}\n`,
+      },
+      newFile: {
+        name: "src/another.ts",
+        contents: `${NEW_CONTEXT_CONTENT}\n`,
+      },
+    },
+  ])("keeps the patch partial for $name", ({ oldFile, newFile }) => {
+    const [file] = parseGitDiffFiles(MULTI_HUNK_DIFF);
+    expect(file).toBeDefined();
+    if (!file) throw new Error("expected parsed file");
+
+    const result = enrichGitDiffFileForContext({
+      fileDiff: file,
+      oldFile,
+      newFile,
+      patchText: MULTI_HUNK_DIFF,
+    });
+
+    expect(result).toBe(file);
+    expect(result.isPartial).toBe(true);
   });
 });

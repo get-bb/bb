@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "model-list",
+  "threadId": null,
+  "scope": "process",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "Process-scoped model/list probe.",
+  "note": "model/list at 178727943078145792",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 3,
+    "provider→bridge": 3,
+    "bridge→provider": 2
+  }
+}

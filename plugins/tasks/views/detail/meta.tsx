@@ -7,23 +7,6 @@ import type {
 import type { IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 
-export const STATUS_LABELS: Record<TaskStatus, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  in_progress: "In Progress",
-  in_review: "In Review",
-  done: "Done",
-  canceled: "Canceled",
-};
-
-export const PRIORITY_LABELS: Record<TaskPriority, string> = {
-  urgent: "Urgent",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  none: "No priority",
-};
-
 const STATUS_COLORS: Record<TaskStatus, string> = {
   backlog: "var(--muted-foreground)",
   todo: "var(--muted-foreground)",
@@ -237,12 +220,6 @@ export function formatRelativeTime(iso: string): string {
   const days = Math.round(hours / 24);
   if (days < 30) return `${days}d ago`;
   return new Date(iso).toLocaleDateString();
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** Formats a YYYY-MM-DD due date like "Jul 22" (with year when not this year). */

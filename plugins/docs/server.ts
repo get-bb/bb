@@ -58,13 +58,6 @@ const CLI_OPTIONS_BY_COMMAND: Record<string, ReadonlySet<string>> = {
   remove: new Set(["--vault", "--recursive", "--json"]),
 };
 
-interface Vault {
-  id: string;
-  name: string;
-  hostId: string | null;
-  rootPath: string;
-}
-
 interface VaultWatcher {
   close(): void;
   on(event: "error", listener: () => void): void;
@@ -92,48 +85,6 @@ interface NoteSummary {
   title: string;
   preview: string;
   modifiedAtMs: number;
-}
-
-type SyncScope =
-  | { kind: "all" }
-  | { kind: "file"; path: string }
-  | { kind: "folder"; path: string };
-
-interface SyncFile {
-  remotePath: string;
-  localPath: string;
-  sha256: string;
-  sizeBytes: number;
-  contentEncoding: "base64" | "utf8";
-  mimeType: string | null;
-  modifiedAtMs: number | null;
-  content: string;
-}
-
-interface SyncStateEntry {
-  remotePath: string;
-  localPath: string;
-  sha256: string;
-  sizeBytes: number;
-  contentEncoding: "base64" | "utf8";
-  mimeType: string | null;
-  modifiedAtMs: number | null;
-}
-
-interface SyncState {
-  schemaVersion: 1;
-  vault: { id: string; name: string };
-  scope: SyncScope;
-  pulledAt: string;
-  entries: SyncStateEntry[];
-  directories: string[];
-}
-
-interface OpenerSource {
-  kind: "workspace" | "host" | "thread-storage";
-  threadId: string | null;
-  environmentId: string | null;
-  projectId: string | null;
 }
 
 interface ResolvedOpenerFile {
@@ -171,6 +122,7 @@ const openerSourceSchema = z
     threadId: z.string().nullable(),
     environmentId: z.string().nullable(),
     projectId: z.string().nullable(),
+    experimental_hostId: z.string().min(1).optional(),
   })
   .strict();
 const fileReadSchema = z
@@ -262,6 +214,13 @@ const syncWriteSchema = z
 const syncDeleteSchema = z
   .object({ path: vaultPathSchema, expectedSha256: z.string().min(1) })
   .strict();
+
+type Vault = z.infer<typeof vaultSchema>;
+type SyncScope = z.infer<typeof syncScopeSchema>;
+type SyncStateEntry = z.infer<typeof syncStateEntrySchema>;
+type SyncState = z.infer<typeof syncStateSchema>;
+type SyncFile = z.infer<typeof syncSnapshotEntrySchema>;
+type OpenerSource = z.infer<typeof openerSourceSchema>;
 
 export const docsRpcContract = defineRpcContract({
   syncSnapshot: {
@@ -485,24 +444,6 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function parseOpenerSource(value: unknown): OpenerSource {
-  const source = requireRecord(value);
-  if (
-    source.kind !== "workspace" &&
-    source.kind !== "host" &&
-    source.kind !== "thread-storage"
-  ) {
-    throw new Error('"source.kind" must be workspace, host, or thread-storage');
-  }
-  return {
-    kind: source.kind,
-    threadId: typeof source.threadId === "string" ? source.threadId : null,
-    environmentId:
-      typeof source.environmentId === "string" ? source.environmentId : null,
-    projectId: typeof source.projectId === "string" ? source.projectId : null,
-  };
-}
-
 function expandHome(rawPath: string): string {
   if (rawPath === "~") return os.homedir();
   if (rawPath.startsWith("~/"))
@@ -543,6 +484,19 @@ function requireVaultPath(
 function requireOptionalDirectory(value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   return requireVaultPath(value);
+}
+
+function requireThreadStoragePath(value: unknown): string {
+  const raw = requireString(value, "path").replace(/\\/g, "/");
+  if (
+    path.posix.isAbsolute(raw) ||
+    path.win32.isAbsolute(raw) ||
+    raw.includes("\0") ||
+    raw.split("/").includes("..")
+  ) {
+    throw new Error(`Invalid thread-storage path: ${raw}`);
+  }
+  return path.posix.normalize(raw);
 }
 
 function absolutePath(vault: Vault, relativePath: string): string {
@@ -983,10 +937,9 @@ export default async function plugin(
   }
 
   async function resolveOpenerFile(
-    sourceValue: unknown,
+    source: OpenerSource,
     pathValue: unknown,
   ): Promise<ResolvedOpenerFile> {
-    const source = parseOpenerSource(sourceValue);
     const filePath = requireString(pathValue, "path");
     if (source.kind === "host") {
       if (!isAbsoluteHostPath(filePath)) {
@@ -999,7 +952,7 @@ export default async function plugin(
       return {
         path: normalized,
         rootPath: pathApi.dirname(normalized),
-        hostId: null,
+        hostId: source.experimental_hostId ?? null,
       };
     }
     if (source.kind === "workspace" && source.environmentId) {
@@ -1015,7 +968,64 @@ export default async function plugin(
         hostId: environment.hostId,
       };
     }
-    throw new Error("Docs can open workspace and host files only");
+    if (source.kind === "workspace" && source.projectId) {
+      const hostId =
+        source.experimental_hostId ??
+        (await bb.sdk.system.config()).primaryHostId;
+      if (!hostId) {
+        throw new Error("This project has no primary host");
+      }
+      const project = await bb.sdk.projects.get({
+        projectId: source.projectId,
+      });
+      const matchingSources = project.sources.filter(
+        (projectSource) => projectSource.hostId === hostId,
+      );
+      const [projectSource] = matchingSources;
+      if (!projectSource) {
+        throw new Error(
+          source.experimental_hostId
+            ? "This project has no workspace on the selected host"
+            : "This project has no workspace on the primary host",
+        );
+      }
+      if (matchingSources.length > 1) {
+        throw new Error("This project has multiple workspaces on that host");
+      }
+      const rootPath = normalizeHostRoot(projectSource.path);
+      if (!isAbsoluteHostPath(rootPath)) {
+        throw new Error("This project has no absolute workspace path");
+      }
+      return {
+        path: hostPathApi(rootPath).join(rootPath, ...filePath.split("/")),
+        rootPath,
+        hostId,
+      };
+    }
+    if (source.kind === "thread-storage") {
+      if (!source.threadId) {
+        throw new Error("Thread-storage files require a thread ID");
+      }
+      const relativePath = requireThreadStoragePath(filePath);
+      const storage = await bb.sdk.threads.storageLocation({
+        threadId: source.threadId,
+      });
+      if (!isAbsoluteHostPath(storage.storageRootPath)) {
+        throw new Error("This thread has no absolute storage path");
+      }
+      const rootPath = normalizeHostRoot(storage.storageRootPath);
+      return {
+        path: hostPathApi(rootPath).join(
+          rootPath,
+          ...relativePath.split("/"),
+        ),
+        rootPath,
+        hostId: storage.hostId,
+      };
+    }
+    throw new Error(
+      "Docs can open workspace, host, and thread-storage files only",
+    );
   }
 
   async function createNote(

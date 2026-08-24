@@ -106,3 +106,71 @@ describe("AutoHeightContainer", () => {
     expect(observer?.disconnect).not.toHaveBeenCalled();
   });
 });
+
+function stubMediaQueries(matching: ReadonlySet<string>): void {
+  vi.spyOn(window, "matchMedia").mockImplementation((query: string) => ({
+    matches: matching.has(query),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+function stubScrollAnchoringSupport(supported: boolean): void {
+  vi.stubGlobal("CSS", {
+    supports: (property: string, value: string) =>
+      supported && property === "overflow-anchor" && value === "none",
+  });
+}
+
+describe("AutoHeightContainer growth easing", () => {
+  function renderWrapper(): HTMLElement {
+    const view = render(
+      <AutoHeightContainer>
+        <span>Streaming response</span>
+      </AutoHeightContainer>,
+    );
+    const wrapper =
+      view.getByText("Streaming response").parentElement?.parentElement;
+    if (!wrapper) {
+      throw new Error("AutoHeightContainer wrapper was not rendered");
+    }
+    return wrapper;
+  }
+
+  it("eases growth on a fine pointer with scroll anchoring available", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    stubMediaQueries(new Set());
+    stubScrollAnchoringSupport(true);
+
+    expect(renderWrapper().style.transition).toContain("height 180ms");
+  });
+
+  it("snaps growth on a coarse pointer", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    stubMediaQueries(new Set(["(pointer: coarse)"]));
+    stubScrollAnchoringSupport(true);
+
+    expect(renderWrapper().style.transition).toContain("height 0ms");
+  });
+
+  it("snaps growth under reduced motion", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    stubMediaQueries(new Set(["(prefers-reduced-motion: reduce)"]));
+    stubScrollAnchoringSupport(true);
+
+    expect(renderWrapper().style.transition).toContain("height 0ms");
+  });
+
+  it("snaps growth where the browser has no scroll anchoring", () => {
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+    stubMediaQueries(new Set());
+    stubScrollAnchoringSupport(false);
+
+    expect(renderWrapper().style.transition).toContain("height 0ms");
+  });
+});

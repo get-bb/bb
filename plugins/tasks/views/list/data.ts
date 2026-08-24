@@ -7,7 +7,7 @@ import type {
   TaskThread,
 } from "../../shared/contract.js";
 
-export interface ListTaskFilters {
+interface ListTaskFilters {
   statuses: readonly TaskStatus[];
   priorities: readonly TaskPriority[];
   /**

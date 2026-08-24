@@ -44,9 +44,9 @@ function labelWidthStyle(
   return { "--detail-label-width": labelWidth } as CSSProperties;
 }
 
-export type DetailCardAppearance = "card" | "flat";
+type DetailCardAppearance = "card" | "flat";
 
-export interface DetailCardProps {
+interface DetailCardProps {
   children: ReactNode;
   className?: string;
   /**
@@ -86,7 +86,7 @@ export function DetailCard({
   );
 }
 
-export interface DetailRowProps {
+interface DetailRowProps {
   label: ReactNode;
   children: ReactNode;
   className?: string;

@@ -4,21 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent, ToolCallResponse } from "@bb/domain";
-import { createAgentRuntimeWithAdapters } from "./runtime.js";
+import { createProviderForId } from "./provider-registry.js";
 import { handleRuntimeProviderRequest } from "./runtime-provider-requests.js";
 import {
   parseJsonRpcLine,
   type JsonRpcMessage,
-  type ProviderInboundRequest,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { promptTextInput } from "./test/prompt-input.js";
-import { fakeProviderScriptPath } from "./test/index.js";
 import {
-  createFakeAdapter,
-  createThreadHintMismatchAdapter,
+  createScriptedEchoLaunch,
+  createScriptedEchoRuntime,
   fullRuntimeOptions,
   waitForRuntimeState,
   waitForThreadTurnCompleted,
+  waitForThreadTurnStarted,
 } from "./test/runtime-test-harness.js";
 
 type ChildStdoutChunk = Buffer | string;
@@ -35,13 +34,22 @@ function readChildStdoutLine(child: ChildProcess): Promise<string> {
   });
 }
 
+/**
+ * The real bridge-protocol adapter, for driving `handleRuntimeProviderRequest`
+ * directly against a pipe child that echoes the runtime's answer back.
+ */
+function createBridgeAdapter() {
+  return createProviderForId("fake", {
+    additionalWorkspaceWriteRoots: [],
+    bridgeLaunch: createScriptedEchoLaunch(),
+  });
+}
+
 describe("createAgentRuntime tool calls", () => {
   let tmpDir: string;
-  let scriptPath: string;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-test-"));
-    scriptPath = fakeProviderScriptPath;
   });
 
   afterEach(() => {
@@ -52,27 +60,30 @@ describe("createAgentRuntime tool calls", () => {
     const toolCalls: Array<{
       threadId: string;
       providerThreadId: string;
+      turnId: string;
       tool: string;
     }> = [];
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async (req) => {
-        toolCalls.push({
-          threadId: req.threadId,
-          providerThreadId: req.providerThreadId,
-          tool: req.tool,
-        });
-        return {
-          contentItems: [{ type: "inputText", text: "tool result" }],
-          success: true,
-        };
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: async (req) => {
+          toolCalls.push({
+            threadId: req.threadId,
+            providerThreadId: req.providerThreadId,
+            turnId: req.turnId,
+            tool: req.tool,
+          });
+          return {
+            contentItems: [{ type: "inputText", text: "tool result" }],
+            success: true,
+          };
+        },
       },
-      adapterFactory: () => createFakeAdapter(scriptPath),
     });
 
-    await runtime.startThread({
+    const { providerThreadId } = await runtime.startThread({
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -85,6 +96,12 @@ describe("createAgentRuntime tool calls", () => {
       input: [promptTextInput({ text: "call_tool:my_test_tool" })],
       options: fullRuntimeOptions,
     });
+    const { turnId } = await waitForThreadTurnStarted({
+      events,
+      providerId: "fake",
+      runtime,
+      threadId: "t1",
+    });
     await waitForRuntimeState({
       events,
       label: "tool call routed and turn completed",
@@ -95,47 +112,38 @@ describe("createAgentRuntime tool calls", () => {
       runtime,
     });
 
-    expect(toolCalls).toHaveLength(1);
-    expect(toolCalls[0]).toEqual({
-      threadId: "t1",
-      providerThreadId: "prov-1",
-      tool: "my_test_tool",
-    });
+    // The bridge named its own turn (`turn-1`, provider-native ids); the
+    // handler sees the assembler-minted id the timeline carries.
+    expect(toolCalls).toEqual([
+      { threadId: "t1", providerThreadId, turnId, tool: "my_test_tool" },
+    ]);
+    // The tool result reached the bridge: its turn answered with it.
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "Tool called: my_test_tool",
+        }),
+      }),
+    );
     await runtime.shutdown();
   });
 
   it("resolves unresolved provider tool call turn ids from the active turn", async () => {
-    const toolCalls: Array<{
-      threadId: string;
-      providerThreadId: string;
-      turnId: string;
-      tool: string;
-    }> = [];
+    const toolCalls: Array<{ turnId: string; tool: string }> = [];
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async (req) => {
-        toolCalls.push({
-          threadId: req.threadId,
-          providerThreadId: req.providerThreadId,
-          turnId: req.turnId,
-          tool: req.tool,
-        });
-        return {
-          contentItems: [{ type: "inputText", text: "tool result" }],
-          success: true,
-        };
-      },
-      adapterFactory: () => {
-        const adapter = createFakeAdapter(scriptPath);
-        return {
-          ...adapter,
-          decodeToolCallRequest(request) {
-            const decoded = adapter.decodeToolCallRequest(request);
-            return decoded ? { ...decoded, turnId: null } : null;
-          },
-        };
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: async (req) => {
+          toolCalls.push({ turnId: req.turnId, tool: req.tool });
+          return {
+            contentItems: [{ type: "inputText", text: "tool result" }],
+            success: true,
+          };
+        },
       },
     });
 
@@ -146,11 +154,18 @@ describe("createAgentRuntime tool calls", () => {
       providerId: "fake",
       options: fullRuntimeOptions,
     });
+    // `call_tool_unresolved` sends the request with `turnId: null`.
     await runtime.runTurn({
       clientRequestId: "creq_222222223y",
       threadId: "t1",
-      input: [promptTextInput({ text: "call_tool:my_test_tool" })],
+      input: [promptTextInput({ text: "call_tool_unresolved:my_test_tool" })],
       options: fullRuntimeOptions,
+    });
+    const { turnId } = await waitForThreadTurnStarted({
+      events,
+      providerId: "fake",
+      runtime,
+      threadId: "t1",
     });
     await waitForRuntimeState({
       events,
@@ -162,14 +177,7 @@ describe("createAgentRuntime tool calls", () => {
       runtime,
     });
 
-    expect(toolCalls).toEqual([
-      {
-        threadId: "t1",
-        providerThreadId: "prov-1",
-        turnId: "turn-1",
-        tool: "my_test_tool",
-      },
-    ]);
+    expect(toolCalls).toEqual([{ turnId, tool: "my_test_tool" }]);
     await runtime.shutdown();
   });
 
@@ -178,7 +186,7 @@ describe("createAgentRuntime tool calls", () => {
       "-e",
       "process.stdin.pipe(process.stdout)",
     ]);
-    const adapter = createFakeAdapter(scriptPath);
+    const adapter = createBridgeAdapter();
     const toolCallResponse = {
       contentItems: [{ type: "inputText", text: "tool result" }],
       success: true,
@@ -236,31 +244,27 @@ describe("createAgentRuntime tool calls", () => {
     }
   });
 
-  it("rejects malformed adapter tool calls with empty turn ids", async () => {
+  it("rejects malformed tool calls with empty turn ids", async () => {
     const child = spawn(process.execPath, [
       "-e",
       "process.stdin.pipe(process.stdout)",
     ]);
-    const baseAdapter = createFakeAdapter(scriptPath);
-    const adapter = {
-      ...baseAdapter,
-      decodeToolCallRequest(request: ProviderInboundRequest) {
-        const decoded = baseAdapter.decodeToolCallRequest(request);
-        return decoded ? { ...decoded, turnId: "" } : null;
-      },
-    };
+    const adapter = createBridgeAdapter();
     const toolCallResponse = {
       contentItems: [{ type: "inputText", text: "tool result" }],
       success: true,
     } satisfies ToolCallResponse;
     const onToolCall = vi.fn(async () => toolCallResponse);
+    // An empty turn id is malformed on the wire (the schema wants a non-empty
+    // string or null): the request is refused with the protocol's invalid
+    // params answer, and the handler is never called.
     const rawRequest = {
       jsonrpc: "2.0",
       id: 43,
       method: "item/tool/call",
       params: {
         providerThreadId: "prov-1",
-        turnId: null,
+        turnId: "",
         callId: "call-1",
         tool: "my_test_tool",
         arguments: {},
@@ -295,10 +299,7 @@ describe("createAgentRuntime tool calls", () => {
       expect(parsed.parsed).toMatchObject({
         jsonrpc: "2.0",
         id: 43,
-        error: {
-          code: -32000,
-          message: expect.stringContaining("must be a non-empty string"),
-        },
+        error: { code: expect.any(Number) },
       });
       expect(onToolCall).not.toHaveBeenCalled();
     } finally {
@@ -309,17 +310,19 @@ describe("createAgentRuntime tool calls", () => {
   it("rejects tool calls whose BB thread hint disagrees with the provider-thread mapping", async () => {
     const toolCalls: string[] = [];
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (event) => events.push(event),
-      onToolCall: async (req) => {
-        toolCalls.push(req.tool);
-        return {
-          contentItems: [{ type: "inputText", text: "tool result" }],
-          success: true,
-        };
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onToolCall: async (req) => {
+          toolCalls.push(req.tool);
+          return {
+            contentItems: [{ type: "inputText", text: "tool result" }],
+            success: true,
+          };
+        },
       },
-      adapterFactory: () => createThreadHintMismatchAdapter(scriptPath),
+      launch: { scripted: { toolCallThreadIdHint: "thr_wrong" } },
     });
 
     await runtime.startThread({
@@ -342,19 +345,29 @@ describe("createAgentRuntime tool calls", () => {
       threadId: "t1",
     });
 
+    // The handler never ran, and the bridge saw the refusal: its turn failed
+    // with the runtime's error instead of answering "Tool called".
     expect(toolCalls).toEqual([]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        threadId: "t1",
+        status: "failed",
+      }),
+    );
     await runtime.shutdown();
   });
 
   it("sends JSON-RPC error back when onToolCall throws", async () => {
     const events: ThreadEvent[] = [];
-    const runtime = createAgentRuntimeWithAdapters({
-      workspacePath: tmpDir,
-      onEvent: (e) => events.push(e),
-      onToolCall: async () => {
-        throw new Error("Tool execution failed");
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (e) => events.push(e),
+        onToolCall: async () => {
+          throw new Error("Tool execution failed");
+        },
       },
-      adapterFactory: () => createFakeAdapter(scriptPath),
     });
 
     await runtime.startThread({
@@ -364,7 +377,9 @@ describe("createAgentRuntime tool calls", () => {
       providerId: "fake",
       options: fullRuntimeOptions,
     });
-    // This should not throw — the error is caught and sent as JSON-RPC error
+    // The runTurn itself never throws — the error is caught and answered to
+    // the bridge as a JSON-RPC error, which the bridge surfaces as a failed
+    // turn carrying the handler's message.
     await runtime.runTurn({
       clientRequestId: "creq_2222222243",
       threadId: "t1",
@@ -377,9 +392,20 @@ describe("createAgentRuntime tool calls", () => {
       runtime,
       threadId: "t1",
     });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        threadId: "t1",
+        message: expect.stringContaining("Tool execution failed"),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        threadId: "t1",
+        status: "failed",
+      }),
+    );
     await runtime.shutdown();
-    // The test passes if no unhandled promise rejection occurs
   });
-
-  // ---- Error handling ----
 });

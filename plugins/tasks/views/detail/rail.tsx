@@ -14,13 +14,17 @@ import {
 import type { Preset } from "../../shared/contract.js";
 import { useTasksQuery, useTasksRpc } from "../../shell/data.js";
 import {
-  PRIORITY_LABELS,
   PriorityIcon,
-  STATUS_LABELS,
   StatusIcon,
   formatDueDate,
   isActiveThread,
 } from "./meta.js";
+import {
+  DUE_DATE_PRESETS,
+  localIsoDate,
+  PRIORITY_LABELS,
+  STATUS_LABELS,
+} from "../list/lib.js";
 import { DispatchControl } from "./threads.js";
 import { DEFAULT_COLOR } from "../manage/shared.js";
 import {
@@ -61,20 +65,12 @@ export interface TaskPropertyUpdate {
   labelIds?: string[];
 }
 
-export interface TaskPropertiesProps {
+interface TaskPropertiesProps {
   task: Task;
   project: Project | undefined;
   labels: Label[] | undefined;
   threads: TaskThread[];
   onUpdate: (update: TaskPropertyUpdate) => void;
-}
-
-function localIsoDate(daysFromNow: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + daysFromNow);
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
 }
 
 function LabelChip({ label }: { label: Label }) {
@@ -184,13 +180,7 @@ function DueDateMenu({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-52 p-2">
         <div className="flex flex-col">
-          {(
-            [
-              ["Today", 0],
-              ["Tomorrow", 1],
-              ["Next week", 7],
-            ] as const
-          ).map(([label, days]) => (
+          {DUE_DATE_PRESETS.map(([label, days]) => (
             <button
               key={label}
               type="button"

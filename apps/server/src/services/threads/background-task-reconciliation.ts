@@ -16,7 +16,7 @@ import type { ThreadEventBackgroundTaskItem } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { appendThreadEventsInTransaction } from "./thread-events.js";
 
-export interface SettleDanglingBackgroundTasksArgs {
+interface SettleDanglingBackgroundTasksArgs {
   hostId: string;
 }
 

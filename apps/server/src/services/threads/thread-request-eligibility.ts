@@ -1,4 +1,3 @@
-import { getProjectSourceByHost } from "@bb/db";
 import {
   type Environment,
   type LocalPathProjectSource,
@@ -12,6 +11,7 @@ import {
   assertUsableHostId,
   requireConnectedPrimaryHostId,
 } from "../hosts/primary-host.js";
+import { requireSourceForHost } from "./thread-create-helpers.js";
 
 type ThreadRequestEnvironment = EnvironmentArgs;
 type ThreadRequestEnvironmentDeps = Pick<AppDeps, "config" | "db" | "hub">;
@@ -27,7 +27,7 @@ type ReuseThreadRequestEnvironment = Extract<
   ThreadRequestEnvironment,
   { type: "reuse" }
 >;
-export interface ResolveStableThreadRequestEnvironmentArgs {
+interface ResolveStableThreadRequestEnvironmentArgs {
   /**
    * A directory switch can leave a personal-project source thread attached to
    * an unmanaged environment. Source-derived forks may reuse that exact
@@ -38,7 +38,7 @@ export interface ResolveStableThreadRequestEnvironmentArgs {
   projectId: string;
 }
 
-export interface ResolvedHostThreadRequestEnvironment {
+interface ResolvedHostThreadRequestEnvironment {
   hostId: string;
   localSource: LocalPathProjectSource | null;
   type: "host";
@@ -46,13 +46,13 @@ export interface ResolvedHostThreadRequestEnvironment {
   workspace: WorkspaceBackedHostWorkspace;
 }
 
-export interface ResolvedReuseThreadRequestEnvironment {
+interface ResolvedReuseThreadRequestEnvironment {
   environment: Environment;
   type: "reuse";
 }
 
-export interface ResolvedPersonalThreadRequestEnvironment {
-  hostId: string | null;
+interface ResolvedPersonalThreadRequestEnvironment {
+  hostId: string;
   type: "personal";
 }
 
@@ -150,14 +150,7 @@ function resolveHostThreadRequestEnvironment(
     };
   }
 
-  const localSource = getProjectSourceByHost(deps.db, projectId, hostId);
-  if (!localSource || localSource.type !== "local_path") {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      "No project source configured for this host",
-    );
-  }
+  const localSource = requireSourceForHost(deps, projectId, hostId);
 
   return {
     hostId,

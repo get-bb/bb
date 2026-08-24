@@ -55,7 +55,6 @@ function getDialogCopy(target: ThreadGitActionDialogTarget) {
         title: "Commit changes",
         description: "Create a commit from the current workspace changes.",
         submitLabel: "Commit changes",
-        showCommitControls: true,
         showMergeBase: false,
       };
     case "commit_and_squash_merge":
@@ -64,7 +63,6 @@ function getDialogCopy(target: ThreadGitActionDialogTarget) {
         description:
           "Commit the current workspace changes, then squash merge this branch.",
         submitLabel: "Commit + squash merge",
-        showCommitControls: true,
         showMergeBase: true,
       };
     case "squash_merge":
@@ -72,7 +70,6 @@ function getDialogCopy(target: ThreadGitActionDialogTarget) {
         title: "Squash merge",
         description: "Squash merge this branch into the selected merge base.",
         submitLabel: "Squash merge",
-        showCommitControls: false,
         showMergeBase: true,
       };
     default:
@@ -132,7 +129,7 @@ export function ThreadGitActionDialog({
   );
 }
 
-export type ThreadGitActionDialogContentProps = Omit<
+type ThreadGitActionDialogContentProps = Omit<
   ThreadGitActionDialogProps,
   "target"
 > & {

@@ -20,7 +20,7 @@ export interface ResolvedWorkflowExecutionSelection {
  * selection, or schema. The versions must be bumped when the worker envelope
  * or result-submission protocol changes.
  */
-export interface WorkflowCallExecutionSemantics {
+interface WorkflowCallExecutionSemantics {
   workerPromptVersion: string;
   resultProtocolVersion: string;
   maxRepairAttempts: number;
@@ -49,12 +49,12 @@ export type WorkflowCallResultStatus =
 
 type NonNullJsonValue = Exclude<JsonValue, null>;
 
-export interface WorkflowCallResultCandidate<Result extends NonNullJsonValue> {
+interface WorkflowCallResultCandidate<Result extends NonNullJsonValue> {
   status: WorkflowCallResultStatus;
   result: Result | null;
 }
 
-export type WorkflowCallReuseDecision<Result extends NonNullJsonValue> =
+type WorkflowCallReuseDecision<Result extends NonNullJsonValue> =
   | { reusable: false }
   | { reusable: true; result: Result };
 

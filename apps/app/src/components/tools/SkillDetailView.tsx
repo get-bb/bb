@@ -21,18 +21,18 @@ import { FilePreview } from "@/components/secondary-panel/FilePreview.js";
 import { ProvenancePill } from "@/components/tools/ProvenancePill";
 import { useClipboardCopy } from "@/lib/clipboard";
 
-export type SkillDetailTitleBadge = {
+type SkillDetailTitleBadge = {
   label: string;
   tooltip: ReactNode;
   accessibleLabel?: string;
 };
 
-export type SkillDetailContentState =
+type SkillDetailContentState =
   | { kind: "loading" }
   | { kind: "error"; message: string; onRetry: () => void }
   | { kind: "ready"; content: string };
 
-export interface SkillDetailViewProps {
+interface SkillDetailViewProps {
   leading?: ReactNode;
   title: string;
   path: string;
@@ -45,27 +45,7 @@ export interface SkillDetailViewProps {
   selectedPath: string;
   onSelectFile: (path: string) => void;
   contentState: SkillDetailContentState;
-  contentActions?: ReactNode;
-  editor?: ReactNode;
   footer?: ReactNode;
-}
-
-export function SkillOwnershipBadge({
-  label,
-  tooltip,
-  accessibleLabel,
-}: {
-  label: string;
-  tooltip: ReactNode;
-  accessibleLabel?: string;
-}) {
-  return (
-    <ProvenancePill
-      label={label}
-      accessibleLabel={accessibleLabel}
-      tooltip={tooltip}
-    />
-  );
 }
 
 function SkillPath({ path, href }: { path: string; href?: string }) {
@@ -252,8 +232,6 @@ export function SkillDetailView({
   selectedPath,
   onSelectFile,
   contentState,
-  contentActions,
-  editor,
   footer,
 }: SkillDetailViewProps) {
   const directoryPath = getSkillDirectoryPath(path);
@@ -261,7 +239,7 @@ export function SkillDetailView({
   const selectedFileIsMarkdown = selectedPath.toLowerCase().endsWith(".md");
   const titleMeta =
     titleBadge === undefined ? undefined : (
-      <SkillOwnershipBadge
+      <ProvenancePill
         label={titleBadge.label}
         tooltip={titleBadge.tooltip}
         accessibleLabel={titleBadge.accessibleLabel}
@@ -277,7 +255,7 @@ export function SkillDetailView({
       actions={headerActions}
     >
       <ResourceDetailStack>
-        {files.length > 1 && editor === undefined ? (
+        {files.length > 1 ? (
           <ResourceDetailIncludesSection label="Files">
             <SkillFileList
               files={files}
@@ -287,52 +265,48 @@ export function SkillDetailView({
           </ResourceDetailIncludesSection>
         ) : null}
 
-        <ResourceDefinitionSection
-          label={selectedDisplayPath}
-          actions={contentActions}
-        >
-          {editor ??
-            (contentState.kind === "loading" ? (
-              <ResourceDetailPanel
-                surface="recessed"
-                className="px-3 py-10 text-center text-sm text-muted-foreground"
+        <ResourceDefinitionSection label={selectedDisplayPath}>
+          {contentState.kind === "loading" ? (
+            <ResourceDetailPanel
+              surface="recessed"
+              className="px-3 py-10 text-center text-sm text-muted-foreground"
+            >
+              Loading {selectedDisplayPath}…
+            </ResourceDetailPanel>
+          ) : contentState.kind === "error" ? (
+            <ResourceDetailPanel
+              surface="recessed"
+              className="px-3 py-10 text-center text-sm"
+            >
+              <div
+                role="alert"
+                className="flex items-start justify-center gap-2 text-foreground"
               >
-                Loading {selectedDisplayPath}…
-              </ResourceDetailPanel>
-            ) : contentState.kind === "error" ? (
-              <ResourceDetailPanel
-                surface="recessed"
-                className="px-3 py-10 text-center text-sm"
+                <Icon
+                  name="CircleX"
+                  className="mt-0.5 size-4 shrink-0 text-destructive"
+                  aria-hidden
+                />
+                <p>{contentState.message}</p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={contentState.onRetry}
               >
-                <div
-                  role="alert"
-                  className="flex items-start justify-center gap-2 text-foreground"
-                >
-                  <Icon
-                    name="CircleX"
-                    className="mt-0.5 size-4 shrink-0 text-destructive"
-                    aria-hidden
-                  />
-                  <p>{contentState.message}</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={contentState.onRetry}
-                >
-                  Retry
-                </Button>
-              </ResourceDetailPanel>
-            ) : (
-              <ScrollingSkillContent
-                key={`${selectedPath}:${contentState.content}`}
-                path={selectedPath}
-                content={contentState.content}
-                markdown={selectedFileIsMarkdown}
-              />
-            ))}
+                Retry
+              </Button>
+            </ResourceDetailPanel>
+          ) : (
+            <ScrollingSkillContent
+              key={`${selectedPath}:${contentState.content}`}
+              path={selectedPath}
+              content={contentState.content}
+              markdown={selectedFileIsMarkdown}
+            />
+          )}
         </ResourceDefinitionSection>
       </ResourceDetailStack>
       {footer}

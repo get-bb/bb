@@ -6,7 +6,10 @@ import path from "node:path";
 import { spawn as spawnPty } from "node-pty";
 import type { TerminalSessionCloseReason } from "@bb/domain";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import {
+  killProcessGroup,
+  sanitizeInheritedChildProcessEnv,
+} from "@bb/process-utils";
 import type { HostDaemonServerTerminalMessage } from "../server-connection-support.js";
 import type { HostDaemonLogger } from "../logger.js";
 import { RuntimeManager } from "../runtime-manager.js";
@@ -54,7 +57,7 @@ export interface TerminalPtyExit {
 }
 
 export interface TerminalPtyProcess {
-  kill(signal?: string): void;
+  kill(signal?: NodeJS.Signals): void;
   onData(listener: (data: string) => void): TerminalPtyDisposable;
   onExit(listener: (event: TerminalPtyExit) => void): TerminalPtyDisposable;
   resize(cols: number, rows: number): void;
@@ -91,11 +94,8 @@ export interface TerminalManagerOptions {
   logger: HostDaemonLogger;
   platform?: NodeJS.Platform;
   ptyAdapter?: TerminalPtyAdapter;
-  outputBatchDelayMs?: number;
   resolveShell?: ResolveTerminalShell;
   runtimeManager: RuntimeManager;
-  scrollbackMaxBytes?: number;
-  scrollbackMaxChunks?: number;
   sendMessage: (message: HostDaemonDaemonWsMessage) => boolean;
 }
 
@@ -198,7 +198,7 @@ interface TerminalOperationCompletion {
   resolve: () => void;
 }
 
-export const nodePtyAdapter: TerminalPtyAdapter = {
+const nodePtyAdapter: TerminalPtyAdapter = {
   spawn(args) {
     ensureNodePtySpawnHelperExecutable(args.logger);
     const pty = spawnPty(args.file, args.args, {
@@ -209,7 +209,14 @@ export const nodePtyAdapter: TerminalPtyAdapter = {
       rows: args.rows,
     });
     return {
-      kill: (signal) => pty.kill(signal),
+      // The pty child is a session leader, so its pid is also its process
+      // group id. Signal the whole group so background jobs die with the
+      // shell instead of surviving with a cwd in a removed workspace.
+      kill: (signal) =>
+        killProcessGroup({
+          child: { pid: pty.pid, kill: (groupSignal) => pty.kill(groupSignal) },
+          signal: signal ?? "SIGHUP",
+        }),
       onData: (listener) => pty.onData(listener),
       onExit: (listener) =>
         pty.onExit((event) =>
@@ -234,7 +241,7 @@ interface EnsureNodePtySpawnHelperExecutableInPackageArgs {
 
 type NodePtySpawnHelperPathList = string[];
 
-export function resolveNodePtySpawnHelperCandidatePaths(
+function resolveNodePtySpawnHelperCandidatePaths(
   args: ResolveNodePtySpawnHelperPathArgs,
 ): NodePtySpawnHelperPathList {
   const helperPaths: string[] = [];
@@ -325,7 +332,7 @@ function isNonEmptyString(value: string | undefined): value is string {
   return value !== undefined && value.length > 0;
 }
 
-export async function resolveDefaultTerminalShell(): Promise<string> {
+async function resolveDefaultTerminalShell(): Promise<string> {
   const candidates = [
     process.env.SHELL,
     "/bin/zsh",
@@ -453,12 +460,9 @@ function consumePrimaryDeviceAttributesQueries(
 
 export class TerminalManager {
   private readonly closeGracePeriodMs: number;
-  private readonly outputBatchDelayMs: number;
   private readonly platform: NodeJS.Platform;
   private readonly ptyAdapter: TerminalPtyAdapter;
   private readonly resolveShell: ResolveTerminalShell;
-  private readonly scrollbackMaxBytes: number;
-  private readonly scrollbackMaxChunks: number;
   private readonly terminalOperations = new Map<string, Promise<void>>();
   private readonly openingTerminalEnvironmentIds = new Map<
     string,
@@ -469,15 +473,9 @@ export class TerminalManager {
   constructor(private readonly options: TerminalManagerOptions) {
     this.closeGracePeriodMs =
       options.closeGracePeriodMs ?? DEFAULT_TERMINAL_CLOSE_GRACE_PERIOD_MS;
-    this.outputBatchDelayMs =
-      options.outputBatchDelayMs ?? DEFAULT_OUTPUT_BATCH_DELAY_MS;
     this.platform = options.platform ?? process.platform;
     this.ptyAdapter = options.ptyAdapter ?? nodePtyAdapter;
     this.resolveShell = options.resolveShell ?? resolveDefaultTerminalShell;
-    this.scrollbackMaxBytes =
-      options.scrollbackMaxBytes ?? DEFAULT_SCROLLBACK_MAX_BYTES;
-    this.scrollbackMaxChunks =
-      options.scrollbackMaxChunks ?? DEFAULT_SCROLLBACK_MAX_CHUNKS;
   }
 
   async handleMessage(message: HostDaemonServerTerminalMessage): Promise<void> {
@@ -895,7 +893,7 @@ export class TerminalManager {
     session.outputFlushTimeout = setTimeout(() => {
       session.outputFlushTimeout = null;
       this.flushTerminalOutput(session);
-    }, this.outputBatchDelayMs);
+    }, DEFAULT_OUTPUT_BATCH_DELAY_MS);
   }
 
   private flushTerminalOutput(session: TerminalSession): void {
@@ -946,8 +944,8 @@ export class TerminalManager {
 
   private pruneScrollback(session: TerminalSession): void {
     while (
-      session.scrollbackBytes > this.scrollbackMaxBytes ||
-      session.scrollback.length > this.scrollbackMaxChunks
+      session.scrollbackBytes > DEFAULT_SCROLLBACK_MAX_BYTES ||
+      session.scrollback.length > DEFAULT_SCROLLBACK_MAX_CHUNKS
     ) {
       const removed = session.scrollback.shift();
       if (!removed) {

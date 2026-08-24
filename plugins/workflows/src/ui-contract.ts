@@ -1,7 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const workflowRunStatusSchema = z.enum([
+const workflowRunStatusSchema = z.enum([
   "queued",
   "running",
   "succeeded",
@@ -9,21 +9,13 @@ export const workflowRunStatusSchema = z.enum([
   "cancelled",
 ]);
 
-export const workflowCallStatusSchema = z.enum([
-  "queued",
-  "running",
-  "succeeded",
-  "failed",
-  "cancelled",
-]);
-
-export const workflowCallViewSchema = z
+const workflowCallViewSchema = z
   .object({
     id: z.string(),
     index: z.number().int().nonnegative(),
     label: z.string(),
     phase: z.string().nullable(),
-    status: workflowCallStatusSchema,
+    status: workflowRunStatusSchema,
     provider: z.string(),
     model: z.string(),
     reasoningLevel: z.string(),
@@ -38,7 +30,7 @@ export const workflowCallViewSchema = z
   })
   .strict();
 
-export const workflowPhaseViewSchema = z
+const workflowPhaseViewSchema = z
   .object({
     title: z.string(),
     detail: z.string().nullable(),
@@ -46,7 +38,7 @@ export const workflowPhaseViewSchema = z
   })
   .strict();
 
-export const workflowRunViewSchema = z
+const workflowRunViewSchema = z
   .object({
     id: z.string(),
     name: z.string(),

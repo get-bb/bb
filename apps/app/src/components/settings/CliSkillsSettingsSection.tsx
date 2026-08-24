@@ -18,7 +18,7 @@ import { useCliSkillsStatus } from "@/hooks/queries/system-queries";
 
 const CLI_SKILLS_SETTING_LABEL = "bb CLI skills";
 
-export interface CliSkillsSettingsSectionContentProps {
+interface CliSkillsSettingsSectionContentProps {
   /** False while no machine is connected, so nothing could receive the files. */
   hasConnectedMachine: boolean;
   onOpenPicker: () => void;
@@ -89,9 +89,7 @@ export function CliSkillsSettingsSectionContent({
  * Report the per-machine outcome. The route installs machines independently,
  * so a partial success is a real outcome and both halves get surfaced.
  */
-export function reportInstallResults(
-  result: SystemInstallCliSkillsResponse,
-): void {
+function reportInstallResults(result: SystemInstallCliSkillsResponse): void {
   const installed = result.results.filter((entry) => entry.ok);
   const failed = result.results.filter((entry) => !entry.ok);
   if (installed.length > 0) {

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildChildThreadNeedsAttentionInput,
   buildChildThreadTurnStatusBatchInput,
-  renderChildThreadTurnStatusBatchMessage,
   type ChildThreadNotificationSource,
+  type ChildThreadTurnNotificationBatchItem,
 } from "../../../src/services/threads/child-thread-notifications.js";
 
 interface TestThreadArgs {
@@ -19,9 +19,19 @@ function testThread(args: TestThreadArgs): ChildThreadNotificationSource {
   };
 }
 
+function renderBatchMessage(args: {
+  items: ChildThreadTurnNotificationBatchItem[];
+}): string {
+  const [input] = buildChildThreadTurnStatusBatchInput(args);
+  if (!input || input.type !== "text") {
+    throw new Error("Expected one text input");
+  }
+  return input.text;
+}
+
 describe("child thread notifications", () => {
   it("keeps final output for a single completed outcome", () => {
-    const message = renderChildThreadTurnStatusBatchMessage({
+    const message = renderBatchMessage({
       items: [
         {
           activeWorkflowCount: 0,
@@ -46,7 +56,7 @@ describe("child thread notifications", () => {
   });
 
   it("omits output for a single failed outcome", () => {
-    const message = renderChildThreadTurnStatusBatchMessage({
+    const message = renderBatchMessage({
       items: [
         {
           activeWorkflowCount: 0,
@@ -71,7 +81,7 @@ describe("child thread notifications", () => {
   });
 
   it("omits output and preserves manual-stop safety guidance for a single interrupted outcome", () => {
-    const message = renderChildThreadTurnStatusBatchMessage({
+    const message = renderBatchMessage({
       items: [
         {
           activeWorkflowCount: 0,
@@ -101,7 +111,7 @@ describe("child thread notifications", () => {
   });
 
   it("renders multiple child outcomes as status-only bullet lines", () => {
-    const message = renderChildThreadTurnStatusBatchMessage({
+    const message = renderBatchMessage({
       items: [
         {
           activeWorkflowCount: 0,
@@ -247,7 +257,7 @@ describe("child thread notifications", () => {
   });
 
   it("renders a final output fallback for a completed child without output", () => {
-    const message = renderChildThreadTurnStatusBatchMessage({
+    const message = renderBatchMessage({
       items: [
         {
           activeWorkflowCount: 0,
@@ -271,7 +281,7 @@ describe("child thread notifications", () => {
   });
 
   it("flags a still-running workflow on a single completed outcome", () => {
-    const message = renderChildThreadTurnStatusBatchMessage({
+    const message = renderBatchMessage({
       items: [
         {
           activeWorkflowCount: 1,
@@ -297,7 +307,7 @@ describe("child thread notifications", () => {
   });
 
   it("pluralizes and flags still-running workflows across batched outcomes", () => {
-    const message = renderChildThreadTurnStatusBatchMessage({
+    const message = renderBatchMessage({
       items: [
         {
           activeWorkflowCount: 2,

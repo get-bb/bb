@@ -3,25 +3,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type {
-  PendingInteractionPayload,
-  PromptInput,
-  ThreadEvent,
-} from "@bb/domain";
+import type { PromptInput, ThreadEvent } from "@bb/domain";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
+  THREAD_DELTA_NOTIFICATION_METHOD,
   interactionRequestParamsSchema,
+  type InteractionRequestParams,
 } from "@bb/provider-bridge-protocol";
+import {
+  experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
+  experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,
+  experimental_describeCalibrationEvents as describeCalibrationEvents,
+  experimental_normalizeCalibrationEvents as normalizeCalibrationEvents,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type {
+  BridgeDeltaEventCollector,
+  BridgeJsonRpcTestHarness,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexEvent } from "../generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "../generated/codex-app-server/schema/v2/Turn.js";
 import { handleLine } from "./bridge.js";
-import {
-  createBridgeJsonRpcTestHarness,
-  describeCalibrationEvents,
-  normalizeCalibrationEvents,
-} from "@bb/provider-bridge-protocol/testing";
-import type { BridgeJsonRpcTestHarness } from "@bb/provider-bridge-protocol/testing";
+
 /**
  * Codex scripted-session golden.
  *
@@ -323,7 +326,8 @@ const STEER_REQUEST_ID = "creq_23456789ac";
 const SECOND_REQUEST_ID = "creq_23456789ad";
 
 interface ReplayResult {
-  approvals: PendingInteractionPayload[];
+  approvals: InteractionRequestParams[];
+  collector: BridgeDeltaEventCollector;
   events: ThreadEvent[];
 }
 
@@ -335,7 +339,7 @@ interface ReplayResult {
 function answerBridgeRequests(
   bridge: BridgeJsonRpcTestHarness,
   from: number,
-  approvals: PendingInteractionPayload[],
+  approvals: InteractionRequestParams[],
 ): number {
   for (const message of bridge.messages.slice(from)) {
     if (
@@ -344,9 +348,7 @@ function answerBridgeRequests(
     ) {
       continue;
     }
-    approvals.push(
-      interactionRequestParamsSchema.parse(message.params).payload,
-    );
+    approvals.push(interactionRequestParamsSchema.parse(message.params));
     handleLine(
       JSON.stringify({
         jsonrpc: "2.0",
@@ -362,20 +364,19 @@ function answerBridgeRequests(
 async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
   const bridge = createBridgeJsonRpcTestHarness(handleLine);
   const events: ThreadEvent[] = [];
-  const approvals: PendingInteractionPayload[] = [];
+  const approvals: InteractionRequestParams[] = [];
   let drained = 0;
   let answered = 0;
 
+  // The bridge emits thread/delta; one stateful assembler (the runtime
+  // adapter's exact translation) turns the capture into canonical events.
+  const collector = createBridgeDeltaEventCollector("codex");
   const collect = (): void => {
     for (const message of bridge.messages.slice(drained)) {
-      if (message.method !== "thread/event") {
+      if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
         continue;
       }
-      const params = message.params;
-      if (params !== null && typeof params === "object" && "event" in params) {
-        // Freeform wire payload: the ThreadEvent the bridge just serialized.
-        events.push(params.event as unknown as ThreadEvent);
-      }
+      events.push(...collector.assembleMessage(message));
     }
     drained = bridge.messages.length;
   };
@@ -408,10 +409,16 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
     });
     await settle(2);
 
-    // Steer against the turn the bridge reported, in ITS id space.
-    const expectedTurnId = firstTurnId(events);
+    // Steer against the codex-native turn id: the runtime reverse-maps the
+    // assembler-minted turn id before dispatch, so this leg does the same
+    // through the collector's assembler.
+    const bbTurnId = firstTurnId(events);
+    const expectedTurnId =
+      bbTurnId === undefined
+        ? undefined
+        : collector.assembler.getProviderTurnId(THREAD_ID, bbTurnId);
     if (expectedTurnId === undefined) {
-      throw new Error("Expected a bridge-minted turn id to steer against");
+      throw new Error("Expected a codex-native turn id to steer against");
     }
     bridge.sendRequest(3, "turn/steer", {
       threadId: THREAD_ID,
@@ -443,7 +450,7 @@ async function replayCanonical(workspaceDir: string): Promise<ReplayResult> {
     bridge.restore();
   }
 
-  return { approvals, events };
+  return { approvals, collector, events };
 }
 
 function firstTurnId(events: readonly ThreadEvent[]): string | undefined {
@@ -545,17 +552,31 @@ it("replays one scripted codex session onto the golden event stream", async () =
   // Approvals ride a different channel (bridge → runtime requests), so they are
   // asserted here rather than in the golden.
   expect(canonical.approvals).toHaveLength(1);
-  const canonicalApproval = canonical.approvals[0];
+  const approvalRequest = canonical.approvals[0];
+  const canonicalApproval = approvalRequest?.payload;
   if (
     canonicalApproval?.kind !== "approval" ||
     canonicalApproval.subject.kind !== "command"
   ) {
     throw new Error("Expected a canonical command-approval payload");
   }
-  // The subject's item id is bridge-minted (the same prefix its item events
-  // carry), so the runtime can match the approval to the item it sees.
-  expect(canonicalApproval.subject.itemId).toMatch(
-    new RegExp(`^bt[0-9a-f]{8}-\\d+-${COMMAND_ITEM_ID}$`),
+  // The request carries codex-native ids and says so: the runtime adapter
+  // translates the subject's item id through the assembler's map so the app
+  // can match the approval to the timeline item it sees.
+  expect(approvalRequest?.providerNativeIds).toBe(true);
+  expect(canonicalApproval.subject.itemId).toBe(COMMAND_ITEM_ID);
+  const commandEventItemId = canonical.events.find(
+    (event) =>
+      event.type === "item/completed" &&
+      event.item.type === "commandExecution" &&
+      event.item.command === "git status --short",
+  );
+  expect(
+    canonical.collector.assembler.getBbItemId(THREAD_ID, COMMAND_ITEM_ID),
+  ).toBe(
+    commandEventItemId?.type === "item/completed"
+      ? commandEventItemId.item.id
+      : undefined,
   );
   expect(canonicalApproval).toMatchObject({
     kind: "approval",

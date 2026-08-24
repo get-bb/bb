@@ -56,6 +56,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={parentThreads}
             canAssignToParent
@@ -74,6 +75,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={[]}
             canAssignToParent={false}
@@ -92,6 +94,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread({ parentThreadId: "thr_codex_parent" })}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName="Codex Parent"
             parentThreads={parentThreads}
             canAssignToParent={false}
@@ -110,6 +113,7 @@ export function ParentSelector() {
           <ParentSelectorRow
             thread={makeThread()}
             projectId={baseProps.projectId}
+            parentThreadProjectId={null}
             parentThreadDisplayName={null}
             parentThreads={parentThreads}
             canAssignToParent
@@ -245,16 +249,12 @@ export function Branch() {
     <StoryCard>
       <StoryRow label="feature branch">
         <RowStage>
-          <BranchRow
-            thread={makeThread()}
-            workspaceStatus={makeWorkspaceStatus()}
-          />
+          <BranchRow workspaceStatus={makeWorkspaceStatus()} />
         </RowStage>
       </StoryRow>
       <StoryRow label="long branch">
         <RowStage>
           <BranchRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               checkout: {
                 kind: "branch",
@@ -274,7 +274,6 @@ export function Branch() {
       <StoryRow label="detached checkout">
         <RowStage>
           <BranchRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               checkout: {
                 kind: "detached",
@@ -298,7 +297,6 @@ export function MergeBase() {
       <StoryRow label="feature branch">
         <RowStage>
           <MergeBaseRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus()}
             selectedMergeBaseBranch={undefined}
             mergeBaseBranchOptions={["main", "develop", "release/2026-04"]}
@@ -310,7 +308,6 @@ export function MergeBase() {
       <StoryRow label="loading candidates">
         <RowStage>
           <MergeBaseRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus()}
             selectedMergeBaseBranch={undefined}
             mergeBaseBranchOptions={undefined}
@@ -322,7 +319,6 @@ export function MergeBase() {
       <StoryRow label="picker open">
         <RowStage>
           <MergeBaseRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus()}
             selectedMergeBaseBranch={undefined}
             mergeBaseBranchOptions={["main", "develop", "release/2026-04"]}
@@ -873,7 +869,6 @@ export function ChangedFiles() {
       <StoryRow label="uncommitted">
         <RowStage>
           <ChangedFilesRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 hasUncommittedChanges: true,
@@ -910,7 +905,6 @@ export function ChangedFiles() {
       <StoryRow label="committed, not merged">
         <RowStage>
           <ChangedFilesRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               mergeBase: {
                 mergeBaseBranch: "main",
@@ -945,7 +939,6 @@ export function ChangedFiles() {
       <StoryRow label="uncommitted + committed">
         <RowStage>
           <ChangedFilesRow
-            thread={makeThread()}
             workspaceStatus={makeWorkspaceStatus({
               workingTree: {
                 hasUncommittedChanges: true,

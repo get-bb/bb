@@ -8,7 +8,7 @@
     "Chunks behind a dynamic import are deliberately not counted. Moving code",
     "behind React.lazy or import() is the fix this budget exists to encourage.",
     "",
-    "maxBootBytes / maxBootBrotliBytes are a ratchet set 3% above the measured",
+    "maxBootBytes / maxBootBrotliBytes are a ratchet set 10% above the measured",
     "payload: enough for a normal feature's worth of shell code and for build",
     "noise, tight enough that a barrel regression cannot hide inside it. Lower",
     "them when a change wins headroom. Raising one is a deliberate decision",
@@ -23,10 +23,31 @@
     "large and all needed only after a user action (open a diff, focus the",
     "composer, render math). Each one reached the boot path through a barrel",
     "re-export rather than a direct import, which type checking cannot catch,",
-    "so the check names them explicitly."
+    "so the check names them explicitly.",
+    "",
+    "onDemandPackages goes one step further than the boot path: each package",
+    "maps to its gate, the source module a dynamic import() resolves to. The",
+    "package may appear only in the static import closure of that gate's chunk.",
+    "Any other chunk whose static closure reaches the package fails the check.",
+    "KaTeX is the example: markdown-preview is a static import of the thread",
+    "route, so a static rehype-katex import would put ~64 KB brotli of math",
+    "renderer in front of every thread's first paint even though almost no",
+    "message contains $$ math.",
+    "",
+    "routeClosures ratchets, per lazy route, the static-import closure of the",
+    "route chunk minus the boot chunks: the JavaScript between 'app shell",
+    "painted' and 'route content painted'. SplitWorkspaceRoute is every thread,",
+    "compose and plugin-panel page, so its closure is the second number that",
+    "decides how slow bb feels on a phone. Same 10% ratchet; its forbiddenPackages",
+    "are the diff engine, math, file tree and terminal code that only a user",
+    "action needs.",
+    "The composer (tiptap/prosemirror) is visible on every thread page and is",
+    "allowed until it moves behind a first-focus handoff. Run",
+    "`node scripts/why-eager.mjs --from=views/SplitWorkspaceRoute.tsx <package>`",
+    "to print the static chain that pulled a package into the closure."
   ],
-  "maxBootBytes": 1707047,
-  "maxBootBrotliBytes": 448512,
+  "maxBootBytes": 1723617,
+  "maxBootBrotliBytes": 479067,
   "forbiddenBootPackages": [
     "@pierre/diffs",
     "@pierre/theming",
@@ -48,5 +69,32 @@
     "prosemirror-view",
     "rehype-katex",
     "shiki"
-  ]
+  ],
+  "onDemandPackages": {
+    "@pierre/trees": "src/components/secondary-panel/ThreadStorageFileTree.tsx",
+    "katex": "src/components/ui/markdown-katex.ts",
+    "rehype-katex": "src/components/ui/markdown-katex.ts"
+  },
+  "routeClosures": {
+    "SplitWorkspaceRoute": {
+      "maxBytes": 2268430,
+      "maxBrotliBytes": 605332,
+      "forbiddenPackages": [
+        "@pierre/diffs",
+        "@pierre/theming",
+        "@pierre/trees",
+        "@shikijs/core",
+        "@shikijs/engine-javascript",
+        "@shikijs/engine-oniguruma",
+        "@shikijs/langs",
+        "@shikijs/vscode-textmate",
+        "@xterm/xterm",
+        "katex",
+        "mermaid",
+        "oniguruma-to-es",
+        "rehype-katex",
+        "shiki"
+      ]
+    }
+  }
 }

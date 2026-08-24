@@ -21,7 +21,7 @@ import {
   isUnreadDoneThread,
   resolveThreadListIndicator,
   type ThreadListIndicatorState,
-} from "@/lib/thread-activity";
+} from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ThreadStatusGlyph } from "./ThreadRow";

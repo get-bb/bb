@@ -9,6 +9,7 @@ import { defaultExperiments, PERSONAL_PROJECT_ID } from "@bb/domain";
 import {
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
+  waitForQueuedCommandAfter,
 } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -320,7 +321,39 @@ describe("public project local host routes", () => {
       expect(fileResponse.headers.get("content-type")).toContain(
         "application/typescript",
       );
+      expect(fileResponse.headers.get("cache-control")).toBe(
+        "private, no-cache",
+      );
+      expect(fileResponse.headers.get("etag")).toBe(`"${"0".repeat(64)}"`);
+      expect(fileResponse.headers.get("x-bb-content-encoding")).toBe("utf8");
       await expect(fileResponse.text()).resolves.toBe("console.log('ok');");
+
+      // A revalidation with the current tag still reads the file (the daemon
+      // hashes the bytes it returns) but answers 304 without a body.
+      const revalidatePromise = harness.app.request(
+        `/api/v1/projects/${project.id}/files/content?path=${encodeURIComponent("src/app.ts")}`,
+        { headers: { "if-none-match": `"${"0".repeat(64)}"` } },
+      );
+      const revalidateCommand = await waitForQueuedCommandAfter(
+        harness,
+        fileCommand.row.cursor,
+        ({ command }) =>
+          command.type === "host.read_file" &&
+          command.path === "/tmp/project-file-content/src/app.ts",
+      );
+      await reportQueuedCommandSuccess(harness, revalidateCommand, {
+        path: "/tmp/project-file-content/src/app.ts",
+        content: "console.log('ok');",
+        contentEncoding: "utf8",
+        mimeType: "application/typescript",
+        sizeBytes: 18,
+        sha256: "0".repeat(64),
+      });
+      const revalidated = await revalidatePromise;
+      expect(revalidated.status).toBe(304);
+      expect(revalidated.headers.get("etag")).toBe(`"${"0".repeat(64)}"`);
+      expect(revalidated.headers.get("x-bb-content-encoding")).toBe("utf8");
+      expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
     });
   });
 });

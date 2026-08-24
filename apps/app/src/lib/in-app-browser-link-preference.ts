@@ -1,7 +1,7 @@
 import { useAtom } from "jotai";
 import { createBooleanPreferenceAtom } from "./browser-storage";
 
-export const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
+const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
 
 /**
  * Default ON: the feature routes bb links into the desktop in-app browser
@@ -9,9 +9,9 @@ export const OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY = "bb.openLinksInAppBrowser";
  * external-open behavior. The preference only has an effect on desktop builds
  * (see {@link resolveUrlOpenTarget}); on web there is no in-app browser.
  */
-export const OPEN_LINKS_IN_APP_BROWSER_DEFAULT = true;
+const OPEN_LINKS_IN_APP_BROWSER_DEFAULT = true;
 
-export type UrlOpenTarget = "in-app-browser" | "external-browser" | "unhandled";
+type UrlOpenTarget = "in-app-browser" | "external-browser" | "unhandled";
 
 interface ResolveUrlOpenTargetArgs {
   /** Whether the desktop in-app browser surface is available in this build. */
@@ -79,7 +79,7 @@ export function openUrlByPreference({
   }
 }
 
-export const openLinksInAppBrowserPreferenceAtom = createBooleanPreferenceAtom(
+const openLinksInAppBrowserPreferenceAtom = createBooleanPreferenceAtom(
   OPEN_LINKS_IN_APP_BROWSER_STORAGE_KEY,
   OPEN_LINKS_IN_APP_BROWSER_DEFAULT,
 );

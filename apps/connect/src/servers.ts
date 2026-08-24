@@ -15,7 +15,7 @@ import { resolveConnectRuntime } from "./cloud-dev.js";
 import { MACHINE_CREDENTIAL_HEADER } from "./protocol-headers.js";
 import type { Env } from "./tunnel-do.js";
 
-export const DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
+const DESKTOP_SESSION_TTL_MS = 60 * 60 * 1000;
 
 function bytesToBase64Url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes))
@@ -208,7 +208,7 @@ export async function resolveAccountUserId(
   return verifySessionCookie(cookie, secret, db);
 }
 
-export interface AccountServerListing {
+interface AccountServerListing {
   /** Routing label (`server.subdomain`) — `<handle>.getbb.app`. */
   handle: string;
   /** Human-readable row name; falls back to handle when empty. */

@@ -134,6 +134,9 @@ const splitWithoutModal = {
 } as const;
 
 export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
+  // Mod+P is file.quickOpen and Mod+K is thread.search, so the palette takes
+  // the editor-conventional Mod+Shift+P.
+  binding("palette.open", "p", { mod: true, shift: true }, mainWithoutModal),
   // Browsers reserve Mod+N before the page receives a key event. Keep the
   // t3code-style alias available in web clients while desktop retains Mod+N.
   binding("thread.new", "o", { mod: true, shift: true }, mainWithoutModal),
@@ -266,6 +269,11 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     desktopOnly: true,
     none: ["modalOpen"],
   }),
+  binding("browser.find", "f", { mod: true }, {
+    all: ["mainSurface", "browserFocus"],
+    desktopOnly: true,
+    none: ["modalOpen"],
+  }),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
   ...QUESTION_SELECT_APP_COMMAND_IDS.map((command, index) =>
     binding(command, String(index + 1), {}, {
@@ -276,5 +284,13 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
   binding("window.new", "n", { mod: true, shift: true }, {
     ...mainWithoutModal,
     desktopOnly: true,
+  }),
+  // A diagnostics action, so it ships unbound: discoverable in the palette,
+  // assignable in Settings → Keyboard. macOS-only because that is where the
+  // desktop shell offers the log viewer.
+  unassignedBinding("logs.openServerDaemon", {
+    all: ["mainSurface", "macPlatform"],
+    desktopOnly: true,
+    none: ["modalOpen"],
   }),
 ];

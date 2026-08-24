@@ -181,9 +181,6 @@ export const pullRequestMergeOptionsSchema = z
     method: pullRequestMergeMethodSchema,
   })
   .strict();
-export type PullRequestMergeOptions = z.infer<
-  typeof pullRequestMergeOptionsSchema
->;
 
 export const environmentActionRequestSchema = z.discriminatedUnion("action", [
   z
@@ -278,28 +275,10 @@ export type EnvironmentActionResponse = z.infer<
   typeof environmentActionResponseSchema
 >;
 
-export const environmentActionFailureDetailsSchema = z.discriminatedUnion(
-  "kind",
-  [
-    z.object({
-      kind: z.literal("commit_failed"),
-      errorMessage: z.string(),
-    }),
-    z.object({
-      kind: z.literal("squash_merge_conflict"),
-      conflictFiles: z.array(z.string()),
-    }),
-    z.object({
-      kind: z.literal("squash_merge_commit_failed"),
-      stage: z.enum(["prep_commit", "squash_commit"]),
-      errorMessage: z.string(),
-    }),
-    z.object({
-      kind: z.literal("workspace_unavailable"),
-      failure: workspaceResolutionFailureSchema,
-    }),
-  ],
-);
+export const environmentActionFailureDetailsSchema = z.object({
+  kind: z.literal("workspace_unavailable"),
+  failure: workspaceResolutionFailureSchema,
+});
 export type EnvironmentActionFailureDetails = z.infer<
   typeof environmentActionFailureDetailsSchema
 >;
@@ -314,9 +293,6 @@ export type EnvironmentActionApiError = z.infer<
 export const environmentWorkspaceNotApplicableReasonSchema = z.enum([
   "non_git_environment",
 ]);
-export type EnvironmentWorkspaceNotApplicableReason = z.infer<
-  typeof environmentWorkspaceNotApplicableReasonSchema
->;
 
 const environmentWorkspaceNotApplicableOutcomeSchema = z
   .object({

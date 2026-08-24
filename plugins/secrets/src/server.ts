@@ -5,7 +5,11 @@ import type {
   PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
-import { secretNameSchema, secretRequestResponseSchema } from "./contracts.js";
+import {
+  SECRET_REQUEST_RENDERER_ID,
+  secretNameSchema,
+  secretRequestResponseSchema,
+} from "@bb/plugin-interaction-contracts";
 import { assertNoDuplicateAssignments, reconcileDotenv } from "./dotenv.js";
 
 interface ParsedRequest {
@@ -176,7 +180,7 @@ async function runRequest(
   const result = await bb.ui.requestInput(
     {
       threadId: ctx.threadId,
-      rendererId: "secret-request",
+      rendererId: SECRET_REQUEST_RENDERER_ID,
       title: `Add secrets to ${destinationPath}`,
       payload: {
         purpose: parsed.purpose,

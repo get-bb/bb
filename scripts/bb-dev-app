@@ -59,9 +59,11 @@ NODE
 
 dev_node_bin_dir="$(resolve_dev_node_bin_dir)"
 if [[ -n "${dev_node_bin_dir}" ]]; then
-  PATH="${dev_node_bin_dir}:${HOME}/.local/bin:${PATH}"
+  PATH="${dev_node_bin_dir}:${PATH}:${HOME}/.local/bin"
 else
-  PATH="${HOME}/.local/bin:${PATH}"
+  # Append, never prepend: a node in ~/.local/bin must not shadow the node the
+  # caller already resolved (nvm, mise, asdf, ...).
+  PATH="${PATH}:${HOME}/.local/bin"
 fi
 
 sanitize_label() {

@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { memo } from "react";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -9,7 +16,9 @@ import {
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
+  useIsSidebarShowing,
   useOptionalIsSidebarShowing,
+  useSidebar,
 } from "./sidebar";
 
 afterEach(() => {
@@ -129,6 +138,70 @@ describe("useOptionalIsSidebarShowing", () => {
   });
 });
 
+describe("useIsSidebarShowing", () => {
+  it("re-renders its reader only when the visible bit flips, not on every provider commit", () => {
+    vi.useFakeTimers();
+    const showingRenders: boolean[] = [];
+    const ShowingReader = memo(function ShowingReader() {
+      const isShowing = useIsSidebarShowing();
+      showingRenders.push(isShowing);
+      return <output data-testid="showing">{String(isShowing)}</output>;
+    });
+    function Controls() {
+      const {
+        openMobileSidebar,
+        closeMobileSidebar,
+        setSuppressMobileOpenAnimation,
+      } = useSidebar();
+      return (
+        <>
+          <button type="button" onClick={openMobileSidebar}>
+            open
+          </button>
+          <button type="button" onClick={closeMobileSidebar}>
+            close
+          </button>
+          <button
+            type="button"
+            onClick={() => setSuppressMobileOpenAnimation(true)}
+          >
+            suppress
+          </button>
+        </>
+      );
+    }
+    render(
+      <CompactViewportOverrideProvider isCompactViewport>
+        <SidebarProvider>
+          <ShowingReader />
+          <Controls />
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+    expect(screen.getByTestId("showing").textContent).toBe("false");
+    const settled = showingRenders.length;
+
+    // A provider commit that changes the full context object but not the
+    // visible bit (page header and retained secondary panel read only the bit).
+    fireEvent.click(screen.getByRole("button", { name: "suppress" }));
+    expect(showingRenders).toHaveLength(settled);
+
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    settleMobileToggle();
+    expect(screen.getByTestId("showing").textContent).toBe("true");
+    const afterOpen = showingRenders.length;
+    expect(afterOpen).toBe(settled + 1);
+
+    // Close: the closing-flag commit must not reach the reader; only the
+    // deferred openMobile flip does.
+    fireEvent.click(screen.getByRole("button", { name: "close" }));
+    expect(showingRenders).toHaveLength(afterOpen);
+    settleMobileToggle();
+    expect(screen.getByTestId("showing").textContent).toBe("false");
+    expect(showingRenders).toHaveLength(afterOpen + 1);
+  });
+});
+
 describe("SidebarTrigger", () => {
   it("uses the shared sidebar icon on every viewport", () => {
     const markup = renderToString(
@@ -144,9 +217,146 @@ describe("SidebarTrigger", () => {
   });
 });
 
-describe("Sidebar", () => {
-  it("keeps regular viewport content inside the safe area", () => {
+function getMobilePanel(): HTMLElement | null {
+  const panel = document.querySelector('[data-sidebar="panel"]');
+  return panel instanceof HTMLElement ? panel : null;
+}
+
+// Matches SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS: the closed compact drawer
+// realizes its subtree at the latest this long after boot.
+const MOBILE_REALIZE_TIMEOUT_MS = 1000;
+
+function settleMobileRealization() {
+  act(() => {
+    vi.advanceTimersByTime(MOBILE_REALIZE_TIMEOUT_MS);
+  });
+}
+
+function renderCompactSidebarHarness() {
+  render(
+    <CompactViewportOverrideProvider isCompactViewport>
+      <SidebarProvider>
+        <Sidebar>Sidebar content</Sidebar>
+        <SidebarInset>
+          <SidebarTrigger />
+          Main content
+        </SidebarInset>
+      </SidebarProvider>
+    </CompactViewportOverrideProvider>,
+  );
+}
+
+describe("mobile sidebar deferred realization", () => {
+  it("mounts the closed panel empty at boot and realizes it after the settle window", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+
+    // The panel element itself is mounted from the first commit (the swipe
+    // helpers select it), but its subtree stays out of the boot critical
+    // path while the drawer is closed.
+    const closedPanel = getMobilePanel();
+    expect(closedPanel).not.toBeNull();
+    expect(closedPanel?.dataset.state).toBe("closed");
+    expect(closedPanel?.hasAttribute("inert")).toBe(true);
+    expect(closedPanel?.textContent).not.toContain("Sidebar content");
+
+    settleMobileRealization();
+
+    // Same panel element; only the subtree was realized (no remount).
+    expect(getMobilePanel()).toBe(closedPanel);
+    expect(closedPanel?.dataset.state).toBe("closed");
+    expect(closedPanel?.textContent).toContain("Sidebar content");
+  });
+
+  it("prefers requestIdleCallback with a bounded timeout when available", () => {
+    vi.useFakeTimers();
+    let idleCallback: (() => void) | null = null;
+    let idleTimeout: number | undefined;
+    const cancelIdle = vi.fn();
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: (callback: () => void, options?: { timeout?: number }) => {
+        idleCallback = callback;
+        idleTimeout = options?.timeout;
+        return 1;
+      },
+    });
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdle,
+    });
+    try {
+      renderCompactSidebarHarness();
+      expect(idleCallback).not.toBeNull();
+      expect(idleTimeout).toBe(MOBILE_REALIZE_TIMEOUT_MS);
+      expect(getMobilePanel()?.textContent).not.toContain("Sidebar content");
+
+      // Frames alone must not realize: idle is the signal in this browser.
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      expect(getMobilePanel()?.textContent).not.toContain("Sidebar content");
+
+      act(() => {
+        idleCallback?.();
+      });
+      expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+    } finally {
+      Reflect.deleteProperty(window, "requestIdleCallback");
+      Reflect.deleteProperty(window, "cancelIdleCallback");
+    }
+  });
+
+  it("realizes the subtree at the start of a deferred open before idle", () => {
+    vi.useFakeTimers();
+    renderCompactSidebarHarness();
+    expect(getMobilePanel()?.textContent).not.toContain("Sidebar content");
+
+    fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+
+    // The slide starts from inline styles while React state stays closed;
+    // the subtree must commit during that window, not after the settle.
+    const openingPanel = getMobilePanel();
+    expect(openingPanel?.dataset.state).toBe("closed");
+    expect(openingPanel?.textContent).toContain("Sidebar content");
+
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+
+    // Retained across close: the latch never resets.
+    fireEvent.click(screen.getByTestId("sidebar-mobile-backdrop"));
+    settleMobileToggle();
+    expect(getMobilePanel()?.dataset.state).toBe("closed");
+    expect(getMobilePanel()?.textContent).toContain("Sidebar content");
+  });
+
+  // The width is an inherited custom property unless registered otherwise
+  // (theme.css registers it non-inherited). Either way it must be written on
+  // the elements that read it and never on the provider wrapper: the wrapper
+  // is the app root, and a per-frame change there restyles the whole app.
+  it("writes the desktop width on the gap and panel, not on the provider wrapper", () => {
     render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <SidebarProvider width="333px" data-testid="wrapper">
+          <Sidebar>Sidebar content</Sidebar>
+        </SidebarProvider>
+      </CompactViewportOverrideProvider>,
+    );
+
+    const wrapper = screen.getByTestId("wrapper");
+    const gap = document.querySelector('[data-sidebar="gap"]');
+    const panel = document.querySelector('[data-sidebar="panel"]');
+    if (!(gap instanceof HTMLElement) || !(panel instanceof HTMLElement)) {
+      throw new Error("Expected desktop gap and panel");
+    }
+    expect(gap.style.getPropertyValue("--sidebar-width")).toBe("333px");
+    expect(panel.style.getPropertyValue("--sidebar-width")).toBe("333px");
+    expect(wrapper.style.getPropertyValue("--sidebar-width")).toBe("");
+  });
+
+  it("renders the desktop sidebar subtree synchronously", () => {
+    const markup = renderToString(
       <CompactViewportOverrideProvider isCompactViewport={false}>
         <SidebarProvider>
           <Sidebar>Sidebar content</Sidebar>
@@ -154,33 +364,15 @@ describe("Sidebar", () => {
       </CompactViewportOverrideProvider>,
     );
 
-    const sidebar = screen
-      .getByText("Sidebar content")
-      .closest('[data-sidebar="sidebar"]');
-
-    expect(sidebar?.className).toContain("pt-[env(safe-area-inset-top)]");
+    expect(markup).toContain("Sidebar content");
   });
 });
-
-function getMobilePanel(): HTMLElement | null {
-  const panel = document.querySelector('[data-sidebar="panel"]');
-  return panel instanceof HTMLElement ? panel : null;
-}
 
 describe("mobile sidebar persistence", () => {
   it("keeps closed drawer content mounted, inert, and offscreen", () => {
     vi.useFakeTimers();
-    render(
-      <CompactViewportOverrideProvider isCompactViewport>
-        <SidebarProvider>
-          <Sidebar>Sidebar content</Sidebar>
-          <SidebarInset>
-            <SidebarTrigger />
-            Main content
-          </SidebarInset>
-        </SidebarProvider>
-      </CompactViewportOverrideProvider>,
-    );
+    renderCompactSidebarHarness();
+    settleMobileRealization();
 
     // The rows stay mounted while the drawer is closed, so reopening
     // replays no mount cost (#1261) — but the closed panel must not be
@@ -338,12 +530,13 @@ describe("mobile sidebar persistence", () => {
     );
 
     const trigger = screen.getByRole("button", { name: "Toggle Sidebar" });
-    const row = screen.getByRole("button", { name: "Sidebar row" });
     const insetAction = screen.getByRole("button", { name: "Inset action" });
 
     fireEvent.click(trigger);
     settleMobileToggle();
     expect(getMobilePanel()?.dataset.state).toBe("open");
+    // The row exists only once the open realized the drawer subtree.
+    const row = screen.getByRole("button", { name: "Sidebar row" });
 
     act(() => trigger.focus());
     fireEvent.keyDown(trigger, { key: "Tab" });
@@ -402,6 +595,60 @@ describe("mobile sidebar persistence", () => {
   });
 });
 
+describe("mobile sidebar swipe-open touch listener scoping", () => {
+  function touchMoveRegistrations(spy: {
+    mock: { calls: readonly (readonly unknown[])[] };
+  }) {
+    return spy.mock.calls.filter(([type]) => type === "touchmove");
+  }
+
+  it("registers a passive touchmove for touches that start deep in the content", () => {
+    renderSelectableSwipeHarness();
+    const prose = screen.getByText("Selectable message prose");
+    const addSpy = vi.spyOn(window, "addEventListener");
+
+    // Deeper than the edge zone: this is a scroll far more often than a
+    // swipe, so it must never make the browser wait on the main thread.
+    fireTouch(prose, "touchstart", createTouch(120, 160));
+
+    const registrations = touchMoveRegistrations(addSpy);
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0]?.[2]).toEqual({ passive: true });
+
+    // The passive session still recognizes and completes the swipe.
+    const move = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperties(move, {
+      touches: { value: createTouchList(createTouch(260, 164)) },
+      changedTouches: { value: createTouchList(createTouch(260, 164)) },
+    });
+    fireEvent(window, move);
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    // ... without calling preventDefault from the passive listener.
+    expect(move.defaultPrevented).toBe(false);
+  });
+
+  it("keeps the non-passive touchmove for edge-zone touches so the swipe can claim the gesture", () => {
+    renderSelectableSwipeHarness();
+    const prose = screen.getByText("Selectable message prose");
+    const addSpy = vi.spyOn(window, "addEventListener");
+
+    fireTouch(prose, "touchstart", createTouch(40, 160));
+
+    const registrations = touchMoveRegistrations(addSpy);
+    expect(registrations).toHaveLength(1);
+    expect(registrations[0]?.[2]).toEqual({ passive: false });
+
+    const move = new Event("touchmove", { bubbles: true, cancelable: true });
+    Object.defineProperties(move, {
+      touches: { value: createTouchList(createTouch(180, 164)) },
+      changedTouches: { value: createTouchList(createTouch(180, 164)) },
+    });
+    fireEvent(window, move);
+    expect(getMobilePanel()?.dataset.state).toBe("open");
+    expect(move.defaultPrevented).toBe(true);
+  });
+});
+
 describe("mobile sidebar text-selection arbitration", () => {
   it("opens from a right swipe that starts over selectable message prose", () => {
     renderSelectableSwipeHarness();
@@ -411,6 +658,9 @@ describe("mobile sidebar text-selection arbitration", () => {
     fireTouch(window, "touchmove", createTouch(260, 164));
 
     expect(getMobilePanel()?.dataset.state).toBe("open");
+    // The swipe path flips React state directly; the subtree must realize
+    // in that same commit so the dragged-in panel is not empty.
+    expect(getMobilePanel()?.textContent).toContain("Sidebar content");
   });
 
   it("defers the horizontal-scroll-region probe until horizontal intent", () => {

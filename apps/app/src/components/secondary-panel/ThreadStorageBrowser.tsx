@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
-import { FileTree } from "@pierre/trees/react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Button } from "@bb/shared-ui/button";
 import {
   COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS,
@@ -16,58 +9,14 @@ import { EmptyState } from "@bb/shared-ui/empty-state";
 import { Icon } from "@bb/shared-ui/icon";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   describeLifecycleError,
   formatLifecycleErrorDescription,
 } from "@/lib/lifecycle-errors";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { LazyThreadStorageFileTree } from "./lazySecondaryPanelComponents";
 import type { ThreadStorageBrowserController } from "./useThreadStorageBrowser";
-
-interface FileTreeHostStyle extends CSSProperties {
-  "--trees-accent-override": string;
-  "--trees-bg-muted-override": string;
-  "--trees-bg-override": string;
-  "--trees-border-color-override": string;
-  "--trees-fg-muted-override": string;
-  "--trees-fg-override": string;
-  "--trees-focus-ring-color-override": string;
-  "--trees-font-family-override": string;
-  "--trees-font-size-override": string;
-  "--trees-icon-width-override": string;
-  "--trees-item-margin-x-override": string;
-  "--trees-padding-inline-override": string;
-  "--trees-scrollbar-thumb-override": string;
-  "--trees-selected-bg-override": string;
-  "--trees-selected-fg-override": string;
-  "--trees-selected-focused-border-color-override": string;
-}
-
-const FILE_TREE_BASE_HOST_STYLE: FileTreeHostStyle = {
-  "--trees-accent-override": "var(--ring)",
-  "--trees-bg-muted-override":
-    "color-mix(in srgb, var(--muted) 45%, transparent)",
-  "--trees-bg-override": "transparent",
-  "--trees-border-color-override": "var(--border)",
-  "--trees-fg-muted-override": "var(--muted-foreground)",
-  "--trees-fg-override": "var(--foreground)",
-  "--trees-focus-ring-color-override": "var(--ring)",
-  "--trees-font-family-override": "var(--font-sans)",
-  // Match the info page's compact text-xs rows and the app's smaller icon/caret
-  // scale (the tree's chevron caret + file icons size off --trees-icon-width).
-  "--trees-font-size-override": "var(--text-xs)",
-  "--trees-icon-width-override": "14px",
-  "--trees-item-margin-x-override": "0",
-  "--trees-padding-inline-override": "0",
-  "--trees-scrollbar-thumb-override":
-    "color-mix(in srgb, var(--muted-foreground) 35%, transparent)",
-  "--trees-selected-bg-override":
-    "color-mix(in srgb, var(--accent) 65%, transparent)",
-  "--trees-selected-fg-override": "var(--foreground)",
-  "--trees-selected-focused-border-color-override": "var(--ring)",
-  height: "100%",
-};
 
 interface ThreadStorageBrowserProps {
   controller: ThreadStorageBrowserController;
@@ -89,7 +38,6 @@ export function ThreadStorageBrowser({
     searchQuery,
     setSearchQuery,
   } = controller;
-  const preferredTheme = usePreferredTheme();
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isPointerCoarse = usePointerCoarse();
 
@@ -99,14 +47,13 @@ export function ThreadStorageBrowser({
     }
   }, [isPointerCoarse, isSearchOpen]);
 
-  const fileTreeHostStyle = useMemo<FileTreeHostStyle>(
-    () => ({
-      ...FILE_TREE_BASE_HOST_STYLE,
-      colorScheme: preferredTheme,
-    }),
-    [preferredTheme],
+  const loadingState = (
+    <EmptyState
+      icon="Spinner"
+      message="Loading files..."
+      iconClassName="animate-spin"
+    />
   );
-
   let body: ReactNode;
   if (filesError) {
     const lifecycleErrorDescription = describeLifecycleError({
@@ -129,26 +76,17 @@ export function ThreadStorageBrowser({
       />
     );
   } else if (isFilesLoading && loadedFiles.length === 0) {
-    body = (
-      <EmptyState
-        icon="Spinner"
-        message="Loading files..."
-        iconClassName="animate-spin"
-      />
-    );
+    body = loadingState;
   } else if (loadedFiles.length === 0) {
     body = <EmptyState message="No files yet." />;
   } else if (filteredFiles.length === 0) {
     body = <EmptyState message="No files match search." />;
+  } else if (model === null) {
+    // The tree chunk is still on its way; the controller hands over the model
+    // once it lands.
+    body = loadingState;
   } else {
-    body = (
-      <FileTree
-        aria-label="Thread storage file tree"
-        className="block h-full min-h-0"
-        model={model}
-        style={fileTreeHostStyle}
-      />
-    );
+    body = <LazyThreadStorageFileTree fallback={loadingState} model={model} />;
   }
 
   return (

@@ -24,7 +24,6 @@ describe("local API server", () => {
       bindHost: "localhost",
       healthPath: "/health",
       healthValue: "ok",
-      mode: "full",
       port: 0,
       ...overrides,
     };
@@ -96,6 +95,25 @@ describe("local API server", () => {
       200,
     );
     expect(openInTarget).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows the exact remote server origin the daemon is enrolled with", async () => {
+    server = await startLocalApiServer({
+      hostId: "host-remote",
+      localApiConfig: createLocalApiConfig(),
+      serverUrl: "https://remote-bb.example.test/projects/proj_1",
+      serverPort: 0,
+      getConnected: () => true,
+    });
+
+    const response = await fetch(`http://localhost:${server.port}/status`, {
+      headers: { Origin: "https://remote-bb.example.test" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "https://remote-bb.example.test",
+    );
   });
 
   // A rebound page sends a matching Origin and Host pair, which the self-origin
@@ -351,12 +369,7 @@ describe("local API server", () => {
 
       expect(response.status).toBe(200);
       expect(openInTarget).toHaveBeenCalledWith({
-        context: {
-          kind: "remote-ssh",
-          serverOrigin: "https://remote-bb.example.test",
-          hostId: "host_remote",
-          sshAuthority: "devbox",
-        },
+        context: { kind: "remote-ssh", sshAuthority: "devbox" },
         columnNumber: 4,
         lineNumber: 10,
         path: "/home/me/project/src/file.ts",
@@ -456,31 +469,5 @@ describe("local API server", () => {
       path: "/tmp/workspace",
       targetId: "vscode",
     });
-  });
-
-  it("supports health-only mode", async () => {
-    server = await startLocalApiServer({
-      hostId: "host-1",
-      localApiConfig: createLocalApiConfig({
-        bindHost: "127.0.0.1",
-        healthPath: "/ready",
-        healthValue: "bb-host-daemon",
-        mode: "health-only",
-      }),
-      serverUrl: "http://server.test",
-      serverPort: 3334,
-      devAppPort: 5173,
-      getConnected: () => true,
-    });
-
-    const healthResponse = await fetch(`http://127.0.0.1:${server.port}/ready`);
-    expect(healthResponse.status).toBe(200);
-    expect(await healthResponse.text()).toBe("bb-host-daemon");
-
-    const client = createHostDaemonLocalClient(
-      `http://127.0.0.1:${server.port}`,
-    );
-    const statusResponse = await client.status.$get();
-    expect(statusResponse.status).toBe(404);
   });
 });

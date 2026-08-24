@@ -28,7 +28,6 @@ export const hostDirectoryEntrySchema = z.object({
   name: z.string(),
   path: z.string(),
 });
-export type HostDirectoryEntry = z.infer<typeof hostDirectoryEntrySchema>;
 
 export const hostDirectoryListingSchema = z.object({
   // Resolved absolute directory that was listed (symlinks already followed).

@@ -51,9 +51,11 @@ const STORY_COMPOSER_ACTIONS_BY_PROVIDER: Record<
 const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
   (provider) => ({
     id: provider.value,
+    pluginId: `provider-${provider.value}`,
     displayName: provider.label,
     logoUrl: null,
     available: true,
+    maintenance: { health: true, usage: true, installation: true },
     composerActions: [
       ...(STORY_COMPOSER_ACTIONS_BY_PROVIDER[provider.value] ?? []),
     ],
@@ -64,6 +66,7 @@ const STORY_PROVIDER_INFOS: ProviderInfo[] = STORY_PROVIDER_OPTIONS.map(
       supportsNativeUserQuestion: true,
       supportsFork: true,
       supportsSessionRewind: true,
+      modelCatalogScope: "workspace",
       permissionModes: [...permissionModes],
     },
   }),

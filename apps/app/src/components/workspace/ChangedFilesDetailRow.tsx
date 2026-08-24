@@ -17,7 +17,7 @@ import {
   type WorkspaceChangedFilesSection,
 } from "@/components/workspace/workspace-change-summary";
 
-export interface ChangedFilesDetailRowProps {
+interface ChangedFilesDetailRowProps {
   /**
    * Buckets to render in display order. Pass [] to hide the row entirely.
    * When length > 1, the row label becomes a minimal dropdown matching the

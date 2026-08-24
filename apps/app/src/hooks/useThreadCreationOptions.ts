@@ -1,9 +1,17 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   AvailableModel,
   PermissionMode,
   ProviderComposerAction,
   ProviderInfo,
+  ProviderModelCatalogScope,
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
@@ -16,15 +24,20 @@ import type {
 } from "@bb/server-contract";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
+import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
-import { REASONING_LABELS } from "@/lib/reasoning-labels";
-import { permissionModeRank, reconcileReasoningLevel } from "@bb/domain";
+import { fastServiceTierLabel } from "@/lib/reasoning-labels";
+import {
+  permissionModeRank,
+  providerModelCatalogDependsOnWorkspace,
+} from "@bb/domain";
 import { selectPrimaryHost, useHosts } from "./queries/host-queries";
 import {
-  useOnboardingAgents,
+  useKnownProviderModelCatalogScope,
+  useSystemProviderStates,
   useSystemConfig,
   useSystemExecutionOptions,
 } from "./queries/system-queries";
@@ -51,6 +64,7 @@ import {
   type UsePromptModelReasoningOptions,
   updateThreadPromptSelections,
 } from "./thread-creation-options/selection-state";
+import { resolveModelCatalogSelection } from "./thread-creation-options/model-catalog-selection";
 
 export { formatModelLabel, resolvePermissionModeSelection };
 
@@ -60,7 +74,7 @@ const EMPTY_COMPOSER_ACTIONS: ProviderComposerAction[] = [];
 const DEFAULT_SUPPORTED_PERMISSION_MODES: readonly PermissionMode[] = ["full"];
 
 const PERMISSION_CEILING_REASON =
-  "Above this machine's permission limit. Change it in Settings → Machines.";
+  "Above the selected machine's permission limit. Change it in Settings → Machines.";
 
 type StringSelectionSetter = (value: string) => void;
 type ServiceTierSelectionSetter = (value: ServiceTier | undefined) => void;
@@ -73,7 +87,7 @@ interface ModelReasoningSelection {
   reasoningLevel: ReasoningLevel;
 }
 
-export interface ProviderModelReasoningSelection extends ModelReasoningSelection {
+interface ProviderModelReasoningSelection extends ModelReasoningSelection {
   providerId: string;
 }
 
@@ -81,12 +95,12 @@ type ProviderModelReasoningSelectionSetter = (
   selection: ProviderModelReasoningSelection,
 ) => void;
 
-export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
+interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   executionOptionsRouting: SystemProvidersQuery;
   selectedProviderId: string;
   setSelectedProviderId: StringSelectionSetter;
   setProviderModelReasoning: ProviderModelReasoningSelectionSetter;
-  providerOptions: PickerOption<string>[];
+  providerOptions: ProviderPickerOption[];
   hasMultipleProviders: boolean;
   selectedProviderDisplayName: string;
   selectedProviderComposerActions: readonly ProviderComposerAction[];
@@ -105,30 +119,58 @@ export interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   modelOptions: ModelPickerOption[];
   moreModelOptions: ModelPickerOption[];
   isLoadingModels: boolean;
-  isResolvingInitialProvider: boolean;
   modelLoadFailed: boolean;
   modelLoadError: SystemExecutionOptionsModelLoadError | null;
+  /** True only after the selected provider's live model probe succeeds. */
+  modelCatalogIsVerified: boolean;
   reasoningOptions: PickerOption<ReasoningLevel>[];
   permissionModeOptions: PickerOption<PermissionMode>[];
   supportsPermissionModeSelection: boolean;
+  /** True once provider capabilities and the routed permission ceiling are authoritative. */
+  permissionModeIsVerified: boolean;
   supportsServiceTier: boolean;
   serviceTierSupportByProvider: Record<string, boolean>;
+  /** The committed provider's declared label for its fast tier. */
+  serviceTierFastLabel: string;
   executionInputSources: TExecutionInputSources;
 }
 
 interface ResolveThreadCreationProviderRoutingArgs {
   environmentId?: string;
+  environmentHostId?: string;
   environmentSelectionValue: string;
+  /**
+   * The selected provider's declared catalog scope, when this render already
+   * knows it. It is undefined on the first pass: this routing decides the
+   * query key of the request that fetches the providers in the first place.
+   */
+  modelCatalogScope?: ProviderModelCatalogScope;
   scope: "component-local" | "new-thread";
 }
 
-export function resolveThreadCreationProviderRouting({
+function resolveThreadCreationProviderRouting({
   environmentId,
+  environmentHostId,
   environmentSelectionValue,
+  modelCatalogScope,
   scope,
 }: ResolveThreadCreationProviderRoutingArgs): SystemProvidersQuery {
   if (scope === "component-local") {
-    return environmentId === undefined ? {} : { environmentId };
+    if (environmentId === undefined) {
+      return {};
+    }
+    // A host-scoped catalog is the same for every environment on the machine,
+    // so route by host: opening threads in different environments then shares
+    // one cached query instead of issuing a probe per environment. Workspace-
+    // scoped catalogs (and providers whose scope is unknown) keep the
+    // environment so the server can pass the workspace path through.
+    if (
+      environmentHostId !== undefined &&
+      !providerModelCatalogDependsOnWorkspace(modelCatalogScope)
+    ) {
+      return { hostId: environmentHostId };
+    }
+    return { environmentId };
   }
   const parsed = parseEnvironmentValue(environmentSelectionValue);
   if (parsed?.type === "host") {
@@ -141,6 +183,10 @@ export function resolveThreadCreationProviderRouting({
 }
 
 const NO_MODEL_LOAD_ERROR: SystemExecutionOptionsModelLoadError | null = null;
+
+type InitialReadyProviderResolution =
+  | { status: "unresolved" }
+  | { status: "resolved"; providerId: string | null };
 
 function sanitizeStoredEnvironmentValue(stored: string): string {
   // Legacy guard: earlier iterations briefly persisted `reuse:<envId>` to
@@ -167,13 +213,14 @@ export function useThreadCreationOptions(
   const {
     enabled = true,
     environmentId,
+    environmentHostId,
     initialEnvironmentSelectionValue,
     initialModel,
     initialProviderId,
     initialPermissionMode,
     initialReasoningLevel,
     initialServiceTier,
-    preferConnectedProviderWhenUnset = false,
+    preferReadyProviderWhenUnset = false,
     preferenceProjectId,
     resolveProviderRouting,
     resetKey,
@@ -207,6 +254,8 @@ export function useThreadCreationOptions(
         initialServiceTier,
       }),
     );
+  const [initialReadyProvider, setInitialReadyProvider] =
+    useState<InitialReadyProviderResolution>({ status: "unresolved" });
   const localProviderSelectionsRef = useRef<
     Map<string, ModelReasoningSelection>
   >(new Map());
@@ -260,7 +309,7 @@ export function useThreadCreationOptions(
     usesLocalThreadSelections,
   ]);
 
-  const selectedProviderIdBeforeConnectedFallback = usesStoredCreateSelections
+  const selectedProviderIdBeforeReadyFallback = usesStoredCreateSelections
     ? storedProviderId || renderedThreadSelections.selectedProviderId
     : renderedThreadSelections.selectedProviderId;
   const rawServiceTier = usesStoredCreateSelections
@@ -276,31 +325,67 @@ export function useThreadCreationOptions(
       : renderedThreadSelections.environmentSelectionValue;
 
   // --- Provider selection ---
+  // The scope of the selected provider, from whatever provider list this
+  // render already has. Undefined on a cold cache, which routes by
+  // environment — one redundant probe, never a stale catalog.
+  const knownModelCatalogScope = useKnownProviderModelCatalogScope(
+    selectedProviderIdBeforeReadyFallback,
+  );
   const executionOptionsQueryEnabled = enabled;
   const executionOptionsRouting = resolveProviderRouting
     ? resolveProviderRouting(rawEnvironmentSelectionValue)
     : resolveThreadCreationProviderRouting({
         environmentId,
+        environmentHostId,
         environmentSelectionValue: rawEnvironmentSelectionValue,
+        ...(knownModelCatalogScope === undefined
+          ? {}
+          : { modelCatalogScope: knownModelCatalogScope }),
         scope,
       });
-  const shouldResolveConnectedProvider =
+  const canResolveReadyProvider =
     executionOptionsQueryEnabled &&
     scope === "new-thread" &&
-    preferConnectedProviderWhenUnset &&
-    selectedProviderIdBeforeConnectedFallback.length === 0;
-  const connectedAgentsQuery = useOnboardingAgents({
-    enabled: shouldResolveConnectedProvider,
+    preferReadyProviderWhenUnset &&
+    selectedProviderIdBeforeReadyFallback.length === 0;
+  const shouldResolveReadyProvider =
+    canResolveReadyProvider && initialReadyProvider.status === "unresolved";
+  const providerStatesQuery = useSystemProviderStates({
+    enabled: shouldResolveReadyProvider,
     ...executionOptionsRouting,
     poll: false,
   });
-  const connectedProviderId = shouldResolveConnectedProvider
-    ? connectedAgentsQuery.data?.agents.find(
-        (agent) => agent.status === "connected",
+  const queriedReadyProviderId = shouldResolveReadyProvider
+    ? providerStatesQuery.data?.providers.find(
+        (provider) => provider.status === "ready",
       )?.providerId
     : undefined;
+  const readyProviderId =
+    initialReadyProvider.status === "resolved"
+      ? (initialReadyProvider.providerId ?? undefined)
+      : queriedReadyProviderId;
+  // This is an initial default, not a host-scoped live selection. Once the
+  // first routed probe settles, retain its answer so changing machines does
+  // not silently reselect the provider or repeat provider health probes.
+  useEffect(() => {
+    if (!shouldResolveReadyProvider || providerStatesQuery.isPending) {
+      return;
+    }
+    setInitialReadyProvider((current) =>
+      current.status === "resolved"
+        ? current
+        : {
+            status: "resolved",
+            providerId: queriedReadyProviderId ?? null,
+          },
+    );
+  }, [
+    providerStatesQuery.isPending,
+    queriedReadyProviderId,
+    shouldResolveReadyProvider,
+  ]);
   const rawSelectedProviderId =
-    selectedProviderIdBeforeConnectedFallback || connectedProviderId || "";
+    selectedProviderIdBeforeReadyFallback || readyProviderId || "";
   // Omission delegates the no-selection fallback to the server, whose product
   // default comes from the same provider catalog that orders the picker.
   const executionOptionsProviderId = executionOptionsQueryEnabled
@@ -319,8 +404,6 @@ export function useThreadCreationOptions(
     (executionOptionsQuery.isLoading ||
       (executionOptionsQuery.isPlaceholderData &&
         (executionOptionsQuery.data?.models.length ?? 0) === 0));
-  const isResolvingInitialProvider =
-    shouldResolveConnectedProvider && connectedAgentsQuery.isPending;
   const modelLoadError =
     executionOptionsQuery.data?.modelLoadError ?? NO_MODEL_LOAD_ERROR;
   const modelLoadFailed =
@@ -329,8 +412,15 @@ export function useThreadCreationOptions(
   // provisional catalogs. Only a successful probe proves a stored model is gone,
   // so recovery is gated on the catalog being verified. Placeholder data is not
   // a failure, so it deliberately stays out of `modelLoadFailed`.
-  const modelCatalogIsUnverified =
-    modelLoadError !== null || executionOptionsQuery.isPlaceholderData;
+  const modelCatalogIsVerified =
+    executionOptionsQuery.data !== undefined &&
+    !executionOptionsQuery.isPlaceholderData &&
+    !executionOptionsQuery.isError &&
+    modelLoadError === null;
+  const permissionModeIsVerified =
+    executionOptionsQuery.data !== undefined &&
+    !executionOptionsQuery.isPlaceholderData &&
+    !executionOptionsQuery.isError;
   const hasMultipleProviders = providers.length >= 2;
 
   // Resolve the effective provider: use selectedProviderId if it matches a known
@@ -374,11 +464,20 @@ export function useThreadCreationOptions(
   );
 
   const providerOptions = useMemo(
-    (): PickerOption<string>[] =>
+    (): ProviderPickerOption[] =>
       providers.map((p) => ({
         value: p.id,
         label: p.displayName,
-        icon: getProviderIconInfo(p.id, p.logoUrl ?? null)?.icon,
+        icon: getProviderIconInfo(p.id, p)?.icon,
+        ...(p.strings?.brandPrefix === undefined
+          ? {}
+          : { brandPrefix: p.strings.brandPrefix }),
+        ...(p.strings?.planModeCopy === undefined
+          ? {}
+          : { planModeCopy: p.strings.planModeCopy }),
+        ...(p.strings?.installUrl === undefined
+          ? {}
+          : { installUrl: p.strings.installUrl }),
       })),
     [providers],
   );
@@ -451,166 +550,41 @@ export function useThreadCreationOptions(
     }
     return supportByProvider;
   }, [providers]);
+  const serviceTierFastLabel = fastServiceTierLabel(selectedProviderInfo);
 
-  // Pi model ids gained a provider prefix, so a thread can hold
-  // `deepseek/deepseek-v4-flash` where the catalog now lists
-  // `openrouter/deepseek/deepseek-v4-flash`. Re-point the stored selection at
-  // that row, otherwise the recovery path below falls back to the catalog
-  // default and the next message persists it, which permanently moves the
-  // thread to another model and another vendor. Only a unique match is safe:
-  // two providers can serve one id, and the stored string does not say which
-  // one was meant.
-  const selectedModelSelection = useMemo(() => {
-    if (!rawSelectedModel) return rawSelectedModel;
-    const catalog = [
-      ...(executionOptionsQuery.data?.models ?? []),
-      ...(executionOptionsQuery.data?.selectedOnlyModels ?? []),
-    ];
-    if (catalog.some((model) => model.model === rawSelectedModel)) {
-      return rawSelectedModel;
-    }
-    const prefixed = catalog.filter((model) =>
-      model.model.endsWith(`/${rawSelectedModel}`),
-    );
-    return prefixed.length === 1 ? prefixed[0].model : rawSelectedModel;
-  }, [
-    executionOptionsQuery.data?.models,
-    executionOptionsQuery.data?.selectedOnlyModels,
-    rawSelectedModel,
-  ]);
-
-  // Merge the user's currently-stored selection from the selected-only pool
-  // when it isn't in the active list. This preserves a previously-selected
-  // model after it has been retired so the picker can render its label and
-  // the user isn't silently moved to a different model.
-  const availableModels = useMemo(() => {
-    const activeModels = executionOptionsQuery.data?.models ?? [];
-    if (!selectedModelSelection) return activeModels;
-    if (activeModels.some((model) => model.model === selectedModelSelection)) {
-      return activeModels;
-    }
-    const selectedOnly = executionOptionsQuery.data?.selectedOnlyModels ?? [];
-    const match = selectedOnly.find(
-      (model) => model.model === selectedModelSelection,
-    );
-    return match ? [match, ...activeModels] : activeModels;
-  }, [
-    executionOptionsQuery.data?.models,
-    executionOptionsQuery.data?.selectedOnlyModels,
-    selectedModelSelection,
-  ]);
-  const selectedModel = useMemo(() => {
-    // An unverified catalog (discovery error, or preloaded placeholder rows) is
-    // temporary: keep an existing explicit selection instead of treating a
-    // partial/provisional catalog as proof that it disappeared. Once discovery
-    // succeeds, absence is definitive and the catalog default becomes a recovery
-    // selection.
-    if (modelCatalogIsUnverified && selectedModelSelection) {
-      return selectedModelSelection;
-    }
-    if (availableModels.length === 0) {
-      return selectedModelSelection;
-    }
-    if (
-      availableModels.some((model) => model.model === selectedModelSelection)
-    ) {
-      return selectedModelSelection;
-    }
-    return (
-      availableModels.find((model) => model.isDefault)?.model ??
-      availableModels[0].model
-    );
-  }, [availableModels, modelCatalogIsUnverified, selectedModelSelection]);
-  // True when the stored string is not what will run: either the model is gone
-  // and the catalog default replaces it, or a prefix-free Pi id resolved to its
-  // canonical row. Both cases send the model explicitly, so the stored value
-  // catches up with what the turn actually used.
-  const isUnavailableModelRecovery =
-    !modelCatalogIsUnverified &&
-    rawSelectedModel.length > 0 &&
-    selectedModel !== rawSelectedModel;
-
-  const modelOptions = useMemo(
-    (): ModelPickerOption[] =>
-      availableModels.map((model) => ({
-        value: model.model,
-        label: formatModelLabel(model.displayName || model.model),
-        ...(model.routeProviderId
-          ? { routeProviderId: model.routeProviderId }
-          : {}),
-      })),
-    [availableModels],
-  );
-
-  // Models behind the picker's collapsed "More models" section. A promoted
-  // current selection already lives in `availableModels`, so it is excluded
-  // here rather than listed twice.
-  const moreModelOptions = useMemo(
-    (): ModelPickerOption[] =>
-      (executionOptionsQuery.data?.selectedOnlyModels ?? [])
-        .filter(
-          (model) =>
-            !availableModels.some((active) => active.model === model.model),
-        )
-        .map((model) => ({
-          value: model.model,
-          label: formatModelLabel(model.displayName || model.model),
-          ...(model.routeProviderId
-            ? { routeProviderId: model.routeProviderId }
-            : {}),
-        })),
-    [executionOptionsQuery.data?.selectedOnlyModels, availableModels],
-  );
-
-  const activeModel = useMemo(
+  const {
+    selectedModel,
+    activeModel,
+    modelOptions,
+    moreModelOptions,
+    reasoningLevel,
+    reasoningOptions,
+    isUnavailableModelRecovery,
+  } = useMemo(
     () =>
-      availableModels.find((model) => model.model === selectedModel) ??
-      availableModels.find((model) => model.isDefault) ??
-      availableModels[0],
-    [availableModels, selectedModel],
+      resolveModelCatalogSelection({
+        models: executionOptionsQuery.data?.models ?? [],
+        selectedOnlyModels:
+          executionOptionsQuery.data?.selectedOnlyModels ?? [],
+        selectedModel: rawSelectedModel,
+        preferredReasoningLevel,
+        provider: selectedProviderInfo,
+        catalogIsVerified: modelCatalogIsVerified,
+        formatModelLabel,
+      }),
+    [
+      executionOptionsQuery.data?.models,
+      executionOptionsQuery.data?.selectedOnlyModels,
+      modelCatalogIsVerified,
+      preferredReasoningLevel,
+      rawSelectedModel,
+      selectedProviderInfo,
+    ],
   );
-
-  const reasoningOptions = useMemo((): PickerOption<ReasoningLevel>[] => {
-    if (!activeModel) {
-      return [];
-    }
-
-    const options: PickerOption<ReasoningLevel>[] = [];
-    const seen = new Set<ReasoningLevel>();
-    const efforts = activeModel.supportedReasoningEfforts;
-
-    for (const effort of efforts) {
-      if (seen.has(effort.reasoningEffort)) continue;
-      seen.add(effort.reasoningEffort);
-      options.push({
-        value: effort.reasoningEffort,
-        label: REASONING_LABELS[effort.reasoningEffort],
-      });
-    }
-
-    if (options.length === 0) {
-      return [];
-    }
-
-    return options;
-  }, [activeModel]);
   const serviceTier = useMemo(
     () => (supportsServiceTier ? rawServiceTier : undefined),
     [rawServiceTier, supportsServiceTier],
   );
-  const reasoningLevel = useMemo(() => {
-    const preferredLevel = preferredReasoningLevel ?? "medium";
-    if (reasoningOptions.length === 0) {
-      return preferredLevel;
-    }
-    // Carry the user's previous reasoning level across model switches when
-    // the new model supports it; otherwise pick the closest supported level
-    // (tie-break upward). See reconcileReasoningLevel in @bb/domain for the policy.
-    return reconcileReasoningLevel(
-      preferredLevel,
-      reasoningOptions.map((option) => option.value),
-    );
-  }, [preferredReasoningLevel, reasoningOptions]);
 
   const permissionMode = resolvePermissionModeSelection({
     rawPermissionMode,
@@ -630,9 +604,9 @@ export function useThreadCreationOptions(
   const touchedFieldsPendingReset =
     usesLocalThreadSelections && threadResetKeyRef.current !== resetKey;
   const effectiveInitialProviderSource: ExecutionInputFieldSource | undefined =
-    shouldResolveConnectedProvider &&
-    connectedProviderId !== undefined &&
-    effectiveProviderId === connectedProviderId
+    canResolveReadyProvider &&
+    readyProviderId !== undefined &&
+    effectiveProviderId === readyProviderId
       ? "client-preference"
       : undefined;
   const executionInputSources = useMemo(
@@ -965,14 +939,16 @@ export function useThreadCreationOptions(
     modelOptions,
     moreModelOptions,
     isLoadingModels,
-    isResolvingInitialProvider,
     modelLoadFailed,
     modelLoadError,
+    modelCatalogIsVerified,
     reasoningOptions,
     permissionModeOptions,
     supportsPermissionModeSelection,
+    permissionModeIsVerified,
     supportsServiceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     executionInputSources,
   };
 }

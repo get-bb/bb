@@ -397,11 +397,36 @@ function BrowseCard({
   // The publisher label, not the marketplace's raw display name: a third-party
   // manifest names itself, and the raw name would print a reserved BB label on
   // the card that the server already refused to grant.
-  const footerMeta = entry.official ? undefined : (
-    <span className="text-2xs text-subtle-foreground">
-      {entry.publisherLabel}
-    </span>
-  );
+  // The repository link sits with the publisher label: both say where the
+  // plugin comes from. The card footer ignores pointer events so clicks fall
+  // through to the open button; the link opts back in to take its own click.
+  const repositoryLink =
+    entry.repositoryUrl === null ? null : (
+      <a
+        href={entry.repositoryUrl}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`Open ${entry.displayName} repository`}
+        className="pointer-events-auto inline-flex items-center gap-0.5 leading-none underline underline-offset-2 hover:text-foreground"
+      >
+        repo
+        {/* Optical nudge: centered against the line box, the glyph sits a
+            pixel above the x-height of the lowercase label beside it. */}
+        <Icon
+          name="ExternalLink"
+          className="size-2.5 shrink-0 translate-y-px"
+          aria-hidden
+        />
+      </a>
+    );
+  const footerMeta =
+    entry.official && repositoryLink === null ? undefined : (
+      <span className="text-2xs text-subtle-foreground">
+        {entry.official ? null : entry.publisherLabel}
+        {!entry.official && repositoryLink !== null ? " · " : null}
+        {repositoryLink}
+      </span>
+    );
   const headerAction =
     installedPluginId !== null ? (
       <ResourceInstallControl
@@ -427,6 +452,7 @@ function BrowseCard({
             displayName: entry.displayName,
             icon: entry.icon,
             iconUrl: entry.iconUrl,
+            iconTinted: entry.iconTinted,
             source: entry.source,
           })
         }
@@ -454,7 +480,7 @@ function BrowseCard({
       >
         <ConfirmDeleteDialogContent
           title={`Uninstall ${entry.displayName}?`}
-          description="The plugin will be removed from this BB host. Plugin data may be retained for a future reinstall."
+          description="The plugin, its installed files, and its settings, secrets, and schedules are removed from this BB host."
           confirmLabel={uninstall.isPending ? "Uninstalling…" : "Uninstall"}
           pending={uninstall.isPending}
           onConfirm={() => uninstall.mutate()}

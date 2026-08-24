@@ -174,6 +174,7 @@ interface OpenSessionArgs {
   hostType: HostDaemonSessionOpenRequest["hostType"];
   dataDir: string;
   instanceId: string;
+  localApiPort: number | null;
   activeThreads: HostDaemonActiveThread[] | Promise<HostDaemonActiveThread[]>;
   loadedEnvironments:
     | HostDaemonLoadedEnvironment[]
@@ -475,6 +476,7 @@ export function createServerClient(
           options.machineCredential.trim().length > 0,
         platform: resolveHostPlatform(),
         dataDir: args.dataDir,
+        localApiPort: args.localApiPort,
         protocolVersion: HOST_DAEMON_PROTOCOL_VERSION,
         activeThreads: await args.activeThreads,
         loadedEnvironments: await args.loadedEnvironments,
@@ -566,7 +568,6 @@ export function createServerClient(
       return readHostArtifactBytes(response, args.expectedByteLength);
     },
 
-
     async postEvents(
       events: HostDaemonEventEnvelope[],
     ): Promise<EventPostResult> {
@@ -588,7 +589,6 @@ export function createServerClient(
       const parsed = hostDaemonEventBatchResponseSchema.parse(json);
       return {
         acceptedEvents: parsed.acceptedEvents,
-        kind: "accepted",
         rejectedEvents: parsed.rejectedEvents,
       };
     },

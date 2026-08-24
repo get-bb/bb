@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
-import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { BbHttpError } from "@/lib/sdk";
+import type { PromptDraftAttachment } from "@bb/client-core";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
 interface UseComposerAttachmentUploadsArgs {
@@ -14,7 +16,7 @@ interface UseComposerAttachmentUploadsArgs {
   ) => void;
 }
 
-export interface UseComposerAttachmentUploadsResult {
+interface UseComposerAttachmentUploadsResult {
   bottomAttachmentError: string | null;
   setBottomAttachmentError: (error: string | null) => void;
   handleAttachBottomFiles: (files: File[]) => Promise<void>;
@@ -25,7 +27,7 @@ export interface UseComposerAttachmentUploadsResult {
   isAttachingInlineFiles: boolean;
 }
 
-export interface DraftAttachmentUploadTarget {
+interface DraftAttachmentUploadTarget {
   /** Changes whenever a newly mounted draft must not receive older uploads. */
   key: string;
   addAttachment: (attachment: PromptDraftAttachment) => void;
@@ -36,7 +38,7 @@ interface UseDraftAttachmentUploadsArgs {
   target: DraftAttachmentUploadTarget | null;
 }
 
-export interface UseDraftAttachmentUploadsResult {
+interface UseDraftAttachmentUploadsResult {
   attachmentError: string | null;
   setAttachmentError: (error: string | null) => void;
   handleAttachFiles: (files: File[]) => Promise<void>;
@@ -47,6 +49,26 @@ interface DraftAttachmentOperationState {
   error: string | null;
   pendingCount: number;
   targetKey: string | null;
+}
+
+/**
+ * The server states why it refused an upload (unsupported format, size
+ * limit); transport failures carry nothing a user can act on.
+ */
+function uploadRejectionReason(error: unknown): string | null {
+  return error instanceof BbHttpError
+    ? getMutationErrorMessage({ error, fallbackMessage: "Request failed" })
+    : null;
+}
+
+function attachFailureMessage(
+  failedFiles: readonly string[],
+  reason: string | null,
+): string {
+  const names = failedFiles.join(", ");
+  return reason === null
+    ? `Failed to attach: ${names}`
+    : `Failed to attach ${names}: ${reason}`;
 }
 
 /** Upload state for one independently mounted composer draft. */
@@ -90,6 +112,7 @@ export function useDraftAttachmentUploads({
         targetKey: capturedTargetKey,
       }));
       const failedFiles: string[] = [];
+      let rejectionReason: string | null = null;
       try {
         for (const file of files) {
           try {
@@ -101,8 +124,9 @@ export function useDraftAttachmentUploads({
             if (currentTarget?.key === capturedTargetKey) {
               currentTarget.addAttachment(uploaded);
             }
-          } catch {
+          } catch (error) {
             failedFiles.push(file.name);
+            rejectionReason ??= uploadRejectionReason(error);
           }
         }
       } finally {
@@ -112,7 +136,7 @@ export function useDraftAttachmentUploads({
                 error:
                   failedFiles.length > 0 &&
                   targetRef.current?.key === capturedTargetKey
-                    ? `Failed to attach: ${failedFiles.join(", ")}`
+                    ? attachFailureMessage(failedFiles, rejectionReason)
                     : current.error,
                 pendingCount: Math.max(0, current.pendingCount - 1),
                 targetKey: capturedTargetKey,

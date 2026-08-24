@@ -3,10 +3,7 @@ import type {
   AppSettings,
   Experiments,
 } from "@bb/domain";
-import type {
-  DiscoverReposResult,
-  ProviderUsageResponse,
-} from "@bb/host-daemon-contract";
+import type { ProviderUsageResponse } from "@bb/host-daemon-contract";
 import type {
   SystemAttentionResponse,
   SystemConfigReloadResponse,
@@ -16,10 +13,8 @@ import type {
   SystemCliSkillsStatusResponse,
   SystemInstallCliSkillsRequest,
   SystemInstallCliSkillsResponse,
-  OnboardingAgentOverview,
-  OnboardingTelemetryEvent,
+  SystemProviderStatesResponse,
   SystemProvidersQuery,
-  SystemOnboardingReposQuery,
   SystemUsageLimitsQuery,
   SystemVersionQuery,
   SystemVersionResponse,
@@ -72,14 +67,10 @@ export type SystemUpdateExperimentsResult = Experiments;
 export type SystemUpdateGeneralSettingsResult = AppSettings;
 export type SystemUpdateKeyboardSettingsResult = AppKeybindingOverrides;
 export type SystemUsageLimitsResult = ProviderUsageResponse;
-export interface SystemOnboardingArgs extends SystemProvidersQuery {
+export interface SystemProviderStatesArgs extends SystemProvidersQuery {
   signal?: AbortSignal;
 }
-export interface SystemOnboardingReposArgs extends SystemOnboardingReposQuery {
-  signal?: AbortSignal;
-}
-export type SystemOnboardingAgentsResult = OnboardingAgentOverview;
-export type SystemOnboardingReposResult = DiscoverReposResult;
+export type SystemProviderStatesResult = SystemProviderStatesResponse;
 export type SystemVersionResult = SystemVersionResponse;
 
 export interface SystemArea {
@@ -111,16 +102,10 @@ export interface SystemArea {
   updateKeyboardSettings(
     args: AppKeybindingOverrides,
   ): Promise<SystemUpdateKeyboardSettingsResult>;
-  /** Report one onboarding funnel event to anonymous telemetry. */
-  onboardingEvent(args: OnboardingTelemetryEvent): Promise<{ ok: true }>;
-  /** Live agent state for onboarding: install, auth, and plan per provider. */
-  onboardingAgents(
-    args?: SystemOnboardingArgs,
-  ): Promise<SystemOnboardingAgentsResult>;
-  /** Candidate projects discovered on the host, ranked for onboarding. */
-  onboardingRepos(
-    args?: SystemOnboardingReposArgs,
-  ): Promise<SystemOnboardingReposResult>;
+  /** Live host-local install and authentication state for every provider. */
+  providerStates(
+    args?: SystemProviderStatesArgs,
+  ): Promise<SystemProviderStatesResult>;
   usageLimits(args?: SystemUsageLimitsArgs): Promise<SystemUsageLimitsResult>;
   version(args?: SystemVersionArgs): Promise<SystemVersionResult>;
 }
@@ -219,14 +204,9 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         transport.api.v1.settings.keyboard.$put({ json: input }),
       );
     },
-    async onboardingEvent(input) {
+    async providerStates(input = {}) {
       return transport.readJson(
-        transport.api.v1.system.onboarding.event.$post({ json: input }),
-      );
-    },
-    async onboardingAgents(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system.onboarding.agents.$get(
+        transport.api.v1.system.providers.state.$get(
           {
             query: {
               environmentId: input.environmentId,
@@ -237,18 +217,15 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
         ),
       );
     },
-    async onboardingRepos(input = {}) {
-      return transport.readJson(
-        transport.api.v1.system.onboarding.repos.$get(
-          { query: { hostId: input.hostId } },
-          ...signalRequestArgs(input.signal),
-        ),
-      );
-    },
     async usageLimits(input = {}) {
       return transport.readJson(
         transport.api.v1.system["usage-limits"].$get(
-          { query: { hostId: input.hostId } },
+          {
+            query: {
+              hostId: input.hostId,
+              providerId: input.providerId,
+            },
+          },
           ...signalRequestArgs(input.signal),
         ),
       );

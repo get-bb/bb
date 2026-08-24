@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createStore, Provider as JotaiProvider } from "jotai";
 import { useContext, useMemo, useState, type ReactNode } from "react";
@@ -52,7 +53,6 @@ const threadStore = vi.hoisted(
   () =>
     new Map<string, { archivedAt: number | null; deletedAt: number | null }>(),
 );
-const experimentState = vi.hoisted(() => ({ enabled: true }));
 const viewportState = vi.hoisted(() => ({ compact: false }));
 const sidebarState = vi.hoisted(() => ({ showing: true }));
 const panelFullScreenState = vi.hoisted(() => ({
@@ -100,6 +100,7 @@ function RootComposeFixture() {
       isOpen: isPanelOpen,
       panel: <div data-testid="hosted-new-thread-panel" />,
       onToggle: () => setIsPanelOpen((open) => !open),
+      transitionsReady: true,
     }),
     [isPanelOpen],
   );
@@ -109,10 +110,6 @@ function RootComposeFixture() {
   );
   return <div data-testid="root-compose-view" />;
 }
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => experimentState.enabled,
-}));
 
 vi.mock("@bb/shared-ui/hooks/use-compact-viewport", () => ({
   useIsCompactViewport: () => viewportState.compact,
@@ -213,6 +210,62 @@ vi.mock("@/views/RootComposeView", () => ({
   RootComposeView: RootComposeFixture,
 }));
 
+vi.mock("@/components/plugin/PluginPanelRightPanelHost", () => ({
+  PluginPanelRightPanelHost: ({
+    children,
+    flushPageInsets,
+    panelPath,
+    pluginId,
+  }: {
+    children: ReactNode;
+    flushPageInsets?: boolean;
+    panelPath: string;
+    pluginId: string;
+  }) => {
+    const pane = useContext(PaneContext);
+    const [isPanelOpen, setIsPanelOpen] = useState(false);
+    const panelModel = useMemo(
+      () => ({
+        composerHost: null,
+        contentKey: `plugin-panel:${pluginId}:${panelPath}`,
+        isMainCollapsed: false,
+        isOpen: isPanelOpen,
+        panel: (
+          <div data-testid="hosted-plugin-app-panel">
+            <div data-testid="workspace-panel-resize-handle" className="z-[30]">
+              <span data-panel-resize-hit-target="" />
+            </div>
+            {isPanelOpen ? (
+              <button
+                type="button"
+                aria-label="Hide right panel"
+                onClick={() => setIsPanelOpen(false)}
+              />
+            ) : null}
+          </div>
+        ),
+        onToggle: () => setIsPanelOpen((open) => !open),
+        transitionsReady: true,
+      }),
+      [isPanelOpen, panelPath, pluginId],
+    );
+    usePaneSecondaryPanelRegistration(
+      pane?.secondaryPanelHost ?? null,
+      panelModel,
+    );
+    return (
+      <div
+        data-testid="plugin-browser-host"
+        data-flush-page-insets={String(flushPageInsets === true)}
+        data-panel-path={panelPath}
+        data-plugin-id={pluginId}
+      >
+        {children}
+      </div>
+    );
+  },
+}));
+
 // Lightweight stand-in for the heavyweight thread view. It surfaces the pane's
 // thread id, focus, close affordance, and a real threadId-keyed draft so the
 // test exercises SplitThreadArea's wiring without its dependency tree.
@@ -230,9 +283,9 @@ vi.mock("./ThreadDetailView", () => ({
       const draft = { attachments: [], mentions: [], text: "" };
       return {
         scope: { kind: "thread", threadId },
-        draft,
         textEffectKey: `test-draft-${threadId}`,
         getCurrent: () => draft,
+        subscribeDraft: () => () => {},
         setDraft: () => undefined,
         focus: () => undefined,
       };
@@ -249,6 +302,7 @@ vi.mock("./ThreadDetailView", () => ({
           </div>
         ),
         onToggle: () => setIsPanelOpen((open) => !open),
+        transitionsReady: true,
       }),
       [composerHost, isPanelOpen, threadId],
     );
@@ -544,7 +598,6 @@ function renderSplitArea(options: {
 }
 
 beforeEach(() => {
-  experimentState.enabled = true;
   viewportState.compact = false;
   sidebarState.showing = true;
   panelFullScreenState.isMainCollapsed = false;
@@ -567,6 +620,21 @@ afterEach(() => {
 });
 
 describe("SplitThreadArea", () => {
+  it("hosts Browser-tab navigation on compact plugin-panel routes", async () => {
+    viewportState.compact = true;
+
+    renderSplitArea({
+      path: "/plugins/docs/docs",
+      layout: pluginSplitLayout(),
+      routeContent: docsContent,
+    });
+
+    const host = await screen.findByTestId("plugin-browser-host");
+    expect(host.dataset.pluginId).toBe("docs");
+    expect(host.dataset.panelPath).toBe("docs");
+    expect(host.dataset.flushPageInsets).toBe("true");
+  });
+
   it("applies spotlight pane actions to the targeted open split and preference", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-b"),
@@ -922,38 +990,6 @@ describe("SplitThreadArea", () => {
     expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
   });
 
-  it("recedes inactive pane bodies behind a structural hairline divider", () => {
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-
-    const activePane = document.querySelector<HTMLElement>(
-      '[data-split-pane-id="pane-1"]',
-    );
-    const inactivePane = document.querySelector<HTMLElement>(
-      '[data-split-pane-id="pane-2"]',
-    );
-    expect(activePane?.dataset.focused).toBe("true");
-    expect(inactivePane?.dataset.focused).toBe("false");
-    const activeScrim = activePane?.querySelector<HTMLElement>(
-      ":scope > [data-pane-focus-scrim]",
-    );
-    const inactiveScrim = inactivePane?.querySelector<HTMLElement>(
-      ":scope > [data-pane-focus-scrim]",
-    );
-    expect(activeScrim?.classList).toContain("bg-transparent");
-    expect(inactiveScrim?.classList).toContain("pointer-events-none");
-    expect(inactiveScrim?.classList).toContain("bg-background/30");
-    expect(inactiveScrim?.classList).not.toContain("bg-background/20");
-
-    const separator = screen.getByRole("separator");
-    expect(separator.classList).toContain("w-px");
-    expect(separator.classList).toContain("bg-border-seam");
-    expect(separator.classList).not.toContain("w-1.5");
-    expect(separator.firstElementChild?.classList).toContain("w-3");
-  });
-
   it("keeps the divider above pane headers so stacked splits stay resizable", () => {
     renderSplitArea({
       path: "/",
@@ -975,9 +1011,6 @@ describe("SplitThreadArea", () => {
     // The lower pane's header touches the seam, so a header that paints above
     // the divider swallows its grab target and blocks vertical resizing.
     const separator = screen.getByRole("separator");
-    expect(separator.classList).toContain("h-px");
-    expect(separator.firstElementChild?.classList).toContain("h-3");
-    expect(separator.firstElementChild?.classList).toContain("w-full");
     const dividerLayer = stackingLayer(separator);
     const lowerHeader = document
       .querySelector<HTMLElement>('[data-split-pane-id="pane-2"]')
@@ -992,66 +1025,6 @@ describe("SplitThreadArea", () => {
     }
     expect(stackingLayer(lowerHeader)).toBeLessThan(dividerLayer);
     expect(stackingLayer(scrim)).toBeLessThan(dividerLayer);
-  });
-
-  it("uses one title tab to distinguish the focused new-thread split", async () => {
-    renderSplitArea({
-      path: "/",
-      layout: {
-        root: {
-          type: "split",
-          dir: "row",
-          sizes: [0.5, 0.5],
-          children: [
-            {
-              type: "pane",
-              paneId: "pane-1",
-              content: threadContent("thr-a"),
-            },
-            {
-              type: "pane",
-              paneId: "pane-2",
-              content: newThreadContent,
-            },
-          ],
-        },
-        focusedPaneId: "pane-2",
-      },
-      routeContent: newThreadContent,
-    });
-
-    const newThreadPane = document.querySelector<HTMLElement>(
-      '[data-split-pane-id="pane-2"]',
-    );
-    const newThreadHeader = newThreadPane?.querySelector("header");
-    const focusedTab = newThreadHeader?.querySelector<HTMLElement>(
-      "[data-pane-header-focus-tab]",
-    );
-    expect(focusedTab).not.toBeNull();
-    expect(focusedTab?.classList).toContain("bg-state-active");
-    expect(focusedTab?.classList).not.toContain("shadow-sm");
-    expect(screen.getByText("New thread").classList).toContain("font-normal");
-    expect(screen.getByText("New thread").classList).not.toContain(
-      "font-medium",
-    );
-    expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
-    expect(newThreadHeader?.classList).not.toContain("opacity-50");
-    expect(
-      newThreadHeader?.querySelector('[data-icon="CloseThreadPane"]'),
-    ).not.toBeNull();
-
-    fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
-    await waitFor(() => {
-      expect(
-        newThreadHeader?.querySelector("[data-pane-header-focus-tab]"),
-      ).toBeNull();
-      const inactiveTitle = screen.getByText("New thread");
-      expect(inactiveTitle.classList).toContain("text-muted-foreground/60");
-      expect(inactiveTitle.classList).toContain("font-normal");
-      expect(inactiveTitle.classList).not.toContain("font-medium");
-      expect(newThreadHeader?.classList).not.toContain("bg-surface-raised");
-      expect(newThreadHeader?.classList).not.toContain("opacity-50");
-    });
   });
 
   it("keeps drag updates local and persists the resized pair once on release", () => {
@@ -1164,8 +1137,6 @@ describe("SplitThreadArea", () => {
     });
     const separator = screen.getByRole("separator");
     expect(separator.getAttribute("aria-orientation")).toBe("horizontal");
-    expect(separator.classList).toContain("h-px");
-    expect(separator.classList).not.toContain("h-3");
 
     const hitTarget = separator.querySelector<HTMLElement>(
       "[data-split-divider-hit-target]",
@@ -1179,9 +1150,6 @@ describe("SplitThreadArea", () => {
     ) {
       throw new Error("Expected a divider hit target between split panes");
     }
-    expect(hitTarget.classList).toContain("h-3");
-    expect(hitTarget.classList).toContain("w-full");
-    expect(hitTarget.classList).toContain("cursor-row-resize");
 
     Object.defineProperty(hitTarget, "setPointerCapture", {
       configurable: true,
@@ -1229,30 +1197,6 @@ describe("SplitThreadArea", () => {
     }
     expect(resizedRoot.sizes[0]).toBeCloseTo(0.7, 5);
     expect(resizedRoot.sizes[1]).toBeCloseTo(0.3, 5);
-  });
-
-  it("keeps the merged toggle absolute and places a visible shortcut hint below pane actions", async () => {
-    commandPresentationState.isModifierHeld = true;
-    commandPresentationState.shortcut = {
-      ariaKeyshortcuts: "Control+Shift+P",
-      label: "Ctrl Shift P",
-    };
-    renderSplitArea({
-      path: threadPath("thr-a"),
-      layout: twoPaneLayout("pane-1"),
-    });
-
-    const toggle = await screen.findByTestId("split-workspace-panel-toggle");
-    expect(toggle.classList).toContain("absolute");
-    expect(toggle.classList).toContain("hidden");
-    expect(toggle.classList).not.toContain("relative");
-    // The corner button shares the pane header's px-4 action axis.
-    expect(toggle.classList).toContain("right-4");
-    expect(toggle.classList).toContain("top-2.5");
-    const hint = screen.getByText("Ctrl Shift P");
-    expect(hint.classList).toContain("absolute");
-    expect(hint.classList).toContain("right-0");
-    expect(hint.classList).toContain("top-full");
   });
 
   it("hosts one panel whose visibility survives focus changes between panes", async () => {
@@ -1346,7 +1290,7 @@ describe("SplitThreadArea", () => {
     ).toBe("true");
   });
 
-  it("shows the empty panel state while a plugin pane is focused", async () => {
+  it("hosts the app panel while a plugin pane is focused", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-1";
     renderSplitArea({
@@ -1367,13 +1311,13 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // The plugin pane publishes no panel, so the window panel keeps its place
-    // and states that plainly. Its toggle and pane controls all stay live.
+    // Plugin pages publish the same panel model as first-party pages, so focus
+    // swaps the window panel content without an empty-state interlude.
     fireEvent.pointerDown(pluginPane);
-    const emptyState = await screen.findByTestId(
-      "split-workspace-empty-panel-state",
-    );
-    expect(emptyState.textContent).toContain("This pane has no right panel.");
+    expect(await screen.findByTestId("hosted-plugin-app-panel")).toBeTruthy();
+    expect(
+      screen.queryByTestId("split-workspace-empty-panel-state"),
+    ).toBeNull();
     const panelResizeHandle = screen.getByTestId(
       "workspace-panel-resize-handle",
     );
@@ -1388,7 +1332,7 @@ describe("SplitThreadArea", () => {
       pluginPane.querySelector('button[aria-label*="Full Screen"]'),
     ).not.toBeNull();
 
-    // The toggle closes and reopens the empty state on its own.
+    // The plugin page's hosted panel owns the open/close transition.
     fireEvent.click(pluginToggle!);
     await waitFor(() =>
       expect(
@@ -1421,11 +1365,10 @@ describe("SplitThreadArea", () => {
       throw new Error("Expected plugin split pane");
     }
 
-    // Focusing a pane with no hosted panel exposes the empty right-panel
-    // handle beside that pane's bounded header. The handle must own the whole
-    // 12px grab strip at this row instead of losing its left overhang.
+    // The hosted plugin panel's handle must own the whole 12px grab strip at
+    // this row instead of losing its left overhang to the bounded pane header.
     fireEvent.pointerDown(pluginPane);
-    await screen.findByTestId("split-workspace-empty-panel-state");
+    await screen.findByTestId("hosted-plugin-app-panel");
 
     const panelResizeHandle = screen.getByTestId(
       "workspace-panel-resize-handle",
@@ -1439,7 +1382,7 @@ describe("SplitThreadArea", () => {
     }
   });
 
-  it("ignores the empty panel's initial collapse so a thread keeps its open panel", async () => {
+  it("keeps a thread's open panel after focusing a plugin page", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-2";
     renderSplitArea({
@@ -1448,24 +1391,24 @@ describe("SplitThreadArea", () => {
       routeAwareContent: true,
     });
 
-    await screen.findByTestId("split-workspace-empty-panel-state");
-    // react-resizable-panels reports the zero-width first layout as a
-    // collapse. Honoring it would harden the "adopt the first publisher's
-    // state" sentinel into closed before any pane published.
-    act(() => {
-      panelCallbacks
-        .get("split-workspace-empty-secondary-panel")
-        ?.onCollapse?.();
-    });
+    await screen.findByTestId("hosted-plugin-app-panel");
+    fireEvent.click(screen.getByRole("button", { name: "Show right panel" }));
+    await within(screen.getByTestId("hosted-plugin-app-panel")).findByRole(
+      "button",
+      { name: "Hide right panel" },
+    );
 
     fireEvent.pointerDown(screen.getByTestId("pane-thr-a"));
     expect(await screen.findByTestId("hosted-panel-thr-a")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.queryByTestId("hosted-plugin-app-panel")).toBeNull(),
+    );
     expect(
       screen.getByRole("button", { name: "Hide right panel" }),
     ).toBeTruthy();
   });
 
-  it("drops the corner reserve while the open empty panel holds the toggle", async () => {
+  it("drops the corner reserve while the hosted plugin panel holds the toggle", async () => {
     const layout = pluginSplitLayout();
     layout.focusedPaneId = "pane-2";
     renderSplitArea({
@@ -1476,7 +1419,7 @@ describe("SplitThreadArea", () => {
 
     // pane-2 is the plugin pane at the right edge. Closed, the toggle sits on
     // its header row, so the header keeps that corner free.
-    await screen.findByTestId("split-workspace-empty-panel-state");
+    await screen.findByTestId("hosted-plugin-app-panel");
     const close = screen.getByRole("button", { name: "Close pane" });
     expect(close.nextElementSibling?.tagName).toBe("SPAN");
 
@@ -1489,7 +1432,13 @@ describe("SplitThreadArea", () => {
     );
     expect(
       screen.getByTestId("split-workspace-panel-toggle").classList,
-    ).not.toContain("hidden");
+    ).toContain("hidden");
+    expect(
+      within(screen.getByTestId("hosted-plugin-app-panel")).getByRole(
+        "button",
+        { name: "Hide right panel" },
+      ),
+    ).toBeTruthy();
   });
 
   it("preserves plugin-owned right panels with and without a plugin split", async () => {
@@ -1544,12 +1493,17 @@ describe("SplitThreadArea", () => {
       "Docs content with notes sidebar",
     );
     expect(docsPanelContent).toBeTruthy();
+    expect(
+      screen
+        .getAllByTestId("plugin-browser-host")
+        .every((host) => host.dataset.flushPageInsets === "false"),
+    ).toBe(true);
     expect(docsPanelContent.closest(".isolate")).not.toBeNull();
     expect(
       screen.getByRole("button", { name: "Collapse notes sidebar" }),
     ).toBeTruthy();
-    // Neither plugin pane publishes a panel, so the window offers its empty
-    // state instead of dropping the control.
+    // Plugin pages publish the shared App panel model, so the window keeps the
+    // same panel control while focus moves between plugin panes.
     expect(screen.getByTestId("split-workspace-panel-toggle")).toBeTruthy();
     // The app panel belongs to a publishing pane, but full screen is pane
     // chrome: every pane in a split owns it, plugin panes included.
@@ -1570,6 +1524,8 @@ describe("SplitThreadArea", () => {
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Close pane" })).toBeNull();
     expect(screen.queryByTestId("split-workspace-panel-toggle")).toBeNull();
+    const remainingHost = screen.getByTestId("plugin-browser-host");
+    expect(remainingHost.dataset.flushPageInsets).toBe("true");
   });
 
   it("mounts both panes with independent, threadId-keyed drafts", async () => {
@@ -1692,6 +1648,10 @@ describe("SplitThreadArea", () => {
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(7);
   });
 
+  // The pane header is itself a macOS drag region, so the plugin pane's own
+  // drag handle has to opt back out or the OS swallows its pointer events as
+  // window drags and panes can no longer be reordered. jsdom can't resolve
+  // native regions, so this locks the class contract that drives them.
   it("carves a plugin pane drag handle out of the macOS window-drag region", async () => {
     const desktopInfo: BbDesktopInfo = {
       lastCheckedAt: null,
@@ -1730,7 +1690,6 @@ describe("SplitThreadArea", () => {
 
     const title = await screen.findByText("Docs");
     const dragHandle = title.parentElement?.parentElement;
-    expect(dragHandle?.className).toContain("cursor-grab");
     expect(dragHandle?.className).toContain("[app-region:no-drag]");
     expect(dragHandle?.className).toContain("[-webkit-app-region:no-drag]");
   });

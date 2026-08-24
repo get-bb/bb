@@ -27,27 +27,27 @@ type StoredServiceTierSetter = (value: StoredServiceTier) => void;
 type StoredReasoningLevelSetter = (value: StoredReasoningLevel) => void;
 type StoredPermissionModeSetter = (value: StoredPermissionMode) => void;
 
-export interface PersistedStringSelectionField {
+interface PersistedStringSelectionField {
   setValue: StringSelectionSetter;
   value: string;
 }
 
-export interface PersistedServiceTierSelectionField {
+interface PersistedServiceTierSelectionField {
   setValue: StoredServiceTierSetter;
   value: StoredServiceTier;
 }
 
-export interface PersistedReasoningLevelSelectionField {
+interface PersistedReasoningLevelSelectionField {
   setValue: StoredReasoningLevelSetter;
   value: StoredReasoningLevel;
 }
 
-export interface PersistedPermissionModeSelectionField {
+interface PersistedPermissionModeSelectionField {
   setValue: StoredPermissionModeSetter;
   value: StoredPermissionMode;
 }
 
-export interface PromptBoxProviderModelReasoningPreference {
+interface PromptBoxProviderModelReasoningPreference {
   providerId: string;
   model: string;
   reasoningLevel: ReasoningLevel;

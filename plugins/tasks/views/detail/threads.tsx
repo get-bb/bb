@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { useBbNavigate, useRpc } from "@get-bb/plugin-sdk/app";
+import {
+  UrlLink as UrlLink,
+  useBbNavigate,
+  useRpc,
+} from "@get-bb/plugin-sdk/app";
 import type { DelegationRpcContract } from "../../delegate/contract.js";
 import type {
   Preset,
@@ -13,6 +17,7 @@ import {
   isActiveThread,
 } from "./meta.js";
 import { PresetDialog, savePresetDraft } from "../manage/preset-dialog.js";
+import { ConfirmDialog } from "../../components/confirm-dialog.js";
 import { useTasksRpc } from "../../shell/data.js";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -40,7 +45,7 @@ function ThreadPullRequestPill({
   if (pullRequest) {
     const meta = PR_STATE_META[pullRequest.state];
     return (
-      <a
+      <UrlLink
         href={pullRequest.url}
         target="_blank"
         rel="noopener noreferrer"
@@ -52,7 +57,7 @@ function ThreadPullRequestPill({
       >
         <Icon name={meta.icon} className={cn("size-3", meta.textClassName)} />#
         {pullRequest.number}
-      </a>
+      </UrlLink>
     );
   }
   if (unavailable) {
@@ -72,10 +77,14 @@ function ThreadCard({
   thread,
   pullRequest,
   pullRequestUnavailable,
+  busy,
+  onDetach,
 }: {
   thread: TaskThread;
   pullRequest: TaskPullRequest | undefined;
   pullRequestUnavailable: boolean;
+  busy: boolean;
+  onDetach: () => void;
 }) {
   const navigate = useBbNavigate();
   const meta = THREAD_STATUS_META[thread.liveStatus];
@@ -111,6 +120,16 @@ function ThreadCard({
         Open thread
         <Icon name="ArrowUpRight" className="size-3" />
       </button>
+      <button
+        type="button"
+        aria-label={`Detach ${thread.title}`}
+        title="Detach from task"
+        disabled={busy}
+        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-state-hover hover:text-foreground disabled:opacity-70"
+        onClick={onDetach}
+      >
+        <Icon name="X" className="size-3" />
+      </button>
     </div>
   );
 }
@@ -133,7 +152,7 @@ function storeLastPresetId(presetId: string): void {
   }
 }
 
-export interface DispatchControlProps {
+interface DispatchControlProps {
   taskId: string;
   presets: Preset[] | undefined;
   onError: (message: string) => void;
@@ -275,11 +294,14 @@ export function DispatchControl({
   );
 }
 
-export interface ThreadsSectionProps {
+interface ThreadsSectionProps {
   threads: TaskThread[];
   /** Undefined while the PR lookup is in flight (cards render without pills). */
   pullRequests: TaskPullRequest[] | undefined;
   unavailableThreadIds: string[];
+  /** Removes the thread's attachment row; rejects with the server message. */
+  onDetach: (thread: TaskThread) => Promise<void>;
+  onError: (message: string) => void;
 }
 
 /** Attached-thread list; the caller skips it entirely when there are none.
@@ -289,7 +311,29 @@ export function ThreadsSection({
   threads,
   pullRequests,
   unavailableThreadIds,
+  onDetach,
+  onError,
 }: ThreadsSectionProps) {
+  // Snapshot of the thread awaiting confirmation; the row may vanish from
+  // `threads` (realtime refetch) while the dialog is open.
+  const [confirm, setConfirm] = useState<TaskThread | null>(null);
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
+
+  const performDetach = async (thread: TaskThread) => {
+    setPending((current) => new Set(current).add(thread.id));
+    try {
+      await onDetach(thread);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPending((current) => {
+        const next = new Set(current);
+        next.delete(thread.id);
+        return next;
+      });
+    }
+  };
+
   const activeCount = threads.filter(isActiveThread).length;
   const pullRequestByThread = new Map<string, TaskPullRequest>();
   for (const pullRequest of pullRequests ?? []) {
@@ -313,8 +357,26 @@ export function ThreadsSection({
           thread={thread}
           pullRequest={pullRequestByThread.get(thread.threadId)}
           pullRequestUnavailable={unavailable.has(thread.threadId)}
+          busy={pending.has(thread.id)}
+          onDetach={() => setConfirm(thread)}
         />
       ))}
+      <ConfirmDialog
+        open={confirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirm(null);
+        }}
+        title="Detach thread?"
+        description={
+          confirm
+            ? `"${confirm.title}" will no longer be listed on this task. The thread itself is not deleted; re-attach it with bb tasks attach.`
+            : ""
+        }
+        confirmLabel="Detach"
+        onConfirm={() => {
+          if (confirm) void performDetach(confirm);
+        }}
+      />
     </section>
   );
 }

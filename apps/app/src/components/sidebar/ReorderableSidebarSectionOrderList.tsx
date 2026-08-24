@@ -3,7 +3,7 @@ import type { DragEndEvent } from "@dnd-kit/core";
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import type { SidebarSectionId } from "./sidebarCollapsedAtoms";
 import { SidebarSectionOrderList } from "./SidebarSectionOrderList";
-import { reorderSidebarSectionOrder } from "./sidebarSectionOrder";
+import { reorderSidebarSectionOrder } from "@bb/client-core";
 import { useSidebarReorderDnd } from "./useSidebarReorderDnd";
 
 interface ReorderableSidebarSectionOrderListProps {

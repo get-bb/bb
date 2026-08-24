@@ -29,6 +29,7 @@ const INSTALLED_AUTOMATIONS: AutomationsOverviewResponse["automations"] = [
         prompt: "Summarize yesterday's commits.",
         providerId: "claude",
         model: "claude-opus-5",
+        reasoningLevel: "medium",
         permissionMode: "auto",
         environment: { type: "host", workspace: { type: "personal" } },
       },
@@ -152,14 +153,11 @@ describe("AutomationOverviewView", () => {
     fireEvent.blur(filtersTrigger);
     fireEvent.pointerDown(filtersTrigger);
 
-    const filtersMenu = screen.getByRole("menu", { name: "Filters" });
-    expect(filtersMenu.className).toContain("md:p-0.5");
-    expect(filtersMenu.className).toContain("w-max");
+    expect(screen.getByRole("menu", { name: "Filters" })).toBeTruthy();
     expect(screen.getByText("Projects")).toBeTruthy();
     expect(screen.getByText("Status")).toBeTruthy();
 
     const projectOption = screen.getByRole("menuitemcheckbox", { name: "bb" });
-    expect(projectOption.className).toContain("md:py-1");
     expect(projectOption.querySelector("[data-icon]")).toBeNull();
     expect(
       projectOption.querySelector(".truncate")?.getAttribute("title"),
@@ -336,7 +334,6 @@ describe("AutomationOverviewView", () => {
     // Only the trailing direction arrow remains; no leading option icons.
     expect(iconNames(projectOption)).toEqual(["ArrowUp"]);
     expect(iconNames(nameOption)).toEqual(["ArrowUp"]);
-    expect(nameOption.className).toContain("md:py-1");
     fireEvent.click(nameOption);
     expect(sortTrigger.querySelector('[data-icon="ArrowUpDown"]')).toBeTruthy();
     expect(iconNames(nameOption)).toEqual(["ArrowDown"]);

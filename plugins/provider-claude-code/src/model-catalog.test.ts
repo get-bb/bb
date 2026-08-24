@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CLAUDE_CODE_ACTIVE_CATALOG,
   DEFAULT_CLAUDE_CODE_MODEL,
-  listClaudeCodeFallbackModels,
 } from "./model-catalog.js";
 
 describe("Claude Code curated catalog", () => {
@@ -28,33 +27,21 @@ describe("Claude Code curated catalog", () => {
     ).toBe(false);
   });
 
-  it("marks exactly the product default model", () => {
-    const defaults = listClaudeCodeFallbackModels().filter(
-      (model) => model.isDefault,
+  it("contains the product default model exactly once", () => {
+    const defaults = CLAUDE_CODE_ACTIVE_CATALOG.filter(
+      (entry) => entry.model === DEFAULT_CLAUDE_CODE_MODEL,
     );
 
-    expect(defaults.map((model) => model.model)).toEqual([
+    expect(defaults.map((entry) => entry.model)).toEqual([
       DEFAULT_CLAUDE_CODE_MODEL,
     ]);
   });
 
   it("advertises a default reasoning effort each model actually supports", () => {
-    for (const model of listClaudeCodeFallbackModels()) {
+    for (const entry of CLAUDE_CODE_ACTIVE_CATALOG) {
       expect(
-        model.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
-      ).toContain(model.defaultReasoningEffort);
+        entry.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
+      ).toContain(entry.defaultReasoningEffort);
     }
-  });
-
-  // These rows flow into mutable API responses and react-query placeholder
-  // data, so a caller mutating one must not corrupt every later reader.
-  it("returns fresh objects on each call", () => {
-    const first = listClaudeCodeFallbackModels();
-    first[0].supportedReasoningEfforts.length = 0;
-    first[0].displayName = "mutated";
-
-    const second = listClaudeCodeFallbackModels();
-    expect(second[0].displayName).not.toBe("mutated");
-    expect(second[0].supportedReasoningEfforts.length).toBeGreaterThan(0);
   });
 });

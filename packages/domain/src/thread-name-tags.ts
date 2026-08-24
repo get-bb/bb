@@ -2,12 +2,12 @@ import type { ThreadEvent } from "./provider-event.js";
 
 export const BB_THREAD_NAME_TAG = "bb";
 
-export interface TagThreadNameArgs {
+interface TagThreadNameArgs {
   name: string;
   tag: string;
 }
 
-export interface UntagThreadNameArgs {
+interface UntagThreadNameArgs {
   name: string;
   tag: string;
 }
@@ -31,7 +31,7 @@ export function tagThreadName(args: TagThreadNameArgs): string {
 /**
  * Removes exactly one leading tag from a thread name.
  */
-export function untagThreadName(args: UntagThreadNameArgs): string {
+function untagThreadName(args: UntagThreadNameArgs): string {
   const prefix = threadNameTagPrefix(args.tag);
   if (!args.name.startsWith(prefix)) {
     return args.name;

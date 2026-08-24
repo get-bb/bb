@@ -11,7 +11,7 @@ import {
   type MessageDirectiveRegistry,
 } from "@/components/ui/markdown-message-directives";
 import { ConversationMessageContent } from "./ConversationMessageContent";
-import { USER_MESSAGE_CHAR_CAP } from "./conversation-message-limits";
+import { USER_MESSAGE_CHAR_CAP } from "@bb/client-core";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 
 afterEach(cleanup);
@@ -72,12 +72,10 @@ describe("ConversationMessageContent assistant images", () => {
             id="msg_image"
             threadId="thr_image"
             turnId="turn_image"
-            sourceSeqStart={1}
-            sourceSeqEnd={2}
             showActions={false}
             mobileActionDisplay="overflow"
+            streaming={false}
             text="![Generated diagram](/workspace/output/diagram.png)"
-            turnRequest={null}
           />
         </RouteNavigationProvider>
       </MemoryRouter>,
@@ -124,12 +122,10 @@ describe("ConversationMessageContent assistant thread mentions", () => {
                 id="msg_spawned"
                 threadId="thr_parent"
                 turnId="turn_spawned"
-                sourceSeqStart={1}
-                sourceSeqEnd={2}
                 showActions={false}
                 mobileActionDisplay="overflow"
+                streaming={false}
                 text="Spawned and parented: @thread:thr_xpxxt2ipz8"
-                turnRequest={null}
               />
             </MessageDirectiveRegistryProvider>
           </ThreadTitleMentionResourcesProvider>

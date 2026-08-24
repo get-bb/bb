@@ -28,7 +28,7 @@ import {
   getPluginSkillRootContributions,
   resolvePluginAgentConfiguration,
 } from "../plugins/plugin-agent-contributions.js";
-import { resolveSkillCatalogSources } from "../skills/skill-catalog.js";
+import { resolveSkillCatalog } from "../skills/skill-catalog.js";
 import { discoverPluginSkillIds } from "../skills/injected-skills.js";
 import { resolveWorkspaceProjectSkills } from "../skills/workspace-skills.js";
 import { resolveSharedSkills } from "../skills/shared-skills.js";
@@ -58,25 +58,24 @@ export interface ThreadRuntimeCommandEnvironment {
   workspaceProvisionType: WorkspaceProvisionType;
 }
 
-export interface ResolveExecutionOptionsArgs {
+interface ResolveExecutionOptionsArgs {
   projectDefaults?: ProjectExecutionDefaults | null;
   requestedExecution: RequestedExecutionOptions;
   threadId: string;
 }
 
-export interface RequestedExecutionOptions extends ThreadExecutionOptions {
+interface RequestedExecutionOptions extends ThreadExecutionOptions {
   source: ThreadExecutionSource;
 }
 
-export interface ResolveThreadRuntimeCommandConfigArgs {
+interface ResolveThreadRuntimeCommandConfigArgs {
   environment: ThreadRuntimeCommandEnvironment;
   model: string;
   thread: Thread;
 }
 
-export interface ResolvePermissionEscalationArgs {
+interface ResolvePermissionEscalationArgs {
   initiator: ThreadTurnInitiator;
-  thread: Thread;
 }
 
 export interface ResolvedThreadRuntimeCommandConfig {
@@ -225,9 +224,9 @@ export async function resolveThreadRuntimeCommandConfig(
         id: args.thread.providerId,
         model: args.model,
         capabilities: {
-          // Absent registration (an ACP tier id, or a provider whose plugin
-          // is disabled mid-thread) reads as "no native affordance", which is
-          // the safe answer: the plugin contributes its own.
+          // Absent registration (a provider whose plugin is disabled
+          // mid-thread) reads as "no native affordance", which is the safe
+          // answer: the plugin contributes its own.
           supportsNativeUserQuestion:
             deps.providerRegistry.get(args.thread.providerId)?.info.capabilities
               .supportsNativeUserQuestion ?? false,
@@ -240,11 +239,11 @@ export async function resolveThreadRuntimeCommandConfig(
     },
     skillIdsByPlugin,
   });
-  const injectedSkillSources = resolveSkillCatalogSources(deps, {
+  const injectedSkillSources = resolveSkillCatalog(deps, {
     projectSkillSources,
     sharedSkillSources: sharedSkills.runtimeSources,
     pluginSkillSelections: conditionalConfiguration.selectedSkillIdsByPlugin,
-  });
+  }).map((entry) => entry.runtimeSource);
   const dataDirAgentInstructions = readDataDirAgentInstructions(
     deps.logger,
     deps.config.dataDir,

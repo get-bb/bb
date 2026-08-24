@@ -1,7 +1,10 @@
+// @vitest-environment jsdom
+
+import { cleanup, render, screen } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import type { ThreadPullRequest } from "@bb/domain";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   isThreadDisplayStatusBannerActive,
   ThreadPromptContextBanner,
@@ -65,6 +68,8 @@ function makeGitSection(
     onPromptBannerFileClick: noop,
   };
 }
+
+afterEach(cleanup);
 
 describe("ThreadPromptContextBanner", () => {
   it("renders the archived read-only status without an action", () => {
@@ -359,6 +364,41 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("+1 more");
   });
 
+  it("lets combined child and context cards shrink inside the composer stack", () => {
+    render(
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={{
+            items: [
+              {
+                id: "thr_child",
+                title: "Host-owned SourceCode and Diff renderers",
+                href: "/threads/thr_child",
+                hasPendingInteraction: false,
+              },
+            ],
+          }}
+          pullRequestSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+
+    const childCard = screen.getByRole("region", { name: "Child threads" });
+    const contextCard = screen.getByRole("region", {
+      name: "Thread context before sending",
+    });
+
+    expect(childCard.parentElement).toBe(contextCard.parentElement);
+    expect(childCard.parentElement?.classList.contains("min-w-0")).toBe(true);
+  });
+
   it("uses neutral active copy for a child waiting for a host", () => {
     expect(isThreadDisplayStatusBannerActive("waiting-for-host")).toBe(true);
 
@@ -387,9 +427,7 @@ describe("ThreadPromptContextBanner", () => {
       </MemoryRouter>,
     );
 
-    expect(markup).toContain(
-      "1 active child thread: Waiting for build host",
-    );
+    expect(markup).toContain("1 active child thread: Waiting for build host");
     expect(markup).toContain("Active child thread:");
     expect(markup).not.toContain("Running child thread:");
   });
@@ -528,5 +566,96 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain("PR #128");
     expect(markup).toContain("Committed");
     expect(markup).toContain("1 file");
+  });
+
+  it.each([
+    {
+      label: "checked open",
+      pullRequest: pullRequestFixture,
+      expectedMinWidthClass: "min-w-13",
+    },
+    {
+      label: "merged",
+      pullRequest: {
+        ...pullRequestFixture,
+        state: "merged" as const,
+        attention: "merged" as const,
+      },
+      expectedMinWidthClass: "min-w-8",
+    },
+    {
+      label: "closed",
+      pullRequest: {
+        ...pullRequestFixture,
+        state: "closed" as const,
+        attention: "closed" as const,
+      },
+      expectedMinWidthClass: "min-w-8",
+    },
+  ])(
+    "reserves only the width needed by a $label pull request status pill",
+    ({ pullRequest, expectedMinWidthClass }) => {
+      render(
+        <MemoryRouter>
+          <ThreadPromptContextBanner
+            gitSection={makeGitSection("committed")}
+            gitSectionPending={false}
+            archivedSection={null}
+            environmentGoneSection={null}
+            parentThreadSection={null}
+            childThreadsSection={null}
+            pullRequestSection={{ pullRequest }}
+            expandedSection={null}
+            onToggleSection={noop}
+          />
+        </MemoryRouter>,
+      );
+
+      const pullRequestLink = screen.getByRole("link", {
+        name: /Pull request 128:/,
+      });
+      expect(
+        ["min-w-8", "min-w-13"].filter((className) =>
+          pullRequestLink.classList.contains(className),
+        ),
+      ).toEqual([expectedMinWidthClass]);
+    },
+  );
+});
+
+describe("ThreadPromptContextBanner git section body", () => {
+  function renderBanner(expandedSection: "git" | null) {
+    return (
+      <MemoryRouter>
+        <ThreadPromptContextBanner
+          gitSection={makeGitSection("uncommitted")}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          parentThreadSection={null}
+          childThreadsSection={null}
+          pullRequestSection={null}
+          expandedSection={expandedSection}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>
+    );
+  }
+
+  it("does not mount the changed-files list until the section first expands", () => {
+    // The list can hold thousands of rows. A collapsed body still costs
+    // layout for every node inside it, so it must stay out of the DOM.
+    const { rerender } = render(renderBanner(null));
+    expect(screen.queryByRole("list", { hidden: true })).toBeNull();
+
+    rerender(renderBanner("git"));
+    expect(screen.getByRole("list")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: `Open ${changedFile.path}` }),
+    ).toBeTruthy();
+
+    // Retain the realized body after collapse so re-opening is instant.
+    rerender(renderBanner(null));
+    expect(screen.getByRole("list", { hidden: true })).toBeTruthy();
   });
 });

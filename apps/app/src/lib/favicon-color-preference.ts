@@ -24,8 +24,8 @@ export const FAVICON_COLOR_STORAGE_KEY = "bb.faviconColor";
 export const FAVICON_COLOR_SERVER_SYNCED_STORAGE_KEY =
   "bb.faviconColor.serverSynced";
 
-export const FAVICON_BADGES = ["none", "unread"] as const;
-export type FaviconBadge = (typeof FAVICON_BADGES)[number];
+const FAVICON_BADGES = ["none", "unread"] as const;
+type FaviconBadge = (typeof FAVICON_BADGES)[number];
 
 export const FAVICON_COLOR_VALUES: Record<FaviconColor, string> = {
   red: "#e5484d",
@@ -205,21 +205,17 @@ function getTintedAssetSuffix(colorPreference: FaviconColorPreference): string {
   return colorPreference === defaultFaviconColor ? "" : `-${colorPreference}`;
 }
 
-export function getPwaManifestHref(
-  colorPreference: FaviconColorPreference,
-): string {
+function getPwaManifestHref(colorPreference: FaviconColorPreference): string {
   return `/manifest${getTintedAssetSuffix(colorPreference)}.webmanifest`;
 }
 
-export function getAppleTouchIconHref(
+function getAppleTouchIconHref(
   colorPreference: FaviconColorPreference,
 ): string {
   return `/apple-touch-icon${getTintedAssetSuffix(colorPreference)}.png`;
 }
 
-export function applyInstallIconState(
-  colorPreference: FaviconColorPreference,
-): void {
+function applyInstallIconState(colorPreference: FaviconColorPreference): void {
   const manifestLink = getDocumentLink(WEB_MANIFEST_LINK_ID);
   if (manifestLink) manifestLink.href = getPwaManifestHref(colorPreference);
 
@@ -239,6 +235,32 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// The base glyphs never change within a page load; each badge or tint flip
+// redraws from the decoded image instead of fetching the PNGs again.
+const baseImageCache = new Map<string, Promise<HTMLImageElement>>();
+
+function loadBaseImage(src: string): Promise<HTMLImageElement> {
+  const cached = baseImageCache.get(src);
+  if (cached) return cached;
+  const pending = loadImage(src);
+  baseImageCache.set(src, pending);
+  pending.catch(() => {
+    // Let a transient failure retry on the next apply.
+    baseImageCache.delete(src);
+  });
+  return pending;
+}
+
+const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
+
+/**
+ * An installed PWA has no tab strip, so a tinted or badged favicon is never
+ * visible there; skip the image decode and canvas work entirely.
+ */
+function isStandaloneDisplayMode(): boolean {
+  return getMediaQuerySnapshot(STANDALONE_DISPLAY_MODE_QUERY);
+}
+
 /**
  * The favicon is a monochrome glyph on a transparent background, so tinting
  * is a straight color replacement: draw the glyph, then fill with the target
@@ -253,7 +275,7 @@ async function createFaviconHref({
     return baseHref;
   }
 
-  const image = await loadImage(baseHref);
+  const image = await loadBaseImage(baseHref);
   const canvas = document.createElement("canvas");
   canvas.width = image.naturalWidth;
   canvas.height = image.naturalHeight;
@@ -303,6 +325,7 @@ let applyToken = 0;
 
 async function applyFaviconState(state: FaviconRenderState): Promise<void> {
   const token = ++applyToken;
+  if (isStandaloneDisplayMode()) return;
   const suffix = getFaviconVariantSuffix();
   const links = await Promise.all(
     FAVICON_SIZES.map(async (size): Promise<RenderedFaviconLink> => {

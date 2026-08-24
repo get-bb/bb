@@ -5,7 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginHomepageSections } from "@/components/plugin/PluginHomepageSections";
 import { usePluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import { SecondaryPanelLayout } from "@/components/secondary-panel/SecondaryPanelLayout";
-import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { LazyThreadSecondaryPanel } from "@/components/secondary-panel/lazySecondaryPanelComponents";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import {
   CHROME_ROW_HEIGHT_CLASS,
@@ -42,15 +42,19 @@ export const ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS =
   "right-[calc(1rem+env(safe-area-inset-right))] top-[calc(0.625rem+env(safe-area-inset-top))] max-md:pointer-coarse:top-[calc(0.375rem+env(safe-area-inset-top))]";
 
 type RootSecondaryPanelProps = Omit<
-  ComponentProps<typeof ThreadSecondaryPanel>,
-  | "browserDeck"
+  ComponentProps<typeof LazyThreadSecondaryPanel>,
+  | "renderBrowserDeck"
+  | "drawerFallback"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
   | "renderAsDrawer"
   | "showNewTabButton"
 > & {
   renderBrowserDeck?: (args: {
+    activeBrowserTabId: string | null;
+    canHandleBrowserCommands: boolean;
     canShowNativeBrowserView: boolean;
+    onNativeFocus: () => void;
   }) => ReactNode;
 };
 
@@ -59,7 +63,6 @@ interface RootComposeSecondaryContentProps {
   contentClassName?: string;
   isSecondaryPanelOpen: boolean;
   onToggleSecondaryPanel: () => void;
-  panelTogglePositionClassName: string;
   secondaryPanel: RootSecondaryPanelProps;
 }
 
@@ -81,7 +84,6 @@ export function RootComposeSecondaryContent({
   contentClassName,
   isSecondaryPanelOpen,
   onToggleSecondaryPanel,
-  panelTogglePositionClassName,
   secondaryPanel,
 }: RootComposeSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
@@ -113,7 +115,7 @@ export function RootComposeSecondaryContent({
               data-testid="root-compose-drag-strip-toggle-cutout"
               className={cn(
                 "absolute",
-                panelTogglePositionClassName,
+                ROOT_COMPOSE_PINNED_PANEL_TOGGLE_POSITION_CLASS,
                 COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
                 MACOS_APP_REGION_NO_DRAG_CLASS,
               )}
@@ -156,9 +158,18 @@ export function RootComposeSecondaryContent({
           onToggleMainCollapse,
           resizablePanelId,
         }) => (
-          <ThreadSecondaryPanel
+          <LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
-            browserDeck={renderBrowserDeck?.({ canShowNativeBrowserView })}
+            drawerFallback={<DrawerPanelLoadingSkeleton />}
+            renderBrowserDeck={(activeBrowserTabId, pane) =>
+              renderBrowserDeck?.({
+                activeBrowserTabId,
+                canHandleBrowserCommands:
+                  canShowNativeBrowserView && pane.isFocused,
+                canShowNativeBrowserView,
+                onNativeFocus: pane.onFocusPane,
+              })
+            }
             renderAsDrawer={presentation === "drawer"}
             isConversationCollapsed={false}
             onToggleConversationCollapse={onToggleMainCollapse}

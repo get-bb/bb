@@ -22,7 +22,7 @@ function getVisualViewportPageTop(visualViewport: VisualViewport) {
   return Math.round(window.scrollY + visualViewport.offsetTop);
 }
 
-function isKeyboardFocusTarget(target: EventTarget | null): boolean {
+export function isKeyboardFocusTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable ||

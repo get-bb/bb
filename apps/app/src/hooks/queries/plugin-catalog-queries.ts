@@ -22,7 +22,7 @@ import {
 
 type FetchLike = typeof fetch;
 
-export interface PluginSourceDetail {
+interface PluginSourceDetail {
   requested: string;
   resolved: string;
   integrity: string | null;
@@ -53,7 +53,7 @@ function toPluginSourceDetail(
 }
 
 /** Null when the plugin is unknown or the server predates the route. */
-export async function fetchPluginSource(
+async function fetchPluginSource(
   fetchImpl: FetchLike,
   pluginId: string,
 ): Promise<PluginSourceDetail | null> {
@@ -97,7 +97,7 @@ export async function installCatalogPlugin(
 }
 
 /** The true resolved source an install would use, fetched before confirming. */
-export async function fetchCatalogInstallPlan(
+async function fetchCatalogInstallPlan(
   fetchImpl: FetchLike,
   args: { entryId: string; marketplace?: string },
 ): Promise<PluginCatalogInstallPlan> {
@@ -125,9 +125,7 @@ export function useCatalogInstallPlan(
   });
 }
 
-export type PluginMarketplaceEntry = PluginMarketplace;
-
-export async function listPluginMarketplaces(
+async function listPluginMarketplaces(
   fetchImpl: FetchLike,
 ): Promise<PluginMarketplace[]> {
   return createPluginsClient(fetchImpl).marketplaces.list();
@@ -165,12 +163,12 @@ export function usePluginMarketplaces(options: { enabled: boolean }) {
   });
 }
 
-export interface PluginResolvedVersion {
+interface PluginResolvedVersion {
   version: string;
   display: string;
 }
 
-export type PluginUpdatesOutcome = PluginUpdateCheckEntry["outcome"];
+type PluginUpdatesOutcome = PluginUpdateCheckEntry["outcome"];
 
 export interface PluginUpdatesEntry {
   id: string;
@@ -233,8 +231,12 @@ export interface PluginCatalogSearchEntry {
   description: string;
   icon: string | null;
   iconUrl: string | null;
+  /** Mask `iconUrl` with the text color instead of showing its own colors. */
+  iconTinted: boolean;
   category: string;
   source: string;
+  /** Public repository or package page of the entry's code; null when none. */
+  repositoryUrl: string | null;
   marketplace: string;
   marketplaceDisplayName: string;
   /** Stable publisher identity, for grouping; never the label, which a
@@ -259,8 +261,10 @@ function toPluginCatalogSearchEntry(
     description: data.description,
     icon: data.icon,
     iconUrl: data.iconUrl,
+    iconTinted: data.iconTinted,
     category: data.category,
     source: data.source,
+    repositoryUrl: data.repositoryUrl,
     marketplace: data.marketplace,
     marketplaceDisplayName: data.marketplaceDisplayName,
     publisherKey: data.publisherKey,

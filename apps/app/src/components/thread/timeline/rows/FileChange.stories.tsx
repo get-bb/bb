@@ -1,9 +1,5 @@
 import type { TimelineRow } from "@bb/server-contract";
-import {
-  ThreadTimelineRows,
-  type ThreadTimelineRowsProps,
-} from "@/components/thread/timeline";
-import { usePreferredTheme } from "@/hooks/useTheme";
+import { ThreadTimelineRows } from "@/components/thread/timeline";
 import { fileChangeRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
@@ -19,18 +15,6 @@ const baseProps = {
   threadRuntimeDisplayStatus: "idle" as const,
   workspaceRootPath: "/Users/michael/.bb-dev/worktrees/env_story/bb",
 };
-
-// Story-only wrapper — pulls the active theme from ladle so the diff body's
-// syntax highlighting flips with the toolbar toggle. Without this each
-// ThreadTimelineRows render would default to themeType="light" regardless
-// of the page theme.
-type ThemedTimelineRowsProps = Omit<ThreadTimelineRowsProps, "themeType"> &
-  Partial<Pick<ThreadTimelineRowsProps, "themeType">>;
-
-function ThemedTimelineRows(props: ThemedTimelineRowsProps) {
-  const themeType = usePreferredTheme();
-  return <ThreadTimelineRows themeType={themeType} {...props} />;
-}
 
 // ---------------------------------------------------------------------------
 // Real file-change rows pulled from live threads in ~/.bb-dev/bb.db.
@@ -199,7 +183,7 @@ export function Overview() {
         hint="production-default — header only, click to expand. Real unified diff."
       >
         <TimelineStage>
-          <ThemedTimelineRows {...baseProps} timelineRows={[updateApiTypes]} />
+          <ThreadTimelineRows {...baseProps} timelineRows={[updateApiTypes]} />
         </TimelineStage>
       </StoryRow>
       <StoryRow
@@ -207,7 +191,7 @@ export function Overview() {
         hint="kind=add. Diff is the full new-file content; stats count plain lines."
       >
         <TimelineStage>
-          <ThemedTimelineRows
+          <ThreadTimelineRows
             {...baseProps}
             timelineRows={[addFormatHelpersTest]}
           />
@@ -218,7 +202,7 @@ export function Overview() {
         hint="kind=delete. Diff is the prior file content; stats count as removed."
       >
         <TimelineStage>
-          <ThemedTimelineRows
+          <ThreadTimelineRows
             {...baseProps}
             timelineRows={[deleteActiveThinking]}
           />
@@ -229,7 +213,7 @@ export function Overview() {
         hint="status=pending, no completedAt — edit is mid-flight"
       >
         <TimelineStage>
-          <ThemedTimelineRows
+          <ThreadTimelineRows
             {...baseProps}
             timelineRows={[runningFileChange]}
           />
@@ -237,7 +221,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow label="collapsed — error" hint="status=error, stderr populated">
         <TimelineStage>
-          <ThemedTimelineRows {...baseProps} timelineRows={[errorFileChange]} />
+          <ThreadTimelineRows {...baseProps} timelineRows={[errorFileChange]} />
         </TimelineStage>
       </StoryRow>
       <StoryRow
@@ -245,7 +229,7 @@ export function Overview() {
         hint="status=interrupted — turn was cancelled mid-edit"
       >
         <TimelineStage>
-          <ThemedTimelineRows
+          <ThreadTimelineRows
             {...baseProps}
             timelineRows={[interruptedFileChange]}
           />
@@ -256,7 +240,7 @@ export function Overview() {
         hint="approvalStatus=waiting_for_approval, parked before applying the edit"
       >
         <TimelineStage>
-          <ThemedTimelineRows
+          <ThreadTimelineRows
             {...baseProps}
             timelineRows={[waitingApprovalFileChange]}
           />
@@ -267,7 +251,7 @@ export function Overview() {
         hint="approvalStatus=denied, user rejected the edit"
       >
         <TimelineStage>
-          <ThemedTimelineRows
+          <ThreadTimelineRows
             {...baseProps}
             timelineRows={[deniedFileChange]}
           />
@@ -278,7 +262,7 @@ export function Overview() {
         hint="extract-to-memo refactor of ThreadFollowUpComposer.tsx — full diff body inline"
       >
         <TimelineStage>
-          <ThemedTimelineRows
+          <ThreadTimelineRows
             {...baseProps}
             initialExpanded={new Set([largeRefactorComposer.id])}
             timelineRows={[largeRefactorComposer]}

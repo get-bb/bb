@@ -50,29 +50,28 @@ import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork } from "./event-loop-work.js";
 
-export type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
+type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
 /**
  * Narrow slice of the plugin service the schedule sweep needs (the plugin
  * service owns claiming and invocation; this loop just drives it).
  */
-export interface PluginScheduleSweeper {
+interface PluginScheduleSweeper {
   sweepDueSchedules(now: number): Promise<void>;
 }
 
-export type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
+type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
 // Archive cleanup paths schedule immediate advances; this bounds only fallback
 // recovery from polling blocked workspaces while the app is idle.
-export const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS =
-  15 * 60_000;
+const MANAGED_ENVIRONMENT_ARCHIVE_CLEANUP_RECOVERY_INTERVAL_MS = 15 * 60_000;
 const ORPHANED_ENVIRONMENT_DESTROY_RECOVERY_DELAY_MS =
   LIVE_DAEMON_COMMAND_TIMEOUT_MS;
 
-export type PeriodicSweepJobCategory =
+type PeriodicSweepJobCategory =
   | "retention"
   | "durable-intent-retry"
   | "orphan-cleanup"
@@ -397,7 +396,7 @@ export async function runManagedEnvironmentArchiveCleanupRecoverySweep(
   await advanceRetiringManagedEnvironments(deps);
 }
 
-export async function runProjectDeletionSweep(
+async function runProjectDeletionSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
   for (const projectId of listProjectsPendingDeletion(deps)) {
@@ -446,7 +445,7 @@ export async function runEnvironmentProvisioningSweep(
 
 // Thread provisioning context is process-local. This sweep is orphan cleanup,
 // not resumable recovery, and live same-process provisioning is skipped.
-export async function runThreadProvisioningOrphanCleanupSweep(
+async function runThreadProvisioningOrphanCleanupSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
   const provisioningThreads = deps.db

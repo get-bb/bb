@@ -1,8 +1,5 @@
 import type { ChildProcess, StdioOptions } from "node:child_process";
-import {
-  spawnPortableProcess,
-  type PortableChildProcess,
-} from "@bb/process-utils";
+import { spawnPortableProcess } from "@bb/process-utils";
 
 export type ForwardedSignal = "SIGINT" | "SIGTERM";
 
@@ -17,18 +14,6 @@ export interface ScriptProcessRequest {
   cwd: string;
   env?: NodeJS.ProcessEnv;
   stdio: StdioOptions;
-}
-
-export function spawnScriptProcess(
-  request: ScriptProcessRequest,
-): PortableChildProcess {
-  return spawnPortableProcess({
-    args: request.args,
-    command: request.command,
-    cwd: request.cwd,
-    env: request.env,
-    stdio: request.stdio,
-  });
 }
 
 export function killProcessIfRunning(
@@ -76,7 +61,7 @@ export function waitForProcessExit(
   });
 }
 
-export function toExitCode(result: ProcessExitResult): number {
+function toExitCode(result: ProcessExitResult): number {
   if (result.signal) {
     return 1;
   }
@@ -87,7 +72,7 @@ export function toExitCode(result: ProcessExitResult): number {
 export async function runScriptProcess(
   request: ScriptProcessRequest,
 ): Promise<number> {
-  const child = spawnScriptProcess(request);
+  const child = spawnPortableProcess(request);
   const removeSignalForwarding = installTerminationSignalForwarding(
     (signal) => {
       killProcessIfRunning(child, signal);

@@ -1,0 +1,4 @@
+{
+  "$comment": "Guardrail G2 (provider-contract-purity.test.ts). Every key on the provider-agnostic contract that still names a provider (codex, claude, pi, acp, cursor). Each entry names the workstream that deletes it; the test fails when a NEW provider-named key appears and when an entry here no longer matches anything, so the list can only shrink. Do not add entries without a removal plan. Empty since WS2a replaced `claudeCodePermissionMode` with the provider-agnostic `promptMode` execution option.",
+  "entries": []
+}

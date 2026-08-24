@@ -27,7 +27,7 @@ export function hasUnsafePathSegment(value: string): boolean {
     .some((segment) => segment === "." || segment === "..");
 }
 
-export interface SkillsApiSkill {
+interface SkillsApiSkill {
   id: string;
   slug: string;
   name: string;
@@ -47,7 +47,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export function decodeHtml(value: string): string {
+function decodeHtml(value: string): string {
   return value
     .replaceAll("&amp;", "&")
     .replaceAll("&lt;", "<")
@@ -57,13 +57,13 @@ export function decodeHtml(value: string): string {
     .replaceAll("&#39;", "'");
 }
 
-export function stripTags(value: string): string {
+function stripTags(value: string): string {
   return decodeHtml(value.replace(/<[^>]*>/gu, " "))
     .replace(/\s+/gu, " ")
     .trim();
 }
 
-export function renderedSkillHtmlToMarkdown(value: string): string {
+function renderedSkillHtmlToMarkdown(value: string): string {
   return decodeHtml(
     value
       .replace(/<br\s*\/?\s*>/giu, "\n")
@@ -90,7 +90,7 @@ export function renderedSkillHtmlToMarkdown(value: string): string {
     .trim();
 }
 
-export function extractFirstDivContentsAfter(
+function extractFirstDivContentsAfter(
   html: string,
   marker: string,
 ): string | null {

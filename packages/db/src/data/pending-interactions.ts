@@ -92,19 +92,6 @@ function sliceInClauseBatches<T>(values: readonly T[]): T[][] {
   return batches;
 }
 
-function getPendingInteractionRecord(
-  db: PendingInteractionReadConnection,
-  id: string,
-): PendingInteractionRow | null {
-  return (
-    db
-      .select()
-      .from(pendingInteractions)
-      .where(eq(pendingInteractions.id, id))
-      .get() ?? null
-  );
-}
-
 function updatePendingInteractionTerminalState(
   db: PendingInteractionWriteConnection,
   args: SetPendingInteractionTerminalStateArgs,
@@ -173,7 +160,13 @@ export function getPendingInteraction(
   db: PendingInteractionReadConnection,
   id: string,
 ): PendingInteractionRow | null {
-  return getPendingInteractionRecord(db, id);
+  return (
+    db
+      .select()
+      .from(pendingInteractions)
+      .where(eq(pendingInteractions.id, id))
+      .get() ?? null
+  );
 }
 
 export function getPendingInteractionByProviderRequest(
@@ -194,24 +187,6 @@ export function getPendingInteractionByProviderRequest(
       )
       .get() ?? null
   );
-}
-
-export function listActivePendingInteractionsForPlugin(
-  db: PendingInteractionReadConnection,
-  pluginId: string,
-): PendingInteractionRow[] {
-  return db
-    .select()
-    .from(pendingInteractions)
-    .where(
-      and(
-        eq(pendingInteractions.originKind, "plugin"),
-        eq(pendingInteractions.pluginId, pluginId),
-        inArray(pendingInteractions.status, ["pending", "resolving"]),
-      ),
-    )
-    .orderBy(desc(pendingInteractions.createdAt))
-    .all();
 }
 
 export function listActivePluginPendingInteractions(

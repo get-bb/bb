@@ -200,21 +200,25 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "System provider lookups may target a host indirectly or directly and may omit provider id to use the host default.",
+      "System provider lookups may target a host indirectly or directly, omit provider id to use the host default, and omit capability to return the full roster.",
     fields: [
       "systemExecutionOptionsQuerySchema.environmentId",
       "systemExecutionOptionsQuerySchema.hostId",
       "systemExecutionOptionsQuerySchema.providerId",
+      "systemProvidersQuerySchema.capability",
       "systemProvidersQuerySchema.environmentId",
       "systemProvidersQuerySchema.hostId",
     ],
   },
   {
     reason:
-      "Thread event queries may omit pagination parameters to start from the beginning with the default page size.",
+      "Thread event queries may omit filters and pagination to read the default ascending page from the beginning.",
     fields: [
       "threadEventsQuerySchema.afterSeq",
+      "threadEventsQuerySchema.beforeSeq",
       "threadEventsQuerySchema.limit",
+      "threadEventsQuerySchema.order",
+      "threadEventsQuerySchema.types",
     ],
   },
   {
@@ -1528,6 +1532,11 @@ describe("server-contract clients", () => {
         param: { id: "thr_123" },
       }).pathname,
     ).toBe("/api/v1/threads/thr_123/thread-storage/files");
+    expect(
+      publicClient.threads[":id"]["thread-storage"].location.$url({
+        param: { id: "thr_123" },
+      }).pathname,
+    ).toBe("/api/v1/threads/thr_123/thread-storage/location");
     expect(
       publicClient.threads[":id"]["thread-storage"].paths.$url({
         param: { id: "thr_123" },

@@ -5,14 +5,12 @@ import {
   getCall,
   getRunRequired,
   migrations,
-  type Db,
 } from "./data.js";
 import plugin from "./server.js";
 import {
   createWorkflowService,
   formatWorkflowNotification,
   isRetryableProviderFailure,
-  type WorkflowService,
 } from "./service.js";
 import {
   DEFAULT_WORKFLOW_SETTINGS,
@@ -893,6 +891,37 @@ describe("workflow service policy integration", () => {
           ([input]) => (input as { threadId: string }).threadId === "child-1",
         ),
     ).toBe(true);
+    controller.abort();
+    await worker;
+  });
+
+  it("publishes a workflow-runs signal for the origin thread on start, claim, and cancel", async () => {
+    // The composer banner polls only while it shows an active run; these
+    // signals are how an idle thread learns that a run appeared or ended.
+    const test = setup();
+    harnesses.push(test.harness);
+    const signalsFor = (threadId: string) =>
+      test.harness.realtimeSignals.filter(
+        (signal) =>
+          signal.channel === "workflow-runs" &&
+          (signal.payload as { threadId?: unknown }).threadId === threadId,
+      );
+    const run = await test.start(
+      source(`return await agent("never");`, "signal-run"),
+    );
+    expect(signalsFor("origin")).toHaveLength(1);
+    const controller = new AbortController();
+    const worker = test.service.runWorker(controller.signal);
+    await eventually(() => expect(test.childCount()).toBe(1));
+    // Claim (queued -> running).
+    expect(signalsFor("origin").length).toBeGreaterThanOrEqual(2);
+    const beforeStop = signalsFor("origin").length;
+    await expect(test.service.stop(run.id)).resolves.toBe(true);
+    expect(signalsFor("origin").length).toBeGreaterThan(beforeStop);
+    // A second stop of an already-cancelled run publishes nothing.
+    const afterStop = signalsFor("origin").length;
+    await expect(test.service.stop(run.id)).resolves.toBe(false);
+    expect(signalsFor("origin")).toHaveLength(afterStop);
     controller.abort();
     await worker;
   });

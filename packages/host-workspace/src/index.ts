@@ -1,57 +1,28 @@
 export {
   getPersonalWorkspaceRoot,
-  openWorkspace,
   provisionWorkspace,
   validatePersonalWorkspaceTargetPath,
 } from "./provision.js";
-export type {
-  HostWorkspace,
-  PersonalWorkspaceOpts,
-  ProvisionWorkspaceArgs,
-  UnmanagedCheckoutOpts,
-  UnmanagedWorkspaceOpts,
-  ManagedWorkspaceBaseOpts,
-  ManagedWorktreeOpts,
-  ReconnectManagedWorktreeOpts,
-} from "./provision.js";
+export type { HostWorkspace, ProvisionWorkspaceArgs } from "./provision.js";
 
-export type {
-  CommitOptions,
-  CommitResult,
-  DiffOptions,
-  DiffResult,
-  FetchOptions,
-  PullRequestActionOptions,
-  SquashMergeOptions,
-  SquashMergeResult,
-  StatusOptions,
-} from "./workspace.js";
+export type { PullRequestActionOptions } from "./workspace.js";
+export type { GitHostCliOptions } from "./git-host.js";
 
 export {
   WorkspaceError,
   detectGitRepo,
+  detectGitRepoKind,
   fetchRemoteBranches,
   getCheckoutRef,
   getCurrentBranch,
   getWorkspaceGitOperation,
   getGitCommonDir,
-  gitBlobSize,
   hasUncommittedChanges,
+  listBranchRefsWithDefaults,
   listBranches,
   listRemoteBranches,
-  readDefaultBranch,
   readDefaultBranchRefs,
   readGitBlob,
   runGit,
 } from "./git.js";
-export type {
-  DefaultBranchRefs,
-  FetchRemoteBranchesResult,
-  ReadGitBlobResult,
-} from "./git.js";
-
-export {
-  getPullRequestForCurrentBranch,
-  parseGitHostPullRequest,
-  type GitHostPullRequestLookup,
-} from "./git-host.js";
+export type { GitProcessOptions } from "./git.js";

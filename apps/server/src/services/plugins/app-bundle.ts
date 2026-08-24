@@ -3,9 +3,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
 import { PLUGIN_SDK_MAJOR } from "@bb/domain";
-import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
+import {
+  assertValidPluginCompactIconSvg,
+  assertValidPluginIconSvg,
+} from "@bb/plugin-build";
 
-export interface PluginArtifactMeta {
+interface PluginArtifactMeta {
   sdkMajor: number;
   sdkVersion: string;
   artifactFormatVersion?: 1;
@@ -17,7 +20,7 @@ export interface PluginArtifactMeta {
   };
 }
 
-export interface PluginArtifactMetaParseResult {
+interface PluginArtifactMetaParseResult {
   meta: PluginArtifactMeta | null;
   error: string | null;
 }
@@ -30,11 +33,14 @@ export interface PluginArtifactMetaParseResult {
  */
 
 /** Wire shape of one plugin's loadable frontend bundle (GET /api/v1/plugins). */
-export interface PluginAppBundleInfo {
+interface PluginAppBundleInfo {
   /** App-relative asset URL, content-hash query included. */
   jsUrl: string;
   /** Null when the plugin ships no dist/app.css (host loads JS only). */
   cssUrl: string | null;
+  /** Byte size of dist/app.js. The frontend loads smaller bundles first so
+   * a phone gets several light plugins on screen before one heavy one. */
+  jsBytes: number;
   /** sha256 (first 16 hex chars) over dist/app.js + dist/app.css +
    * dist/app.meta.json bytes. Meta rides the hash so an SDK-version-only
    * change (identical js/css) still re-keys frontend reconcile + caching. */
@@ -48,7 +54,7 @@ export interface PluginAppBundleInfo {
 }
 
 /** App-bundle slice of a GET /api/v1/plugins entry. */
-export interface PluginAppState {
+interface PluginAppState {
   /** Whether the manifest declares a `bb.app` frontend entry. */
   hasApp: boolean;
   /** Null when dist/app.js or dist/app.meta.json is missing/unreadable. */
@@ -56,7 +62,7 @@ export interface PluginAppState {
 }
 
 /** On-disk asset record backing GET /plugins/:id/assets/*. */
-export interface PluginAppAssets {
+interface PluginAppAssets {
   jsPath: string;
   cssPath: string | null;
   hash: string;
@@ -98,11 +104,25 @@ export interface PluginBrandingAssetSet {
   compactIcon: PluginBrandingAssetSnapshot | null;
   logo: PluginBrandingAssetSnapshot | null;
   logoDark: PluginBrandingAssetSnapshot | null;
+  /**
+   * `bb.branding.experimental_icons`, declared name → snapshot served by
+   * GET /plugins/:id/assets/icons/<name>.svg. Empty when the plugin declares
+   * none.
+   */
+  icons: ReadonlyMap<string, PluginBrandingAssetSnapshot>;
+}
+
+function brandingAssetHash(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 
 /**
  * Read and hash one explicitly declared branding asset. Manifest parsing has
- * already validated that the path is a readable supported asset.
+ * already validated that the path is a readable supported asset. The compact
+ * icon is validated again here because this is the snapshot the route
+ * serves, and the file may have changed between the two reads (a dev-loop
+ * edit); a logo is snapshotted as declared, whatever markup it carries — the
+ * route's headers keep it inert.
  */
 async function loadPluginBrandingAsset(
   pluginId: string,
@@ -119,11 +139,34 @@ async function loadPluginBrandingAsset(
     .toLowerCase();
   const contentType = BRANDING_ASSET_CONTENT_TYPES[extension];
   if (contentType === undefined) return null;
-  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+  const hash = brandingAssetHash(bytes);
   return {
     url: `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/${variant}?h=${hash}`,
     bytes,
     contentType,
+    hash,
+  };
+}
+
+/**
+ * Read and hash one declared icon (`bb.branding.experimental_icons`). The
+ * manifest reader validated the bytes at load; they are validated again here
+ * because this is the snapshot the route serves, and the file may have
+ * changed between the two reads (a dev-loop edit). Reject-only, like the
+ * manifest: the hash is over the shipped bytes.
+ */
+async function loadPluginIconAsset(
+  pluginId: string,
+  name: string,
+  path: string,
+): Promise<PluginBrandingAssetSnapshot> {
+  const bytes = await readFile(path);
+  assertValidPluginIconSvg(bytes, `bb.branding.experimental_icons["${name}"]`);
+  const hash = brandingAssetHash(bytes);
+  return {
+    url: `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/icons/${encodeURIComponent(name)}.svg?h=${hash}`,
+    bytes,
+    contentType: "image/svg+xml",
     hash,
   };
 }
@@ -135,9 +178,14 @@ export async function loadPluginBrandingAssets(
     branding: {
       compactIconPath?: string;
       logo?: { lightPath: string; darkPath?: string };
+      icons: ReadonlyMap<string, string>;
     };
   },
 ): Promise<PluginBrandingAssetSet> {
+  const icons = new Map<string, PluginBrandingAssetSnapshot>();
+  for (const [name, path] of manifest.branding.icons) {
+    icons.set(name, await loadPluginIconAsset(pluginId, name, path));
+  }
   return {
     compactIcon: await loadPluginBrandingAsset(
       pluginId,
@@ -154,6 +202,7 @@ export async function loadPluginBrandingAssets(
       manifest.branding.logo?.darkPath,
       "logo-dark",
     ),
+    icons,
   };
 }
 
@@ -163,9 +212,7 @@ export async function loadPluginBrandingAssets(
  * and the two must agree (semver.major(sdkVersion) === sdkMajor) — an
  * inconsistent sidecar would make the compatibility gate lie.
  */
-export function parsePluginArtifactMeta(
-  raw: string,
-): PluginArtifactMetaParseResult {
+function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
   let json: unknown;
   try {
     json = JSON.parse(raw);
@@ -354,6 +401,7 @@ export async function loadPluginAppBundle(
       bundle: {
         jsUrl: assetUrl("app.js"),
         cssUrl: css !== null ? assetUrl("app.css") : null,
+        jsBytes: js.byteLength,
         hash,
         sdkMajor: meta.sdkMajor,
         sdkVersion: meta.sdkVersion,

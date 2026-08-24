@@ -49,6 +49,7 @@ describe("thread conversation outline performance", () => {
         scope: threadScope(),
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ text: "Visible response" }),
       },
       {
@@ -59,6 +60,7 @@ describe("thread conversation outline performance", () => {
         providerThreadId: "provider-thread-1",
         itemId: "command-1",
         itemKind: "commandExecution",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             id: "command-1",
@@ -100,6 +102,7 @@ describe("thread conversation outline performance", () => {
         providerThreadId: "provider-thread-1",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({}),
       },
       {
@@ -110,6 +113,7 @@ describe("thread conversation outline performance", () => {
         providerThreadId: "provider-thread-1",
         itemId: "message-1",
         itemKind: "agentMessage",
+        parentToolCallId: null,
         data: JSON.stringify({
           item: {
             id: "message-1",
@@ -126,6 +130,7 @@ describe("thread conversation outline performance", () => {
         providerThreadId: "provider-thread-1",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ message: "Provider failed" }),
       },
       {
@@ -136,6 +141,7 @@ describe("thread conversation outline performance", () => {
         providerThreadId: "provider-thread-1",
         itemId: null,
         itemKind: null,
+        parentToolCallId: null,
         data: JSON.stringify({ status: "failed" }),
       },
     ]);

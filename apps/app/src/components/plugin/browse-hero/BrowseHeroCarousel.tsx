@@ -1,12 +1,11 @@
 import type { IconName } from "@bb/shared-ui/icon";
 import { PLUGINS_BROWSE_DESCRIPTION } from "@/components/plugin/plugins-collection-copy";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import {
   ShowcaseHeroCarousel,
   type ShowcaseHeroComposerConfig,
   type ShowcaseHeroCopy,
 } from "@/components/showcase-hero/ShowcaseHeroCarousel";
-import type { ShowcaseArchetype } from "@/components/showcase-hero/showcase-archetype";
 import { BROWSE_ARCHETYPES } from "./browse-hero-archetypes";
 import { MINI_APP_SCENES } from "./MiniAppScenes";
 
@@ -33,8 +32,7 @@ const PLUGIN_HERO_COMPOSER: ShowcaseHeroComposerConfig = {
   draftKey: "plugins-browse-hero",
 };
 
-export interface BrowseHeroCarouselProps {
-  archetypes?: readonly ShowcaseArchetype[];
+interface BrowseHeroCarouselProps {
   /** Stories force a slide and disable autoplay to capture a stable frame. */
   initialIndex?: number;
   autoplay?: boolean;
@@ -53,7 +51,6 @@ export interface BrowseHeroCarouselProps {
  * create-plugin prompt prefix.
  */
 export function BrowseHeroCarousel({
-  archetypes = BROWSE_ARCHETYPES,
   initialIndex = 0,
   autoplay = true,
   composerDisabled = false,
@@ -62,7 +59,7 @@ export function BrowseHeroCarousel({
 }: BrowseHeroCarouselProps) {
   return (
     <ShowcaseHeroCarousel
-      archetypes={archetypes}
+      archetypes={BROWSE_ARCHETYPES}
       scenes={MINI_APP_SCENES}
       copy={PLUGIN_HERO_COPY}
       composer={PLUGIN_HERO_COMPOSER}

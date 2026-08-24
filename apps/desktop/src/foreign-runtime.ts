@@ -25,12 +25,12 @@ export interface ForeignRuntimeDetails {
   version: string;
 }
 
-export interface ReadForeignRuntimeDetailsArgs {
+interface ReadForeignRuntimeDetailsArgs {
   dataDir: string | null;
   serverUrl: string;
 }
 
-export interface StopForeignRuntimeArgs {
+interface StopForeignRuntimeArgs {
   /** The record the person saw and approved, not a fresh read. */
   details: ForeignRuntimeDetails;
   killTimeoutMs: number;
@@ -38,7 +38,7 @@ export interface StopForeignRuntimeArgs {
   timeoutMs: number;
 }
 
-export type StopForeignRuntimeResult =
+type StopForeignRuntimeResult =
   | { kind: "not-running" }
   | { kind: "replaced" }
   | { kind: "still-running"; pid: number }

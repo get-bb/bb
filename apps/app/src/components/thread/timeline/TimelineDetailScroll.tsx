@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode, type UIEvent } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
@@ -7,8 +7,12 @@ import {
 } from "../../ui/detail-scroll-size.js";
 import { useStickyBottomScroll } from "./useStickyBottomScroll.js";
 import { useScrollOverflowState } from "./useScrollOverflowState.js";
+import {
+  TimelineWindowingScrollRootContext,
+  type TimelineWindowingScrollRoot,
+} from "./TimelineWindowedItemsLoader.js";
 
-export interface TimelineDetailScrollProps {
+interface TimelineDetailScrollProps {
   size: DetailScrollSize;
   /** Hide the outer x-axis when a child owns horizontal scrolling. */
   overflowX?: "auto" | "hidden";
@@ -63,16 +67,13 @@ export function TimelineDetailScroll({
   const maxHeightClassName = getDetailScrollMaxHeightClass(size);
   const { aboveOverflow, belowOverflow } = overflow;
 
-  const handleScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => {
-      sticky.onScroll(event);
-    },
-    [sticky],
-  );
-
   const refCallback = useComposedRefs<HTMLDivElement>(
     sticky.ref,
     overflow.scrollRef,
+  );
+  const windowingScrollRoot = useMemo<TimelineWindowingScrollRoot>(
+    () => ({ getScrollElement: () => sticky.ref.current }),
+    [sticky.ref],
   );
 
   return (
@@ -82,7 +83,7 @@ export function TimelineDetailScroll({
     >
       <div
         ref={refCallback}
-        onScroll={handleScroll}
+        onScroll={sticky.onScroll}
         onPointerDown={sticky.onPointerDown}
         onTouchMove={sticky.onTouchMove}
         onTouchStart={sticky.onTouchStart}
@@ -103,7 +104,13 @@ export function TimelineDetailScroll({
         {/* Content-only height changes (image loads, disclosure toggles)
             never resize the scroll port; this wrapper gives the sticky
             hook's ResizeObserver a box that tracks them. */}
-        <div ref={sticky.contentRef}>{children}</div>
+        <div ref={sticky.contentRef}>
+          <TimelineWindowingScrollRootContext.Provider
+            value={windowingScrollRoot}
+          >
+            {children}
+          </TimelineWindowingScrollRootContext.Provider>
+        </div>
         <div
           ref={overflow.bottomSentinelRef}
           aria-hidden

@@ -2,7 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import {
   BROWSE_ARCHETYPES,
   UTILITY_EXAMPLES,

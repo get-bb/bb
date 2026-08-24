@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import type { ListFilterState } from "./filter-bar.js";
-import type { TaskSort } from "../../shared/sort.js";
+import type { TaskSort } from "../../shared/pagination.js";
 
 /**
  * Remembering the task list's scroll offset so opening a task and coming back
@@ -100,7 +100,7 @@ export function resolveRestoreTarget(
   return Math.min(Math.max(0, saved), max);
 }
 
-export interface ListScrollState {
+interface ListScrollState {
   /** True once real rows (not skeletons/empty state) are in the DOM. */
   contentReady: boolean;
   /**

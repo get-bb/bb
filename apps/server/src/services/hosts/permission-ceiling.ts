@@ -5,7 +5,7 @@ import type { AppDeps } from "../../types.js";
 
 type PermissionCeilingDeps = Pick<AppDeps, "db">;
 
-export interface ClampPermissionModeToHostArgs {
+interface ClampPermissionModeToHostArgs {
   hostId: string | null;
   permissionMode: PermissionMode;
   providerId?: string;
@@ -17,7 +17,7 @@ export interface ClampPermissionModeToHostArgs {
  * can degrade to "no default execution options" the same way they already do
  * for a provider capability mismatch, while work requests still fail loudly.
  */
-export class HostPermissionCeilingConflictError extends ApiError {}
+class HostPermissionCeilingConflictError extends ApiError {}
 
 export function isHostPermissionCeilingConflictError(
   error: unknown,

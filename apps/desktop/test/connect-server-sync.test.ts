@@ -46,11 +46,15 @@ describe("fetchConnectAccountServers", () => {
       serverUrl: "http://127.0.0.1:38886/",
       fetchImpl,
     });
-    expect(result?.selfHandle).toBe("me");
-    expect(result?.servers).toHaveLength(2);
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(`unexpected skip: ${result.reason}`);
+    }
+    expect(result.result.selfHandle).toBe("me");
+    expect(result.result.servers).toHaveLength(2);
   });
 
-  it("returns null on network failure, non-JSON, or ok:false", async () => {
+  it("names the reason on network failure, plugin disabled, or not paired", async () => {
     await expect(
       fetchConnectAccountServers({
         serverUrl: "http://127.0.0.1:1",
@@ -58,31 +62,68 @@ describe("fetchConnectAccountServers", () => {
           throw new Error("ECONNREFUSED");
         },
       }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ ok: false, reason: "unavailable" });
 
+    // The plugin route answers 503 with a string error when the plugin is off.
+    await expect(
+      fetchConnectAccountServers({
+        serverUrl: "http://127.0.0.1:38886",
+        fetchImpl: async () => ({
+          ok: false,
+          status: 503,
+          json: async () => ({
+            ok: false,
+            error: 'plugin "connect" is not running (status: disabled)',
+          }),
+          text: async () => "",
+        }),
+      }),
+    ).resolves.toEqual({ ok: false, reason: "plugin-disabled" });
+
+    // The RPC handler rethrows ConnectListError codes as the error message.
     await expect(
       fetchConnectAccountServers({
         serverUrl: "http://127.0.0.1:38886",
         fetchImpl: async () => ({
           ok: false,
           status: 500,
-          json: async () => ({ ok: false, error: "not_paired" }),
+          json: async () => ({
+            ok: false,
+            error: { code: "handler_error", message: "not_paired" },
+          }),
           text: async () => "",
         }),
       }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ ok: false, reason: "not-paired" });
 
+    // Any other handler failure, non-JSON body, or unknown shape.
     await expect(
       fetchConnectAccountServers({
         serverUrl: "http://127.0.0.1:38886",
         fetchImpl: async () => ({
           ok: false,
-          status: 422,
-          json: async () => ({ ok: false, error: "plugin disabled" }),
+          status: 500,
+          json: async () => ({
+            ok: false,
+            error: { code: "handler_error", message: "network" },
+          }),
           text: async () => "",
         }),
       }),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ ok: false, reason: "unavailable" });
+    await expect(
+      fetchConnectAccountServers({
+        serverUrl: "http://127.0.0.1:38886",
+        fetchImpl: async () => ({
+          ok: false,
+          status: 502,
+          json: async () => {
+            throw new SyntaxError("not json");
+          },
+          text: async () => "",
+        }),
+      }),
+    ).resolves.toEqual({ ok: false, reason: "unavailable" });
   });
 });
 
@@ -130,6 +171,7 @@ describe("createConnectServerSync", () => {
       onServers(servers) {
         received = servers;
       },
+      onSkipped: () => undefined,
       onUnauthorized: () => undefined,
       fetchImpl,
       now: () => now,
@@ -167,30 +209,44 @@ describe("createConnectServerSync", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
-  it("does not call onServers on failure and logs the failure only once until a success", async () => {
+  it("reports each skipped sync with its reason and logs once per failure streak", async () => {
     const logs: string[] = [];
+    const skipped: string[] = [];
     let onServersCalls = 0;
-    let fail = true;
-    const fetchImpl = vi.fn(async () => {
-      if (fail) {
-        throw new Error("down");
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
+    let mode: "down" | "disabled" | "up" = "down";
+    const fetchImpl = vi.fn(
+      async (): Promise<Pick<Response, "ok" | "status" | "json" | "text">> => {
+        if (mode === "down") {
+          throw new Error("down");
+        }
+        if (mode === "disabled") {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({ ok: false, error: "plugin not running" }),
+            text: async () => "",
+          };
+        }
+        return {
           ok: true,
-          result: { selfHandle: "me", servers: [] },
-        }),
-        text: async () => "",
-      };
-    });
+          status: 200,
+          json: async () => ({
+            ok: true,
+            result: { selfHandle: "me", servers: [] },
+          }),
+          text: async () => "",
+        };
+      },
+    );
 
     const sync = createConnectServerSync({
       getCredential: () => null,
       getLocalServerUrl: () => "http://127.0.0.1:38886",
       onServers() {
         onServersCalls += 1;
+      },
+      onSkipped(reason) {
+        skipped.push(reason);
       },
       onUnauthorized: () => undefined,
       fetchImpl,
@@ -203,15 +259,25 @@ describe("createConnectServerSync", () => {
 
     await sync.syncNow();
     await sync.syncNow();
-    expect(logs).toHaveLength(1);
+    expect(skipped).toEqual(["unavailable", "unavailable"]);
+    expect(logs).toEqual(["connect server sync skipped (unavailable)"]);
     expect(onServersCalls).toBe(0);
 
-    fail = false;
+    // A different reason inside the same streak is logged once more.
+    mode = "disabled";
+    await sync.syncNow();
+    expect(skipped).toEqual(["unavailable", "unavailable", "plugin-disabled"]);
+    expect(logs).toEqual([
+      "connect server sync skipped (unavailable)",
+      "connect server sync skipped (plugin-disabled)",
+    ]);
+
+    mode = "up";
     await sync.syncNow();
     expect(onServersCalls).toBe(1);
-    fail = true;
+    mode = "disabled";
     await sync.syncNow();
-    expect(logs).toHaveLength(2);
+    expect(logs).toHaveLength(3);
   });
 });
 
@@ -243,6 +309,7 @@ describe("createConnectServerSync without a local server", () => {
       onServers(servers) {
         received = servers;
       },
+      onSkipped: () => undefined,
       onUnauthorized: () => undefined,
       setIntervalFn: () => 0,
       clearIntervalFn: () => undefined,
@@ -268,11 +335,15 @@ describe("createConnectServerSync without a local server", () => {
 
   it("reports a refused credential so the caller drops it", async () => {
     let unauthorized = 0;
+    const skipped: string[] = [];
     const sync = createConnectServerSync({
       getCredential: () => credential,
       getLocalServerUrl: () => null,
       gateFetchImpl: async () => new Response("no", { status: 403 }),
       onServers: () => undefined,
+      onSkipped(reason) {
+        skipped.push(reason);
+      },
       onUnauthorized() {
         unauthorized += 1;
       },
@@ -282,21 +353,51 @@ describe("createConnectServerSync without a local server", () => {
 
     await sync.syncNow();
     expect(unauthorized).toBe(1);
+    expect(skipped).toEqual(["unauthorized"]);
   });
 
-  it("stays quiet when the app has no credential", async () => {
-    const gateFetchImpl = vi.fn(async () => new Response("{}"));
+  it("reports a gate outage as unavailable", async () => {
+    const skipped: string[] = [];
     const sync = createConnectServerSync({
-      getCredential: () => null,
+      getCredential: () => credential,
       getLocalServerUrl: () => null,
-      gateFetchImpl,
+      gateFetchImpl: async () => new Response("oops", { status: 502 }),
       onServers: () => undefined,
+      onSkipped(reason) {
+        skipped.push(reason);
+      },
       onUnauthorized: () => undefined,
       setIntervalFn: () => 0,
       clearIntervalFn: () => undefined,
     });
 
     await sync.syncNow();
+    expect(skipped).toEqual(["unavailable"]);
+  });
+
+  it("reports no-credential without calling the gate when the app has none", async () => {
+    const gateFetchImpl = vi.fn(async () => new Response("{}"));
+    const skipped: string[] = [];
+    const logs: string[] = [];
+    const sync = createConnectServerSync({
+      getCredential: () => null,
+      getLocalServerUrl: () => null,
+      gateFetchImpl,
+      onServers: () => undefined,
+      onSkipped(reason) {
+        skipped.push(reason);
+      },
+      onUnauthorized: () => undefined,
+      log: (message) => {
+        logs.push(message);
+      },
+      setIntervalFn: () => 0,
+      clearIntervalFn: () => undefined,
+    });
+
+    await sync.syncNow();
     expect(gateFetchImpl).not.toHaveBeenCalled();
+    expect(skipped).toEqual(["no-credential"]);
+    expect(logs).toEqual(["connect server sync skipped (no-credential)"]);
   });
 });

@@ -6,7 +6,7 @@ import type {
   EventProjectionWorkflowMessage,
 } from "./event-projection-message.js";
 
-export const eventProjectionTurnStatusValues = [
+const eventProjectionTurnStatusValues = [
   "pending",
   "completed",
   "error",
@@ -15,10 +15,7 @@ export const eventProjectionTurnStatusValues = [
 export type EventProjectionTurnStatus =
   (typeof eventProjectionTurnStatusValues)[number];
 
-export const eventProjectionTurnMessageDetailValues = [
-  "summary",
-  "full",
-] as const;
+const eventProjectionTurnMessageDetailValues = ["summary", "full"] as const;
 /**
  * Controls how eagerly completed turns include their message arrays.
  * Summary projections may still include messages when row ordering,
@@ -27,7 +24,7 @@ export const eventProjectionTurnMessageDetailValues = [
 export type EventProjectionTurnMessageDetail =
   (typeof eventProjectionTurnMessageDetailValues)[number];
 
-export interface EventProjectionState {
+interface EventProjectionState {
   /**
    * Root-projection-only ephemeral state that should not be modeled as a
    * timeline row. Nested child projections always expose `activeThinking` as
@@ -58,12 +55,12 @@ export type EventProjectionEntry =
   | EventProjectionMessageEntry
   | EventProjectionTurnEntry;
 
-export interface EventProjectionMessageEntry {
+interface EventProjectionMessageEntry {
   kind: "projected-message";
   message: EventProjectionMessage;
 }
 
-export interface EventProjectionTurnEntry {
+interface EventProjectionTurnEntry {
   kind: "turn";
   turn: EventProjectionTurn;
 }

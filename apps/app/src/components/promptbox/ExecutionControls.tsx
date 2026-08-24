@@ -11,17 +11,17 @@ import {
 } from "@/components/pickers/ModelReasoningPicker";
 import { type PickerOption } from "@/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
+import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 
-export interface ExecutionProviderConfig {
-  options?: readonly PickerOption<string>[];
+interface ExecutionProviderConfig {
+  options?: readonly ProviderPickerOption[];
   selectedId?: string;
   /** Omit to render the provider as locked (used by FollowUp where the thread is committed). */
   onChange?: (value: string) => void;
   hasMultiple?: boolean;
-  displayName?: string;
 }
 
-export interface ExecutionModelConfig {
+interface ExecutionModelConfig {
   active?: { model: string } | null;
   selected: string;
   options: readonly ModelPickerOption[];
@@ -33,14 +33,16 @@ export interface ExecutionModelConfig {
   onChange: (value: string) => void;
 }
 
-export interface ExecutionServiceTierConfig {
+interface ExecutionServiceTierConfig {
   value?: ServiceTier;
   onChange: (value: ServiceTier | undefined) => void;
   supported: boolean;
   supportByProvider?: Record<string, boolean>;
+  /** The provider's declared label for its fast tier; "Fast" when absent. */
+  fastLabel?: string;
 }
 
-export interface ExecutionReasoningConfig {
+interface ExecutionReasoningConfig {
   value: ReasoningLevel;
   options: readonly PickerOption<ReasoningLevel>[];
   onChange: (value: ReasoningLevel) => void;
@@ -123,6 +125,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           }
           showFastModeToggle={serviceTier?.supported ?? false}
           serviceTierSupportByProvider={serviceTier?.supportByProvider}
+          fastModeLabel={serviceTier?.fastLabel}
           muted
           disabled={disabled}
           footerAction={footerAction}

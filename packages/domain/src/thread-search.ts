@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const threadSearchSourceKindValues = [
+const threadSearchSourceKindValues = [
   "title",
   "title_fallback",
   "user_message",

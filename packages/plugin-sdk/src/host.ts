@@ -14,3 +14,24 @@ export {
   type ExperimentalHostWatchSubscription,
   type ExperimentalHostWorkerLease,
 } from "./host-contract.js";
+export {
+  experimental_filterResolvedNativeRoots,
+  experimental_nativeRootsHostContract,
+  experimental_nativeRootsResolveInputSchema,
+  experimental_nativeRootsResolveOutputSchema,
+  type ExperimentalDroppedNativeRoot,
+  type ExperimentalFilteredNativeRoots,
+  type ExperimentalNativeRootsHostContract,
+  type ExperimentalNativeRootsResolveAnswer,
+  type ExperimentalNativeRootsResolveInput,
+  type ExperimentalNativeRootsResolveOutput,
+} from "./native-roots-contract.js";
+export {
+  experimental_resolveClaudePluginRoots,
+  experimental_resolveVendorPluginRoots,
+  type ExperimentalClaudePluginRoots,
+  type ExperimentalClaudePluginRootsArgs,
+  type ExperimentalVendorPlugin,
+  type ExperimentalVendorPluginRoots,
+  type ExperimentalVendorPluginRootsArgs,
+} from "./vendor-plugin-roots.js";

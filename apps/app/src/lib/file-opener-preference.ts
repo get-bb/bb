@@ -4,14 +4,12 @@ import { createJsonLocalStorage } from "./browser-storage";
 import {
   BUILT_IN_FILE_OPENER_PREFERENCE,
   buildFileOpenerRef,
-  getFileExtension,
   type FileOpenerPreferenceMap,
 } from "./plugin-slot-resolvers";
 
 export {
   BUILT_IN_FILE_OPENER_PREFERENCE,
   buildFileOpenerRef,
-  getFileExtension,
   type FileOpenerPreferenceMap,
 };
 

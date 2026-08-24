@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG } from "@bb/domain";
 import type { RuntimePermissionPolicy } from "@bb/domain";
 import {
   buildClaudeSessionParams,
@@ -18,7 +17,6 @@ const EXECUTION_CONTEXT = {
   model: "claude-sonnet-5",
   reasoningLevel: "high",
   claudeCodePermissionMode: "plan",
-  claudeCodeMockCliTraffic: { enabled: true, endpoint: "http://127.0.0.1:1" },
   workflowsEnabled: true,
   memoryEnabled: false,
   providerSubagentsEnabled: false,
@@ -40,7 +38,6 @@ const EXECUTION_CONTEXT = {
 function toCanonicalWireOptions(options: typeof EXECUTION_CONTEXT) {
   const {
     claudeCodePermissionMode,
-    claudeCodeMockCliTraffic,
     workflowsEnabled,
     memoryEnabled,
     providerSubagentsEnabled,
@@ -50,7 +47,6 @@ function toCanonicalWireOptions(options: typeof EXECUTION_CONTEXT) {
     ...core,
     providerOptions: {
       claudeCodePermissionMode,
-      claudeCodeMockCliTraffic,
       workflowsEnabled,
       memoryEnabled,
       providerSubagentsEnabled,
@@ -105,10 +101,6 @@ describe("buildClaudeSessionParams", () => {
       providerSubagentsEnabled: false,
       model: "claude-sonnet-5",
       reasoningLevel: "high",
-      claudeCodeMockCliTraffic: {
-        enabled: true,
-        endpoint: "http://127.0.0.1:1",
-      },
       disallowedTools: ["WebSearch"],
       config: { envVars: { BB_TEST: "1" } },
     });
@@ -150,7 +142,6 @@ describe("buildClaudeSessionParams", () => {
     });
     expect(params).toMatchObject({
       workflowsEnabled: false,
-      claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
       permissionMode: "bypassPermissions",
       approvedPlanPermissionMode: "bypassPermissions",
     });
@@ -243,7 +234,6 @@ describe("claude session workspace-write roots", () => {
         }),
       }),
     ).not.toHaveProperty("additionalWorkspaceWriteRoots");
-
   });
 
   // The roots are gated on the permission SCOPE, not the permission mode: an
@@ -289,7 +279,6 @@ describe("claude session option passthrough", () => {
         ...WORKSPACE_ACCEPT_EDITS_POLICY,
         permissionEscalation: "ask",
         providerOptions: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
         },
         model: "claude-opus-4-7",
@@ -362,7 +351,6 @@ describe("claude session option passthrough", () => {
         ...WORKSPACE_AUTO_POLICY,
         permissionEscalation: "deny",
         providerOptions: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
         },
       },
@@ -382,7 +370,6 @@ describe("claude session option passthrough", () => {
       options: {
         ...FULL_POLICY,
         providerOptions: {
-          claudeCodeMockCliTraffic: DEFAULT_CLAUDE_CODE_MOCK_CLI_TRAFFIC_CONFIG,
           workflowsEnabled: false,
         },
       },
@@ -453,5 +440,24 @@ describe("buildClaudeTurnParams", () => {
     expect(params.input).toEqual([
       { type: "text", text: "inspect the failing test", mentions: [] },
     ]);
+    // The bridge switches an already-loaded session into plan mode from this
+    // flag; without it the stripped prompt ran under the session's old mode.
+    expect(params.claudeCodePermissionMode).toBe("plan");
+  });
+
+  it("omits claudeCodePermissionMode when the turn does not open plan mode", () => {
+    const params = buildClaudeTurnParams({
+      threadId: "thread-1",
+      providerThreadId: "provider-1",
+      input: [{ type: "text", text: "hi", mentions: [] }],
+      options: {
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+        providerOptions: { workflowsEnabled: true },
+      },
+    });
+    expect(params).not.toHaveProperty("claudeCodePermissionMode");
   });
 });

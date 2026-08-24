@@ -18,7 +18,7 @@ export type HostObservedChange =
       sourceType: "data-dir";
     };
 
-export type WorkspaceObservedChange = Extract<
+type WorkspaceObservedChange = Extract<
   HostObservedChange,
   { kind: "workspace-status-changed" }
 >;

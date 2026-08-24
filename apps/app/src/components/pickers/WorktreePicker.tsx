@@ -22,7 +22,7 @@ import {
   OPTION_MENU_CONTENT_CLASS_NAME,
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "./OptionPicker";
+} from "@bb/shared-ui/option-display";
 
 const REUSE_THREAD_PREVIEW_LIMIT = 2;
 
@@ -40,7 +40,7 @@ export interface ReuseThreadOption {
   threads: ReadonlyArray<{ id: string; title: string }>;
 }
 
-export interface WorktreePickerProps {
+interface WorktreePickerProps {
   options: readonly ReuseThreadOption[];
   /** Currently-selected env id, or null when reuse mode is active but no
    * worktree has been chosen yet. */

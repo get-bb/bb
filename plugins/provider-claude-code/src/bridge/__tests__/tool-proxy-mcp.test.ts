@@ -109,4 +109,38 @@ describe("buildBridgeMcpServer", () => {
     });
     await client.close();
   });
+
+  // Before this, an image-only result reached the model as the text "OK".
+  it("serves an image-only tool result as an MCP image block", async () => {
+    const server = buildBridgeMcpServer(
+      [
+        {
+          name: "browser_screenshot",
+          description: "A PNG of the current page.",
+          inputSchema: { type: "object" },
+        },
+      ],
+      async () => ({
+        content: "",
+        contentBlocks: [
+          {
+            type: "image" as const,
+            data: "iVBORw0KGgo=",
+            mimeType: "image/png",
+          },
+        ],
+        images: [{ data: "iVBORw0KGgo=", mimeType: "image/png" }],
+      }),
+    );
+    const client = await connect(server);
+
+    const result = await client.callTool({
+      name: "browser_screenshot",
+      arguments: {},
+    });
+    expect(result.content).toEqual([
+      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
+    ]);
+    await client.close();
+  });
 });

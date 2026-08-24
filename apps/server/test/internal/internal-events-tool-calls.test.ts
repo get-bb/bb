@@ -172,15 +172,16 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
-  it("snapshots native plugin status labels into tool-call events", async () => {
+  it("persists a native plugin tool call as the bridge sent it: no server-side label enrichment", async () => {
     await withTestHarness(async (harness) => {
-      const statusLabels = {
-        pending: "Reading project overview",
-        completed: "Read project overview",
-      };
       const record = {
         name: "repository_context",
-        experimentalStatusLabels: statusLabels,
+        presentation: {
+          label: {
+            pending: "Reading project overview",
+            completed: "Read project overview",
+          },
+        },
       } as PluginAgentToolRecord;
       setPluginAgentContributions({
         listSkillRootContributions: () => [],
@@ -255,11 +256,14 @@ describe("internal event and tool-call routes", () => {
               event.type === "item/started" || event.type === "item/completed",
           );
         expect(storedToolEvents).toHaveLength(2);
-        expect(
-          storedToolEvents.map(
-            (event) => JSON.parse(event.data).item.statusLabels,
-          ),
-        ).toEqual([statusLabels, statusLabels]);
+        // The plugin's labels reach the row only through the presentation
+        // the bridge stamps on the item (resolved onto the tool definition
+        // it receives); the server no longer writes a `statusLabels` key.
+        for (const event of storedToolEvents) {
+          const item = JSON.parse(event.data).item;
+          expect(item.tool).toBe(record.name);
+          expect(item).not.toHaveProperty("statusLabels");
+        }
       } finally {
         setPluginAgentContributions(undefined);
       }
@@ -1010,13 +1014,22 @@ describe("internal event and tool-call routes", () => {
         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
           ?.status,
       ).toBe("idle");
+      // The replayed turn/started is the same provider turn, so it is not
+      // stored twice; a second start would break timeline projection.
       expect(
         harness.db
-          .select()
+          .select({ type: events.type })
           .from(events)
           .where(eq(events.threadId, thread.id))
-          .all(),
-      ).toHaveLength(4);
+          .orderBy(events.sequence)
+          .all()
+          .map((event) => event.type),
+      ).toEqual(["turn/started", "turn/completed", "turn/completed"]);
+
+      const timelineResponse = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      expect(timelineResponse.status).toBe(200);
     });
   });
 

@@ -50,7 +50,7 @@ export function getCollapsibleHeaderToneClass(isExpanded: boolean): string {
     : COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS;
 }
 
-export interface CollapsibleHeaderProps {
+interface CollapsibleHeaderProps {
   summaryContent: ReactNode;
   toneClassName: string;
   summaryClassName?: string;
@@ -111,25 +111,22 @@ export function CollapsibleHeader({
   );
 }
 
-export interface ExpandablePanelProps {
+interface ExpandablePanelProps {
   isExpanded: boolean;
   summaryContent: ReactNode;
   headerToneClass: string;
   onToggle?: () => void;
   collapsedContent?: ReactNode;
   forceHeaderChevronVisible?: boolean;
-  headerButtonClassName?: string;
   summaryContentClassName?: string;
   children?: ReactNode;
   renderBody?: () => ReactNode;
   className?: string;
   headerClassName?: string;
-  bodyClassName?: string;
   contentClassName?: string;
 }
 
 interface AnimatedExpandablePanelContentProps {
-  bodyClassName?: string;
   collapsedContent: ReactNode;
   contentClassName?: string;
   isExpanded: boolean;
@@ -137,7 +134,6 @@ interface AnimatedExpandablePanelContentProps {
 }
 
 function AnimatedExpandablePanelContent({
-  bodyClassName,
   collapsedContent,
   contentClassName,
   isExpanded,
@@ -145,6 +141,21 @@ function AnimatedExpandablePanelContent({
 }: AnimatedExpandablePanelContentProps) {
   const regionRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  // Only an expand/collapse toggle eases the region height. Content growth
+  // inside an already-open body (a streaming tool result, a todo list gaining
+  // rows) snaps: easing it would restart the 200ms tween on every delta, and
+  // that tween never registers with `layoutAnimationInFlightCountAtom`, so the
+  // timeline's AutoHeightContainer would run its own tween on top of it.
+  const toggleAnimationDeadlineRef = useRef(0);
+  const isFirstToggleEffectRef = useRef(true);
+  useBrowserLayoutEffect(() => {
+    if (isFirstToggleEffectRef.current) {
+      isFirstToggleEffectRef.current = false;
+      return;
+    }
+    toggleAnimationDeadlineRef.current =
+      performance.now() + EXPANDABLE_PANEL_TRANSITION_MS;
+  }, [isExpanded]);
 
   useBrowserLayoutEffect(() => {
     const region = regionRef.current;
@@ -154,6 +165,9 @@ function AnimatedExpandablePanelContent({
     }
 
     const syncHeight = () => {
+      const isToggleAnimating =
+        performance.now() < toggleAnimationDeadlineRef.current;
+      region.style.transitionDuration = isToggleAnimating ? "" : "0s";
       region.style.height = `${target.offsetHeight}px`;
     };
 
@@ -171,10 +185,7 @@ function AnimatedExpandablePanelContent({
   return (
     <div
       ref={regionRef}
-      className={cn(
-        "relative transition-[height] duration-200 ease-out",
-        bodyClassName,
-      )}
+      className="relative transition-[height] duration-200 ease-out"
       style={{
         overflowX: "visible",
         overflowY: "clip",
@@ -200,22 +211,16 @@ export function ExpandablePanel({
   onToggle,
   collapsedContent,
   forceHeaderChevronVisible = false,
-  headerButtonClassName,
   summaryContentClassName,
   children,
   renderBody,
   className,
   headerClassName,
-  bodyClassName,
   contentClassName,
 }: ExpandablePanelProps) {
   const hasCollapsedContent =
     collapsedContent !== undefined && collapsedContent !== null;
-  const headerRootClassName = cn(
-    "px-2 py-1",
-    headerClassName,
-    headerButtonClassName,
-  );
+  const headerRootClassName = cn("px-2 py-1", headerClassName);
   const [isClosing, setIsClosing] = useState(false);
   const renderedBodyRef = useRef<ReactNode>(null);
   const expandedBody = useMemo(() => {
@@ -307,7 +312,6 @@ export function ExpandablePanel({
       </div>
       {hasCollapsedContent ? (
         <AnimatedExpandablePanelContent
-          bodyClassName={bodyClassName}
           collapsedContent={collapsedContent}
           contentClassName={contentClassName}
           isExpanded={isExpanded}
@@ -321,13 +325,15 @@ export function ExpandablePanel({
             isExpanded
               ? "pointer-events-auto grid-rows-[1fr] opacity-100"
               : "pointer-events-none grid-rows-[0fr] opacity-0",
-            bodyClassName,
           )}
         >
           <div className="overflow-hidden">
             <div
               className={cn(
-                "px-2 pb-1 pt-0 transition-[transform,opacity] duration-200 ease-out will-change-transform",
+                // No `will-change-transform` here: it would pin a compositing
+                // layer on every collapsed body in the timeline for the
+                // lifetime of the row, only to speed a 200ms toggle.
+                "px-2 pb-1 pt-0 transition-[transform,opacity] duration-200 ease-out",
                 isExpanded
                   ? "translate-y-0 opacity-100"
                   : "-translate-y-1 opacity-0",

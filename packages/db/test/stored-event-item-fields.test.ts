@@ -20,6 +20,7 @@ describe("deriveStoredEventItemFields", () => {
     ).toEqual({
       itemId: "tool-1",
       itemKind: "toolCall",
+      parentToolCallId: null,
     });
   });
 
@@ -39,6 +40,7 @@ describe("deriveStoredEventItemFields", () => {
     ).toEqual({
       itemId: "msg-1",
       itemKind: "agentMessage",
+      parentToolCallId: null,
     });
   });
 
@@ -64,6 +66,7 @@ describe("deriveStoredEventItemFields", () => {
     ).toEqual({
       itemId: "task:wf-1",
       itemKind: "backgroundTask",
+      parentToolCallId: null,
     });
 
     expect(
@@ -77,6 +80,7 @@ describe("deriveStoredEventItemFields", () => {
     ).toEqual({
       itemId: "task:wf-1",
       itemKind: "backgroundTask",
+      parentToolCallId: null,
     });
   });
 
@@ -88,11 +92,13 @@ describe("deriveStoredEventItemFields", () => {
         providerThreadId: "provider-1",
         scope: turnScope("turn-1"),
         itemId: "tool-1",
+        parentToolCallId: "parent-tool-1",
         message: "still running",
       }),
     ).toEqual({
       itemId: "tool-1",
       itemKind: null,
+      parentToolCallId: "parent-tool-1",
     });
   });
 
@@ -109,6 +115,7 @@ describe("deriveStoredEventItemFields", () => {
     ).toEqual({
       itemId: "msg-1",
       itemKind: null,
+      parentToolCallId: null,
     });
   });
 
@@ -124,6 +131,7 @@ describe("deriveStoredEventItemFields", () => {
     ).toEqual({
       itemId: null,
       itemKind: null,
+      parentToolCallId: null,
     });
   });
 });

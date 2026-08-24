@@ -1,10 +1,13 @@
 import { useStore } from "jotai";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { usePrefersReducedMotion } from "@bb/shared-ui/hooks/use-media-query";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   isDocumentVisible,
   subscribeToDocumentVisibility,
 } from "@/lib/document-visibility";
+import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import { layoutAnimationInFlightCountAtom } from "./layoutAnimationAtoms.js";
 
 // Shared animation tokens for height transitions across the timeline.
@@ -138,11 +141,9 @@ function cancelIntrinsicHeightRestore(
   resizeState.restoreTimerId = null;
 }
 
-export interface HeightTransitionProps {
+interface HeightTransitionProps {
   visible: boolean;
   children: ReactNode;
-  durationMs?: number;
-  className?: string;
 }
 
 /**
@@ -154,12 +155,7 @@ export interface HeightTransitionProps {
  * physics. Children stay mounted across the transition so consumer state
  * (e.g. an expandable panel's open flag) survives a hide/show cycle.
  */
-export function HeightTransition({
-  visible,
-  children,
-  durationMs = HEIGHT_TRANSITION_DURATION_MS,
-  className,
-}: HeightTransitionProps) {
+export function HeightTransition({ visible, children }: HeightTransitionProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const store = useStore();
@@ -214,10 +210,7 @@ export function HeightTransition({
   return (
     <div
       ref={wrapperRef}
-      className={cn(
-        className,
-        !visible && PAUSE_COLLAPSED_DESCENDANT_ANIMATIONS_CLASS,
-      )}
+      className={cn(!visible && PAUSE_COLLAPSED_DESCENDANT_ANIMATIONS_CLASS)}
       style={{
         // Clip vertically (so intermediate heights during the animation
         // don't leak content past the wrapper) without turning the wrapper
@@ -229,7 +222,7 @@ export function HeightTransition({
         overflowX: "visible",
         overflowY: "clip",
         opacity: visible ? 1 : 0,
-        transition: `height ${durationMs}ms ${HEIGHT_TRANSITION_EASE_CSS}, opacity ${durationMs}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
+        transition: `height ${HEIGHT_TRANSITION_DURATION_MS}ms ${HEIGHT_TRANSITION_EASE_CSS}, opacity ${HEIGHT_TRANSITION_DURATION_MS}ms ${HEIGHT_TRANSITION_EASE_CSS}`,
       }}
     >
       {/*
@@ -246,10 +239,8 @@ export function HeightTransition({
   );
 }
 
-export interface AutoHeightContainerProps {
+interface AutoHeightContainerProps {
   children: ReactNode;
-  className?: string;
-  durationMs?: number;
   /**
    * A revision for authoritative layout replacements that should not animate
    * through their intermediate height. Normal child growth still animates.
@@ -281,12 +272,29 @@ const AUTO_HEIGHT_INITIAL_SETTLE_MS = 250;
 // fresh whole-timeline pixel height on each ResizeObserver tick.
 const AUTO_HEIGHT_WIDTH_RESIZE_SETTLE_MS = 120;
 
+/**
+ * Whether the wrapper should snap to every size change instead of easing.
+ *
+ * On phones (coarse pointer) streaming deltas arrive every ~250ms, so the
+ * 180ms tween runs continuously: each eased frame re-lays out the whole
+ * timeline while the bottom-anchored scroller chases the moving edge with a
+ * JS scrollTop restore. Reduced motion asks for the same. Without CSS scroll
+ * anchoring (WebKit) there is no browser-side pin either, so that JS restore
+ * is the only thing following the tween and every frame costs a layout plus a
+ * scroll write.
+ */
+function useSnapHeightGrowth(): boolean {
+  const isPointerCoarse = usePointerCoarse();
+  const prefersReducedMotion = usePrefersReducedMotion();
+  return isPointerCoarse || prefersReducedMotion || !supportsScrollAnchoring();
+}
+
 export function AutoHeightContainer({
   children,
-  className,
-  durationMs = HEIGHT_TRANSITION_DURATION_MS,
   snapRevision,
 }: AutoHeightContainerProps) {
+  const snapGrowth = useSnapHeightGrowth();
+  const durationMs = snapGrowth ? 0 : HEIGHT_TRANSITION_DURATION_MS;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const snapToCurrentHeightRef = useRef<(() => void) | null>(null);
@@ -389,7 +397,6 @@ export function AutoHeightContainer({
   return (
     <div
       ref={wrapperRef}
-      className={className}
       style={{
         // See HeightTransition: clip vertically without forcing the wrapper
         // into a horizontal scroll container, so children with intentional

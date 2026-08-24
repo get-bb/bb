@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Pill } from "@bb/shared-ui/pill";
+import { usePluginCss } from "@/lib/plugin-css";
 import {
   PluginContext,
   PluginSlotOwnershipContext,
@@ -51,7 +52,7 @@ function releaseSlotInstanceOwnedState(instanceKey: string): void {
   for (const release of releases) release();
 }
 
-export function pluginSlotInstanceKey(
+function pluginSlotInstanceKey(
   pluginId: string,
   slotKind: string,
   slotId: string,
@@ -182,7 +183,7 @@ class PluginSlotBoundary extends Component<
   }
 }
 
-export interface PluginSlotMountProps {
+interface PluginSlotMountProps {
   pluginId: string;
   /** e.g. "homepageSection", "navPanel" — combined with slotId per instance. */
   slotKind: string;
@@ -208,8 +209,8 @@ export interface PluginSlotMountProps {
  * plugin id to the SDK hooks and contains crashes to this instance.
  *
  * The `data-bb-plugin={pluginId}` element is the scoping root for the
- * plugin's compiled stylesheet — `bb plugin build` wraps every utility rule
- * in `@scope ([data-bb-plugin="<id>"], …)`, so plugin CSS can never leak
+ * plugin's compiled stylesheet — `bb plugin build` prefixes every utility
+ * selector with `:where([data-bb-plugin="<id>"], …)`, so plugin CSS can never leak
  * onto host elements or another plugin's pane (`data-bb-plugin-root` stays
  * for stylesheets built before the per-plugin scope). `display: contents`
  * keeps the wrapper layout-neutral.
@@ -223,6 +224,7 @@ export function PluginSlotMount({
   instanceId,
   onCrash,
 }: PluginSlotMountProps) {
+  usePluginCss(pluginId);
   return (
     <PluginContext.Provider value={pluginId}>
       <PluginSlotBoundary

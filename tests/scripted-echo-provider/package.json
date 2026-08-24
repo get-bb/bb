@@ -1,0 +1,32 @@
+{
+  "name": "bb-plugin-scripted-echo-provider",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "bb": ">=0.0",
+    "bbPluginSdk": ">=0.4.3"
+  },
+  "bb": {
+    "name": "Scripted echo provider (test harness)",
+    "description": "The echo bridge plus the scripted directives bb's runtime and integration suites drive. Not a product plugin.",
+    "branding": {
+      "icon": "Zap"
+    },
+    "server": "./server.ts",
+    "host": "./host.ts"
+  },
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}

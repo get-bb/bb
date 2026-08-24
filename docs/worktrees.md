@@ -40,7 +40,11 @@ pnpm bb thread spawn \
 
 When you omit `--base-branch`, bb chooses the project's default worktree base,
 preferring the origin default branch when safe. Pass `--base-branch <name>`
-only when you need a specific base.
+only when you need a specific base. Naming the default branch (`--base-branch
+main`) behaves like omitting the flag: bb fetches and starts from
+`origin/main` unless your local `main` is ahead or has diverged. Any other
+plain name starts from that local branch as it is; pass `origin/<name>` to
+fetch and start from the remote branch.
 
 ## Copy local files with `.worktreeinclude`
 
@@ -110,6 +114,14 @@ thread using the environment is archived or deleted, and the branch goes with
 it. If you
 want to keep work the agent did, commit and push (or open a PR) from inside
 the worktree before letting the thread go.
+
+Before bb removes the directory, it stops every process whose working
+directory is inside the worktree — the agent's provider process, its
+background jobs (dev servers, MCP servers, `nohup` jobs), and any process
+you started there yourself, such as a shell you `cd`'d into the worktree or
+an editor terminal. Each process gets `SIGTERM`, then `SIGKILL` after a
+short grace period. Move your own shells out of the worktree before you
+delete the environment if you want to keep them.
 
 ## If something isn't working
 

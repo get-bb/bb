@@ -1,0 +1,111 @@
+[
+  {
+    "name": "legacy-exploration-upgraded",
+    "reason": "layer 6 (ws3-l6-legacy-tool-adapter): a persisted, presentation-less Read tool call is upgraded at read time to the fileRead item the bridge emits today, so the row is a file-read row with the same path, the same derived activity intent, the same title and the same 'Explored N files' bundle as before #2232. The same adapter upgrades Grep/Glob to search items (pinned by packages/domain/test/legacy-thread-events.test.ts); the corpus holds no persisted Grep/Glob call, so that reshape has no entry here.",
+    "match": {
+      "reshaped": {
+        "from": {
+          "kind": "work",
+          "workKind": "tool"
+        },
+        "to": {
+          "kind": "work",
+          "workKind": "file-read"
+        },
+        "fields": [
+          "id",
+          "activityIntents",
+          "approvalStatus",
+          "cmd",
+          "output",
+          "outputPreview",
+          "path",
+          "toolArgs",
+          "toolName"
+        ]
+      }
+    }
+  },
+  {
+    "name": "legacy-plan-rows",
+    "reason": "#2232 (layer 5): persisted codex `turn/plan/updated` notifications decode into planSteps items at read time, so old codex threads show their plan snapshots (the window no longer excludes the event type).",
+    "match": {
+      "added": {
+        "kind": "work",
+        "workKind": "plan-steps"
+      }
+    }
+  },
+  {
+    "name": "delegation-from-children",
+    "reason": "#2232 (layer 5): the Agent/Task/spawnAgent/resumeAgent name set is deleted; a tool call that other rows name as their parentToolCallId becomes the delegation row structurally.",
+    "match": {
+      "reshaped": {
+        "from": {
+          "kind": "work",
+          "workKind": "tool"
+        },
+        "to": {
+          "kind": "work",
+          "workKind": "delegation"
+        },
+        "fields": [
+          "id",
+          "activityIntents",
+          "approvalStatus",
+          "background",
+          "childRef",
+          "createdAt",
+          "description",
+          "subagentType",
+          "toolArgs"
+        ]
+      }
+    }
+  },
+  {
+    "name": "delegation-rows-gain-v3-fields",
+    "reason": "#2192 (layer 1): every delegation row carries `childRef` and `background`; a persisted tool-call delegation has no child ref and is foreground, so both are null/false against the main baseline.",
+    "match": {
+      "changed": {
+        "kind": "work",
+        "workKind": "delegation",
+        "fields": [
+          "background",
+          "childRef"
+        ]
+      }
+    }
+  },
+  {
+    "name": "parented-rows-surface",
+    "reason": "#2232 (layer 5): a row whose parentToolCallId named a call outside the delegation name set (Claude task notifications under Monitor/TaskOutput) was dropped at the root; it now nests under that call, which the structural rule makes the delegation row.",
+    "match": {
+      "added": {
+        "kind": "work",
+        "workKind": "workflow",
+        "nested": true
+      }
+    }
+  },
+  {
+    "name": "legacy-plan-rows",
+    "reason": "#2232 (layer 5), consequence: a persisted codex plan snapshot now renders as a plan-steps row between two assistant texts, so the first text is no longer a standalone visible response and folds into the turn — exactly what a live codex thread does when the bridge emits planSteps between texts (3 texts in 2 codex threads).",
+    "match": {
+      "moved": {
+        "kind": "conversation",
+        "role": "assistant"
+      }
+    }
+  },
+  {
+    "name": "legacy-replayed-read-deduplicated",
+    "reason": "layer 6: a Read the provider replayed under the same call id (a resumed Claude session re-emitting its history) projected as two tool rows; the fileRead item family merges by item id, so the replay is one file-read row (2 calls in 1 thread).",
+    "match": {
+      "resegmented": {
+        "kind": "work",
+        "workKind": "file-read"
+      }
+    }
+  }
+]

@@ -44,7 +44,3 @@ export function bytes(value: number): string {
   if (value < 1_024 * 1_024) return `${(value / 1_024).toFixed(1)} KB`;
   return `${(value / (1_024 * 1_024)).toFixed(1)} MB`;
 }
-
-export function json(value: unknown): string {
-  return JSON.stringify(value);
-}

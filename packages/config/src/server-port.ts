@@ -4,7 +4,7 @@ export interface ServerPortConfig {
   BB_SERVER_PORT: number;
 }
 
-export type LoadServerPortConfigArgs = RuntimePortLoaderArgs;
+type LoadServerPortConfigArgs = RuntimePortLoaderArgs;
 
 export function loadServerPortConfig(
   args: LoadServerPortConfigArgs = {},

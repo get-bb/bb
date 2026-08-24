@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { DisplayComment } from "../../shared/contract.js";
 
-export type CommentByline =
+type CommentByline =
   | { kind: "thread-link"; threadId: string; title: string }
   | { kind: "text"; name: string };
 
@@ -39,7 +39,7 @@ export function formatRelativeTime(iso: string, nowMs: number): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-export interface SystemBodySegment {
+interface SystemBodySegment {
   text: string;
   bold: boolean;
 }

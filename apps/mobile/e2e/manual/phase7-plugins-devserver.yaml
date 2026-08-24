@@ -1,0 +1,135 @@
+# Phase 7 plugins against the checkout's dev server (`scripts/bb-dev-app
+# current`; server port 20304 for this worktree — edit SERVER_URL for another
+# checkout), which runs the real builtin plugins. Read-mostly: opens the
+# Automations detail (settings-less builtin → "no settings" state, Updates →
+# "bundled" note, logs viewer), the default-enabled provider-retry settings,
+# and Browse (BB Official group). Not part of `pnpm e2e:ios` (e2e/flows)
+# because it needs a running dev server.
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:20304"
+---
+# Wipe any saved profile first (dev builds accept the reset deep link) so the
+# launch subflow adds the dev server instead of reusing a harness profile.
+# The app must already be running from Metro (a cold `bb://` link lands on
+# the dev-client launcher) and sitting on a screen that survives losing the
+# profile (home), so: launch, reset, launch again → first run → add server.
+- runFlow: ../subflows/launch-app.yaml
+- openLink: "bb://e2e/reset"
+- extendedWaitUntil:
+    visible: ".*Connect to a bb server.*"
+    timeout: 60000
+- runFlow: ../subflows/launch-to-home.yaml
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "settings-plugins"
+    direction: DOWN
+- tapOn:
+    id: "settings-plugins"
+- extendedWaitUntil:
+    visible:
+      id: "plugins-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "plugin-row-automations"
+    timeout: 30000
+- takeScreenshot: p7-plugins-dev-list
+- tapOn:
+    id: "plugin-row-automations"
+- extendedWaitUntil:
+    visible:
+      id: "plugin-detail-screen"
+    timeout: 15000
+- assertVisible:
+    id: "plugin-detail-name"
+    text: "Automations"
+- scrollUntilVisible:
+    element:
+      id: "plugin-settings-none"
+    direction: DOWN
+- assertVisible: "This plugin has no settings."
+- scrollUntilVisible:
+    element:
+      id: "plugin-detail-updates-builtin"
+    direction: DOWN
+- takeScreenshot: p7-plugins-dev-detail
+- scrollUntilVisible:
+    element:
+      id: "plugin-detail-logs"
+    direction: DOWN
+- tapOn:
+    id: "plugin-detail-logs"
+- extendedWaitUntil:
+    visible:
+      id: "plugin-logs-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "plugin-logs-list|plugin-logs-empty"
+    timeout: 20000
+- takeScreenshot: p7-plugins-dev-logs
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "plugin-detail-screen"
+    timeout: 10000
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "plugins-screen"
+    timeout: 10000
+# A default-enabled plugin with a host-rendered settings schema.
+- scrollUntilVisible:
+    element:
+      id: "plugin-row-provider-retry"
+    direction: DOWN
+- tapOn:
+    id: "plugin-row-provider-retry"
+- extendedWaitUntil:
+    visible:
+      id: "plugin-detail-screen"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "plugin-settings-form"
+    direction: DOWN
+- assertVisible:
+    id: "plugin-setting-maximumWait"
+    text: "6 hours"
+- takeScreenshot: p7-plugins-dev-settings
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "plugins-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "plugins-browse"
+    direction: UP
+- tapOn:
+    id: "plugins-browse"
+- extendedWaitUntil:
+    visible:
+      id: "plugin-browse-screen"
+    timeout: 15000
+- extendedWaitUntil:
+    visible:
+      id: "plugin-browse-group-builtin"
+    timeout: 30000
+- takeScreenshot: p7-plugins-dev-browse
+# Leave the simulator at first run again for the harness flows.
+- runFlow: ../subflows/launch-app.yaml
+- openLink: "bb://e2e/reset"
+- extendedWaitUntil:
+    visible: ".*Connect to a bb server.*"
+    timeout: 60000

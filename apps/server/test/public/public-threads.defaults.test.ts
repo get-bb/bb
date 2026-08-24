@@ -405,9 +405,11 @@ describe("public thread default routes", () => {
         {
           type: "provider.list_models",
           providerId: "codex",
-          cwd: "/tmp/thread-defaults-missing",
         },
       ]);
+      // The Codex catalog is host-scoped, so the probe carries no workspace
+      // path (it would only fragment the server's model-list memo).
+      expect(providerResponder.requests[0].command).not.toHaveProperty("cwd");
     });
   });
 

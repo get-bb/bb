@@ -1,0 +1,320 @@
+name: Mobile E2E
+
+# iOS simulator end-to-end run for apps/mobile (Maestro flows against the
+# integration harness backend). Label-gated on pull requests (`mobile-e2e`),
+# manual, and nightly — the macOS runner is slow and paid, and the Linux
+# `checks` / `tests` jobs in ci.yml already typecheck, lint and unit-test
+# @bb/mobile on every pull request (turbo picks the package up; the
+# `packages` test shard covers it).
+#
+# The app is built once in Release: a Release build embeds the JS bundle and
+# never starts the dev launcher, so the flows run without Metro
+# (`BB_E2E_EMBEDDED_BUNDLE=1` → apps/mobile/e2e/subflows/launch-app.yaml
+# uses `launchApp` instead of the dev-client deep link). The bundle is built
+# with `EXPO_PUBLIC_BB_E2E=1` so the app wipes its state on every launch and
+# exposes the e2e-only affordances, exactly like the local Metro setup.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      flows:
+        description: Space-separated flow names (default = the CI set; see apps/mobile/e2e/scripts/ci-run-flows.sh)
+        required: false
+        default: ""
+  schedule:
+    # Nightly, 09:17 UTC (runs on the default branch).
+    - cron: "17 9 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-e2e-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PNPM_VERSION: 9.15.0
+  NODE_VERSION: 22.x
+  MAESTRO_VERSION: 2.8.0
+  # sha256 of the cli-${MAESTRO_VERSION} maestro.zip release asset. Maestro
+  # publishes no checksums, so recompute it when bumping the version:
+  #   curl -fsSL -o maestro.zip https://github.com/mobile-dev-inc/maestro/releases/download/cli-<ver>/maestro.zip && shasum -a 256 maestro.zip
+  MAESTRO_SHA256: b3e561161904fb391875ca5834d5b22cf0b01c052dd1b408ad83e30d8f8951b3
+  # The harness backend port the flows' env blocks point at.
+  BB_MOBILE_E2E_PORT: "41999"
+  # Xcode DerivedData for the Release build measured 6.9 GB raw on a Mac
+  # (Build/ 5.1 GB, of which Pods intermediates 2.4 GB) and the repository's
+  # Actions cache quota is 10 GB shared with the Turbo caches, so the
+  # DerivedData cache is a knob: flip it to "false" if it starts evicting the
+  # Linux caches, and the job does a clean Release build each run.
+  CACHE_DERIVED_DATA: "true"
+
+jobs:
+  ios:
+    name: iOS simulator flows
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'mobile-e2e')
+    runs-on: blacksmith-6vcpu-macos-15
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # No Turbo cache on macOS: the cache moves over GitHub's service at
+      # ~50 MB/s on these runners and costs more than the tasks it skips
+      # (see ci.yml).
+      - name: Setup workspace
+        uses: ./.github/actions/setup-workspace
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          cache-prefix: mobile-e2e
+          turbo-cache: "false"
+
+      # The macOS 15 image ships several Xcodes with 16.4 as the default;
+      # apps/mobile is verified on Xcode 26.2 (iOS 26 runtime). Prefer that,
+      # then the newest 26.x, and only then whatever is selected. DEVELOPER_DIR
+      # needs no sudo and is honored by xcodebuild, xcrun/simctl and CocoaPods.
+      - name: Select Xcode
+        run: |
+          set -x
+          if [ -d /Applications/Xcode_26.2.app ]; then
+            xcode=/Applications/Xcode_26.2.app
+          else
+            xcode=$(find /Applications -maxdepth 1 -name 'Xcode_26*.app' | sort -V | tail -1)
+          fi
+          if [ -n "${xcode:-}" ]; then
+            echo "DEVELOPER_DIR=$xcode/Contents/Developer" >> "$GITHUB_ENV"
+            export DEVELOPER_DIR="$xcode/Contents/Developer"
+          else
+            echo "::warning::No Xcode 26.x found; using the selected Xcode"
+          fi
+          sw_vers
+          xcodebuild -version
+          xcrun simctl list runtimes
+          if ! command -v pod >/dev/null 2>&1; then
+            echo "::warning::CocoaPods not found on the image; installing with Homebrew"
+            brew install cocoapods
+          fi
+          pod --version
+
+      - name: Pick and boot a simulator
+        id: simulator
+        run: |
+          set -x
+          udid=$(node apps/mobile/e2e/scripts/pick-simulator.mjs)
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl list devices booted
+
+      # Java: Maestro needs a JDK 17+. The image has one on PATH; install
+      # Temurin 17 only when it does not.
+      - name: Check Java
+        id: java
+        run: |
+          if java -version 2>&1 | head -1 | grep -Eq '"(1[7-9]|[2-9][0-9])'; then
+            java -version 2>&1
+            echo "install=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "No JDK 17+ on PATH; installing Temurin 17"
+            echo "install=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install Java 17
+        if: steps.java.outputs.install == 'true'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Pinned direct download of the release asset (what the
+      # get.maestro.mobile.dev installer fetches) instead of piping that
+      # unversioned script to bash, so GitHub releases stay the only trust
+      # root. The zip unpacks to maestro/{bin,lib}; it lands in ~/.maestro
+      # where the installer would put it.
+      - name: Install Maestro
+        run: |
+          set -x
+          curl -fsSL --retry 3 -o /tmp/maestro.zip \
+            "https://github.com/mobile-dev-inc/maestro/releases/download/cli-${MAESTRO_VERSION}/maestro.zip"
+          echo "${MAESTRO_SHA256}  /tmp/maestro.zip" | shasum -a 256 -c -
+          rm -rf "$HOME/.maestro" /tmp/maestro-unzip
+          unzip -qo /tmp/maestro.zip -d /tmp/maestro-unzip
+          mv /tmp/maestro-unzip/maestro "$HOME/.maestro"
+          rm -rf /tmp/maestro.zip /tmp/maestro-unzip
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      # Native deps are a function of the lockfile, the Expo config and the
+      # pnpm patches; JS-only changes reuse both caches. `ios/` itself is
+      # generated by `expo prebuild` (gitignored), so its Podfile.lock cannot
+      # be part of the key — it is restored alongside Pods/ (Podfile.lock ==
+      # Pods/Manifest.lock makes `pod install` a no-op when nothing native
+      # changed). DerivedData keeps only `Build/` (intermediates + products;
+      # the module cache is rebuilt) and is keyed without the commit so one
+      # entry per native dependency set is saved; incremental xcodebuild then
+      # rebuilds only the app target on top of it.
+      - name: Compute native cache key
+        id: native-key
+        run: |
+          echo "key=${{ runner.os }}-mobile-native-${{ hashFiles('pnpm-lock.yaml', 'apps/mobile/app.json', 'apps/mobile/package.json', 'patches/**') }}" >> "$GITHUB_OUTPUT"
+      - name: Restore CocoaPods
+        id: pods-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            apps/mobile/ios/Pods
+            apps/mobile/ios/Podfile.lock
+          key: ${{ steps.native-key.outputs.key }}-pods
+      - name: Restore DerivedData
+        if: env.CACHE_DERIVED_DATA == 'true'
+        id: deriveddata-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/bb-*/Build
+          key: ${{ steps.native-key.outputs.key }}-deriveddata
+
+      - name: Prebuild and install pods
+        working-directory: apps/mobile
+        env:
+          LANG: en_US.UTF-8
+          CI: "1"
+        run: |
+          set -x
+          npx expo prebuild --platform ios --no-install
+          (cd ios && pod install)
+
+      # Release: the Xcode "Bundle React Native code and images" phase runs
+      # `expo export:embed` with the env below (EXPO_PUBLIC_* values are
+      # inlined at bundle time).
+      #
+      # `--device generic` builds for the generic iOS Simulator destination
+      # and copies the product to `--output`; `--device <udid>` must not be
+      # used here. The app declares `associatedDomains` (universal links), and
+      # `expo run:ios` insists on a development signing identity whenever the
+      # entitlements contain `com.apple.developer.associated-domains` — even
+      # for a simulator build — which a runner without a certificate cannot
+      # provide. Simulator products need no signature, so the binary is
+      # installed with simctl instead. DerivedData is still the default
+      # location, so the cache below keeps working.
+      - name: Build the Release app
+        id: build
+        working-directory: apps/mobile
+        env:
+          LANG: en_US.UTF-8
+          CI: "1"
+          NODE_OPTIONS: --max-old-space-size=8192
+          EXPO_PUBLIC_BB_E2E: "1"
+          EXPO_PUBLIC_BB_SERVER_URL: http://127.0.0.1:${{ env.BB_MOBILE_E2E_PORT }}
+        run: |
+          set -x
+          rm -rf build-output
+          time npx expo run:ios --configuration Release --no-bundler \
+            --device generic --output build-output
+
+      # The flows cold-start the app themselves; installing it here also
+      # primes the simulator so the first flow does not pay for it.
+      - name: Install the app on the simulator
+        working-directory: apps/mobile
+        run: |
+          set -x
+          app=$(find build-output -maxdepth 1 -name '*.app' | head -1)
+          if [ -z "$app" ]; then
+            echo "No .app product in apps/mobile/build-output"; ls -la build-output; exit 1
+          fi
+          xcrun simctl install "$SIMULATOR_UDID" "$app"
+          xcrun simctl listapps "$SIMULATOR_UDID" | grep -A3 app.getbb.mobile || true
+
+      - name: Save CocoaPods
+        if: always() && steps.build.outcome == 'success' && steps.pods-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            apps/mobile/ios/Pods
+            apps/mobile/ios/Podfile.lock
+          key: ${{ steps.native-key.outputs.key }}-pods
+      - name: Save DerivedData
+        if: always() && env.CACHE_DERIVED_DATA == 'true' && steps.build.outcome == 'success' && steps.deriveddata-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData/bb-*/Build
+          key: ${{ steps.native-key.outputs.key }}-deriveddata
+
+      # The harness backend (in-process server + host daemon, fake provider,
+      # seeded project + threads) on the port the flows expect. Turbo builds
+      # its prerequisites (plugin SDK, native modules) first; the script
+      # prints one JSON line when it is ready and keeps running.
+      - name: Start the e2e backend
+        run: |
+          set -x
+          mkdir -p e2e-artifacts
+          # `--log-order=stream` because turbo groups task output in CI and
+          # only flushes it when the task ends — a persistent task would keep
+          # its readiness line buffered forever.
+          pnpm exec turbo run e2e:mobile-backend --filter=@bb/integration-tests --output-logs=full --log-order=stream > e2e-artifacts/backend.log 2>&1 &
+          echo $! > e2e-artifacts/backend.pid
+          # The server listens (and answers /health) before it finishes seeding
+          # the project and threads the flows look for; the details JSON line is
+          # printed once seeding is done, so that is the readiness signal.
+          #
+          # `$!` is the `pnpm exec` wrapper, which exits on macOS while turbo
+          # and the backend keep running, so its death alone does not mean the
+          # backend died — only give up when the backend process is gone too.
+          ready=0
+          for _ in $(seq 1 240); do
+            if grep -q '"serverUrl"' e2e-artifacts/backend.log 2>/dev/null; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$(cat e2e-artifacts/backend.pid)" 2>/dev/null &&
+              ! pgrep -f "mobile-e2e/backend.ts" >/dev/null 2>&1; then
+              echo "backend exited early"; cat e2e-artifacts/backend.log; exit 1
+            fi
+            sleep 2
+          done
+          if [ "$ready" != "1" ]; then
+            echo "backend did not finish seeding in time"
+            cat e2e-artifacts/backend.log
+            exit 1
+          fi
+          grep -m1 '"serverUrl"' e2e-artifacts/backend.log
+          curl -fsS "http://127.0.0.1:$BB_MOBILE_E2E_PORT/health"
+
+      - name: Run Maestro flows
+        env:
+          SERVER_URL: http://127.0.0.1:${{ env.BB_MOBILE_E2E_PORT }}
+          FLOWS: ${{ inputs.flows }}
+          MAESTRO_CLI_NO_ANALYTICS: "true"
+          MAESTRO_DISABLE_UPDATE_CHECK: "true"
+          # The first run installs the XCUITest driver on the simulator.
+          MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
+        run: |
+          # shellcheck disable=SC2086
+          apps/mobile/e2e/scripts/ci-run-flows.sh "$SIMULATOR_UDID" "$GITHUB_WORKSPACE/e2e-artifacts/maestro" $FLOWS
+
+      - name: Collect simulator logs
+        if: always()
+        run: |
+          xcrun simctl spawn "$SIMULATOR_UDID" log show --last 30m --predicate 'process == "bb"' > e2e-artifacts/simulator-bb.log 2>&1 || true
+          cp -R "$HOME/.maestro/tests" e2e-artifacts/maestro-debug 2>/dev/null || true
+
+      - name: Stop the e2e backend
+        if: always()
+        run: |
+          if [ -f e2e-artifacts/backend.pid ]; then
+            kill "$(cat e2e-artifacts/backend.pid)" 2>/dev/null || true
+          fi
+          pkill -f "mobile-e2e/backend.ts" 2>/dev/null || true
+
+      - name: Upload artifacts (screenshots, Maestro logs, backend log)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mobile-e2e-ios
+          path: e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 14

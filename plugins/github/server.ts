@@ -12,6 +12,10 @@ import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 const SYNC_INTERVAL_MS = 5 * 60_000;
+// Retry cadence while the sync fails for a reason that is not a configuration
+// problem (network blip, locked keychain, slow host): start at 30 s and back
+// off to the regular sync interval.
+const SYNC_RETRY_BASE_MS = 30_000;
 const ISSUE_PAGE = 100;
 const CLOSED_ISSUE_PAGE = 50;
 const PR_PAGE = 50;
@@ -137,6 +141,10 @@ export const githubRpcContract = defineRpcContract({
     output: z
       .object({
         ghOk: z.boolean(),
+        /** ready: gh works. needs_configuration: gh missing or not logged in.
+            unavailable: gh has credentials but the last probe failed (network,
+            keychain, slow host); the plugin retries by itself. */
+        ghState: z.enum(["ready", "needs_configuration", "unavailable"]),
         ghError: z.string().nullable(),
         repos: z.array(repoInfoSchema),
         lastSyncedAt: z.string().nullable(),
@@ -220,7 +228,18 @@ export const githubRpcContract = defineRpcContract({
   },
   pullForThread: {
     input: z.object({ threadId: z.string().min(1) }).strict(),
-    output: z.object({ pull: itemInputSchema.nullable() }).strict(),
+    output: z
+      .object({
+        pull: z
+          .object({
+            repo: repoNameSchema,
+            number: itemNumberSchema,
+            environmentId: z.string().nullable(),
+          })
+          .strict()
+          .nullable(),
+      })
+      .strict(),
   },
   commentIssue: {
     input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
@@ -254,24 +273,8 @@ export const githubRpcContract = defineRpcContract({
   },
 });
 
-interface RepoInfo {
-  repo: string; // "owner/name"
-  projectId: string | null;
-}
-
-interface CachedItem {
-  repo: string;
-  number: number;
-  kind: "issue" | "pr";
-  title: string;
-  state: string;
-  author: string;
-  labels: string[];
-  assignees: string[];
-  url: string;
-  body: string;
-  updatedAt: string;
-}
+type RepoInfo = z.infer<typeof repoInfoSchema>;
+type CachedItem = z.infer<typeof itemSchema>;
 
 interface GhListEntry {
   number?: unknown;
@@ -310,8 +313,27 @@ function needsConfiguration(message: string): Error {
   });
 }
 
+function isNeedsConfigurationError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "NeedsConfigurationError";
+}
+
+/** gh is installed and has credentials, but a network-dependent step failed
+    (offline, locked keychain, slow host, GitHub outage). The sync service
+    retries these itself; every other error surfaces to the plugin host. */
+function ghUnavailable(message: string): Error {
+  return Object.assign(new Error(message), { name: "GhUnavailableError" });
+}
+
+function isGhUnavailableError(error: unknown): error is Error {
+  return error instanceof Error && error.name === "GhUnavailableError";
+}
+
+/** gh's own wording when it holds no credentials for the host. */
+const GH_NO_CREDENTIALS = /no oauth token|not logged in/i;
+const GH_HOST = "github.com";
+
 /** owner/name from any GitHub remote URL (https, ssh, git@), else null. */
-export function parseGithubRemote(url: string): string | null {
+function parseGithubRemote(url: string): string | null {
   const match = url
     .trim()
     .match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
@@ -474,6 +496,8 @@ export default async function plugin(bb: BbPluginApi) {
   // common install locations once and remember the winner.
   // ------------------------------------------------------------------
   let ghPath: string | null = null;
+  type GhState = "ready" | "needs_configuration" | "unavailable";
+  let ghState: GhState = "unavailable";
   let ghAuthError: string | null = "checking gh…";
 
   async function resolveGh(): Promise<string> {
@@ -497,14 +521,56 @@ export default async function plugin(bb: BbPluginApi) {
     return stdout;
   }
 
-  async function checkAuth(): Promise<void> {
+  // `gh auth status` calls the GitHub API, so a failure does not by itself
+  // mean gh is unconfigured. Only two outcomes are configuration problems
+  // worth latching needs-configuration on: gh missing, and gh present but
+  // holding no credentials at all (`gh auth token` answers that without the
+  // network). Anything else (network down, keychain locked, slow host,
+  // timeout) is a GhUnavailableError so callers retry instead of latching
+  // (#1758). Both commands are scoped to the active github.com account so a
+  // broken secondary account or host cannot block a valid one.
+  async function probeAuth(): Promise<void> {
     try {
-      await gh(["auth", "status"], 10_000);
+      await gh(["auth", "status", "--hostname", GH_HOST, "--active"], 10_000);
+      ghState = "ready";
       ghAuthError = null;
+      return;
     } catch (error) {
       ghAuthError = error instanceof Error ? error.message : String(error);
+      if (isNeedsConfigurationError(error)) {
+        ghState = "needs_configuration"; // gh not found
+        throw error;
+      }
+    }
+    let hasCredentials = true;
+    try {
+      await gh(["auth", "token", "--hostname", GH_HOST], 5_000);
+    } catch (error) {
+      // Only gh's own "no credentials" answer is a configuration problem; a
+      // timeout or crash of this local check counts as transient too.
+      const message = error instanceof Error ? error.message : String(error);
+      hasCredentials = !GH_NO_CREDENTIALS.test(message);
+    }
+    if (!hasCredentials) {
+      ghState = "needs_configuration";
       throw needsConfiguration(`GitHub CLI is not authenticated. ${GH_HINT}`);
     }
+    ghState = "unavailable";
+    throw ghUnavailable(
+      `gh auth status failed; gh has credentials, so this is probably transient and will be retried: ${ghAuthError}`,
+    );
+  }
+
+  // Concurrent callers (sync loop, panel header + body status RPCs) share one
+  // in-flight probe instead of spawning duplicate gh processes.
+  let authProbe: Promise<void> | null = null;
+  function checkAuth(): Promise<void> {
+    if (authProbe === null) {
+      authProbe = probeAuth().finally(() => {
+        authProbe = null;
+      });
+    }
+    return authProbe;
   }
 
   // ------------------------------------------------------------------
@@ -699,16 +765,25 @@ export default async function plugin(bb: BbPluginApi) {
       db.prepare("SELECT repo, kind, number, updated_at FROM items ORDER BY repo, kind, number").all(),
     );
     let total = 0;
+    let failed = 0;
+    let lastFailure = "";
     for (const { repo } of repos) {
       try {
         const items = await fetchRepoItems(gh, repo);
         replaceRepoRows(repo, items);
         total += items.length;
       } catch (error) {
-        bb.log.warn(
-          `sync failed for ${repo}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        failed += 1;
+        lastFailure = error instanceof Error ? error.message : String(error);
+        bb.log.warn(`sync failed for ${repo}: ${lastFailure}`);
       }
+    }
+    // Partial success still counts as a pass; a pass where every repo failed
+    // is a failure: keep the old sync time and let the caller retry soon.
+    if (repos.length > 0 && failed === repos.length) {
+      throw ghUnavailable(
+        `sync failed for all ${repos.length} repo(s); last error: ${lastFailure}`,
+      );
     }
     const after = JSON.stringify(
       db.prepare("SELECT repo, kind, number, updated_at FROM items ORDER BY repo, kind, number").all(),
@@ -727,34 +802,62 @@ export default async function plugin(bb: BbPluginApi) {
 
   // Initial sync + 5-minute refresh loop. NeedsConfigurationError from a
   // missing/unauthenticated gh flips the plugin to needs-configuration
-  // instead of crash-looping.
+  // instead of crash-looping. GhUnavailableError (transient gh/network
+  // trouble) is retried here with backoff: the host would otherwise stop the
+  // service for good when it crashes during activation. Every other error
+  // is a real fault and surfaces to the host unchanged.
   bb.background.service("sync", {
     async start(signal) {
+      let failures = 0;
       while (!signal.aborted) {
-        await syncAll();
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, SYNC_INTERVAL_MS);
-          signal.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timer);
-              resolve();
-            },
-            { once: true },
+        let delayMs = SYNC_INTERVAL_MS;
+        try {
+          await syncAll();
+          failures = 0;
+        } catch (error) {
+          if (!isGhUnavailableError(error)) throw error;
+          failures += 1;
+          delayMs = Math.min(
+            SYNC_RETRY_BASE_MS * 2 ** (failures - 1),
+            SYNC_INTERVAL_MS,
           );
+          bb.log.warn(
+            `sync failed (retry in ${Math.round(delayMs / 1000)}s): ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        // syncAll() can still be running when the host aborts the service.
+        // AbortSignal does not replay that event to a listener added later.
+        if (signal.aborted) break;
+        await new Promise<void>((resolve) => {
+          const onAbort = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          }, delayMs);
+          signal.addEventListener("abort", onAbort, { once: true });
         });
       }
     },
   });
 
   // Surface an unconfigured gh immediately instead of waiting for the
-  // service's first crash.
+  // service's first crash. A transient probe failure is only logged: the
+  // sync service retries it and the status RPC re-probes on demand.
   try {
     await checkAuth();
   } catch (error) {
-    bb.status.needsConfiguration(
-      error instanceof Error ? error.message : String(error),
-    );
+    if (isNeedsConfigurationError(error)) {
+      bb.status.needsConfiguration(error.message);
+    } else if (isGhUnavailableError(error)) {
+      bb.log.warn(error.message);
+    } else {
+      throw error;
+    }
   }
 
   // ------------------------------------------------------------------
@@ -907,6 +1010,15 @@ export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(githubRpcContract, {
     /** () → auth/sync status for the panel banner. */
     async status() {
+      // Re-probe on demand after a failed probe so a recovered gh is noticed
+      // the next time the panel or CLI asks, not only on the next sync tick.
+      if (ghState !== "ready") {
+        try {
+          await checkAuth();
+        } catch {
+          // ghState/ghAuthError already carry the failure
+        }
+      }
       const cursor = await bb.storage.kv.get<{
         lastSyncedAt: string;
         repos: number;
@@ -914,7 +1026,8 @@ export default async function plugin(bb: BbPluginApi) {
       }>("sync-cursor");
       const repos = await discoverRepos();
       return {
-        ghOk: ghAuthError === null,
+        ghOk: ghState === "ready",
+        ghState,
         ghError: ghAuthError,
         repos,
         lastSyncedAt: cursor?.lastSyncedAt ?? null,
@@ -1247,11 +1360,13 @@ export default async function plugin(bb: BbPluginApi) {
         environment PR (the branch the agent pushed) first, else a PR this
         thread was spawned to review. Null when neither exists. */
     async pullForThread({ threadId }) {
+      let environmentId: string | null = null;
       try {
         const thread = (await bb.sdk.threads.get({ threadId })) as unknown as {
           environmentId?: string | null;
         };
         if (thread?.environmentId) {
+          environmentId = thread.environmentId;
           const result = await bb.sdk.environments.pullRequest({
             environmentId: thread.environmentId,
           });
@@ -1262,7 +1377,13 @@ export default async function plugin(bb: BbPluginApi) {
               ? url.match(/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/)
               : null;
           if (match !== null) {
-            return { pull: { repo: match[1], number: Number(match[2]) } };
+            return {
+              pull: {
+                repo: match[1],
+                number: Number(match[2]),
+                environmentId,
+              },
+            };
           }
         }
       } catch {
@@ -1273,7 +1394,13 @@ export default async function plugin(bb: BbPluginApi) {
         const match = key.match(/^pr:([\w.-]+\/[\w.-]+)#(\d+)$/);
         if (match === null) continue;
         if (threadLinks.some((link) => link.threadId === threadId)) {
-          return { pull: { repo: match[1], number: Number(match[2]) } };
+          return {
+            pull: {
+              repo: match[1],
+              number: Number(match[2]),
+              environmentId,
+            },
+          };
         }
       }
       return { pull: null };

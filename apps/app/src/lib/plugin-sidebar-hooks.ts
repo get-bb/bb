@@ -1,7 +1,10 @@
 import { useCallback, useMemo } from "react";
 import { useStore } from "jotai";
-import { useNavigate } from "react-router-dom";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  PERSONAL_PROJECT_ID,
+  type Host,
+  type ThreadListEntry,
+} from "@bb/domain";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import type {
   PluginSidebarProject,
@@ -18,7 +21,7 @@ import {
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useUpdateThread } from "@/hooks/mutations/thread-state-mutations";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { toPluginSidebarThread } from "./plugin-sidebar-threads";
 import { useSetRootComposeProjectId } from "./root-compose-selection";
 import { openThreadInSplit } from "./split-layout/openThreadInSplit";
@@ -31,6 +34,54 @@ import {
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
 const EMPTY_ENTRIES: ReadonlyMap<string, ThreadListEntry> = new Map();
+const EMPTY_HOST_NAMES: ReadonlyMap<string, string> = new Map();
+
+/**
+ * Host-name map per hosts payload. Module-level (not `useMemo`) so every
+ * `useSidebarThreads` caller derives the same map object from the same React
+ * Query result; a per-hook map would give two plugin lists two keys and make
+ * them evict each other's entries from {@link pluginSidebarThreadByEntry}.
+ */
+const hostNamesByHosts = new WeakMap<
+  readonly Host[],
+  ReadonlyMap<string, string>
+>();
+
+function hostNamesFor(
+  hosts: readonly Host[] | undefined,
+): ReadonlyMap<string, string> {
+  if (hosts === undefined) return EMPTY_HOST_NAMES;
+  const cached = hostNamesByHosts.get(hosts);
+  if (cached !== undefined) return cached;
+  const names = new Map(hosts.map((host) => [host.id, host.name] as const));
+  hostNamesByHosts.set(hosts, names);
+  return names;
+}
+
+/**
+ * Per-entry DTO memo. React Query structurally shares the sidebar payload, so
+ * an unchanged `ThreadListEntry` keeps its identity across refetches; mapping
+ * it again produced a fresh DTO per thread per sidebar update, which defeats
+ * `memo`/compiler bailouts in every plugin row. The DTO also depends on the
+ * host-name map, so a cached DTO is reused only for the same map instance.
+ */
+const pluginSidebarThreadByEntry = new WeakMap<
+  ThreadListEntry,
+  { hostNamesById: ReadonlyMap<string, string>; thread: PluginSidebarThread }
+>();
+
+function toPluginSidebarThreadCached(
+  entry: ThreadListEntry,
+  hostNamesById: ReadonlyMap<string, string>,
+): PluginSidebarThread {
+  const cached = pluginSidebarThreadByEntry.get(entry);
+  if (cached !== undefined && cached.hostNamesById === hostNamesById) {
+    return cached.thread;
+  }
+  const thread = toPluginSidebarThread(entry, hostNamesById);
+  pluginSidebarThreadByEntry.set(entry, { hostNamesById, thread });
+  return thread;
+}
 
 /**
  * The sidebar's live thread view for plugin surfaces.
@@ -49,10 +100,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
   // The sidebar already subscribes to host updates; this reads the same
   // cached list so a row can print a machine name instead of a host id.
   const { data: hosts } = useHosts();
-  const hostNamesById = useMemo(
-    () => new Map((hosts ?? []).map((host) => [host.id, host.name] as const)),
-    [hosts],
-  );
+  const hostNamesById = hostNamesFor(hosts);
 
   return useMemo<PluginSidebarThreadsState>(() => {
     if (data === undefined) {
@@ -69,7 +117,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
       status: "ready",
       threads: allProjects.flatMap((project) =>
         project.threads.map((thread) =>
-          toPluginSidebarThread(thread, hostNamesById),
+          toPluginSidebarThreadCached(thread, hostNamesById),
         ),
       ),
       projects: allProjects.map((project) => ({
@@ -82,7 +130,7 @@ export function useSidebarThreads(): PluginSidebarThreadsState {
 }
 
 /** Thread id -> host entry, for O(1) lookups by id. */
-export function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
+function useThreadEntryMap(): ReadonlyMap<string, ThreadListEntry> {
   const { data } = useSidebarNavigation();
   return useMemo(() => {
     if (data === undefined) return EMPTY_ENTRIES;
@@ -111,10 +159,9 @@ export function useSidebarThreadEntry(
  * dead threads.
  */
 export function useSidebarThreadActions(): PluginSidebarThreadActions {
-  const navigate = useNavigate();
+  const navigate = useRouteNavigate();
   const store = useStore();
   const isCompact = useIsCompactViewport();
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
   const entriesById = useThreadEntryMap();
@@ -146,7 +193,6 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
             projectId,
             threadId,
             isCompact,
-            threadSplitsEnabled,
           });
           return;
         }
@@ -200,7 +246,6 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       requireEntry,
       setRootComposeProjectId,
       store,
-      threadSplitsEnabled,
       updateThreadAsync,
     ],
   );

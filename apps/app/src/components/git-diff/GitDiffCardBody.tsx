@@ -7,17 +7,14 @@ import {
   useRef,
   useState,
 } from "react";
-import type {
-  FileContents,
-  FileDiffOptions,
-  SelectedLineRange,
-  SelectionSide,
-} from "@pierre/diffs";
-import { useResolvedCodeThemePair } from "@/lib/code-theme";
-import { FileDiff as DiffView } from "@pierre/diffs/react";
+import type { FileContents } from "@pierre/diffs";
+import type { GitDiffFileChangeKind } from "@bb/server-contract";
+import type { ExperimentalDiffFullFileContents } from "@get-bb/plugin-sdk";
 import { useIntersectionObserver } from "usehooks-ts";
 import { Button } from "@bb/shared-ui/button";
-import { usePierreLineSelectionActions } from "./PierreLineSelectionActions.js";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
+import { DiffHost } from "@/components/code/DiffHost";
+import type { DiffPresentation } from "@/components/code/code-rendering";
 import {
   getWrappedImageIndex,
   ImageLightbox,
@@ -26,11 +23,9 @@ import {
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import {
   formatGitDiffFileLabel,
-  enrichGitDiffFileForContext,
-  isImageGitDiffFile,
+  isPreviewableImagePath,
   isSvgGitDiffFile,
   normalizeGitDiffPath,
-  type GitDiffFileChangeKind,
   type ParsedGitDiffFile,
 } from "./git-diff-parsing";
 
@@ -62,11 +57,6 @@ export interface DiffImageSizeStat {
 
 export type GitDiffCardSvgDisplayMode = "preview" | "raw";
 
-const GIT_DIFF_CARD_VIEW_STYLE = {
-  "--diffs-font-size": "12px",
-  "--diffs-line-height": "18px",
-} as CSSProperties;
-
 const GIT_DIFF_CARD_BODY_STYLE: CSSProperties = {
   contain: "layout paint style",
   contentVisibility: "auto",
@@ -86,7 +76,10 @@ interface DiffFileContentPlan {
 type DiffFileEnrichmentState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "ready"; fileDiff: ParsedGitDiffFile }
+  | {
+      status: "ready";
+      fullFileContents: ExperimentalDiffFullFileContents;
+    }
   | {
       status: "ready-image";
       oldImageUrl: string | null;
@@ -96,12 +89,68 @@ type DiffFileEnrichmentState =
     }
   | {
       status: "ready-svg";
-      fileDiff: ParsedGitDiffFile;
+      fullFileContents: ExperimentalDiffFullFileContents;
       oldImageUrl: string | null;
       newImageUrl: string | null;
     }
   | { status: "unavailable" }
   | { status: "error" };
+
+/**
+ * The app-owned expand-context affordance for a text card. Full old/new file
+ * contents are only needed so `@pierre/diffs` can offer expand-context buttons
+ * between hunks; fetching them eagerly costs two whole-file reads and a second
+ * tokenize/render pass per card, which phones cannot afford. So the card
+ * renders from the patch alone and fetches the contents on demand (`request`),
+ * or during idle time on fine-pointer devices where the eager behavior is
+ * cheap enough to keep.
+ *
+ * - `unavailable`: no fetcher, no patch text, or the change kind has nothing
+ *   to expand (added/deleted files already carry every line) — render nothing.
+ * - `idle`: offer the "Expand context" action.
+ * - `loading` / `error`: show progress or a retry.
+ * - `ready`: pierre now owns expansion; the affordance retires.
+ */
+type DiffContextExpansionStatus =
+  | "unavailable"
+  | "idle"
+  | "loading"
+  | "ready"
+  | "error";
+
+interface DiffContextExpansionState {
+  status: DiffContextExpansionStatus;
+  request: () => void;
+}
+
+/**
+ * Change kinds whose patch omits lines the user might want to see. Added and
+ * deleted files carry the whole file in the patch, so there is no surrounding
+ * context to reach for.
+ */
+function canExpandContextForChangeKind(
+  changeKind: GitDiffFileChangeKind,
+): boolean {
+  return (
+    changeKind === "modified" ||
+    changeKind === "renamed" ||
+    changeKind === "copied"
+  );
+}
+
+/**
+ * Run `work` when the main thread is idle. Falls back to a short timeout where
+ * `requestIdleCallback` is unavailable so the fine-pointer auto-expansion still
+ * happens, just after the current paint.
+ */
+function scheduleIdleWork(work: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(work, { timeout: 2_000 });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(work, 200);
+  return () => window.clearTimeout(handle);
+}
 
 function buildDiffFileContentPlan(
   fileDiff: ParsedGitDiffFile,
@@ -164,6 +213,16 @@ function resolveDiffFileContentSource(
   return fetcher(source.path, source.side);
 }
 
+function toDiffFullFileContents(
+  oldFile: FileContents,
+  newFile: FileContents,
+): ExperimentalDiffFullFileContents {
+  return {
+    old: { path: oldFile.name, content: oldFile.contents },
+    new: { path: newFile.name, content: newFile.contents },
+  };
+}
+
 /**
  * An image change is conveyed as a single-binary swap rather than text hunks,
  * so the card renders inline `<img>` previews instead of a `<DiffView>`. A card
@@ -180,7 +239,7 @@ function isImagePreviewCard(
     fileDiff.hunks.length === 0 &&
     fileDiff.type !== "rename-pure" &&
     onRequestFileContents !== undefined &&
-    isImageGitDiffFile(fileDiff)
+    isPreviewableImagePath(fileDiff.name)
   );
 }
 
@@ -201,15 +260,7 @@ function svgTextToDataUrl(contents: string): string | null {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(trimmedContents)}`;
 }
 
-function getImageSizeStat(
-  enrichment: DiffFileEnrichmentState,
-  changeKind: GitDiffFileChangeKind,
-): DiffImageSizeStat | null {
-  if (enrichment.status !== "ready-image") return null;
-  return getGitDiffCardImageSizeStat(enrichment, changeKind);
-}
-
-export interface UseGitDiffCardBodyArgs {
+interface UseGitDiffCardBodyArgs {
   fileDiff: ParsedGitDiffFile;
   changeKind: GitDiffFileChangeKind;
   /** When true, holds the body at a skeleton (queued render slots). */
@@ -219,10 +270,10 @@ export interface UseGitDiffCardBodyArgs {
   patchText?: string;
 }
 
-export interface GitDiffCardBodyState {
+interface GitDiffCardBodyState {
   bodySentinelRef: RefCallback<HTMLDivElement>;
   enrichment: DiffFileEnrichmentState;
-  enrichedFileDiff: ParsedGitDiffFile;
+  fileDiff: ParsedGitDiffFile;
   fileDiffLabel: string;
   isImageCard: boolean;
   isSvgPreviewCard: boolean;
@@ -231,6 +282,16 @@ export interface GitDiffCardBodyState {
   loadDeletedDiff: () => void;
   /** The header's `+/-` byte delta for an image card; `null` for text cards. */
   imageSizeStat: DiffImageSizeStat | null;
+  /** On-demand full-file context for text cards; see {@link DiffContextExpansionState}. */
+  contextExpansion: DiffContextExpansionState;
+  /** Resolved text sides forwarded through the public renderer contract. */
+  fullFileContents: ExperimentalDiffFullFileContents | null;
+  /**
+   * The raw per-file patch the caller supplied, forwarded to the host diff
+   * boundary so a plugin replacement gets the caller's own bytes instead of a
+   * reconstruction.
+   */
+  patchText: string | undefined;
 }
 
 /**
@@ -278,6 +339,11 @@ export function useGitDiffCardBody({
   const enrichmentStatusRef = useRef<DiffFileEnrichmentState["status"]>("idle");
   const [hasBodyEnteredViewport, setHasBodyEnteredViewport] = useState(false);
   const [hasLoadedDeletedDiff, setHasLoadedDeletedDiff] = useState(false);
+  // Bumped by each explicit (or idle-scheduled) expand-context request. Zero
+  // means nobody has asked for context yet; the fetch effect keys on the
+  // version so a retry after an error re-runs it.
+  const [contextRequestVersion, setContextRequestVersion] = useState(0);
+  const isPointerCoarse = usePointerCoarse();
   // Reset cached enrichment when the body swaps to different diff contents. Keep
   // the viewport-entry flag: an already-visible sentinel does not emit another
   // intersection change when only the diff hunk identity changes.
@@ -285,6 +351,7 @@ export function useGitDiffCardBody({
     enrichmentStatusRef.current = "idle";
     setEnrichment({ status: "idle" });
     setHasLoadedDeletedDiff(false);
+    setContextRequestVersion(0);
   }, [fileContentPlan.identity, isImageCard, isSvgCard]);
   useEffect(() => {
     if (isBodyVisible) {
@@ -299,11 +366,46 @@ export function useGitDiffCardBody({
     isDeletedFile && !isImageCard && !isSvgCard && !hasLoadedDeletedDiff;
   const shouldRenderDiffView =
     hasBodyEnteredViewport && !isRendering && !shouldGateDeletedDiff;
-  // Fire the fetch once the diff view is actually renderable. Effect deps
-  // deliberately exclude `onRequestFileContents` (we read the latest via the
-  // ref) so stable visibility doesn't re-trigger when the panel re-renders.
+  // Image and SVG cards cannot render anything without the file contents, so
+  // they fetch on viewport entry. Text cards render from the patch alone; their
+  // contents are only fetched once context expansion is requested.
+  const needsContentsToRender = isImageCard || isSvgCard;
+  const canExpandContext =
+    !needsContentsToRender &&
+    onRequestFileContents !== undefined &&
+    patchText !== undefined &&
+    fileDiff.hunks.length > 0 &&
+    canExpandContextForChangeKind(changeKind);
+  const shouldFetchContents =
+    shouldRenderDiffView &&
+    (needsContentsToRender || (canExpandContext && contextRequestVersion > 0));
+  // Fine-pointer devices keep the zero-click expand-context experience: once
+  // the card is renderable, request the contents during idle time. Coarse
+  // pointers (phones, tablets) wait for the explicit affordance.
   useEffect(() => {
-    if (!shouldRenderDiffView || enrichmentStatusRef.current !== "idle") {
+    if (
+      isPointerCoarse ||
+      !shouldRenderDiffView ||
+      !canExpandContext ||
+      contextRequestVersion > 0
+    ) {
+      return;
+    }
+    return scheduleIdleWork(() => {
+      setContextRequestVersion((version) => (version === 0 ? 1 : version));
+    });
+  }, [
+    canExpandContext,
+    contextRequestVersion,
+    isPointerCoarse,
+    shouldRenderDiffView,
+  ]);
+  // Fire the fetch once the diff view is actually renderable and the contents
+  // are wanted. Effect deps deliberately exclude `onRequestFileContents` (we
+  // read the latest via the ref) so stable visibility doesn't re-trigger when
+  // the panel re-renders.
+  useEffect(() => {
+    if (!shouldFetchContents || enrichmentStatusRef.current !== "idle") {
       return;
     }
     const fetcher = fetcherRef.current;
@@ -337,17 +439,15 @@ export function useGitDiffCardBody({
           setEnrichment({ status: "unavailable" });
           return;
         }
-        const enrichedFileDiff = enrichGitDiffFileForContext({
-          fileDiff,
-          oldFile: oldResult.file,
-          newFile: newResult.file,
-          patchText,
-        });
+        const fullFileContents = toDiffFullFileContents(
+          oldResult.file,
+          newResult.file,
+        );
         if (isSvgCard) {
           enrichmentStatusRef.current = "ready-svg";
           setEnrichment({
             status: "ready-svg",
-            fileDiff: enrichedFileDiff,
+            fullFileContents,
             oldImageUrl: svgTextToDataUrl(oldResult.file.contents),
             newImageUrl: svgTextToDataUrl(newResult.file.contents),
           });
@@ -356,7 +456,7 @@ export function useGitDiffCardBody({
         enrichmentStatusRef.current = "ready";
         setEnrichment({
           status: "ready",
-          fileDiff: enrichedFileDiff,
+          fullFileContents,
         });
       })
       .catch(() => {
@@ -371,28 +471,56 @@ export function useGitDiffCardBody({
         enrichmentStatusRef.current = "idle";
       }
     };
-  }, [fileContentPlan, fileDiff, isSvgCard, patchText, shouldRenderDiffView]);
+  }, [
+    contextRequestVersion,
+    fileContentPlan,
+    fileDiff,
+    isSvgCard,
+    patchText,
+    shouldFetchContents,
+  ]);
 
-  const enrichedFileDiff = useMemo<ParsedGitDiffFile>(() => {
-    if (enrichment.status !== "ready" && enrichment.status !== "ready-svg") {
-      return fileDiff;
+  const requestContextExpansion = useCallback(() => {
+    // A retry after a failed fetch must clear the terminal error first so the
+    // fetch effect sees an idle slot when the version bump re-runs it.
+    if (enrichmentStatusRef.current === "error") {
+      enrichmentStatusRef.current = "idle";
+      setEnrichment({ status: "idle" });
     }
-    return enrichment.fileDiff;
-  }, [fileDiff, enrichment]);
+    setContextRequestVersion((version) => version + 1);
+  }, []);
+  const contextExpansionStatus = getDiffContextExpansionStatus({
+    canExpandContext,
+    contextRequested: contextRequestVersion > 0,
+    enrichmentStatus: enrichment.status,
+  });
+  const contextExpansion = useMemo<DiffContextExpansionState>(
+    () => ({
+      status: contextExpansionStatus,
+      request: requestContextExpansion,
+    }),
+    [contextExpansionStatus, requestContextExpansion],
+  );
+
+  const fullFileContents =
+    enrichment.status === "ready" || enrichment.status === "ready-svg"
+      ? enrichment.fullFileContents
+      : null;
 
   const loadDeletedDiff = useCallback(() => {
     setHasLoadedDeletedDiff(true);
     setHasBodyEnteredViewport(true);
   }, []);
 
-  const imageSizeStat = isImageCard
-    ? getImageSizeStat(enrichment, changeKind)
-    : null;
+  const imageSizeStat =
+    isImageCard && enrichment.status === "ready-image"
+      ? getGitDiffCardImageSizeStat(enrichment, changeKind)
+      : null;
 
   return {
     bodySentinelRef,
     enrichment,
-    enrichedFileDiff,
+    fileDiff,
     fileDiffLabel,
     isImageCard,
     isSvgPreviewCard: isSvgCard,
@@ -400,10 +528,43 @@ export function useGitDiffCardBody({
     shouldRenderDiffView,
     loadDeletedDiff,
     imageSizeStat,
+    contextExpansion,
+    fullFileContents,
+    patchText,
   };
 }
 
-function GitDiffCardBodySkeleton() {
+function getDiffContextExpansionStatus({
+  canExpandContext,
+  contextRequested,
+  enrichmentStatus,
+}: {
+  canExpandContext: boolean;
+  contextRequested: boolean;
+  enrichmentStatus: DiffFileEnrichmentState["status"];
+}): DiffContextExpansionStatus {
+  if (!canExpandContext) return "unavailable";
+  switch (enrichmentStatus) {
+    case "idle":
+      return contextRequested ? "loading" : "idle";
+    case "loading":
+      return "loading";
+    case "ready":
+      return "ready";
+    case "error":
+      return "error";
+    case "ready-image":
+    case "ready-svg":
+    case "unavailable":
+      return "unavailable";
+    default: {
+      const _exhaustive: never = enrichmentStatus;
+      return _exhaustive;
+    }
+  }
+}
+
+export function GitDiffCardBodySkeleton() {
   return (
     <div className="space-y-1.5 px-3 py-3">
       <Skeleton className="h-3 w-full rounded-sm" />
@@ -487,7 +648,7 @@ export function getGitDiffCardImageSizeStat(
   return { addedBytes, removedBytes };
 }
 
-export interface GitDiffCardImagePreviewBodyProps {
+interface GitDiffCardImagePreviewBodyProps {
   preview: GitDiffCardImagePreview;
   fileDiffLabel: string;
   fitToFrame?: boolean;
@@ -608,592 +769,14 @@ function GitDiffCardImageBody({
   );
 }
 
-type DiffViewOptions = FileDiffOptions<undefined>;
-
-interface GitDiffCardRawDiffBodyProps {
-  fileDiff: ParsedGitDiffFile;
-  fileDiffOptions: DiffViewOptions;
-  onSelectionAddToChat?: (text: string) => void;
-}
-
-type DiffPatchDisplayStyle = "unified" | "split";
-type DiffPatchLinePrefix = " " | "+" | "-";
-
-interface DiffPatchLine {
-  hunkIndex: number;
-  newLineNumber: number | null;
-  oldLineNumber: number | null;
-  prefix: DiffPatchLinePrefix;
-  selectionSide: SelectionSide | null;
-  splitLineIndex: number;
-  text: string;
-  unifiedLineIndex: number;
-}
-
-function getDiffPatchDisplayStyle(
-  fileDiffOptions: DiffViewOptions,
-): DiffPatchDisplayStyle {
-  return fileDiffOptions.diffStyle === "split" ? "split" : "unified";
-}
-
-function trimDiffLineEnding(line: string) {
-  return line.replace(/(?:\r\n|\n|\r)$/u, "");
-}
-
-function getDiffLineNumberFromIndex({
-  hunkLineIndex,
-  hunkStart,
-  lineIndex,
-}: {
-  hunkLineIndex: number;
-  hunkStart: number;
-  lineIndex: number;
-}) {
-  return hunkStart + (lineIndex - hunkLineIndex);
-}
-
-function formatPrefixedDiffPath(path: string, prefix: "a" | "b") {
-  if (path === "/dev/null") {
-    return path;
-  }
-  return path.startsWith(`${prefix}/`) ? path : `${prefix}/${path}`;
-}
-
-function getDiffPatchPaths(fileDiff: ParsedGitDiffFile) {
-  const currentPath = normalizeGitDiffPath(fileDiff.name) ?? fileDiff.name;
-  const previousPath = normalizeGitDiffPath(fileDiff.prevName) ?? currentPath;
-  const gitOldPath = previousPath === "/dev/null" ? currentPath : previousPath;
-  const gitNewPath = currentPath === "/dev/null" ? previousPath : currentPath;
-  return {
-    diffGitOldPath: formatPrefixedDiffPath(gitOldPath, "a"),
-    diffGitNewPath: formatPrefixedDiffPath(gitNewPath, "b"),
-    oldHeaderPath:
-      fileDiff.type === "new"
-        ? "/dev/null"
-        : formatPrefixedDiffPath(previousPath, "a"),
-    newHeaderPath:
-      fileDiff.type === "deleted"
-        ? "/dev/null"
-        : formatPrefixedDiffPath(currentPath, "b"),
-  };
-}
-
-function collectDiffPatchLines(fileDiff: ParsedGitDiffFile): DiffPatchLine[] {
-  const patchLines: DiffPatchLine[] = [];
-
-  fileDiff.hunks.forEach((hunk, hunkIndex) => {
-    let unifiedLineIndex = hunk.unifiedLineStart;
-    let splitLineIndex = hunk.splitLineStart;
-    let deletionLineIndex = hunk.deletionLineIndex;
-    let additionLineIndex = hunk.additionLineIndex;
-
-    for (const content of hunk.hunkContent) {
-      if (content.type === "context") {
-        for (let offset = 0; offset < content.lines; offset += 1) {
-          const oldLineIndex = deletionLineIndex + offset;
-          const newLineIndex = additionLineIndex + offset;
-          const lineText =
-            fileDiff.additionLines[newLineIndex] ??
-            fileDiff.deletionLines[oldLineIndex];
-          if (lineText === undefined) {
-            continue;
-          }
-          patchLines.push({
-            hunkIndex,
-            newLineNumber: getDiffLineNumberFromIndex({
-              hunkLineIndex: hunk.additionLineIndex,
-              hunkStart: hunk.additionStart,
-              lineIndex: newLineIndex,
-            }),
-            oldLineNumber: getDiffLineNumberFromIndex({
-              hunkLineIndex: hunk.deletionLineIndex,
-              hunkStart: hunk.deletionStart,
-              lineIndex: oldLineIndex,
-            }),
-            prefix: " ",
-            selectionSide: null,
-            splitLineIndex: splitLineIndex + offset,
-            text: trimDiffLineEnding(lineText),
-            unifiedLineIndex: unifiedLineIndex + offset,
-          });
-        }
-        unifiedLineIndex += content.lines;
-        splitLineIndex += content.lines;
-        deletionLineIndex += content.lines;
-        additionLineIndex += content.lines;
-        continue;
-      }
-
-      const splitCount = Math.max(content.deletions, content.additions);
-      const unifiedCount = content.deletions + content.additions;
-      for (let offset = 0; offset < content.deletions; offset += 1) {
-        const oldLineIndex = deletionLineIndex + offset;
-        const lineText = fileDiff.deletionLines[oldLineIndex];
-        if (lineText === undefined) {
-          continue;
-        }
-        patchLines.push({
-          hunkIndex,
-          newLineNumber: null,
-          oldLineNumber: getDiffLineNumberFromIndex({
-            hunkLineIndex: hunk.deletionLineIndex,
-            hunkStart: hunk.deletionStart,
-            lineIndex: oldLineIndex,
-          }),
-          prefix: "-",
-          selectionSide: "deletions",
-          splitLineIndex: splitLineIndex + offset,
-          text: trimDiffLineEnding(lineText),
-          unifiedLineIndex: unifiedLineIndex + offset,
-        });
-      }
-      for (let offset = 0; offset < content.additions; offset += 1) {
-        const newLineIndex = additionLineIndex + offset;
-        const lineText = fileDiff.additionLines[newLineIndex];
-        if (lineText === undefined) {
-          continue;
-        }
-        patchLines.push({
-          hunkIndex,
-          newLineNumber: getDiffLineNumberFromIndex({
-            hunkLineIndex: hunk.additionLineIndex,
-            hunkStart: hunk.additionStart,
-            lineIndex: newLineIndex,
-          }),
-          oldLineNumber: null,
-          prefix: "+",
-          selectionSide: "additions",
-          splitLineIndex: splitLineIndex + offset,
-          text: trimDiffLineEnding(lineText),
-          unifiedLineIndex: unifiedLineIndex + content.deletions + offset,
-        });
-      }
-      unifiedLineIndex += unifiedCount;
-      splitLineIndex += splitCount;
-      deletionLineIndex += content.deletions;
-      additionLineIndex += content.additions;
-    }
-  });
-
-  return patchLines;
-}
-
-function getDiffPatchLineSelectionIndex(
-  line: DiffPatchLine,
-  displayStyle: DiffPatchDisplayStyle,
-) {
-  return displayStyle === "split" ? line.splitLineIndex : line.unifiedLineIndex;
-}
-
-function getDiffPatchSelectionPointIndex({
-  displayStyle,
-  lineNumber,
-  patchLines,
-  side,
-}: {
-  displayStyle: DiffPatchDisplayStyle;
-  lineNumber: number;
-  patchLines: DiffPatchLine[];
-  side: SelectionSide | undefined;
-}) {
-  const sides: SelectionSide[] =
-    side === undefined ? ["additions", "deletions"] : [side];
-  for (const candidateSide of sides) {
-    const line = patchLines.find((patchLine) =>
-      candidateSide === "additions"
-        ? patchLine.newLineNumber === lineNumber
-        : patchLine.oldLineNumber === lineNumber,
-    );
-    if (line !== undefined) {
-      return getDiffPatchLineSelectionIndex(line, displayStyle);
-    }
-  }
-  return null;
-}
-
-function isDiffPatchLineSelectedInSplitView({
-  line,
-  range,
-}: {
-  line: DiffPatchLine;
-  range: SelectedLineRange;
-}) {
-  const startSide = range.side ?? range.endSide ?? "additions";
-  const endSide = range.endSide ?? startSide;
-  if (startSide !== endSide || line.selectionSide === null) {
-    return true;
-  }
-  return line.selectionSide === startSide;
-}
-
-function getSelectedDiffPatchLines({
-  displayStyle,
-  patchLines,
-  range,
-}: {
-  displayStyle: DiffPatchDisplayStyle;
-  patchLines: DiffPatchLine[];
-  range: SelectedLineRange;
-}) {
-  const startIndex = getDiffPatchSelectionPointIndex({
-    displayStyle,
-    lineNumber: range.start,
-    patchLines,
-    side: range.side,
-  });
-  const endIndex = getDiffPatchSelectionPointIndex({
-    displayStyle,
-    lineNumber: range.end,
-    patchLines,
-    side: range.endSide ?? range.side,
-  });
-  if (startIndex === null || endIndex === null) {
-    return [];
-  }
-
-  const firstIndex = Math.min(startIndex, endIndex);
-  const lastIndex = Math.max(startIndex, endIndex);
-  return patchLines.filter((line) => {
-    const lineIndex = getDiffPatchLineSelectionIndex(line, displayStyle);
-    if (lineIndex < firstIndex || lineIndex > lastIndex) {
-      return false;
-    }
-    if (displayStyle === "unified") {
-      return true;
-    }
-    return isDiffPatchLineSelectedInSplitView({ line, range });
-  });
-}
-
-function formatUnifiedDiffRange(start: number, count: number) {
-  return count === 1 ? String(start) : `${start},${count}`;
-}
-
-function getMinimumLineNumber(lineNumbers: number[]) {
-  return lineNumbers.length > 0 ? Math.min(...lineNumbers) : null;
-}
-
-function buildDiffPatchHunkHeader(lines: DiffPatchLine[]) {
-  const oldLineNumbers = lines
-    .map((line) => line.oldLineNumber)
-    .filter((lineNumber) => lineNumber !== null);
-  const newLineNumbers = lines
-    .map((line) => line.newLineNumber)
-    .filter((lineNumber) => lineNumber !== null);
-  const oldStart =
-    getMinimumLineNumber(oldLineNumbers) ??
-    Math.max(0, (getMinimumLineNumber(newLineNumbers) ?? 1) - 1);
-  const newStart =
-    getMinimumLineNumber(newLineNumbers) ??
-    Math.max(0, (getMinimumLineNumber(oldLineNumbers) ?? 1) - 1);
-  return `@@ -${formatUnifiedDiffRange(
-    oldStart,
-    oldLineNumbers.length,
-  )} +${formatUnifiedDiffRange(newStart, newLineNumbers.length)} @@`;
-}
-
-function groupDiffPatchLinesByHunk(lines: DiffPatchLine[]) {
-  const groups: DiffPatchLine[][] = [];
-  for (const line of lines) {
-    const previousGroup = groups.at(-1);
-    if (previousGroup?.at(-1)?.hunkIndex === line.hunkIndex) {
-      previousGroup.push(line);
-    } else {
-      groups.push([line]);
-    }
-  }
-  return groups;
-}
-
-function buildUnifiedDiffPatchText({
-  fileDiff,
-  lines,
-}: {
-  fileDiff: ParsedGitDiffFile;
-  lines: DiffPatchLine[];
-}) {
-  const paths = getDiffPatchPaths(fileDiff);
-  const patchTextLines = [
-    `diff --git ${paths.diffGitOldPath} ${paths.diffGitNewPath}`,
-    `--- ${paths.oldHeaderPath}`,
-    `+++ ${paths.newHeaderPath}`,
-  ];
-  for (const group of groupDiffPatchLinesByHunk(lines)) {
-    patchTextLines.push(
-      buildDiffPatchHunkHeader(group),
-      ...group.map((line) => `${line.prefix}${line.text}`),
-    );
-  }
-  return patchTextLines.join("\n");
-}
-
-function buildDiffLineSelectionText({
-  displayStyle,
-  fileDiff,
-  range,
-}: {
-  displayStyle: DiffPatchDisplayStyle;
-  fileDiff: ParsedGitDiffFile;
-  range: SelectedLineRange;
-}): string | null {
-  const patchLines = collectDiffPatchLines(fileDiff);
-  const selectedLines = getSelectedDiffPatchLines({
-    displayStyle,
-    patchLines,
-    range,
-  });
-  if (selectedLines.length === 0) {
-    return null;
-  }
-  return buildUnifiedDiffPatchText({ fileDiff, lines: selectedLines });
-}
-
-function getDiffShadowRoots(containerElement: HTMLElement | null) {
-  if (containerElement === null) {
-    return [];
-  }
-  return Array.from(containerElement.querySelectorAll("diffs-container"))
-    .map((container) => container.shadowRoot)
-    .filter((root) => root !== null);
-}
-
-function getDiffDomLineSide(lineElement: HTMLElement): SelectionSide {
-  const codeElement = lineElement.closest("[data-deletions],[data-additions]");
-  if (codeElement?.hasAttribute("data-deletions")) {
-    return "deletions";
-  }
-  if (codeElement?.hasAttribute("data-additions")) {
-    return "additions";
-  }
-  return lineElement.dataset.lineType === "change-deletion"
-    ? "deletions"
-    : "additions";
-}
-
-function getDiffDomLineNumber(lineElement: HTMLElement): number | null {
-  const lineNumber = Number.parseInt(lineElement.dataset.line ?? "", 10);
-  return Number.isFinite(lineNumber) ? lineNumber : null;
-}
-
-function getDiffDomLineText(lineElement: HTMLElement): string {
-  return (lineElement.textContent ?? "").trimEnd();
-}
-
-function getDiffDomLineIndex(lineElement: HTMLElement) {
-  const [unifiedLineIndex, splitLineIndex] = (
-    lineElement.dataset.lineIndex ?? ""
-  )
-    .split(",")
-    .map((value) => Number.parseInt(value, 10));
-  if (
-    unifiedLineIndex === undefined ||
-    splitLineIndex === undefined ||
-    !Number.isFinite(unifiedLineIndex) ||
-    !Number.isFinite(splitLineIndex)
-  ) {
-    return null;
-  }
-  return { splitLineIndex, unifiedLineIndex };
-}
-
-function getDiffDomPatchPrefix(lineElement: HTMLElement): DiffPatchLinePrefix {
-  switch (lineElement.dataset.lineType) {
-    case "change-deletion":
-      return "-";
-    case "change-addition":
-      return "+";
-    default:
-      return " ";
-  }
-}
-
-function getDiffDomPatchLine({
-  hunkIndex,
-  lineElement,
-}: {
-  hunkIndex: number;
-  lineElement: HTMLElement;
-}): DiffPatchLine | null {
-  const lineIndex = getDiffDomLineIndex(lineElement);
-  if (lineIndex === null) {
-    return null;
-  }
-  const lineNumber = getDiffDomLineNumber(lineElement);
-  const prefix = getDiffDomPatchPrefix(lineElement);
-  const side = getDiffDomLineSide(lineElement);
-  return {
-    hunkIndex,
-    newLineNumber:
-      lineNumber !== null &&
-      (prefix === "+" || (prefix === " " && side === "additions"))
-        ? lineNumber
-        : null,
-    oldLineNumber:
-      lineNumber !== null &&
-      (prefix === "-" || (prefix === " " && side === "deletions"))
-        ? lineNumber
-        : null,
-    prefix,
-    selectionSide: prefix === " " ? null : side,
-    splitLineIndex: lineIndex.splitLineIndex,
-    text: getDiffDomLineText(lineElement),
-    unifiedLineIndex: lineIndex.unifiedLineIndex,
-  };
-}
-
-function mergeDiffDomContextLine(
-  existingLine: DiffPatchLine,
-  nextLine: DiffPatchLine,
-) {
-  return {
-    ...existingLine,
-    newLineNumber: existingLine.newLineNumber ?? nextLine.newLineNumber,
-    oldLineNumber: existingLine.oldLineNumber ?? nextLine.oldLineNumber,
-  };
-}
-
-function buildDiffDomSelectionText({
-  containerElement,
-  fileDiff,
-}: {
-  containerElement: HTMLElement | null;
-  fileDiff: ParsedGitDiffFile;
-}): string | null {
-  if (containerElement === null) {
-    return null;
-  }
-
-  const selectedRows: HTMLElement[] = [];
-  const seenRows = new Set<string>();
-  for (const root of getDiffShadowRoots(containerElement)) {
-    for (const row of root.querySelectorAll<HTMLElement>(
-      "[data-selected-line][data-line]",
-    )) {
-      const text = getDiffDomLineText(row);
-      const lineIndex = row.dataset.lineIndex ?? "";
-      const side = getDiffDomLineSide(row);
-      const key = `${lineIndex}:${side}:${text}`;
-      if (seenRows.has(key)) {
-        continue;
-      }
-      seenRows.add(key);
-      selectedRows.push(row);
-    }
-  }
-
-  if (selectedRows.length === 0) {
-    return null;
-  }
-
-  const patchLineMap = new Map<string, DiffPatchLine>();
-  for (const row of selectedRows) {
-    const patchLine = getDiffDomPatchLine({ hunkIndex: 0, lineElement: row });
-    if (patchLine === null) {
-      continue;
-    }
-    const key = [
-      patchLine.unifiedLineIndex,
-      patchLine.splitLineIndex,
-      patchLine.prefix,
-      patchLine.text,
-    ].join(":");
-    const existingLine = patchLineMap.get(key);
-    patchLineMap.set(
-      key,
-      existingLine !== undefined && patchLine.prefix === " "
-        ? mergeDiffDomContextLine(existingLine, patchLine)
-        : (existingLine ?? patchLine),
-    );
-  }
-  const patchLines = Array.from(patchLineMap.values()).sort((lineA, lineB) => {
-    if (lineA.unifiedLineIndex !== lineB.unifiedLineIndex) {
-      return lineA.unifiedLineIndex - lineB.unifiedLineIndex;
-    }
-    return lineA.prefix.localeCompare(lineB.prefix);
-  });
-  return patchLines.length > 0
-    ? buildUnifiedDiffPatchText({ fileDiff, lines: patchLines })
-    : null;
-}
-
-function GitDiffCardRawDiffBody({
-  fileDiff,
-  fileDiffOptions,
-  onSelectionAddToChat,
-}: GitDiffCardRawDiffBodyProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const displayStyle = getDiffPatchDisplayStyle(fileDiffOptions);
-  const buildSelectionText = useCallback(
-    (range: SelectedLineRange) =>
-      buildDiffLineSelectionText({ displayStyle, fileDiff, range }),
-    [displayStyle, fileDiff],
-  );
-  const buildFallbackSelectionText = useCallback(
-    ({
-      containerElement,
-    }: {
-      containerElement: HTMLElement | null;
-      range: SelectedLineRange;
-    }) => buildDiffDomSelectionText({ containerElement, fileDiff }),
-    [fileDiff],
-  );
-  const lineSelectionActions = usePierreLineSelectionActions({
-    buildFallbackSelectionText,
-    buildSelectionText,
-    containerRef,
-    enabled: onSelectionAddToChat !== undefined,
-    onSelectionAddToChat,
-  });
-  const options = useMemo<FileDiffOptions<undefined>>(
-    () => ({
-      ...fileDiffOptions,
-      enableGutterUtility: onSelectionAddToChat !== undefined,
-      enableLineSelection: onSelectionAddToChat !== undefined,
-      lineHoverHighlight:
-        onSelectionAddToChat === undefined ? "disabled" : "number",
-      onGutterUtilityClick:
-        onSelectionAddToChat === undefined
-          ? undefined
-          : lineSelectionActions.onGutterUtilityClick,
-      onLineSelectionChange: lineSelectionActions.onLineSelectionChange,
-      onLineSelectionEnd: lineSelectionActions.onLineSelectionEnd,
-      onLineSelectionStart: lineSelectionActions.onLineSelectionStart,
-    }),
-    [
-      fileDiffOptions,
-      lineSelectionActions.onGutterUtilityClick,
-      lineSelectionActions.onLineSelectionChange,
-      lineSelectionActions.onLineSelectionEnd,
-      lineSelectionActions.onLineSelectionStart,
-      onSelectionAddToChat,
-    ],
-  );
-  return (
-    <div
-      ref={containerRef}
-      className="overflow-x-auto"
-      onPointerDownCapture={lineSelectionActions.onPointerDownCapture}
-      onPointerMoveCapture={lineSelectionActions.onPointerMoveCapture}
-      onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
-    >
-      <div className="w-full max-w-full" style={GIT_DIFF_CARD_VIEW_STYLE}>
-        <DiffView
-          fileDiff={fileDiff}
-          options={options}
-          selectedLines={lineSelectionActions.selectedRange}
-        />
-      </div>
-      {lineSelectionActions.menu}
-    </div>
-  );
-}
-
 interface GitDiffCardSvgBodyProps {
   displayMode: GitDiffCardSvgDisplayMode;
   enrichment: DiffFileEnrichmentState;
   fileDiff: ParsedGitDiffFile;
   fileDiffLabel: string;
-  fileDiffOptions: DiffViewOptions;
+  patchText: string | undefined;
+  fullFileContents: ExperimentalDiffFullFileContents | null;
+  presentation: DiffPresentation;
   onSelectionAddToChat?: (text: string) => void;
 }
 
@@ -1202,7 +785,9 @@ function GitDiffCardSvgBody({
   enrichment,
   fileDiff,
   fileDiffLabel,
-  fileDiffOptions,
+  patchText,
+  fullFileContents,
+  presentation,
   onSelectionAddToChat,
 }: GitDiffCardSvgBodyProps) {
   return displayMode === "preview" ? (
@@ -1212,17 +797,19 @@ function GitDiffCardSvgBody({
       fitToFrame
     />
   ) : (
-    <GitDiffCardRawDiffBody
-      fileDiff={fileDiff}
-      fileDiffOptions={fileDiffOptions}
+    <DiffHost
+      file={fileDiff}
+      patchText={patchText}
+      fullFileContents={fullFileContents}
+      {...presentation}
       onSelectionAddToChat={onSelectionAddToChat}
     />
   );
 }
 
-export interface GitDiffCardBodyProps {
+interface GitDiffCardBodyProps {
   state: GitDiffCardBodyState;
-  diffViewOptions: Record<string, string | boolean | number>;
+  presentation: DiffPresentation;
   svgDisplayMode: GitDiffCardSvgDisplayMode;
   /**
    * Whether the surrounding card reserves a collapse-chevron gutter. The deleted
@@ -1234,16 +821,18 @@ export interface GitDiffCardBodyProps {
 
 /**
  * The single shared diff-card body for both the timeline ({@link GitDiffCard})
- * and the diff tab (`DiffFileCard`). It renders the lazily-enriched
- * `@pierre/diffs` `FileDiff` (with context expansion), the deleted-file load
+ * and the diff tab (`DiffFileCard`). It owns everything around the text diff —
+ * the lazy enrichment that unlocks context expansion, the deleted-file load
  * gate, the in-viewport render skeleton, and inline `<img>` previews for binary
- * image changes or SVGs. The data layer lives in {@link useGitDiffCardBody};
- * both callers feed its result in as `state` so the card can also read the image
- * header stat synchronously.
+ * image changes or SVGs — and hands the text diff itself to
+ * {@link DiffHost}, so an `experimental_diffRenderer` replacement covers this
+ * surface too. The data layer lives in {@link useGitDiffCardBody}; both callers
+ * feed its result in as `state` so the card can also read the image header stat
+ * synchronously.
  */
 export function GitDiffCardBody({
   state,
-  diffViewOptions,
+  presentation,
   svgDisplayMode,
   reservesCollapseGutter,
   onSelectionAddToChat,
@@ -1251,23 +840,17 @@ export function GitDiffCardBody({
   const {
     bodySentinelRef,
     enrichment,
-    enrichedFileDiff,
+    fileDiff,
     fileDiffLabel,
     isImageCard,
     isSvgPreviewCard,
     shouldGateDeletedDiff,
     shouldRenderDiffView,
     loadDeletedDiff,
+    contextExpansion,
+    fullFileContents,
+    patchText,
   } = state;
-  const codeTheme = useResolvedCodeThemePair();
-  const fileDiffOptions = useMemo<DiffViewOptions>(
-    () => ({
-      ...diffViewOptions,
-      disableFileHeader: true,
-      theme: codeTheme,
-    }),
-    [codeTheme, diffViewOptions],
-  );
 
   return (
     <div
@@ -1304,18 +887,80 @@ export function GitDiffCardBody({
         <GitDiffCardSvgBody
           displayMode={svgDisplayMode}
           enrichment={enrichment}
-          fileDiff={enrichedFileDiff}
+          fileDiff={fileDiff}
           fileDiffLabel={fileDiffLabel}
-          fileDiffOptions={fileDiffOptions}
+          patchText={patchText}
+          fullFileContents={fullFileContents}
+          presentation={presentation}
           onSelectionAddToChat={onSelectionAddToChat}
         />
       ) : (
-        <GitDiffCardRawDiffBody
-          fileDiff={enrichedFileDiff}
-          fileDiffOptions={fileDiffOptions}
-          onSelectionAddToChat={onSelectionAddToChat}
-        />
+        <>
+          <DiffHost
+            file={fileDiff}
+            patchText={patchText}
+            fullFileContents={fullFileContents}
+            {...presentation}
+            fallback={<GitDiffCardBodySkeleton />}
+            onSelectionAddToChat={onSelectionAddToChat}
+          />
+          <GitDiffCardContextExpansionFooter
+            contextExpansion={contextExpansion}
+            reservesCollapseGutter={reservesCollapseGutter}
+          />
+        </>
       )}
+    </div>
+  );
+}
+
+interface GitDiffCardContextExpansionFooterProps {
+  contextExpansion: DiffContextExpansionState;
+  reservesCollapseGutter: boolean;
+}
+
+/**
+ * The on-demand "Expand context" row under a text diff. Once the contents are
+ * in (`ready`) pierre renders its own expand buttons between hunks, so the row
+ * retires; when there is nothing to expand (`unavailable`) it never shows.
+ */
+function GitDiffCardContextExpansionFooter({
+  contextExpansion,
+  reservesCollapseGutter,
+}: GitDiffCardContextExpansionFooterProps) {
+  const { status, request } = contextExpansion;
+  if (status === "unavailable" || status === "ready") {
+    return null;
+  }
+  return (
+    <div className="flex items-center py-2 pl-2 pr-3 text-xs text-muted-foreground">
+      {reservesCollapseGutter ? (
+        <span aria-hidden className="w-8 shrink-0" />
+      ) : null}
+      <span className="pl-[1ch]">
+        {status === "loading" ? (
+          <span role="status">Loading context…</span>
+        ) : (
+          <>
+            {status === "error" ? (
+              <>
+                <span className="text-destructive">
+                  Couldn&apos;t load surrounding context.
+                </span>{" "}
+              </>
+            ) : null}
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs underline underline-offset-4 hover:underline"
+              onClick={request}
+            >
+              {status === "error" ? "Retry" : "Expand context"}
+            </Button>
+          </>
+        )}
+      </span>
     </div>
   );
 }

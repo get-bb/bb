@@ -26,6 +26,40 @@ async function initBranchRepo(): Promise<string> {
   return repoPath;
 }
 
+async function expectResolvesWithin<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(new Error(`Promise did not resolve within ${timeoutMs}ms`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+}
+
+async function waitForFile(filePath: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    try {
+      await fs.access(filePath);
+      return;
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  throw new Error(`File did not appear within 2000ms: ${filePath}`);
+}
+
 describe("host.list_branches dispatch", () => {
   it("lists branches for a git repo and pins the default branch first", async () => {
     const repoPath = await initBranchRepo();
@@ -241,6 +275,31 @@ describe("host.list_branches dispatch", () => {
     expect(result.operation).toEqual({ kind: "none" });
   });
 
+  it("lists branches for a bare repository root that holds sibling worktrees", async () => {
+    const origin = await initBranchRepo();
+    const root = await makeTempDir("bb-host-branches-bare-root-");
+    await runGitCommand(["clone", "--bare", origin, ".bare"], { cwd: root });
+    await fs.writeFile(path.join(root, ".git"), "gitdir: ./.bare\n", "utf8");
+    await runGitCommand(["worktree", "add", "main", "main"], { cwd: root });
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      { type: "host.list_branches", path: root, limit: 50 },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.checkout).toMatchObject({
+      kind: "branch",
+      branchName: "develop",
+    });
+    expect(result.defaultBranch).toBe("main");
+    expect(result.branches).toEqual(
+      expect.arrayContaining(["main", "develop", "release/1.2"]),
+    );
+    expect(result.hasUncommittedChanges).toBe(false);
+    expect(result.operation).toEqual({ kind: "none" });
+  });
+
   it("returns an empty list for non-git directories", async () => {
     const dirPath = await makeTempDir("bb-host-branches-nongit-");
     const harness = createHarness();
@@ -290,6 +349,143 @@ describe("host.list_branches dispatch", () => {
       remoteBranches: [],
       remoteBranchesTruncated: false,
       selectedBranch: null,
+    });
+  });
+});
+
+describe("host.list_branch_options dispatch", () => {
+  it("pins local and remote defaults before applying the page limit", async () => {
+    const repoPath = await initBranchRepo();
+    const remotePath = await makeTempDir("bb-host-branch-options-origin-");
+    await runGitCommand(["init", "--bare"], { cwd: remotePath });
+    await runGitCommand(["remote", "add", "origin", remotePath], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["branch", "bb/aardvark"], { cwd: repoPath });
+    await runGitCommand(["push", "origin", "bb/aardvark", "main"], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["fetch", "origin"], { cwd: repoPath });
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "host.list_branch_options",
+        path: repoPath,
+        limit: 1,
+        remoteRefresh: "none",
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result.branches).toEqual(["main"]);
+    expect(result.branchesTruncated).toBe(true);
+    expect(result.remoteBranches).toEqual(["origin/main"]);
+    expect(result.remoteBranchesTruncated).toBe(true);
+  });
+
+  it("returns cached refs while a remote refresh continues in the background", async () => {
+    const repoPath = await initBranchRepo();
+    const remotePath = await makeTempDir("bb-host-branch-options-remote-");
+    await runGitCommand(["init", "--bare"], { cwd: remotePath });
+    await runGitCommand(["remote", "add", "origin", remotePath], {
+      cwd: repoPath,
+    });
+    await runGitCommand(["push", "origin", "main"], { cwd: repoPath });
+    await runGitCommand(["fetch", "origin"], { cwd: repoPath });
+
+    const cloneParent = await makeTempDir("bb-host-branch-options-clone-");
+    const clonePath = path.join(cloneParent, "repo");
+    await runGitCommand(["clone", remotePath, clonePath], { cwd: cloneParent });
+    await runGitCommand(["config", "user.name", "BB Tests"], {
+      cwd: clonePath,
+    });
+    await runGitCommand(["config", "user.email", "bb@example.com"], {
+      cwd: clonePath,
+    });
+    await runGitCommand(["switch", "-c", "feature/remote-only"], {
+      cwd: clonePath,
+    });
+    await fs.writeFile(path.join(clonePath, "remote.txt"), "remote\n", "utf8");
+    await runGitCommand(["add", "."], { cwd: clonePath });
+    await runGitCommand(["commit", "-m", "Remote branch"], { cwd: clonePath });
+    await runGitCommand(["push", "origin", "feature/remote-only"], {
+      cwd: clonePath,
+    });
+
+    const refreshStartedPath = path.join(repoPath, "refresh-started");
+    const releaseRefreshPath = path.join(repoPath, "release-refresh");
+    const uploadPackPath = path.join(repoPath, "delayed-upload-pack.sh");
+    await fs.writeFile(
+      uploadPackPath,
+      `#!/bin/sh\ntouch ${JSON.stringify(refreshStartedPath)}\nwhile [ ! -f ${JSON.stringify(releaseRefreshPath)} ]; do sleep 0.01; done\nexec git-upload-pack "$@"\n`,
+      { encoding: "utf8", mode: 0o755 },
+    );
+    await runGitCommand(
+      ["config", "remote.origin.uploadpack", uploadPackPath],
+      {
+        cwd: repoPath,
+      },
+    );
+    const harness = createHarness();
+
+    const resultPromise = dispatchOnlineRpcCommand(
+      {
+        type: "host.list_branch_options",
+        path: repoPath,
+        query: "remote-only",
+        selectedBranch: "origin/feature/remote-only",
+        limit: 50,
+        remoteRefresh: "background",
+      },
+      harness.dispatchOptions(),
+    );
+
+    try {
+      const result = await expectResolvesWithin(resultPromise, 2_000);
+      expect(result).toEqual({
+        branches: [],
+        branchesTruncated: false,
+        remoteBranches: [],
+        remoteBranchesTruncated: false,
+        selectedBranch: {
+          kind: "missing",
+          name: "origin/feature/remote-only",
+        },
+      });
+      await waitForFile(refreshStartedPath);
+    } finally {
+      await fs.writeFile(releaseRefreshPath, "release\n", "utf8");
+    }
+
+    const refreshed = await dispatchOnlineRpcCommand(
+      { type: "host.list_branches", path: repoPath, limit: 50 },
+      harness.dispatchOptions(),
+    );
+    expect(refreshed.remoteBranches).toContain("origin/feature/remote-only");
+  });
+
+  it("does not start a remote refresh when the caller opts out", async () => {
+    const repoPath = await initBranchRepo();
+    const harness = createHarness();
+
+    const result = await dispatchOnlineRpcCommand(
+      {
+        type: "host.list_branch_options",
+        path: repoPath,
+        selectedBranch: "main",
+        limit: 1,
+        remoteRefresh: "none",
+      },
+      harness.dispatchOptions(),
+    );
+
+    expect(result).toEqual({
+      branches: ["main"],
+      branchesTruncated: true,
+      remoteBranches: [],
+      remoteBranchesTruncated: false,
+      selectedBranch: { kind: "local", name: "main" },
     });
   });
 });

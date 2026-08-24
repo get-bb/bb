@@ -1,6 +1,6 @@
 import { parse } from "yaml";
 
-export interface MarkdownDocument {
+interface MarkdownDocument {
   frontmatter: string;
   body: string;
   title: string | null;

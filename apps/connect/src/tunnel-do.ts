@@ -20,6 +20,12 @@ export interface Env {
   BETTER_AUTH_SECRET: string;
   ACCOUNT_APP_URL?: string;
   CLOUD_DEV?: string;
+  /**
+   * Android signing-cert SHA-256 fingerprints for `/.well-known/assetlinks.json`
+   * (comma-separated). Unset → the file serves an empty list (iOS universal
+   * links are unaffected).
+   */
+  ASSETLINKS_SHA256_FINGERPRINTS?: string;
 }
 
 const TUNNEL_TAG = "tunnel";

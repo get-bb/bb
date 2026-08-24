@@ -1,8 +1,8 @@
 import { fuzzyMatchText } from "@bb/fuzzy-match";
-import type { PromptMentionSuggestion } from "@/components/promptbox/mentions/types";
-import { compareCodepoint } from "@/lib/codepoint-compare";
+import type { PromptMentionSuggestion } from "@bb/client-core";
+import { compareCodepoint } from "@bb/client-core";
 
-export type SectionMentionSuggestion = Extract<
+type SectionMentionSuggestion = Extract<
   PromptMentionSuggestion,
   { kind: "section" }
 >;
@@ -13,7 +13,7 @@ export interface SectionMentionCandidate {
   name: string;
 }
 
-export interface BuildSectionMentionSuggestionsArgs {
+interface BuildSectionMentionSuggestionsArgs {
   sections: readonly SectionMentionCandidate[];
   query: string;
   limit: number;

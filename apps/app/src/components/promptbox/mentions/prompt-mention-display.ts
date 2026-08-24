@@ -47,7 +47,7 @@ export function promptMentionIconLabel(
  */
 export function promptMentionIconName(
   resource: PromptMentionResource,
-): IconName | null {
+): IconName {
   if (resource.kind === "thread") {
     return "UserRound";
   }
@@ -81,9 +81,7 @@ export function promptCommandIconName(command: PromptCommandLike): IconName {
   return "Terminal";
 }
 
-export function promptMentionDisplayLabel(
-  resource: PromptMentionResource,
-): string {
+function promptMentionDisplayLabel(resource: PromptMentionResource): string {
   return `${promptMentionIconLabel(resource)}: ${resource.label}`;
 }
 

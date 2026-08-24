@@ -47,28 +47,12 @@ import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CheckboxField, DEFAULT_COLOR } from "./shared.js";
-
-export const STATUS_LABELS: Record<TaskStatus, string> = {
-  backlog: "Backlog",
-  todo: "Todo",
-  in_progress: "In Progress",
-  in_review: "In Review",
-  done: "Done",
-  canceled: "Canceled",
-};
-
-export const PRIORITY_LABELS: Record<TaskPriority, string> = {
-  urgent: "Urgent",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  none: "No priority",
-};
+import { PRIORITY_LABELS, STATUS_LABELS } from "../list/lib.js";
 
 const CHIP_TRIGGER =
   "h-7 w-auto gap-1.5 rounded-md px-2 text-xs text-muted-foreground";
 
-export interface NewTaskDialogProps {
+interface NewTaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Pre-selected project, or null when opened from All tasks / Active. */
@@ -132,7 +116,7 @@ export function NewTaskDialog({
     setPendingFiles([]);
     setCreatedTask(null);
     setError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [open]);
 
   const projectList = projects.data ?? [];
@@ -263,7 +247,7 @@ export function NewTaskDialog({
   // explicitly removed, the created task opens like a normal success.
   useEffect(() => {
     if (createdTask && pendingFiles.length === 0) finish(createdTask);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [createdTask, pendingFiles.length]);
 
   // Oversized chips must be removed first — creating around them would

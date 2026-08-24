@@ -128,6 +128,14 @@ Entry `icon` accepts the same shapes the plugin manifest supports today:
   a relative URL resolves against the manifest's own URL, which lets a
   git-hosted marketplace keep icons next to the manifest. Plain `http:` is
   rejected.
+- bb masks an SVG icon with the surrounding text color, the same way it
+  renders a plugin's own compact `bb.branding.icon`. Most catalog icons are
+  single-color glyphs, and an unmasked black-on-transparent SVG is invisible
+  on a dark theme. PNG and WebP icons keep their own colors: a mask reads
+  alpha only and would flatten an opaque image into a solid block. Use a
+  raster for multi-color artwork. A per-entry opt-out would be an unknown
+  field to older desktops, which reject the whole manifest, so it needs a new
+  `schemaVersion`.
 
 Handling:
 
@@ -413,4 +421,4 @@ payload changes.
 - The submission skill creates registry pull requests. No hosted submission
   service or in-app submission dialog exists.
 
-> AGENT GENERATED: by Claude Fable 5
+> AGENT GENERATED

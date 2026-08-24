@@ -1,7 +1,11 @@
 import { Component, type ReactNode } from "react";
+import type { PluginNavPanelChrome } from "@/lib/plugin-nav-panel-chrome";
 import type { PluginNavPanelSlot } from "@/lib/plugin-slots";
+import { usePluginCss } from "@/lib/plugin-css";
 import { PluginIcon } from "./PluginIcon";
 import { PluginContext } from "./plugin-context";
+import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
+import { getPluginPagePanelStateId } from "./plugin-page-panel-state";
 
 /**
  * The plugin navPanel slices of the shared app header (AppPageHeader via
@@ -37,20 +41,24 @@ class HeaderContentBoundary extends Component<
   }
 }
 
-/** Header center for a plugin panel route: compact plugin icon + panel title. */
+/**
+ * Header center for a plugin panel route: compact plugin icon + panel title.
+ * Takes only the panel's chrome so it can paint from a live registration or
+ * from the chrome remembered before plugin frontends have booted.
+ */
 export function PluginPanelHeaderCenter({
-  panel,
+  chrome,
 }: {
-  panel: PluginNavPanelSlot;
+  chrome: Pick<PluginNavPanelChrome, "pluginId" | "icon" | "title">;
 }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2">
       <PluginIcon
-        pluginId={panel.pluginId}
-        icon={panel.icon}
+        pluginId={chrome.pluginId}
+        icon={chrome.icon}
         className="text-muted-foreground"
       />
-      <p className="truncate text-sm font-semibold">{panel.title}</p>
+      <p className="truncate text-sm font-semibold">{chrome.title}</p>
     </div>
   );
 }
@@ -62,31 +70,44 @@ export function PluginPanelHeaderCenter({
  */
 export function PluginPanelHeaderActions({
   panel,
+  paneId,
   subPath,
 }: {
   panel: PluginNavPanelSlot;
+  paneId?: string;
   subPath: string;
 }) {
+  const paneContext = useOptionalPaneContext();
   const HeaderContent = panel.headerContent;
-  if (HeaderContent === undefined) return null;
+  usePluginCss(HeaderContent === undefined ? null : panel.pluginId);
+  const panelStateId = getPluginPagePanelStateId({
+    panelPath: panel.path,
+    paneId: paneId ?? paneContext?.paneId,
+    pluginId: panel.pluginId,
+  });
   return (
-    <HeaderContentBoundary
-      // Generation in the key: a P3.4 reload remounts the accessory with
-      // fresh error-boundary state.
-      key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
-      pluginId={panel.pluginId}
-    >
-      <PluginContext.Provider value={panel.pluginId}>
-        {/* data-bb-plugin-root: the accessory is plugin code, so the
-            plugin's @scope'd stylesheet must apply here too. */}
-        <div
-          data-bb-plugin-root=""
-          data-bb-plugin={panel.pluginId}
-          className="flex shrink-0 items-center gap-2"
+    <div className="flex shrink-0 items-center gap-2">
+      {HeaderContent === undefined ? null : (
+        <HeaderContentBoundary
+          // Generation in the key: a P3.4 reload remounts the accessory with
+          // fresh error-boundary state.
+          key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
+          pluginId={panel.pluginId}
         >
-          <HeaderContent subPath={subPath} />
-        </div>
-      </PluginContext.Provider>
-    </HeaderContentBoundary>
+          <PluginContext.Provider value={panel.pluginId}>
+            {/* data-bb-plugin-root: the accessory is plugin code, so the
+                plugin's scoped stylesheet must apply here too. */}
+            <div
+              data-bb-plugin-root=""
+              data-bb-plugin={panel.pluginId}
+              className="flex shrink-0 items-center gap-2"
+            >
+              <HeaderContent subPath={subPath} />
+            </div>
+          </PluginContext.Provider>
+        </HeaderContentBoundary>
+      )}
+      <div data-plugin-right-panel-toggle-portal={panelStateId} />
+    </div>
   );
 }

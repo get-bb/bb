@@ -12,14 +12,14 @@ import type { ThreadEventType } from "@bb/domain";
 import { roundDurationMs } from "../lib/duration.js";
 import type { AppDeps } from "../../types.js";
 
-export type ThreadEventPruningMode = "active" | "archived" | "idle";
+type ThreadEventPruningMode = "active" | "archived" | "idle";
 
-export interface PruneThreadEventHistoryArgs {
+interface PruneThreadEventHistoryArgs {
   mode: ThreadEventPruningMode;
   threadId: string;
 }
 
-export interface ThreadEventPruningResult {
+interface ThreadEventPruningResult {
   latestSequence: number;
   removedAgePrunableEvents: number;
   removedBackgroundTaskProgressEvents: number;
@@ -28,7 +28,7 @@ export interface ThreadEventPruningResult {
   totalRemoved: number;
 }
 
-export interface MaybePruneActiveThreadEventHistoryArgs {
+interface MaybePruneActiveThreadEventHistoryArgs {
   latestPrunableSequence: number;
   threadId: string;
 }
@@ -56,14 +56,14 @@ class ThreadEventPruningStepError extends Error {
   }
 }
 
-export const ACTIVE_THREAD_EVENT_KEEP_RECENT = 1_000;
-export const IDLE_THREAD_EVENT_KEEP_RECENT = 300;
-export const ARCHIVED_THREAD_EVENT_KEEP_RECENT = 120;
-export const ACTIVE_THREAD_EVENT_PRUNE_MIN_SEQUENCE_DELTA = 250;
-export const ACTIVE_THREAD_EVENT_PRUNE_MIN_INTERVAL_MS = 30_000;
+const ACTIVE_THREAD_EVENT_KEEP_RECENT = 1_000;
+const IDLE_THREAD_EVENT_KEEP_RECENT = 300;
+const ARCHIVED_THREAD_EVENT_KEEP_RECENT = 120;
+const ACTIVE_THREAD_EVENT_PRUNE_MIN_SEQUENCE_DELTA = 250;
+const ACTIVE_THREAD_EVENT_PRUNE_MIN_INTERVAL_MS = 30_000;
 const SLOW_THREAD_EVENT_PRUNE_LOG_THRESHOLD_MS = 1_000;
 
-export const AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
+const AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "thread/contextWindowUsage/updated",
   "thread/tokenUsage/updated",
   "turn/diff/updated",

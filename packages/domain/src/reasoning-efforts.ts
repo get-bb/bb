@@ -29,7 +29,7 @@ export const MAX_REASONING_EFFORT: ModelReasoningEffort = {
   reasoningEffort: "max",
   description: "Maximum reasoning effort",
 };
-export const ULTRA_REASONING_EFFORT: ModelReasoningEffort = {
+const ULTRA_REASONING_EFFORT: ModelReasoningEffort = {
   reasoningEffort: "ultra",
   description: "Maximum reasoning with automatic task delegation",
 };

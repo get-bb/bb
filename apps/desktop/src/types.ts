@@ -1,7 +1,7 @@
-export const DEFAULT_BB_SERVER_PORT = 38886;
+const DEFAULT_BB_SERVER_PORT = 38886;
 export const DEFAULT_BB_SERVER_URL = `http://127.0.0.1:${DEFAULT_BB_SERVER_PORT}`;
-export const DEFAULT_WINDOW_HEIGHT = 900;
-export const DEFAULT_WINDOW_WIDTH = 1280;
+const DEFAULT_WINDOW_HEIGHT = 900;
+const DEFAULT_WINDOW_WIDTH = 1280;
 export const MIN_WINDOW_HEIGHT = 600;
 export const MIN_WINDOW_WIDTH = 500;
 export const STARTUP_POLL_INTERVAL_MS = 250;
@@ -42,13 +42,7 @@ export interface DisplayWorkArea {
   y: number;
 }
 
-export interface DefaultWindowState {
-  bounds: WindowBounds;
-  isFullScreen: boolean;
-  isMaximized: boolean;
-}
-
-export const DEFAULT_WINDOW_STATE: DefaultWindowState = {
+export const DEFAULT_WINDOW_STATE: PersistedWindowState = {
   bounds: {
     height: DEFAULT_WINDOW_HEIGHT,
     width: DEFAULT_WINDOW_WIDTH,

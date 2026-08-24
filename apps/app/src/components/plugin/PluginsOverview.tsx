@@ -15,13 +15,14 @@ import {
 } from "@bb/shared-ui/resource-list";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { CreateWithTemplatesButton } from "@/components/create-via-prompt-examples";
-import { CREATE_PLUGIN_PROMPT } from "@/lib/create-resource-prompts";
+import { CREATE_PLUGIN_PROMPT } from "@bb/client-core";
 import { TOOLS_PAGE_BAND_CLASSES } from "@/components/tools/tools-navigation";
 import {
   AddPluginDialog,
   type AddPluginInitial,
 } from "@/components/plugin/management/AddPluginDialog";
 import { BrowsePluginsTab } from "@/components/plugin/management/BrowsePluginsTab";
+import { CheckPluginUpdatesButton } from "@/components/plugin/management/CheckPluginUpdatesButton";
 import { InstalledPluginsTab } from "@/components/plugin/management/InstalledPluginsTab";
 import {
   pluginPublisherFilterId,
@@ -164,20 +165,24 @@ export function PluginsOverview() {
   };
 
   // Browse renders no page shell at all — its actions live in the hero's CTA
-  // row. Installed keeps the New plugin button, which starts a thread.
+  // row. Installed keeps the New plugin button, which starts a thread, plus
+  // an on-demand update check beside it (the server also sweeps every 6h).
   const installedActions = (
-    <CreateWithTemplatesButton
-      kind="plugin"
-      label="New plugin"
-      menuActions={[
-        {
-          label: "Install from source",
-          icon: "Download",
-          onSelect: () => setAddDialog({ open: true, initial: null }),
-        },
-      ]}
-      onCreate={startCreatePlugin}
-    />
+    <>
+      {plugins.length > 0 ? <CheckPluginUpdatesButton /> : null}
+      <CreateWithTemplatesButton
+        kind="plugin"
+        label="New plugin"
+        menuActions={[
+          {
+            label: "Install from source",
+            icon: "Download",
+            onSelect: () => setAddDialog({ open: true, initial: null }),
+          },
+        ]}
+        onCreate={startCreatePlugin}
+      />
+    </>
   );
 
   let content: ReactNode;

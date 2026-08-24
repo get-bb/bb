@@ -1,5 +1,5 @@
 import { useMemo, type ReactNode } from "react";
-import type { JsonValue } from "@get-bb/plugin-sdk";
+import type { PluginPanelActionOpenOptions } from "@get-bb/plugin-sdk";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import {
   usePluginSlots,
@@ -17,6 +17,7 @@ import {
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
+import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 /**
@@ -35,7 +36,7 @@ export interface OpenPluginPanelArgs {
   paramsJson: string | null;
 }
 
-export type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
+type OpenPluginPanelHandler = (args: OpenPluginPanelArgs) => void;
 
 /** One launcher row for a plugin action, ready to render + invoke. */
 export interface PluginPanelActionEntry {
@@ -46,6 +47,51 @@ export interface PluginPanelActionEntry {
   icon: string | null;
   title: string;
   onSelect: () => void;
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+interface PanelActionOpenPanelArgs {
+  action: { pluginId: string; id: string; title: string };
+  /** Slot name as it appears in log lines. */
+  slot: string;
+  openPluginPanel: OpenPluginPanelHandler;
+}
+
+/**
+ * The `openPanel` handed to a panel action's `run`. A declined open — here
+ * only non-JSON `params`, since the launcher lives in the panel the action
+ * opens into — is logged and reported as `false` rather than thrown: `run`
+ * errors are contained below, so a throw would be invisible to any plugin
+ * that did not wrap the call itself.
+ */
+function createPanelActionOpenPanel({
+  action,
+  slot,
+  openPluginPanel,
+}: PanelActionOpenPanelArgs): (
+  options?: PluginPanelActionOpenOptions,
+) => boolean {
+  return (options) => {
+    let paramsJson: string | null;
+    try {
+      paramsJson = serializePluginPanelParams(options?.params);
+    } catch (error) {
+      console.warn(
+        `[plugin:${action.pluginId}] ${slot} "${action.id}" openPanel declined: ${describeError(error)}`,
+      );
+      return false;
+    }
+    openPluginPanel({
+      pluginId: action.pluginId,
+      actionId: action.id,
+      title: options?.title ?? action.title,
+      paramsJson,
+    });
+    return true;
+  };
 }
 
 interface RunPluginPanelActionArgs {
@@ -59,20 +105,14 @@ function runPluginPanelAction({
   openPluginPanel,
   threadId,
 }: RunPluginPanelActionArgs): void {
-  const openPanel = (options?: { title?: string; params?: JsonValue }) => {
-    const paramsJson = serializePluginPanelParams(options?.params);
-    openPluginPanel({
-      pluginId: action.pluginId,
-      actionId: action.id,
-      title: options?.title ?? action.title,
-      paramsJson,
-    });
-  };
+  const openPanel = createPanelActionOpenPanel({
+    action,
+    slot: "threadPanelAction",
+    openPluginPanel,
+  });
   const warn = (error: unknown) => {
     console.warn(
-      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[plugin:${action.pluginId}] threadPanelAction "${action.id}" failed: ${describeError(error)}`,
     );
   };
   try {
@@ -98,20 +138,14 @@ function runPluginNewThreadPanelAction({
   openPluginPanel,
   projectId,
 }: RunPluginNewThreadPanelActionArgs): void {
-  const openPanel = (options?: { title?: string; params?: JsonValue }) => {
-    const paramsJson = serializePluginPanelParams(options?.params);
-    openPluginPanel({
-      pluginId: action.pluginId,
-      actionId: action.id,
-      title: options?.title ?? action.title,
-      paramsJson,
-    });
-  };
+  const openPanel = createPanelActionOpenPanel({
+    action,
+    slot: "experimental_newThreadPanelAction",
+    openPluginPanel,
+  });
   const warn = (error: unknown) => {
     console.warn(
-      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
+      `[plugin:${action.pluginId}] experimental_newThreadPanelAction "${action.id}" failed: ${describeError(error)}`,
     );
   };
   try {
@@ -180,7 +214,7 @@ export function usePluginNewThreadPanelActions({
   );
 }
 
-export type PluginPanelSurfaceContext =
+type PluginPanelSurfaceContext =
   | { kind: "thread"; threadId: string }
   | { kind: "new-thread"; projectId: string | null };
 
@@ -350,13 +384,18 @@ function FileOpenerTabContent({
     >
       {(opener, BoundOriginal) => (
         <div
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          // `h-full` matters: the region this mounts into is a block box, so
+          // `flex-1` alone leaves the wrapper at content height and an opener
+          // that sizes itself with `flex-1` collapses to nothing. Same shape
+          // as the action-tab wrapper above.
+          className="flex h-full min-h-0 flex-1 flex-col overflow-hidden"
           data-testid="plugin-file-opener-tab-content"
         >
           <opener.component
             path={file.path}
             source={file.source}
-            experimental_Original={BoundOriginal}
+            Original={BoundOriginal}
+            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

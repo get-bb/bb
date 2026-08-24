@@ -11,29 +11,29 @@ import {
   iterateThreadListCacheEntries,
 } from "./thread-list-cache-data";
 
-export type CachedLiveThreadMatcher = (thread: ThreadListEntry) => boolean;
+type CachedLiveThreadMatcher = (thread: ThreadListEntry) => boolean;
 
 export interface CachedThreadSnapshot {
   id: string;
   thread: ThreadWithRuntime | undefined;
 }
 
-export interface CachedLiveThreadIdsMatchingArgs {
+interface CachedLiveThreadIdsMatchingArgs {
   matchesThread: CachedLiveThreadMatcher;
   queryClient: QueryClient;
 }
 
-export interface CachedThreadSnapshotsArgs {
+interface CachedThreadSnapshotsArgs {
   queryClient: QueryClient;
   threadIds: readonly string[];
 }
 
-export interface OptimisticallyArchiveThreadsArgs {
+interface OptimisticallyArchiveThreadsArgs {
   queryClient: QueryClient;
   threadIds: readonly string[];
 }
 
-export interface RemoveLiveThreadsFromCachedListsArgs {
+interface RemoveLiveThreadsFromCachedListsArgs {
   matchesThread: CachedLiveThreadMatcher;
   queryClient: QueryClient;
 }

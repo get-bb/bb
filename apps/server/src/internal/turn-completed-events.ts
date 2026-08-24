@@ -31,7 +31,7 @@ function lifecycleEventForTurnCompletion(
 }
 
 export function applyTurnCompletedEvent(
-  deps: Pick<AppDeps, "db" | "hub" | "logger">,
+  deps: Pick<AppDeps, "db" | "hub" | "logger" | "providerRegistry">,
   payload: Extract<ThreadEvent, { type: "turn/completed" }>,
 ): ApplyTurnCompletedEventResult {
   const thread = getThread(deps.db, payload.threadId);

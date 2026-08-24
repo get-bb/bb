@@ -4,7 +4,7 @@ export interface DescriptionSaveOutcome {
   errorMessage?: string;
 }
 
-export interface DescriptionSaverOptions {
+interface DescriptionSaverOptions {
   save(taskId: string, markdown: string): Promise<DescriptionSaveOutcome>;
   onError(message: string): void;
   delayMs: number;

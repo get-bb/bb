@@ -1,4 +1,5 @@
 import { configure } from "@testing-library/react";
+import { beforeEach } from "vitest";
 
 // Match slow CI runners: the default 1s async-utility timeout flakes there
 // while the suite-level vitest testTimeout still bounds real hangs.
@@ -32,3 +33,10 @@ if (typeof window !== "undefined" && !window.matchMedia) {
       }) as unknown as MediaQueryList,
   });
 }
+
+// The shell persists last-known sidebar data (projects, folders, counts) in the
+// browser profile. Every test starts from a cold profile so one file's render
+// cannot seed another's first-paint assertions.
+beforeEach(() => {
+  if (typeof window !== "undefined") window.localStorage.clear();
+});

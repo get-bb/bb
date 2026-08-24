@@ -59,6 +59,8 @@ Agent mode flags:
 --prompt <prompt>              Prompt to run when due
 --provider <id>                Provider ID
 --model <model>                Model ID
+--reasoning <level>            none, low, medium, high, xhigh, ultracode, max, or ultra
+--service-tier <tier>          default or fast (update also accepts none to clear)
 --permission-mode <mode>       accept-edits, auto, or full
 --target-thread <id>           Reuse/re-prompt an existing thread
 --environment <id-or-path>     Existing environment ID or unmanaged workspace path
@@ -74,11 +76,23 @@ Script mode flags:
 
 ```text
 --script <inline>              Inline script content
---script-file <path>           Read script content from a local file
+--script-file <path>           Copy script content from a file on a host
+--host <name-or-id>            Host that owns --script-file (default: thread host or server)
 --interpreter <name>           bash, sh, node, or python3
 --timeout <ms>                 Timeout in milliseconds, default 120000, max 900000
 --env-json <json>              Script variables as a string-to-string JSON object
 ```
+
+`--script-file` reads the file through the host file API, relative to your
+current directory. Inside a thread it reads from the thread's environment host;
+outside a thread it reads from the server host. Pass `--host <name-or-id>` to
+read from another machine. The plugin stores a private copy under
+`<data dir>/plugins/automations/scripts/<automationId>/`. Runs execute that
+copy. The copy is a snapshot: edits to the source file do not apply until you
+run `update <automationId> --script-file <path>` again. `create` and `update`
+print the exact refresh command with the current interpreter, timeout, env, and
+host. `create`, `update`, and `show` print the stored copy path on the
+`Script:` line; `--json` returns it as `execution.storedScriptPath`.
 
 Script environment variables:
 
@@ -111,13 +125,15 @@ Choose one of two execution update forms:
 
 - A complete replacement uses `--prompt`, `--provider`, and `--model` together
   to replace the execution with an agent, or `--script`/`--script-file` to
-  replace it with a script. Include every desired mode-specific setting;
+  replace it with a script. Add `--reasoning` and `--service-tier` when needed.
+  Include every desired mode-specific setting;
   settings from the previous execution do not carry over.
-- A partial agent update omits `--provider` and `--model`, preserves every
-  omitted execution field, and edits the existing agent automation in place.
-  Use any combination of `--prompt` and
+- A partial agent update preserves every omitted execution field and edits the
+  existing agent automation in place. Use any combination of `--prompt`,
+  `--provider`, `--model`, `--reasoning`, `--service-tier`, and
   `--permission-mode accept-edits|auto|full`, then choose at most one execution
-  target:
+  target. When changing providers, pass the provider's coherent model,
+  reasoning, tier, and permission selection together:
 
 ```bash
 bb plugin run automations update <automationId> --project <id> \

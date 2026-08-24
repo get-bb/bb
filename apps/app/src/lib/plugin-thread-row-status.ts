@@ -12,11 +12,16 @@ const statusesByThreadId = new Map<
   >
 >();
 const listenersByThreadId = new Map<string, Set<ThreadRowStatusListener>>();
+const groupListeners = new Set<ThreadRowStatusListener>();
 
 function notify(threadId: string): void {
   const listeners = listenersByThreadId.get(threadId);
-  if (!listeners) return;
-  for (const listener of [...listeners]) {
+  if (listeners) {
+    for (const listener of [...listeners]) {
+      listener();
+    }
+  }
+  for (const listener of [...groupListeners]) {
     listener();
   }
 }
@@ -27,6 +32,16 @@ export function getPluginThreadRowStatus(
   const statuses = statusesByThreadId.get(threadId);
   if (!statuses || statuses.size === 0) return null;
   return statuses.values().next().value?.status ?? null;
+}
+
+function getPluginThreadRowStatusForThreads(
+  threads: readonly { id: string }[],
+): PluginComposerThreadRowStatus | null {
+  for (const thread of threads) {
+    const status = getPluginThreadRowStatus(thread.id);
+    if (status) return status;
+  }
+  return null;
 }
 
 export function setPluginThreadRowStatus(
@@ -97,6 +112,13 @@ export function subscribePluginThreadRowStatus(
   };
 }
 
+function subscribePluginThreadRowStatusGroup(
+  listener: ThreadRowStatusListener,
+): () => void {
+  groupListeners.add(listener);
+  return () => groupListeners.delete(listener);
+}
+
 export function usePluginThreadRowStatus(
   threadId: string,
 ): PluginComposerThreadRowStatus | null {
@@ -112,9 +134,28 @@ export function usePluginThreadRowStatus(
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+export function usePluginThreadRowStatusForThreads(
+  threads: readonly { id: string }[],
+): PluginComposerThreadRowStatus | null {
+  const getSnapshot = useCallback(
+    () => getPluginThreadRowStatusForThreads(threads),
+    [threads],
+  );
+  return useSyncExternalStore(
+    subscribePluginThreadRowStatusGroup,
+    getSnapshot,
+    getSnapshot,
+  );
+}
+
 export function resetPluginThreadRowStatusesForTest(): void {
   statusesByThreadId.clear();
-  for (const threadId of listenersByThreadId.keys()) {
-    notify(threadId);
+  for (const listeners of listenersByThreadId.values()) {
+    for (const listener of [...listeners]) {
+      listener();
+    }
+  }
+  for (const listener of [...groupListeners]) {
+    listener();
   }
 }

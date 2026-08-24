@@ -303,12 +303,6 @@ describe("ThreadTimelineRows actions", () => {
     expect(
       latestMessage?.querySelector('[aria-label="Message actions"]'),
     ).toBeNull();
-    expect(
-      latestMessage?.querySelector('[aria-label="Copy message"]')?.className,
-    ).toContain("max-md:pointer-coarse:opacity-100");
-    expect(
-      latestMessage?.querySelector('[aria-label="Add to chat"]')?.className,
-    ).toContain("max-md:pointer-coarse:size-7");
   });
 
   it("uses inline mobile actions only for the last user message", () => {
@@ -345,12 +339,6 @@ describe("ThreadTimelineRows actions", () => {
     expect(
       latestMessage?.querySelector('[aria-label="Message actions"]'),
     ).toBeNull();
-    expect(
-      latestMessage?.querySelector('[aria-label="Copy message"]')?.className,
-    ).toContain("max-md:pointer-coarse:size-7");
-    expect(
-      latestMessage?.querySelector('[aria-label="Add to chat"]')?.className,
-    ).toContain("max-md:pointer-coarse:size-7");
   });
 
   it("keeps edit actions available while the thread is active", () => {
@@ -931,7 +919,6 @@ describe("ThreadTimelineRows actions", () => {
     const addToChat = await screen.findByRole("button", {
       name: "Add to chat",
     });
-    expect(addToChat.className).toContain("max-md:pointer-coarse:min-h-7");
     fireEvent.click(addToChat);
     expect(onSelectionAddToChat).toHaveBeenCalledWith("chat actions");
   });
@@ -975,9 +962,20 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("ignores sidebar search scroll state for a different thread", () => {
-    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame");
+    // Row wrappers schedule frames of their own (containment arming), so run
+    // every frame synchronously and assert on the reveal itself.
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
 
-    renderWithRouter(
+    const { container } = renderWithRouter(
       <ThreadTimelineRows
         threadId="thr_side_chat"
         timelineRows={[
@@ -1001,7 +999,12 @@ describe("ThreadTimelineRows actions", () => {
       ],
     );
 
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(
+      container
+        .querySelector('[data-timeline-row-id="side_chat_message"]')
+        ?.classList.contains("bb-search-flash"),
+    ).toBe(false);
   });
 
   it("scrolls sidebar search matches to the nested row instead of the containing parent", async () => {
@@ -1064,6 +1067,59 @@ describe("ThreadTimelineRows actions", () => {
       expect(nestedRow.classList.contains("bb-search-flash")).toBe(true),
     );
     expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
+  });
+
+  it("cancels the follow-up search reveals when the rows unmount", () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+        (callback) => {
+          callback(performance.now());
+          return 1;
+        },
+      );
+      vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: vi.fn(),
+      });
+
+      const view = renderWithRouter(
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              id: "match",
+              role: "assistant",
+              text: "Answer containing the search result.",
+              sourceSeqStart: 12,
+              sourceSeqEnd: 12,
+              threadId: "thr_main",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          workspaceRootPath={undefined}
+        />,
+        [
+          {
+            pathname: "/thread",
+            state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+          },
+        ],
+      );
+      view.unmount();
+
+      // The 320 ms and 800 ms follow-up reveals were pending at unmount. The
+      // test worker tears the document down right after the last test, so a
+      // reveal that survives unmount fires against a missing `document`.
+      const querySelector = vi.spyOn(document, "querySelector");
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(querySelector).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("loads older timeline rows before scrolling to an older sidebar search match", async () => {

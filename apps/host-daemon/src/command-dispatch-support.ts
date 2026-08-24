@@ -1,24 +1,21 @@
-import {
-  createAgentRuntime,
-  fingerprintAcpLaunchSpec,
-  bridgeLaunchProcessKey,
-  type AgentRuntime,
-  type AgentRuntimeBridgeLaunch,
-  type AgentRuntimeOptions,
-} from "@bb/agent-runtime";
+import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
-  HostDaemonAcpLaunchSpec,
+  ProviderHealthResult,
+  ProviderUsageResult,
   HostDaemonBridgeLaunch,
   HostDaemonInjectedSkillSource,
   HostDaemonOnlineRpcCommand,
   HostDaemonConnectTunnelIdentity,
-  ProviderCliInstallRequest,
-  ProviderCliStatus,
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
+import type {
+  ProviderInstallationCommand,
+  ProviderInstallationRunResult,
+  ProviderInstallationStatus,
+} from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
 import type { InteractiveResolveCommandInput } from "./interactive-request-registry.js";
@@ -58,21 +55,41 @@ export interface CommandDispatchOptions {
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
   eventSink: EventSink;
-  listModels?: (args: {
+  listModels: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
-  getProviderCliStatusForProvider?: (
-    providerId: string,
-  ) => Promise<ProviderCliStatus | null>;
-  streamProviderCliInstall?: (
-    args: ProviderCliInstallRequest & { env?: NodeJS.ProcessEnv },
-  ) => ReadableStream<Uint8Array>;
+  providerHealth: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderHealthResult>;
+  providerUsage: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderUsageResult>;
+  providerInstallationStatus: (args: {
+    providerId: string;
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+    requirement?: "thread_rewind";
+  }) => Promise<ProviderInstallationStatus>;
+  providerInstallationRun: (args: {
+    providerId: string;
+    action: "install" | "update";
+    bridgeLaunch: AgentRuntimeBridgeLaunch;
+    cwd?: string;
+  }) => Promise<ProviderInstallationRunResult>;
+  streamProviderInstallation?: (args: {
+    providerId: string;
+    plan: ProviderInstallationCommand;
+    env?: NodeJS.ProcessEnv;
+  }) => ReadableStream<Uint8Array>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
@@ -117,15 +134,12 @@ export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
 
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
-const ACP_AUTH_REQUIRED_PATTERN =
-  /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
 
 /**
- * Turn a wire `bridgeLaunch` into the runtime shape. An `artifact` source is
- * resolved to a verified local path (downloading + hash-verifying if needed);
- * a `daemon-bundled` source names a bridge inside this daemon's own bundle and
- * needs no fetch. The source travels through, so the runtime routes on the
- * server's explicit answer rather than re-deriving it from the provider id.
+ * Turn a wire `bridgeLaunch` into the runtime shape: the artifact source is
+ * resolved to a verified local path (downloading + hash-verifying if needed).
+ * The source travels through, so the runtime routes on the server's explicit
+ * answer rather than re-deriving it from the provider id.
  */
 export async function resolveRuntimeBridgeLaunch(
   bridgeLaunch: HostDaemonBridgeLaunch,
@@ -140,22 +154,16 @@ export async function resolveRuntimeBridgeLaunch(
     ...bridgeLaunch.capabilities,
     permissionModes: [...bridgeLaunch.capabilities.permissionModes],
   };
-  // Every bridge, artifact or bundled, is scoped to the plugin that ships it:
-  // it gets that plugin's own persistent directory, the same one the plugin's
-  // host worker would get, under its own `bridge-data` kind.
+  const providerOptions = { ...bridgeLaunch.providerOptions };
+  const envPassthrough = [...bridgeLaunch.envPassthrough];
+  // Every bridge is scoped to the plugin that ships it: it gets that plugin's
+  // own persistent directory, the same one the plugin's host worker would
+  // get, under its own `bridge-data` kind.
   const dataDir = await ensurePluginProcessDataDir({
     daemonDataDir: options.dataDir,
     pluginId: bridgeLaunch.pluginId,
     kind: "bridge-data",
   });
-  if (bridgeLaunch.source.kind === "daemon-bundled") {
-    return {
-      pluginId: bridgeLaunch.pluginId,
-      dataDir,
-      source: { ...bridgeLaunch.source },
-      capabilities,
-    };
-  }
   if (options.fetchPluginHostArtifact === undefined) {
     throw new CommandDispatchError(
       "provider_bridge_unavailable",
@@ -179,58 +187,9 @@ export async function resolveRuntimeBridgeLaunch(
       artifactPath,
     },
     capabilities,
+    providerOptions,
+    envPassthrough,
   };
-}
-
-const defaultModelListRuntimes = new Map<string, AgentRuntime>();
-
-export async function shutdownDefaultListModelsRuntimes(): Promise<void> {
-  const runtimes = [...defaultModelListRuntimes.values()];
-  defaultModelListRuntimes.clear();
-  await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
-}
-
-export async function defaultListModels(
-  args: {
-    providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-    bridgeLaunch: AgentRuntimeBridgeLaunch;
-  },
-  options: { bridgeBundleDir?: AgentRuntimeOptions["bridgeBundleDir"] } = {},
-): Promise<{
-  models: AvailableModel[];
-  selectedOnlyModels: AvailableModel[];
-}> {
-  const runtimeKey =
-    `${options.bridgeBundleDir ?? ""}` +
-    `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
-    (args.acpLaunchSpec !== undefined
-      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
-      : "");
-  let runtime = defaultModelListRuntimes.get(runtimeKey);
-  if (!runtime) {
-    runtime = createAgentRuntime({
-      bridgeBundleDir: options.bridgeBundleDir,
-      workspacePath: process.cwd(),
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [],
-        success: true,
-      }),
-    });
-    defaultModelListRuntimes.set(runtimeKey, runtime);
-  }
-  try {
-    return await runtime.listModels(args);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("Unsupported provider")
-    ) {
-      throw new CommandDispatchError("unknown_provider", error.message);
-    }
-    throw error;
-  }
 }
 
 export function getErrorCode(error: unknown): string {
@@ -249,9 +208,6 @@ export function getErrorCode(error: unknown): string {
   }
   if (isMessageOnlySpawnMissingExecutableError(error)) {
     return "missing_executable";
-  }
-  if (isMessageOnlyAcpAuthRequiredError(error)) {
-    return "auth_required";
   }
   return "command_failed";
 }
@@ -278,12 +234,6 @@ function isMessageOnlySpawnMissingExecutableError(error: unknown): boolean {
   return (
     MISSING_EXECUTABLE_PATTERN.test(error.message) &&
     SPAWN_PATTERN.test(error.message)
-  );
-}
-
-function isMessageOnlyAcpAuthRequiredError(error: unknown): boolean {
-  return (
-    error instanceof Error && ACP_AUTH_REQUIRED_PATTERN.test(error.message)
   );
 }
 

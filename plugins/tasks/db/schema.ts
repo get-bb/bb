@@ -235,6 +235,10 @@ const MIGRATIONS = [
     END
     WHERE permission_mode IN ('workspace-write', 'readonly');
   `,
+  `
+    ALTER TABLE presets ADD COLUMN service_tier TEXT
+      CHECK (service_tier IN ('default', 'fast'));
+  `,
 ] as const;
 
 export function initializeTasksSchema(db: PluginDatabase): void {

@@ -5,7 +5,11 @@ import type {
   WorkspaceWatchError,
 } from "@bb/host-watcher";
 import type { HostWorkspace } from "@bb/host-workspace";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  createDeferredPromise,
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import { describe, expect, it, vi } from "vitest";
 import { WatchManager, type WatchManagerOptions } from "./watch-manager.js";
 
@@ -20,22 +24,6 @@ type WatchWorkspaceImplementation = (args: WatchWorkspaceArgs) => StopWatching;
 type WatchThreadStorageRootImplementation = (
   args: WatchThreadStorageRootArgs,
 ) => StopWatching;
-
-interface Deferred<TValue> {
-  promise: Promise<TValue>;
-  resolve: (value: TValue | PromiseLike<TValue>) => void;
-  reject: (reason?: Error) => void;
-}
-
-function createDeferred<TValue>(): Deferred<TValue> {
-  let resolve!: (value: TValue | PromiseLike<TValue>) => void;
-  let reject!: (reason?: Error) => void;
-  const promise = new Promise<TValue>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
 
 function createFakeWorkspace(path: string, isGitRepo = true) {
   let localStateFingerprint: GetLocalStateFingerprintResult = `local:${path}:initial`;
@@ -84,14 +72,12 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
-    listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async () => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
     reset: vi.fn(async () => undefined),
-    fetch: vi.fn(async () => undefined),
     squashMerge: vi.fn(async () => ({
       merged: true,
       commitSha: "commit-1",
@@ -150,7 +136,8 @@ function createFakeHostWatcher(
 describe("WatchManager", () => {
   it("starts watching before initial workspace fingerprints finish", async () => {
     const workspace = createFakeWorkspace("/tmp/env-watch");
-    const localFingerprint = createDeferred<GetLocalStateFingerprintResult>();
+    const localFingerprint =
+      createDeferredPromise<GetLocalStateFingerprintResult>();
     workspace.getLocalStateFingerprint.mockImplementationOnce(
       () => localFingerprint.promise,
     );
@@ -552,7 +539,7 @@ describe("WatchManager", () => {
   it("serializes watch-set replacement while workspace watch startup is pending", async () => {
     const stopWatchingStatus = vi.fn(() => undefined);
     const workspace = createFakeWorkspace("/tmp/env-watch");
-    const pendingWorkspace = createDeferred<HostWorkspace>();
+    const pendingWorkspace = createDeferredPromise<HostWorkspace>();
     const provisionWorkspace = vi.fn(() => {
       return pendingWorkspace.promise;
     });
@@ -599,7 +586,7 @@ describe("WatchManager", () => {
   it("waits for pending watch startup before removing an environment watch", async () => {
     const stopWatchingStatus = vi.fn(() => undefined);
     const workspace = createFakeWorkspace("/tmp/env-watch");
-    const pendingWorkspace = createDeferred<HostWorkspace>();
+    const pendingWorkspace = createDeferredPromise<HostWorkspace>();
     const { hostWatcher, watchWorkspace } = createFakeHostWatcher({
       watchWorkspaceImplementation: () => stopWatchingStatus,
     });

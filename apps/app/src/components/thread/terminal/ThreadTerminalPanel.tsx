@@ -4,16 +4,21 @@ import {
   useThreadTerminalController,
   type ThreadTerminalTarget,
 } from "./useThreadTerminalController";
+import type { TerminalCreateTarget } from "@bb/server-contract";
 
 interface ThreadTerminalPanelProps {
   autoFocus?: boolean;
   canCreateTerminal: boolean;
   isPanelOpen: boolean;
   isPanelPersistedOpen: boolean;
+  fixedPanelTarget?: TerminalCreateTarget;
+  fixedTerminalId?: string;
   onAutoFocusHandled?: () => void;
   onOpenLink?: MarkdownPreviewLinkHandler;
   onSelectionAddToChat?: (text: string) => void;
   panelStateId?: string;
+  syncThreadId: string | null;
+  terminalId?: string;
   target: ThreadTerminalTarget;
 }
 
@@ -22,17 +27,25 @@ export function ThreadTerminalPanel({
   canCreateTerminal,
   isPanelOpen,
   isPanelPersistedOpen,
+  fixedPanelTarget,
+  fixedTerminalId,
   onAutoFocusHandled,
   onOpenLink,
   onSelectionAddToChat,
   panelStateId,
+  syncThreadId,
+  terminalId,
   target,
 }: ThreadTerminalPanelProps) {
   const terminalController = useThreadTerminalController({
     canCreateTerminal,
     isPanelOpen,
     isPanelPersistedOpen,
+    fixedPanelTarget,
+    fixedTerminalId,
     panelStateId,
+    preferredTerminalId: terminalId,
+    syncThreadId,
     target,
   });
 

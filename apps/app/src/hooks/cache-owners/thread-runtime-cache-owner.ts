@@ -19,12 +19,14 @@ import type {
   TimelineRow,
   UpdateQueuedMessageRequest,
 } from "@bb/server-contract";
-import type { AppCreateThreadRequest } from "@/lib/api-types";
-import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@/lib/optimistic-timeline-row";
+import type { AppCreateThreadRequest } from "@bb/client-core";
+import { OPTIMISTIC_TIMELINE_ROW_ID_PREFIX } from "@bb/client-core";
 import { collectPromptAttachments } from "@/lib/prompt-attachments";
 import { prependPromptHistoryEntry } from "@/lib/prompt-history";
 import {
   applyQueuedMessageReorder,
+  collectLeadQueuedMessageGroupIds,
+  preserveLeadQueuedMessageGroupAfterReorder,
   type QueuedMessageReorderRequest,
 } from "@/lib/queued-message-reorder";
 import type { SendThreadMessageMutationRequest } from "../mutations/mutation-request-types";
@@ -54,9 +56,10 @@ import {
 import { threadDefaultExecutionOptionsQueryKey } from "../queries/thread-default-execution-options-query";
 import {
   invalidateProjectPromptHistoryQueries,
-  invalidateThreadAcceptedMessageQueries,
   invalidateThreadAcceptedMessageQueriesWithoutRealtime,
+  invalidateThreadQueuedMessageListQuery,
   invalidateThreadQueueQueries,
+  markThreadAcceptedMessageQueriesStale,
   invalidateThreadQueuedMessageSendQueries,
   invalidateThreadStopQueries,
   refetchThreadListsAfterComposerThreadCreate,
@@ -165,7 +168,6 @@ interface ReorderQueuedMessageRequest extends QueuedMessageReorderRequest {
 }
 
 interface SetQueuedMessageGroupBoundaryRequest {
-  expectedGroupedPrefixQueuedMessageIds: string[];
   groupBoundaryQueuedMessageId: string;
   id: string;
 }
@@ -241,14 +243,14 @@ interface OptimisticTurnRequestKindArgs {
   threadStatus: ThreadWithRuntime["status"] | null;
 }
 
-export interface SendThreadMessageAcceptedTurnTransaction {
+interface SendThreadMessageAcceptedTurnTransaction {
   kind: "accepted-turn";
   optimisticCreatedAt: number;
   optimisticRowId: string;
   previousThread: ThreadResponse | undefined;
 }
 
-export interface SendThreadMessageQueuedTransaction {
+interface SendThreadMessageQueuedTransaction {
   kind: "queued-message";
   optimisticQueuedMessageId: string;
   previousQueuedMessages: ThreadQueuedMessageListResponse | undefined;
@@ -318,43 +320,6 @@ function applyQueuedMessageGroupBoundary({
   return queuedMessages.map((queuedMessage, index) => ({
     ...queuedMessage,
     groupWithNext: index < boundaryIndex,
-  }));
-}
-
-function collectLeadQueuedMessageGroupIds(
-  queuedMessages: readonly ThreadQueuedMessage[],
-): string[] {
-  const ids: string[] = [];
-  for (const queuedMessage of queuedMessages) {
-    ids.push(queuedMessage.id);
-    if (!queuedMessage.groupWithNext) break;
-  }
-  return ids;
-}
-
-function preserveLeadQueuedMessageGroupAfterReorder({
-  originalLeadGroupIds,
-  queuedMessages,
-}: {
-  originalLeadGroupIds: readonly string[];
-  queuedMessages: readonly ThreadQueuedMessage[];
-}): ThreadQueuedMessage[] {
-  if (originalLeadGroupIds.length <= 1) {
-    return queuedMessages.map((queuedMessage) => ({
-      ...queuedMessage,
-      groupWithNext: false,
-    }));
-  }
-
-  const originalLeadGroupIdSet = new Set(originalLeadGroupIds);
-  const preservesLeadGroup = queuedMessages
-    .slice(0, originalLeadGroupIds.length)
-    .every((queuedMessage) => originalLeadGroupIdSet.has(queuedMessage.id));
-
-  return queuedMessages.map((queuedMessage, index) => ({
-    ...queuedMessage,
-    groupWithNext:
-      preservesLeadGroup && index < originalLeadGroupIds.length - 1,
   }));
 }
 
@@ -884,7 +849,26 @@ export function applySendThreadMessageSuccess({
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
   if (transaction?.kind === "queued-message") {
-    invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+    // Queued prompts enter recall too; prepend locally instead of refetching.
+    prependThreadPromptHistory(
+      queryClient,
+      request.id,
+      buildAcceptedPromptHistoryEntry({
+        createdAt: Date.now(),
+        input: request.input,
+      }),
+    );
+    if (realtimeConnected) {
+      // Enqueuing does not write the thread record, and `queue-changed`
+      // refreshes prompt history; only the queue list needs a read to swap
+      // the optimistic row for the server row.
+      invalidateThreadQueuedMessageListQuery({
+        queryClient,
+        threadId: request.id,
+      });
+    } else {
+      invalidateThreadQueueQueries({ queryClient, threadId: request.id });
+    }
     return;
   }
   prependThreadPromptHistory(
@@ -895,11 +879,11 @@ export function applySendThreadMessageSuccess({
       input: request.input,
     }),
   );
-  const invalidateAcceptedMessageQueries = realtimeConnected
-    ? invalidateThreadAcceptedMessageQueries
+  const applyAcceptedMessageQueries = realtimeConnected
+    ? markThreadAcceptedMessageQueriesStale
     : invalidateThreadAcceptedMessageQueriesWithoutRealtime;
 
-  invalidateAcceptedMessageQueries({
+  applyAcceptedMessageQueries({
     queryClient,
     threadId: request.id,
   });

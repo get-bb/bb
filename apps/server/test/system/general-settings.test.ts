@@ -26,7 +26,8 @@ describe("general settings", () => {
           ...defaultAppSettings,
           showKeyboardHints: false,
           steerActiveThreadOnEnter: true,
-          codexMemoryEnabled: false,
+          providerOrder: ["pi", "codex"],
+          defaultProviderId: "pi",
         }),
       });
       expect(put.status).toBe(200);
@@ -34,13 +35,15 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
-        codexMemoryEnabled: false,
+        providerOrder: ["pi", "codex"],
+        defaultProviderId: "pi",
       });
       expect(getAppSettings(harness.db)).toEqual({
         ...defaultAppSettings,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
-        codexMemoryEnabled: false,
+        providerOrder: ["pi", "codex"],
+        defaultProviderId: "pi",
       });
 
       const config = await harness.app.request("/api/v1/system/config");
@@ -51,7 +54,8 @@ describe("general settings", () => {
         ...defaultAppSettings,
         showKeyboardHints: false,
         steerActiveThreadOnEnter: true,
-        codexMemoryEnabled: false,
+        providerOrder: ["pi", "codex"],
+        defaultProviderId: "pi",
       });
     });
   });

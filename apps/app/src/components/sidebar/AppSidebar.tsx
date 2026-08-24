@@ -21,6 +21,7 @@ import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
+import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarHistoryNavigationControls } from "./SidebarHistoryNavigationControls";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
@@ -32,7 +33,6 @@ import {
   shouldUseMacosDesktopChrome,
 } from "@/lib/bb-desktop";
 import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
 import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import type { SidebarThreadSearchNavigationItem } from "./sidebarThreadSearch";
@@ -68,6 +68,13 @@ interface AppSidebarProps {
   showTopReserve: boolean;
   settingsRoutePath: string;
   toolsRoutePath?: string;
+  /**
+   * Compact drawer hosting. When set, the sidebar renders its body only,
+   * inside a persistent `<Sidebar>` panel owned by AppLayoutSidebar, and stays
+   * mounted (hidden) while a Settings/Tools body is showing, so returning to
+   * the app never remounts the thread list in the closed drawer.
+   */
+  mobileHosted?: { hidden: boolean };
 }
 
 export function AppSidebar({
@@ -76,6 +83,7 @@ export function AppSidebar({
   showTopReserve,
   settingsRoutePath,
   toolsRoutePath,
+  mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
   // The resolved replacement owns the sidebar's scrolling thread list. It never
@@ -84,10 +92,9 @@ export function AppSidebar({
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
-  const threadSplitsEnabled = useThreadSplitsEnabled();
   const newThreadSplit = usePaneContentSplitDrag({
     content: NEW_THREAD_PANE_CONTENT,
-    enabled: threadSplitsEnabled,
+    enabled: true,
     label: "New thread",
   });
   const closeOnMobile = useCloseMobileSidebar();
@@ -218,16 +225,32 @@ export function AppSidebar({
     [activeThreadId, closeOnMobile, navigate],
   );
 
+  // While hosted-and-hidden (a Settings/Tools body is showing in the drawer)
+  // this sidebar is not the visible one: leave its shortcuts unhandled, as
+  // they are on wide viewports where Settings/Tools replace the sidebar,
+  // rather than opening the drawer onto a hidden search field or clicking
+  // rows the user cannot see.
+  const isHiddenHostedBody = mobileHosted?.hidden === true;
   useAppCommandHandler("thread.search", () => {
+    if (isHiddenHostedBody) return false;
     threadSearch.onActivate();
     return true;
   });
+  const activateVisibleThreadShortcut = useCallback(
+    (index: number) =>
+      isHiddenHostedBody ? false : activateThreadShortcut(index),
+    [activateThreadShortcut, isHiddenHostedBody],
+  );
   useIndexedAppCommandHandlers(
     THREAD_JUMP_APP_COMMAND_IDS,
-    activateThreadShortcut,
+    activateVisibleThreadShortcut,
   );
-  useAppCommandHandler("thread.previous", () => activateAdjacentThread(-1));
-  useAppCommandHandler("thread.next", () => activateAdjacentThread(1));
+  useAppCommandHandler("thread.previous", () =>
+    isHiddenHostedBody ? false : activateAdjacentThread(-1),
+  );
+  useAppCommandHandler("thread.next", () =>
+    isHiddenHostedBody ? false : activateAdjacentThread(1),
+  );
 
   useEffect(() => {
     if (isAppCommandModifierHeld) {
@@ -273,11 +296,10 @@ export function AppSidebar({
     />
   );
 
-  return (
-    <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
-      <Sidebar ref={sidebarRef} onKeyDown={threadSearch.onKeyDown}>
-        {showTopReserve ? (
-          /* Top reserve that keeps the sidebar's content (New Thread / New
+  const body = (
+    <>
+      {showTopReserve ? (
+        /* Top reserve that keeps the sidebar's content (New Thread / New
              Projects) anchored below the title-bar chrome, mirroring
              the page-header height on the content side. The sidebar toggle is
              pinned at the app's top-left for every chrome (see AppLayout's
@@ -290,125 +312,148 @@ export function AppSidebar({
              of the pinned toggle/traffic lights on the left and the resize
              handle on the right; they opt out of the desktop drag region so
              clicks register. */
-          <div
-            data-testid="app-sidebar-top-reserve-row"
-            className={cn(
-              CHROME_ROW_CLASS,
-              "shrink-0 justify-end px-2",
-              usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
-            )}
-          >
-            <SidebarHistoryNavigationControls
-              onNavigate={closeOnMobile}
-              className={cn(
-                "group-data-[collapsible=icon]:hidden",
-                usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
-              )}
-            />
-          </div>
-        ) : null}
         <div
-          data-testid="app-sidebar-primary-actions"
-          className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
+          data-testid="app-sidebar-top-reserve-row"
+          className={cn(
+            CHROME_ROW_CLASS,
+            "shrink-0 justify-end px-2",
+            usesDesktopChrome && MACOS_WINDOW_DRAG_CLASS,
+          )}
         >
-          <ProjectListActionButtons
-            splitEnabled={threadSplitsEnabled}
-            newThreadSplit={newThreadSplit}
-            onNewChat={handleNewChat}
-            threadSearch={{
-              activeDescendantId: threadSearch.activeDescendantId,
-              inputRef: threadSearch.inputRef,
-              isActive: threadSearch.isActive,
-              onActivate: threadSearch.onActivate,
-              onClose: threadSearch.onClose,
-              onQueryChange: threadSearch.onQueryChange,
-              query: threadSearch.query,
-            }}
+          <SidebarHistoryNavigationControls
+            onNavigate={closeOnMobile}
+            className={cn(
+              "group-data-[collapsible=icon]:hidden",
+              usesDesktopChrome && MACOS_CHROME_CONTROL_NO_DRAG_CLASS,
+            )}
           />
         </div>
-        <PluginNavSidebarItems
-          onNavigate={closeOnMobile}
-          splitEnabled={threadSplitsEnabled}
-          toolsRoutePath={toolsRoutePath}
+      ) : null}
+      <div
+        data-testid="app-sidebar-primary-actions"
+        className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
+      >
+        <ProjectListActionButtons
+          splitEnabled
+          newThreadSplit={newThreadSplit}
+          onNewChat={handleNewChat}
+          threadSearch={{
+            activeDescendantId: threadSearch.activeDescendantId,
+            inputRef: threadSearch.inputRef,
+            isActive: threadSearch.isActive,
+            onActivate: threadSearch.onActivate,
+            onClose: threadSearch.onClose,
+            onQueryChange: threadSearch.onQueryChange,
+            query: threadSearch.query,
+          }}
         />
-        <SidebarContent>
-          <PluginThreadList
-            replacement={threadListReplacement}
-            original={originalThreadList}
-            searchQuery={threadSearch.query}
-            onNavigate={threadSearch.onExternalThreadOpen}
+      </div>
+      <PluginNavSidebarItems
+        onNavigate={closeOnMobile}
+        splitEnabled
+        toolsRoutePath={toolsRoutePath}
+      />
+      <SidebarContent>
+        <PluginThreadList
+          replacement={threadListReplacement}
+          original={originalThreadList}
+          searchQuery={threadSearch.query}
+          onNavigate={threadSearch.onExternalThreadOpen}
+        />
+      </SidebarContent>
+      <SidebarFooter className="relative">
+        <OverflowFade placement="above" tone="sidebar" size="sm" />
+        {/* The footer holds a variable number of plugin action buttons, so a
+         * narrowed sidebar plus several plugins can no longer fit the action
+         * row and the update chips on one line. `flex-wrap-reverse` plus the
+         * flexible spacer below handles both layouts without measuring:
+         * while everything fits, the spacer stretches and pushes the chips to
+         * the right of a single row; once it doesn't, the chips wrap onto
+         * their own line, which wrap-reverse renders above the actions, and
+         * they sit flush left because the spacer stays behind on the action
+         * line. */}
+        <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
+          <SidebarMenuItem className="min-w-0">
+            <SidebarMenuButton
+              asChild
+              aria-label={
+                settingsShortcut
+                  ? `Settings (${settingsShortcut.label})`
+                  : "Settings"
+              }
+              aria-keyshortcuts={settingsShortcut?.ariaKeyshortcuts}
+              tooltip={{
+                children: settingsShortcut
+                  ? `Settings (${settingsShortcut.label})`
+                  : "Settings",
+                hidden: false,
+                side: "top",
+              }}
+              className={SIDEBAR_FOOTER_ACTION_CLASS}
+            >
+              <Link to={settingsRoutePath} onClick={closeOnMobile}>
+                <Icon name="Settings" />
+                <span className="sr-only">Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <PluginSidebarFooterActions onNavigate={closeOnMobile} />
+          <SidebarMenuItem className="min-w-0">
+            <SidebarMenuButton
+              className={SIDEBAR_FOOTER_ACTION_CLASS}
+              tooltip={{
+                children: "Report a bug",
+                hidden: false,
+                side: "top",
+              }}
+              aria-label="Report a bug"
+              onClick={() => {
+                closeOnMobile();
+                openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
+              }}
+            >
+              <Icon name="Bug" />
+              <span className="sr-only">Report a bug</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <li aria-hidden="true" className="min-w-0 flex-1" />
+          <SidebarPluginAttentionGlyph
+            className={SIDEBAR_FOOTER_ACTION_CLASS}
+            onNavigate={closeOnMobile}
           />
-        </SidebarContent>
-        <SidebarFooter className="relative">
-          <OverflowFade placement="above" tone="sidebar" size="sm" />
-          {/* The footer holds a variable number of plugin action buttons, so a
-           * narrowed sidebar plus several plugins can no longer fit the action
-           * row and the update chips on one line. `flex-wrap-reverse` plus the
-           * flexible spacer below handles both layouts without measuring:
-           * while everything fits, the spacer stretches and pushes the chips to
-           * the right of a single row; once it doesn't, the chips wrap onto
-           * their own line, which wrap-reverse renders above the actions, and
-           * they sit flush left because the spacer stays behind on the action
-           * line. */}
-          <SidebarMenu className="flex-row flex-wrap-reverse items-center gap-1">
-            <SidebarMenuItem className="min-w-0">
-              <SidebarMenuButton
-                asChild
-                aria-label={
-                  settingsShortcut
-                    ? `Settings (${settingsShortcut.label})`
-                    : "Settings"
-                }
-                aria-keyshortcuts={settingsShortcut?.ariaKeyshortcuts}
-                tooltip={{
-                  children: settingsShortcut
-                    ? `Settings (${settingsShortcut.label})`
-                    : "Settings",
-                  hidden: false,
-                  side: "top",
-                }}
-                className={SIDEBAR_FOOTER_ACTION_CLASS}
-              >
-                <Link to={settingsRoutePath} onClick={closeOnMobile}>
-                  <Icon name="Settings" />
-                  <span className="sr-only">Settings</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <PluginSidebarFooterActions onNavigate={closeOnMobile} />
-            <SidebarMenuItem className="min-w-0">
-              <SidebarMenuButton
-                className={SIDEBAR_FOOTER_ACTION_CLASS}
-                tooltip={{
-                  children: "Report a bug",
-                  hidden: false,
-                  side: "top",
-                }}
-                aria-label="Report a bug"
-                onClick={() => {
-                  closeOnMobile();
-                  openUrlInExternalBrowser(BUG_REPORT_NEW_ISSUE_URL);
-                }}
-              >
-                <Icon name="Bug" />
-                <span className="sr-only">Report a bug</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-            <li aria-hidden="true" className="min-w-0 flex-1" />
-            <SidebarUpdatesBadge onNavigate={closeOnMobile} />
-          </SidebarMenu>
-        </SidebarFooter>
+          <SidebarUpdatesBadge onNavigate={closeOnMobile} />
+        </SidebarMenu>
+      </SidebarFooter>
+      <div
+        data-testid="app-sidebar-resize-handle"
+        className={cn(
+          "absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize md:block",
+          "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors hover:before:bg-sidebar-border",
+          "group-data-[collapsible=icon]:hidden",
+          isResizing && "before:bg-sidebar-border",
+        )}
+        onMouseDown={onResizeMouseDown}
+      />
+    </>
+  );
+
+  return (
+    <SidebarThreadShortcutKeysContext.Provider value={threadShortcutKeysById}>
+      {mobileHosted ? (
         <div
-          data-testid="app-sidebar-resize-handle"
-          className={cn(
-            "absolute -right-1.5 top-0 z-30 hidden h-full w-3 cursor-col-resize md:block",
-            "before:absolute before:inset-y-0 before:left-1/2 before:w-px before:-translate-x-1/2 before:bg-transparent before:transition-colors hover:before:bg-sidebar-border",
-            "group-data-[collapsible=icon]:hidden",
-            isResizing && "before:bg-sidebar-border",
-          )}
-          onMouseDown={onResizeMouseDown}
-        />
-      </Sidebar>
+          ref={sidebarRef}
+          data-testid="app-sidebar-body"
+          hidden={mobileHosted.hidden}
+          className="flex min-h-0 flex-1 flex-col"
+          onKeyDown={threadSearch.onKeyDown}
+        >
+          {body}
+        </div>
+      ) : (
+        <Sidebar ref={sidebarRef} onKeyDown={threadSearch.onKeyDown}>
+          {body}
+        </Sidebar>
+      )}
     </SidebarThreadShortcutKeysContext.Provider>
   );
 }

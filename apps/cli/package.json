@@ -7,7 +7,7 @@
     "title": "./bin/title"
   },
   "scripts": {
-    "build": "node ../../packages/plugin-build/scripts/generate-runtime-export-manifest.mjs && node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist --templates",
+    "build": "node ../../scripts/build-node-entry.mjs src/index.ts dist/index.js --clean-dist",
     "start": "node dist/index.js",
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit",
@@ -25,6 +25,7 @@
     "cli-table3": "^0.6.5",
     "commander": "^13.0.0",
     "mime-types": "^3.0.2",
+    "undici": "^7.28.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

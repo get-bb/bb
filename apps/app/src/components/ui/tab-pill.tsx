@@ -13,20 +13,18 @@ const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
 // so the close button needs no background to mask the icon underneath it.
 const TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS =
   "inline-flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none max-md:pointer-coarse:size-5";
-export const TAB_PILL_AFFORDANCE_ICON_CLASS =
-  "size-3.5 max-md:pointer-coarse:size-5";
-export const TAB_PILL_CLOSE_BUTTON_CLASS = `pointer-events-none absolute left-1.5 top-1/2 z-10 -translate-y-1/2 ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 group-hover/tab-pill:pointer-events-auto group-hover/tab-pill:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-30 max-md:pointer-coarse:pointer-events-auto max-md:pointer-coarse:opacity-100`;
+const TAB_PILL_AFFORDANCE_ICON_CLASS = "size-3.5 max-md:pointer-coarse:size-5";
+const TAB_PILL_CLOSE_BUTTON_CLASS = `pointer-events-none absolute left-1.5 top-1/2 z-10 -translate-y-1/2 ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 group-hover/tab-pill:pointer-events-auto group-hover/tab-pill:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-30 max-md:pointer-coarse:pointer-events-auto max-md:pointer-coarse:opacity-100`;
 const TAB_PILL_LEADING_VISUAL_CLASS =
   "inline-flex size-4 shrink-0 items-center justify-center [&_svg]:size-3.5 max-md:pointer-coarse:size-5 max-md:pointer-coarse:[&_svg]:size-5";
 
-export interface TabPillCloseAction {
+interface TabPillCloseAction {
   onClose: () => void;
   closeLabel: string;
-  closeTooltip: string;
   isClosing?: boolean;
 }
 
-export interface TabPillProps {
+interface TabPillProps {
   label: string;
   ariaLabel?: string;
   ariaKeyshortcuts?: string;
@@ -37,11 +35,6 @@ export interface TabPillProps {
   labelClassName?: string;
   title: string;
   isActive: boolean;
-  /**
-   * Full-width panels use a quiet underline because the view already owns the
-   * whole canvas; the filled selection surface is reserved for sibling panes.
-   */
-  activeTreatment?: "fill" | "underline";
   onSelect: () => void;
   labelMaxWidthClass?: string;
   closeAction: TabPillCloseAction | null;
@@ -57,7 +50,6 @@ export function TabPill({
   labelClassName,
   title,
   isActive,
-  activeTreatment = "fill",
   onSelect,
   labelMaxWidthClass = TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS,
   closeAction,
@@ -68,9 +60,7 @@ export function TabPill({
         `group/tab-pill relative inline-flex h-7 shrink-0 items-center rounded-md ${LIST_HOVER_TRANSITION} max-md:pointer-coarse:h-9`,
         COARSE_POINTER_TEXT_SM_CLASS,
         isActive
-          ? activeTreatment === "fill"
-            ? cn(CONTEXT_SELECTION_SURFACE_CLASS, "text-foreground")
-            : "text-foreground after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-foreground/60"
+          ? cn(CONTEXT_SELECTION_SURFACE_CLASS, "text-foreground")
           : "text-muted-foreground hover:bg-state-hover",
       )}
     >
@@ -91,7 +81,7 @@ export function TabPill({
               TAB_PILL_LEADING_VISUAL_CLASS,
               !iconOnly && "mr-1.5",
               closeAction
-                ? "group-hover/tab-pill:opacity-0 group-has-[[data-tab-pill-close]:focus-visible]/tab-pill:opacity-0 max-md:pointer-coarse:opacity-0"
+                ? "group-hover/tab-pill:opacity-0 tab-pill-close-focus-visible:opacity-0 max-md:pointer-coarse:opacity-0"
                 : null,
             )}
           >

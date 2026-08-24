@@ -6,6 +6,10 @@ import {
 import type { Environment, Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import {
+  threadEnvironmentUnavailableDetails,
+  throwThreadEnvironmentUnavailable,
+} from "../lib/lifecycle-api-errors.js";
+import {
   requestEnvironmentCleanup,
   requestEnvironmentCleanupAdvance,
   wouldCleanupEnvironment,
@@ -21,13 +25,21 @@ import {
 } from "./thread-lifecycle.js";
 import { archiveThreadAndReleaseChildren } from "./thread-ownership.js";
 import { requireThreadHostCommandEnvironment } from "./thread-command-environment.js";
+import { getActiveThreadProvisionContext } from "./thread-provisioning-active-context.js";
+import { isPreStartThreadStatus } from "./thread-status.js";
+
+interface ArchiveThreadEnvironment {
+  hostId: string;
+  id: string;
+}
 
 interface ArchiveThreadWithLifecycleEffectsArgs {
-  environment: {
-    hostId: string;
-    id: string;
-  };
+  environment: ArchiveThreadEnvironment | null;
   thread: Pick<Thread, "environmentId" | "id" | "status">;
+}
+
+interface ResolveArchiveThreadEnvironmentArgs {
+  thread: ArchiveThreadWithLifecycleEffectsArgs["thread"];
 }
 
 interface ArchiveEnvironmentThreadsArgs {
@@ -38,7 +50,38 @@ interface ArchiveThreadAndChildrenArgs {
   parentThread: Thread;
 }
 
-export function archiveThreadWithLifecycleEffects(
+/**
+ * Resolve the environment archive needs to stop the thread's live work, or
+ * null when there is nothing to stop. A thread loses its environment pointer
+ * when the environment row is pruned (threads.environment_id is ON DELETE SET
+ * NULL); that thread is settled and archivable without an environment. A
+ * pointer-less thread whose setup is still in flight (its environment row does
+ * not exist yet) keeps the refusal: archive does not cancel setup, so admitting
+ * it would let setup create an environment for an archived thread.
+ */
+export function resolveArchiveThreadEnvironment(
+  deps: Pick<AppDeps, "db">,
+  args: ResolveArchiveThreadEnvironmentArgs,
+): ArchiveThreadEnvironment | null {
+  if (args.thread.environmentId !== null) {
+    return requireThreadHostCommandEnvironment({
+      db: deps.db,
+      thread: args.thread,
+    });
+  }
+  if (
+    isPreStartThreadStatus(args.thread.status) ||
+    args.thread.status === "stopping" ||
+    getActiveThreadProvisionContext(args.thread.id) !== null
+  ) {
+    throwThreadEnvironmentUnavailable(
+      threadEnvironmentUnavailableDetails("never_attached", null),
+    );
+  }
+  return null;
+}
+
+function archiveThreadWithLifecycleEffects(
   deps: AppDeps,
   args: ArchiveThreadWithLifecycleEffectsArgs,
 ): Thread | null {
@@ -53,12 +96,15 @@ export function archiveThreadWithLifecycleEffects(
     threadId: archivedThread.id,
   });
   // Archive only stops active runtime work; manual stop is the pre-start
-  // provisioning cancellation entrypoint.
-  requestActiveRuntimeThreadStopIfNeeded(
-    deps,
-    archivedThread,
-    args.environment,
-  );
+  // provisioning cancellation entrypoint. A thread whose environment row was
+  // pruned has no runtime left to stop.
+  if (args.environment !== null) {
+    requestActiveRuntimeThreadStopIfNeeded(
+      deps,
+      archivedThread,
+      args.environment,
+    );
+  }
   dispatchSettledArchivedThreadProviderArchiveCommand(deps, {
     threadId: archivedThread.id,
   });
@@ -90,10 +136,7 @@ export function archiveThreadAndHiddenSourceForks(
     sourceThreadId: archivedThread.id,
   })) {
     archiveThreadWithLifecycleEffects(deps, {
-      environment: requireThreadHostCommandEnvironment({
-        db: deps.db,
-        thread: fork,
-      }),
+      environment: resolveArchiveThreadEnvironment(deps, { thread: fork }),
       thread: fork,
     });
   }
@@ -160,10 +203,7 @@ export function archiveThreadAndChildren(
   const affectedEnvironmentIds = new Set<string>();
 
   for (const thread of threads) {
-    const environment = requireThreadHostCommandEnvironment({
-      db: deps.db,
-      thread,
-    });
+    const environment = resolveArchiveThreadEnvironment(deps, { thread });
     const result = archiveThreadWithLifecycleEffects(deps, {
       environment,
       thread,
@@ -172,7 +212,9 @@ export function archiveThreadAndChildren(
       continue;
     }
     archivedThreadIds.push(result.id);
-    affectedEnvironmentIds.add(environment.id);
+    if (environment !== null) {
+      affectedEnvironmentIds.add(environment.id);
+    }
   }
 
   for (const environmentId of affectedEnvironmentIds) {

@@ -1,44 +1,19 @@
 import type { TaskSort } from "../shared/pagination.js";
-import type { PresetPermissionMode } from "../shared/contract.js";
+import type {
+  PRESET_ENVIRONMENT_KINDS,
+  PresetPermissionMode,
+  PresetReasoningLevel,
+  PresetServiceTier,
+  TASK_THREAD_LIVE_STATUSES,
+  TaskPriority,
+  TaskStatus,
+} from "../shared/contract.js";
 
-export const TASK_STATUSES = [
-  "backlog",
-  "todo",
-  "in_progress",
-  "in_review",
-  "done",
-  "canceled",
-] as const;
+export type { TaskPriority, TaskStatus };
 
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-
-export const TASK_PRIORITIES = [
-  "urgent",
-  "high",
-  "medium",
-  "low",
-  "none",
-] as const;
-
-export type TaskPriority = (typeof TASK_PRIORITIES)[number];
-
-export const COMMENT_KINDS = ["user", "agent", "system"] as const;
-export type CommentKind = (typeof COMMENT_KINDS)[number];
-
-export const TASK_THREAD_LIVE_STATUSES = [
-  "starting",
-  "working",
-  "idle",
-  "completed",
-  "failed",
-] as const;
+type CommentKind = "user" | "agent" | "system";
 
 export type TaskThreadLiveStatus = (typeof TASK_THREAD_LIVE_STATUSES)[number];
-
-export const PRESET_ENVIRONMENT_KINDS = [
-  "project-default",
-  "new-worktree",
-] as const;
 
 export type PresetEnvironmentKind = (typeof PRESET_ENVIRONMENT_KINDS)[number];
 
@@ -128,7 +103,8 @@ export interface Preset {
   name: string;
   providerId: string;
   modelId: string;
-  reasoningLevel: string;
+  reasoningLevel: PresetReasoningLevel;
+  serviceTier: PresetServiceTier | null;
   permissionMode: PresetPermissionMode;
   environmentKind: PresetEnvironmentKind;
   baseBranch: string | null;
@@ -147,6 +123,18 @@ export interface CreateFolderInput {
 export interface UpdateFolderInput {
   name?: string;
   parentFolderId?: string | null;
+}
+
+/**
+ * Result of deleting a folder. `deleted` is false when no row matched (the
+ * folder was already gone); the moved IDs name the projects and subfolders
+ * that the delete unfiled to the top level, read in the same transaction as
+ * the delete so they cannot drift from what actually moved.
+ */
+export interface DeleteFolderResult {
+  deleted: boolean;
+  movedProjectIds: string[];
+  movedFolderIds: string[];
 }
 
 export interface CreateProjectInput {
@@ -273,18 +261,13 @@ export interface UpsertTaskThreadInput {
   liveStatus: TaskThreadLiveStatus;
 }
 
-export interface UpdateTaskThreadInput {
-  presetName?: string;
-  title?: string;
-  liveStatus?: TaskThreadLiveStatus;
-}
-
 export interface CreatePresetInput {
   id?: string;
   name: string;
   providerId: string;
   modelId: string;
-  reasoningLevel: string;
+  reasoningLevel: PresetReasoningLevel;
+  serviceTier: PresetServiceTier | null;
   permissionMode: PresetPermissionMode;
   environmentKind: PresetEnvironmentKind;
   baseBranch: string | null;
@@ -297,7 +280,8 @@ export interface UpdatePresetInput {
   name?: string;
   providerId?: string;
   modelId?: string;
-  reasoningLevel?: string;
+  reasoningLevel?: PresetReasoningLevel;
+  serviceTier?: PresetServiceTier | null;
   permissionMode?: PresetPermissionMode;
   environmentKind?: PresetEnvironmentKind;
   baseBranch?: string | null;

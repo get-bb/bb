@@ -1,7 +1,7 @@
 export type DesktopShutdownSignal = "SIGINT" | "SIGTERM";
 export type DesktopSignalListener = () => void;
 
-export interface DesktopShutdownState {
+interface DesktopShutdownState {
   inProgress: boolean;
 }
 
@@ -10,7 +10,7 @@ export interface DesktopSignalProcess {
   on(signal: DesktopShutdownSignal, listener: DesktopSignalListener): void;
 }
 
-export interface HandleDesktopShutdownSignalArgs {
+interface HandleDesktopShutdownSignalArgs {
   exitProcess(code: number): void;
   quitApplication(): void;
   signal: DesktopShutdownSignal;
@@ -18,7 +18,7 @@ export interface HandleDesktopShutdownSignalArgs {
   stopOwnedRuntime(): Promise<void>;
 }
 
-export interface RegisterDesktopShutdownSignalHandlersArgs {
+interface RegisterDesktopShutdownSignalHandlersArgs {
   exitProcess(code: number): void;
   processEvents: DesktopSignalProcess;
   quitApplication(): void;
@@ -26,7 +26,7 @@ export interface RegisterDesktopShutdownSignalHandlersArgs {
   stopOwnedRuntime(): Promise<void>;
 }
 
-export interface RegisteredDesktopShutdownSignalHandlers {
+interface RegisteredDesktopShutdownSignalHandlers {
   remove(): void;
 }
 
@@ -38,7 +38,7 @@ export function createDesktopShutdownState(): DesktopShutdownState {
   return { inProgress: false };
 }
 
-export function signalExitCode(args: SignalExitCodeArgs): number {
+function signalExitCode(args: SignalExitCodeArgs): number {
   return args.signal === "SIGINT" ? 130 : 143;
 }
 

@@ -4,7 +4,7 @@ import { SidebarStickyStack } from "@/components/ui/sidebar.js";
 import {
   NO_COLLAPSED_CHILD_ACTIVITY,
   type CollapsedChildActivity,
-} from "@/lib/thread-activity";
+} from "@bb/client-core";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { DropPreviewRow } from "./ProjectRow";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";

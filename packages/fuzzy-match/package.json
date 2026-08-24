@@ -2,6 +2,7 @@
   "name": "@bb/fuzzy-match",
   "version": "0.0.1",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "source": "./src/index.ts",

@@ -490,8 +490,10 @@ describe("list filter/sort preference persistence", () => {
       ).toBe(true);
     });
     // Empty labelIds filter yields no rows (not the full unfiltered list).
-    expect(slot.queryByText("ALP-1")).toBeNull();
-    expect(slot.queryByText("ALP-2")).toBeNull();
+    await waitFor(() => {
+      expect(slot.queryByText("ALP-1")).toBeNull();
+      expect(slot.queryByText("ALP-2")).toBeNull();
+    });
   });
 });
 

@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   closeSession,
@@ -13,10 +11,10 @@ import {
 } from "../../src/data/sessions.js";
 import { getHost, upsertHost } from "../../src/data/hosts.js";
 import { hostDaemonSessions } from "../../src/schema.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",
@@ -28,7 +26,7 @@ describe("sessions", () => {
   it("opens a session and retrieves it", () => {
     const { db, host } = setup();
 
-    const session = openSession(db, noopNotifier, {
+    const session = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",
@@ -50,7 +48,7 @@ describe("sessions", () => {
     const { db, host } = setup();
     expect(getHost(db, host.id)?.lastSeenAt).toBeNull();
 
-    const session = openSession(db, noopNotifier, {
+    const session = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",
@@ -77,7 +75,7 @@ describe("sessions", () => {
   it("closes a session", () => {
     const { db, host } = setup();
 
-    const session = openSession(db, noopNotifier, {
+    const session = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",
@@ -101,7 +99,7 @@ describe("sessions", () => {
   it("closes old session when opening new one for same host", () => {
     const { db, host } = setup();
 
-    const session1 = openSession(db, noopNotifier, {
+    const session1 = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",
@@ -112,7 +110,7 @@ describe("sessions", () => {
       leaseTimeoutMs: 30_000,
     });
 
-    const session2 = openSession(db, noopNotifier, {
+    const session2 = openSession(db, {
       hostId: host.id,
       instanceId: "inst-2",
       hostName: "test-host",
@@ -147,7 +145,7 @@ describe("sessions", () => {
       type: "persistent",
     });
 
-    const firstSession = openSession(db, noopNotifier, {
+    const firstSession = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",
@@ -157,7 +155,7 @@ describe("sessions", () => {
       heartbeatIntervalMs: 10_000,
       leaseTimeoutMs: 30_000,
     });
-    const latestSession = openSession(db, noopNotifier, {
+    const latestSession = openSession(db, {
       hostId: host.id,
       instanceId: "inst-2",
       hostName: "test-host",
@@ -167,7 +165,7 @@ describe("sessions", () => {
       heartbeatIntervalMs: 10_000,
       leaseTimeoutMs: 30_000,
     });
-    const otherFirstSession = openSession(db, noopNotifier, {
+    const otherFirstSession = openSession(db, {
       hostId: otherHost.id,
       instanceId: "inst-3",
       hostName: "test-host-2",
@@ -177,7 +175,7 @@ describe("sessions", () => {
       heartbeatIntervalMs: 10_000,
       leaseTimeoutMs: 30_000,
     });
-    const otherLatestSession = openSession(db, noopNotifier, {
+    const otherLatestSession = openSession(db, {
       hostId: otherHost.id,
       instanceId: "inst-4",
       hostName: "test-host-2",
@@ -214,7 +212,7 @@ describe("sessions", () => {
 
   it("prefers an active replacement session when latest timestamps tie", () => {
     const { db, host } = setup();
-    const closedSession = openSession(db, noopNotifier, {
+    const closedSession = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",
@@ -224,7 +222,7 @@ describe("sessions", () => {
       heartbeatIntervalMs: 10_000,
       leaseTimeoutMs: 30_000,
     });
-    const activeSession = openSession(db, noopNotifier, {
+    const activeSession = openSession(db, {
       hostId: host.id,
       instanceId: "inst-2",
       hostName: "test-host",
@@ -264,7 +262,7 @@ describe("sessions", () => {
 
   it("extends the session lease on heartbeat", () => {
     const { db, host } = setup();
-    const session = openSession(db, noopNotifier, {
+    const session = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",
@@ -281,7 +279,7 @@ describe("sessions", () => {
 
   it("does not overwrite an already closed session", () => {
     const { db, host } = setup();
-    const session = openSession(db, noopNotifier, {
+    const session = openSession(db, {
       hostId: host.id,
       instanceId: "inst-1",
       hostName: "test-host",

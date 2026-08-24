@@ -3,7 +3,7 @@ import type {
   TemplateId,
   TemplateVariables,
 } from "./generated/templates.generated.js";
-import { type TemplateMetadata, templateRegistry } from "./registry.js";
+import { templateRegistry } from "./registry.js";
 
 let partialsRegistered = false;
 function ensurePartialsRegistered() {
@@ -44,15 +44,4 @@ export function renderTemplate<TTemplateId extends TemplateId>(
 ): string {
   ensurePartialsRegistered();
   return getCompiledTemplate(templateId)(variables).trim();
-}
-
-export function getTemplateMetadata(templateId: TemplateId): TemplateMetadata {
-  const { body: _body, ...metadata } = templateRegistry[templateId];
-  return metadata;
-}
-
-export function listTemplates(): TemplateMetadata[] {
-  return Object.values(templateRegistry).map(
-    ({ body: _body, ...metadata }) => metadata,
-  );
 }

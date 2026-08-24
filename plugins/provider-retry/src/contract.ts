@@ -1,7 +1,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
-export const providerRetryViewSchema = z
+const providerRetryViewSchema = z
   .object({
     threadId: z.string().min(1),
     providerId: z.string().min(1),

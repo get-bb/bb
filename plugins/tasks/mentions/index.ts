@@ -1,7 +1,13 @@
 import type { BbPluginApi, PluginMentionItem } from "@get-bb/plugin-sdk";
 
 import type { TasksApiStore } from "../api";
-import type { Attachment, Comment, Task, TaskThread } from "../db";
+import {
+  escapeLike,
+  type Attachment,
+  type Comment,
+  type Task,
+  type TaskThread,
+} from "../db";
 
 const SEARCH_LIMIT = 10;
 const RECENT_COMMENT_LIMIT = 5;
@@ -19,13 +25,6 @@ interface MentionTaskRow {
 interface AttachmentManifestRow {
   id: string;
   file_name: string;
-}
-
-function escapeLike(value: string): string {
-  return value
-    .replaceAll("\\", "\\\\")
-    .replaceAll("%", "\\%")
-    .replaceAll("_", "\\_");
 }
 
 function displayName(value: string): string {

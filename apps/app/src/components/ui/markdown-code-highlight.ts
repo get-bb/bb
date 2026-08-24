@@ -1,31 +1,22 @@
-import { highlight } from "sugar-high";
-import { c, css, go, java, python, rust } from "sugar-high/presets";
+import { highlight, type LanguageName } from "sugar-high";
+import { lang } from "sugar-high/lang";
 
-// sugar-high's core highlighter targets JavaScript/JSX/TypeScript. These presets
-// extend it to the other languages agents emit most often. A language without a
-// preset falls through to the core highlighter, which still tokenizes
+// sugar-high resolves fence aliases it knows (`sh`/`bash`/`zsh` -> shell,
+// `py` -> python, `c++`/`cc` -> cpp, `yml` -> yaml, ...). These cover the
+// aliases agents emit that it does not know. A language it cannot resolve
+// falls through to the core JavaScript highlighter, which still tokenizes
 // identifiers, strings, and comments rather than failing.
-const PRESET_BY_LANGUAGE: Record<string, typeof rust> = {
-  rust,
-  rs: rust,
-  python,
-  py: python,
-  go,
-  c,
-  "c++": c,
-  cpp: c,
-  cc: c,
-  h: c,
-  hpp: c,
-  java,
-  kotlin: java,
-  kt: java,
-  css,
-  scss: css,
-  less: css,
+const EXTRA_LANGUAGE_ALIASES: Record<string, LanguageName> = {
+  console: "shell",
+  shellscript: "shell",
+  h: "c",
+  hpp: "cpp",
+  hh: "cpp",
+  hxx: "cpp",
+  less: "css",
 };
 
-export interface HighlightMarkdownCodeArgs {
+interface HighlightMarkdownCodeArgs {
   code: string;
   language: string | null;
 }
@@ -41,6 +32,9 @@ export function highlightMarkdownCode({
   code,
   language,
 }: HighlightMarkdownCodeArgs): string {
-  const preset = language === null ? undefined : PRESET_BY_LANGUAGE[language];
-  return highlight(code, preset);
+  const resolved =
+    language === null
+      ? undefined
+      : (lang(language) ?? EXTRA_LANGUAGE_ALIASES[language]);
+  return highlight(code, { lang: resolved });
 }

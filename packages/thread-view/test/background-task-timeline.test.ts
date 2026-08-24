@@ -36,7 +36,6 @@ function buildTimeline(
     contextWindowEvents: [],
     events,
     options: {
-      includeDebugRawEvents: false,
       includeNestedRows: options.includeNestedRows ?? true,
       includeProviderUnhandledOperations: false,
       isLatestPage: true,
@@ -117,12 +116,14 @@ function agentTaskItem(args: {
   taskStatus: ThreadEventBackgroundTaskItem["taskStatus"];
   status: ThreadEventBackgroundTaskItem["status"];
   id?: string;
+  familyId?: string;
   description?: string;
   parentToolCallId?: string;
 }): ThreadEventBackgroundTaskItem {
   return {
     type: "backgroundTask",
     id: args.id ?? "task:agent-1",
+    ...(args.familyId ? { familyId: args.familyId } : {}),
     taskType: "local_agent",
     description: args.description ?? "Map test coverage",
     status: args.status,
@@ -796,10 +797,13 @@ describe("background task timeline projection", () => {
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
+    // The requested model lived in the spawning Agent call's arguments, which
+    // core no longer reads by tool name; the v3 delegation carries it in its
+    // presentation detail, so the structured field stays null either way.
     expect(timeline.activeBackgroundCommands).toMatchObject([
       {
         description: "Inspect the mobile banner",
-        model: "haiku",
+        model: null,
         taskType: "local_agent",
       },
     ]);
@@ -846,7 +850,62 @@ describe("background task timeline projection", () => {
     expect(timeline.activeBackgroundCommands).toMatchObject([
       {
         itemId: "task:agent-restart#2",
-        model: "haiku",
+        model: null,
+        status: "pending",
+        taskType: "local_agent",
+      },
+    ]);
+  });
+
+  it("correlates restarted generations through the explicit familyId under assembler-minted item ids", () => {
+    // Assembler-minted ids (`<entropy>-iN`) carry no `#N` generation suffix:
+    // the family identity travels only as the item's explicit `familyId`.
+    const timeline = buildTimeline(
+      [
+        turnStarted("turn-1", 1),
+        modelAgentToolCallStarted(2),
+        agentTaskStarted(
+          agentTaskItem({
+            status: "pending",
+            taskStatus: "running",
+            id: "abc-i7",
+            familyId: "agent-restart",
+            description: "Inspect the mobile banner",
+            parentToolCallId: "toolu-root-agent",
+          }),
+          3,
+        ),
+        agentTaskCompleted(
+          agentTaskItem({
+            status: "completed",
+            taskStatus: "completed",
+            id: "abc-i7",
+            familyId: "agent-restart",
+            description: "Inspect the mobile banner",
+            parentToolCallId: "toolu-root-agent",
+          }),
+          4,
+        ),
+        // The restart mints a fresh item id and omits its spawning call; the
+        // shared familyId is what carries the earlier generation's model.
+        agentTaskStarted(
+          agentTaskItem({
+            status: "pending",
+            taskStatus: "running",
+            id: "abc-i9",
+            familyId: "agent-restart",
+            description: "Inspect the mobile banner",
+          }),
+          5,
+        ),
+      ],
+      { includeNestedRows: false, turnMessageDetail: "summary" },
+    );
+
+    expect(timeline.activeBackgroundCommands).toMatchObject([
+      {
+        itemId: "abc-i9",
+        model: null,
         status: "pending",
         taskType: "local_agent",
       },
@@ -902,7 +961,7 @@ describe("background task timeline projection", () => {
         (row) => row.itemId === "task:agent-restart#2",
       ),
     ).toMatchObject({
-      model: "haiku",
+      model: null,
       status: "completed",
       taskType: "local_agent",
     });

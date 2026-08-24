@@ -57,7 +57,7 @@ export type EnvironmentLifecycleEventType = EnvironmentLifecycleEvent["type"];
  * `matchingDestroyAttempt` reads the event's `destroyAttemptId` payload and
  * may only be declared on events that carry one.
  */
-export interface EnvironmentLifecycleSupersessionPredicates {
+interface EnvironmentLifecycleSupersessionPredicates {
   managed?: true;
   matchingDestroyAttempt?: true;
 }
@@ -88,7 +88,7 @@ export interface EnvironmentLifecyclePathDependentTarget {
   withoutWorkspacePath: EnvironmentStatus;
 }
 
-export type EnvironmentLifecycleTarget =
+type EnvironmentLifecycleTarget =
   | EnvironmentStatus
   | EnvironmentLifecyclePathDependentTarget;
 
@@ -155,11 +155,11 @@ export type EnvironmentLifecycleNoopReason =
   | "illegal-transition"
   | "superseded";
 
-export type EnvironmentLifecycleEvaluation =
+type EnvironmentLifecycleEvaluation =
   | { to: EnvironmentStatus }
   | { noop: EnvironmentLifecycleNoopReason; detail: string };
 
-export interface EvaluateEnvironmentLifecycleEventArgs {
+interface EvaluateEnvironmentLifecycleEventArgs {
   environment: EnvironmentLifecycleRowState;
   event: EnvironmentLifecycleEvent;
 }

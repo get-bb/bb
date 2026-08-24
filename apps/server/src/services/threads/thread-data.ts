@@ -5,6 +5,7 @@ import {
   listStoredEventRows as listStoredEventRowRecords,
 } from "@bb/db";
 import type { DbConnection, StoredEventRow } from "@bb/db";
+import { toRecord } from "@bb/core-ui";
 import { buildThreadEventRow, parseStoredThreadEvent } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
@@ -20,24 +21,19 @@ type StoredEventPayloadRow = Pick<
   "data" | "sequence" | "threadId" | "type"
 >;
 
-export interface ListThreadEventRowsArgs {
+interface ListThreadEventRowsArgs {
   afterSeq?: number;
+  beforeSeq?: number;
   limit?: number;
+  order?: "asc" | "desc";
   threadId: string;
+  types?: readonly ThreadEventType[];
 }
 
-export interface FindThreadEventArgs {
+interface FindThreadEventArgs {
   afterSeq?: number;
   threadId: string;
   type: ThreadEventType;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function toRecord(value: unknown): Record<string, unknown> | null {
-  return isRecord(value) ? value : null;
 }
 
 function parseStoredEventPayload(
@@ -98,7 +94,7 @@ export function parseStoredEvent(row: StoredEventRow): ThreadEvent {
   });
 }
 
-export function parseStoredEventRow(row: StoredEventRow): ThreadEventRow {
+function parseStoredEventRow(row: StoredEventRow): ThreadEventRow {
   return buildThreadEventRow({
     id: row.id,
     scope: parseStoredEventScope(row),
@@ -115,8 +111,11 @@ export function listThreadEventRows(
 ): ThreadEventRow[] {
   const rows = listStoredEventRowRecords(db, {
     afterSequence: args.afterSeq,
+    beforeSequence: args.beforeSeq,
     limit: args.limit,
+    order: args.order,
     threadId: args.threadId,
+    types: args.types,
   });
   return rows.map((row) => parseStoredEventRow(row));
 }

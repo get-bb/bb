@@ -1,5 +1,4 @@
 import type { JsonValue } from "@bb/domain";
-import { vi } from "vitest";
 import { z } from "zod";
 
 export type BridgeJsonRpcId = string | number;
@@ -24,11 +23,18 @@ export interface BridgeJsonRpcOutputMessage {
 
 export interface CapturedBridgeJsonRpcOutput {
   messages: BridgeJsonRpcOutputMessage[];
+  /**
+   * Every message since the last call: the conformance transport's drain
+   * (`{ send: handleLine, takeMessages: output.takeMessages }`).
+   */
+  takeMessages(): BridgeJsonRpcOutputMessage[];
   restore(): void;
 }
 
 export interface BridgeJsonRpcTestHarness {
   messages: BridgeJsonRpcOutputMessage[];
+  /** Every message since the last call: the conformance transport's drain. */
+  takeMessages(): BridgeJsonRpcOutputMessage[];
   flushWork(): Promise<void>;
   hasResponse(id: BridgeJsonRpcId): boolean;
   restore(): void;
@@ -88,10 +94,17 @@ function waitForNextBridgeTick(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/**
+ * Capture everything a bridge writes to stdout as parsed JSON-RPC messages.
+ * Patches `process.stdout.write` directly (no test-framework spy), so the
+ * kit runs under any runner; `restore()` puts the original writer back.
+ */
 export function captureBridgeJsonRpcOutput(): CapturedBridgeJsonRpcOutput {
   const messages: BridgeJsonRpcOutputMessage[] = [];
-  const writeSpy = vi.spyOn(process.stdout, "write");
-  writeSpy.mockImplementation((buffer: string | Uint8Array) => {
+  const originalWrite = process.stdout.write;
+  const capturingWrite: typeof process.stdout.write = (
+    buffer: string | Uint8Array,
+  ) => {
     const text =
       typeof buffer === "string"
         ? buffer
@@ -102,11 +115,20 @@ export function captureBridgeJsonRpcOutput(): CapturedBridgeJsonRpcOutput {
       }
     }
     return true;
-  });
+  };
+  process.stdout.write = capturingWrite;
+  let drained = 0;
   return {
     messages,
+    takeMessages() {
+      const fresh = messages.slice(drained);
+      drained = messages.length;
+      return fresh;
+    },
     restore() {
-      writeSpy.mockRestore();
+      if (process.stdout.write === capturingWrite) {
+        process.stdout.write = originalWrite;
+      }
     },
   };
 }
@@ -141,10 +163,6 @@ async function waitForBridgeJsonRpcResponse(
   throw new Error(`Timed out waiting for JSON-RPC response ${String(args.id)}`);
 }
 
-async function flushBridgeJsonRpcWork(): Promise<void> {
-  await waitForNextBridgeTick();
-}
-
 function bridgeJsonRpcResponseExists(
   args: BridgeJsonRpcResponseExistsArgs,
 ): boolean {
@@ -157,7 +175,8 @@ export function createBridgeJsonRpcTestHarness(
   const output = captureBridgeJsonRpcOutput();
   return {
     messages: output.messages,
-    flushWork: flushBridgeJsonRpcWork,
+    takeMessages: output.takeMessages,
+    flushWork: waitForNextBridgeTick,
     hasResponse(id: BridgeJsonRpcId): boolean {
       return bridgeJsonRpcResponseExists({ id, output });
     },

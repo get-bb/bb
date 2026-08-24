@@ -66,8 +66,12 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   countQueuedMessageAttachments,
   formatQueuedMessagePreview,
-} from "@/views/thread-detail/threadQueuedMessages";
-import type { QueuedMessageReorderRequest } from "@/lib/queued-message-reorder";
+} from "@bb/client-core";
+import {
+  collectLeadQueuedMessageGroupIds,
+  preserveLeadQueuedMessageGroupAfterReorder,
+  type QueuedMessageReorderRequest,
+} from "@/lib/queued-message-reorder";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import { shiftMentionsToTextRange } from "@/components/thread/timeline/ConversationMessageMentions";
 import {
@@ -76,6 +80,10 @@ import {
   substitutePromptMentions,
 } from "@/components/ui/markdown-prompt-mentions";
 import { normalizePromptBlockquoteBoundaries } from "@/components/ui/markdown-prompt-blockquote-boundaries";
+import {
+  QueuedEditorTypeaheadLayoutContext,
+  type QueuedEditorTypeaheadLayout,
+} from "@/components/promptbox/queued-editor-typeahead-layout";
 
 /** Which in-flight action the processing message is running, for its label. */
 export type QueuedMessageProcessingAction = "send" | "edit" | "delete";
@@ -141,6 +149,7 @@ const WORKSPACE_MIN_HEIGHT = 240;
 const WORKSPACE_MAX_HEIGHT = 360;
 const WORKSPACE_CHROME_HEIGHT = 56;
 const WORKSPACE_ROW_HEIGHT = 40;
+const TYPEAHEAD_MENU_GAP = 8;
 const SURFACE_DRAG_THRESHOLD = 72;
 const QUEUED_MESSAGE_ACTION_TAKEOVER_CLASS =
   "relative bg-surface-raised-solid before:pointer-events-none before:absolute before:inset-y-0 before:right-full before:w-4 before:bg-gradient-to-r before:from-transparent before:to-surface-raised-solid before:content-['']";
@@ -275,43 +284,6 @@ function CompactQueuedMarkdownPreview({
       </ReactMarkdown>
     </span>
   );
-}
-
-function collectLeadQueuedMessageGroupIds(
-  queuedMessages: readonly ThreadQueuedMessage[],
-): string[] {
-  const ids: string[] = [];
-  for (const queuedMessage of queuedMessages) {
-    ids.push(queuedMessage.id);
-    if (!queuedMessage.groupWithNext) break;
-  }
-  return ids;
-}
-
-function preserveLeadQueuedMessageGroupAfterReorder({
-  originalLeadGroupIds,
-  queuedMessages,
-}: {
-  originalLeadGroupIds: readonly string[];
-  queuedMessages: readonly ThreadQueuedMessage[];
-}): ThreadQueuedMessage[] {
-  if (originalLeadGroupIds.length <= 1) {
-    return queuedMessages.map((queuedMessage) => ({
-      ...queuedMessage,
-      groupWithNext: false,
-    }));
-  }
-
-  const originalLeadGroupIdSet = new Set(originalLeadGroupIds);
-  const preservesLeadGroup = queuedMessages
-    .slice(0, originalLeadGroupIds.length)
-    .every((queuedMessage) => originalLeadGroupIdSet.has(queuedMessage.id));
-
-  return queuedMessages.map((queuedMessage, index) => ({
-    ...queuedMessage,
-    groupWithNext:
-      preservesLeadGroup && index < originalLeadGroupIds.length - 1,
-  }));
 }
 
 export function resolveQueuedMessageDrag({
@@ -893,7 +865,7 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
                   ref={setActivatorNodeRef}
                   type="button"
                   className={cn(
-                    "pointer-events-auto flex size-6 shrink-0 touch-none select-none items-center justify-center rounded-full border border-transparent bg-transparent text-muted-foreground transition-[background-color,border-color,box-shadow,color] focus-visible:border-border focus-visible:bg-background focus-visible:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-has-[[data-queued-message-group-boundary-row]:hover]/queue:border-border group-has-[[data-queued-message-group-boundary-row]:hover]/queue:bg-background group-has-[[data-queued-message-group-boundary-row]:hover]/queue:shadow-sm group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:border-border group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:bg-background group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:shadow-sm hover:border-border hover:bg-background hover:shadow-sm [@media(hover:none)]:border-border [@media(hover:none)]:bg-background [@media(hover:none)]:shadow-sm",
+                    "pointer-events-auto flex size-6 shrink-0 touch-none select-none items-center justify-center rounded-full border border-transparent bg-transparent text-muted-foreground transition-[background-color,border-color,box-shadow,color] focus-visible:border-border focus-visible:bg-background focus-visible:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring queue-boundary-row-hover:border-border queue-boundary-row-hover:bg-background queue-boundary-row-hover:shadow-sm queue-boundary-row-focus-within:border-border queue-boundary-row-focus-within:bg-background queue-boundary-row-focus-within:shadow-sm hover:border-border hover:bg-background hover:shadow-sm [@media(hover:none)]:border-border [@media(hover:none)]:bg-background [@media(hover:none)]:shadow-sm",
                     anotherItemIsDragging
                       ? "pointer-events-none opacity-0"
                       : "opacity-100",
@@ -908,7 +880,7 @@ function SortableGroupBoundaryHandle({ disabled }: { disabled: boolean }) {
                 >
                   <Icon
                     name="DragDropHorizontal"
-                    className="size-3.5 opacity-55 transition-opacity group-has-[[data-queued-message-group-boundary-row]:hover]/queue:opacity-100 group-has-[[data-queued-message-group-boundary-row]:focus-within]/queue:opacity-100 [@media(hover:none)]:opacity-100"
+                    className="size-3.5 opacity-55 transition-opacity queue-boundary-row-hover:opacity-100 queue-boundary-row-focus-within:opacity-100 [@media(hover:none)]:opacity-100"
                     aria-hidden="true"
                   />
                 </button>
@@ -931,6 +903,11 @@ function QueuedMessageInlineEditorSlot({
 }: {
   editor: QueuedMessageInlineEditor;
 }) {
+  const [typeaheadLayout, setTypeaheadLayout] =
+    useState<QueuedEditorTypeaheadLayout>({ height: 0, isOpen: false });
+  const typeaheadReservation = typeaheadLayout.isOpen
+    ? Math.ceil(typeaheadLayout.height) + TYPEAHEAD_MENU_GAP
+    : 0;
   return (
     <li
       data-queued-message-inline-editor=""
@@ -942,7 +919,14 @@ function QueuedMessageInlineEditorSlot({
         label={`Editing queued message ${editor.queuedMessageIndex + 1}`}
         onCancel={editor.onDismiss}
       >
-        {editor.content}
+        <QueuedEditorTypeaheadLayoutContext.Provider value={setTypeaheadLayout}>
+          <div
+            data-queued-editor-typeahead-reservation=""
+            style={{ paddingTop: typeaheadReservation }}
+          >
+            {editor.content}
+          </div>
+        </QueuedEditorTypeaheadLayoutContext.Provider>
       </InlineMessageEditorFrame>
       <OverflowFade placement="below" tone="surface-raised" className="z-10" />
     </li>

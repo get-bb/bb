@@ -8,16 +8,15 @@
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
-  type BuildInteractiveResponseArgs,
+  type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
   type PendingInteractionApprovalDecision,
   type PendingInteractionGrantablePermissionProfile,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
-  isApprovalPendingInteractionPayload,
-  isApprovalPendingInteractionResolution,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import type { CodexMacOsPermissionItem } from "./extension-kinds.js";
 import { normalizePendingInteractionRequestedPermissionProfile } from "./pending-interaction-normalization.js";
 import type { CommandExecutionRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/CommandExecutionRequestApprovalResponse.js";
 import type { FileChangeRequestApprovalResponse } from "./generated/codex-app-server/schema/v2/FileChangeRequestApprovalResponse.js";
@@ -39,15 +38,13 @@ type CodexInteractiveResponse =
   | FileChangeRequestApprovalResponse
   | PermissionsRequestApprovalResponse;
 
-function assertNever(value: never, message?: string): never {
-  throw new ProviderResponseEncodeError(
-    message ?? `Unexpected value: ${String(value)}`,
-  );
+function assertNever(value: never): never {
+  throw new ProviderResponseEncodeError(`Unexpected value: ${String(value)}`);
 }
 
 function requireGrantedPermissions(
   args: Extract<
-    BuildInteractiveResponseArgs["resolution"],
+    ApprovalInteractionOutcome["resolution"],
     { decision: "allow_once" | "allow_for_session" }
   >,
 ) {
@@ -213,19 +210,16 @@ export function decodeCodexInteractiveRequest(
   }
 }
 
+/**
+ * Map an approval outcome back onto the Codex approval response. Codex
+ * raises approvals only, so the bridge parses the wire resolution with
+ * `approvalInteractionOutcomeSchema` against the payload it kept: the pair
+ * arrives here checked, and a user answer cannot reach this encoder.
+ */
 export function buildCodexInteractiveResponse(
-  args: BuildInteractiveResponseArgs,
+  args: ApprovalInteractionOutcome,
 ): CodexInteractiveResponse {
-  if (
-    !isApprovalPendingInteractionPayload(args.request.payload) ||
-    !isApprovalPendingInteractionResolution(args.resolution)
-  ) {
-    throw new ProviderResponseEncodeError(
-      "Codex user-question interactive requests are unsupported",
-    );
-  }
-
-  switch (args.request.payload.subject.kind) {
+  switch (args.payload.subject.kind) {
     case "command": {
       const response: CommandExecutionRequestApprovalResponse = {
         decision: toCodexCommandApprovalDecision(args.resolution.decision),
@@ -263,8 +257,14 @@ export function buildCodexInteractiveResponse(
       throw new ProviderResponseEncodeError(
         "Codex plan-review interactive requests are unsupported",
       );
+    // This bridge raises no tool_use subject: every Codex approval is a
+    // command, a file change, or a permission profile.
+    case "tool_use":
+      throw new ProviderResponseEncodeError(
+        "tool_use approval subjects are not produced by the Codex bridge",
+      );
     default:
-      return assertNever(args.request.payload.subject);
+      return assertNever(args.payload.subject);
   }
 }
 
@@ -328,22 +328,58 @@ function toPendingInteractionPermissionProfile(
   });
 }
 
+/**
+ * The grantable part of a codex permission profile. A macOS profile is not
+ * grantable through bb's provider-neutral permission layer; it rides the
+ * timeline as a `provider-codex/macos-permission` item instead
+ * (`extractCodexMacOsPermissionRequest`), so the approval it came with still
+ * reaches the user.
+ */
 function toPendingInteractionGrantablePermissionProfile(
   permissions: CodexAdditionalPermissions | CodexRequestedPermissionProfile,
 ): PendingInteractionGrantablePermissionProfile {
-  if (
-    "macos" in permissions &&
-    permissions.macos !== null &&
-    permissions.macos !== undefined
-  ) {
-    throw new ProviderRequestDecodeErrorValue(
-      "Codex macOS permission grants are not supported by the provider-neutral permission layer",
-    );
-  }
   const normalized = toPendingInteractionPermissionProfile(permissions);
   return {
     network: normalized.network,
     fileSystem: normalized.fileSystem,
+  };
+}
+
+export interface CodexMacOsPermissionRequest {
+  providerThreadId: string;
+  turnId: string;
+  item: CodexMacOsPermissionItem;
+}
+
+/**
+ * The macOS permission profile a command approval asks for, when it asks for
+ * one. Decoded beside the approval (never instead of it) so the bridge can
+ * put the profile on the timeline as its own row.
+ */
+export function extractCodexMacOsPermissionRequest(
+  request: ProviderInboundRequest,
+): CodexMacOsPermissionRequest | null {
+  if (request.method !== "item/commandExecution/requestApproval") {
+    return null;
+  }
+  const parsed = codexCommandExecutionRequestApprovalParamsSchema.safeParse(
+    request.params,
+  );
+  if (!parsed.success) {
+    return null;
+  }
+  const macos = parsed.data.additionalPermissions?.macos;
+  if (macos === null || macos === undefined) {
+    return null;
+  }
+  return {
+    providerThreadId: parsed.data.threadId,
+    turnId: parsed.data.turnId,
+    item: {
+      approvalItemId: parsed.data.itemId,
+      reason: parsed.data.reason ?? null,
+      permissions: macos,
+    },
   };
 }
 

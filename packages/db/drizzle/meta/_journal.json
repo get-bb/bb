@@ -708,6 +708,55 @@
       "when": 1787031224925,
       "tag": "0100_flippant_psylocke",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "6",
+      "when": 1787108435805,
+      "tag": "0101_thread_search_prefix_fts",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "6",
+      "when": 1787163393338,
+      "tag": "0102_app_settings_key_value",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "6",
+      "when": 1787181956957,
+      "tag": "0103_wandering_mongoose",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "6",
+      "when": 1787212680694,
+      "tag": "0104_chunky_redwing",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "6",
+      "when": 1787288444172,
+      "tag": "0105_provider_settings_to_plugins",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "6",
+      "when": 1787305850786,
+      "tag": "0106_thread_state_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "6",
+      "when": 1787331095369,
+      "tag": "0107_kind_based_indexes",
+      "breakpoints": true
     }
   ]
 }

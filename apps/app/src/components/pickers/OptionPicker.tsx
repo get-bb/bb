@@ -18,15 +18,6 @@ import {
   OPTION_MUTED_CLASS_NAME,
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "@bb/shared-ui/option-display";
-export {
-  OptionDisplay,
-  OPTION_BASE_CLASS_NAME,
-  OPTION_CONTENT_CLASS_NAME,
-  OPTION_INTERACTIVE_CLASS_NAME,
-  OPTION_MENU_CONTENT_CLASS_NAME,
-  OPTION_MUTED_CLASS_NAME,
-  OPTION_TRIGGER_CONTENT_CLASS_NAME,
-} from "@bb/shared-ui/option-display";
 
 // Inline picker triggers keep flat resting chrome (no border/background/shadow
 // so they sit inline with surrounding text) but use the ghost button variant's
@@ -78,7 +69,6 @@ interface OptionPickerProps<T extends string> {
     compactLabel?: string;
     description?: string;
     title?: string;
-    tone?: "default" | "warning";
   };
   /**
    * Render the trigger as a non-interactive, dimmed label showing the same
@@ -107,9 +97,7 @@ export function OptionPicker<T extends string>({
   showChevronWhenDisabled,
 }: OptionPickerProps<T>) {
   const selectedOption = options.find((option) => option.value === value);
-  const selectedTone = displayOverride
-    ? (displayOverride.tone ?? "default")
-    : selectedOption?.tone;
+  const selectedTone = displayOverride ? "default" : selectedOption?.tone;
   const selectedIsWarning = selectedTone === "warning";
   const SelectedIcon = selectedOption?.icon;
   const selectedLabel =
@@ -215,7 +203,7 @@ export function OptionPicker<T extends string>({
                 ) : null}
                 <span className="min-w-0 flex-1">
                   <span
-                    className="block whitespace-normal break-words"
+                    className="block whitespace-normal break-words font-medium"
                     title={option.label}
                   >
                     {option.label}

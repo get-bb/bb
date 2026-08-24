@@ -1,0 +1,58 @@
+{
+  "providerId": "acp-grok",
+  "variant": "symlink-outside",
+  "workspace": {
+    "commands": [
+      {
+        "name": "grok-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "grok-home-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-grok-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-grok-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "grok-home-skill",
+        "description": "grok-home-skill skill",
+        "filePath": "<home>/.grok/skills/grok-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "ws-grok-skill",
+        "description": "ws-grok-skill skill",
+        "filePath": "<root>/ws/.grok/skills/ws-grok-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "grok-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "grok-home-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "grok-home-skill",
+        "description": "grok-home-skill skill",
+        "filePath": "<home>/.grok/skills/grok-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  }
+}

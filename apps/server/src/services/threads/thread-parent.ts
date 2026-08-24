@@ -3,7 +3,7 @@ import type { Thread } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { throwParentThreadInvalid } from "../lib/lifecycle-api-errors.js";
 
-export const MAX_THREAD_HIERARCHY_DEPTH = 4;
+const MAX_THREAD_HIERARCHY_DEPTH = 4;
 
 /**
  * Whether a thread is an agent-delegated child. Forks and side chats keep
@@ -39,15 +39,13 @@ export type ParentThread = Pick<
 > &
   Partial<Pick<Thread, "originKind">>;
 
-export interface IsLiveParentThreadArgs {
+interface IsLiveParentThreadArgs {
   parentThread: ParentThread | null;
-  projectId: string;
 }
 
-export interface AssertValidParentThreadArgs {
+interface AssertValidParentThreadArgs {
   childThreadId?: string;
   parentThreadId: string;
-  projectId: string;
 }
 
 interface ResolveParentDepthArgs {
@@ -60,14 +58,13 @@ interface ResolveThreadSubtreeDepthArgs {
   visitedThreadIds: Set<string>;
 }
 
-function toParentThread(thread: Thread): ParentThread {
-  return thread;
-}
-
+/**
+ * A live parent may belong to another project: agents delegate work across
+ * repositories, and the child still reports to and inherits policy from it.
+ */
 export function isLiveParentThread(args: IsLiveParentThreadArgs): boolean {
   return (
     args.parentThread !== null &&
-    args.parentThread.projectId === args.projectId &&
     args.parentThread.archivedAt === null &&
     args.parentThread.deletedAt === null
   );
@@ -97,8 +94,7 @@ function resolveParentDepth(
       return depth;
     }
 
-    const nextParentThread = getThread(deps.db, parentThread.parentThreadId);
-    parentThread = nextParentThread ? toParentThread(nextParentThread) : null;
+    parentThread = getThread(deps.db, parentThread.parentThreadId);
   }
 
   return depth;
@@ -129,7 +125,7 @@ function resolveThreadSubtreeDepth(
   return maxChildDepth + 1;
 }
 
-export interface CanThreadSpawnChildArgs {
+interface CanThreadSpawnChildArgs {
   thread: ParentThread;
 }
 
@@ -158,9 +154,6 @@ export function assertValidParentThread(
   }
   const liveParentThread: Thread = parentThread;
 
-  if (liveParentThread.projectId !== args.projectId) {
-    throwParentThreadInvalid("wrong_project");
-  }
   if (liveParentThread.archivedAt !== null) {
     throwParentThreadInvalid("archived");
   }

@@ -30,7 +30,7 @@ export async function runGitWithWorktreeMetadataLock(
   args: GitCommandArgs,
   options: RunGitOptions,
 ): Promise<GitCommandResult> {
-  const commonDir = await getGitCommonDir(options.cwd);
+  const commonDir = await getGitCommonDir(options.cwd, options);
   return withWorktreeMetadataLock(
     commonDir,
     () => runGit(args, options),

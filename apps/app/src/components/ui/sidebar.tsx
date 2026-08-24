@@ -15,16 +15,25 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
+import { setCompactSidebarDrawerShowing } from "./sidebar-mobile-drawer-visibility.js";
 
 const SIDEBAR_WIDTH = "16rem";
 const SIDEBAR_WIDTH_MOBILE = "min(90vw, 320px)";
 const SIDEBAR_WIDTH_ICON = "3rem";
 const SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX = 24;
+// Touches that start inside this band from the left edge get the scroll-
+// blocking (non-passive) touch path so a horizontal swipe can claim the
+// gesture from the browser; touches deeper in the content still open the
+// drawer, but through a passive listener that never delays a scroll start.
+const SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX = 72;
 const SIDEBAR_MOBILE_SWIPE_OPEN_INTENT_PX = 12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_RATIO = 0.33;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_MIN_RATIO = 0.12;
 const SIDEBAR_MOBILE_SWIPE_OPEN_FLING_VELOCITY_PX_PER_SEC = 450;
 const SIDEBAR_MOBILE_DRAG_SETTLE_MS = 220;
+// Upper bound on how long the closed compact drawer stays empty after boot
+// before its subtree is realized regardless of main-thread idleness.
+const SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS = 1000;
 const SIDEBAR_MOBILE_DRAG_SETTLE_EASING = "cubic-bezier(0.32, 0.72, 0, 1)";
 // The panel moves on the `translate` property, matching Tailwind v4's
 // `-translate-x-full` utilities. Inline motion styles MUST use the same
@@ -69,6 +78,13 @@ type SidebarInsetSwipeSession = {
   isDragging: boolean;
   selectionRoot: Element | null;
   startTarget: Element | null;
+  /**
+   * Whether the move listener for this session was registered non-passive,
+   * so `preventDefault` can stop the browser from scrolling once the swipe
+   * has horizontal intent. Passive sessions must not call it (the browser
+   * ignores it and Chrome logs an intervention warning).
+   */
+  canPreventDefault: boolean;
 };
 
 const sidebarMobileWidthStyle: SidebarMobileWidthStyle = {
@@ -106,12 +122,9 @@ function getSidebarMobileMotionNodes(): {
   };
 }
 
-function getSidebarMobilePanelTranslate(
-  progress: number,
-  side: "left" | "right",
-): string {
+function getSidebarMobilePanelTranslate(progress: number): string {
   const hiddenPercent = (1 - progress) * 100;
-  return side === "left" ? `-${hiddenPercent}%` : `${hiddenPercent}%`;
+  return `-${hiddenPercent}%`;
 }
 
 function applySidebarMobileDragStyles({
@@ -122,11 +135,10 @@ function applySidebarMobileDragStyles({
   settling: boolean;
 }) {
   const { panel, backdrop } = getSidebarMobileMotionNodes();
-  const side = panel?.dataset.side === "right" ? "right" : "left";
 
   if (panel !== null) {
     panel.setAttribute("data-vaul-animate", "false");
-    panel.style.translate = getSidebarMobilePanelTranslate(progress, side);
+    panel.style.translate = getSidebarMobilePanelTranslate(progress);
     panel.style.transition = settling
       ? SIDEBAR_MOBILE_PANEL_SETTLE_TRANSITION
       : "none";
@@ -176,6 +188,7 @@ function createSidebarInsetSwipeSession({
   startY,
   selectionRoot,
   startTarget,
+  canPreventDefault,
 }: {
   kind: "pointer" | "touch";
   id: number;
@@ -183,6 +196,7 @@ function createSidebarInsetSwipeSession({
   startY: number;
   selectionRoot: Element | null;
   startTarget: Element | null;
+  canPreventDefault: boolean;
 }): SidebarInsetSwipeSession {
   const nowMs = Date.now();
   return {
@@ -198,7 +212,20 @@ function createSidebarInsetSwipeSession({
     isDragging: false,
     selectionRoot,
     startTarget,
+    canPreventDefault,
   };
+}
+
+/**
+ * Whether a content-area touch swipe may register the scroll-blocking touch
+ * path. Only touches near the left edge (past the browser's own back-swipe
+ * guard) get it; see SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX.
+ */
+function isSidebarSwipeEdgeZoneTouch(clientX: number): boolean {
+  return (
+    clientX >= SIDEBAR_MOBILE_SWIPE_BROWSER_EDGE_GUARD_PX &&
+    clientX < SIDEBAR_MOBILE_SWIPE_OPEN_EDGE_ZONE_PX
+  );
 }
 
 function shouldOpenSidebarMobileSwipe(
@@ -352,6 +379,67 @@ function getTrackedSwipeTouch(
   );
 }
 
+/**
+ * Schedules the one-time realization of the closed compact drawer's subtree
+ * off the boot critical path. It prefers an idle callback so the sidebar
+ * rows, DnD contexts and search hooks mount after the route chunk has been
+ * fetched and evaluated; browsers without `requestIdleCallback` get two
+ * animation frames instead. The timeout bounds the wait (an idle callback
+ * can starve during a long boot, and frames stop in background tabs) so a
+ * later open never finds an unrealized panel. Returns a cancel function.
+ */
+function scheduleSidebarMobileRealization(realize: () => void): () => void {
+  let settled = false;
+  let idleHandle: number | null = null;
+  let firstFrame: number | null = null;
+  let secondFrame: number | null = null;
+  const cancel = () => {
+    if (idleHandle !== null) {
+      window.cancelIdleCallback(idleHandle);
+      idleHandle = null;
+    }
+    if (firstFrame !== null) {
+      window.cancelAnimationFrame(firstFrame);
+      firstFrame = null;
+    }
+    if (secondFrame !== null) {
+      window.cancelAnimationFrame(secondFrame);
+      secondFrame = null;
+    }
+    window.clearTimeout(timeout);
+  };
+  const run = () => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    cancel();
+    realize();
+  };
+  const timeout = window.setTimeout(run, SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS);
+  if (typeof window.requestIdleCallback === "function") {
+    idleHandle = window.requestIdleCallback(
+      () => {
+        idleHandle = null;
+        run();
+      },
+      { timeout: SIDEBAR_MOBILE_REALIZE_TIMEOUT_MS },
+    );
+  } else {
+    firstFrame = window.requestAnimationFrame(() => {
+      firstFrame = null;
+      secondFrame = window.requestAnimationFrame(() => {
+        secondFrame = null;
+        run();
+      });
+    });
+  }
+  return () => {
+    settled = true;
+    cancel();
+  };
+}
+
 type SidebarContext = {
   state: "expanded" | "collapsed";
   open: boolean;
@@ -361,6 +449,13 @@ type SidebarContext = {
   openMobileSidebar: () => void;
   closeMobileSidebar: () => void;
   isMobileSidebarClosing: boolean;
+  /**
+   * Whether the compact drawer's subtree is mounted. It starts false so the
+   * closed, inert panel adds no render work to boot; the first open (or an
+   * idle window, at most one second after boot) latches it true for the
+   * rest of the session. Always false outside compact viewports.
+   */
+  isMobileSidebarRealized: boolean;
   suppressMobileOpenAnimation: boolean;
   setSuppressMobileOpenAnimation: (suppress: boolean) => void;
   suppressMobileCloseAnimation: boolean;
@@ -370,6 +465,27 @@ type SidebarContext = {
 };
 
 const SidebarContext = React.createContext<SidebarContext | null>(null);
+
+/**
+ * The desktop sidebar width, as a CSS length. Its own context (not a field of
+ * {@link SidebarContext}) because a resize drag updates it on every animation
+ * frame, and only {@link Sidebar} needs to re-render for that. `Sidebar` writes
+ * it as `--sidebar-width` directly on the two elements that consume it, never
+ * on an ancestor: `--sidebar-width` is registered as non-inherited in
+ * theme.css, so a per-frame change restyles those two elements instead of the
+ * whole app subtree.
+ */
+const SidebarWidthContext = React.createContext<string>(SIDEBAR_WIDTH);
+
+/**
+ * "Is the sidebar visible" as its own boolean context. The full
+ * {@link SidebarContext} value changes on every provider commit (the mobile
+ * close flips the closing flag, then four states), and its readers include
+ * the page header and the retained secondary panel, whose ~1000-line bodies
+ * only need this one bit. A boolean context re-renders them only when the
+ * bit flips. `null` outside a provider.
+ */
+const SidebarShowingContext = React.createContext<boolean | null>(null);
 
 const SidebarContentElementContext =
   React.createContext<React.RefObject<HTMLDivElement | null> | null>(null);
@@ -394,19 +510,18 @@ function useSidebar() {
   return context;
 }
 
-function useIsSidebarShowing() {
-  const { state, isCompactViewport, openMobile } = useSidebar();
-  return isCompactViewport ? openMobile : state === "expanded";
+function useIsSidebarShowing(): boolean {
+  const isShowing = React.useContext(SidebarShowingContext);
+  if (isShowing === null) {
+    throw new Error(
+      "useIsSidebarShowing must be used within a SidebarProvider.",
+    );
+  }
+  return isShowing;
 }
 
-function useOptionalIsSidebarShowing() {
-  const context = React.useContext(SidebarContext);
-  if (context === null) {
-    return null;
-  }
-  return context.isCompactViewport
-    ? context.openMobile
-    : context.state === "expanded";
+function useOptionalIsSidebarShowing(): boolean | null {
+  return React.useContext(SidebarShowingContext);
 }
 
 /**
@@ -428,6 +543,8 @@ const SidebarProvider = React.forwardRef<
     defaultOpen?: boolean;
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
+    /** Desktop sidebar width as a CSS length. Defaults to 16rem. */
+    width?: string;
   }
 >(
   (
@@ -435,6 +552,7 @@ const SidebarProvider = React.forwardRef<
       defaultOpen = true,
       open: openProp,
       onOpenChange: setOpenProp,
+      width = SIDEBAR_WIDTH,
       className,
       style,
       children,
@@ -450,6 +568,11 @@ const SidebarProvider = React.forwardRef<
       React.useState(false);
     const [isMobileSidebarClosing, setIsMobileSidebarClosing] =
       React.useState(false);
+    const [hasRealizedMobileSidebar, setHasRealizedMobileSidebar] =
+      React.useState(false);
+    const realizeMobileSidebar = React.useCallback(() => {
+      setHasRealizedMobileSidebar(true);
+    }, []);
     const mobileSettleTimeoutRef = React.useRef<number | null>(null);
 
     const clearMobileSettleTimeout = React.useCallback(() => {
@@ -463,6 +586,15 @@ const SidebarProvider = React.forwardRef<
     React.useEffect(() => {
       openMobileRef.current = openMobile;
     }, [openMobile]);
+
+    // Publish drawer visibility for non-React readers (see
+    // sidebar-mobile-drawer-visibility.ts) without widening the context.
+    React.useEffect(() => {
+      setCompactSidebarDrawerShowing(isCompactViewport && openMobile);
+      return () => {
+        setCompactSidebarDrawerShowing(false);
+      };
+    }, [isCompactViewport, openMobile]);
 
     // Stable identity: sidebar rows close the drawer on navigation, and an
     // unstable callback would re-render every memoized row on each toggle.
@@ -503,6 +635,9 @@ const SidebarProvider = React.forwardRef<
         return;
       }
 
+      // Mount the subtree now if boot has not realized it yet, so it commits
+      // during the slide instead of after the settle.
+      realizeMobileSidebar();
       applySidebarMobileDragStyles({ progress: 1, settling: true });
       mobileSettleTimeoutRef.current = window.setTimeout(() => {
         mobileSettleTimeoutRef.current = null;
@@ -515,7 +650,7 @@ const SidebarProvider = React.forwardRef<
         });
         clearSidebarMobileDragAttributes();
       }, SIDEBAR_MOBILE_DRAG_SETTLE_MS);
-    }, []);
+    }, [realizeMobileSidebar]);
 
     React.useEffect(
       () => () => {
@@ -523,6 +658,23 @@ const SidebarProvider = React.forwardRef<
       },
       [clearMobileSettleTimeout],
     );
+
+    // The latch. An open that bypasses `openMobileSidebar` (the swipe path
+    // and direct `setOpenMobile(true)` callers) realizes the subtree in the
+    // same render (React restarts this render before committing), and a
+    // drawer that stays closed realizes off the boot critical path. Desktop
+    // never schedules; its sidebar renders children directly.
+    if (isCompactViewport && openMobile && !hasRealizedMobileSidebar) {
+      setHasRealizedMobileSidebar(true);
+    }
+    const isMobileSidebarRealized =
+      isCompactViewport && hasRealizedMobileSidebar;
+    React.useEffect(() => {
+      if (!isCompactViewport || hasRealizedMobileSidebar) {
+        return;
+      }
+      return scheduleSidebarMobileRealization(realizeMobileSidebar);
+    }, [hasRealizedMobileSidebar, isCompactViewport, realizeMobileSidebar]);
 
     React.useEffect(() => {
       if (openMobile) {
@@ -580,6 +732,7 @@ const SidebarProvider = React.forwardRef<
         openMobileSidebar,
         closeMobileSidebar,
         isMobileSidebarClosing,
+        isMobileSidebarRealized,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -596,6 +749,7 @@ const SidebarProvider = React.forwardRef<
         openMobileSidebar,
         closeMobileSidebar,
         isMobileSidebarClosing,
+        isMobileSidebarRealized,
         suppressMobileOpenAnimation,
         setSuppressMobileOpenAnimation,
         suppressMobileCloseAnimation,
@@ -604,72 +758,63 @@ const SidebarProvider = React.forwardRef<
       ],
     );
 
+    const isSidebarShowing = isCompactViewport ? openMobile : open;
+
     return (
       <SidebarContext.Provider value={contextValue}>
-        {/* Match the agent message action bar's tooltip timing (300ms open
+        <SidebarShowingContext.Provider value={isSidebarShowing}>
+          <SidebarWidthContext.Provider value={width}>
+            {/* Match the agent message action bar's tooltip timing (300ms open
             delay + Radix's default skip window) so sidebar icon tooltips feel
             the same instead of flashing instantly on hover. disableHoverableContent
             dismisses the tooltip the moment the pointer leaves the trigger, so it
             never lingers/floats while the mouse moves on. */}
-        <TooltipProvider delayDuration={300} disableHoverableContent>
-          <div
-            style={
-              {
-                "--sidebar-width": SIDEBAR_WIDTH,
-                "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
-                ...style,
-              } as React.CSSProperties
-            }
-            className={cn(
-              // Fill the app root instead of re-measuring the viewport here.
-              // app.css owns the browser-mode-specific root height, while fixed
-              // sidebar panels read the shared --bb-shell-height override.
-              "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
-              className,
-            )}
-            ref={ref}
-            {...props}
-          >
-            {children}
-          </div>
-        </TooltipProvider>
+            <TooltipProvider delayDuration={300} disableHoverableContent>
+              <div
+                style={
+                  {
+                    "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
+                    ...style,
+                  } as React.CSSProperties
+                }
+                className={cn(
+                  // Fill the app root instead of re-measuring the viewport here.
+                  // app.css owns the browser-mode-specific root height, while fixed
+                  // sidebar panels read the shared --bb-shell-height override.
+                  "group/sidebar-wrapper flex h-full min-h-0 w-full has-[[data-variant=inset]]:bg-sidebar",
+                  className,
+                )}
+                ref={ref}
+                {...props}
+              >
+                {children}
+              </div>
+            </TooltipProvider>
+          </SidebarWidthContext.Provider>
+        </SidebarShowingContext.Provider>
       </SidebarContext.Provider>
     );
   },
 );
 SidebarProvider.displayName = "SidebarProvider";
 
-const Sidebar = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentProps<"div"> & {
-    side?: "left" | "right";
-    variant?: "sidebar" | "floating" | "inset";
-    collapsible?: "offcanvas" | "icon" | "none";
-  }
->(
-  (
-    {
-      side = "left",
-      variant = "sidebar",
-      collapsible = "offcanvas",
-      className,
-      style,
-      children,
-      ...props
-    },
-    ref,
-  ) => {
+const Sidebar = React.forwardRef<HTMLDivElement, React.ComponentProps<"div">>(
+  ({ className, style, children, ...props }, ref) => {
     const {
       isCompactViewport,
       state,
       openMobile,
       setOpenMobile,
       closeMobileSidebar,
+      isMobileSidebarRealized,
       suppressMobileOpenAnimation,
       setSuppressMobileOpenAnimation,
       suppressMobileCloseAnimation,
       setSuppressMobileCloseAnimation,
     } = useSidebar();
+    const width = React.useContext(SidebarWidthContext);
+    // Written on the consuming elements themselves (see SidebarWidthContext).
+    const widthStyle = { "--sidebar-width": width } as React.CSSProperties;
     const handleOpenMobileChange = React.useCallback(
       (nextOpen: boolean) => {
         if (nextOpen) {
@@ -692,13 +837,13 @@ const Sidebar = React.forwardRef<
     >(() => {
       if (shouldSuppressMobileCloseAnimation) {
         return {
-          translate: side === "left" ? "-100%" : "100%",
+          translate: "-100%",
           transition: "none",
         };
       }
 
       return undefined;
-    }, [shouldSuppressMobileCloseAnimation, side]);
+    }, [shouldSuppressMobileCloseAnimation]);
     const mobileBackdropStyle = React.useMemo<
       React.CSSProperties | undefined
     >(() => {
@@ -713,33 +858,17 @@ const Sidebar = React.forwardRef<
       return undefined;
     }, [shouldSuppressMobileCloseAnimation]);
 
-    if (collapsible === "none") {
-      return (
-        <div
-          className={cn(
-            "flex h-full w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground",
-            className,
-          )}
-          ref={ref}
-          style={style}
-          {...props}
-        >
-          {children}
-        </div>
-      );
-    }
-
     if (isCompactViewport) {
       // The mobile drawer stays mounted across open/close (#1261). Closing
       // translates the panel off-screen instead of unmounting it, so a
       // reopen replays no mount work. While closed the translated panel is
       // `inert`, so it cannot trap focus or taps. It stays style-ready because
       // a visibility flip makes WebKit rebuild the subtree during every open.
+      // The subtree itself is realized once, off the boot critical path or on
+      // the first open, and then retained (the provider owns the latch).
       return (
         <SidebarMobilePanel
           ref={ref}
-          side={side}
-          variant={variant}
           open={openMobile}
           onOpenChange={handleOpenMobileChange}
           onDismiss={closeMobileSidebar}
@@ -750,7 +879,7 @@ const Sidebar = React.forwardRef<
           style={style}
           {...props}
         >
-          {children}
+          {isMobileSidebarRealized ? children : null}
         </SidebarMobilePanel>
       );
     }
@@ -760,20 +889,19 @@ const Sidebar = React.forwardRef<
         ref={ref}
         className="group peer text-sidebar-foreground"
         data-state={state}
-        data-collapsible={state === "collapsed" ? collapsible : ""}
-        data-variant={variant}
-        data-side={side}
+        data-collapsible={state === "collapsed" ? "offcanvas" : ""}
+        data-variant="sidebar"
+        data-side="left"
       >
         {/* This is what handles the sidebar gap on desktop */}
         <div
           data-sidebar="gap"
+          style={widthStyle}
           className={cn(
             "relative hidden h-full w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear md:block",
             "group-data-[collapsible=offcanvas]:w-0",
             "group-data-[side=right]:rotate-180",
-            variant === "floating" || variant === "inset"
-              ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
+            "group-data-[collapsible=icon]:w-(--sidebar-width-icon)",
           )}
         />
         <div
@@ -784,18 +912,13 @@ const Sidebar = React.forwardRef<
             // The visibility leg hides the fully collapsed offcanvas panel
             // after the slide-out so its mounted rows stop painting (#1261);
             // the zero delay on expand shows it again immediately.
-            "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) flex-col bg-sidebar text-sidebar-foreground [transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_0s]",
+            "fixed inset-y-0 z-10 flex h-(--bb-shell-height) w-(--sidebar-width) select-none flex-col bg-sidebar text-sidebar-foreground [transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_0s]",
             "group-data-[collapsible=offcanvas]:invisible group-data-[collapsible=offcanvas]:[transition:left_200ms_linear,right_200ms_linear,width_200ms_linear,visibility_0s_linear_200ms]",
-            side === "left"
-              ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-              : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-            // Adjust the padding for floating and inset variants.
-            variant === "floating" || variant === "inset"
-              ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-              : "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-border-seam group-data-[side=left]:border-r group-data-[side=right]:border-l",
+            "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]",
+            "group-data-[collapsible=icon]:w-(--sidebar-width-icon) border-border-seam group-data-[side=left]:border-r group-data-[side=right]:border-l",
             className,
           )}
-          style={style}
+          style={{ ...widthStyle, ...style }}
           {...props}
         >
           <div
@@ -843,8 +966,6 @@ function suppressNextSidebarPanelDragClick() {
 }
 
 interface SidebarMobilePanelProps extends React.ComponentProps<"div"> {
-  side: "left" | "right";
-  variant: "sidebar" | "floating" | "inset";
   open: boolean;
   onOpenChange: (open: boolean) => void;
   // Deferred close: starts the slide-out transition immediately and flips the
@@ -908,8 +1029,6 @@ const SidebarMobilePanel = React.forwardRef<
 >(
   (
     {
-      side,
-      variant,
       open,
       onOpenChange,
       onDismiss,
@@ -978,9 +1097,8 @@ const SidebarMobilePanel = React.forwardRef<
       // assistive-technology activation leave the trigger focus-visible, so
       // keep the modal focus move for those paths.
       const shouldMoveFocus =
-        previouslyFocused?.matches(
-          '[data-sidebar="trigger"]:focus-visible',
-        ) ?? false;
+        previouslyFocused?.matches('[data-sidebar="trigger"]:focus-visible') ??
+        false;
       if (shouldMoveFocus) {
         panelRef.current?.focus({ preventScroll: true });
       }
@@ -1028,7 +1146,9 @@ const SidebarMobilePanel = React.forwardRef<
         for (let step = 1; step <= stops.length; step += 1) {
           const nextIndex =
             activeIndex === -1
-              ? (event.shiftKey ? stops.length - step : step - 1)
+              ? event.shiftKey
+                ? stops.length - step
+                : step - 1
               : (((activeIndex + direction * step) % stops.length) +
                   stops.length) %
                 stops.length;
@@ -1044,7 +1164,10 @@ const SidebarMobilePanel = React.forwardRef<
       return () => {
         window.removeEventListener("keydown", handleKeyDown);
         const active = document.activeElement;
-        if (active instanceof HTMLElement && panelRef.current?.contains(active)) {
+        if (
+          active instanceof HTMLElement &&
+          panelRef.current?.contains(active)
+        ) {
           active.blur();
           if (shouldMoveFocus) {
             previouslyFocused?.focus({ preventScroll: true });
@@ -1089,7 +1212,7 @@ const SidebarMobilePanel = React.forwardRef<
 
       const deltaX = clientX - session.startX;
       const deltaY = clientY - session.startY;
-      const closeDelta = side === "left" ? -deltaX : deltaX;
+      const closeDelta = -deltaX;
       const absDeltaX = Math.abs(deltaX);
       const absDeltaY = Math.abs(deltaY);
 
@@ -1127,7 +1250,8 @@ const SidebarMobilePanel = React.forwardRef<
       const nowMs = Date.now();
       const elapsedMs = nowMs - session.lastTimeMs;
       if (elapsedMs > 0) {
-        session.velocityX = ((clientX - session.lastClientX) / elapsedMs) * 1000;
+        session.velocityX =
+          ((clientX - session.lastClientX) / elapsedMs) * 1000;
         session.lastClientX = clientX;
         session.lastTimeMs = nowMs;
       }
@@ -1153,8 +1277,7 @@ const SidebarMobilePanel = React.forwardRef<
       }
       suppressNextSidebarPanelDragClick();
 
-      const closeVelocity =
-        side === "left" ? -session.velocityX : session.velocityX;
+      const closeVelocity = -session.velocityX;
       const shouldClose =
         session.lastProgress <= 1 - SIDEBAR_MOBILE_DRAG_CLOSE_RATIO ||
         (session.lastProgress <=
@@ -1239,10 +1362,7 @@ const SidebarMobilePanel = React.forwardRef<
 
       const handleMove = (moveEvent: PointerEvent) => {
         const session = dragSessionRef.current;
-        if (
-          session?.kind !== "pointer" ||
-          moveEvent.pointerId !== session.id
-        ) {
+        if (session?.kind !== "pointer" || moveEvent.pointerId !== session.id) {
           return;
         }
         continuePanelDrag(moveEvent.clientX, moveEvent.clientY, moveEvent);
@@ -1276,9 +1396,7 @@ const SidebarMobilePanel = React.forwardRef<
       removeDragListenersRef.current = removeListeners;
     };
 
-    const handlePanelTouchStart = (
-      event: React.TouchEvent<HTMLDivElement>,
-    ) => {
+    const handlePanelTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
       onTouchStart?.(event);
       if (
         !open ||
@@ -1391,24 +1509,20 @@ const SidebarMobilePanel = React.forwardRef<
           data-sidebar-state={open ? "expanded" : "collapsed"}
           data-state={open ? "open" : "closed"}
           data-collapsible=""
-          data-variant={variant}
-          data-side={side}
+          data-variant="sidebar"
+          data-side="left"
           // Kept although vaul is gone: SidebarInset's swipe helpers and the
           // swipe-target guards select the mobile panel by this attribute.
-          data-vaul-drawer-direction={side}
+          data-vaul-drawer-direction="left"
           className={cn(
             // Fixed: a percentage height would resolve against the short
             // initial containing block, so it reads the shell unit directly.
             // touch-pan-y hands horizontal touch moves to the drag-to-close
             // handler while leaving vertical list scrolling native.
-            "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y flex-col bg-sidebar text-sidebar-foreground outline-none will-change-[translate]",
+            "group fixed inset-y-0 z-40 flex h-(--bb-shell-height) w-(--sidebar-width-mobile) touch-pan-y select-none flex-col bg-sidebar text-sidebar-foreground outline-none will-change-[translate]",
             SIDEBAR_MOBILE_PANEL_TRANSITION_CLASS,
-            side === "left"
-              ? "left-0 data-[state=closed]:-translate-x-full"
-              : "right-0 data-[state=closed]:translate-x-full",
-            variant === "floating" || variant === "inset"
-              ? "p-2"
-              : "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
+            "left-0 data-[state=closed]:-translate-x-full",
+            "border-border-seam data-[side=left]:border-r data-[side=right]:border-l",
             className,
           )}
           style={
@@ -1448,7 +1562,11 @@ const SidebarTrigger = React.forwardRef<
       data-sidebar="trigger"
       variant="ghost"
       size="icon"
-      className={cn(COARSE_POINTER_HEADER_ICON_BUTTON_CLASS, className)}
+      className={cn(
+        COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+        "select-none",
+        className,
+      )}
       aria-expanded={ariaExpanded ?? (isCompactViewport ? openMobile : open)}
       onClick={(event) => {
         onClick?.(event);
@@ -1624,7 +1742,7 @@ const SidebarInset = React.forwardRef<
         });
       }
 
-      if (event.cancelable) {
+      if (session.canPreventDefault && event.cancelable) {
         event.preventDefault();
       }
 
@@ -1764,6 +1882,13 @@ const SidebarInset = React.forwardRef<
         clearSwipeSession();
       }
 
+      // Only an edge-zone touch may take the non-passive path. A touch that
+      // starts deeper in the timeline is almost always a scroll; registering
+      // a non-passive `touchmove` for it made iOS Safari and Chrome Android
+      // dispatch that scroll's first move synchronously through the main
+      // thread, which under streaming load delayed every scroll start. The
+      // deep touch keeps its swipe recognizer, but on a passive listener.
+      const canPreventDefault = isSidebarSwipeEdgeZoneTouch(touch.clientX);
       swipeSessionRef.current = createSidebarInsetSwipeSession({
         kind: "touch",
         id: touch.identifier,
@@ -1771,6 +1896,7 @@ const SidebarInset = React.forwardRef<
         startY: touch.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
         startTarget: event.target instanceof Element ? event.target : null,
+        canPreventDefault,
       });
 
       const removeListeners = () => {
@@ -1779,7 +1905,7 @@ const SidebarInset = React.forwardRef<
         window.removeEventListener("touchcancel", handleTouchEnd);
       };
       window.addEventListener("touchmove", handleTouchMove, {
-        passive: false,
+        passive: !canPreventDefault,
       });
       window.addEventListener("touchend", handleTouchEnd);
       window.addEventListener("touchcancel", handleTouchEnd);
@@ -1817,6 +1943,8 @@ const SidebarInset = React.forwardRef<
         startY: event.clientY,
         selectionRoot: getSidebarSwipeSelectionRoot(event.target),
         startTarget: event.target instanceof Element ? event.target : null,
+        // `pointermove` is never scroll-blocking, so preventDefault is free.
+        canPreventDefault: true,
       });
 
       const removeListeners = () => {
@@ -2035,7 +2163,7 @@ const SidebarContent = React.forwardRef<
 });
 SidebarContent.displayName = "SidebarContent";
 
-export type SidebarStickyTierKind = "label" | "project" | "parent";
+type SidebarStickyTierKind = "label" | "project" | "parent";
 
 type SidebarStickyStackProps = React.ComponentProps<"div">;
 
@@ -2098,9 +2226,7 @@ const SidebarStickyTier = React.forwardRef<
 });
 SidebarStickyTier.displayName = "SidebarStickyTier";
 
-interface SidebarStickyGroupProps extends React.ComponentProps<"div"> {
-  asChild?: boolean;
-}
+type SidebarStickyGroupProps = React.ComponentProps<"div">;
 
 /**
  * The containing block for one sticky group: a sticky header tier plus its
@@ -2110,17 +2236,13 @@ interface SidebarStickyGroupProps extends React.ComponentProps<"div"> {
  * overlap instead. Every nesting level (section/label, project, parent thread,
  * worktree) wraps its header + body in one of these so the shove-out behavior
  * is structural, not per-tier boilerplate that a new tier can forget.
- *
- * Pass `asChild` to project the wrapper onto a caller-owned element (e.g. the
- * project tier's `<li>` SidebarMenuItem) instead of emitting a `<div>`.
  */
 const SidebarStickyGroup = React.forwardRef<
   HTMLDivElement,
   SidebarStickyGroupProps
->(({ asChild = false, className, ...props }, ref) => {
-  const Comp = asChild ? Slot : "div";
+>(({ className, ...props }, ref) => {
   return (
-    <Comp
+    <div
       ref={ref}
       data-sidebar-sticky-group=""
       className={cn(className)}
@@ -2176,7 +2298,7 @@ const SidebarMenuButton = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<"button"> & {
     asChild?: boolean;
-    tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+    tooltip?: React.ComponentProps<typeof TooltipContent>;
   }
 >(({ asChild = false, tooltip, className, ...props }, ref) => {
   const Comp = asChild ? Slot : "button";
@@ -2195,12 +2317,6 @@ const SidebarMenuButton = React.forwardRef<
     return button;
   }
 
-  if (typeof tooltip === "string") {
-    tooltip = {
-      children: tooltip,
-    };
-  }
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
@@ -2217,10 +2333,8 @@ SidebarMenuButton.displayName = "SidebarMenuButton";
 
 const SidebarMenuSkeleton = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div"> & {
-    showIcon?: boolean;
-  }
->(({ className, showIcon = false, ...props }, ref) => {
+  React.ComponentProps<"div">
+>(({ className, ...props }, ref) => {
   const skeletonId = React.useId();
 
   // Stable varied width between 50 to 90%.
@@ -2239,12 +2353,6 @@ const SidebarMenuSkeleton = React.forwardRef<
       className={cn("rounded-md h-8 flex gap-2 px-2 items-center", className)}
       {...props}
     >
-      {showIcon && (
-        <Skeleton
-          className="size-4 rounded-md"
-          data-sidebar="menu-skeleton-icon"
-        />
-      )}
       <Skeleton
         className="h-4 flex-1 max-w-[--skeleton-width]"
         data-sidebar="menu-skeleton-text"

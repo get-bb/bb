@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import { validatePluginProviderDeclaration,
+  type NormalizedPluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
+import { loadFirstPartyProviderDeclarations } from "../helpers/provider-registry.js";
 
 function declaration(
   overrides: Partial<PluginProviderDeclaration> = {},
-): PluginProviderDeclaration {
+): NormalizedPluginProviderDeclaration {
   return validatePluginProviderDeclaration({
     id: "my-remote-agent",
     displayName: "My Remote Agent",
     icon: "./icons/agent.svg",
+    experimental_bridgeOptions: { launch: { command: "my-agent" } },
+    experimental_visibility: "installed",
+    maintenance: { health: true, usage: false, installation: true },
     capabilities: {
       supportsServiceTier: true,
       supportsNativeUserQuestion: true,
@@ -17,7 +22,6 @@ function declaration(
       supportsManualCompaction: false,
       supportsThreadArchive: true,
       supportsThreadRename: true,
-      supportsWorkflows: true,
       permissionModes: ["accept-edits", "full"],
       reasoningLevels: ["low", "medium", "high"],
     },
@@ -26,20 +30,25 @@ function declaration(
   });
 }
 
+const NO_SETTINGS = () => ({});
+
 describe("buildPluginProviderRegistration", () => {
-  it("maps a declaration onto catalog-shaped info and server capabilities", () => {
+  it("maps a declaration onto the single ProviderInfo and server capabilities", () => {
     const normalized = declaration();
     const registration = buildPluginProviderRegistration({
       available: true,
       pluginId: "acme-agent",
       declaration: normalized,
+      readSettings: NO_SETTINGS,
     });
 
     expect(registration.info).toStrictEqual({
       id: "my-remote-agent",
+      pluginId: "acme-agent",
       displayName: "My Remote Agent",
       available: true,
       logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
+      maintenance: { health: true, usage: false, installation: true },
       capabilities: {
         supportsThreadArchive: true,
         supportsThreadRename: true,
@@ -47,6 +56,7 @@ describe("buildPluginProviderRegistration", () => {
         supportsNativeUserQuestion: true,
         supportsFork: true,
         supportsSessionRewind: true,
+        modelCatalogScope: "workspace",
         permissionModes: ["accept-edits", "full"],
       },
       composerActions: [
@@ -60,16 +70,177 @@ describe("buildPluginProviderRegistration", () => {
           command: { trigger: "/", name: "goal", trailingText: " " },
         },
       ],
+      // The coarse ladder projects to labelled options when the declaration
+      // gives no labels of its own; a service-tier provider gets the pair the
+      // fast-mode toggle offers.
+      reasoningLevels: [
+        { id: "low", label: "Low" },
+        { id: "medium", label: "Medium" },
+        { id: "high", label: "High" },
+      ],
+      serviceTiers: [
+        { id: "default", label: "Default" },
+        { id: "fast", label: "Fast" },
+      ],
     });
     // Every backend-only declared fact lands here, compaction included;
     // nothing rides along as a raw declaration to be read around.
     expect(registration.serverCapabilities).toStrictEqual({
-      supportsWorkflows: true,
       reasoningLevels: ["low", "medium", "high"],
       fork: "checkpoint",
       supportsManualCompaction:
         normalized.capabilities.supportsManualCompaction,
     });
+    expect(registration.bridgeOptions).toStrictEqual({
+      launch: { command: "my-agent" },
+    });
+    expect(registration.visibility).toBe("installed");
+    expect(registration.fallbackModels).toStrictEqual([]);
+    expect(registration.envPassthrough).toStrictEqual([]);
+    expect(
+      registration.deriveProviderOptions({
+        threadId: "thr_1",
+        projectId: "proj_1",
+        model: "m",
+        permissionMode: "full",
+      }),
+    ).toStrictEqual({});
+  });
+
+  it("projects the target-state declaration fields onto ProviderInfo", () => {
+    const registration = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({
+        family: "remote",
+        strings: {
+          signInHint: "Run `my-agent login`.",
+          expiredHint: "Session expired.",
+          installUrl: "https://example.com/install",
+          brandPrefix: "My ",
+          iconTint: { light: "#111", dark: "#eee" },
+        },
+        reasoningLevels: [
+          { id: "low", label: "Quick" },
+          { id: "high", label: "Deep", description: "Slow but thorough." },
+        ],
+        serviceTiers: [
+          { id: "default", label: "Standard" },
+          { id: "fast", label: "Priority" },
+        ],
+        extensionKinds: {
+          widget: { item: { "~standard": standardSchema() } },
+          mood: {
+            item: { "~standard": standardSchema() },
+            state: { "~standard": standardSchema() },
+          },
+        },
+      }),
+      readSettings: NO_SETTINGS,
+    });
+
+    expect(registration.info.family).toBe("remote");
+    expect(registration.info.strings).toStrictEqual({
+      signInHint: "Run `my-agent login`.",
+      expiredHint: "Session expired.",
+      installUrl: "https://example.com/install",
+      brandPrefix: "My ",
+      iconTint: { light: "#111", dark: "#eee" },
+    });
+    expect(registration.info.reasoningLevels).toStrictEqual([
+      { id: "low", label: "Quick" },
+      { id: "high", label: "Deep", description: "Slow but thorough." },
+    ]);
+    expect(registration.info.serviceTiers).toStrictEqual([
+      { id: "default", label: "Standard" },
+      { id: "fast", label: "Priority" },
+    ]);
+    // Extension kinds are namespaced by the OWNING PLUGIN id, not the
+    // provider id: the plugin is what keeps two plugins' "widget" apart.
+    expect(registration.info.extensionKinds).toStrictEqual({
+      "acme-agent/widget": { item: true, state: false },
+      "acme-agent/mood": { item: true, state: true },
+    });
+  });
+
+  it("binds the options hook to the plugin's settings and validates its result", () => {
+    const registration = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({
+        models: {
+          fallback: [
+            {
+              id: "m-1",
+              displayName: "Model One",
+              description: "The one.",
+              supportedReasoningEfforts: [
+                { reasoningEffort: "low", description: "Low." },
+                { reasoningEffort: "high", description: "High." },
+              ],
+              defaultReasoningEffort: "high",
+              isDefault: true,
+            },
+          ],
+        },
+        env: { passthrough: ["BB_MY_AGENT_EXECUTABLE"] },
+        deriveProviderOptions: (context) => ({
+          memory: context.settings.memoryEnabled !== false,
+          plan: context.promptMode === "plan",
+          thread: context.threadId,
+        }),
+      }),
+      readSettings: () => ({ memoryEnabled: false }),
+    });
+
+    expect(
+      registration.deriveProviderOptions({
+        threadId: "thr_1",
+        projectId: "proj_1",
+        model: "m-1",
+        permissionMode: "auto",
+        promptMode: "plan",
+      }),
+    ).toStrictEqual({ memory: false, plan: true, thread: "thr_1" });
+    expect(registration.envPassthrough).toStrictEqual([
+      "BB_MY_AGENT_EXECUTABLE",
+    ]);
+    expect(registration.fallbackModels).toStrictEqual([
+      {
+        id: "m-1",
+        model: "m-1",
+        displayName: "Model One",
+        description: "The one.",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "low", description: "Low." },
+          { reasoningEffort: "high", description: "High." },
+        ],
+        defaultReasoningEffort: "high",
+        isDefault: true,
+      },
+    ]);
+  });
+
+  it("refuses a hook result that is not bounded plain JSON", () => {
+    const registration = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({
+        deriveProviderOptions: () => ({
+          // A function is not JSON; the bag rides the daemon wire.
+          oops: (() => undefined) as unknown as string,
+        }),
+      }),
+      readSettings: NO_SETTINGS,
+    });
+    expect(() =>
+      registration.deriveProviderOptions({
+        threadId: "thr_1",
+        projectId: "proj_1",
+        model: "m",
+        permissionMode: "full",
+      }),
+    ).toThrow(/deriveProviderOptions result/);
   });
 
   it("projects each fork ladder rung onto the two client booleans", () => {
@@ -80,6 +251,7 @@ describe("buildPluginProviderRegistration", () => {
         declaration: declaration({
           capabilities: { ...declaration().capabilities, fork },
         }),
+        readSettings: NO_SETTINGS,
       }).info;
       return {
         supportsFork: capabilities.supportsFork,
@@ -111,12 +283,95 @@ describe("buildPluginProviderRegistration", () => {
         id: "plain-agent",
         icon: undefined,
         composerActions: [],
+        capabilities: {
+          ...declaration().capabilities,
+          supportsServiceTier: false,
+        },
       }),
+      readSettings: NO_SETTINGS,
     });
 
     expect(registration.info.logoUrl).toBeNull();
+    expect(registration.info.icon).toBeUndefined();
     expect(registration.info.composerActions).toStrictEqual([
       { kind: "skills", trigger: "/" },
     ]);
+    // No service tier → no tier options at all, not an empty list.
+    expect(registration.info.serviceTiers).toBeUndefined();
+  });
+
+  it("projects a named glyph icon by name and a path icon as a logo URL, never both", () => {
+    // `icon: "Zap"` has no bytes for the logo route to serve; before this the
+    // glyph was dropped and the picker showed the display name's initial.
+    const glyph = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "echo-provider",
+      declaration: declaration({ id: "echo-agent", icon: "Zap" }),
+      readSettings: NO_SETTINGS,
+    });
+    expect(glyph.info.icon).toStrictEqual({ glyph: "Zap" });
+    expect(glyph.info.logoUrl).toBeNull();
+
+    const path = buildPluginProviderRegistration({
+      available: true,
+      pluginId: "acme-agent",
+      declaration: declaration({ icon: "./icons/agent.svg" }),
+      readSettings: NO_SETTINGS,
+    });
+    expect(path.info.icon).toBeUndefined();
+    expect(path.info.logoUrl).toBe("/api/v1/system/providers/my-remote-agent/logo");
+  });
+
+  it("leaves the first-party providers on their SVG assets (no glyph)", async () => {
+    // The four first-party plugins ship icon files; the glyph projection must
+    // not touch how they arrive. Pinned against the declarations themselves.
+    const declarations = await loadFirstPartyProviderDeclarations();
+    const projected = [...declarations.entries()].flatMap(([pluginId, list]) =>
+      list.map((declared) => {
+        const { info } = buildPluginProviderRegistration({
+          available: true,
+          pluginId,
+          declaration: declared,
+          readSettings: NO_SETTINGS,
+        });
+        return { id: info.id, logoUrl: info.logoUrl, icon: info.icon };
+      }),
+    );
+    // Every well-known ACP agent declares its own SVG asset too: core vendors
+    // no brand marks, so a provider without a served logo has no mark.
+    expect(projected).toStrictEqual([
+      { id: "codex", logoUrl: "/api/v1/system/providers/codex/logo", icon: undefined },
+      {
+        id: "claude-code",
+        logoUrl: "/api/v1/system/providers/claude-code/logo",
+        icon: undefined,
+      },
+      { id: "pi", logoUrl: "/api/v1/system/providers/pi/logo", icon: undefined },
+      {
+        id: "acp-cursor",
+        logoUrl: "/api/v1/system/providers/acp-cursor/logo",
+        icon: undefined,
+      },
+      {
+        id: "acp-opencode",
+        logoUrl: "/api/v1/system/providers/acp-opencode/logo",
+        icon: undefined,
+      },
+      { id: "acp-omp", logoUrl: "/api/v1/system/providers/acp-omp/logo", icon: undefined },
+      { id: "acp-grok", logoUrl: "/api/v1/system/providers/acp-grok/logo", icon: undefined },
+      {
+        id: "acp-hermes-agent",
+        logoUrl: "/api/v1/system/providers/acp-hermes-agent/logo",
+        icon: undefined,
+      },
+    ]);
   });
 });
+
+function standardSchema() {
+  return {
+    version: 1 as const,
+    vendor: "test",
+    validate: (value: unknown) => ({ value }),
+  };
+}

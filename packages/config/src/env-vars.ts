@@ -20,7 +20,7 @@ import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
 
 export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
 
-export function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
+function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   const normalizedValue = args.value.trim().toLowerCase();
   if (
     normalizedValue === "true" ||
@@ -42,7 +42,7 @@ export function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   throw new Error(`${args.name} must be a boolean`);
 }
 
-export function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
+function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
   const parsed = parseAppSurface(args.value);
   if (parsed !== undefined) {
     return parsed;
@@ -50,9 +50,7 @@ export function parseAppSurfaceEnvValue(args: EnvVarParseArgs): AppSurface {
   throw new Error(`${args.name} must be one of ${formatAppSurfaceValues()}`);
 }
 
-export function parseOptionalPortEnvValue(
-  args: EnvVarParseArgs,
-): number | undefined {
+function parseOptionalPortEnvValue(args: EnvVarParseArgs): number | undefined {
   if (args.value === "0") {
     return undefined;
   }
@@ -63,7 +61,7 @@ export function parseOptionalPortEnvValue(
   });
 }
 
-export function parseOptionalTrimmedStringEnvValue(
+function parseOptionalTrimmedStringEnvValue(
   args: EnvVarParseArgs,
 ): string | undefined {
   const trimmedValue = args.value.trim();
@@ -189,6 +187,13 @@ export const BB_APP_VERSION_ENV = defineEnvVar<string>({
   description:
     "Version of the running bb-app package. The bb-app launcher sets this from packages/bb-app/package.json; defaults to a sentinel for dev/source runs.",
   name: "BB_APP_VERSION",
+  parse: parseNonEmptyStringEnvValue,
+});
+
+export const BB_SERVER_LAUNCH_ID_ENV = defineEnvVar<string>({
+  description:
+    "Internal per-spawn identity the bb-app launcher hands its server child. The server echoes it on /health so the launcher can tell its own child apart from another bb server that already owns the port.",
+  name: "BB_SERVER_LAUNCH_ID",
   parse: parseNonEmptyStringEnvValue,
 });
 

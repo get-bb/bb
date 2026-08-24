@@ -9,11 +9,13 @@ import type {
   TasksStore,
   TaskThreadLiveStatus,
 } from "../db";
-import type { TasksApiStore } from "../api";
+import {
+  publishCommentsChanged,
+  publishTasksChanged,
+  type TasksApiStore,
+} from "../api";
 import {
   presetPermissionModeSchema,
-  type CommentsChangedEvent,
-  type TasksChangedEvent,
   type ThreadsChangedEvent,
 } from "../shared/contract";
 import { delegationRpcContract } from "./contract";
@@ -36,13 +38,14 @@ const presetExecutionSchema = z
       "max",
       "ultra",
     ]),
+    serviceTier: z.enum(["default", "fast"]).nullable(),
     permissionMode: presetPermissionModeSchema,
   })
   .strict();
 
-export type DelegationErrorCode = "project_not_linked" | "spawn_target_invalid";
+type DelegationErrorCode = "project_not_linked" | "spawn_target_invalid";
 
-export class DelegationError extends Error {
+class DelegationError extends Error {
   constructor(
     readonly code: DelegationErrorCode,
     message: string,
@@ -52,7 +55,7 @@ export class DelegationError extends Error {
   }
 }
 
-export interface SeedPromptInput {
+interface SeedPromptInput {
   task: Task;
   project: Project;
   subtasks: readonly Task[];
@@ -280,20 +283,6 @@ export function publishThreadsChanged(bb: BbPluginApi, taskId: string): void {
   bb.realtime.publish("threads:changed", payload);
 }
 
-function publishTasksChanged(
-  bb: BbPluginApi,
-  taskId: string,
-  projectId: string,
-): void {
-  const payload: TasksChangedEvent = { taskId, projectId };
-  bb.realtime.publish("tasks:changed", payload);
-}
-
-export function publishCommentsChanged(bb: BbPluginApi, taskId: string): void {
-  const payload: CommentsChangedEvent = { taskId };
-  bb.realtime.publish("comments:changed", payload);
-}
-
 type SdkThread = Awaited<ReturnType<BbPluginApi["sdk"]["threads"]["get"]>>;
 
 function taskThreadLiveStatus(thread: SdkThread): TaskThreadLiveStatus {
@@ -328,6 +317,7 @@ export function handlers(
         providerId: preset.providerId,
         model: preset.modelId,
         reasoningLevel: preset.reasoningLevel,
+        serviceTier: preset.serviceTier,
         permissionMode: preset.permissionMode,
       });
       const prompt = buildSeedPrompt({
@@ -348,6 +338,9 @@ export function handlers(
           providerId: execution.providerId,
           model: execution.model,
           reasoningLevel: execution.reasoningLevel,
+          ...(execution.serviceTier === null
+            ? {}
+            : { serviceTier: execution.serviceTier }),
           permissionMode: execution.permissionMode,
           title,
           prompt,
@@ -422,6 +415,24 @@ export function handlers(
       publishThreadsChanged(bb, task.id);
       publishTasksChanged(bb, task.id, task.projectId);
       return { threadId: thread.id };
+    },
+
+    async taskThreadsDetach(input) {
+      const task = requireTask(store.tasks, input.taskId);
+      const taskThread = store.tasks.getTaskThreadByThreadId(
+        task.id,
+        input.threadId,
+      );
+      if (!taskThread) {
+        throw new Error(
+          `Thread ${input.threadId} is not attached to ${task.key}`,
+        );
+      }
+      store.tasks.deleteTaskThread(taskThread.id);
+
+      publishThreadsChanged(bb, task.id);
+      publishTasksChanged(bb, task.id, task.projectId);
+      return { threadId: taskThread.threadId };
     },
   };
 }

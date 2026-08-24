@@ -36,7 +36,11 @@ async function createFixture(bridgeSource: string): Promise<{
   return { bridgeModulePath, dataDir: dir };
 }
 
-function runWorker(args: string[], stdin: string) {
+function runWorker(
+  args: string[],
+  stdin: string,
+  env: Record<string, string> = {},
+) {
   return new Promise<{ code: number | null; stdout: string; stderr: string }>(
     (resolve) => {
       const child = spawn(
@@ -48,7 +52,7 @@ function runWorker(args: string[], stdin: string) {
           workerEntry,
           ...args,
         ],
-        { stdio: ["pipe", "pipe", "pipe"] },
+        { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...env } },
       );
       let stdout = "";
       let stderr = "";
@@ -158,4 +162,48 @@ it("hands a bridge only what it declares: no start hook, no context", async () =
   expect(await readFile(fixture.bridgeModulePath, "utf8")).toContain(
     "experimental_providerBridge",
   );
+});
+
+it("tees both sides of the runtime wire when record mode is on", async () => {
+  const fixture = await createFixture(
+    [
+      "export const experimental_providerBridge = {",
+      "  experimental_apiVersion: 1,",
+      "  handleLine(line) {",
+      "    const request = JSON.parse(line);",
+      "    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { ok: true } }) + '\\n');",
+      "  },",
+      "};",
+    ].join("\n"),
+  );
+  const recordDir = join(fixture.dataDir, "recordings");
+
+  const result = await runWorker(
+    [fixture.bridgeModulePath, "provider-fixture", fixture.dataDir],
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"threadId":"thr_rec"}}\n',
+    { BB_PROVIDER_BRIDGE_RECORD_DIR: recordDir },
+  );
+
+  expect(result.code).toBe(0);
+  // The wire itself is untouched by the tee.
+  expect(result.stdout).toBe(
+    '{"jsonrpc":"2.0","id":1,"result":{"ok":true}}\n{"jsonrpc":"2.0","id":2,"result":{"ok":true}}\n',
+  );
+  const read = async (scope: string, direction: string) =>
+    (await readFile(join(recordDir, scope, `${direction}.ndjson`), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { seq: number; dir: string; line: string });
+  expect((await read("_process", "runtime→bridge")).map((e) => e.line)).toEqual([
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}',
+  ]);
+  expect((await read("_process", "bridge→runtime")).map((e) => e.line)).toEqual([
+    '{"jsonrpc":"2.0","id":1,"result":{"ok":true}}',
+  ]);
+  expect((await read("thr_rec", "runtime→bridge")).map((e) => e.line)).toEqual([
+    '{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"threadId":"thr_rec"}}',
+  ]);
+  expect((await read("thr_rec", "bridge→runtime")).map((e) => e.dir)).toEqual([
+    "bridge→runtime",
+  ]);
 });

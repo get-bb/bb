@@ -13,7 +13,6 @@ import type { ResolvedId } from "../context-env.js";
 
 export {
   type ResolvedId,
-  type ThreadSelfTargetOptions,
   requireThreadId,
   requireThreadIdOrSelf,
 } from "../context-env.js";

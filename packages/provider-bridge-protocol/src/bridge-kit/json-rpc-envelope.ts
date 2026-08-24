@@ -66,13 +66,3 @@ export const errorEnvelopeSchema = z
       .optional(),
   })
   .passthrough();
-
-export type JsonRpcEnvelope = z.infer<typeof jsonRpcEnvelopeSchema>;
-export type SdkMessageEnvelope = z.infer<typeof sdkMessageEnvelopeSchema>;
-export type ThreadIdentityEnvelope = z.infer<
-  typeof threadIdentityEnvelopeSchema
->;
-export type ThreadContextWindowUsageEnvelope = z.infer<
-  typeof threadContextWindowUsageEnvelopeSchema
->;
-export type ErrorEnvelope = z.infer<typeof errorEnvelopeSchema>;

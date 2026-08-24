@@ -13,8 +13,11 @@ import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import { permissionModeSchema, providerForkSchema } from "@bb/domain";
-import { isAcpProviderId } from "../provider-catalog.js";
+import {
+  jsonObjectSchema,
+  permissionModeSchema,
+  providerForkSchema,
+} from "@bb/domain";
 import type { AgentRuntimeBridgeLaunch } from "../types.js";
 
 export const INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH = join(
@@ -25,15 +28,15 @@ export const INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH = join(
 const bridgeLaunchSchema = z.object({
   pluginId: z.string(),
   dataDir: z.string(),
-  source: z.discriminatedUnion("kind", [
-    z.object({
-      kind: z.literal("artifact"),
-      digest: z.string(),
-      artifactPath: z.string(),
-    }),
-    z.object({ kind: z.literal("daemon-bundled"), id: z.string() }),
-  ]),
+  source: z.object({
+    kind: z.literal("artifact"),
+    digest: z.string(),
+    artifactPath: z.string(),
+  }),
+  providerOptions: jsonObjectSchema.default({}),
+  envPassthrough: z.array(z.string()).default([]),
   capabilities: z.object({
+    providerInstallation: z.boolean().default(false),
     supportsServiceTier: z.boolean(),
     permissionModes: z.array(permissionModeSchema),
     supportsThreadArchive: z.boolean(),
@@ -67,9 +70,8 @@ function readManifest(): IntegrationProviderBridgeManifest {
 }
 
 /**
- * The `bridgeLaunch` a live test must pass for this provider — an artifact for
- * a graduated plugin, or the daemon-bundled bridge id for Pi. Every provider
- * has one, exactly as on the wire.
+ * The `bridgeLaunch` a live test must pass for this provider — the artifact
+ * its plugin built. Every provider has one, exactly as on the wire.
  *
  * The ACP fallback mirrors the server's: `acp-*` ids other than the one the
  * plugin declares are resolved at request time and never registered, so they
@@ -83,9 +85,11 @@ export function resolveIntegrationBridgeLaunch(
   if (direct !== undefined) {
     return direct;
   }
-  if (isAcpProviderId(providerId)) {
+  // Test-only: every ACP agent in the integration manifest shares one bridge
+  // artifact, so any acp-* entry stands in for any acp-* provider id.
+  if (providerId.startsWith("acp-")) {
     const acpEntry = Object.entries(manifest).find(([id]) =>
-      isAcpProviderId(id),
+      id.startsWith("acp-"),
     );
     if (acpEntry) {
       return acpEntry[1];

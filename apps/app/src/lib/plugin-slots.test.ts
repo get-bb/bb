@@ -5,6 +5,7 @@ import type {
   PluginNavPanelProps,
 } from "@get-bb/plugin-sdk";
 import {
+  beginPluginSlotBatch,
   getPluginSlotSnapshot,
   removePluginSlotRegistrations,
   resetPluginSlotStoreForTest,
@@ -240,5 +241,136 @@ describe("plugin slot store", () => {
     removePluginSlotRegistrations("demo");
     snapshot = getPluginSlotSnapshot();
     expect(snapshot.messageDirectives).toHaveLength(0);
+  });
+});
+
+describe("plugin slot store structural sharing", () => {
+  it("keeps the messageActions array identity when a navPanels-only plugin registers", () => {
+    setPluginSlotRegistrations(
+      "actions",
+      registrationSet({
+        messageActions: [{ id: "copy", title: "copy", run: () => {} }],
+      }),
+    );
+    const before = getPluginSlotSnapshot();
+
+    setPluginSlotRegistrations(
+      "board",
+      registrationSet({
+        navPanels: [
+          {
+            id: "board",
+            title: "Board",
+            icon: "columns",
+            path: "board",
+            component: PanelComponent,
+          },
+        ],
+      }),
+    );
+    const after = getPluginSlotSnapshot();
+
+    expect(after).not.toBe(before);
+    expect(after.navPanels).toHaveLength(1);
+    // Kinds the new plugin did not touch keep their arrays, so consumers keyed
+    // on `messageActions`/`messageDirectives` (timeline static context,
+    // markdown directive registry) do not re-render or re-parse.
+    expect(after.messageActions).toBe(before.messageActions);
+    expect(after.messageDirectives).toBe(before.messageDirectives);
+    expect(after.composerCustomizations).toBe(before.composerCustomizations);
+    // Slot objects of untouched plugins keep identity too.
+    expect(after.messageActions[0]).toBe(before.messageActions[0]);
+  });
+
+  it("does not notify when a registration changes nothing visible", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribePluginSlots(listener);
+    const before = getPluginSlotSnapshot();
+    setPluginSlotRegistrations("empty", registrationSet());
+    expect(getPluginSlotSnapshot()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("re-registering a plugin replaces only its own kinds' arrays", () => {
+    setPluginSlotRegistrations(
+      "a",
+      registrationSet({
+        messageActions: [{ id: "a-copy", title: "a-copy", run: () => {} }],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "b",
+      registrationSet({
+        messageDirectives: [{ id: "b-vis", component: DirectiveComponent }],
+      }),
+    );
+    const before = getPluginSlotSnapshot();
+    setPluginSlotRegistrations(
+      "b",
+      registrationSet({
+        messageDirectives: [{ id: "b-chart", component: DirectiveComponent }],
+      }),
+    );
+    const after = getPluginSlotSnapshot();
+    expect(after.messageDirectives.map((d) => d.id)).toEqual(["b-chart"]);
+    expect(after.messageDirectives[0]?.generation).toBe(2);
+    expect(after.messageActions).toBe(before.messageActions);
+  });
+});
+
+describe("plugin slot batches", () => {
+  it("holds notifications until the batch closes and then notifies once", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribePluginSlots(listener);
+    const close = beginPluginSlotBatch({ maxHoldMs: 10_000 });
+    setPluginSlotRegistrations(
+      "a",
+      registrationSet({
+        messageActions: [{ id: "a", title: "a", run: () => {} }],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "b",
+      registrationSet({
+        messageActions: [{ id: "b", title: "b", run: () => {} }],
+      }),
+    );
+    expect(listener).not.toHaveBeenCalled();
+    // Reads inside the batch see the current registrations.
+    expect(getPluginSlotSnapshot().messageActions.map((a) => a.id)).toEqual([
+      "a",
+      "b",
+    ]);
+    close();
+    expect(listener).toHaveBeenCalledTimes(1);
+    close();
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+  });
+
+  it("flushes on the hold timer so a slow plugin cannot starve the others", () => {
+    vi.useFakeTimers();
+    try {
+      const listener = vi.fn();
+      const unsubscribe = subscribePluginSlots(listener);
+      const close = beginPluginSlotBatch({ maxHoldMs: 100 });
+      setPluginSlotRegistrations(
+        "fast",
+        registrationSet({
+          messageActions: [{ id: "fast", title: "fast", run: () => {} }],
+        }),
+      );
+      vi.advanceTimersByTime(99);
+      expect(listener).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(listener).toHaveBeenCalledTimes(1);
+      // Nothing new since the flush: closing does not notify again.
+      close();
+      expect(listener).toHaveBeenCalledTimes(1);
+      unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

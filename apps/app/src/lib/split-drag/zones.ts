@@ -87,7 +87,7 @@ export function zoneBox(rect: Rect, zone: SplitZone): Rect {
   }
 }
 
-export interface ThreadDropInput {
+interface ThreadDropInput {
   zone: SplitZone;
   /** The dragged thread is already open in some pane. */
   threadAlreadyOpen: boolean;
@@ -121,7 +121,7 @@ export function decideThreadDrop({
   };
 }
 
-export interface PaneDropInput {
+interface PaneDropInput {
   zone: SplitZone;
   /** The hovered pane is the pane being dragged. */
   isSelf: boolean;
@@ -144,7 +144,7 @@ export function decidePaneDrop({
     : { zone, label: `Move ${zone}` };
 }
 
-export interface SidebarSplitDragEngageInput {
+interface SidebarSplitDragEngageInput {
   startX: number;
   startY: number;
   x: number;

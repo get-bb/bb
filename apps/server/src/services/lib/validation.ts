@@ -22,7 +22,7 @@ export function parseOptionalInteger(
   return parsed;
 }
 
-export interface ParseBoundedPositiveOptionalIntegerArgs {
+interface ParseBoundedPositiveOptionalIntegerArgs {
   defaultValue: number;
   max: number;
   name: string;

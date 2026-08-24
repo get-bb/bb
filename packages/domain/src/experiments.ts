@@ -11,10 +11,11 @@ import { z } from "zod";
  * database schema; experiment values use key/value persistence.
  */
 export const experimentKeys = [
-  "claudeCodeMockCliTraffic",
+  "changelogPreview",
   "editMessages",
-  "newOnboarding",
+  "mobileApp",
   "providerSessionReaping",
+  "timelineWindowing",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -27,8 +28,9 @@ export type Experiments = z.infer<typeof experimentsSchema>;
  * persists every key, so one that has keeps its stored values instead.
  */
 export const defaultExperiments: Experiments = {
-  claudeCodeMockCliTraffic: false,
+  changelogPreview: false,
   editMessages: true,
-  newOnboarding: false,
+  mobileApp: false,
   providerSessionReaping: false,
+  timelineWindowing: false,
 };

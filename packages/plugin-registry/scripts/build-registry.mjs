@@ -78,10 +78,14 @@ function resolveLocal(specifier, importerRel) {
 
 function importSpecifiersOf(content) {
   const specs = [];
-  const re = /(?:^|\n)\s*(?:import|export)[^;]*?from\s+["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']/g;
+  // Static imports/re-exports, bare side-effect imports, and dynamic
+  // `import("...")` calls (icon.tsx loads its extended glyph registry that
+  // way): all three are edges a vendored copy needs to keep resolving.
+  const re =
+    /(?:^|\n)\s*(?:import|export)[^;]*?from\s+["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)/g;
   let match;
   while ((match = re.exec(content)) !== null) {
-    specs.push(match[1] ?? match[2]);
+    specs.push(match[1] ?? match[2] ?? match[3]);
   }
   return specs;
 }

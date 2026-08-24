@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "web-search",
+  "threadId": "thr_kbyc2f5ivt",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "A turn that uses web search or fetch (or a shell fallback).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 17,
+    "provider→bridge": 38,
+    "bridge→provider": 5
+  }
+}

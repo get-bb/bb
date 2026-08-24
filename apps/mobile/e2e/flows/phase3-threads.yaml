@@ -1,0 +1,159 @@
+# Phase 3 threads: first run → add the harness server → home lists the seeded
+# project and threads → long-press menu (rename, pin, archive) → Settings →
+# Archived (unarchive) → search.
+#
+# Requires Metro started with EXPO_PUBLIC_BB_E2E=1 (profiles/preferences are
+# wiped on launch) and the harness backend (seeds "Mobile E2E Project" with
+# "Completed thread" and "Idle thread").
+#
+# Run: pnpm --filter @bb/mobile e2e:ios   (Metro on 8082, backend on 41999)
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-app.yaml
+# First run: add the Direct server.
+- extendedWaitUntil:
+    visible: "Connect to a bb server"
+    timeout: 30000
+- tapOn:
+    id: "server-url-input"
+- inputText: "${SERVER_URL}"
+- tapOn:
+    id: "server-label-input"
+- inputText: "E2E backend"
+# Tapping static text dismisses the keyboard; Maestro's hideKeyboard swipe is
+# unreliable on this screen since the bb connect row lengthened it.
+- tapOn: "Server URL"
+- tapOn:
+    id: "add-server-submit"
+# Home = the thread list: seeded project header + both threads.
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "Mobile E2E Project"
+    timeout: 30000
+- assertVisible: "Completed thread"
+- assertVisible: "Idle thread"
+- takeScreenshot: phase3-home
+# Long-press → Rename.
+- longPressOn: "Idle thread"
+- extendedWaitUntil:
+    visible:
+      id: "sidebar-action-rename"
+    timeout: 10000
+- tapOn:
+    id: "sidebar-action-rename"
+- extendedWaitUntil:
+    visible:
+      id: "rename-input"
+    timeout: 10000
+- tapOn:
+    id: "rename-input"
+- eraseText: 40
+- inputText: "Renamed thread"
+- tapOn:
+    id: "rename-submit"
+- extendedWaitUntil:
+    visible: "Renamed thread"
+    timeout: 15000
+- assertNotVisible: "Idle thread"
+# Long-press → Pin → Pinned section appears on top.
+- longPressOn: "Renamed thread"
+- extendedWaitUntil:
+    visible:
+      id: "sidebar-action-pin"
+    timeout: 10000
+- tapOn:
+    id: "sidebar-action-pin"
+- extendedWaitUntil:
+    visible:
+      id: "sidebar-header-pinned"
+    timeout: 15000
+- assertVisible: "Renamed thread"
+- takeScreenshot: phase3-pinned
+# Long-press → Archive → row disappears (undo toast shows).
+- longPressOn: "Renamed thread"
+- extendedWaitUntil:
+    visible:
+      id: "sidebar-action-archive"
+    timeout: 10000
+- tapOn:
+    id: "sidebar-action-archive"
+- extendedWaitUntil:
+    notVisible: "Renamed thread"
+    timeout: 15000
+- assertVisible: ".*Archived Renamed thread.*"
+# Workspace menu → Settings → Archived.
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+# The Threads section sits below the fold of the settings home.
+- scrollUntilVisible:
+    element:
+      id: "settings-archived"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "settings-archived"
+- extendedWaitUntil:
+    visible:
+      id: "archived-thread-list"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "Renamed thread"
+    timeout: 15000
+- takeScreenshot: phase3-archived
+# Unarchive from the long-press menu (the trailing button sits under the
+# dev-client's floating gear on some simulators); the row leaves the list.
+- longPressOn: "Renamed thread"
+- extendedWaitUntil:
+    visible:
+      id: "sidebar-action-unarchive"
+    timeout: 10000
+- tapOn:
+    id: "sidebar-action-unarchive"
+- extendedWaitUntil:
+    notVisible: "Renamed thread"
+    timeout: 15000
+# Back to home (native header back ×2): the thread is back in the list.
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+- tapOn:
+    id: "BackButton"
+- extendedWaitUntil:
+    visible:
+      id: "home-thread-list"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: "Renamed thread"
+    timeout: 15000
+# Search from the home header.
+- extendedWaitUntil:
+    visible:
+      id: "home-search"
+    timeout: 10000
+- tapOn:
+    id: "home-search"
+- extendedWaitUntil:
+    visible:
+      id: "thread-search-input"
+    timeout: 10000
+- assertVisible: "Recent"
+- tapOn:
+    id: "thread-search-input"
+- inputText: "Compl"
+- extendedWaitUntil:
+    visible: "Completed thread"
+    timeout: 15000
+- assertNotVisible: "Renamed thread"
+- takeScreenshot: phase3-search

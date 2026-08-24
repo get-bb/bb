@@ -16,7 +16,7 @@ export function isAllowedBrowserUrl(url: string): boolean {
   return parsed.protocol === "http:" || parsed.protocol === "https:";
 }
 
-export interface WindowOpenDecision {
+interface WindowOpenDecision {
   /** The URL to open as a new in-panel tab, or null to deny entirely. */
   openTabUrl: string | null;
 }
@@ -34,12 +34,12 @@ export function resolveWindowOpenAction(url: string): WindowOpenDecision {
 
 // --- Popup-tab rate limiting ---
 
-export interface PopupRateDecision {
+interface PopupRateDecision {
   allowed: boolean;
   timestamps: number[];
 }
 
-export interface EvaluatePopupRateArgs {
+interface EvaluatePopupRateArgs {
   timestamps: readonly number[];
   now: number;
   windowMs: number;

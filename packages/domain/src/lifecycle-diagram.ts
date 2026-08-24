@@ -12,26 +12,24 @@
  * (the shape of EnvironmentLifecyclePathDependentTarget, accepted
  * structurally) rendered as two annotated edges.
  */
-export interface LifecycleDiagramPathDependentTarget {
+interface LifecycleDiagramPathDependentTarget {
   withWorkspacePath: string;
   withoutWorkspacePath: string;
 }
 
-export type LifecycleDiagramTarget =
-  | string
-  | LifecycleDiagramPathDependentTarget;
+type LifecycleDiagramTarget = string | LifecycleDiagramPathDependentTarget;
 
-export type LifecycleDiagramRow = Readonly<
+type LifecycleDiagramRow = Readonly<
   Partial<Record<string, LifecycleDiagramTarget>>
 >;
 
-export type LifecycleDiagramTable = Readonly<Record<string, LifecycleDiagramRow>>;
+type LifecycleDiagramTable = Readonly<Record<string, LifecycleDiagramRow>>;
 
-export type LifecycleDiagramPredicateNames = Readonly<
+type LifecycleDiagramPredicateNames = Readonly<
   Record<string, readonly string[]>
 >;
 
-export type LifecyclePredicateRecord = Readonly<Record<string, object>>;
+type LifecyclePredicateRecord = Readonly<Record<string, object>>;
 
 interface LifecycleDiagramTransitionGroup {
   from: string;
@@ -45,7 +43,7 @@ interface LifecycleDiagramTransition {
   to: string;
 }
 
-export interface RenderLifecycleMermaidArgs {
+interface RenderLifecycleMermaidArgs {
   /** Status assigned at row creation; rendered from the synthetic start node. */
   initial: string;
   /**

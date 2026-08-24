@@ -27,8 +27,6 @@ import {
   type CommentProvider,
 } from "../shared/contract";
 
-type PluginDatabase = ReturnType<BbPluginApi["storage"]["database"]>;
-
 interface TaskLabelIdRow {
   task_id: string;
   label_id: string;
@@ -47,14 +45,6 @@ interface SummaryRow {
   task_count: number;
   active_agent_count: number;
 }
-
-const PRESET_REASONING_LEVELS = [
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-] as const;
 
 const MAX_THREAD_SEARCH_RESULTS = 10;
 
@@ -180,10 +170,6 @@ function taskFailure(error: TasksDomainFailure) {
   return { ok: false as const, error: error.detail };
 }
 
-function projectFailure(error: TasksDomainFailure) {
-  return { ok: false as const, error: error.detail };
-}
-
 function statusName(status: TaskStatus): string {
   return status
     .split("_")
@@ -195,7 +181,7 @@ function priorityName(priority: StoredTask["priority"]): string {
   return priority[0]?.toUpperCase() + priority.slice(1);
 }
 
-function publishTasksChanged(
+export function publishTasksChanged(
   bb: BbPluginApi,
   taskId: string,
   projectId: string,
@@ -433,7 +419,8 @@ async function resolveAgentThreadInfo(
  * live host provider list (one call, only when at least one provider is
  * needed). A provider that is no longer installed — or a provider list that
  * fails to load — leaves no entry, and callers fall back to a badge carrying
- * the raw provider id so the UI can still render a brand glyph by id.
+ * the raw provider id and no logo, which the UI shows as the generic agent
+ * glyph.
  */
 async function resolveProviderBadges(
   bb: BbPluginApi,
@@ -679,9 +666,9 @@ export function registerHandlers(
       return { folder };
     },
     deleteFolder(input) {
-      const deleted = store.tasks.deleteFolder(input.folderId);
-      if (deleted) publishProjectsChanged(bb, null);
-      return { deleted };
+      const result = store.tasks.deleteFolder(input.folderId);
+      if (result.deleted) publishProjectsChanged(bb, null);
+      return result;
     },
     listFolders() {
       return { folders: store.tasks.listFolders() };
@@ -711,7 +698,7 @@ export function registerHandlers(
         publishProjectsChanged(bb, project.id);
         return { ok: true, project };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },
@@ -734,7 +721,7 @@ export function registerHandlers(
         }
         return { ok: true, deleted };
       } catch (error) {
-        if (error instanceof TasksDomainFailure) return projectFailure(error);
+        if (error instanceof TasksDomainFailure) return taskFailure(error);
         throw error;
       }
     },
@@ -1016,45 +1003,6 @@ export function registerHandlers(
     },
     listPresets() {
       return { presets: store.tasks.listPresets() };
-    },
-    async listProviders() {
-      const providers = await bb.sdk.providers.list();
-      return {
-        providers: providers.map((provider) => ({
-          id: provider.id,
-          name: provider.displayName,
-          permissionModes:
-            provider.capabilities.permissionModes,
-        })),
-      };
-    },
-    async listProviderModels(input) {
-      const result = await bb.sdk.providers.models({
-        providerId: input.providerId,
-      });
-      const supportedReasoningLevels = new Set(
-        result.models.flatMap((model) =>
-          model.supportedReasoningEfforts.map(
-            (effort) => effort.reasoningEffort,
-          ),
-        ),
-      );
-      const reasoningLevels = PRESET_REASONING_LEVELS.filter((level) =>
-        supportedReasoningLevels.has(level),
-      );
-      return {
-        models: result.models.map((model) => ({
-          id: model.model,
-          name: model.displayName,
-          isDefault: model.isDefault,
-        })),
-        // The SDK has model-level reasoning metadata but no provider-level
-        // list. Fall back to the standard picker levels when models omit it.
-        reasoningLevels:
-          reasoningLevels.length > 0
-            ? reasoningLevels
-            : [...PRESET_REASONING_LEVELS],
-      };
     },
     async listMachines() {
       const machines = await bb.sdk.hosts.list();

@@ -137,7 +137,7 @@ function GitDiffSelector({
   );
 }
 
-export interface GitDiffToolbarProps {
+interface GitDiffToolbarProps {
   selectionValue: string;
   selectionOptions: readonly GitDiffSelectionOption[];
   onSelectionChange: (value: string) => void;

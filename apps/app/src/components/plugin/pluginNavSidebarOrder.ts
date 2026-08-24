@@ -9,7 +9,7 @@
  * place and a renamed panel id starts fresh at the end of the list.
  */
 
-export interface PluginNavPanelIdentity {
+interface PluginNavPanelIdentity {
   pluginId: string;
   id: string;
 }
@@ -27,9 +27,7 @@ interface ArrangePluginNavPanelsArgs<TPanel extends PluginNavPanelIdentity> {
   hiddenKeys: readonly string[];
 }
 
-export interface ArrangedPluginNavPanels<
-  TPanel extends PluginNavPanelIdentity,
-> {
+interface ArrangedPluginNavPanels<TPanel extends PluginNavPanelIdentity> {
   /** Panels rendered in the sidebar proper, in user order. */
   visible: TPanel[];
   /** Panels parked in the "More" disclosure, in user order. */

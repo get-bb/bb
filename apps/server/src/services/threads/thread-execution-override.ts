@@ -22,12 +22,12 @@ import { getSupportedReasoningLevelsForProvider } from "./thread-reasoning-polic
  * Presence-sensitive patch for the thread execution override. A field that is
  * absent (key not present) is left unchanged; an explicit `null` clears it.
  */
-export interface ThreadExecutionOverridePatch {
+interface ThreadExecutionOverridePatch {
   model?: string | null;
   reasoningLevel?: ReasoningLevel | null;
 }
 
-export interface ResolveThreadExecutionOverrideUpdateArgs {
+interface ResolveThreadExecutionOverrideUpdateArgs {
   /** The thread's currently persisted override. */
   existing: ThreadExecutionOverride;
   /** The requested change (presence-sensitive). */
@@ -43,12 +43,12 @@ export interface ResolveThreadExecutionOverrideUpdateArgs {
   fallbackModel: string | null;
 }
 
-export interface ApplyThreadExecutionOverrideArgs {
+interface ApplyThreadExecutionOverrideArgs {
   thread: Thread;
   patch: ThreadExecutionOverridePatch;
 }
 
-export interface RecoverThreadModelOverrideArgs {
+interface RecoverThreadModelOverrideArgs {
   model: string | undefined;
   modelSource: CallerExecutionInputSource | undefined;
   thread: Thread;
@@ -140,7 +140,7 @@ export function resolveThreadExecutionOverrideUpdate(
  * Validates and persists the sticky thread-level execution override. Loads the
  * thread provider's active model catalog from the daemon to validate, then
  * stores the resolved values. The change takes effect on the next turn via
- * `resolveExecutionOptions` + the runtime's `reconfigureThreadIfNeeded`.
+ * `resolveExecutionOptions` + the runtime's `recordThreadExecutionOptions`.
  */
 export async function applyThreadExecutionOverride(
   deps: LoggedWorkSessionDeps,

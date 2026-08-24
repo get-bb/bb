@@ -24,8 +24,9 @@ import {
   type WorkspaceOpenTargetsQuery,
 } from "@bb/host-daemon-contract";
 import {
-  listWorkspaceOpenTargets,
-  openPathInTarget,
+  createWorkspaceOpenTargetRuntime,
+  listWorkspaceOpenTargetsWithRuntime,
+  openPathInTargetWithRuntime,
   type OpenPathInTargetArgs,
   WorkspaceOpenTargetError,
 } from "@bb/local-open-targets";
@@ -35,13 +36,12 @@ import { HTTPException } from "hono/http-exception";
 import { isFsErrorWithCode } from "./fs-errors.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
 import { resolveHostPlatform } from "./host-platform.js";
+import { userExecutableProcessOptions } from "./user-executable-env.js";
 
-export type WorkspaceOpenTargetListHandler = (
+type WorkspaceOpenTargetListHandler = (
   query: WorkspaceOpenTargetsQuery,
 ) => Promise<WorkspaceOpenTarget[]>;
-export type OpenInTargetHandler = (
-  request: OpenPathInTargetArgs,
-) => Promise<void>;
+type OpenInTargetHandler = (request: OpenPathInTargetArgs) => Promise<void>;
 
 /**
  * Browser-reachable local HTTP API for colocated setups.
@@ -52,7 +52,7 @@ export type OpenInTargetHandler = (
  * through the server and connected work host daemon instead of adding them to a
  * client.
  */
-export interface StartLocalApiServerOptions {
+interface StartLocalApiServerOptions {
   dataDir?: string;
   hostId: string;
   localApiConfig: HostDaemonLocalApiConfig;
@@ -69,6 +69,7 @@ export interface StartLocalApiServerOptions {
   getConnected: () => boolean;
   listWorkspaceOpenTargets?: WorkspaceOpenTargetListHandler;
   openInTarget?: OpenInTargetHandler;
+  shellEnv?: () => NodeJS.ProcessEnv;
 }
 
 export interface LocalApiServer {
@@ -105,10 +106,6 @@ function isSelfEvidentLocalHostname(hostname: string): boolean {
   return /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(hostname);
 }
 
-function isNoEntryError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 function createClientConfigLoader(
   dataDir: string | undefined,
   nowMs: () => number = Date.now,
@@ -142,7 +139,7 @@ async function readClientConfig(dataDir: string): Promise<ClientConfig> {
       JSON.parse(await fs.readFile(formatClientConfigPath(dataDir), "utf8")),
     );
   } catch (error) {
-    if (!isNoEntryError(error)) {
+    if (!isFsErrorWithCode(error, "ENOENT")) {
       throw error;
     }
     return EMPTY_CLIENT_CONFIG;
@@ -187,7 +184,7 @@ async function resolveOpenPathInTargetArgs({
   if (sshAuthority === null) {
     throw new WorkspaceOpenTargetError({
       code: "remote_mapping_missing",
-      message: `No SSH target configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-target set ${serverOrigin} <ssh-target>`,
+      message: `No SSH target configured for host ${request.context.hostId} on ${serverOrigin}. Run: bb-app client ssh-target set ${serverOrigin} <ssh-target> --host-id ${request.context.hostId}`,
     });
   }
 
@@ -195,14 +192,18 @@ async function resolveOpenPathInTargetArgs({
     columnNumber: request.columnNumber,
     context: {
       kind: "remote-ssh",
-      serverOrigin,
-      hostId: request.context.hostId,
       sshAuthority,
     },
     lineNumber: request.lineNumber,
     path: request.path,
     targetId: request.targetId,
   };
+}
+
+function workspaceOpenTargetRuntime(options: StartLocalApiServerOptions) {
+  return createWorkspaceOpenTargetRuntime({
+    ...userExecutableProcessOptions(options.shellEnv?.() ?? {}),
+  });
 }
 
 export async function startLocalApiServer(
@@ -224,6 +225,15 @@ export async function startLocalApiServer(
     value: options.devAppPort,
   });
   const allowedCorsOrigins = new Set<string>(buildLocalAppOrigins(originArgs));
+  // A daemon enrolled with a remote bb already trusts that server for command
+  // traffic. Trust its exact web origin for loopback editor-helper calls too,
+  // so an enrolled browser machine needs no duplicate BB_APP_URL setting.
+  try {
+    allowedCorsOrigins.add(new URL(options.serverUrl).origin);
+  } catch {
+    // startHostDaemon validates ordinary server URLs. Keep this boundary
+    // defensive for injected test/custom callers instead of failing startup.
+  }
   const isAllowedAppOrigin = async (
     origin: string,
     requestUrl: string,
@@ -281,12 +291,6 @@ export async function startLocalApiServer(
     }
     await next();
   });
-  app.use("*", async (c, next) => {
-    if (options.localApiConfig.mode === "health-only") {
-      return c.notFound();
-    }
-    await next();
-  });
 
   const { get, post } = typedRoutes<HostDaemonLocalSchema>(app);
   const platform = resolveHostPlatform();
@@ -308,14 +312,26 @@ export async function startLocalApiServer(
     async (c, query) =>
       c.json({
         targets: await (
-          options.listWorkspaceOpenTargets ?? listWorkspaceOpenTargets
+          options.listWorkspaceOpenTargets ??
+          ((query) =>
+            listWorkspaceOpenTargetsWithRuntime(
+              workspaceOpenTargetRuntime(options),
+              query,
+            ))
         )(query),
       }),
   );
 
   post("/open-in-target", openInTargetRequestSchema, async (c, payload) => {
     try {
-      await (options.openInTarget ?? openPathInTarget)(
+      await (
+        options.openInTarget ??
+        ((args) =>
+          openPathInTargetWithRuntime(
+            args,
+            workspaceOpenTargetRuntime(options),
+          ))
+      )(
         await resolveOpenPathInTargetArgs({
           configLoader: clientConfigLoader,
           request: payload,

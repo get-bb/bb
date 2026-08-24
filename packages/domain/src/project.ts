@@ -2,8 +2,8 @@ import { z } from "zod";
 
 export const PERSONAL_PROJECT_ID = "proj_personal";
 
-export const projectKindValues = ["standard", "personal"] as const;
-export const projectKindSchema = z.enum(projectKindValues);
+const projectKindValues = ["standard", "personal"] as const;
+const projectKindSchema = z.enum(projectKindValues);
 export type ProjectKind = z.infer<typeof projectKindSchema>;
 
 export const projectSchema = z.object({
@@ -16,8 +16,8 @@ export const projectSchema = z.object({
 });
 export type Project = z.infer<typeof projectSchema>;
 
-export const projectSourceTypeValues = ["local_path"] as const;
-export const projectSourceTypeSchema = z.enum(projectSourceTypeValues);
+const projectSourceTypeValues = ["local_path"] as const;
+const projectSourceTypeSchema = z.enum(projectSourceTypeValues);
 export type ProjectSourceType = z.infer<typeof projectSourceTypeSchema>;
 
 const baseProjectSourceSchema = z.object({
@@ -28,7 +28,7 @@ const baseProjectSourceSchema = z.object({
   updatedAt: z.number(),
 });
 
-export const localPathProjectSourceSchema = baseProjectSourceSchema.extend({
+const localPathProjectSourceSchema = baseProjectSourceSchema.extend({
   type: z.literal("local_path"),
   hostId: z.string(),
   path: z.string(),

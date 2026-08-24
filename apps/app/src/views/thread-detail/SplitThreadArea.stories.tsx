@@ -17,10 +17,6 @@ import { maximizedPaneIdAtom, splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
-import { AppPageHeader } from "@/components/layout/AppPageHeader";
-import { TooltipProvider } from "@bb/shared-ui/tooltip";
-import { PaneContext, type PaneContextValue } from "./PaneContext";
-import { PaneMaximizeButton } from "./PaneMaximizeButton";
 import { SplitThreadArea } from "./SplitThreadArea";
 
 export default {
@@ -236,63 +232,4 @@ export function ActiveAndIdle() {
 
 export function MaximizedWithoutRail() {
   return <SplitWorkspaceStory maximized />;
-}
-
-const CONTROL_CONTEXT: PaneContextValue = {
-  paneId: "pane-control",
-  isFocused: true,
-  isSplitPane: true,
-  secondaryPanelHost: null,
-  reservesWindowPanelToggle: false,
-  onRequestClose: () => {},
-  isMaximized: false,
-  onToggleMaximize: () => {},
-  onMoveToSide: () => {},
-  isBoundedPane: true,
-  isTopRow: true,
-  ownsWindowTopLeft: false,
-  navigateInPane: () => {},
-};
-
-export function FullScreenControlStates() {
-  return (
-    <TooltipProvider delayDuration={0}>
-      <main className="grid min-h-screen gap-32 bg-background p-12 md:grid-cols-2">
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">
-            Normal · hover menu
-          </h2>
-          <div className="overflow-visible rounded-md border border-border">
-            <PaneContext.Provider value={CONTROL_CONTEXT}>
-              <AppPageHeader
-                center={
-                  <span className="text-sm font-semibold">Normal pane</span>
-                }
-                actions={<PaneMaximizeButton defaultMenuOpen />}
-              />
-            </PaneContext.Provider>
-          </div>
-        </section>
-        <section className="space-y-3">
-          <h2 className="text-sm font-medium text-foreground">
-            Full screen · exit tooltip
-          </h2>
-          <div className="overflow-visible rounded-md border border-border">
-            <PaneContext.Provider
-              value={{ ...CONTROL_CONTEXT, isMaximized: true }}
-            >
-              <AppPageHeader
-                center={
-                  <span className="text-sm font-semibold">
-                    Full-screen pane
-                  </span>
-                }
-                actions={<PaneMaximizeButton defaultTooltipOpen />}
-              />
-            </PaneContext.Provider>
-          </div>
-        </section>
-      </main>
-    </TooltipProvider>
-  );
 }

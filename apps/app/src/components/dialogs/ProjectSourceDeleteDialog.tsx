@@ -34,7 +34,7 @@ export function ProjectSourceDeleteDialog({
   );
 }
 
-export interface ProjectSourceDeleteDialogContentProps {
+interface ProjectSourceDeleteDialogContentProps {
   target: ProjectSourceDeleteDialogTarget;
   pending: boolean;
   onDelete: (sourceId: string) => void;

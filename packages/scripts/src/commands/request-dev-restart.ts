@@ -135,9 +135,7 @@ async function runBuild(filters: string[]): Promise<boolean> {
   return exitCode === 0;
 }
 
-export async function main(
-  argv: string[] = process.argv.slice(2),
-): Promise<void> {
+async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
   const target = await resolveEffectiveRestartTarget(
     parseTarget(argv[0] ?? "both"),
   );

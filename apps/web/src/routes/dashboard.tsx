@@ -7,7 +7,7 @@ import {
   MoreHorizontalIcon,
   PlusSignIcon,
 } from "@hugeicons/core-free-icons";
-import { MAX_SERVERS_PER_ACCOUNT } from "@bb/connect-db";
+import { MAX_PER_ACCOUNT } from "@bb/connect-db";
 import type { HandleValidationError, LabelAvailability } from "@bb/connect-db";
 import appCss from "../styles.css?url";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,6 @@ import {
   getDashboard,
 } from "@/server/fns";
 import type { IssuedCode, MachineSummary, ServerSummary } from "@/server/api";
-import bbIcon from "../assets/bb-icon.png";
 import { DASHBOARD_PATH, connectReturnTo } from "@/lib/connect-return-to";
 import {
   dashboardRefreshIntervalMs,
@@ -75,7 +74,13 @@ type ServerState = Extract<
 function BrandRow() {
   return (
     <div className="mb-[18px] flex items-center gap-2.5">
-      <img src={bbIcon} alt="bb" className="h-[30px] w-[30px] rounded-lg" />
+      {/* One element; styles.css picks the asset off html.dark, so only the
+          variant in use is downloaded (see .bb-mark). */}
+      <span
+        role="img"
+        aria-label="bb"
+        className="bb-mark h-[30px] w-[30px] rounded-lg"
+      />
       <div className="leading-tight">
         <b className="block text-sm font-semibold">bb connect</b>
         <span className="text-xs text-muted-foreground">
@@ -522,7 +527,7 @@ function SignInView({
           Continue with GitHub
         </Button>
         <p className="mt-3 text-center text-xs text-subtle-foreground">
-          Up to {MAX_SERVERS_PER_ACCOUNT} servers per account
+          Up to {MAX_PER_ACCOUNT} servers per account
         </p>
       </WebCard>
     </Shell>
@@ -606,7 +611,7 @@ function ClaimField({
   return (
     <div>
       <div className="flex items-center overflow-hidden rounded-lg border border-border bg-card focus-within:ring-1 focus-within:ring-ring">
-        {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+        {/* oxlint-disable-next-line jsx-a11y/no-autofocus */}
         <input
           value={value}
           autoFocus={autoFocus}
@@ -672,7 +677,7 @@ function ClaimView({ serverUrlTemplate }: { serverUrlTemplate: string }) {
               await router.invalidate();
               return null;
             }
-            return claimErrorCopy(r.error, MAX_SERVERS_PER_ACCOUNT);
+            return claimErrorCopy(r.error, MAX_PER_ACCOUNT);
           }}
         />
       </WebCard>

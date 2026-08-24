@@ -7,10 +7,13 @@
     "node": ">=22.19.0"
   },
   "scripts": {
+    "prepare": "turbo run generate:templates generate:plugin-scaffold generate --filter=@bb/templates --filter=@bb/plugin-build --output-logs=errors-only --summarize=false",
     "scripts:prepare": "pnpm exec turbo run build --filter=@bb/scripts --output-logs=none --log-prefix=none --summarize=false",
     "cli:prepare": "pnpm exec turbo run build --filter=@bb/scripts --filter=@bb/cli --output-logs=none --log-prefix=none --summarize=false",
     "ensure-native-modules": "node scripts/ensure-native-modules.mjs",
     "dev": "node scripts/ensure-native-modules.mjs && cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-dev.ts",
+    "start:worktree": "cross-env NODE_ENV=development dotenv -c development -- node --conditions=source --import tsx packages/scripts/src/commands/run-dev.ts --worktree",
+    "dev:remote": "cross-env BB_DEV_APP_HOST=0.0.0.0 BB_SERVER_BIND_HOST=0.0.0.0 pnpm run dev",
     "cloud:dev": "node --conditions=source --import tsx scripts/bb-cloud-dev.mjs",
     "dev:desktop": "scripts/bb-dev-app current --desktop",
     "dev:status": "scripts/bb-dev-app status",
@@ -24,12 +27,13 @@
     "start": "cross-env NODE_ENV=production dotenv -c production -- node --conditions=source --import tsx scripts/start-bb.mjs",
     "start:host-daemon": "cross-env NODE_ENV=production dotenv -c production -- pnpm run --silent bb-app:prepare && cross-env NODE_ENV=production dotenv -c production -- node packages/bb-app/dist/bb-app.js host-daemon",
     "seed:perf": "node scripts/ensure-native-modules.mjs && cross-env NODE_ENV=development node --conditions=source --import tsx packages/scripts/src/commands/seed-perf-db.ts",
+    "parity": "pnpm --filter @bb/provider-parity run parity",
     "reset": "cross-env NODE_ENV=production pnpm run --silent scripts:prepare && cross-env NODE_ENV=production node packages/scripts/dist/commands/reset-bb-data.js",
     "reset:dev": "cross-env NODE_ENV=development pnpm run --silent scripts:prepare && cross-env NODE_ENV=development node packages/scripts/dist/commands/reset-bb-data.js",
     "reset:all": "cross-env NODE_ENV=production pnpm run --silent scripts:prepare && cross-env NODE_ENV=production node packages/scripts/dist/commands/reset-bb-data.js --all",
     "clean": "turbo run clean",
-    "format": "prettier . --write --ignore-unknown",
-    "format:check": "prettier . --check --ignore-unknown",
+    "format": "oxfmt .",
+    "format:check": "oxfmt . --check",
     "storybook": "turbo run storybook --filter=@bb/app",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -46,11 +50,13 @@
     "drizzle-studio:prod": "cross-env NODE_ENV=production pnpm --filter @bb/db db:studio"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "4.1.1",
     "cross-env": "^10.1.0",
     "dotenv-cli": "^11.0.0",
     "esbuild": "^0.28.0",
     "http-proxy-3": "^1.23.2",
-    "prettier": "^3.8.3",
+    "oxfmt": "^0.64.0",
+    "oxlint": "^1.79.0",
     "rimraf": "^6.1.0",
     "tsx": "^4.23.1",
     "turbo": "^2.4.0",
@@ -70,7 +76,13 @@
       ]
     },
     "overrides": {
-      "zod": "4.3.6"
+      "zod": "4.3.6",
+      "@expo/metro-config>lightningcss": "1.30.1"
+    },
+    "patchedDependencies": {
+      "expo-modules-jsi@57.0.4": "patches/expo-modules-jsi@57.0.4.patch",
+      "oniguruma-to-es@4.3.4": "patches/oniguruma-to-es@4.3.4.patch",
+      "@pierre/diffs@1.2.9": "patches/@pierre__diffs@1.2.9.patch"
     }
   }
 }

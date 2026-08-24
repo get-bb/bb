@@ -75,7 +75,7 @@ function useActivityFeed(taskId: string) {
   );
 }
 
-export type AgentNotificationTarget =
+type AgentNotificationTarget =
   | { kind: "ready"; title: string }
   | { kind: "none" }
   | { kind: "unavailable" };
@@ -535,7 +535,7 @@ export function AgentNotificationControl({
   );
 }
 
-export interface TaskActivityProps {
+interface TaskActivityProps {
   taskId: string;
   /** Task key like TSK-4; reserved for deep links from feed entries. */
   taskKey: string;
@@ -587,5 +587,3 @@ export function TaskActivity({ taskId }: TaskActivityProps) {
     </section>
   );
 }
-
-export default TaskActivity;

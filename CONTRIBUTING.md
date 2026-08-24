@@ -4,7 +4,7 @@ Thanks for helping improve bb.
 
 ## Bugs
 
-If you run into a bug, please open an issue with the workflow you were trying to accomplish, what happened, and what you expected instead.
+If you run into a bug, please open an issue with the bug report form. Follow [docs/filing-issues.md](docs/filing-issues.md): versions, minimal copy-pasteable steps, expected vs actual output, evidence, and what you ruled out. A stranger should be able to reproduce it from the issue alone.
 
 If you fix the bug, feel free to open a pull request for it.
 

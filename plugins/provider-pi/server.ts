@@ -1,27 +1,17 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { piProviderDeclaration } from "./src/declaration.js";
 
 /**
- * First-party Pi provider plugin (see
- * plans/agent-provider-plugin-surface.md). The
- * declaration is the only source of this provider: with the core catalog seed
- * deleted, disabling this plugin removes the provider.
+ * First-party Pi provider plugin. The declaration is the only source of this
+ * provider: disabling this plugin removes the provider. Pi's skill roots are
+ * the plugin's fact, not core's: the documented directories are declared,
+ * and the ones a host's pi `settings.json` names are resolved on that host
+ * by the plugin's `bb.host` entry (`src/native-roots.ts`) when bb lists
+ * skills there.
  */
-export default function plugin(bb: BbPluginApi) {
-  bb.agents.experimental_registerProvider({
-    id: "pi",
-    displayName: "Pi",
-    icon: "./icons/pi.svg",
-    capabilities: {
-      supportsServiceTier: false,
-      supportsNativeUserQuestion: false,
-      fork: "checkpoint",
-      supportsManualCompaction: true,
-      supportsThreadArchive: false,
-      supportsThreadRename: false,
-      supportsWorkflows: false,
-      permissionModes: ["full"],
-      reasoningLevels: ["none", "low", "medium", "high", "xhigh", "max"],
-    },
-    composerActions: [],
+export default function plugin(bb: BbPluginApi): void {
+  const registered = bb.providers.register(piProviderDeclaration());
+  bb.onDispose(() => {
+    registered.dispose();
   });
 }

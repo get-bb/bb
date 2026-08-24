@@ -1,0 +1,144 @@
+# Phase 6 Diff tab: add the harness server → open the thread named by
+# THREAD_TITLE (its worktree is dirty) → the context banner's changed-files
+# row → "Open diff" → the Diff sheet lists the modified / deleted / added
+# cards with the modified file's hunk → the target picker offers the
+# uncommitted target → "Add to chat" quotes the patch into the composer
+# ("> diff --git …") → a file row in the banner opens the diff focused on it
+# → an API commit + refresh offers the committed target.
+#
+# Setup (the fake provider never edits files, so the worktree is dirtied from
+# the shell; the script creates the thread too):
+#   SERVER_URL=http://127.0.0.1:41999 e2e/scripts/phase6-diff-setup.sh
+#   maestro test e2e/flows/phase6-diff.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+  THREAD_TITLE: "P6 diff"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- scrollUntilVisible:
+    element: "${THREAD_TITLE}"
+    direction: DOWN
+    timeout: 60000
+- tapOn: "${THREAD_TITLE}"
+- extendedWaitUntil:
+    visible:
+      id: "thread-detail-title"
+      text: "${THREAD_TITLE}"
+    timeout: 30000
+# The dirty worktree shows the changed-files chip; its sheet has "Open diff".
+- extendedWaitUntil:
+    visible:
+      id: "thread-chip-changes"
+    timeout: 30000
+- tapOn:
+    id: "thread-chip-changes"
+- extendedWaitUntil:
+    visible:
+      id: "thread-chip-open-diff"
+    timeout: 10000
+- tapOn:
+    id: "thread-chip-open-diff"
+- extendedWaitUntil:
+    visible:
+      id: "diff-tab-header"
+    timeout: 15000
+# Three cards: modified (alpha.txt, with its hunk), deleted (collapsed by
+# default), added.
+- extendedWaitUntil:
+    visible:
+      id: "diff-tab-list"
+    timeout: 30000
+# Card headers aggregate their children (path, kind, tally) into one label.
+- extendedWaitUntil:
+    visible: ".*alpha\\.txt.*"
+    timeout: 30000
+- assertVisible: ".*beta\\.md, deleted.*"
+- assertVisible: ".*phase6-added\\.ts, added.*"
+- assertVisible: "Phase 6 diff tab check.*"
+- assertVisible:
+    id: "diff-tab-added"
+- assertVisible:
+    id: "diff-tab-removed"
+- takeScreenshot: phase6-diff
+# Target picker: the working tree is the only target on a fresh worktree
+# with no commits above the default branch; pick it and the list holds.
+- tapOn:
+    id: "diff-tab-target"
+- extendedWaitUntil:
+    visible:
+      id: "diff-target-sheet"
+    timeout: 10000
+- assertVisible:
+    id: "diff-target-uncommitted"
+- takeScreenshot: phase6-diff-target-picker
+- tapOn:
+    id: "diff-target-uncommitted"
+- extendedWaitUntil:
+    visible: ".*alpha\\.txt.*"
+    timeout: 15000
+# Collapse all, expand all.
+- tapOn:
+    id: "diff-tab-collapse-all"
+- assertNotVisible: "Phase 6 diff tab check.*"
+- tapOn:
+    id: "diff-tab-collapse-all"
+- extendedWaitUntil:
+    visible: "Phase 6 diff tab check.*"
+    timeout: 10000
+# Add to chat: the sheet closes and the patch lands in the composer as a quote.
+- tapOn:
+    id: "diff-tab-file-add-to-chat"
+    index: 0
+- extendedWaitUntil:
+    notVisible:
+      id: "diff-tab-header"
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "> diff --git a/alpha.txt b/alpha.txt.*"
+    timeout: 15000
+- takeScreenshot: phase6-diff-add-to-chat
+# A file row in the changes sheet opens the diff focused on that file.
+- tapOn:
+    id: "thread-chip-changes"
+- extendedWaitUntil:
+    visible:
+      id: "workspace-changes-list"
+    timeout: 10000
+- tapOn:
+    id: "workspace-changes-file"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "diff-tab-header"
+    timeout: 15000
+- extendedWaitUntil:
+    visible: ".*alpha\\.txt.*"
+    timeout: 30000
+- takeScreenshot: phase6-diff-focused
+# Commit through the API (the fake provider cannot), refresh: the picker now
+# offers "Committed changes" and the commit itself; the committed target
+# lists the same files.
+- runScript:
+    file: ../scripts/phase6-commit.js
+- tapOn:
+    id: "diff-tab-refresh"
+- extendedWaitUntil:
+    visible: ".*alpha\\.txt.*"
+    timeout: 15000
+- tapOn:
+    id: "diff-tab-target"
+- extendedWaitUntil:
+    visible:
+      id: "diff-target-branch_committed"
+    timeout: 15000
+- assertVisible: ".*bb: automated commit.*"
+- takeScreenshot: phase6-diff-committed-picker
+- tapOn:
+    id: "diff-target-branch_committed"
+- extendedWaitUntil:
+    visible: ".*alpha\\.txt.*"
+    timeout: 15000
+- assertVisible: ".*phase6-added\\.ts, added.*"
+- takeScreenshot: phase6-diff-committed

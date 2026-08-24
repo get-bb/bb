@@ -15,13 +15,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  AgentRuntimeAcpSkillRoot,
-  AgentRuntimeClaudeCodeSkillRoot,
-  AgentRuntimeCodexSkillRoot,
-  AgentRuntimePiSkillRoot,
-  AgentRuntimeSkillRoot,
-} from "@bb/agent-runtime";
+import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type {
   HostDaemonInjectedSkillSource,
   HostDaemonSkillTree,
@@ -64,28 +58,15 @@ afterEach(async () => {
   );
 });
 
-function isCodexSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimeCodexSkillRoot {
-  return root.providerId === "codex";
-}
-
-function isClaudeCodeSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimeClaudeCodeSkillRoot {
-  return root.providerId === "claude-code";
-}
-
-function isPiSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimePiSkillRoot {
-  return root.providerId === "pi";
-}
-
-function isAcpSkillRoot(
-  root: AgentRuntimeSkillRoot,
-): root is AgentRuntimeAcpSkillRoot {
-  return root.providerId === "acp";
+/** The one staged root (every provider receives the same shape). */
+function requireSkillRoot(
+  roots: readonly AgentRuntimeSkillRoot[],
+): AgentRuntimeSkillRoot {
+  const [root, ...rest] = roots;
+  if (root === undefined || rest.length > 0) {
+    throw new Error(`Expected exactly one staged skill root, got ${roots.length}`);
+  }
+  return root;
 }
 
 async function writeSkill(args: WriteSkillArgs): Promise<string> {
@@ -236,12 +217,8 @@ describe("injected skill staging", () => {
       injectedSkillSources: [source],
     });
 
-    const codexRoot = first.skillRoots.find(isCodexSkillRoot);
-    if (!codexRoot) {
-      throw new Error("Expected Codex skill root");
-    }
     const stagedScript = path.join(
-      codexRoot.skillDirectoryRootPath,
+      requireSkillRoot(first.skillRoots).path,
       "synced-skill",
       "scripts",
       "run.sh",
@@ -477,52 +454,19 @@ describe("injected skill staging", () => {
       ],
     });
 
-    const codexRoot = staged.skillRoots.find(isCodexSkillRoot);
-    const claudeRoot = staged.skillRoots.find(isClaudeCodeSkillRoot);
-    const piRoot = staged.skillRoots.find(isPiSkillRoot);
-    const acpRoot = staged.skillRoots.find(isAcpSkillRoot);
-    expect(codexRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:codex`,
-      providerId: "codex",
-      skillDirectoryRootPath: path.join(
-        dataDir,
-        "runtime",
-        "global-skills",
-        staged.catalogHash,
-        "skills",
-      ),
-    });
-    expect(claudeRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:claude-code`,
-      providerId: "claude-code",
-      localPluginPath: path.join(
-        dataDir,
-        "runtime",
-        "global-skills",
-        staged.catalogHash,
-      ),
-    });
-    expect(piRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:pi`,
-      providerId: "pi",
-      skillDirectoryRootPath: path.join(
-        dataDir,
-        "runtime",
-        "global-skills",
-        staged.catalogHash,
-        "skills",
-      ),
-    });
-    expect(acpRoot).toEqual({
-      id: `global-skills:${staged.catalogHash}:acp`,
-      providerId: "acp",
-      skillDirectoryRootPath: path.join(
-        dataDir,
-        "runtime",
-        "global-skills",
-        staged.catalogHash,
-        "skills",
-      ),
+    // One generic root for every provider: the staged skills directory plus
+    // the skill list. No provider-native manifest is staged; each bridge
+    // maps the root to its own layout.
+    const root = requireSkillRoot(staged.skillRoots);
+    const stageRootPath = path.join(
+      dataDir,
+      "runtime",
+      "global-skills",
+      staged.catalogHash,
+    );
+    expect(root).toEqual({
+      id: `global-skills:${staged.catalogHash}`,
+      path: path.join(stageRootPath, "skills"),
       skills: [
         {
           description: "Use release-notes when host staging tests run.",
@@ -530,42 +474,18 @@ describe("injected skill staging", () => {
         },
       ],
     });
-
-    if (!claudeRoot) {
-      throw new Error("Expected Claude Code skill root");
-    }
     await expect(
-      readFile(
-        path.join(
-          claudeRoot.localPluginPath,
-          "skills",
-          "release-notes",
-          "SKILL.md",
-        ),
-        "utf8",
-      ),
+      readFile(path.join(root.path, "release-notes", "SKILL.md"), "utf8"),
     ).resolves.toContain("name: release-notes");
     await expect(
       readFile(
-        path.join(
-          claudeRoot.localPluginPath,
-          "skills",
-          "release-notes",
-          "references",
-          "notes.md",
-        ),
+        path.join(root.path, "release-notes", "references", "notes.md"),
         "utf8",
       ),
     ).resolves.toBe("supporting notes\n");
     await expect(
-      readFile(
-        path.join(claudeRoot.localPluginPath, ".claude-plugin", "plugin.json"),
-        "utf8",
-      ).then((content) => JSON.parse(content)),
-    ).resolves.toMatchObject({
-      name: "bb-global-skills",
-      skills: ["./skills/release-notes"],
-    });
+      readdir(stageRootPath).then((entries) => entries.sort()),
+    ).resolves.toEqual(["catalog.json", "skills"]);
   });
 
   it("stages workspace-path skill sources into the shared catalog", async () => {
@@ -590,21 +510,13 @@ describe("injected skill staging", () => {
       ],
     });
 
-    const claudeRoot = staged.skillRoots.find(isClaudeCodeSkillRoot);
-    if (!claudeRoot) {
-      throw new Error("Expected Claude Code skill root");
-    }
+    const root = requireSkillRoot(staged.skillRoots);
+    await expect(
+      readFile(path.join(root.path, "workflow-help", "SKILL.md"), "utf8"),
+    ).resolves.toContain("name: workflow-help");
     await expect(
       readFile(
-        path.join(claudeRoot.localPluginPath, ".claude-plugin", "plugin.json"),
-        "utf8",
-      ).then((content) => JSON.parse(content)),
-    ).resolves.toMatchObject({
-      skills: ["./skills/workflow-help"],
-    });
-    await expect(
-      readFile(
-        path.join(claudeRoot.localPluginPath, "catalog.json"),
+        path.join(path.dirname(root.path), "catalog.json"),
         "utf8",
       ).then((content) => JSON.parse(content)),
     ).resolves.toMatchObject({
@@ -641,19 +553,10 @@ describe("injected skill staging", () => {
       ],
     });
 
-    expect(staged.skillRoots.map((root) => root.providerId)).toEqual([
-      "codex",
-      "claude-code",
-      "pi",
-      "acp",
-    ]);
-    const piRoot = staged.skillRoots.find(isPiSkillRoot);
-    if (!piRoot) throw new Error("Expected Pi skill root");
+    const root = requireSkillRoot(staged.skillRoots);
+    expect(root.skills.map((skill) => skill.name)).toEqual(["shared-review"]);
     await expect(
-      readFile(
-        path.join(piRoot.skillDirectoryRootPath, "shared-review", "SKILL.md"),
-        "utf8",
-      ),
+      readFile(path.join(root.path, "shared-review", "SKILL.md"), "utf8"),
     ).resolves.toContain("name: shared-review");
   });
 
@@ -726,8 +629,7 @@ describe("injected skill staging", () => {
         throw new Error("Expected staged skill catalogs");
       }
       for (const entry of staged) {
-        const codexRoot = entry.skillRoots.find(isCodexSkillRoot);
-        expect(codexRoot?.skillDirectoryRootPath).toBe(
+        expect(requireSkillRoot(entry.skillRoots).path).toBe(
           path.join(
             dataDir,
             "runtime",

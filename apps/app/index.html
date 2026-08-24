@@ -82,16 +82,45 @@
         // flash the wrong shade before the app boots; useTheme.ts owns the
         // meta tag afterwards. Mirrors the bb.theme preference resolution and
         // the --canvas values in theme.css (#151515 = oklch(0.195 0 0)).
-        var theme = localStorage.getItem("bb.theme");
+        var theme = null;
+        try {
+          theme = localStorage.getItem("bb.theme");
+        } catch {}
         var darkTheme = theme === "dark" || (theme !== "light" && mq.matches);
         document.getElementById("theme-color").content = darkTheme
           ? "#151515"
           : "#ffffff";
+        // theme.css keys every dark token off the `dark` class, so add it
+        // before the stylesheet applies. Otherwise the first paint is the
+        // light palette until main.tsx (behind ~1.5 MB of JS) toggles it,
+        // which reads as a white flash on every cold load. useTheme.ts owns
+        // the class afterwards and reconciles it with the same preference.
+        if (darkTheme) document.documentElement.classList.add("dark");
       })();
     </script>
   </head>
   <body class="bb-app-shell">
     <div id="root"></div>
+    <script>
+      // Pre-paint the palette (Nord, Dracula, a custom theme, ...) cached by
+      // applyAppThemeCss from the previous load, so a non-default palette does
+      // not flash the default one until main.tsx runs. Runs at the end of
+      // <body> so the <style> lands after the app stylesheet Vite injects into
+      // <head>, where its :root/.dark overrides win by source order.
+      // applyCachedAppThemeCss reuses this element by id and re-appends it if
+      // anything (dev-mode style tags) got inserted after it.
+      (function () {
+        var css = null;
+        try {
+          css = localStorage.getItem("bb.appThemeCss");
+        } catch {}
+        if (!css) return;
+        var style = document.createElement("style");
+        style.id = "bb-app-theme";
+        style.textContent = css;
+        document.head.appendChild(style);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

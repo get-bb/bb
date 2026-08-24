@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative } from "node:path";
 
-export interface ExpectedDevPortSet {
+interface ExpectedDevPortSet {
   appPort: number;
   cloudPort: number;
   cloudWorkerPort: number;
@@ -9,7 +9,7 @@ export interface ExpectedDevPortSet {
   serverPort: number;
 }
 
-export interface ExpectedDevInstanceArgs {
+interface ExpectedDevInstanceArgs {
   homeDir: string;
   repoRoot: string;
 }
@@ -17,7 +17,7 @@ export interface ExpectedDevInstanceArgs {
 const PORT_BUCKETS = 8_000;
 const HASH_LENGTH = 12;
 
-export function expectedRepoRootHash(repoRoot: string): string {
+function expectedRepoRootHash(repoRoot: string): string {
   return createHash("sha256").update(repoRoot).digest("hex");
 }
 

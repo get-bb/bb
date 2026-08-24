@@ -10,24 +10,10 @@ import type {
   PluginSettingDescriptors,
   PluginSettingValue,
 } from "@get-bb/plugin-sdk";
-import {
-  registerSettingDescriptors,
-  validateSettingsUpdate,
-} from "@get-bb/plugin-sdk/internal/host-policy";
+import { validateSettingsUpdate } from "@get-bb/plugin-sdk/internal/host-policy";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
 
-export {
-  registerSettingDescriptors,
-  validateSettingsUpdate as validatePluginSettingsUpdate,
-};
-
-// The descriptor types are part of the backend plugin contract in
-// @get-bb/plugin-sdk; re-exported so server code keeps one import site.
-export type {
-  PluginSettingDescriptor,
-  PluginSettingDescriptors,
-  PluginSettingValue,
-} from "@get-bb/plugin-sdk";
+export { validateSettingsUpdate as validatePluginSettingsUpdate };
 
 /** A settings update the routes rejected: unknown key or wrong value type. */
 export class PluginSettingsValidationError extends Error {
@@ -68,46 +54,65 @@ async function readSecret(
   }
 }
 
-export interface PluginSettingsStoreArgs {
+interface PluginSettingsStoreArgs {
   db: DbConnection;
   dataDir: string;
   pluginId: string;
   descriptors: PluginSettingDescriptors;
 }
 
+function parseStoredSettingValue(
+  descriptor: PluginSettingDescriptor,
+  raw: string | undefined,
+): PluginSettingValue | undefined {
+  let parsed: unknown;
+  if (raw !== undefined) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = undefined;
+    }
+  }
+  const expected = descriptor.type === "boolean" ? "boolean" : "string";
+  if (typeof parsed !== expected) parsed = undefined;
+  if (
+    descriptor.type === "select" &&
+    typeof parsed === "string" &&
+    !descriptor.options.includes(parsed)
+  ) {
+    parsed = undefined;
+  }
+  return (parsed as PluginSettingValue | undefined) ?? descriptor.default;
+}
+
+/**
+ * Effective typed values of the NON-secret settings, read synchronously from
+ * bb.db. Secret keys are omitted entirely (their values live in files and
+ * must never ride a derived provider-options bag). This is the read the
+ * per-command provider-options hook uses on the turn-submit path.
+ */
+export function readPluginSettingsValuesSync(
+  args: Omit<PluginSettingsStoreArgs, "dataDir">,
+): Record<string, PluginSettingValue | undefined> {
+  const stored = getPluginSettingsValues(args.db, args.pluginId);
+  const values: Record<string, PluginSettingValue | undefined> = {};
+  for (const [key, descriptor] of Object.entries(args.descriptors)) {
+    if (isSecret(descriptor)) continue;
+    values[key] = parseStoredSettingValue(descriptor, stored[key]);
+  }
+  return values;
+}
+
 /** Effective typed values: stored value when valid, else the default, else undefined. */
 export async function readPluginSettingsValues(
   args: PluginSettingsStoreArgs,
 ): Promise<Record<string, PluginSettingValue | undefined>> {
-  const stored = getPluginSettingsValues(args.db, args.pluginId);
-  const values: Record<string, PluginSettingValue | undefined> = {};
+  const values = readPluginSettingsValuesSync(args);
   for (const [key, descriptor] of Object.entries(args.descriptors)) {
-    if (isSecret(descriptor)) {
-      values[key] =
-        (await readSecret(args.dataDir, args.pluginId, key)) ??
-        descriptor.default;
-      continue;
-    }
-    const raw = stored[key];
-    let parsed: unknown;
-    if (raw !== undefined) {
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        parsed = undefined;
-      }
-    }
-    const expected = descriptor.type === "boolean" ? "boolean" : "string";
-    if (typeof parsed !== expected) parsed = undefined;
-    if (
-      descriptor.type === "select" &&
-      typeof parsed === "string" &&
-      !descriptor.options.includes(parsed)
-    ) {
-      parsed = undefined;
-    }
+    if (!isSecret(descriptor)) continue;
     values[key] =
-      (parsed as PluginSettingValue | undefined) ?? descriptor.default;
+      (await readSecret(args.dataDir, args.pluginId, key)) ??
+      descriptor.default;
   }
   return values;
 }

@@ -7,7 +7,11 @@ import {
   TASKS_PAGE_MAX_LIMIT,
   type TaskSort,
 } from "../shared/pagination.js";
-import { presetPermissionModeSchema } from "../shared/contract.js";
+import {
+  presetPermissionModeSchema,
+  presetReasoningLevelSchema,
+  presetServiceTierSchema,
+} from "../shared/contract.js";
 import type {
   Attachment,
   Comment,
@@ -18,6 +22,7 @@ import type {
   CreatePresetInput,
   CreateProjectInput,
   CreateTaskInput,
+  DeleteFolderResult,
   Folder,
   Label,
   ListTasksFilters,
@@ -38,7 +43,6 @@ import type {
   UpdateProjectInput,
   UpdateTaskInput,
   UpdateTaskPositionInput,
-  UpdateTaskThreadInput,
   UpsertTaskThreadInput,
 } from "./types";
 
@@ -153,6 +157,7 @@ interface PresetRow {
   provider_id: string;
   model_id: string;
   reasoning_level: string;
+  service_tier: string | null;
   permission_mode: string;
   environment_kind: PresetEnvironmentKind;
   base_branch: string | null;
@@ -436,7 +441,11 @@ function presetFromRow(row: PresetRow): Preset {
     name: row.name,
     providerId: row.provider_id,
     modelId: row.model_id,
-    reasoningLevel: row.reasoning_level,
+    reasoningLevel: presetReasoningLevelSchema.parse(row.reasoning_level),
+    serviceTier:
+      row.service_tier === null
+        ? null
+        : presetServiceTierSchema.parse(row.service_tier),
     permissionMode: presetPermissionModeSchema.parse(row.permission_mode),
     environmentKind: row.environment_kind,
     baseBranch: row.base_branch,
@@ -475,7 +484,7 @@ function validatePresetEnvironment(input: {
   return { environmentKind: input.environmentKind, baseBranch, machineId };
 }
 
-function escapeLike(value: string): string {
+export function escapeLike(value: string): string {
   return value
     .replaceAll("\\", "\\\\")
     .replaceAll("%", "\\%")
@@ -590,11 +599,35 @@ export function createTasksStore(db: PluginDatabase) {
     return requireFolder(id);
   }
 
-  function deleteFolder(id: string): boolean {
-    return (
-      db.prepare<[string]>("DELETE FROM folders WHERE id = ?").run(id).changes >
-      0
-    );
+  const selectFolderProjectIds = db.prepare<[string], { id: string }>(
+    "SELECT id FROM projects WHERE folder_id = ? ORDER BY name COLLATE NOCASE, id",
+  );
+  const selectChildFolderIds = db.prepare<[string], { id: string }>(
+    "SELECT id FROM folders WHERE parent_folder_id = ? ORDER BY name COLLATE NOCASE, id",
+  );
+  const deleteFolderRow = db.prepare<[string]>(
+    "DELETE FROM folders WHERE id = ?",
+  );
+
+  // The schema's ON DELETE SET NULL moves the folder's projects and subfolders
+  // to the top level. Read what will move inside the same transaction as the
+  // delete so callers report exactly what this delete unfiled, not a snapshot
+  // another client may have changed in between.
+  const deleteFolderTransaction = db.transaction(
+    (id: string): DeleteFolderResult => {
+      const movedProjectIds = selectFolderProjectIds
+        .all(id)
+        .map((row) => row.id);
+      const movedFolderIds = selectChildFolderIds.all(id).map((row) => row.id);
+      const deleted = deleteFolderRow.run(id).changes > 0;
+      return deleted
+        ? { deleted, movedProjectIds, movedFolderIds }
+        : { deleted, movedProjectIds: [], movedFolderIds: [] };
+    },
+  );
+
+  function deleteFolder(id: string): DeleteFolderResult {
+    return deleteFolderTransaction(id);
   }
 
   function getProject(id: string): Project | undefined {
@@ -1628,20 +1661,28 @@ export function createTasksStore(db: PluginDatabase) {
     return thread;
   }
 
+  // Live threads first, newest first within each group: after an
+  // orchestrator respawns a worker, the thread holding the work leads the
+  // list and the dead predecessors trail it.
   function listTaskThreads(taskId: string): TaskThread[] {
     return db
       .prepare<[string], TaskThreadRow>(
         `
-        SELECT * FROM task_threads WHERE task_id = ? ORDER BY attached_at, id
+        SELECT * FROM task_threads
+        WHERE task_id = ?
+        ORDER BY
+          CASE WHEN live_status IN ('completed', 'failed') THEN 1 ELSE 0 END,
+          attached_at DESC,
+          id DESC
       `,
       )
       .all(taskId)
       .map(taskThreadFromRow);
   }
 
-  function updateTaskThread(
+  function updateTaskThreadStatus(
     id: string,
-    input: UpdateTaskThreadInput,
+    liveStatus: TaskThreadLiveStatus,
   ): TaskThread {
     const current = requireTaskThread(id);
     db.prepare<[string, string, TaskThreadLiveStatus, string, string]>(
@@ -1650,25 +1691,8 @@ export function createTasksStore(db: PluginDatabase) {
       SET preset_name = ?, title = ?, live_status = ?, updated_at = ?
       WHERE id = ?
     `,
-    ).run(
-      input.presetName === undefined
-        ? current.presetName
-        : requireNonEmpty(input.presetName, "Task thread presetName"),
-      input.title === undefined
-        ? current.title
-        : requireNonEmpty(input.title, "Task thread title"),
-      input.liveStatus ?? current.liveStatus,
-      nowIso(),
-      id,
-    );
+    ).run(current.presetName, current.title, liveStatus, nowIso(), id);
     return requireTaskThread(id);
-  }
-
-  function updateTaskThreadStatus(
-    id: string,
-    liveStatus: TaskThreadLiveStatus,
-  ): TaskThread {
-    return updateTaskThread(id, { liveStatus });
   }
 
   function deleteTaskThread(id: string): boolean {
@@ -1699,6 +1723,7 @@ export function createTasksStore(db: PluginDatabase) {
         string,
         string,
         string,
+        "default" | "fast" | null,
         string,
         PresetEnvironmentKind,
         string | null,
@@ -1710,10 +1735,11 @@ export function createTasksStore(db: PluginDatabase) {
     >(
       `
       INSERT INTO presets (
-        id, name, provider_id, model_id, reasoning_level, permission_mode,
+        id, name, provider_id, model_id, reasoning_level, service_tier,
+        permission_mode,
         environment_kind, base_branch, machine_id, instructions, builtin,
         created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     ).run(
       id,
@@ -1721,6 +1747,7 @@ export function createTasksStore(db: PluginDatabase) {
       requireNonEmpty(input.providerId, "Preset providerId"),
       requireNonEmpty(input.modelId, "Preset modelId"),
       requireNonEmpty(input.reasoningLevel, "Preset reasoningLevel"),
+      input.serviceTier,
       requireNonEmpty(input.permissionMode, "Preset permissionMode"),
       environment.environmentKind,
       environment.baseBranch,
@@ -1757,6 +1784,7 @@ export function createTasksStore(db: PluginDatabase) {
         string,
         string,
         string,
+        "default" | "fast" | null,
         string,
         PresetEnvironmentKind,
         string | null,
@@ -1769,7 +1797,7 @@ export function createTasksStore(db: PluginDatabase) {
       `
       UPDATE presets SET
         name = ?, provider_id = ?, model_id = ?, reasoning_level = ?,
-        permission_mode = ?, environment_kind = ?, base_branch = ?,
+        service_tier = ?, permission_mode = ?, environment_kind = ?, base_branch = ?,
         machine_id = ?, instructions = ?, builtin = ?
       WHERE id = ?
     `,
@@ -1786,6 +1814,7 @@ export function createTasksStore(db: PluginDatabase) {
       input.reasoningLevel === undefined
         ? current.reasoningLevel
         : requireNonEmpty(input.reasoningLevel, "Preset reasoningLevel"),
+      input.serviceTier === undefined ? current.serviceTier : input.serviceTier,
       input.permissionMode === undefined
         ? current.permissionMode
         : requireNonEmpty(input.permissionMode, "Preset permissionMode"),
@@ -1852,7 +1881,6 @@ export function createTasksStore(db: PluginDatabase) {
     getTaskThread,
     getTaskThreadByThreadId,
     listTaskThreads,
-    updateTaskThread,
     updateTaskThreadStatus,
     deleteTaskThread,
     createPreset,

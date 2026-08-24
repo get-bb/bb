@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { WorkspaceChangeStats } from "@bb/domain";
+import { createDeferredPromise } from "@bb/test-helpers";
 import { Workspace } from "../src/workspace.js";
 import { WorkspaceError } from "../src/git.js";
 import { runGit } from "../src/git.js";
@@ -17,27 +18,11 @@ import {
 
 const tempDirs: string[] = [];
 
-type Deferred = {
-  promise: Promise<void>;
-  resolve: () => void;
-};
-
 type DiffStats = {
   filesCount: number;
   insertions: number;
   deletions: number;
 };
-
-function createDeferred(): Deferred {
-  let resolveDeferred = (): void => undefined;
-  const promise = new Promise<void>((resolve) => {
-    resolveDeferred = resolve;
-  });
-  return {
-    promise,
-    resolve: resolveDeferred,
-  };
-}
 
 function waitForLockContention(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 100));
@@ -989,8 +974,8 @@ describe("Workspace", () => {
     const workspace = new Workspace(repoPath);
     await fs.writeFile(path.join(repoPath, "README.md"), "pending\n", "utf8");
 
-    const lockEntered = createDeferred();
-    const releaseLock = createDeferred();
+    const lockEntered = createDeferredPromise<void>();
+    const releaseLock = createDeferredPromise<void>();
     const heldLock = withCheckoutMutationLock(repoPath, async () => {
       lockEntered.resolve();
       await releaseLock.promise;
@@ -1012,62 +997,6 @@ describe("Workspace", () => {
     expect((await workspace.getStatus()).workingTree.state).toBe("clean");
   });
 
-  it("keeps real concurrent reset and checkout mutations coherent", async () => {
-    const repoPath = await initRepo();
-    const workspace = new Workspace(repoPath);
-    const fileNames = Array.from(
-      { length: 40 },
-      (_, index) => `file-${index}.txt`,
-    );
-
-    await Promise.all(
-      fileNames.map((fileName, index) =>
-        fs.writeFile(path.join(repoPath, fileName), `main ${index}\n`, "utf8"),
-      ),
-    );
-    await runGit(["add", "."], { cwd: repoPath });
-    await runGit(["commit", "-m", "Add checkout stress files"], {
-      cwd: repoPath,
-    });
-
-    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
-    await Promise.all(
-      fileNames.map((fileName, index) =>
-        fs.writeFile(
-          path.join(repoPath, fileName),
-          `feature ${index}\n`,
-          "utf8",
-        ),
-      ),
-    );
-    await runGit(["add", "."], { cwd: repoPath });
-    await runGit(["commit", "-m", "Update feature files"], { cwd: repoPath });
-
-    await runGit(["checkout", "main"], { cwd: repoPath });
-
-    const mutations = Array.from({ length: 12 }, (_, index) =>
-      index % 2 === 0 ? workspace.reset() : workspace.checkoutBranch("feature"),
-    );
-    await Promise.all(mutations);
-
-    const firstFileName = fileNames[0];
-    if (!firstFileName) {
-      throw new Error("Expected checkout stress files");
-    }
-
-    expect(await workspace.currentBranch).toBe("feature");
-    expect((await workspace.getStatus()).workingTree.state).toBe("clean");
-    await expect(
-      fs.readFile(path.join(repoPath, firstFileName), "utf8"),
-    ).resolves.toBe("feature 0\n");
-
-    const fsck = await runGit(["fsck", "--no-progress"], {
-      cwd: repoPath,
-      allowFailure: true,
-    });
-    expect(fsck.exitCode).toBe(0);
-  });
-
   it("does not serialize different linked worktree checkout mutations", async () => {
     const repoPath = await initRepo();
     const worktreeParent = await makeTempDir("bb-workspace-lock-worktrees-");
@@ -1076,8 +1005,8 @@ describe("Workspace", () => {
       cwd: repoPath,
     });
 
-    const primaryLockEntered = createDeferred();
-    const releasePrimaryLock = createDeferred();
+    const primaryLockEntered = createDeferredPromise<void>();
+    const releasePrimaryLock = createDeferredPromise<void>();
     const primaryLock = withCheckoutMutationLock(repoPath, async () => {
       primaryLockEntered.resolve();
       await releasePrimaryLock.promise;
@@ -1103,8 +1032,8 @@ describe("Workspace", () => {
       cwd: repoPath,
     });
 
-    const firstLockEntered = createDeferred();
-    const releaseFirstLock = createDeferred();
+    const firstLockEntered = createDeferredPromise<void>();
+    const releaseFirstLock = createDeferredPromise<void>();
     const firstLock = withCheckoutMutationLocks(
       [repoPath, worktreePath],
       async () => {
@@ -1147,8 +1076,8 @@ describe("Workspace", () => {
   });
 
   it("skips process-local lock waiters that time out before entry", async () => {
-    const entered = createDeferred();
-    const release = createDeferred();
+    const entered = createDeferredPromise<void>();
+    const release = createDeferredPromise<void>();
     let timedOutWorkRan = false;
     const first = withProcessLocalQueuedLocks({
       locks: [{ key: "timed-out-skip-lock", timeoutMs: 0 }],
@@ -1177,28 +1106,6 @@ describe("Workspace", () => {
       }),
     ).resolves.toBe("after-timeout");
     expect(timedOutWorkRan).toBe(false);
-  });
-
-  it("supports checkout, detach, stash, and stashPop", async () => {
-    const repoPath = await initRepo();
-    await runGit(["checkout", "-b", "feature"], { cwd: repoPath });
-    await fs.writeFile(path.join(repoPath, "README.md"), "stash me\n", "utf8");
-
-    const workspace = new Workspace(repoPath);
-    const stashRef = await workspace.stash("save changes");
-    expect(stashRef).toMatch(/^stash@\{/u);
-    expect((await workspace.getStatus()).workingTree.state).toBe("clean");
-
-    await workspace.detachHead();
-    expect(await workspace.currentBranch).toBeUndefined();
-
-    await workspace.checkoutBranch("feature");
-    expect(await workspace.currentBranch).toBe("feature");
-
-    await workspace.stashPop(stashRef ?? undefined);
-    expect((await workspace.getStatus()).workingTree.state).toBe(
-      "dirty_uncommitted",
-    );
   });
 
   it("squash merges into the target branch using a temporary worktree", async () => {

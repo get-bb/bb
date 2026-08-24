@@ -32,7 +32,8 @@ import { useInlineThreadTitle } from "@/components/thread/InlineThreadTitle";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitleMentions } from "@/components/thread/ThreadTitleMentions";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
-import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@/components/ui/chromeStyleTokens";
+import { getRightPanelToggleIconName } from "@/components/secondary-panel/panelToggleControlState";
+import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 import {
   CONTEXT_INACTIVE_TEXT_CLASS,
@@ -40,17 +41,13 @@ import {
 } from "@/components/ui/context-selection";
 import { usePaneContext } from "./PaneContext";
 import { PaneMaximizeButton } from "./PaneMaximizeButton";
+import type { ThreadHeaderGitAction } from "./useThreadGitActions";
 
 const THREAD_HEADER_ACTION_BUTTON_CLASS = cn(
   COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
   "border-border/70 bg-transparent font-normal hover:bg-state-hover",
 );
 const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
-
-interface ThreadHeaderGitAction {
-  label: string;
-  target: ThreadGitActionDialogTarget;
-}
 
 interface ThreadDetailHeaderProps {
   /**
@@ -159,7 +156,7 @@ export function ThreadDetailHeader({
   const rightPanelLabel = isSecondaryPanelOpen
     ? "Hide right panel"
     : "Show right panel";
-  const rightPanelIconName = renderAsDrawer ? "PanelBottom" : "PanelRight";
+  const rightPanelIconName = getRightPanelToggleIconName(renderAsDrawer);
   // The thread header owns only the show control. Once the panel opens, its
   // toolbar owns collapse so pane actions (including Full Screen) keep their
   // stable positions in the thread header.

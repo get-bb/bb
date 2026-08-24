@@ -28,9 +28,9 @@ vi.mock("@/components/thread/ThreadActionsProvider", () => ({
     renameThread: mocks.renameThread,
   }),
 }));
-import { SidebarThreadTitleMentionResourcesProvider } from "./SidebarThreadTitleMentions";
+import { TooltipProvider } from "@bb/shared-ui/tooltip";
+import { ThreadTitleMentionResourcesProvider } from "@/components/thread/ThreadTitleMentions";
 import {
-  SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
   SIDEBAR_SUCCESS_STATUS_COLOR_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "./sidebarRowClasses";
@@ -44,17 +44,14 @@ import {
 } from "@/lib/plugin-thread-row-status";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { SPLIT_LAYOUT_STORAGE_KEY } from "@/lib/split-layout/persistence";
-import { NO_COLLAPSED_CHILD_ACTIVITY } from "@/lib/thread-activity";
-
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => true,
-}));
+import { NO_COLLAPSED_CHILD_ACTIVITY } from "@bb/client-core";
 
 vi.mock("@/components/thread/ThreadActionsMenu", () => ({
   ThreadActionsContextMenu: ({ children }: { children: ReactNode }) => (
     <>{children}</>
   ),
   ThreadActionsMenu: () => null,
+  ThreadArchiveQuickAction: () => null,
 }));
 
 function createThread(
@@ -109,16 +106,14 @@ const DEFAULT_OPTIONS: ThreadRowOptions = {
 };
 
 function ThreadRowTestHarness({
-  accessibleTitle,
-  displayTitle,
+  crossProjectId = null,
   hasComposerDraft = false,
   isActive = false,
   options = DEFAULT_OPTIONS,
   shortcutKey,
   thread,
 }: {
-  accessibleTitle?: string;
-  displayTitle?: string;
+  crossProjectId?: string | null;
   hasComposerDraft?: boolean;
   isActive?: boolean;
   options?: ThreadRowOptions;
@@ -136,17 +131,18 @@ function ThreadRowTestHarness({
 
   return (
     <MemoryRouter>
-      <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
-        <ThreadRow
-          projectId={thread.projectId}
-          thread={thread}
-          isActive={isActive}
-          hasComposerDraft={hasComposerDraft}
-          options={options}
-          displayTitle={displayTitle}
-          accessibleTitle={accessibleTitle}
-        />
-      </SidebarThreadShortcutKeysContext.Provider>
+      <TooltipProvider>
+        <SidebarThreadShortcutKeysContext.Provider value={shortcutKeys}>
+          <ThreadRow
+            projectId={thread.projectId}
+            thread={thread}
+            crossProjectId={crossProjectId}
+            isActive={isActive}
+            hasComposerDraft={hasComposerDraft}
+            options={options}
+          />
+        </SidebarThreadShortcutKeysContext.Provider>
+      </TooltipProvider>
     </MemoryRouter>
   );
 }
@@ -359,28 +355,6 @@ describe("ThreadRow", () => {
       expect(container.querySelector('[data-icon="Loading"]')).toBeNull();
     },
   );
-
-  it("uses the opaque split tint on a sticky parent thread row", () => {
-    const { container } = renderSplitThreadRow({
-      options: {
-        kind: "parent",
-        depth: 0,
-        isCompact: false,
-        isCollapsed: false,
-        childCount: 1,
-        childActivity: NO_COLLAPSED_CHILD_ACTIVITY,
-        stickyLevel: 0,
-        onToggleCollapsed: vi.fn(),
-      },
-    });
-
-    const stickyRow = container.querySelector(
-      '[data-sidebar-sticky-tier="parent"]',
-    );
-    expect(stickyRow?.classList).toContain(
-      SIDEBAR_ROW_OPEN_IN_SPLIT_STATE_CLASS,
-    );
-  });
 
   it.each([
     ["idle", createThread()],
@@ -644,7 +618,7 @@ describe("ThreadRow", () => {
     });
 
     render(
-      <SidebarThreadTitleMentionResourcesProvider
+      <ThreadTitleMentionResourcesProvider
         sectionNamesById={
           new Map([
             ["sec_mentioned", "Mention section"],
@@ -662,7 +636,7 @@ describe("ThreadRow", () => {
               "Compare @thread:thr_mentioned in @project:proj_mentioned, @section:sec_mentioned, legacy @folder:sec_legacy, and @apps/app/src/ThreadRow.tsx",
           })}
         />
-      </SidebarThreadTitleMentionResourcesProvider>,
+      </ThreadTitleMentionResourcesProvider>,
     );
 
     expect(screen.getByText("Mention target").closest("a")).toBeNull();
@@ -679,61 +653,63 @@ describe("ThreadRow", () => {
     expect(screen.getByTitle(resolvedTitle)).not.toBeNull();
   });
 
-  it("keeps an explicit accessible title while resolving its mentions", () => {
-    const mentionedThread = createThread({
-      id: "thr_visible",
-      title: "Visible target",
-      titleFallback: "Visible target",
-    });
-    const onToggleCollapsed = vi.fn();
-
-    render(
-      <SidebarThreadTitleMentionResourcesProvider
-        sectionNamesById={new Map([["sec_accessible", "Accessible section"]])}
-        projectNamesById={new Map()}
-        threadById={new Map([[mentionedThread.id, mentionedThread]])}
+  it("marks a child from another project with the project name", () => {
+    const { container } = render(
+      <ThreadTitleMentionResourcesProvider
+        sectionNamesById={new Map()}
+        projectNamesById={new Map([["proj_other", "Web App"]])}
+        threadById={new Map()}
       >
         <ThreadRowTestHarness
-          accessibleTitle="Full path in @section:sec_accessible"
-          displayTitle="Leaf @thread:thr_visible"
-          thread={createThread({ title: "Fallback raw title" })}
-          options={{
-            kind: "parent",
-            depth: 1,
-            isCompact: false,
-            isCollapsed: false,
-            childCount: 1,
-            childActivity: {
-              pending: false,
-              working: false,
-              hasUnsubmittedDraft: false,
-              runtimeWorking: false,
-              workflow: false,
-              backgroundAgent: false,
-              backgroundCommand: false,
-              planMode: false,
-              goal: false,
-              unread: false,
-              unreadError: false,
-            },
-            onToggleCollapsed,
-          }}
+          crossProjectId="proj_other"
+          thread={createThread({
+            parentThreadId: "thr_parent",
+            projectId: "proj_other",
+          })}
         />
-      </SidebarThreadTitleMentionResourcesProvider>,
+      </ThreadTitleMentionResourcesProvider>,
     );
 
-    expect(screen.getByText("Visible target")).not.toBeNull();
+    const marker = container.querySelector(
+      "[data-sidebar-thread-cross-project]",
+    );
+    expect(marker?.getAttribute("aria-label")).toBe("In project Web App");
+    expect(marker?.querySelector('[data-icon="FolderExport"]')).not.toBeNull();
+    // The marker hugs the title; it never sits in the trailing status slot.
     expect(
-      screen.getByRole("link", {
-        name: "Open Full path in Accessible section",
-      }),
-    ).not.toBeNull();
-    expect(screen.getByTitle("Full path in Accessible section")).not.toBeNull();
+      marker?.closest("[data-sidebar-thread-trailing-indicator]"),
+    ).toBeNull();
     expect(
-      screen.getByRole("button", {
-        name: "Collapse Full path in Accessible section threads",
-      }),
-    ).not.toBeNull();
+      screen.getByRole("link", { name: "Open Thread" }).getAttribute("href"),
+    ).toBe("/projects/proj_other/threads/thr_test");
+  });
+
+  it("opens the thread when the cross-project marker is clicked", () => {
+    const { container } = render(
+      <ThreadRowTestHarness
+        crossProjectId="proj_other"
+        thread={createThread({
+          parentThreadId: "thr_parent",
+          projectId: "proj_other",
+        })}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Open Thread" });
+    const onLinkClick = vi.fn();
+    link.addEventListener("click", onLinkClick);
+
+    fireEvent.click(
+      container.querySelector("[data-sidebar-thread-cross-project]")!,
+    );
+
+    expect(onLinkClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("omits the cross-project marker for same-project rows", () => {
+    const { container } = renderThreadRow({});
+    expect(
+      container.querySelector("[data-sidebar-thread-cross-project]"),
+    ).toBeNull();
   });
 
   it("renders a complete Unicode path mention instead of an ASCII prefix", () => {

@@ -1,4 +1,5 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +14,11 @@ import {
   type HostWorkspace,
   type ProvisionWorkspaceArgs,
 } from "@bb/host-workspace";
-import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
+import {
+  createDeferredPromise,
+  makeWorkspaceMergeBase,
+  makeWorkspaceStatus,
+} from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   RuntimeManager,
@@ -30,7 +35,6 @@ type GetSharedGitRefsFingerprintResult = Awaited<
   ReturnType<HostWorkspace["getSharedGitRefsFingerprint"]>
 >;
 type CommitArgs = Parameters<HostWorkspace["commit"]>;
-type FetchArgs = Parameters<HostWorkspace["fetch"]>;
 type SquashMergeArgs = Parameters<HostWorkspace["squashMerge"]>;
 type ProvisionWorkspaceMockArgs = Parameters<
   (options: ProvisionWorkspaceArgs) => Promise<HostWorkspace>
@@ -123,26 +127,13 @@ async function writeInjectedSkillSource(
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     tempDirs
       .splice(0)
       .map((dir) => fs.rm(dir, { recursive: true, force: true })),
   );
 });
-
-function createDeferred<T>() {
-  let resolve!: (value: T | PromiseLike<T>) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
-  });
-  return {
-    promise,
-    reject,
-    resolve,
-  };
-}
 
 function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
   switch (args.workspaceProvisionType) {
@@ -155,7 +146,11 @@ function getProvisionWorkspacePath(args: ProvisionWorkspaceArgs): string {
   }
 }
 
-function createFakeWorkspace(path: string, isGitRepo = true) {
+function createFakeWorkspace(
+  path: string,
+  isGitRepo = true,
+  options: { managed?: boolean } = {},
+) {
   const status: GetStatusResult = makeWorkspaceStatus({
     mergeBase: makeWorkspaceMergeBase(),
   });
@@ -172,7 +167,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
   let sharedGitRefsFingerprintError: Error | null = null;
   const workspace = {
     path,
-    managed: false,
+    managed: options.managed ?? false,
     isGitRepo,
     isWorktree: false,
     getDefaultBranch: vi.fn(async () => "main"),
@@ -202,14 +197,12 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     diffPatch: vi.fn(async () => []),
     getPullRequest: vi.fn(async () => ({ outcome: "none" as const })),
     runPullRequestAction: vi.fn(async () => undefined),
-    listBranches: vi.fn(async () => ["main"]),
     listFiles: vi.fn(async () => []),
     commit: vi.fn(async (..._args: CommitArgs) => ({
       commitSha: "commit-1",
       commitSubject: "commit",
     })),
     reset: vi.fn(async () => undefined),
-    fetch: vi.fn(async (..._args: FetchArgs) => undefined),
     squashMerge: vi.fn(async (..._args: SquashMergeArgs) => ({
       merged: true,
       commitSha: "commit-1",
@@ -280,6 +273,14 @@ function createFakeRuntime() {
       models: [],
       selectedOnlyModels: [],
     })),
+    providerHealth: vi.fn(async () => ({ supported: false as const })),
+    providerUsage: vi.fn(async () => ({ supported: false as const })),
+    providerInstallationStatus: vi.fn(async () => {
+      throw new Error("Unexpected provider installation status call");
+    }),
+    providerInstallationRun: vi.fn(async () => {
+      throw new Error("Unexpected provider installation run call");
+    }),
     listRunningProviders: vi.fn((): string[] => []),
     getActiveTurnId: (threadId) => activeTurnsByThreadId.get(threadId) ?? null,
     waitForActiveTurn: async (threadId) =>
@@ -521,41 +522,8 @@ describe("RuntimeManager", () => {
     expect(entry.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(runtimeOptions.current?.skillRoots).toEqual([
       {
-        id: `global-skills:${entry.skillCatalogHash}:codex`,
-        providerId: "codex",
-        skillDirectoryRootPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-          "skills",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:claude-code`,
-        providerId: "claude-code",
-        localPluginPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:pi`,
-        providerId: "pi",
-        skillDirectoryRootPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-          "skills",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:acp`,
-        providerId: "acp",
-        skillDirectoryRootPath: path.join(
+        id: `global-skills:${entry.skillCatalogHash}`,
+        path: path.join(
           dataDir,
           "runtime",
           "global-skills",
@@ -783,6 +751,76 @@ describe("RuntimeManager", () => {
     ).rejects.toThrow();
   });
 
+  it("keeps the staged catalog of an environment still being created while another environment swaps catalogs", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-pending-");
+    const sourceA = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "env-a-token",
+    });
+    // Env A's workspace provisioning stalls inside createEntry: its entry is
+    // pending, its catalog is staged, and nothing in `entries` names it yet.
+    const provisionStarted = createDeferredPromise<void>();
+    const releaseProvision = createDeferredPromise<void>();
+    const provisionWorkspace = vi.fn(async (options: ProvisionWorkspaceArgs) => {
+      const targetPath = "path" in options ? options.path : undefined;
+      if (targetPath === "/tmp/env-a") {
+        provisionStarted.resolve();
+        await releaseProvision.promise;
+      }
+      return createFakeWorkspace(targetPath ?? "/tmp/env");
+    });
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime: vi.fn(() => createFakeRuntime()),
+    });
+
+    const envA = manager.ensureEnvironment({
+      environmentId: "env-a",
+      injectedSkillSources: [sourceA],
+      workspacePath: "/tmp/env-a",
+    });
+    await provisionStarted.promise;
+
+    // Env B starts on one catalog, then swaps to another: the swap prunes
+    // every staged catalog no environment uses — A's must count as in use.
+    const sourceB = await writeInjectedSkillSource({
+      dataDir,
+      name: "other-notes",
+      token: "env-b-first",
+    });
+    const firstB = await manager.ensureEnvironment({
+      environmentId: "env-b",
+      injectedSkillSources: [sourceB],
+      workspacePath: "/tmp/env-b",
+    });
+    await writeInjectedSkillSource({
+      dataDir,
+      name: "other-notes",
+      token: "env-b-second",
+    });
+    const secondB = await manager.ensureEnvironment({
+      environmentId: "env-b",
+      injectedSkillSources: [sourceB],
+      targetThreadId: "thread-b",
+      workspacePath: "/tmp/env-b",
+    });
+    expect(secondB.skillCatalogHash).not.toBe(firstB.skillCatalogHash);
+
+    releaseProvision.resolve();
+    const entryA = await envA;
+    expect(entryA.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
+    const stagingRoot = path.join(dataDir, "runtime", "global-skills");
+    const catalogAStat = await fs.stat(
+      path.join(stagingRoot, entryA.skillCatalogHash ?? ""),
+    );
+    expect(catalogAStat.isDirectory()).toBe(true);
+    await expect(
+      fs.stat(path.join(stagingRoot, firstB.skillCatalogHash ?? "")),
+    ).rejects.toThrow();
+  });
+
   it("reuses a busy runtime for a target thread it does not host yet", async () => {
     const dataDir = await makeTempDir("bb-runtime-manager-skills-unhosted-");
     const source = await writeInjectedSkillSource({
@@ -985,7 +1023,7 @@ describe("RuntimeManager", () => {
   });
 
   it("shares existing environment provisioning cancellation across concurrent callers", async () => {
-    const provisionStarted = createDeferred<void>();
+    const provisionStarted = createDeferredPromise<void>();
     const provisionSignals: AbortSignal[] = [];
     let callCount = 0;
     const workspace = createFakeWorkspace("/tmp/env-1");
@@ -1183,6 +1221,34 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("forwards the bridge record-mode directory to provider processes but not the shell env", async () => {
+    vi.stubEnv("BB_PROVIDER_BRIDGE_RECORD_DIR", "/tmp/provider-recordings/raw");
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const createRuntime = vi.fn(() => createFakeRuntime());
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      createRuntime,
+      shellEnv: {
+        PATH: "/tmp/bb-bin:/usr/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: "/tmp/env-1",
+    });
+
+    expect(createRuntime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        env: {
+          PATH: "/tmp/bb-bin:/usr/bin",
+          BB_PROVIDER_BRIDGE_RECORD_DIR: "/tmp/provider-recordings/raw",
+        },
+        shellEnv: { PATH: "/tmp/bb-bin:/usr/bin" },
+      }),
+    );
+  });
+
   it("passes the resolved shell PATH to managed worktree setup", async () => {
     const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
     const manager = new RuntimeManager({
@@ -1206,7 +1272,31 @@ describe("RuntimeManager", () => {
 
     expect(provisionWorkspace).toHaveBeenCalledWith(
       expect.objectContaining({
-        setupPath: "/resolved/user/bin:/usr/bin:/bin",
+        shellPath: "/resolved/user/bin:/usr/bin:/bin",
+      }),
+    );
+  });
+
+  it("passes the resolved shell PATH to unmanaged workspace Git", async () => {
+    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
+    const manager = new RuntimeManager({
+      provisionWorkspace,
+      shellEnv: {
+        PATH: "/resolved/user/bin:/usr/bin:/bin",
+      },
+    });
+
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      provision: {
+        workspaceProvisionType: "unmanaged",
+        path: "/tmp/env-1",
+      },
+    });
+
+    expect(provisionWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shellPath: "/resolved/user/bin:/usr/bin:/bin",
       }),
     );
   });
@@ -1238,43 +1328,6 @@ describe("RuntimeManager", () => {
           PATH: "/tmp/bb-bin:/home/me/.local/bin:/usr/bin",
           BB_SERVER_URL: "http://127.0.0.1:3334",
           OPENAI_API_KEY: "test-openai-key",
-        },
-      }),
-    );
-  });
-
-  it("merges managed shell env into future runtime creation", async () => {
-    const provisionWorkspace = createProvisionWorkspaceMock("/tmp/env-1");
-    const createRuntime = vi.fn(() => createFakeRuntime());
-    const manager = new RuntimeManager({
-      provisionWorkspace,
-      createRuntime,
-      shellEnv: {
-        PATH: "/tmp/bb-bin:/usr/bin",
-      },
-    });
-
-    await manager.ensureEnvironment({
-      environmentId: "env-1",
-      workspacePath: "/tmp/env-1",
-    });
-
-    manager.replaceManagedShellEnv({
-      GITHUB_TOKEN: "test-github-token",
-      OPENAI_API_KEY: "test-openai-key",
-    });
-    await manager.ensureEnvironment({
-      environmentId: "env-2",
-      workspacePath: "/tmp/env-2",
-    });
-
-    expect(createRuntime).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        shellEnv: {
-          GITHUB_TOKEN: "test-github-token",
-          OPENAI_API_KEY: "test-openai-key",
-          PATH: "/tmp/bb-bin:/usr/bin",
         },
       }),
     );
@@ -1321,11 +1374,45 @@ describe("RuntimeManager", () => {
     );
   });
 
+  it("shuts down provider maintenance workers after the request becomes idle", async () => {
+    vi.useFakeTimers();
+    try {
+      const dataDir = await makeTempDir("bb-provider-maintenance-idle-");
+      const runtime = createFakeRuntime();
+      const request = createDeferredPromise<void>();
+      const requestStarted = createDeferredPromise<void>();
+      const manager = new RuntimeManager({
+        createRuntime: () => runtime,
+        providerMaintenanceIdleTimeoutMs: 100,
+      });
+
+      const activeRequest = manager.withProviderMaintenanceRuntime(
+        { dataDir },
+        async () => {
+          requestStarted.resolve();
+          return request.promise;
+        },
+      );
+      await requestStarted.promise;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(runtime.shutdown).not.toHaveBeenCalled();
+
+      request.resolve();
+      await activeRequest;
+      await vi.advanceTimersByTimeAsync(99);
+      expect(runtime.shutdown).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(runtime.shutdown).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("does not let stale provider maintenance creation replace a newer runtime", async () => {
     const dataDir = await makeTempDir("bb-provider-maintenance-race-");
     const staleRuntime = createFakeRuntime();
     const currentRuntime = createFakeRuntime();
-    const staleCreation = createDeferred<AgentRuntime>();
+    const staleCreation = createDeferredPromise<AgentRuntime>();
     const manager = new RuntimeManager({
       shellEnv: {
         PATH: "/old/bin:/usr/bin",
@@ -1681,7 +1768,7 @@ describe("RuntimeManager", () => {
   });
 
   it("skips idle eviction while environment creation is still pending", async () => {
-    const deferredWorkspace = createDeferred<HostWorkspace>();
+    const deferredWorkspace = createDeferredPromise<HostWorkspace>();
     const manager = new RuntimeManager({
       provisionWorkspace: vi.fn(async () => deferredWorkspace.promise),
       createRuntime: vi.fn(() => createFakeRuntime()),
@@ -1719,6 +1806,73 @@ describe("RuntimeManager", () => {
     expect(runtime.shutdown).toHaveBeenCalledTimes(1);
     expect(workspace.destroy).toHaveBeenCalledTimes(1);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "kills detached processes rooted in a managed workspace before destroying it",
+    async () => {
+      const workspacePath = await fs.realpath(
+        await fs.mkdtemp(path.join(os.tmpdir(), "bb-destroy-env-")),
+      );
+      const managedWorkspace = createFakeWorkspace(workspacePath, true, {
+        managed: true,
+      });
+      const runtime = createFakeRuntime();
+      const manager = new RuntimeManager({
+        provisionWorkspace:
+          createProvisionWorkspaceMock(workspacePath).mockResolvedValue(
+            managedWorkspace,
+          ),
+        createRuntime: vi.fn(() => runtime),
+      });
+      await manager.ensureEnvironment({
+        environmentId: "env-procs",
+        workspacePath,
+      });
+      // A new-session process is out of reach of any process-group kill.
+      const orphan = spawn("sh", ["-c", "sleep 300 & echo $!; wait"], {
+        cwd: workspacePath,
+        detached: true,
+        stdio: ["ignore", "pipe", "ignore"],
+      });
+      orphan.unref();
+      const grandchildPid = Number(
+        String((await once(orphan.stdout, "data"))[0]).trim(),
+      );
+      const isAlive = (pid: number) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      try {
+        expect(isAlive(grandchildPid)).toBe(true);
+
+        await manager.destroyEnvironment("env-procs");
+
+        expect(managedWorkspace.destroy).toHaveBeenCalledTimes(1);
+        const deadline = Date.now() + 5000;
+        while (
+          (isAlive(grandchildPid) || isAlive(orphan.pid ?? 0)) &&
+          Date.now() < deadline
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(isAlive(grandchildPid)).toBe(false);
+        expect(isAlive(orphan.pid ?? 0)).toBe(false);
+      } finally {
+        for (const pid of [grandchildPid, orphan.pid ?? 0]) {
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            // already gone
+          }
+        }
+        await fs.rm(workspacePath, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("forgets a retired environment without destroying its workspace", async () => {
     const workspace = createFakeWorkspace("/tmp/env-retired");

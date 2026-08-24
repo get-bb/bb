@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { useMemo, type ComponentProps, type ReactNode } from "react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
+  usePluginComposerHost,
+  usePluginComposerHostDraft,
+  usePublishPluginComposerHost,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import {
+  getPromptDraftAccessor,
+  usePromptDraftStorage,
+} from "@/hooks/usePromptDraftStorage";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
   DefaultPaneContextProvider,
@@ -17,6 +27,18 @@ type ThreadDetailSecondaryContentProps = ComponentProps<
   typeof ThreadDetailSecondaryContent
 >;
 
+const secondaryPanelMockState = vi.hoisted(() => ({
+  renderBrowserDeck: undefined as
+    | ((
+        activeBrowserTabId: string,
+        pane: {
+          isFocused: boolean;
+          onFocusPane: () => void;
+        },
+      ) => ReactNode)
+    | undefined,
+}));
+
 vi.mock("@/lib/bb-desktop", () => ({
   DEFAULT_DESKTOP_WINDOW_STATE: { isFullScreen: false },
   getBbDesktopInfo: () => null,
@@ -28,8 +50,12 @@ vi.mock("@/components/ui/sidebar.js", () => ({
   useOptionalIsSidebarShowing: () => true,
 }));
 
+const { useThreadsMock } = vi.hoisted(() => ({
+  useThreadsMock: vi.fn((..._args: unknown[]) => ({ data: [] })),
+}));
+
 vi.mock("@/hooks/queries/thread-queries", () => ({
-  useThreads: () => ({ data: [] }),
+  useThreads: useThreadsMock,
 }));
 
 vi.mock("jotai", async (importOriginal) => ({
@@ -41,10 +67,17 @@ vi.mock("react-resizable-panels", async () => {
   const React = await import("react");
 
   const PanelGroup = React.forwardRef<
-    { setLayout: (layout: number[]) => void },
+    {
+      getLayout: () => number[];
+      setLayout: (layout: number[]) => void;
+    },
     { children?: ReactNode }
   >(({ children }, ref) => {
-    React.useImperativeHandle(ref, () => ({ setLayout: () => {} }), []);
+    React.useImperativeHandle(
+      ref,
+      () => ({ getLayout: () => [50, 50], setLayout: () => {} }),
+      [],
+    );
     return React.createElement(
       "div",
       { "data-testid": "panel-group" },
@@ -96,11 +129,13 @@ vi.mock(
       >();
 
     const ThreadSecondaryPanel = ({
+      renderBrowserDeck,
       inlinePanelToggle,
       metadataContent,
       renderAsDrawer,
-    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) =>
-      React.createElement(
+    }: ComponentProps<typeof actual.ThreadSecondaryPanel>) => {
+      secondaryPanelMockState.renderBrowserDeck = renderBrowserDeck;
+      return React.createElement(
         "section",
         {
           "data-inline-panel-toggle": inlinePanelToggle,
@@ -110,10 +145,15 @@ vi.mock(
         },
         metadataContent,
       );
+    };
 
     return { ...actual, ThreadSecondaryPanel };
   },
 );
+
+const { timelinePaneRenders } = vi.hoisted(() => ({
+  timelinePaneRenders: vi.fn(),
+}));
 
 vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const React = await import("react");
@@ -122,8 +162,9 @@ vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const ThreadTimelinePane = ({
     footer,
     threadId,
-  }: ComponentProps<typeof actual.ThreadTimelinePane>) =>
-    React.createElement(
+  }: ComponentProps<typeof actual.ThreadTimelinePane>) => {
+    timelinePaneRenders();
+    return React.createElement(
       "div",
       {
         "data-testid": "thread-timeline-pane",
@@ -131,6 +172,7 @@ vi.mock("./ThreadTimelinePane", async (importOriginal) => {
       },
       footer,
     );
+  };
 
   return { ...actual, ThreadTimelinePane };
 });
@@ -145,6 +187,44 @@ const hostedPaneRegistration = {
     publishedHostedPanel = model;
   },
 };
+
+/**
+ * Mirrors ThreadDetailPromptArea's host construction over the real draft
+ * store: an identity-stable host publishing into the pane scope from the
+ * footer slot, plus an actual draft consumer, exactly where the composer
+ * sits in the app tree.
+ */
+function FooterComposerHostPublisher({ threadId }: { threadId: string }) {
+  const promptDraft = usePromptDraftStorage({
+    kind: "thread",
+    projectId: "proj-test",
+    threadId,
+  });
+  const host = useMemo<PluginComposerHost>(
+    () => ({
+      scope: { kind: "thread", threadId },
+      textEffectKey: promptDraft.storageKey,
+      getCurrent: promptDraft.getCurrent,
+      subscribeDraft: promptDraft.subscribe,
+      setDraft: promptDraft.setDraft,
+      focus: () => {},
+    }),
+    [
+      promptDraft.getCurrent,
+      promptDraft.setDraft,
+      promptDraft.storageKey,
+      promptDraft.subscribe,
+      threadId,
+    ],
+  );
+  usePublishPluginComposerHost(host);
+  return <FooterComposerDraftProbe />;
+}
+
+function FooterComposerDraftProbe() {
+  const draft = usePluginComposerHostDraft(usePluginComposerHost());
+  return <div data-testid="footer-composer-draft">{draft?.text ?? ""}</div>;
+}
 
 function makeThread(): ThreadDetailSecondaryContentProps["metadata"]["thread"] {
   return {
@@ -194,6 +274,7 @@ function createProps(
       onParentSelectorOpenChange: noop,
       onRetryParentThreads: noop,
       onMergeBaseBranchChange: noop,
+      parentThreadProjectId: null,
       parentThreadDisplayName: null,
       parentThreads: [],
       isLoadingParentThreads: false,
@@ -213,17 +294,15 @@ function createProps(
     secondaryPanel: {
       activeTab: null,
       canUseGitUi: false,
-      fileTabs: [],
-      isBrowserTabActive: true,
+      tabs: [],
+      fixedTabs: [],
       isOpen: true,
       onCollapse: noop,
       onClose: noop,
-      onFileTabReorder: noop,
+      onTabReorder: noop,
       onOpenNewTab: noop,
-      onPanelChange: noop,
       onPanelFocus: noop,
       renderBrowserDeck: () => null,
-      showGitDiffTab: false,
     },
     timeline: {
       activeThinking: null,
@@ -287,20 +366,30 @@ function renderThreadDetail(
 afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
+  secondaryPanelMockState.renderBrowserDeck = undefined;
+  timelinePaneRenders.mockClear();
+  useThreadsMock.mockClear();
+  window.localStorage.clear();
 });
 
+// The secondary panel chunk loads lazily, so the panel appears one tick
+// after the first render.
 describe("ThreadDetailSecondaryContent", () => {
-  it("keeps the standalone panel hide control in the panel toolbar", () => {
+  it("keeps the standalone panel hide control in the panel toolbar", async () => {
     renderThreadDetail(false);
 
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
+      (
+        await screen.findByTestId(
+          "inline-secondary-panel",
+          {},
+          { timeout: 5_000 },
+        )
+      ).getAttribute("data-inline-panel-toggle"),
     ).toBe("button");
   });
 
-  it("places the hosted panel hide control at the outer edge of its toolbar", () => {
+  it("places the hosted panel hide control at the outer edge of its toolbar", async () => {
     renderThreadDetail(true, false, true);
 
     expect(screen.getByTestId("header").closest("[inert]")).toBeNull();
@@ -316,17 +405,17 @@ describe("ThreadDetailSecondaryContent", () => {
     });
     render(<>{publishedHostedPanel.panel}</>);
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .getAttribute("data-inline-panel-toggle"),
+      (await screen.findByTestId("inline-secondary-panel")).getAttribute(
+        "data-inline-panel-toggle",
+      ),
     ).toBe("button");
   });
 
-  it("keeps the thread header inside the timeline column beside the panel", () => {
+  it("keeps the thread header inside the timeline column beside the panel", async () => {
     renderThreadDetail(false);
 
+    const sidePanel = await screen.findByTestId("inline-secondary-panel");
     const timelinePanel = screen.getByTestId("panel");
-    const sidePanel = screen.getByTestId("inline-secondary-panel");
     const panelGroup = screen.getByTestId("panel-group");
     expect(timelinePanel.contains(screen.getByTestId("header"))).toBe(true);
     expect(timelinePanel.contains(sidePanel)).toBe(false);
@@ -336,13 +425,180 @@ describe("ThreadDetailSecondaryContent", () => {
     expect(sidePanel.textContent).toContain("No thread details available.");
   });
 
-  it("keeps the thread metadata loading presentation in the panel", () => {
+  it("keeps the thread metadata loading presentation in the panel", async () => {
     renderThreadDetail(false, true);
 
     expect(
-      screen
-        .getByTestId("inline-secondary-panel")
-        .contains(screen.getByTestId("metadata-card")),
+      (await screen.findByTestId("inline-secondary-panel")).contains(
+        screen.getByTestId("metadata-card"),
+      ),
     ).toBe(true);
+  });
+
+  it("pins a split browser pane to its tab and gates native commands by pane focus", () => {
+    const renderBrowserDeck = vi.fn(() => null);
+    const props = createProps();
+    props.secondaryPanel.renderBrowserDeck = renderBrowserDeck;
+
+    render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    const panelBrowserDeck = secondaryPanelMockState.renderBrowserDeck;
+    expect(panelBrowserDeck).toBeDefined();
+    if (panelBrowserDeck === undefined) return;
+
+    const onFocusPane = vi.fn();
+    panelBrowserDeck("browser-split", {
+      isFocused: true,
+      onFocusPane,
+    });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      activeBrowserTabId: "browser-split",
+      canHandleBrowserCommands: true,
+      canShowNativeBrowserView: true,
+      onNativeFocus: onFocusPane,
+    });
+
+    panelBrowserDeck("browser-split", {
+      isFocused: false,
+      onFocusPane,
+    });
+    expect(renderBrowserDeck).toHaveBeenLastCalledWith({
+      activeBrowserTabId: "browser-split",
+      canHandleBrowserCommands: false,
+      canShowNativeBrowserView: true,
+      onNativeFocus: onFocusPane,
+    });
+  });
+
+  it("keeps the panel subtree mounted when navigating between threads", async () => {
+    const props = createProps();
+    const { rerender } = render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    const sidePanel = await screen.findByTestId(
+      "inline-secondary-panel",
+      {},
+      { timeout: 5_000 },
+    );
+    const panelGroup = screen.getByTestId("panel-group");
+
+    const nextProps = createProps();
+    nextProps.timeline = {
+      ...nextProps.timeline,
+      threadId: "thread-2",
+    } as ThreadDetailSecondaryContentProps["timeline"];
+    rerender(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...nextProps} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    // Navigation swaps content identity but must not remount the physical
+    // panel host: same DOM nodes for the group and the realized side panel.
+    expect(screen.getByTestId("panel-group")).toBe(panelGroup);
+    expect(screen.getByTestId("inline-secondary-panel")).toBe(sidePanel);
+    expect(
+      screen.getByTestId("thread-timeline-pane").getAttribute("data-thread-id"),
+    ).toBe("thread-2");
+  });
+
+  it("only requests the forks list while the secondary panel is open", () => {
+    const props = createProps();
+    const { rerender } = render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent
+              {...props}
+              isSecondaryPanelOpen={false}
+            />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    expect(useThreadsMock).toHaveBeenLastCalledWith(
+      {
+        projectId: "proj-test",
+        sourceThreadId: "thread-1",
+        originKind: "fork",
+        archived: false,
+      },
+      { enabled: false },
+    );
+
+    rerender(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} isSecondaryPanelOpen />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    expect(useThreadsMock).toHaveBeenLastCalledWith(expect.anything(), {
+      enabled: true,
+    });
+  });
+
+  // Regression probe for the 19.6s mobile keystroke hang: the body holds the
+  // published composer host, so a per-keystroke host identity re-rendered
+  // SecondaryPanelLayout and the timeline pane per character.
+  it("does not re-render the timeline pane while the composer draft changes", async () => {
+    const props = createProps();
+    props.footer = <FooterComposerHostPublisher threadId="thread-1" />;
+    render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    // Let the lazy secondary panel and the host publication settle first.
+    await screen.findByTestId("inline-secondary-panel", {}, { timeout: 5_000 });
+    expect(screen.getByTestId("footer-composer-draft").textContent).toBe("");
+    const paneRendersAfterMount = timelinePaneRenders.mock.calls.length;
+
+    // Keystrokes hit the same store the composer writes through.
+    const accessor = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "proj-test",
+      threadId: "thread-1",
+    });
+    const typed = "why does typing hang";
+    for (let index = 1; index <= typed.length; index += 1) {
+      const text = typed.slice(0, index);
+      act(() => {
+        accessor.setDraft({ text, mentions: [], attachments: [] });
+      });
+      expect(screen.getByTestId("footer-composer-draft").textContent).toBe(
+        text,
+      );
+    }
+
+    expect(timelinePaneRenders.mock.calls.length).toBe(paneRendersAfterMount);
   });
 });

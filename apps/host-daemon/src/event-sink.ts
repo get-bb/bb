@@ -14,6 +14,7 @@ const DEFAULT_DEBOUNCE_MS = 100;
 // growing. These only warn — they never drop, fault, or bound the queue. If
 // they fire in practice, that is the signal to add real backpressure.
 const QUEUE_DEPTH_WARN_THRESHOLD = 512;
+const QUEUE_DEPTH_WARN_MIN_AGE_MS = 5_000;
 const QUEUE_AGE_WARN_THRESHOLD_MS = 30_000;
 
 export interface EventSinkInput {
@@ -24,19 +25,19 @@ export interface EventSinkInput {
 export interface EventPostResult {
   acceptedEvents: HostDaemonEventBatchResponse["acceptedEvents"];
   rejectedEvents: HostDaemonEventBatchResponse["rejectedEvents"];
-  kind: "accepted";
 }
 
 export interface CreateEventSinkOptions {
   isSessionOpen: () => boolean;
   logger: Pick<HostDaemonLogger, "debug" | "error" | "warn">;
+  /** Injectable wall clock for queue-age tests. */
+  now?: () => number;
   postEvents: (events: HostDaemonEventEnvelope[]) => Promise<EventPostResult>;
 }
 
 export interface EventSink {
   emit(event: EventSinkInput): void;
   flush(): Promise<void>;
-  flushRequired(): Promise<void>;
   dispose(): Promise<void>;
 }
 
@@ -68,7 +69,7 @@ function isWaitingForApprovalItemEvent(event: ThreadEvent): boolean {
   return event.item.approvalStatus === "waiting_for_approval";
 }
 
-export function shouldFlushThreadEventImmediately(event: ThreadEvent): boolean {
+function shouldFlushThreadEventImmediately(event: ThreadEvent): boolean {
   if (event.type === "turn/started" || event.type === "item/completed") {
     return true;
   }
@@ -116,6 +117,7 @@ function summarizeRejectedEvents(
 }
 
 export function createEventSink(options: CreateEventSinkOptions): EventSink {
+  const now = options.now ?? (() => Date.now());
   const queue: HostDaemonEventEnvelope[] = [];
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushPromise: Promise<void> | null = null;
@@ -130,10 +132,11 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       return;
     }
     const queueDepth = queue.length;
-    const queueAgeMs = Date.now() - backedUpSinceMs;
+    const queueAgeMs = now() - backedUpSinceMs;
     if (
-      queueDepth < QUEUE_DEPTH_WARN_THRESHOLD &&
-      queueAgeMs < QUEUE_AGE_WARN_THRESHOLD_MS
+      queueAgeMs < QUEUE_AGE_WARN_THRESHOLD_MS &&
+      (queueDepth < QUEUE_DEPTH_WARN_THRESHOLD ||
+        queueAgeMs < QUEUE_DEPTH_WARN_MIN_AGE_MS)
     ) {
       return;
     }
@@ -281,7 +284,7 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
         throw new EventSinkDisposedError();
       }
       if (backedUpSinceMs === null) {
-        backedUpSinceMs = Date.now();
+        backedUpSinceMs = now();
       }
       queue.push({
         threadId: input.threadId,
@@ -293,7 +296,6 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
       );
     },
     flush,
-    flushRequired: flush,
     async dispose(): Promise<void> {
       disposed = true;
       clearScheduledFlush();

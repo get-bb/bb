@@ -1,5 +1,11 @@
 import type { BbPluginApi, PluginCliResult } from "@get-bb/plugin-sdk";
+import {
+  mobilePairingPayload,
+  type MobilePairingPayload,
+} from "@bb/connect-client";
 import type { ShareHostResolver } from "./hosts.js";
+import { MachineCodeError } from "./machine-code.js";
+import type { MobilePairingGate } from "./rpc.js";
 import { parseSharePort } from "./shares.js";
 import type { ConnectTunnel } from "./tunnel.js";
 import type { ConnectStatus } from "./types.js";
@@ -7,7 +13,8 @@ import type { ConnectStatus } from "./types.js";
 // `bb connect` — resolved through the plugin CLI proxy. The dashboard-issued
 // command `npx -p bb-app@latest bb connect --code <code> --server <url>` must
 // keep working verbatim, so the root command takes the pairing flags and
-// `status` / `off` / `expose` / `unexpose` / `shares` / `servers` are subcommands.
+// `status` / `off` / `expose` / `unexpose` / `shares` / `servers` /
+// `machine-code` are subcommands.
 
 interface ParsedFlags {
   flags: Map<string, string | true>;
@@ -76,6 +83,9 @@ function helpText(): string {
     "  bb connect unexpose <port> [--host <name-or-id>]  Stop sharing a port on that host",
     "  bb connect shares [--host <name-or-id>]           List shares for the thread's host",
     "  bb connect servers             List every bb on this account (from getbb.app)",
+    "  bb connect machine-code        Mint a one-time code that enrolls the bb mobile app (or another",
+    "                                 device) as a connect machine for this bb (needs the",
+    '                                 "Mobile app" experiment in Settings → Experiments)',
     "",
     "The server holds the tunnel; it stays up while bb is running.",
   ].join("\n");
@@ -108,12 +118,54 @@ function notPairedError(): string {
   return "this bb is not connected to getbb.app — run `bb connect` for how to pair";
 }
 
+/**
+ * Human copy for a failed `machine-code`. The typed code is stable (the panel
+ * maps the same codes); the dashboard host is named so the limit message tells
+ * the user where to free a slot.
+ */
+function machineCodeErrorText(
+  error: MachineCodeError,
+  dashboardUrl: string,
+): string {
+  switch (error.code) {
+    case "not_paired":
+      return notPairedError();
+    case "machine_limit":
+      return `this account has reached its connect machine limit — revoke a device you no longer use at ${dashboardUrl}, then try again`;
+    case "network":
+      return "could not reach the connect service to mint a machine code — check the connection and try again";
+  }
+}
+
+function mobilePairingDisabledError(): string {
+  return 'mobile pairing is off — turn on the "Mobile app" experiment in Settings → Experiments (or `bb settings experiment mobileApp true`), then run this again';
+}
+
+function formatMachineCode(payload: MobilePairingPayload): string {
+  const minutes = Math.max(
+    0,
+    Math.round((payload.expiresAt - Date.now()) / 60_000),
+  );
+  return [
+    `Code:       ${payload.code}`,
+    `Server:     ${payload.serverUrl}`,
+    `Apex:       ${payload.apex}`,
+    `Expires:    ${new Date(payload.expiresAt).toISOString()} (in about ${minutes} min)`,
+    "",
+    "Enter the code in the bb mobile app when it asks to pair over bb connect (or",
+    "scan the QR code from Settings → Remote access → Add mobile device). The phone",
+    "enrolls as a connect machine on this account — it appears in the getbb.app",
+    "dashboard's machine list, where you can revoke it. The code works once.",
+  ].join("\n");
+}
+
 export function registerConnectCli(args: {
   bb: Pick<BbPluginApi, "cli">;
   tunnel: ConnectTunnel;
   hostResolver: ShareHostResolver;
+  mobilePairing: MobilePairingGate;
 }): void {
-  const { bb, tunnel, hostResolver } = args;
+  const { bb, tunnel, hostResolver, mobilePairing } = args;
   bb.cli.register({
     name: "connect",
     summary:
@@ -148,6 +200,12 @@ export function registerConnectCli(args: {
         name: "servers",
         summary: "List every bb server on this account",
         usage: "bb connect servers [--json]",
+      },
+      {
+        name: "machine-code",
+        summary:
+          'Mint a one-time code that enrolls the bb mobile app as a connect machine (needs the "Mobile app" experiment)',
+        usage: "bb connect machine-code [--json]",
       },
     ],
     async run(argv, ctx): Promise<PluginCliResult> {
@@ -293,6 +351,32 @@ export function registerConnectCli(args: {
             }),
           ];
           return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
+        }
+        if (first === "machine-code") {
+          const parsed = parseFlags(argv.slice(1));
+          validateFlags(parsed, { boolean: ["json"] });
+          if (!(await mobilePairing.enabled())) {
+            return {
+              exitCode: 1,
+              stderr: `${mobilePairingDisabledError()}\n`,
+            };
+          }
+          let payload: MobilePairingPayload;
+          try {
+            payload = mobilePairingPayload(await tunnel.createMachineCode());
+          } catch (error) {
+            if (error instanceof MachineCodeError) {
+              return {
+                exitCode: 1,
+                stderr: `${machineCodeErrorText(error, tunnel.status().dashboardUrl)}\n`,
+              };
+            }
+            throw error;
+          }
+          if (parsed.flags.has("json")) {
+            return { exitCode: 0, stdout: asJson(payload) };
+          }
+          return { exitCode: 0, stdout: `${formatMachineCode(payload)}\n` };
         }
         if (first !== undefined && !first.startsWith("--")) {
           return {

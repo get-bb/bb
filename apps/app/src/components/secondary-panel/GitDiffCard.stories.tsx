@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { FileContents } from "@pierre/diffs";
-import {
-  GIT_DIFF_VIEW_BASE_OPTIONS,
-  GitDiffCard,
-  type DiffFileContentsResult,
-  type RequestDiffFileContents,
-} from "../git-diff/GitDiffCard";
+import type { DiffPresentation } from "@/components/code/code-rendering";
+import { GitDiffCard } from "../git-diff/GitDiffCard";
+import type {
+  DiffFileContentsResult,
+  RequestDiffFileContents,
+} from "@/components/git-diff/GitDiffCardBody";
 import {
   DEFAULT_CODE_OVERFLOW_MODE,
   type CodeOverflowMode,
@@ -17,10 +17,9 @@ import {
 } from "./GitDiffToolbar";
 import {
   parseGitDiffFiles,
-  summarizeGitDiff,
+  summarizeGitDiffFile,
   type ParsedGitDiffFile,
 } from "../git-diff/git-diff-parsing";
-import { usePreferredTheme } from "@/hooks/useTheme";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { appToast } from "@/components/ui/app-toast";
 
@@ -298,8 +297,9 @@ export function Overview() {
 // Aligned-fixture builders. Each takes a real-looking source file plus an
 // edit list and produces the FileContents pair AND the unified diff that
 // describes the change between them. Once GitDiffCard tags the file lines
-// onto the parsed fileDiff, the library shows expand-context buttons in
-// every gap between hunks.
+// onto the parsed fileDiff (during idle time on a fine pointer, or after the
+// card's "Expand context" action on touch devices), the library shows
+// expand-context buttons in every gap between hunks.
 // ---------------------------------------------------------------------------
 
 interface AlignedDiffEdit {
@@ -736,15 +736,16 @@ function InteractiveDiffPanel({
         ),
     [diffs],
   );
-  const aggregateStats = useMemo(
-    () =>
-      summarizeGitDiff(
-        parsed.map((p) => p.fileDiff),
-        parsed.map((p) => p.fullDiff).join("\n"),
-      ),
-    [parsed],
-  );
-  const preferredTheme = usePreferredTheme();
+  const aggregateStats = useMemo(() => {
+    let insertions = 0;
+    let deletions = 0;
+    for (const entry of parsed) {
+      const fileStats = summarizeGitDiffFile(entry.fileDiff);
+      insertions += fileStats.insertions;
+      deletions += fileStats.deletions;
+    }
+    return { filesCount: parsed.length, insertions, deletions };
+  }, [parsed]);
   const [selection, setSelection] = useState("working");
   const [displayMode, setDisplayMode] = useState<GitDiffDisplayMode>("unified");
   const [lineOverflowMode, setLineOverflowMode] = useState<CodeOverflowMode>(
@@ -775,14 +776,13 @@ function InteractiveDiffPanel({
       return next;
     });
   }, []);
-  const viewOptions = useMemo(
+  const presentation = useMemo<DiffPresentation>(
     () => ({
-      ...GIT_DIFF_VIEW_BASE_OPTIONS,
-      diffStyle: displayMode,
+      view: displayMode,
       overflow: lineOverflowMode,
-      themeType: preferredTheme,
+      showLineNumbers: true,
     }),
-    [displayMode, lineOverflowMode, preferredTheme],
+    [displayMode, lineOverflowMode],
   );
   const onOpenFileInEditor = useCallback((path: string) => {
     appToast.message("Opening in editor", { description: path });
@@ -836,7 +836,7 @@ function InteractiveDiffPanel({
             <GitDiffCard
               key={fileKey}
               fileDiff={fileDiff}
-              diffViewOptions={viewOptions}
+              presentation={presentation}
               onOpenFileInEditor={onOpenFileInEditor}
               isCollapsed={collapsedFileKeys.has(fileKey)}
               onToggleCollapsed={() => toggleFileCollapsed(fileKey)}

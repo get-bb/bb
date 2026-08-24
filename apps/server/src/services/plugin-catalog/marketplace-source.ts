@@ -22,7 +22,7 @@ import {
 /** File a git or path marketplace keeps its manifest in. */
 const MARKETPLACE_MANIFEST_FILENAME = "marketplace.json";
 
-export const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
+const MARKETPLACE_MANIFEST_MAX_BYTES = 1_048_576;
 
 /** Where a marketplace's manifest is read from. */
 type MarketplaceSource =

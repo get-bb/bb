@@ -60,6 +60,20 @@ To run the newest automated build instead:
 npx bb-app@nightly
 ```
 
+npm 12 and later block dependency install scripts by default. bb needs those
+scripts to build its native add-ons. If your npm version is 12 or later, allow
+the scripts for the install:
+
+```bash
+npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
+```
+
+Or set the policy once for all global installs:
+
+```bash
+npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=user
+```
+
 bb uses the provider CLI you already have authenticated.
 
 For install requirements, provider setup, configuration, and package-focused
@@ -94,6 +108,19 @@ checkout path. The checkout instance id is the sanitized path to the checkout,
 relative to your home directory, plus a short hash suffix. Separate worktrees
 can run alongside each other and the packaged `npx bb-app@latest` instance.
 
+To test the production bundle and serving path without switching to production
+data or ports, use:
+
+```bash
+pnpm start:worktree
+```
+
+This builds the same optimized frontend and runtime artifacts as `pnpm start`,
+then serves the app from the BB server on the checkout-specific dev server port.
+It keeps the normal checkout-specific dev data directory and host-daemon port.
+There is no Vite dev server or hot reload in this mode; rerun the command after
+source changes. As with `pnpm dev`, worktree starts do not send telemetry.
+
 To run that same source dev server with the Electron desktop shell:
 
 ```bash
@@ -115,6 +142,18 @@ tailscale serve --bg --https=443 http://127.0.0.1:<app-port>
 Then open `https://<machine>.<tailnet>.ts.net`. Source dev binds both the Vite
 app and main server to loopback by default; Vite continues to proxy API and
 WebSocket traffic.
+
+For direct access at `http://<tailscale-ip>:<app-port>` instead, run:
+
+```bash
+pnpm dev:remote
+```
+
+This binds the Vite app and main server to all IPv4 interfaces. The remote
+browser must be able to reach both the printed app and server ports for realtime
+updates. The server API is unauthenticated and permits command execution and
+file reads, so use this only behind a trusted network boundary and restrict the
+ports to Tailscale traffic with the host firewall when the LAN is not trusted.
 
 To use the component storybook from another machine, run:
 
@@ -199,7 +238,30 @@ Error: Could not locate the bindings file. Tried:
  → .../node_modules/better-sqlite3/build/better_sqlite3.node
 ```
 
-The usual cause is `ignore-scripts=true` in your `~/.npmrc`. Set the
+There are two usual causes.
+
+The first cause is npm 12 or later. Since npm 12, npm blocks dependency install
+scripts by default and prints
+`npm warn install-scripts N packages had install scripts blocked`. Name bb's
+native add-ons in `--allow-scripts` to let this one command run their install
+scripts:
+
+```bash
+npx --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app@latest
+```
+
+For a permanent install with the same setting, use:
+
+```bash
+npm install -g --allow-scripts=better-sqlite3,node-pty,@parcel/watcher bb-app
+bb-app
+```
+
+To allow them for all global installs on this machine, run
+`npm config set allow-scripts=better-sqlite3,node-pty,@parcel/watcher --location=user`.
+npm 10 and 11 accept or ignore the flag, so it is safe on every supported Node.
+
+The second cause is `ignore-scripts=true` in your `~/.npmrc`. Set the
 `npm_config_ignore_scripts` environment variable to let this one command run its
 install scripts:
 

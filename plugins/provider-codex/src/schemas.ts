@@ -87,7 +87,6 @@ const codexUserInputSchema = z.discriminatedUnion("type", [
     })
     .passthrough(),
 ]);
-export type CodexParsedUserInput = z.infer<typeof codexUserInputSchema>;
 
 const codexToolReferenceStatusSchema = z.enum([
   "inProgress",

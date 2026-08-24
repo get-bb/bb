@@ -12,9 +12,9 @@ import type {
 import {
   AutomationLifecycleControl,
   automationIconName,
-  automationScheduleLabel,
 } from "./detail-view.js";
 import { Icon } from "@bb/shared-ui/icon";
+import { DelayedLoading } from "@bb/shared-ui/delayed-loading";
 import {
   ResourcePagination,
   useResourcePagination,
@@ -41,6 +41,7 @@ import {
   type AutomationStatusFilter,
   formatAutomationTrigger,
   formatOverviewScheduleMetadata,
+  formatScheduleStatusLabel,
   getOneShotLifecycle,
   matchesAutomationStatusFilters,
   oneShotLifecycleAllowsToggle,
@@ -92,7 +93,7 @@ type AutomationSortMode = "project" | "alpha";
 type AutomationSortDirection = "asc" | "desc";
 export type AutomationCollectionMode = "installed" | "browse";
 
-export interface AutomationDetailRoute {
+interface AutomationDetailRoute {
   projectId: string;
   automationId: string;
 }
@@ -142,7 +143,7 @@ function AutomationRowLeading({
   );
 }
 
-function automationProjectLabel(
+export function automationProjectLabel(
   project: OverviewEntry["project"] | null | undefined,
 ): string {
   if (project == null) return "Workspace";
@@ -365,7 +366,7 @@ export function AutomationOverviewView({
       return [
         automation.name,
         project.name,
-        automationScheduleLabel(automation),
+        formatScheduleStatusLabel(automation),
         formatAutomationTrigger(automation.trigger),
       ].some((value) => value?.toLowerCase().includes(normalizedQuery));
     });
@@ -426,7 +427,11 @@ export function AutomationOverviewView({
       />
     );
   } else if (entries === null) {
-    body = <ResourceListState state="loading" message="Loading automations" />;
+    body = (
+      <DelayedLoading>
+        <ResourceListState state="loading" message="Loading automations" />
+      </DelayedLoading>
+    );
   } else if (entries.length === 0) {
     body = (
       <ResourceListState state="empty" message="No automations installed." />

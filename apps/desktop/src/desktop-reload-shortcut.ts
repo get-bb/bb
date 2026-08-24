@@ -1,4 +1,4 @@
-export interface DesktopReloadShortcutInput {
+interface DesktopReloadShortcutInput {
   alt: boolean;
   control: boolean;
   isAutoRepeat: boolean;
@@ -9,7 +9,7 @@ export interface DesktopReloadShortcutInput {
   type: string;
 }
 
-export type DesktopReloadShortcut = "reload" | "force-reload";
+type DesktopReloadShortcut = "reload" | "force-reload";
 
 export function resolveDesktopReloadShortcut(
   input: DesktopReloadShortcutInput,

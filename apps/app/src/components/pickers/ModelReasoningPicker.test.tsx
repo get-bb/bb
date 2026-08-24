@@ -27,6 +27,7 @@ import {
   ModelReasoningPicker,
 } from "./ModelReasoningPicker";
 import type { PickerOption } from "./OptionPicker";
+import type { ProviderPickerOption } from "./model-brand-prefix";
 import type { ModelPickerOption } from "./model-picker-option";
 
 type CapturedCommandHandler = (invocation: {
@@ -61,10 +62,16 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useIsAppCommandModifierHeld: () => false,
 }));
 
-const providerOptions: readonly PickerOption<string>[] = [
-  { value: "codex", label: "Codex" },
-  { value: "claude-code", label: "Claude Code" },
+// The brand prefix comes from each provider's declared strings; the picker
+// strips it from model labels under that provider's tab.
+const providerOptions: readonly ProviderPickerOption[] = [
+  { value: "codex", label: "Codex", brandPrefix: "GPT-" },
+  { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
 ];
+
+function ProviderMaskIcon({ className }: { className?: string }) {
+  return <span className={className} data-testid="provider-mask-icon" />;
+}
 
 const codexModels: readonly PickerOption<string>[] = [
   { value: "gpt-5.5", label: "GPT-5.5" },
@@ -164,7 +171,7 @@ function renderPicker({
   pickerReasoningOptions?: readonly PickerOption<ReasoningLevel>[];
   reasoningValue?: ReasoningLevel;
   moreModelOptions?: readonly ModelPickerOption[];
-  pickerProviderOptions?: readonly PickerOption<string>[];
+  pickerProviderOptions?: readonly ProviderPickerOption[];
   alternateProviderModels?: AvailableModel[];
   providerRouting?: SystemProvidersQuery;
   selectedProviderId?: string;
@@ -244,6 +251,19 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("gives a non-SVG provider mark the same 16px trigger size as button SVGs", () => {
+    renderPicker({
+      pickerProviderOptions: [
+        { ...providerOptions[0], icon: ProviderMaskIcon },
+        providerOptions[1],
+      ],
+    });
+
+    expect(screen.getByTestId("provider-mask-icon").classList).toContain(
+      "size-4",
+    );
+  });
+
   it("keeps a failed provider tab visible with its provider-plugin error", () => {
     renderPicker({
       modelOptions: [],
@@ -475,6 +495,54 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
+  // A short viewport cuts the menu off below the model rows. The models and the
+  // reasoning rows must share one scroll region: when the model list is its own
+  // scroller, a wheel or touch gesture that starts over the models is captured
+  // by it, and the reasoning rows underneath stay unreachable.
+  it("scrolls the desktop models and reasoning rows as one region", () => {
+    renderPicker({ modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    const menu = screen.getByRole("dialog");
+    expect(menu.className).toContain(
+      "max-h-[var(--radix-popover-content-available-height)]",
+    );
+
+    const scrollers = [
+      ...(menu.className.includes("overflow-y-auto") ? [menu] : []),
+      ...menu.querySelectorAll<HTMLElement>("[class*='overflow-y-auto']"),
+    ];
+    expect(scrollers).toHaveLength(1);
+
+    const body = scrollers[0];
+    expect(body.className).toContain("overscroll-contain");
+    expect(body.contains(screen.getByRole("listbox", { name: "Models" }))).toBe(
+      true,
+    );
+    expect(body.contains(screen.getByText("High"))).toBe(true);
+
+    const models = screen.getByRole("listbox", { name: "Models" });
+    expect(models.className).not.toContain("max-h-");
+  });
+
+  it("leaves compact drawer height and scrolling to the responsive shell", async () => {
+    renderPicker({ compact: true, modelOptions: manyCodexModels });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Provider, model and reasoning" }),
+    );
+
+    expect(screen.getByRole("dialog").className).not.toContain(
+      "max-h-[var(--radix-popover-content-available-height)]",
+    );
+    expect(
+      (await screen.findByRole("listbox", { name: "Models" })).className,
+    ).not.toContain("max-h-");
+  });
+
   it("commits a provider tab immediately and keeps its models selectable", async () => {
     const { onSelectedProviderChange, onModelChange } = renderPicker();
 
@@ -539,7 +607,6 @@ describe("ModelReasoningPicker", () => {
 
     expect(screen.getAllByText(modelLabel)).toHaveLength(3);
     const apiQualifier = screen.getByText("openai");
-    expect(apiQualifier.className).toContain("text-subtle-foreground");
     expect(screen.getByText("openai-codex")).not.toBeNull();
 
     fireEvent.click(apiQualifier);

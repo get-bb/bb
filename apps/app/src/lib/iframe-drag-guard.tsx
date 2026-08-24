@@ -1,5 +1,14 @@
-export interface IframeDragGuardOverlayProps {
+import { cn } from "@bb/shared-ui/lib/utils";
+
+interface IframeDragGuardOverlayProps {
   active: boolean;
+  /**
+   * Cursor to show for the whole drag. The overlay is the pointer target for
+   * the duration of the drag, so the cursor lives here rather than on `body`:
+   * `cursor` is inherited, and setting it on `body` restyles every element in
+   * the document (hundreds of milliseconds in a long thread).
+   */
+  cursor: "col-resize" | "row-resize";
 }
 
 /**
@@ -16,8 +25,17 @@ export interface IframeDragGuardOverlayProps {
  * pointer target, while its `pointer-events` stay untouched. `position: fixed`
  * means it covers everything regardless of where it mounts and is not clipped
  * by an ancestor's `overflow`.
+ *
+ * Mount it AFTER its large siblings, never before them. Mounting and
+ * unmounting an element invalidates the style of every following sibling's
+ * subtree; placed before the app root, the toggle at drag start and drag end
+ * restyled the whole app (~400 ms in a long thread). Placed last it costs
+ * nothing, and `fixed` plus the same z-index keeps it on top either way.
  */
-export function IframeDragGuardOverlay({ active }: IframeDragGuardOverlayProps) {
+export function IframeDragGuardOverlay({
+  active,
+  cursor,
+}: IframeDragGuardOverlayProps) {
   if (!active) {
     return null;
   }
@@ -25,7 +43,10 @@ export function IframeDragGuardOverlay({ active }: IframeDragGuardOverlayProps) 
     <div
       aria-hidden
       data-testid="iframe-drag-guard-overlay"
-      className="fixed inset-0 z-50"
+      className={cn(
+        "fixed inset-0 z-50",
+        cursor === "col-resize" ? "cursor-col-resize" : "cursor-row-resize",
+      )}
     />
   );
 }

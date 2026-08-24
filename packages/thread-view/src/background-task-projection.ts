@@ -61,6 +61,7 @@ function applyBackgroundTaskItem(
   meta: EventMeta,
 ): void {
   const item = lifecycle.item;
+  message.familyId = item.familyId ?? null;
   message.taskType = item.taskType;
   message.workflowName = item.workflowName ?? null;
   message.description = item.description;
@@ -124,7 +125,11 @@ export function upsertBackgroundTaskMessage(
     ...(lifecycle.item.parentToolCallId
       ? { parentToolCallId: lifecycle.item.parentToolCallId }
       : {}),
+    ...(lifecycle.item.presentation
+      ? { presentation: lifecycle.item.presentation }
+      : {}),
     itemId: lifecycle.item.id,
+    familyId: lifecycle.item.familyId ?? null,
     taskType: lifecycle.item.taskType,
     workflowName: lifecycle.item.workflowName ?? null,
     description: lifecycle.item.description,

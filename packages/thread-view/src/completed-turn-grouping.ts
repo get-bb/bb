@@ -10,7 +10,7 @@ import {
   isTimelineUngroupableMessage,
 } from "./timeline-message-helpers.js";
 
-export interface CompletedTurnSummaryGroup {
+interface CompletedTurnSummaryGroup {
   kind: "summary";
   startedAt: number;
   completedAt: number | null;
@@ -19,7 +19,7 @@ export interface CompletedTurnSummaryGroup {
   summaryCount: number;
 }
 
-export interface CompletedTurnUngroupedMessage {
+interface CompletedTurnUngroupedMessage {
   kind: "ungrouped-message";
   message: EventProjectionMessage;
 }
@@ -142,13 +142,55 @@ function splitCompletedTurnMessages(
   };
 }
 
+function isAssistantResponseMessage(
+  message: EventProjectionMessage | undefined,
+): boolean {
+  return (
+    message?.kind === "assistant-text" && message.isLegacyUserMessage !== true
+  );
+}
+
+/**
+ * Assistant text that the provider followed directly with more assistant
+ * text, with no work in between, was a complete response, not narration about
+ * upcoming tool activity. Providers re-query the model after it stops without
+ * telling bb why (a Claude Code Stop hook injects its reason as a synthetic
+ * user message that never becomes a thread event), so the turn carries two
+ * answers and only the last one is the terminal message. The earlier answer
+ * must stay visible at rest instead of being folded into the collapsed work
+ * summary. Text followed by work keeps the existing collapse.
+ */
+function findVisibleResponseMessageIds(
+  summaryMessages: readonly EventProjectionMessage[],
+  terminalMessage: EventProjectionMessage | undefined,
+): Set<string> {
+  const visibleIds = new Set<string>();
+  for (let index = 0; index < summaryMessages.length; index += 1) {
+    const message = summaryMessages[index];
+    const nextMessage = summaryMessages[index + 1] ?? terminalMessage;
+    if (
+      isAssistantResponseMessage(message) &&
+      isAssistantResponseMessage(nextMessage)
+    ) {
+      visibleIds.add(message.id);
+    }
+  }
+  return visibleIds;
+}
+
 function groupCompletedTurnSummaryMessages(
   turn: EventProjectionTurn,
   summaryMessages: EventProjectionMessage[],
+  terminalMessage: EventProjectionMessage | undefined,
 ): CompletedTurnSummaryItem[] {
   const externalBoundarySeqs = turn.externalUserBoundarySeqs ?? [];
+  const visibleResponseIds = findVisibleResponseMessageIds(
+    summaryMessages,
+    terminalMessage,
+  );
   if (
     externalBoundarySeqs.length === 0 &&
+    visibleResponseIds.size === 0 &&
     !summaryMessages.some(isTimelineUngroupableMessage)
   ) {
     return [
@@ -227,6 +269,14 @@ function groupCompletedTurnSummaryMessages(
 
   for (const message of summaryMessages) {
     flushExternalBoundariesBefore(message);
+    if (visibleResponseIds.has(message.id)) {
+      flushGroupedMessages();
+      items.push({
+        kind: "ungrouped-message",
+        message,
+      });
+      continue;
+    }
     if (isTimelineUngroupableMessage(message)) {
       flushGroupedMessages(
         message.kind === "user" && message.initiator === "user",
@@ -256,7 +306,11 @@ export function groupCompletedTurnMessages(
     splitCompletedTurnMessages(messages, turn.terminalMessage);
   return {
     summaryItems: unwrapSingletonContextManagementGroups(
-      groupCompletedTurnSummaryMessages(turn, summaryMessages),
+      groupCompletedTurnSummaryMessages(
+        turn,
+        summaryMessages,
+        terminalMessages[0],
+      ),
     ),
     terminalMessages,
     trailingMessages,

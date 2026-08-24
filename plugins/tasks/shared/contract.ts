@@ -42,13 +42,19 @@ const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const idSchema = z.string().regex(ULID_PATTERN, "must be a ULID");
 const nonBlankStringSchema = z.string().trim().min(1, "must not be blank");
-const presetReasoningLevelSchema = z.enum([
+export const presetReasoningLevelSchema = z.enum([
+  "none",
   "low",
   "medium",
   "high",
   "xhigh",
+  "ultracode",
   "max",
+  "ultra",
 ]);
+export type PresetReasoningLevel = z.infer<typeof presetReasoningLevelSchema>;
+export const presetServiceTierSchema = z.enum(["default", "fast"]);
+export type PresetServiceTier = z.infer<typeof presetServiceTierSchema>;
 export const PRESET_PERMISSION_MODES = [
   "accept-edits",
   "auto",
@@ -85,7 +91,7 @@ const threadSearchStatusSchema = z.enum([
   "error",
 ]);
 
-export const folderSchema = z
+const folderSchema = z
   .object({
     id: idSchema,
     name: z.string(),
@@ -94,7 +100,7 @@ export const folderSchema = z
   })
   .strict();
 
-export const projectSchema = z
+const projectSchema = z
   .object({
     id: idSchema,
     name: z.string(),
@@ -107,7 +113,7 @@ export const projectSchema = z
   })
   .strict();
 
-export const taskSchema = z
+const taskSchema = z
   .object({
     id: idSchema,
     projectId: idSchema,
@@ -126,7 +132,7 @@ export const taskSchema = z
   })
   .strict();
 
-export const labelSchema = z
+const labelSchema = z
   .object({
     id: idSchema,
     projectId: idSchema,
@@ -135,7 +141,7 @@ export const labelSchema = z
   })
   .strict();
 
-export const commentSchema = z
+const commentSchema = z
   .object({
     id: idSchema,
     taskId: idSchema,
@@ -152,13 +158,14 @@ export const commentSchema = z
 /**
  * Identity of the provider (agent) that authored an agent comment, resolved at
  * read time from the authoring thread's live `providerId`. `name` and
- * `logoUrl` come from the host provider list; `logoUrl` is populated only for
- * providers that serve a logo asset (custom ACP agents) — built-in providers
- * carry a null `logoUrl` and the UI renders a bundled brand glyph keyed by
- * `id`. `name` falls back to the raw provider id when the provider is no longer
- * installed. See `commentProviderSchema` usages in `displayCommentSchema`.
+ * `logoUrl` come from the host provider list; `logoUrl` is the logo the
+ * provider's plugin declared (every provider bb ships declares one), drawn
+ * as a currentColor mask, and null for a provider that declared none — the
+ * UI then shows the generic agent glyph. `name` falls back to the raw
+ * provider id when the provider is no longer installed. See
+ * `commentProviderSchema` usages in `displayCommentSchema`.
  */
-export const commentProviderSchema = z
+const commentProviderSchema = z
   .object({
     id: z.string(),
     name: z.string(),
@@ -177,14 +184,14 @@ export const commentProviderSchema = z
  * deleted/hidden/inaccessible; it is present (and drives the comment's logo)
  * whenever the authoring thread resolves, including side chats.
  */
-export const displayCommentSchema = commentSchema
+const displayCommentSchema = commentSchema
   .extend({
     threadTitle: z.string().nullable(),
     provider: commentProviderSchema.nullable(),
   })
   .strict();
 
-export const attachmentSchema = z
+const attachmentSchema = z
   .object({
     id: idSchema,
     taskId: idSchema.nullable(),
@@ -197,7 +204,7 @@ export const attachmentSchema = z
   })
   .strict();
 
-export const taskThreadSchema = z
+const taskThreadSchema = z
   .object({
     id: idSchema,
     taskId: idSchema,
@@ -217,7 +224,7 @@ export const taskThreadSchema = z
  * `state` matches the server's product-facing PR state, which already folds
  * GitHub's isDraft flag into a single enum.
  */
-export const taskPullRequestSchema = z
+const taskPullRequestSchema = z
   .object({
     url: z.string().url(),
     number: z.number().int().positive(),
@@ -229,13 +236,14 @@ export const taskPullRequestSchema = z
   })
   .strict();
 
-export const presetSchema = z
+const presetSchema = z
   .object({
     id: idSchema,
     name: z.string(),
     providerId: z.string(),
     modelId: z.string(),
-    reasoningLevel: z.string(),
+    reasoningLevel: presetReasoningLevelSchema,
+    serviceTier: presetServiceTierSchema.nullable(),
     permissionMode: presetPermissionModeSchema,
     environmentKind: presetEnvironmentKindSchema,
     baseBranch: nullablePresetTargetSchema,
@@ -246,7 +254,7 @@ export const presetSchema = z
   })
   .strict();
 
-export const tasksDomainErrorSchema = z
+const tasksDomainErrorSchema = z
   .object({
     code: z.enum([
       "task_parent_invalid",
@@ -363,6 +371,7 @@ const updatePresetInputSchema = z
     providerId: nonBlankStringSchema.optional(),
     modelId: nonBlankStringSchema.optional(),
     reasoningLevel: presetReasoningLevelSchema.optional(),
+    serviceTier: presetServiceTierSchema.nullable().optional(),
     permissionMode: presetPermissionModeSchema.optional(),
     environmentKind: presetEnvironmentKindSchema.optional(),
     baseBranch: nullablePresetTargetSchema.optional(),
@@ -376,6 +385,7 @@ const updatePresetInputSchema = z
       input.providerId !== undefined ||
       input.modelId !== undefined ||
       input.reasoningLevel !== undefined ||
+      input.serviceTier !== undefined ||
       input.permissionMode !== undefined ||
       input.environmentKind !== undefined ||
       input.baseBranch !== undefined ||
@@ -432,7 +442,15 @@ export const tasksRpcContract = defineRpcContract({
   },
   deleteFolder: {
     input: z.object({ folderId: idSchema }).strict(),
-    output: z.object({ deleted: z.boolean() }).strict(),
+    // `deleted: false` means no folder matched (already removed by another
+    // client). The moved IDs are read in the delete's own transaction.
+    output: z
+      .object({
+        deleted: z.boolean(),
+        movedProjectIds: z.array(idSchema),
+        movedFolderIds: z.array(idSchema),
+      })
+      .strict(),
   },
   listFolders: {
     input: z.null(),
@@ -639,6 +657,7 @@ export const tasksRpcContract = defineRpcContract({
         providerId: nonBlankStringSchema,
         modelId: nonBlankStringSchema,
         reasoningLevel: presetReasoningLevelSchema,
+        serviceTier: presetServiceTierSchema.nullable().default(null),
         permissionMode: presetPermissionModeSchema,
         environmentKind: presetEnvironmentKindSchema.default("project-default"),
         baseBranch: nullablePresetTargetSchema.default(null),
@@ -681,39 +700,6 @@ export const tasksRpcContract = defineRpcContract({
   listPresets: {
     input: z.null(),
     output: z.object({ presets: z.array(presetSchema) }).strict(),
-  },
-  listProviders: {
-    input: z.object({}).strict(),
-    output: z
-      .object({
-        providers: z.array(
-          z
-            .object({
-              id: z.string(),
-              name: z.string(),
-              permissionModes: z.array(presetPermissionModeSchema),
-            })
-            .strict(),
-        ),
-      })
-      .strict(),
-  },
-  listProviderModels: {
-    input: z.object({ providerId: nonBlankStringSchema }).strict(),
-    output: z
-      .object({
-        models: z.array(
-          z
-            .object({
-              id: z.string(),
-              name: z.string(),
-              isDefault: z.boolean(),
-            })
-            .strict(),
-        ),
-        reasoningLevels: z.array(z.string()),
-      })
-      .strict(),
   },
   listMachines: {
     input: z.object({}).strict(),
@@ -800,7 +786,6 @@ export type TaskPullRequest = z.infer<typeof taskPullRequestSchema>;
 export type Preset = z.infer<typeof presetSchema>;
 export type TasksDomainError = z.infer<typeof tasksDomainErrorSchema>;
 export type TaskMutationResult = z.infer<typeof taskMutationResultSchema>;
-export type ProjectMutationResult = z.infer<typeof projectMutationResultSchema>;
 export type BbProjectOption = z.infer<
   (typeof tasksRpcContract)["listBbProjects"]["output"]
 >["bbProjects"][number];

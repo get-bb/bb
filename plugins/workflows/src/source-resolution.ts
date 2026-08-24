@@ -14,7 +14,7 @@ export interface WorkflowSourceInput {
   name?: string;
 }
 
-export interface WorkflowSourceEnvironment {
+interface WorkflowSourceEnvironment {
   id: string;
   projectId: string;
   hostId: string;

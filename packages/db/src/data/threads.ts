@@ -51,9 +51,14 @@ type ThreadWriteConnection = DbConnection | DbTransaction;
 export const THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT = 20;
 export const THREAD_SEARCH_LIMIT_PER_GROUP_MAX = 50;
 
-const THREAD_SEARCH_MATCHES_PER_THREAD = 3;
+// The sidebar shows one message line per result, so each thread carries its
+// matching title segments plus a single best-ranked message match.
+const THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD = 1;
 const THREAD_SEARCH_QUERY_TOKEN_PATTERN = /[\p{L}\p{N}_]+/gu;
 const THREAD_SEARCH_HIGHLIGHT_RANGE_LIMIT = 8;
+const THREAD_SEARCH_SNIPPET_MAX_CHARS = 160;
+const THREAD_SEARCH_SNIPPET_LEAD_CHARS = 40;
+const THREAD_SEARCH_SNIPPET_ELLIPSIS = "…";
 
 type ThreadWhere = SQL | undefined;
 
@@ -143,13 +148,13 @@ interface UpsertThreadSearchSegmentArgs extends UpsertThreadSearchSegmentInput {
 }
 
 interface ListThreadSearchMatchRowsArgs {
-  archived: boolean;
   anyTokenMatchQuery: string;
   limitPerGroup: number;
   tokenMatchQueries: readonly string[];
 }
 
 interface ThreadSearchMatchRow {
+  archived: number;
   segmentOrder: number;
   sourceKind: string;
   sourceSeq: number | null;
@@ -157,30 +162,16 @@ interface ThreadSearchMatchRow {
   threadId: string;
   threadOrder: number;
   total: number;
-}
-
-interface ThreadSearchLimitedThreadRow {
-  threadId: string;
-  threadOrder: number;
-  total: number;
-}
-
-interface ThreadSearchSegmentMatchRow {
-  segmentOrder: number;
-  sourceKind: string;
-  sourceSeq: number | null;
-  text: string;
-  threadId: string;
-}
-
-interface ListThreadSearchSegmentMatchRowsArgs {
-  matchQuery: string;
-  threadIds: readonly string[];
 }
 
 interface HydrateThreadSearchGroupArgs {
   rows: readonly ThreadSearchMatchRow[];
   tokens: readonly string[];
+}
+
+interface ThreadSearchSnippet {
+  highlightRanges: ThreadSearchHighlightRange[];
+  text: string;
 }
 
 function buildThreadSearchSegmentId(args: {
@@ -246,7 +237,7 @@ export function upsertThreadSearchSegments(
   }
 }
 
-export function upsertThreadTitleSearchSegments(
+function upsertThreadTitleSearchSegments(
   db: ThreadWriteConnection,
   args: UpsertThreadTitleSearchSegmentsArgs,
 ): void {
@@ -653,10 +644,6 @@ export interface HasPendingThreadShutdownInEnvironmentArgs {
   environmentId: string;
 }
 
-export interface HasNonTerminalThreadInEnvironmentArgs {
-  environmentId: string;
-}
-
 const NON_TERMINAL_THREAD_STATUSES: readonly ThreadStatus[] = [
   "starting",
   "idle",
@@ -915,10 +902,102 @@ function normalizeThreadSearchHighlightText(text: string): {
   };
 }
 
-function listThreadSearchLimitedThreadRows(
+function isThreadSearchTitleSourceKind(
+  sourceKind: ThreadSearchSourceKind,
+): boolean {
+  return sourceKind === "title" || sourceKind === "title_fallback";
+}
+
+function isLowSurrogate(text: string, index: number): boolean {
+  const code = text.charCodeAt(index);
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
+function isHighSurrogate(text: string, index: number): boolean {
+  const code = text.charCodeAt(index);
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+/**
+ * Bounds a message match to a short window around its first highlight so the
+ * response carries what the sidebar can show on one line instead of the whole
+ * message body. Highlight ranges are rebased onto the snippet, and an ellipsis
+ * marks each side that was cut.
+ */
+function buildThreadSearchSnippet(args: {
+  text: string;
+  tokens: readonly string[];
+}): ThreadSearchSnippet {
+  const highlightRanges = findHighlightRanges(args);
+  const text = args.text;
+  if (text.length <= THREAD_SEARCH_SNIPPET_MAX_CHARS) {
+    return { highlightRanges, text };
+  }
+
+  const firstRange = highlightRanges[0];
+  const anchorStart = firstRange?.start ?? 0;
+  const anchorEnd = firstRange?.end ?? 0;
+  let start = Math.min(
+    Math.max(0, anchorStart - THREAD_SEARCH_SNIPPET_LEAD_CHARS),
+    Math.max(0, text.length - THREAD_SEARCH_SNIPPET_MAX_CHARS),
+  );
+  let end = Math.min(text.length, start + THREAD_SEARCH_SNIPPET_MAX_CHARS);
+
+  // Prefer word boundaries on each cut side when one exists inside the lead or
+  // tail context, without dropping the highlight itself.
+  if (start > 0) {
+    const boundary = text.slice(start, anchorStart).search(/\s/u);
+    if (boundary !== -1) {
+      start += boundary + 1;
+    }
+  }
+  if (end < text.length) {
+    const tailStart = Math.max(anchorEnd, start);
+    const boundary = text.slice(tailStart, end).search(/\s\S*$/u);
+    // Snap back to the last word break unless that would discard more than a
+    // lead's worth of context (long URLs and code paths keep the hard cut).
+    if (
+      boundary > 0 &&
+      end - (tailStart + boundary) <= THREAD_SEARCH_SNIPPET_LEAD_CHARS
+    ) {
+      end = tailStart + boundary;
+    }
+  }
+  if (start > 0 && start < text.length && isLowSurrogate(text, start)) {
+    start += 1;
+  }
+  if (end > start && end < text.length && isHighSurrogate(text, end - 1)) {
+    end -= 1;
+  }
+
+  const prefix = start > 0 ? THREAD_SEARCH_SNIPPET_ELLIPSIS : "";
+  const suffix = end < text.length ? THREAD_SEARCH_SNIPPET_ELLIPSIS : "";
+  const rebasedRanges: ThreadSearchHighlightRange[] = [];
+  for (const range of highlightRanges) {
+    const rangeStart = Math.max(range.start, start) - start + prefix.length;
+    const rangeEnd = Math.min(range.end, end) - start + prefix.length;
+    if (rangeEnd > rangeStart) {
+      rebasedRanges.push({ start: rangeStart, end: rangeEnd });
+    }
+  }
+
+  return {
+    highlightRanges: rebasedRanges,
+    text: `${prefix}${text.slice(start, end)}${suffix}`,
+  };
+}
+
+/**
+ * One FTS pass for both result groups: rank threads that contain every query
+ * token, keep the top `limitPerGroup` per archive partition, then pull the
+ * matching title segments plus the single best message segment for each kept
+ * thread. Rows come back ordered by group, thread rank, then title before
+ * message.
+ */
+function listThreadSearchMatchRows(
   db: DbConnection,
   args: ListThreadSearchMatchRowsArgs,
-): ThreadSearchLimitedThreadRow[] {
+): ThreadSearchMatchRow[] {
   const tokenMatchSelects = args.tokenMatchQueries.map(
     (matchQuery, tokenIndex) => sql`
       SELECT
@@ -931,11 +1010,9 @@ function listThreadSearchLimitedThreadRows(
       GROUP BY s.thread_id
     `,
   );
-  const archiveFilter = args.archived
-    ? sql`t.archived_at IS NOT NULL`
-    : sql`t.archived_at IS NULL`;
+  const isTitleSegment = sql`thread_search_segments.source_kind IN ('title', 'title_fallback')`;
 
-  return db.all<ThreadSearchLimitedThreadRow>(sql`
+  return db.all<ThreadSearchMatchRow>(sql`
     WITH token_matches AS (
       ${sql.join(tokenMatchSelects, sql` UNION ALL `)}
     ),
@@ -943,45 +1020,44 @@ function listThreadSearchLimitedThreadRows(
       SELECT
         token_matches.threadId AS threadId,
         MIN(token_matches.tokenRank) AS bestRank,
-        MAX(t.updated_at) AS threadUpdatedAt
+        MAX(t.updated_at) AS threadUpdatedAt,
+        MAX(t.archived_at IS NOT NULL) AS archived
       FROM token_matches
       JOIN threads AS t ON t.id = token_matches.threadId
       WHERE t.deleted_at IS NULL
         AND t.visibility = 'visible'
-        AND ${archiveFilter}
       GROUP BY threadId
       HAVING COUNT(DISTINCT token_matches.tokenIndex) = ${args.tokenMatchQueries.length}
-    )
-    SELECT
-      threadId,
-      ROW_NUMBER() OVER (
-        ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
-      ) AS threadOrder,
-      COUNT(*) OVER () AS total
-    FROM ranked_threads
-    ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
-    LIMIT ${args.limitPerGroup}
-  `);
-}
-
-function listThreadSearchSegmentMatchRows(
-  db: DbConnection,
-  args: ListThreadSearchSegmentMatchRowsArgs,
-): ThreadSearchSegmentMatchRow[] {
-  if (args.threadIds.length === 0) {
-    return [];
-  }
-
-  return db.all<ThreadSearchSegmentMatchRow>(sql`
-    WITH ranked_thread_segments AS (
+    ),
+    ordered_threads AS (
       SELECT
+        threadId,
+        archived,
         ROW_NUMBER() OVER (
-          PARTITION BY thread_search_segments.thread_id
+          PARTITION BY archived
+          ORDER BY bestRank ASC, threadUpdatedAt DESC, threadId DESC
+        ) AS threadOrder,
+        COUNT(*) OVER (PARTITION BY archived) AS total
+      FROM ranked_threads
+    ),
+    limited_threads AS (
+      SELECT threadId, archived, threadOrder, total
+      FROM ordered_threads
+      WHERE threadOrder <= ${args.limitPerGroup}
+    ),
+    ranked_segments AS (
+      SELECT
+        limited_threads.archived AS archived,
+        limited_threads.threadOrder AS threadOrder,
+        limited_threads.total AS total,
+        ROW_NUMBER() OVER (
+          PARTITION BY thread_search_segments.thread_id, ${isTitleSegment}
           ORDER BY
             thread_search_segments_fts.rank ASC,
             COALESCE(thread_search_segments.source_seq, -1) ASC,
             thread_search_segments.id ASC
         ) AS segmentOrder,
+        ${isTitleSegment} AS isTitle,
         thread_search_segments.source_kind AS sourceKind,
         thread_search_segments.source_seq AS sourceSeq,
         thread_search_segments.text AS text,
@@ -989,56 +1065,24 @@ function listThreadSearchSegmentMatchRows(
       FROM thread_search_segments_fts
       JOIN thread_search_segments
         ON thread_search_segments.rowid = thread_search_segments_fts.rowid
-      WHERE thread_search_segments_fts MATCH ${args.matchQuery}
-        AND ${inArray(threadSearchSegments.threadId, [...args.threadIds])}
+      JOIN limited_threads
+        ON limited_threads.threadId = thread_search_segments.thread_id
+      WHERE thread_search_segments_fts MATCH ${args.anyTokenMatchQuery}
     )
     SELECT
+      archived,
+      threadOrder,
+      total,
       segmentOrder,
       sourceKind,
       sourceSeq,
       text,
       threadId
-    FROM ranked_thread_segments
-    WHERE segmentOrder <= ${THREAD_SEARCH_MATCHES_PER_THREAD}
+    FROM ranked_segments
+    WHERE isTitle = 1
+      OR segmentOrder <= ${THREAD_SEARCH_MESSAGE_MATCHES_PER_THREAD}
+    ORDER BY archived ASC, threadOrder ASC, isTitle DESC, segmentOrder ASC
   `);
-}
-
-function listThreadSearchMatchRows(
-  db: DbConnection,
-  args: ListThreadSearchMatchRowsArgs,
-): ThreadSearchMatchRow[] {
-  const limitedThreadRows = listThreadSearchLimitedThreadRows(db, args);
-  const limitedThreadRowsById = new Map(
-    limitedThreadRows.map((row) => [row.threadId, row]),
-  );
-  const segmentRows = listThreadSearchSegmentMatchRows(db, {
-    matchQuery: args.anyTokenMatchQuery,
-    threadIds: limitedThreadRows.map((row) => row.threadId),
-  });
-
-  return segmentRows
-    .map((segmentRow) => {
-      const limitedThreadRow = limitedThreadRowsById.get(segmentRow.threadId);
-      if (limitedThreadRow === undefined) {
-        throw new Error("Thread search segment row is outside limited threads");
-      }
-      return {
-        segmentOrder: segmentRow.segmentOrder,
-        sourceKind: segmentRow.sourceKind,
-        sourceSeq: segmentRow.sourceSeq,
-        text: segmentRow.text,
-        threadId: segmentRow.threadId,
-        threadOrder: limitedThreadRow.threadOrder,
-        total: limitedThreadRow.total,
-      };
-    })
-    .sort((left, right) => {
-      const threadOrderDifference = left.threadOrder - right.threadOrder;
-      if (threadOrderDifference !== 0) {
-        return threadOrderDifference;
-      }
-      return left.segmentOrder - right.segmentOrder;
-    });
 }
 
 function hydrateThreadSearchGroup(
@@ -1059,13 +1103,22 @@ function hydrateThreadSearchGroup(
       threadIds.push(row.threadId);
     }
     const matches = matchesByThreadId.get(row.threadId) ?? [];
+    const sourceKind = threadSearchSourceKindSchema.parse(row.sourceKind);
+    // Titles stay whole so the sidebar can pair the match with the display
+    // title; message bodies are cut down to a snippet around the first hit.
+    const snippet = isThreadSearchTitleSourceKind(sourceKind)
+      ? {
+          text: row.text,
+          highlightRanges: findHighlightRanges({
+            text: row.text,
+            tokens: args.tokens,
+          }),
+        }
+      : buildThreadSearchSnippet({ text: row.text, tokens: args.tokens });
     matches.push({
-      sourceKind: threadSearchSourceKindSchema.parse(row.sourceKind),
-      text: row.text,
-      highlightRanges: findHighlightRanges({
-        text: row.text,
-        tokens: args.tokens,
-      }),
+      sourceKind,
+      text: snippet.text,
+      highlightRanges: snippet.highlightRanges,
       sourceSeq: row.sourceSeq,
     });
     matchesByThreadId.set(row.threadId, matches);
@@ -1110,24 +1163,20 @@ export function searchThreadsWithPendingInteractionState(
     THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   );
 
+  const rows = listThreadSearchMatchRows(db, {
+    anyTokenMatchQuery,
+    limitPerGroup,
+    tokenMatchQueries,
+  });
+
   return {
     active: hydrateThreadSearchGroup(db, {
       tokens,
-      rows: listThreadSearchMatchRows(db, {
-        archived: false,
-        anyTokenMatchQuery,
-        limitPerGroup,
-        tokenMatchQueries,
-      }),
+      rows: rows.filter((row) => row.archived === 0),
     }),
     archived: hydrateThreadSearchGroup(db, {
       tokens,
-      rows: listThreadSearchMatchRows(db, {
-        archived: true,
-        anyTokenMatchQuery,
-        limitPerGroup,
-        tokenMatchQueries,
-      }),
+      rows: rows.filter((row) => row.archived === 1),
     }),
   };
 }
@@ -1397,19 +1446,6 @@ export function hasPendingThreadShutdownInEnvironment(
     .get();
 
   return row !== undefined;
-}
-
-export function hasNonTerminalThreadInEnvironment(
-  db: DbConnection,
-  args: HasNonTerminalThreadInEnvironmentArgs,
-): boolean {
-  return hasThreadWhere(
-    db,
-    nonDeletedThreads(
-      eq(threads.environmentId, args.environmentId),
-      inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
-    ),
-  );
 }
 
 export function pinThread(
@@ -1895,8 +1931,8 @@ export function requireThreadLifecycleEventApplied(
   return outcome.thread;
 }
 
-function applyThreadLifecycleEventRecord(
-  db: ThreadWriteConnection,
+export function applyThreadLifecycleEventInTransaction(
+  db: DbTransaction,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
   const thread = db
@@ -1965,29 +2001,16 @@ function applyThreadLifecycleEventRecord(
  * event against THREAD_LIFECYCLE and its supersession predicates, and applies
  * the transition with a status compare-and-set — all in one transaction.
  * Never throws on stale or illegal events; returns a typed outcome for the
- * caller to log. Use applyThreadLifecycleEventInTransaction from inside an
- * existing transaction (the caller then owns notification).
+ * caller to log. The caller owns the `status-changed` notification: its
+ * metadata carries the post-transition runtime, which only the server can
+ * resolve (host connectivity lives outside the database).
  */
 export function applyThreadLifecycleEvent(
   db: DbConnection,
-  notifier: DbNotifier,
   args: ApplyThreadLifecycleEventArgs,
 ): ApplyThreadLifecycleEventOutcome {
-  const outcome = db.transaction(
-    (tx) => applyThreadLifecycleEventRecord(tx, args),
+  return db.transaction(
+    (tx) => applyThreadLifecycleEventInTransaction(tx, args),
     { behavior: "immediate" },
   );
-  if (outcome.applied) {
-    notifier.notifyThread(args.threadId, ["status-changed"], {
-      projectId: outcome.thread.projectId,
-    });
-  }
-  return outcome;
-}
-
-export function applyThreadLifecycleEventInTransaction(
-  tx: DbTransaction,
-  args: ApplyThreadLifecycleEventArgs,
-): ApplyThreadLifecycleEventOutcome {
-  return applyThreadLifecycleEventRecord(tx, args);
 }

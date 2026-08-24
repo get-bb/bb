@@ -1,5 +1,10 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query";
-import type { Thread, ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+import type {
+  Thread,
+  ThreadListEntry,
+  ThreadStatusChangeMetadata,
+  ThreadWithRuntime,
+} from "@bb/domain";
 import {
   applyToCachedThreadLists,
   getCachedThreadLists,
@@ -23,6 +28,7 @@ import {
   environmentQueryKey,
   environmentWorkStatusQueryKey,
   environmentWorkStatusQueryKeyPrefix,
+  SIDEBAR_NAVIGATION_QUERY_KEY,
   sidebarNavigationQueryKey,
   THREADS_QUERY_KEY,
   threadQueryKey,
@@ -46,25 +52,25 @@ interface UpdateCachedTimelineRowsArgs {
   updater: TimelineRowsUpdater;
 }
 
-export interface EnvironmentInvalidationParams {
+interface EnvironmentInvalidationParams {
   environmentId: string;
 }
 
-export interface EnvironmentDiffPatchRemovalParams {
+interface EnvironmentDiffPatchRemovalParams {
   environmentId: string;
   queryClient: QueryClient;
 }
 
-export interface ProjectThreadListInvalidationParams {
+interface ProjectThreadListInvalidationParams {
   projectId: string;
   queryClient: QueryClient;
 }
 
-export interface CachedGlobalThreadListInvalidationParams {
+interface CachedGlobalThreadListInvalidationParams {
   queryClient: QueryClient;
 }
 
-export interface RootOrderThreadListInvalidationParams {
+interface RootOrderThreadListInvalidationParams {
   projectId?: string;
   queryClient: QueryClient;
 }
@@ -197,6 +203,32 @@ function getArchivedThreadListFiltersFromQueryKey(
   return filters;
 }
 
+export function isArchivedThreadListQueryKey(queryKey: QueryKey): boolean {
+  return getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined;
+}
+
+/**
+ * Every cached thread-list key (active and archived, all projects). Used by
+ * handlers that must treat archived lists differently from active ones and so
+ * cannot rely on a bare `threadsQueryKey()` prefix invalidation.
+ */
+export function getCachedThreadListQueryKeys(
+  queryClient: QueryClient,
+): QueryKey[] {
+  const queryKeys: QueryKey[] = [];
+  for (const [queryKey] of queryClient.getQueriesData({
+    queryKey: threadsQueryKey(),
+  })) {
+    if (
+      getThreadListFiltersFromQueryKey(queryKey) !== undefined ||
+      getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined
+    ) {
+      queryKeys.push(queryKey);
+    }
+  }
+  return queryKeys;
+}
+
 function getThreadListProjectIdFromQueryKey(
   queryKey: QueryKey,
 ): string | undefined {
@@ -318,6 +350,20 @@ export function applyToCachedThreadListsAndSidebarNavigation(
   });
 }
 
+/**
+ * Every thread row the sidebar bootstrap carries, across every project plus
+ * the personal project. The bootstrap lists all visible, unarchived threads
+ * (children included), so this is the complete live thread set.
+ */
+export function listSidebarNavigationThreads(
+  navigation: SidebarBootstrapResponse,
+): ThreadListEntry[] {
+  return [
+    ...navigation.projects.flatMap((project) => project.threads),
+    ...navigation.personalProject.threads,
+  ];
+}
+
 export function getCachedSidebarNavigationThreads(
   queryClient: QueryClient,
 ): ThreadListEntry[] {
@@ -327,10 +373,7 @@ export function getCachedSidebarNavigationThreads(
   if (!navigation) {
     return [];
   }
-  return [
-    ...navigation.projects.flatMap((project) => project.threads),
-    ...navigation.personalProject.threads,
-  ];
+  return listSidebarNavigationThreads(navigation);
 }
 
 export function snapshotCachedSidebarNavigation(
@@ -666,4 +709,46 @@ export function updateCachedThreadListPendingInteractionState(
       thread.id === threadId ? { ...thread, hasPendingInteraction } : thread,
     );
   });
+}
+
+/**
+ * Writes the row fields a lifecycle transition rewrites (status, runtime,
+ * activity, attention and update times) into every cached thread list and
+ * the sidebar bootstrap. Status never changes list membership (lists filter
+ * on project, parent, archive state), so a row that is not cached needs
+ * nothing: the query that will load it reads the current status.
+ */
+export function updateCachedThreadListStatusState(
+  queryClient: QueryClient,
+  threadId: string,
+  statusChange: ThreadStatusChangeMetadata,
+): void {
+  applyToCachedThreadListsAndSidebarNavigation(queryClient, (list) => {
+    if (!list.some((thread) => thread.id === threadId)) {
+      return list;
+    }
+    return list.map((thread) =>
+      thread.id === threadId ? { ...thread, ...statusChange } : thread,
+    );
+  });
+}
+
+/**
+ * Thread list and sidebar queries with a fetch in flight. Such a fetch read
+ * the database before the change that is being patched in, so its response
+ * would overwrite the patch when it lands.
+ */
+export function getFetchingThreadListQueryKeys(
+  queryClient: QueryClient,
+): QueryKey[] {
+  return queryClient
+    .getQueryCache()
+    .findAll({ fetchStatus: "fetching" })
+    .map((query) => query.queryKey)
+    .filter(
+      (queryKey) =>
+        queryKey[0] === SIDEBAR_NAVIGATION_QUERY_KEY ||
+        getThreadListFiltersFromQueryKey(queryKey) !== undefined ||
+        getArchivedThreadListFiltersFromQueryKey(queryKey) !== undefined,
+    );
 }

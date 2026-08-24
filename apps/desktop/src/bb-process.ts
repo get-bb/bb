@@ -1,16 +1,16 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { posix as posixPath } from "node:path";
 
-export interface RuntimeLogBuffer {
+interface RuntimeLogBuffer {
   append(chunk: Buffer | string): void;
   text(): string;
 }
 
-export interface CreateRuntimeLogBufferArgs {
+interface CreateRuntimeLogBufferArgs {
   maxLines: number;
 }
 
-export interface StartBbAppProcessArgs {
+interface StartBbAppProcessArgs {
   bridgePath: string;
   cwd: string;
   env: NodeJS.ProcessEnv;
@@ -31,54 +31,50 @@ export interface BbAppProcessExit {
   signal: NodeJS.Signals | null;
 }
 
-export interface StopBbAppProcessArgs {
+interface StopBbAppProcessArgs {
   killSignal: NodeJS.Signals;
   killTimeoutMs: number;
   signal: NodeJS.Signals;
   timeoutMs: number;
 }
 
-export interface CreateElectronNodeEnvArgs {
-  env: NodeJS.ProcessEnv;
-}
+type BbAppProcessRuntimeMode = "electron-node" | "node";
 
-export type BbAppProcessRuntimeMode = "electron-node" | "node";
-
-export interface DirectBbAppProcessRuntime {
+interface DirectBbAppProcessRuntime {
   executablePath: string;
   kind: "direct";
   mode: BbAppProcessRuntimeMode;
 }
 
-export interface AppImageBbAppProcessRuntime {
+interface AppImageBbAppProcessRuntime {
   appDirPath: string;
   executablePath: string;
   kind: "appimage";
   mode: "electron-node";
 }
 
-export type BbAppProcessRuntime =
+type BbAppProcessRuntime =
   | AppImageBbAppProcessRuntime
   | DirectBbAppProcessRuntime;
 
-export interface CreateBbAppProcessLaunchArgs {
+interface CreateBbAppProcessLaunchArgs {
   bridgePath: string;
   env: NodeJS.ProcessEnv;
   runtime: BbAppProcessRuntime;
 }
 
-export interface BbAppProcessLaunch {
+interface BbAppProcessLaunch {
   args: string[];
   env: NodeJS.ProcessEnv;
   executablePath: string;
 }
 
-export interface CreateBbAppProcessEnvArgs {
+interface CreateBbAppProcessEnvArgs {
   env: NodeJS.ProcessEnv;
   runtimeMode: BbAppProcessRuntimeMode;
 }
 
-export interface ResolveBbAppProcessRuntimeArgs {
+interface ResolveBbAppProcessRuntimeArgs {
   env: NodeJS.ProcessEnv;
   isPackaged: boolean;
   platform: NodeJS.Platform;
@@ -201,7 +197,7 @@ async function runAppImageBridgeSupervisor(
 
 const APPIMAGE_BRIDGE_BOOTSTRAP = `await (${runAppImageBridgeSupervisor.toString()})(${JSON.stringify(APPIMAGE_BRIDGE_RELATIVE_PATH_ENV)});`;
 
-export function createRuntimeLogBuffer(
+function createRuntimeLogBuffer(
   args: CreateRuntimeLogBufferArgs,
 ): RuntimeLogBuffer {
   const lines: string[] = [];
@@ -225,20 +221,11 @@ export function createRuntimeLogBuffer(
   };
 }
 
-export function createElectronNodeEnv(
-  args: CreateElectronNodeEnvArgs,
-): NodeJS.ProcessEnv {
-  return {
-    ...args.env,
-    ELECTRON_RUN_AS_NODE: "1",
-  };
-}
-
 export function createBbAppProcessEnv(
   args: CreateBbAppProcessEnvArgs,
 ): NodeJS.ProcessEnv {
   if (args.runtimeMode === "electron-node") {
-    return createElectronNodeEnv({ env: args.env });
+    return { ...args.env, ELECTRON_RUN_AS_NODE: "1" };
   }
 
   const env = { ...args.env };

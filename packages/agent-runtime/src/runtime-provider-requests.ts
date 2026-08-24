@@ -10,7 +10,7 @@ import type {
   ToolCallRequest,
 } from "@bb/domain";
 import { isApprovalPendingInteractionPayload } from "@bb/domain";
-import type { ProviderAdapter } from "./provider-adapter.js";
+import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import {
   type JsonRpcMessage,
   ProviderResponseEncodeError,
@@ -23,8 +23,8 @@ import { shouldAutoDenyInteractiveRequest } from "@bb/provider-bridge-protocol/b
 
 export type RuntimeProviderRequestKind = "interactive request" | "tool call";
 
-export interface RuntimeProviderRequestProcess {
-  adapter: ProviderAdapter;
+interface RuntimeProviderRequestProcess {
+  adapter: BridgeProtocolAdapter;
   child: ChildProcess;
   interactiveRequestScope: string;
 }
@@ -36,14 +36,14 @@ export interface ResolveRuntimeProviderRequestThreadIdArgs {
   threadIdHint: string | undefined;
 }
 
-export interface RuntimeProviderRequestArgs {
+interface RuntimeProviderRequestArgs {
   parsedId: string | number;
   parsedMethod: string;
   providerProcess: RuntimeProviderRequestProcess;
   rawRequest: JsonRpcMessage;
 }
 
-export interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
+interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
   getActiveTurnId: (threadId: string) => string | null;
   getThreadExecutionOptions: (
     threadId: string,
@@ -90,9 +90,11 @@ function scopeProviderRequestId(
 function buildDeniedInteractiveResolution(
   payload: PendingInteractionPayload,
 ): PendingInteractionResolution {
+  // Only an approval is policy-bearing; a request (a user question, a
+  // plugin-defined form) always reaches the user.
   if (!isApprovalPendingInteractionPayload(payload)) {
     throw new ProviderResponseEncodeError(
-      "User-question interactive requests cannot be auto-denied",
+      "Only approval interactive requests can be auto-denied",
     );
   }
   if (!payload.availableDecisions.includes("deny")) {
@@ -153,7 +155,7 @@ function resolveRuntimeProviderRequestTurnId(
 function handleToolCallProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): boolean {
-  let toolCallReq: ReturnType<ProviderAdapter["decodeToolCallRequest"]>;
+  let toolCallReq: ReturnType<BridgeProtocolAdapter["decodeToolCallRequest"]>;
   try {
     toolCallReq = args.providerProcess.adapter.decodeToolCallRequest(
       args.rawRequest,
@@ -227,15 +229,13 @@ function handleInteractiveProviderRequest(
   args: HandleRuntimeProviderRequestArgs,
 ): boolean {
   const providerId = args.providerProcess.adapter.id;
-  const decodeInteractiveRequest =
-    args.providerProcess.adapter.decodeInteractiveRequest;
-  if (!decodeInteractiveRequest) {
-    return false;
-  }
-
-  let interactiveReq: ReturnType<typeof decodeInteractiveRequest>;
+  let interactiveReq: ReturnType<
+    BridgeProtocolAdapter["decodeInteractiveRequest"]
+  >;
   try {
-    interactiveReq = decodeInteractiveRequest(args.rawRequest);
+    interactiveReq = args.providerProcess.adapter.decodeInteractiveRequest(
+      args.rawRequest,
+    );
   } catch (error) {
     if (
       sendProviderRequestDecodeErrorIfKnown({
@@ -259,14 +259,6 @@ function handleInteractiveProviderRequest(
     threadIdHint: interactiveReq.threadId,
   });
   if (!resolvedThreadId) {
-    return true;
-  }
-  if (!args.providerProcess.adapter.buildInteractiveResponse) {
-    sendJsonRpcError({
-      child: args.providerProcess.child,
-      id: args.parsedId,
-      message: `Provider "${providerId}" cannot encode interactive response for "${interactiveReq.method}"`,
-    });
     return true;
   }
   const buildInteractiveResponse =
@@ -349,7 +341,7 @@ function handleInteractiveProviderRequest(
       child: args.providerProcess.child,
       id: args.parsedId,
       message:
-        "No interactive request handler is configured for user-question interactions",
+        "No interactive request handler is configured for request interactions",
     });
     return true;
   }

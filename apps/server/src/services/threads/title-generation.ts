@@ -13,27 +13,24 @@ const MIN_TITLE_GENERATION_WORDS = 5;
 const MAX_GENERATED_TITLE_WORDS = 5;
 const MAX_BRANCH_SLUG_LENGTH = 48;
 
-type ThreadMetadataGenerationDeps = LoggedWorkSessionDeps;
-type ThreadTitleApplyDeps = Pick<AppDeps, "db" | "hub">;
-
-export interface ApplyGeneratedThreadTitleArgs {
+interface ApplyGeneratedThreadTitleArgs {
   threadId: string;
   title: string;
 }
 
-export interface ThreadMetadataGenerationArgs {
+interface ThreadMetadataGenerationArgs {
   input: PromptInput[];
   threadId: string;
   timeoutMaxAttempts?: number;
   timeoutMs?: number;
 }
 
-export interface GeneratedThreadMetadata {
+interface GeneratedThreadMetadata {
   branchSlug?: string;
   title?: string;
 }
 
-export type ThreadMetadataGenerationOutcomeReason =
+type ThreadMetadataGenerationOutcomeReason =
   | "empty-input"
   | "failed"
   | "inference-unavailable"
@@ -100,10 +97,6 @@ export function sanitizeGeneratedBranchSlug(value: string): string | null {
   return slug.length > 0 ? slug : null;
 }
 
-export function deriveBranchSlugFromTitle(title: string): string | null {
-  return sanitizeGeneratedBranchSlug(title);
-}
-
 const threadMetadataSchema = Type.Object({
   title: Type.String(),
 });
@@ -116,7 +109,7 @@ function normalizeGeneratedThreadMetadata(
   }
 
   const title = parsed.title ? sanitizeGeneratedTitle(parsed.title) : null;
-  const branchSlug = title ? deriveBranchSlugFromTitle(title) : null;
+  const branchSlug = title ? sanitizeGeneratedBranchSlug(title) : null;
   if (!title && !branchSlug) {
     return null;
   }
@@ -128,7 +121,7 @@ function normalizeGeneratedThreadMetadata(
 }
 
 export async function generateThreadMetadataWithOutcome(
-  deps: ThreadMetadataGenerationDeps,
+  deps: LoggedWorkSessionDeps,
   args: ThreadMetadataGenerationArgs,
 ): Promise<ThreadMetadataGenerationOutcome> {
   const startedAt = Date.now();
@@ -175,7 +168,7 @@ export async function generateThreadMetadataWithOutcome(
 }
 
 export function applyGeneratedThreadTitle(
-  deps: ThreadTitleApplyDeps,
+  deps: Pick<AppDeps, "db" | "hub">,
   args: ApplyGeneratedThreadTitleArgs,
 ): boolean {
   const title = args.title.trim();

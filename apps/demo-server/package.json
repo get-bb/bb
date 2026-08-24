@@ -1,0 +1,25 @@
+{
+  "name": "@bb/demo-server",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/domain": "workspace:*",
+    "@bb/server-contract": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@cloudflare/workers-types": "^4.20260610.0",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1",
+    "wrangler": "^4.100.0"
+  }
+}

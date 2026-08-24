@@ -1,7 +1,9 @@
-import { clientMessageSchema } from "@bb/domain";
+import { clientMessageSchema, type PongMessage } from "@bb/domain";
 import { decodeSocketPayload } from "./decode-payload.js";
 import type { NotificationHub } from "./hub.js";
 import type { WatchInterestCoordinator } from "./watch-interests.js";
+
+const PONG_MESSAGE: PongMessage = { type: "pong" };
 
 interface ClientSocket {
   close(code?: number, reason?: string): void;
@@ -49,6 +51,11 @@ export function onClientSocketMessage(
     case "unsubscribe":
       deps.hub.unsubscribe(socket, parsed.target);
       deps.watchInterests.unsubscribe(socket, parsed.target);
+      break;
+    case "ping":
+      // Liveness probe (browsers cannot send WebSocket-level pings). Answered
+      // on this socket only; nothing is broadcast and no state is touched.
+      socket.send(JSON.stringify(PONG_MESSAGE));
       break;
     default: {
       const _exhaustive: never = parsed;

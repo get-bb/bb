@@ -24,7 +24,7 @@ export const EMPTY_FORK_SWEEP_PAGE_SIZE = 100;
  * disappear, so that verdict is permanent — without it every hour re-reads the
  * full timeline of every side chat anyone has actually used.
  */
-export const KEPT_FORK_KEY_PREFIX = "kept-fork:";
+const KEPT_FORK_KEY_PREFIX = "kept-fork:";
 
 /**
  * Structural view of the timeline rows the seed policy and sweep walk —
@@ -106,7 +106,7 @@ export function timelineRowsContainUserMessage(
 }
 
 /** The thread fields the cascade / sweep predicates read. */
-export interface SideChatForkCandidate {
+interface SideChatForkCandidate {
   originKind: string | null;
   originPluginId: string | null;
   visibility: string;
@@ -121,7 +121,7 @@ export interface SideChatForkCandidate {
  * may swallow. Narrows on the structured `code` the SDK's HTTP error
  * carries, never on message text.
  */
-export function isSessionUnavailableError(error: unknown): boolean {
+function isSessionUnavailableError(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
@@ -131,7 +131,7 @@ export function isSessionUnavailableError(error: unknown): boolean {
 }
 
 /** Whether a thread is one of this plugin's live hidden side-chat forks. */
-export function isOwnLiveHiddenFork(
+function isOwnLiveHiddenFork(
   thread: SideChatForkCandidate,
   pluginId: string,
 ): boolean {
@@ -176,9 +176,14 @@ export const sideChatRpcContract = defineRpcContract({
 export default async function plugin(bb: BbPluginApi) {
   bb.rpc.register(sideChatRpcContract, {
     async createSideChat({ sourceThreadId, sourceSeqEnd, anchorText }) {
+      // The seed rule reads only the source's *last* conversation message, and
+      // every timeline segment is anchored at a user message — so the newest
+      // segment always holds it. Without this the lookup projects the default
+      // 20 segments of nested rows on the activation path.
       const timeline = await bb.sdk.threads.timeline({
         threadId: sourceThreadId,
         includeNestedRows: "true",
+        segmentLimit: "1",
       });
       const seedText = resolveReplySeedText({
         anchorText,

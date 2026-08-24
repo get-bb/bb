@@ -1,0 +1,38 @@
+// bb demo server — the mock bb server an App Store reviewer connects to.
+//
+// Deploy: .github/workflows/deploy-demo-server.yml on every push to main that
+// touches apps/demo-server, or by hand:
+//   pnpm --filter @bb/demo-server exec wrangler deploy
+//
+// No route is declared, so the worker serves from
+// https://bb-demo-server.<account-subdomain>.workers.dev. That is deliberate:
+// connect owns the `*.getbb.app/*` zone route, so `demo.getbb.app` (the
+// serverUrl the fixtures advertise) resolves to the tunnel gate and is refused
+// as an unknown handle. Moving there needs a custom-domain route on this
+// worker, which takes precedence over the wildcard, plus a DNS record; the CI
+// token is zone read-only and cannot create either, so that is a dashboard
+// step. workers.dev is HTTPS and is all a reviewer needs.
+//
+// Per-client isolation keys on the `cf-connecting-ip` header (src/worker.ts).
+// workers.dev sets it; anything that proxies this worker would collapse every
+// visitor into one shared world, so do not put it behind another proxy.
+//
+// No D1, no secrets, no bindings beyond the Durable Object: the demo holds
+// fixed fixtures and in-memory per-client state only (one object per client
+// address, see src/worker.ts). Nothing here can reach a real bb server, a
+// machine, or a user's data.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bb-demo-server",
+  "main": "./src/worker.ts",
+  // Pinned so a CI token that can see more than one account never stops to
+  // ask which one; same account as bb-connect and bb-web.
+  "account_id": "7bb84c630057dafa53e2aacbe6bd094f",
+  "compatibility_date": "2026-06-11",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["DemoStateDO"] }],
+  "durable_objects": {
+    "bindings": [{ "name": "DEMO_STATE", "class_name": "DemoStateDO" }],
+  },
+}

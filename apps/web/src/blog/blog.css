@@ -18,7 +18,7 @@
   line-height: 1.08;
   font-weight: 700;
   letter-spacing: -0.035em;
-  color: oklch(0.21 0 0);
+  color: var(--heading);
 }
 
 .page-head .sub {
@@ -86,11 +86,11 @@
   font-weight: 700;
   letter-spacing: -0.03em;
   text-wrap: balance;
-  color: oklch(0.21 0 0);
+  color: var(--heading);
 }
 
 .post-index .post-body h2 a:hover {
-  color: color-mix(in oklab, oklch(0.21 0 0) 78%, var(--accent));
+  color: color-mix(in oklab, var(--heading) 78%, var(--accent));
 }
 
 .article .post-body h1 {
@@ -128,7 +128,7 @@
   font-size: 18px;
   font-weight: 650;
   letter-spacing: -0.015em;
-  color: oklch(0.24 0 0);
+  color: var(--heading-sub);
 }
 
 .post-body p,
@@ -164,6 +164,25 @@
   height: 6px;
   border-radius: 2px;
   background: color-mix(in oklab, var(--ink) 26%, var(--bg));
+}
+
+/* Ordered lists carry their own number, so suppress the square marker that
+   `.post-body li::before` draws for bulleted lists. Without this a numbered
+   item shows both. */
+.post-body ol {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-left: 22px;
+}
+
+.post-body ol li {
+  padding-left: 2px;
+}
+
+.post-body ol li::before {
+  content: none;
 }
 
 .post-body .release-link {
@@ -241,7 +260,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: color-mix(in oklab, var(--ink) 72%, transparent);
+  background: color-mix(in oklab, var(--shade) 72%, transparent);
   cursor: zoom-out;
 }
 
@@ -272,7 +291,7 @@
   height: auto;
   border-radius: 10px;
   background: var(--bg);
-  box-shadow: 0 24px 64px color-mix(in oklab, var(--ink) 28%, transparent);
+  box-shadow: 0 24px 64px color-mix(in oklab, var(--shade) 28%, transparent);
 }
 
 .sr-only {
@@ -320,7 +339,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg);
-  box-shadow: 0 1px 0 color-mix(in oklab, var(--ink) 4%, transparent);
+  box-shadow: 0 1px 0 color-mix(in oklab, var(--shade) 4%, transparent);
 }
 
 .tweet-head,

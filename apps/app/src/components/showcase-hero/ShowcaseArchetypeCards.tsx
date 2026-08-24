@@ -1,75 +1,8 @@
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  showcaseArchetypePrompt,
-  type ShowcaseArchetype,
-} from "./showcase-archetype";
+import type { ShowcaseArchetype } from "./showcase-archetype";
 import { accentInk, accentTint, neutral } from "./showcase-tokens";
-
-/**
- * The archetype grid under a showcase hero: the same ideas the carousel cycles
- * through, held still so a visitor can read all of them at once and pick one.
- *
- * Each card is a single button that opens the composer already carrying that
- * archetype's brief, through the same navigation the surface's own "New …"
- * menu uses — the card is a shortcut into creation, not a detail page.
- */
-export function ShowcaseArchetypeCards({
-  archetypes,
-  promptPrefix,
-  onCreate,
-  heading,
-  className,
-}: {
-  archetypes: readonly ShowcaseArchetype[];
-  /** The sentence prefix each brief completes. */
-  promptPrefix: string;
-  /** Receives the full composer prompt for the chosen archetype. */
-  onCreate: (prompt: string) => void;
-  heading?: string;
-  className?: string;
-}) {
-  return (
-    <section className={cn("space-y-2", className)}>
-      {heading !== undefined ? (
-        <h3 className="text-xs font-medium text-subtle-foreground">
-          {heading}
-        </h3>
-      ) : null}
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {archetypes.map((archetype) => (
-          <ArchetypeCard
-            key={archetype.id}
-            archetype={archetype}
-            promptPrefix={promptPrefix}
-            onCreate={onCreate}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ArchetypeCard({
-  archetype,
-  promptPrefix,
-  onCreate,
-}: {
-  archetype: ShowcaseArchetype;
-  promptPrefix: string;
-  onCreate: (prompt: string) => void;
-}) {
-  return (
-    <ShowcaseExampleCard
-      icon={archetype.icon}
-      title={archetype.title}
-      description={archetype.hook}
-      accentToken={archetype.accentToken}
-      onClick={() => onCreate(showcaseArchetypePrompt(promptPrefix, archetype))}
-    />
-  );
-}
 
 /**
  * The one example-card shape every tier uses, so grids of different sources

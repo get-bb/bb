@@ -6,15 +6,16 @@ import {
   rmSync,
 } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect } from "vitest";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import type {
+  ApprovalPendingInteractionPayload,
   ClientTurnRequestId,
   PendingInteractionCreate,
   PendingInteractionResolution,
   ReasoningLevel,
+  UserQuestionPendingInteractionPayload,
   ThreadEvent,
   ToolCallRequest,
   ToolCallResponse,
@@ -26,14 +27,15 @@ import {
 } from "@bb/domain";
 import { resolvePreferredTestModel } from "@bb/test-helpers";
 import { createAgentRuntime } from "../runtime.js";
-import { PI_BRIDGE_SESSION_DIR_ENV } from "../pi/bridge/session-paths.js";
 import type {
-  AgentRuntime,
-  AgentRuntimeBridgeLaunch,
   AgentRuntimeExecutionOptions,
   AgentRuntimeSkillRoot,
 } from "../types.js";
 import { resolveIntegrationBridgeLaunch } from "./integration-provider-bridges.js";
+import {
+  withBridgeLaunch,
+  type LaunchBoundAgentRuntime,
+} from "./runtime-test-harness.js";
 import {
   waitForRuntimeConditionUnsafe,
   waitForThreadTurnCompleted as waitForSharedThreadTurnCompleted,
@@ -41,36 +43,30 @@ import {
   type RuntimeWaitPredicate,
 } from "./runtime-wait-helpers.js";
 
-export type ThreadIdentityEvent = Extract<
-  ThreadEvent,
-  { type: "thread/identity" }
->;
+type ThreadIdentityEvent = Extract<ThreadEvent, { type: "thread/identity" }>;
 export type TurnStartedEvent = Extract<ThreadEvent, { type: "turn/started" }>;
-export type InputAcceptedEvent = Extract<
-  ThreadEvent,
-  { type: "turn/input/accepted" }
->;
-export type ErrorThreadEvent = Extract<
+type InputAcceptedEvent = Extract<ThreadEvent, { type: "turn/input/accepted" }>;
+type ErrorThreadEvent = Extract<
   ThreadEvent,
   { type: "provider/error" | "system/error" }
 >;
-export type WaitPredicate = RuntimeWaitPredicate;
+type WaitPredicate = RuntimeWaitPredicate;
 
-export interface RuntimeDiagnosticsArgs {
+interface RuntimeDiagnosticsArgs {
   ctx: TestContext;
   threadId?: string;
 }
 
-export interface RuntimeWaitArgs extends RuntimeDiagnosticsArgs {
+interface RuntimeWaitArgs extends RuntimeDiagnosticsArgs {
   label: string;
   timeoutMs?: number;
 }
 
-export interface RuntimeConditionWaitArgs extends RuntimeWaitArgs {
+interface RuntimeConditionWaitArgs extends RuntimeWaitArgs {
   predicate: WaitPredicate;
 }
 
-export interface TurnCompletedCountWaitArgs extends RuntimeWaitArgs {
+interface TurnCompletedCountWaitArgs extends RuntimeWaitArgs {
   count: number;
 }
 
@@ -78,31 +74,28 @@ export interface ThreadWaitArgs extends RuntimeWaitArgs {
   threadId: string;
 }
 
-export interface ThreadTurnCompletedCountWaitArgs extends ThreadWaitArgs {
+interface ThreadTurnCompletedCountWaitArgs extends ThreadWaitArgs {
   count: number;
 }
 
-export interface ToolCallWaitArgs extends ThreadWaitArgs {
+interface ToolCallWaitArgs extends ThreadWaitArgs {
   toolName: string;
 }
 
-export interface InteractiveRequestWaitArgs extends ThreadWaitArgs {
+interface InteractiveRequestWaitArgs extends ThreadWaitArgs {
   count: number;
 }
 
-export type RuntimeOptionsTemplate = Omit<
-  AgentRuntimeExecutionOptions,
-  "model"
->;
+type RuntimeOptionsTemplate = Omit<AgentRuntimeExecutionOptions, "model">;
 
-export type RuntimeOptionsPreset =
+type RuntimeOptionsPreset =
   | "full"
   | "accept-edits-ask"
   | "accept-edits-deny"
   | "auto-ask"
   | "auto-deny";
 
-export interface ResolveRuntimeOptionsArgs {
+interface ResolveRuntimeOptionsArgs {
   ctx: TestContext;
   providerId: string;
   preset: RuntimeOptionsPreset;
@@ -111,7 +104,7 @@ export interface ResolveRuntimeOptionsArgs {
 const fullRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "full",
   permissionScope: "full",
   approvalReviewer: null,
@@ -121,7 +114,7 @@ const fullRuntimeOptionsTemplate = {
 const workspaceWriteAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "accept-edits",
   permissionScope: "workspace",
   approvalReviewer: "user",
@@ -131,7 +124,7 @@ const workspaceWriteAskRuntimeOptionsTemplate = {
 const workspaceWriteDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "accept-edits",
   permissionScope: "workspace",
   approvalReviewer: "user",
@@ -141,7 +134,7 @@ const workspaceWriteDenyRuntimeOptionsTemplate = {
 const readonlyAskRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "auto",
   permissionScope: "workspace",
   approvalReviewer: "automatic",
@@ -151,7 +144,7 @@ const readonlyAskRuntimeOptionsTemplate = {
 const readonlyDenyRuntimeOptionsTemplate = {
   serviceTier: "default",
   reasoningLevel: "medium",
-  workflowsEnabled: false,
+  providerOptions: {},
   permissionMode: "auto",
   permissionScope: "workspace",
   approvalReviewer: "automatic",
@@ -168,6 +161,13 @@ const runtimeOptionsTemplates = {
 
 const INTEGRATION_REASONING_LEVEL = "low" satisfies ReasoningLevel;
 const PI_CODING_AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
+/** The pi plugin's session-dir override (plugins/provider-pi session-paths). */
+const PI_BRIDGE_SESSION_DIR_ENV = "BB_PI_BRIDGE_SESSION_DIR";
+
+/** Where the user-installed pi keeps its agent files (pi's `getAgentDir`). */
+function piAgentDir(): string {
+  return process.env[PI_CODING_AGENT_DIR_ENV] ?? join(homedir(), ".pi", "agent");
+}
 const resolvedIntegrationModelPromises = new Map<string, Promise<string>>();
 
 export function turnCompletedCount(events: ThreadEvent[]): number {
@@ -189,13 +189,13 @@ function collectTurnIds(events: ThreadEvent[]): Set<string> {
   return turnIds;
 }
 
-export interface RuntimeRestartTurnIdAssertionArgs {
+interface RuntimeRestartTurnIdAssertionArgs {
   firstEvents: ThreadEvent[];
   providerId: string;
   secondEvents: ThreadEvent[];
 }
 
-export interface ResolveProviderThreadIdArgs {
+interface ResolveProviderThreadIdArgs {
   events: ThreadEvent[];
   fallbackProviderThreadId: string | undefined;
   threadId: string;
@@ -423,6 +423,9 @@ function formatInteractiveRequest(request: PendingInteractionCreate): string {
     const firstQuestion = request.payload.questions[0];
     return `user_question:${previewText(firstQuestion?.prompt ?? "empty")}`;
   }
+  if (!isApprovalPendingInteractionPayload(request.payload)) {
+    return `${request.payload.kind}:${previewText(request.payload.title)}`;
+  }
 
   const { subject } = request.payload;
   switch (subject.kind) {
@@ -434,6 +437,8 @@ function formatInteractiveRequest(request: PendingInteractionCreate): string {
       return `permission_grant:${subject.toolName ?? "unknown"}`;
     case "plan":
       return `plan:${previewText(subject.plan)}`;
+    case "tool_use":
+      return `tool_use:${subject.tool}`;
   }
 }
 
@@ -532,8 +537,10 @@ export function waitForThreadTurnCompletedCount(
   });
 }
 
-export function waitForThreadTurnStarted(args: ThreadWaitArgs): Promise<void> {
-  return waitForSharedThreadTurnStarted({
+export async function waitForThreadTurnStarted(
+  args: ThreadWaitArgs,
+): Promise<void> {
+  await waitForSharedThreadTurnStarted({
     describeFailure: () => describeRuntimeDiagnostics(args),
     events: args.ctx.events,
     failFast: () => failOnRuntimeError(args),
@@ -639,7 +646,7 @@ export function getCompletedCommands(events: ThreadEvent[]): string[] {
   return commands;
 }
 
-export async function resolveDefaultModel(
+async function resolveDefaultModel(
   providerId: string,
   ctx: TestContext,
 ): Promise<string> {
@@ -706,54 +713,44 @@ export function createTempFileName(prefix: string): string {
 }
 
 function expectSemanticApprovalRequest(
-  request: PendingInteractionCreate,
+  payload: ApprovalPendingInteractionPayload,
 ): void {
-  if (!isApprovalPendingInteractionPayload(request.payload)) {
-    throw new Error(
-      `Expected approval interactive request, got ${formatInteractiveRequest(
-        request,
-      )}`,
-    );
-  }
-
   expect(["command", "file_change", "permission_grant", "plan"]).toContain(
-    request.payload.subject.kind,
+    payload.subject.kind,
   );
-  switch (request.payload.subject.kind) {
+  switch (payload.subject.kind) {
     case "command":
-      expect(Array.isArray(request.payload.subject.actions)).toBe(true);
-      expect(request.payload.subject.sessionGrant).not.toBeUndefined();
+      expect(Array.isArray(payload.subject.actions)).toBe(true);
+      expect(payload.subject.sessionGrant).not.toBeUndefined();
       break;
     case "file_change":
-      expect(request.payload.subject.writeScope).not.toBeUndefined();
-      expect(request.payload.subject.sessionGrant).not.toBeUndefined();
+      expect(payload.subject.writeScope).not.toBeUndefined();
+      expect(payload.subject.sessionGrant).not.toBeUndefined();
       break;
     case "permission_grant":
-      expect(request.payload.subject.permissions).toBeDefined();
+      expect(payload.subject.permissions).toBeDefined();
       break;
     case "plan":
-      expect(request.payload.subject.plan.length).toBeGreaterThan(0);
+      expect(payload.subject.plan.length).toBeGreaterThan(0);
+      break;
+    case "tool_use":
+      expect(payload.subject.tool.length).toBeGreaterThan(0);
+      expect(payload.subject.presentation.label.pending.length).toBeGreaterThan(
+        0,
+      );
       break;
   }
-  expect(request.payload.availableDecisions.length).toBeGreaterThan(0);
-  for (const decision of request.payload.availableDecisions) {
+  expect(payload.availableDecisions.length).toBeGreaterThan(0);
+  for (const decision of payload.availableDecisions) {
     expect(["allow_once", "allow_for_session", "deny"]).toContain(decision);
   }
 }
 
 function expectSemanticUserQuestionRequest(
-  request: PendingInteractionCreate,
+  payload: UserQuestionPendingInteractionPayload,
 ): void {
-  if (!isUserQuestionPendingInteractionPayload(request.payload)) {
-    throw new Error(
-      `Expected user-question interactive request, got ${formatInteractiveRequest(
-        request,
-      )}`,
-    );
-  }
-
-  expect(request.payload.questions.length).toBeGreaterThan(0);
-  for (const question of request.payload.questions) {
+  expect(payload.questions.length).toBeGreaterThan(0);
+  for (const question of payload.questions) {
     expect(question.id.length).toBeGreaterThan(0);
     expect(question.prompt.length).toBeGreaterThan(0);
   }
@@ -762,16 +759,23 @@ function expectSemanticUserQuestionRequest(
 function expectSemanticInteractiveRequest(
   request: PendingInteractionCreate,
 ): void {
-  if (isApprovalPendingInteractionPayload(request.payload)) {
-    expectSemanticApprovalRequest(request);
-    return;
+  const { payload } = request;
+  switch (payload.kind) {
+    case "approval":
+      expectSemanticApprovalRequest(payload);
+      return;
+    case "user_question":
+      expectSemanticUserQuestionRequest(payload);
+      return;
+    default:
+      // A plugin-defined request: the namespaced kind names the form.
+      expect(payload.title.length).toBeGreaterThan(0);
+      return;
   }
-
-  expectSemanticUserQuestionRequest(request);
 }
 
-export interface TestContext {
-  runtime: AgentRuntime;
+interface TestContext {
+  runtime: LaunchBoundAgentRuntime;
   events: ThreadEvent[];
   toolCalls: ToolCallRequest[];
   interactiveRequests: PendingInteractionCreate[];
@@ -779,15 +783,13 @@ export interface TestContext {
   ownsTmpDir: boolean;
 }
 
-export type TestToolCallHandler = (
-  req: ToolCallRequest,
-) => Promise<ToolCallResponse>;
+type TestToolCallHandler = (req: ToolCallRequest) => Promise<ToolCallResponse>;
 
-export type TestInteractiveRequestHandler = (
+type TestInteractiveRequestHandler = (
   req: PendingInteractionCreate,
 ) => Promise<PendingInteractionResolution>;
 
-export interface CreateTestRuntimeOptions {
+interface CreateTestRuntimeOptions {
   onInteractiveRequest?: TestInteractiveRequestHandler;
   onToolCall?: TestToolCallHandler;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
@@ -822,7 +824,7 @@ function preparePiAgentDir(args: PreparePiAgentDirArgs): string {
   const targetAgentDir = join(args.tmpDir, ".bb-pi-agent");
   mkdirSync(targetAgentDir, { recursive: true });
 
-  const sourceAgentDir = getAgentDir();
+  const sourceAgentDir = piAgentDir();
   // Keep credentials/custom model metadata available while isolating mutable
   // Pi prompts, extensions, settings, and session files per concurrent test.
   for (const fileName of ["auth.json", "models.json"]) {
@@ -848,30 +850,6 @@ function createRuntimeProcessEnv(
   return {
     [PI_BRIDGE_SESSION_DIR_ENV]: sessionDir,
     [PI_CODING_AGENT_DIR_ENV]: preparePiAgentDir({ tmpDir: args.tmpDir }),
-  };
-}
-
-/**
- * The daemon receives a provider's `bridgeLaunch` on every command that can
- * start its process; the server attaches it. Tests call the runtime directly,
- * so the harness plays the server's part: each entry point that can launch a
- * provider gets the artifact this provider's plugin built, unless the caller
- * passed one explicitly. Without it a graduated provider has no bridge and
- * every call fails with "Unsupported provider".
- */
-function withBridgeLaunch(
-  runtime: AgentRuntime,
-  bridgeLaunch: AgentRuntimeBridgeLaunch,
-): AgentRuntime {
-  return {
-    ...runtime,
-    ensureProvider: (args) =>
-      runtime.ensureProvider({ bridgeLaunch, ...args }),
-    startThread: (args) => runtime.startThread({ bridgeLaunch, ...args }),
-    prepareThreadRewind: (args) =>
-      runtime.prepareThreadRewind({ bridgeLaunch, ...args }),
-    resumeThread: (args) => runtime.resumeThread({ bridgeLaunch, ...args }),
-    listModels: (args) => runtime.listModels({ bridgeLaunch, ...args }),
   };
 }
 
@@ -935,29 +913,52 @@ export function cleanup(ctx: TestContext): void {
   }
 }
 
+/**
+ * The affirmative resolution for any interactive request, built from the
+ * request's own payload kind: an approval takes the widest decision it
+ * offers with the grant it asked for; a user question takes each question's
+ * first option, or a short free-text answer when it offers none; a
+ * plugin-defined request takes a small answer value. The shape always
+ * matches the payload, so no flow can answer an approval with a user answer
+ * or the reverse.
+ */
 export async function createApprovalResolution(
   request: PendingInteractionCreate,
 ): Promise<PendingInteractionResolution> {
-  if (!isApprovalPendingInteractionPayload(request.payload)) {
-    throw new Error(
-      `Expected approval interactive request, got ${formatInteractiveRequest(
-        request,
-      )}`,
-    );
+  const { payload } = request;
+  switch (payload.kind) {
+    case "approval":
+      return {
+        decision: payload.availableDecisions.includes("allow_for_session")
+          ? "allow_for_session"
+          : "allow_once",
+        grantedPermissions:
+          payload.subject.kind === "permission_grant"
+            ? payload.subject.permissions
+            : payload.subject.kind === "command" ||
+                payload.subject.kind === "file_change"
+              ? payload.subject.sessionGrant
+              : null,
+      };
+    case "user_question":
+      return {
+        kind: "user_answer",
+        answers: Object.fromEntries(
+          payload.questions.map((question) => {
+            const first = question.options?.[0];
+            return [
+              question.id,
+              first === undefined
+                ? { selected: [], freeText: "ok" }
+                : { selected: [first.value] },
+            ];
+          }),
+        ),
+      };
+    default:
+      // A plugin-defined request is answered with a value for its form.
+      return { kind: "request_answer", value: { answered: true } };
   }
-
-  return {
-    decision: request.payload.availableDecisions.includes("allow_for_session")
-      ? "allow_for_session"
-      : "allow_once",
-    grantedPermissions:
-      request.payload.subject.kind === "permission_grant"
-        ? request.payload.subject.permissions
-        : request.payload.subject.kind === "command" ||
-            request.payload.subject.kind === "file_change"
-          ? request.payload.subject.sessionGrant
-          : null,
-  };
 }
 
 function isWriteApprovalRequest(request: PendingInteractionCreate): boolean {

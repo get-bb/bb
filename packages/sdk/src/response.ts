@@ -31,6 +31,18 @@ interface WrapRequestTimeoutBodyArgs {
   stream: ReadableStream<Uint8Array>;
 }
 
+/**
+ * The subset of `Response` the SDK reads. Constraining on this instead of the
+ * global `Response` keeps typed Hono client responses assignable in every
+ * runtime whose global `Response`/`FormData` declarations differ from lib.dom
+ * (React Native declares its own `FormData` with `getParts()`, which makes
+ * `Response.formData()` incompatible even though the SDK never calls it).
+ */
+export type SdkResponseLike = Pick<
+  Response,
+  "arrayBuffer" | "headers" | "json" | "ok" | "status" | "statusText" | "text"
+>;
+
 export type JsonBodyOf<TResponse> = TResponse extends {
   json(): Promise<infer TBody>;
 }
@@ -124,20 +136,20 @@ export function createRequestTimeoutFetch(
   };
 }
 
-export async function readJsonResponse<TResponse extends Response>(
+export async function readJsonResponse<TResponse extends SdkResponseLike>(
   response: Promise<TResponse>,
 ): Promise<JsonBodyOf<TResponse>> {
   const resolved = await resolveResponse(response);
   return resolved.json();
 }
 
-export async function readVoidResponse<TResponse extends Response>(
+export async function readVoidResponse<TResponse extends SdkResponseLike>(
   response: Promise<TResponse>,
 ): Promise<void> {
   await resolveResponse(response);
 }
 
-export async function resolveResponse<TResponse extends Response>(
+export async function resolveResponse<TResponse extends SdkResponseLike>(
   responsePromise: Promise<TResponse>,
 ): Promise<TResponse> {
   let response: TResponse;
@@ -305,7 +317,9 @@ function readHttpErrorCode(parsed: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
-async function readHttpErrorInfo(response: Response): Promise<HttpErrorInfo> {
+async function readHttpErrorInfo(
+  response: SdkResponseLike,
+): Promise<HttpErrorInfo> {
   let rawBody: string;
   try {
     rawBody = await response.text();

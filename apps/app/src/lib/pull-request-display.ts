@@ -14,7 +14,9 @@ interface PullRequestDisplay {
   className: string;
 }
 
-export interface PullRequestStateDisplay extends PullRequestDisplay {
+export type GithubCheckStatus = "success" | "failure" | "pending";
+
+interface PullRequestStateDisplay extends PullRequestDisplay {
   dotClass: string;
 }
 
@@ -180,6 +182,25 @@ export function getPullRequestChecksDisplay(
   pullRequest: ThreadPullRequest,
 ): PullRequestDisplay {
   return CHECKS_DISPLAY[pullRequest.checks.state];
+}
+
+export function getPullRequestGithubCheckStatus(
+  pullRequest: ThreadPullRequest,
+): GithubCheckStatus | null {
+  if (pullRequest.state !== "open" && pullRequest.state !== "draft") {
+    return null;
+  }
+  switch (pullRequest.checks.state) {
+    case "passing":
+      return "success";
+    case "failing":
+      return "failure";
+    case "pending":
+      return "pending";
+    case "no_checks":
+    case "unknown":
+      return null;
+  }
 }
 
 export function getPullRequestReviewDisplay(

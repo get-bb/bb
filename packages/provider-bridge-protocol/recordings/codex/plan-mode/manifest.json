@@ -1,0 +1,17 @@
+{
+  "provider": "codex",
+  "cell": "plan-mode",
+  "threadId": "thr_56ht4kz54q",
+  "scope": "thread",
+  "cliVersion": "codex-cli 0.149.0",
+  "recordedAt": "2026-08-21",
+  "description": "A /plan turn (plan command mention).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 46,
+    "provider→bridge": 70,
+    "bridge→provider": 6
+  }
+}

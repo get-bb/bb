@@ -4,11 +4,12 @@ import path from "node:path";
 import { WORKTREE_INCLUDE_FILE_NAME } from "@bb/domain";
 import { runGit, WorkspaceError } from "./git.js";
 
-export interface CopyWorktreeIncludeFilesArgs {
+interface CopyWorktreeIncludeFilesArgs {
   /** Existing checkout that owns the `.worktreeinclude` file. */
   sourcePath: string;
   /** Freshly created worktree that receives the copies. */
   targetPath: string;
+  shellPath?: string;
   signal?: AbortSignal;
 }
 
@@ -75,6 +76,7 @@ async function readIncludeFile(sourcePath: string): Promise<string | null> {
  */
 async function listMatchingFiles(
   sourcePath: string,
+  shellPath: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<string[]> {
   const result = await runGit(
@@ -85,7 +87,11 @@ async function listMatchingFiles(
       `--exclude-from=${WORKTREE_INCLUDE_FILE_NAME}`,
       "-z",
     ],
-    { cwd: sourcePath, signal },
+    {
+      cwd: sourcePath,
+      ...(shellPath !== undefined ? { shellPath } : {}),
+      signal,
+    },
   );
   return result.stdout.split("\0").filter(Boolean);
 }
@@ -143,7 +149,11 @@ export async function copyWorktreeIncludeFiles(
     return EMPTY_RESULT;
   }
 
-  const relativePaths = await listMatchingFiles(args.sourcePath, args.signal);
+  const relativePaths = await listMatchingFiles(
+    args.sourcePath,
+    args.shellPath,
+    args.signal,
+  );
   if (relativePaths.length === 0) {
     return { ran: true, copied: [], skipped: [] };
   }

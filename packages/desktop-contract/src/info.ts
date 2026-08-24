@@ -4,15 +4,12 @@ import type { AppCommandId } from "@bb/domain";
 
 const isoUtcDateTimeSchema = z.iso.datetime();
 
-export const bbDesktopDownloadStateSchema = z.enum([
+const bbDesktopDownloadStateSchema = z.enum([
   "idle",
   "downloading",
   "downloaded",
   "failed",
 ]);
-export type BbDesktopDownloadState = z.infer<
-  typeof bbDesktopDownloadStateSchema
->;
 
 export const bbDesktopInfoSchema = z.object({
   /**
@@ -25,6 +22,8 @@ export const bbDesktopInfoSchema = z.object({
   latestVersion: z.string().min(1).nullable(),
   pendingVersion: z.string().min(1).nullable(),
   platform: z.enum(["macos", "linux"]),
+  /** Whether this shell can open the server/daemon log viewer right now. */
+  serverDaemonLogsAvailable: z.boolean().optional(),
   updateAvailable: z.boolean(),
   updateDownloaded: z.boolean(),
   version: z.string().min(1),
@@ -98,6 +97,12 @@ export interface BbDesktopApi extends BbDesktopInfo {
    * No-op on the web build where `window.bbDesktop` is undefined.
    */
   openExternalUrl(url: string): void;
+  /**
+   * Open or focus the native server/daemon log viewer window. Main re-checks
+   * availability, so this is a no-op when the viewer is unavailable. Optional
+   * for version skew with shells that predate the bridge method.
+   */
+  openServerDaemonLogs?(): Promise<void>;
   /**
    * Push the renderer's theme preference to the Electron main process so the
    * NSWindow appearance — traffic lights and inactive title-bar chrome —

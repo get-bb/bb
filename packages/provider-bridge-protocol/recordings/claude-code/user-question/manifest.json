@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "user-question",
+  "threadId": "thr_mhypadw628",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "The agent asks the user a question and continues with the answer.",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 13,
+    "provider→bridge": 37,
+    "bridge→provider": 9
+  }
+}

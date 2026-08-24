@@ -7,6 +7,7 @@ import {
 
 describe("isPluginSideChatSenderThread", () => {
   const pluginFork: SenderThreadMetadata = {
+    projectId: "proj_test",
     title: null,
     originKind: "fork",
     originPluginId: SIDE_CHAT_PLUGIN_ID,

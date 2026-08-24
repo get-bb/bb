@@ -1,0 +1,17 @@
+{
+  "provider": "claude-code",
+  "cell": "subagent",
+  "threadId": "thr_938swz386u",
+  "scope": "thread",
+  "cliVersion": "Claude Code 2.1.238 (Agent SDK 0.3.197)",
+  "recordedAt": "2026-08-21",
+  "description": "The agent delegates one task to a subagent (where the provider has one).",
+  "note": "",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 2,
+    "bridge→runtime": 21,
+    "provider→bridge": 58,
+    "bridge→provider": 11
+  }
+}

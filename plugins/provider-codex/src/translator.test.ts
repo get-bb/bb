@@ -8,23 +8,34 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { turnScope } from "@bb/domain";
+import { turnScope, type ThreadEvent } from "@bb/domain";
 import type { RuntimePermissionPolicy } from "@bb/domain";
+import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
-import { createCodexEventTranslator } from "./translator.js";
+import {
+  createCodexEventTranslator,
+  type CodexEventTranslator,
+} from "./translator.js";
 
 /**
- * Codex translation invariants, driven directly against
- * `createCodexEventTranslator` with app-server events.
+ * Codex translation invariants, driven against `createCodexEventTranslator`
+ * with app-server events and assembled through a real runtime delta assembler
+ * (the exact translation the bridge protocol adapter performs), so every
+ * historical fix keeps pinning live end-to-end behavior on the
+ * narrow-grammar path. Ids are asserted via the assembler's provider↔bb maps
+ * because minting moved off the bridge.
  *
- * These historical fixes live in this module, which both the legacy adapter and
- * the canonical bridge share, but were pinned only by codex/adapter.test.ts —
- * deleted when the legacy adapter graduates. The adapter is a passthrough over
- * `translator.translateEvent` (and over the git-root staging helpers), so the
- * cases move with their assertions intact; the two places the surfaces differ
- * are called out where they matter.
+ * Split of responsibility with delta-translation.test.ts: that file holds the
+ * per-event translation surface; this one keeps the *stateful* correlation
+ * invariants — command-output recovery across event reordering,
+ * subagent/delegation parent links, accepted-turn correlation — which need
+ * multi-event sequences against one translator instance.
  */
+
+const THREAD_ID = "t-codex-translator";
+const ENTROPY = "cxt-test";
 
 function codexEvent<M extends CodexServerNotification["method"]>(
   method: M,
@@ -47,6 +58,45 @@ function codexTurn(args: {
     startedAt: 0,
     completedAt: null,
     durationMs: null,
+  };
+}
+
+interface CodexTranslatorHarness {
+  assembler: DeltaAssembler;
+  translator: CodexEventTranslator;
+  translate(
+    event: Parameters<CodexEventTranslator["translateEvent"]>[0],
+  ): ThreadEvent[];
+  turnId(codexTurnId: string): string;
+  itemId(codexItemId: string): string;
+}
+
+function createHarness(
+  translator = createCodexEventTranslator({
+    additionalWorkspaceWriteRoots: [],
+  }),
+): CodexTranslatorHarness {
+  const assembler = createDeltaAssembler({
+    providerId: "codex",
+    entropyPrefix: ENTROPY,
+    // Equivalence suites pin per-delta translation fidelity: no coalescing.
+    textDeltaFlushMs: 0,
+  });
+  return {
+    assembler,
+    translator,
+    translate(event) {
+      return assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: translator.translateEvent(event),
+      });
+    },
+    turnId(codexTurnId) {
+      return assembler.getBbTurnId(THREAD_ID, codexTurnId) ?? "";
+    },
+    itemId(codexItemId) {
+      return assembler.getBbItemId(THREAD_ID, codexItemId) ?? "";
+    },
   };
 }
 
@@ -328,18 +378,16 @@ function publishedCommandOutput(args: {
   rawOutput: string;
   toolName?: string;
 }): string | undefined {
-  const translator = createTranslator();
+  const harness = createHarness();
   const call = {
     callId: "cmd-1",
     providerThreadId: "t1",
     turnId: "turn-1",
     toolName: args.toolName,
   };
-  translator.translateEvent(rawShellCall(call));
-  translator.translateEvent(
-    rawShellOutput({ ...call, output: args.rawOutput }),
-  );
-  const events = translator.translateEvent(
+  harness.translate(rawShellCall(call));
+  harness.translate(rawShellOutput({ ...call, output: args.rawOutput }));
+  const events = harness.translate(
     completedCommand({
       ...call,
       aggregatedOutput: args.providerAggregatedOutput,
@@ -349,7 +397,7 @@ function publishedCommandOutput(args: {
     (event) =>
       event.type === "item/completed" &&
       event.item.type === "commandExecution" &&
-      event.item.id === "cmd-1",
+      event.item.id === harness.itemId("cmd-1"),
   );
   if (completed?.type !== "item/completed") {
     throw new Error("Expected a completed commandExecution event");
@@ -448,14 +496,14 @@ describe("codex raw shell command-output recovery", () => {
   // Capture is keyed by call id: parallel commands in one turn must not hand
   // each other's stdout to the wrong item.
   it("repairs concurrent command executions independently", () => {
-    const translator = createTranslator();
+    const harness = createHarness();
     const commands = [
       { callId: "cmd-a", output: "A-1\nA-2\nA-3\n", truncated: "A-2\nA-3\n" },
       { callId: "cmd-b", output: "B-1\nB-2\nB-3\n", truncated: "B-2\nB-3\n" },
     ];
 
     for (const command of commands) {
-      translator.translateEvent(
+      harness.translate(
         rawShellCall({
           callId: command.callId,
           providerThreadId: "t1",
@@ -464,7 +512,7 @@ describe("codex raw shell command-output recovery", () => {
       );
     }
     for (const command of commands) {
-      translator.translateEvent(
+      harness.translate(
         rawShellOutput({
           callId: command.callId,
           output: `Output:\n${command.output}`,
@@ -476,7 +524,7 @@ describe("codex raw shell command-output recovery", () => {
 
     for (const command of commands) {
       expect(
-        translator.translateEvent(
+        harness.translate(
           completedCommand({
             aggregatedOutput: command.truncated,
             callId: command.callId,
@@ -487,12 +535,10 @@ describe("codex raw shell command-output recovery", () => {
       ).toContainEqual(
         expect.objectContaining({
           type: "item/completed",
-          threadId: "t1",
-          providerThreadId: "t1",
-          scope: turnScope("turn-1"),
+          scope: turnScope(harness.turnId("turn-1")),
           item: expect.objectContaining({
             type: "commandExecution",
-            id: command.callId,
+            id: harness.itemId(command.callId),
             aggregatedOutput: command.output,
           }),
         }),
@@ -504,16 +550,16 @@ describe("codex raw shell command-output recovery", () => {
   // releases only that thread's pending state; a global flush dropped the
   // recovery for every other live session.
   it("keeps a thread's captured output when a different thread completes a turn", () => {
-    const translator = createTranslator();
+    const harness = createHarness();
     for (const suffix of ["a", "b"]) {
-      translator.translateEvent(
+      harness.translate(
         rawShellCall({
           callId: `cmd-${suffix}`,
           providerThreadId: `thread-${suffix}`,
           turnId: `turn-${suffix}`,
         }),
       );
-      translator.translateEvent(
+      harness.translate(
         rawShellOutput({
           callId: `cmd-${suffix}`,
           output: `Output:\n${suffix.toUpperCase()}-1\n${suffix.toUpperCase()}-2\n`,
@@ -523,7 +569,7 @@ describe("codex raw shell command-output recovery", () => {
       );
     }
 
-    translator.translateEvent(
+    harness.translate(
       codexEvent("turn/completed", {
         threadId: "thread-a",
         turn: codexTurn({ id: "turn-a", status: "completed", error: null }),
@@ -531,7 +577,7 @@ describe("codex raw shell command-output recovery", () => {
     );
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         completedCommand({
           aggregatedOutput: "B-2\n",
           callId: "cmd-b",
@@ -542,12 +588,10 @@ describe("codex raw shell command-output recovery", () => {
     ).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "thread-b",
-        providerThreadId: "thread-b",
-        scope: turnScope("turn-b"),
+        scope: turnScope(harness.turnId("turn-b")),
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "cmd-b",
+          id: harness.itemId("cmd-b"),
           aggregatedOutput: "B-1\nB-2\n",
         }),
       }),
@@ -558,18 +602,16 @@ describe("codex raw shell command-output recovery", () => {
   // to no live command. Keeping the state alive let a stale raw record repair
   // (and so overwrite) a later item that reused the id.
   it("drops recovered output state when the thread closes", () => {
-    const translator = createTranslator();
-    translator.translateEvent(
+    const harness = createHarness();
+    harness.translate(
       rawShellCall({
         callId: "cmd-a",
         providerThreadId: "thread-a",
         turnId: "turn-a",
       }),
     );
-    translator.translateEvent(
-      codexEvent("thread/closed", { threadId: "thread-a" }),
-    );
-    translator.translateEvent(
+    harness.translate(codexEvent("thread/closed", { threadId: "thread-a" }));
+    harness.translate(
       rawShellOutput({
         callId: "cmd-a",
         output: "Output:\nSTALE\n",
@@ -579,7 +621,7 @@ describe("codex raw shell command-output recovery", () => {
     );
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         completedCommand({
           aggregatedOutput: "provider output\n",
           callId: "cmd-a",
@@ -590,12 +632,10 @@ describe("codex raw shell command-output recovery", () => {
     ).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "thread-a",
-        providerThreadId: "thread-a",
-        scope: turnScope("turn-a"),
+        scope: turnScope(harness.turnId("turn-a")),
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "cmd-a",
+          id: harness.itemId("cmd-a"),
           aggregatedOutput: "provider output\n",
         }),
       }),
@@ -615,17 +655,17 @@ describe("codex command output capture across reordering", () => {
   // arrive *after* the completion. Emitting the completion immediately
   // published the truncated output permanently, since an item completes once.
   it("defers a completed command until the later raw shell result arrives", () => {
-    const translator = createTranslator();
-    translator.translateEvent(rawShellCall(shellCall));
+    const harness = createHarness();
+    harness.translate(rawShellCall(shellCall));
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         completedCommand({ ...shellCall, aggregatedOutput: "OUT-2\nOUT-3\n" }),
       ),
     ).toEqual([]);
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         rawShellOutput({
           ...shellCall,
           output: "Output:\nOUT-1\nOUT-2\nOUT-3\n",
@@ -634,12 +674,10 @@ describe("codex command output capture across reordering", () => {
     ).toContainEqual(
       expect.objectContaining({
         type: "item/completed",
-        threadId: "t1",
-        providerThreadId: "t1",
-        scope: turnScope("turn-1"),
+        scope: turnScope(harness.turnId("turn-1")),
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "cmd-1",
+          id: harness.itemId("cmd-1"),
           aggregatedOutput: "OUT-1\nOUT-2\nOUT-3\n",
         }),
       }),
@@ -649,10 +687,10 @@ describe("codex command output capture across reordering", () => {
   // The deferral must not be able to swallow a command: if the raw record
   // never lands, the turn boundary releases what the provider did report.
   it("releases a deferred command before turn completion when no raw result arrives", () => {
-    const translator = createTranslator();
-    translator.translateEvent(rawShellCall(shellCall));
+    const harness = createHarness();
+    harness.translate(rawShellCall(shellCall));
     expect(
-      translator.translateEvent(
+      harness.translate(
         completedCommand({
           ...shellCall,
           aggregatedOutput: "provider output\n",
@@ -660,7 +698,7 @@ describe("codex command output capture across reordering", () => {
       ),
     ).toEqual([]);
 
-    const completedEvents = translator.translateEvent(
+    const completedEvents = harness.translate(
       codexEvent("turn/completed", {
         threadId: "t1",
         turn: codexTurn({ id: "turn-1", status: "completed", error: null }),
@@ -673,7 +711,10 @@ describe("codex command output capture across reordering", () => {
       "turn/completed",
     ]);
     expect(completedEvents[0]).toMatchObject({
-      item: { id: "cmd-1", aggregatedOutput: "provider output\n" },
+      item: {
+        id: harness.itemId("cmd-1"),
+        aggregatedOutput: "provider output\n",
+      },
     });
   });
 });
@@ -722,29 +763,31 @@ describe("codex subagent activity correlation", () => {
     });
   }
 
-  // Codex reports native subagents as tool calls rather than as bb background
-  // tasks, so the shared background-work state cannot see them. Releasing an
-  // idle session while a child agent is still running kills the child.
-  it("reports an unfinished subagent as open thread work", () => {
-    const translator = createTranslator();
-    const work = { providerThreadId: rootProviderThreadId };
-
-    expect(translator.hasOpenThreadWork(work)).toBe(false);
-
-    translator.translateEvent(
+  // The delegation row IS the open-work signal: it opens pending at the
+  // spawn and closes when the child's turn ends, and the runtime counts a
+  // pending delegation as live provider work (so an idle-looking session
+  // with a running child is not reaped). There is no side channel.
+  it("opens a pending delegation at the spawn and settles it with the child turn", () => {
+    const harness = createHarness();
+    const opened = harness.translate(
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
+    expect(opened).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "delegation",
+          status: "pending",
+        }),
+      }),
+    ]);
 
-    expect(translator.hasOpenThreadWork(work)).toBe(true);
-    // Scoped per parent thread: another session must not be pinned open.
+    harness.translate(childTurnStarted("child-turn-1"));
     expect(
-      translator.hasOpenThreadWork({ providerThreadId: "other-thread" }),
-    ).toBe(false);
-
-    translator.translateEvent(childTurnStarted("child-turn-1"));
-    translator.translateEvent(childTurnCompleted("child-turn-1"));
-
-    expect(translator.hasOpenThreadWork(work)).toBe(false);
+      harness
+        .translate(childTurnCompleted("child-turn-1"))
+        .map((event) => event.type),
+    ).toEqual(["turn/completed", "item/completed"]);
   });
 
   // subAgentActivity is bookkeeping, not a timeline item: bb synthesizes the
@@ -752,50 +795,48 @@ describe("codex subagent activity correlation", () => {
   // when the child's turn ends. Without the synthesized open/close pair the
   // child's messages had no parent to hang under.
   it("materializes subagent activity as a nested delegation lifecycle", () => {
-    const translator = createTranslator();
+    const harness = createHarness();
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({ id: "subagent-call-1", kind: "started" }),
       ),
     ).toEqual([
       expect.objectContaining({
         type: "item/started",
-        threadId: rootProviderThreadId,
-        providerThreadId: rootProviderThreadId,
-        scope: turnScope("parent-turn"),
-        item: expect.objectContaining({
-          type: "toolCall",
-          id: "subagent-call-1",
-          tool: "spawnAgent",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: {
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          childRef: "agent-thread-1",
+          label: "/root/lifecycle_child",
           status: "pending",
-          arguments: {
-            senderThreadId: rootProviderThreadId,
-            receiverThreadIds: ["agent-thread-1"],
-            description: "/root/lifecycle_child",
+          background: false,
+          presentation: {
+            label: { pending: "Running agent", completed: "Agent finished" },
+            icon: { glyph: "UserRound" },
+            title: "/root/lifecycle_child",
           },
-        }),
+        },
       }),
     ]);
 
-    expect(
-      translator.translateEvent(childTurnStarted("child-turn-1")),
-    ).toContainEqual(
+    expect(harness.translate(childTurnStarted("child-turn-1"))).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("child-turn-1"),
-        parentToolCallId: "subagent-call-1",
+        scope: turnScope(harness.turnId("child-turn-1")),
+        parentToolCallId: harness.itemId("subagent-call-1"),
       }),
     );
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({ id: "interaction-1", kind: "interacted" }),
       ),
     ).toEqual([]);
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         codexEvent("item/completed", {
           threadId: rootProviderThreadId,
           turnId: "child-turn-1",
@@ -813,26 +854,24 @@ describe("codex subagent activity correlation", () => {
       expect.objectContaining({
         type: "item/completed",
         item: expect.objectContaining({
-          id: "child-message-1",
-          parentToolCallId: "subagent-call-1",
+          id: harness.itemId("child-message-1"),
+          parentToolCallId: harness.itemId("subagent-call-1"),
         }),
       }),
     );
 
-    expect(
-      translator.translateEvent(childTurnCompleted("child-turn-1")),
-    ).toEqual([
+    expect(harness.translate(childTurnCompleted("child-turn-1"))).toEqual([
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("child-turn-1"),
+        scope: turnScope(harness.turnId("child-turn-1")),
       }),
       expect.objectContaining({
         type: "item/completed",
-        scope: turnScope("parent-turn"),
+        scope: turnScope(harness.turnId("parent-turn")),
         item: expect.objectContaining({
-          type: "toolCall",
-          id: "subagent-call-1",
-          tool: "spawnAgent",
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          childRef: "agent-thread-1",
           status: "completed",
         }),
       }),
@@ -844,48 +883,63 @@ describe("codex subagent activity correlation", () => {
   // `interacted`, those turns detached from the spawning tool call and the
   // resumed work rendered as top-level activity in the parent thread.
   it("re-arms the parent link when a completed subagent is interacted with again", () => {
-    const translator = createTranslator();
-    translator.translateEvent(
+    const harness = createHarness();
+    harness.translate(
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
 
-    expect(
-      translator.translateEvent(childTurnStarted("child-turn-1")),
-    ).toContainEqual(
+    expect(harness.translate(childTurnStarted("child-turn-1"))).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("child-turn-1"),
-        parentToolCallId: "subagent-call-1",
+        scope: turnScope(harness.turnId("child-turn-1")),
+        parentToolCallId: harness.itemId("subagent-call-1"),
       }),
     );
-    translator.translateEvent(childTurnCompleted("child-turn-1"));
+    harness.translate(childTurnCompleted("child-turn-1"));
 
-    // The interaction itself is bookkeeping, not a timeline item.
+    // A follow-up to a settled agent re-opens its delegation row (same item
+    // id): the agent works again, and an open delegation is open work.
     expect(
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({ id: "interaction-1", kind: "interacted" }),
       ),
-    ).toEqual([]);
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          status: "pending",
+        }),
+      }),
+    ]);
 
-    expect(
-      translator.translateEvent(childTurnStarted("child-turn-2")),
-    ).toContainEqual(
+    expect(harness.translate(childTurnStarted("child-turn-2"))).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("child-turn-2"),
-        parentToolCallId: "subagent-call-1",
+        scope: turnScope(harness.turnId("child-turn-2")),
+        parentToolCallId: harness.itemId("subagent-call-1"),
       }),
     );
 
-    // Re-arming must not re-complete the spawning tool call: the delegation
-    // item stays open across the resumed turn.
-    const resumedTurnCompleted = translator.translateEvent(
+    // The resumed turn settles the re-opened delegation again.
+    const resumedTurnCompleted = harness.translate(
       childTurnCompleted("child-turn-2"),
     );
     expect(resumedTurnCompleted).toEqual([
       expect.objectContaining({
         type: "turn/completed",
-        scope: turnScope("child-turn-2"),
+        scope: turnScope(harness.turnId("child-turn-2")),
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          status: "completed",
+        }),
       }),
     ]);
   });
@@ -894,37 +948,45 @@ describe("codex subagent activity correlation", () => {
   // counted, so terminalizing the agent after the first follow-up must not
   // discard the link the second one still needs.
   it("preserves the parent link across queued follow-up resumes", () => {
-    const translator = createTranslator();
-    translator.translateEvent(
+    const harness = createHarness();
+    harness.translate(
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
-    translator.translateEvent(childTurnStarted("child-turn-1"));
-    translator.translateEvent(childTurnCompleted("child-turn-1"));
+    harness.translate(childTurnStarted("child-turn-1"));
+    harness.translate(childTurnCompleted("child-turn-1"));
 
-    for (const index of [1, 2]) {
-      translator.translateEvent(
-        subAgentActivity({ id: `interaction-${index}`, kind: "interacted" }),
-      );
-    }
+    // The first follow-up re-opens the delegation; the second finds it open.
+    expect(
+      harness
+        .translate(
+          subAgentActivity({ id: "interaction-1", kind: "interacted" }),
+        )
+        .map((event) => event.type),
+    ).toEqual(["item/started"]);
+    expect(
+      harness.translate(
+        subAgentActivity({ id: "interaction-2", kind: "interacted" }),
+      ),
+    ).toEqual([]);
 
     for (const index of [2, 3]) {
       expect(
-        translator.translateEvent(childTurnStarted(`child-turn-${index}`)),
+        harness.translate(childTurnStarted(`child-turn-${index}`)),
       ).toContainEqual(
         expect.objectContaining({
           type: "turn/started",
-          scope: turnScope(`child-turn-${index}`),
-          parentToolCallId: "subagent-call-1",
+          scope: turnScope(harness.turnId(`child-turn-${index}`)),
+          parentToolCallId: harness.itemId("subagent-call-1"),
         }),
       );
+      // The delegation closes only once the last owed follow-up turn settles.
       expect(
-        translator.translateEvent(childTurnCompleted(`child-turn-${index}`)),
-      ).toEqual([
-        expect.objectContaining({
-          type: "turn/completed",
-          scope: turnScope(`child-turn-${index}`),
-        }),
-      ]);
+        harness
+          .translate(childTurnCompleted(`child-turn-${index}`))
+          .map((event) => event.type),
+      ).toEqual(
+        index === 3 ? ["turn/completed", "item/completed"] : ["turn/completed"],
+      );
     }
   });
 
@@ -933,83 +995,113 @@ describe("codex subagent activity correlation", () => {
   // resume is pending must stay a root turn, and must not consume the child's
   // slot either.
   it("does not attach a resumed subagent parent to a later human turn", () => {
-    const translator = createTranslator();
-    translator.translateEvent(
+    const harness = createHarness();
+    harness.translate(
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
-    translator.translateEvent(childTurnStarted("child-turn-1"));
-    translator.translateEvent(childTurnCompleted("child-turn-1"));
-    translator.translateEvent(
+    harness.translate(childTurnStarted("child-turn-1"));
+    harness.translate(childTurnCompleted("child-turn-1"));
+    harness.translate(
       subAgentActivity({ id: "interaction-1", kind: "interacted" }),
     );
 
     // A queued turn/start is what distinguishes a human turn from a child one.
     expect(
-      translator.prepareTurnStart({
+      harness.translator.prepareTurnStart({
         clientRequestId: "creq_followup",
         providerThreadId: rootProviderThreadId,
       }),
     ).not.toBeNull();
 
-    const humanTurnStarted = translator
-      .translateEvent(childTurnStarted("human-turn"))
+    const humanTurnStarted = harness
+      .translate(childTurnStarted("human-turn"))
       .find((event) => event.type === "turn/started");
     expect(humanTurnStarted).toEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("human-turn"),
+        scope: turnScope(harness.turnId("human-turn")),
       }),
     );
     expect(humanTurnStarted).not.toHaveProperty("parentToolCallId");
 
-    expect(
-      translator.translateEvent(childTurnStarted("child-turn-2")),
-    ).toContainEqual(
+    expect(harness.translate(childTurnStarted("child-turn-2"))).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("child-turn-2"),
-        parentToolCallId: "subagent-call-1",
+        scope: turnScope(harness.turnId("child-turn-2")),
+        parentToolCallId: harness.itemId("subagent-call-1"),
       }),
     );
+  });
+
+  // Nothing runs behind a dead app-server child, and an open delegation is
+  // open work for the runtime: the child-exit path settles every delegation
+  // the thread still had open, so the runtime can reap the thread.
+  it("settles open delegations as failed when the child exits", () => {
+    const harness = createHarness();
+    harness.translate(
+      subAgentActivity({ id: "subagent-call-1", kind: "started" }),
+    );
+    harness.translate(childTurnStarted("child-turn-1"));
+
+    const closes = harness.translator.clearExitedChildThreadState({
+      providerThreadId: rootProviderThreadId,
+    });
+    expect(
+      harness.assembler.assemble({ threadId: THREAD_ID, deltas: closes }),
+    ).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        scope: turnScope(harness.turnId("parent-turn")),
+        item: expect.objectContaining({
+          type: "delegation",
+          id: harness.itemId("subagent-call-1"),
+          status: "failed",
+        }),
+      }),
+    ]);
+    // Idempotent: a second clear has nothing left to settle.
+    expect(
+      harness.translator.clearExitedChildThreadState({
+        providerThreadId: rootProviderThreadId,
+      }),
+    ).toEqual([]);
   });
 
   // Codex can redeliver the same activity item. Counting it twice queued a
   // follow-up nobody owed, so the user's next turn was adopted by the finished
   // subagent.
   it("ignores a duplicated interacted item", () => {
-    const translator = createTranslator();
-    translator.translateEvent(
+    const harness = createHarness();
+    harness.translate(
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
-    translator.translateEvent(childTurnStarted("child-turn-1"));
-    translator.translateEvent(childTurnCompleted("child-turn-1"));
+    harness.translate(childTurnStarted("child-turn-1"));
+    harness.translate(childTurnCompleted("child-turn-1"));
 
-    translator.translateEvent(
+    harness.translate(
       subAgentActivity({ id: "interaction-1", kind: "interacted" }),
     );
-    translator.translateEvent(
+    harness.translate(
       subAgentActivity({ id: "interaction-1", kind: "interacted" }),
     );
 
-    expect(
-      translator.translateEvent(childTurnStarted("child-turn-2")),
-    ).toContainEqual(
+    expect(harness.translate(childTurnStarted("child-turn-2"))).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("child-turn-2"),
-        parentToolCallId: "subagent-call-1",
+        scope: turnScope(harness.turnId("child-turn-2")),
+        parentToolCallId: harness.itemId("subagent-call-1"),
       }),
     );
-    translator.translateEvent(childTurnCompleted("child-turn-2"));
+    harness.translate(childTurnCompleted("child-turn-2"));
 
     expect(
-      translator.prepareTurnStart({
+      harness.translator.prepareTurnStart({
         clientRequestId: "creq_after_duplicate",
         providerThreadId: rootProviderThreadId,
       }),
     ).not.toBeNull();
-    const laterHumanTurn = translator
-      .translateEvent(childTurnStarted("human-turn"))
+    const laterHumanTurn = harness
+      .translate(childTurnStarted("human-turn"))
       .find((event) => event.type === "turn/started");
     expect(laterHumanTurn).not.toHaveProperty("parentToolCallId");
   });
@@ -1018,20 +1110,20 @@ describe("codex subagent activity correlation", () => {
   // its own agent thread id, that explicit match must win and must not also
   // consume the other agent's FIFO slot on the multiplexed root thread.
   it("does not FIFO-cross-link concurrently resumed subagents", () => {
-    const translator = createTranslator();
+    const harness = createHarness();
     for (const index of [1, 2]) {
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({
           agentThreadId: `agent-thread-${index}`,
           id: `subagent-call-${index}`,
           kind: "started",
         }),
       );
-      translator.translateEvent(childTurnStarted(`child-turn-${index}`));
-      translator.translateEvent(childTurnCompleted(`child-turn-${index}`));
+      harness.translate(childTurnStarted(`child-turn-${index}`));
+      harness.translate(childTurnCompleted(`child-turn-${index}`));
     }
     for (const index of [1, 2]) {
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({
           agentThreadId: `agent-thread-${index}`,
           id: `interaction-${index}`,
@@ -1041,24 +1133,22 @@ describe("codex subagent activity correlation", () => {
     }
 
     expect(
-      translator.translateEvent(
-        childTurnStarted("resumed-turn-2", "agent-thread-2"),
-      ),
+      harness.translate(childTurnStarted("resumed-turn-2", "agent-thread-2")),
     ).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("resumed-turn-2"),
-        parentToolCallId: "subagent-call-2",
+        scope: turnScope(harness.turnId("resumed-turn-2")),
+        parentToolCallId: harness.itemId("subagent-call-2"),
       }),
     );
 
     expect(
-      translator.translateEvent(childTurnStarted("resumed-turn-1")),
+      harness.translate(childTurnStarted("resumed-turn-1")),
     ).toContainEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("resumed-turn-1"),
-        parentToolCallId: "subagent-call-1",
+        scope: turnScope(harness.turnId("resumed-turn-1")),
+        parentToolCallId: harness.itemId("subagent-call-1"),
       }),
     );
   });
@@ -1067,9 +1157,9 @@ describe("codex subagent activity correlation", () => {
   // distinguishing id on turn/started, so the only correlation available is
   // activity order. Getting it wrong swaps two live agents' timelines.
   it("links concurrent subagents to child turns in activity order", () => {
-    const translator = createTranslator();
+    const harness = createHarness();
     for (const index of [1, 2]) {
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({
           agentThreadId: `agent-thread-${index}`,
           id: `subagent-call-${index}`,
@@ -1080,12 +1170,12 @@ describe("codex subagent activity correlation", () => {
 
     for (const index of [1, 2]) {
       expect(
-        translator.translateEvent(childTurnStarted(`child-turn-${index}`)),
+        harness.translate(childTurnStarted(`child-turn-${index}`)),
       ).toContainEqual(
         expect.objectContaining({
           type: "turn/started",
-          scope: turnScope(`child-turn-${index}`),
-          parentToolCallId: `subagent-call-${index}`,
+          scope: turnScope(harness.turnId(`child-turn-${index}`)),
+          parentToolCallId: harness.itemId(`subagent-call-${index}`),
         }),
       );
     }
@@ -1095,21 +1185,21 @@ describe("codex subagent activity correlation", () => {
   // call has to be closed from the interruption or it renders as running
   // forever (and pins the session open).
   it("terminalizes an open subagent when activity is interrupted", () => {
-    const translator = createTranslator();
-    translator.translateEvent(
+    const harness = createHarness();
+    harness.translate(
       subAgentActivity({ id: "subagent-call-1", kind: "started" }),
     );
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({ id: "interrupt-activity-1", kind: "interrupted" }),
       ),
     ).toEqual([
       expect.objectContaining({
         type: "item/completed",
-        scope: turnScope("parent-turn"),
+        scope: turnScope(harness.turnId("parent-turn")),
         item: expect.objectContaining({
-          id: "subagent-call-1",
+          id: harness.itemId("subagent-call-1"),
           status: "interrupted",
         }),
       }),
@@ -1117,10 +1207,153 @@ describe("codex subagent activity correlation", () => {
 
     // A redelivered start for a call id bb already tracks must not reopen it.
     expect(
-      translator.translateEvent(
+      harness.translate(
         subAgentActivity({ id: "subagent-call-1", kind: "started" }),
       ),
     ).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Terminal retry-error classification (#1840)
+// ---------------------------------------------------------------------------
+
+const STREAM_DISCONNECT_MESSAGE =
+  "stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)";
+
+const STREAM_DISCONNECTED_ERROR_INFO = {
+  category: "stream-disconnected",
+  providerCode: "responseStreamDisconnected",
+  httpStatusCode: 502,
+};
+
+const UNKNOWN_ERROR_INFO = {
+  category: "unknown",
+  providerCode: "other",
+  httpStatusCode: null,
+};
+
+function codexReconnectError(turnId: string) {
+  return codexEvent("error", {
+    threadId: "t1",
+    turnId,
+    error: {
+      message: "Reconnecting... 5/5",
+      codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: 502 } },
+      additionalDetails: STREAM_DISCONNECT_MESSAGE,
+    },
+    willRetry: true,
+  });
+}
+
+function codexTerminalOtherError(turnId: string, message: string) {
+  return codexEvent("error", {
+    threadId: "t1",
+    turnId,
+    error: { message, codexErrorInfo: "other", additionalDetails: null },
+    willRetry: false,
+  });
+}
+
+describe("codex terminal retry-error classification", () => {
+  // Codex labels each reconnect attempt `responseStreamDisconnected`, then
+  // reports the terminal failure for the same stream error as `other` once
+  // its retry budget is exhausted (codex-rs maps `CodexErrorDetails::Stream`
+  // to `CodexErrorInfo::Other`). The translator keeps the structured
+  // classification for the terminal row without parsing provider prose.
+  it("carries the retry classification into the degraded terminal error", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        scope: turnScope(harness.turnId("turn-1")),
+        willRetry: false,
+        detail: STREAM_DISCONNECT_MESSAGE,
+        errorInfo: STREAM_DISCONNECTED_ERROR_INFO,
+      }),
+    );
+
+    // The context is consumed by the terminal event: a repeat stays `other`.
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+  });
+
+  it("does not relabel an unrelated terminal error after a reconnect", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+
+    expect(
+      harness.translate(codexTerminalOtherError("turn-1", "request failed")),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+  });
+
+  it("scopes the retry context to the turn and drops it on turn/completed", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-2", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+
+    harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "completed", error: null }),
+      }),
+    );
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
+  });
+
+  it("drops the retry context when the codex thread closes", () => {
+    const harness = createHarness();
+    harness.translate(codexReconnectError("turn-1"));
+    harness.translate(codexEvent("thread/closed", { threadId: "t1" }));
+
+    expect(
+      harness.translate(
+        codexTerminalOtherError("turn-1", STREAM_DISCONNECT_MESSAGE),
+      ),
+    ).toContainEqual(
+      expect.objectContaining({
+        type: "provider/error",
+        errorInfo: UNKNOWN_ERROR_INFO,
+      }),
+    );
   });
 });
 
@@ -1134,37 +1367,36 @@ describe("codex accepted-input correlation", () => {
   // client request id before dispatch precisely because codex emits
   // turn/started before the turn/start response settles.
   //
-  // (The steer ack is NOT translator-owned — both the adapter and the bridge
-  // build it from the accepted command via buildAcceptedUserMessageEvent —
-  // so only the queued-turn half moves here.)
+  // (The steer ack is NOT translator-owned — the bridge emits it as an
+  // `input.accepted` delta against the steered turn — so only the queued-turn
+  // half lives here.)
   it("acks a queued turn on turn/started and suppresses the later echo", () => {
-    const translator = createTranslator();
+    const harness = createHarness();
     expect(
-      translator.prepareTurnStart({
+      harness.translator.prepareTurnStart({
         clientRequestId: "creq_23456789ag",
         providerThreadId: "provider-thread-1",
       }),
     ).not.toBeNull();
 
-    expect(
-      translator.translateEvent(
-        codexEvent("turn/started", {
-          threadId: "provider-thread-1",
-          turn: codexTurn({ id: "turn-1", status: "inProgress", error: null }),
-        }),
-      ),
-    ).toEqual([
+    const events = harness.translate(
+      codexEvent("turn/started", {
+        threadId: "provider-thread-1",
+        turn: codexTurn({ id: "turn-1", status: "inProgress", error: null }),
+      }),
+    );
+    expect(events).toEqual([
       {
         type: "turn/started",
-        threadId: "provider-thread-1",
-        providerThreadId: "provider-thread-1",
-        scope: turnScope("turn-1"),
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope(harness.turnId("turn-1")),
       },
       {
         type: "turn/input/accepted",
-        threadId: "provider-thread-1",
-        providerThreadId: "provider-thread-1",
-        scope: turnScope("turn-1"),
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope(harness.turnId("turn-1")),
         clientRequestId: "creq_23456789ag",
       },
     ]);
@@ -1172,7 +1404,7 @@ describe("codex accepted-input correlation", () => {
     // bb already owns the user message it sent; the provider's echo of it
     // would render a duplicate.
     expect(
-      translator.translateEvent(
+      harness.translate(
         codexEvent("item/completed", {
           threadId: "provider-thread-1",
           turnId: "turn-1",
@@ -1191,8 +1423,8 @@ describe("codex accepted-input correlation", () => {
   // A dispatch that never reached the provider must not leave a queued id that
   // the *next* turn — possibly a different one — would claim.
   it("drops the queued ack when the dispatch is rolled back", () => {
-    const translator = createTranslator();
-    const prepared = translator.prepareTurnStart({
+    const harness = createHarness();
+    const prepared = harness.translator.prepareTurnStart({
       clientRequestId: "creq_23456789ag",
       providerThreadId: "provider-thread-1",
     });
@@ -1202,7 +1434,7 @@ describe("codex accepted-input correlation", () => {
     prepared.rollback();
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         codexEvent("turn/started", {
           threadId: "provider-thread-1",
           turn: codexTurn({ id: "turn-1", status: "inProgress", error: null }),
@@ -1211,9 +1443,9 @@ describe("codex accepted-input correlation", () => {
     ).toEqual([
       {
         type: "turn/started",
-        threadId: "provider-thread-1",
-        providerThreadId: "provider-thread-1",
-        scope: turnScope("turn-1"),
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope(harness.turnId("turn-1")),
       },
     ]);
   });
@@ -1230,11 +1462,11 @@ describe("codex delegation-turn nesting", () => {
   // that same thread — which is what made an ordinary follow-up render nested
   // under a finished spawnAgent call.
   it("does not inherit a delegation link onto a later human turn", () => {
-    const translator = createTranslator();
+    const harness = createHarness();
     const providerThreadId = "root-provider-thread";
-    const parentToolCallId = "call_MV1jTrxEd9bsYdEXQo1PhVOs";
+    const parentCallId = "call_MV1jTrxEd9bsYdEXQo1PhVOs";
 
-    translator.translateEvent(
+    harness.translate(
       codexEvent("turn/started", {
         threadId: providerThreadId,
         turn: codexTurn({
@@ -1244,14 +1476,14 @@ describe("codex delegation-turn nesting", () => {
         }),
       }),
     );
-    translator.translateEvent(
+    harness.translate(
       codexEvent("item/started", {
         threadId: providerThreadId,
         turnId: "parent-turn",
         startedAtMs: 0,
         item: {
           type: "collabAgentToolCall",
-          id: parentToolCallId,
+          id: parentCallId,
           tool: "spawnAgent",
           status: "inProgress",
           senderThreadId: providerThreadId,
@@ -1263,14 +1495,14 @@ describe("codex delegation-turn nesting", () => {
         },
       }),
     );
-    translator.translateEvent(
+    harness.translate(
       codexEvent("item/completed", {
         threadId: providerThreadId,
         turnId: "parent-turn",
         completedAtMs: 0,
         item: {
           type: "collabAgentToolCall",
-          id: parentToolCallId,
+          id: parentCallId,
           tool: "spawnAgent",
           status: "completed",
           senderThreadId: providerThreadId,
@@ -1284,7 +1516,7 @@ describe("codex delegation-turn nesting", () => {
         },
       }),
     );
-    translator.translateEvent(
+    harness.translate(
       codexEvent("turn/completed", {
         threadId: providerThreadId,
         turn: codexTurn({
@@ -1294,9 +1526,10 @@ describe("codex delegation-turn nesting", () => {
         }),
       }),
     );
+    const parentToolCallId = harness.itemId(parentCallId);
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         codexEvent("turn/started", {
           threadId: providerThreadId,
           turn: codexTurn({
@@ -1310,12 +1543,12 @@ describe("codex delegation-turn nesting", () => {
       expect.objectContaining({
         type: "turn/started",
         parentToolCallId,
-        scope: turnScope("child-turn"),
+        scope: turnScope(harness.turnId("child-turn")),
       }),
     );
 
     expect(
-      translator.translateEvent(
+      harness.translate(
         codexEvent("item/started", {
           threadId: providerThreadId,
           turnId: "child-turn",
@@ -1340,19 +1573,19 @@ describe("codex delegation-turn nesting", () => {
         type: "item/started",
         item: expect.objectContaining({
           type: "commandExecution",
-          id: "child-command",
+          id: harness.itemId("child-command"),
           parentToolCallId,
         }),
       }),
     );
 
-    translator.prepareTurnStart({
+    harness.translator.prepareTurnStart({
       clientRequestId: "creq_followup",
       providerThreadId,
     });
 
-    const followUpTurnStarted = translator
-      .translateEvent(
+    const followUpTurnStarted = harness
+      .translate(
         codexEvent("turn/started", {
           threadId: providerThreadId,
           turn: codexTurn({
@@ -1366,13 +1599,13 @@ describe("codex delegation-turn nesting", () => {
     expect(followUpTurnStarted).toEqual(
       expect.objectContaining({
         type: "turn/started",
-        scope: turnScope("follow-up-turn"),
+        scope: turnScope(harness.turnId("follow-up-turn")),
       }),
     );
     expect(followUpTurnStarted).not.toHaveProperty("parentToolCallId");
 
-    const followUpAssistant = translator
-      .translateEvent(
+    const followUpAssistant = harness
+      .translate(
         codexEvent("item/completed", {
           threadId: providerThreadId,
           turnId: "follow-up-turn",
@@ -1395,7 +1628,7 @@ describe("codex delegation-turn nesting", () => {
         type: "item/completed",
         item: expect.objectContaining({
           type: "agentMessage",
-          id: "follow-up-assistant",
+          id: harness.itemId("follow-up-assistant"),
         }),
       }),
     );
@@ -1403,7 +1636,7 @@ describe("codex delegation-turn nesting", () => {
 
     // The delegated turn keeps its link even though a newer turn has opened.
     expect(
-      translator.translateEvent(
+      harness.translate(
         codexEvent("item/commandExecution/outputDelta", {
           threadId: providerThreadId,
           turnId: "child-turn",
@@ -1415,7 +1648,7 @@ describe("codex delegation-turn nesting", () => {
       expect.objectContaining({
         type: "item/commandExecution/outputDelta",
         parentToolCallId,
-        scope: turnScope("child-turn"),
+        scope: turnScope(harness.turnId("child-turn")),
       }),
     );
   });
@@ -1427,10 +1660,10 @@ describe("codex delegation-turn nesting", () => {
   it.each(["spawnAgent", "resumeAgent"] as const)(
     "stamps pending same-provider child turn events for %s",
     (tool) => {
-      const translator = createTranslator();
+      const harness = createHarness();
       const providerThreadId = "root-provider-thread";
 
-      translator.translateEvent(
+      harness.translate(
         codexEvent("turn/started", {
           threadId: providerThreadId,
           turn: codexTurn({
@@ -1440,7 +1673,7 @@ describe("codex delegation-turn nesting", () => {
           }),
         }),
       );
-      translator.translateEvent(
+      harness.translate(
         codexEvent("item/started", {
           threadId: providerThreadId,
           turnId: "parent-turn",
@@ -1461,7 +1694,7 @@ describe("codex delegation-turn nesting", () => {
       );
 
       expect(
-        translator.translateEvent(
+        harness.translate(
           codexEvent("turn/started", {
             threadId: providerThreadId,
             turn: codexTurn({
@@ -1474,13 +1707,13 @@ describe("codex delegation-turn nesting", () => {
       ).toContainEqual(
         expect.objectContaining({
           type: "turn/started",
-          parentToolCallId: "delegation-1",
-          scope: turnScope("child-turn"),
+          parentToolCallId: harness.itemId("delegation-1"),
+          scope: turnScope(harness.turnId("child-turn")),
         }),
       );
 
       expect(
-        translator.translateEvent(
+        harness.translate(
           codexEvent("item/completed", {
             threadId: providerThreadId,
             turnId: "child-turn",
@@ -1499,8 +1732,8 @@ describe("codex delegation-turn nesting", () => {
           type: "item/completed",
           item: expect.objectContaining({
             type: "agentMessage",
-            id: "child-assistant-1",
-            parentToolCallId: "delegation-1",
+            id: harness.itemId("child-assistant-1"),
+            parentToolCallId: harness.itemId("delegation-1"),
           }),
         }),
       );
@@ -1514,9 +1747,9 @@ describe("codex delegation-turn nesting", () => {
   it.each(["spawnAgent", "resumeAgent"] as const)(
     "stamps explicit receiver-thread child events under the %s call",
     (tool) => {
-      const translator = createTranslator();
+      const harness = createHarness();
 
-      translator.translateEvent(
+      harness.translate(
         codexEvent("item/completed", {
           threadId: "root-provider-thread",
           turnId: "parent-turn",
@@ -1539,7 +1772,7 @@ describe("codex delegation-turn nesting", () => {
       );
 
       expect(
-        translator.translateEvent(
+        harness.translate(
           codexEvent("turn/started", {
             threadId: "child-provider-thread",
             turn: codexTurn({
@@ -1552,14 +1785,13 @@ describe("codex delegation-turn nesting", () => {
       ).toContainEqual(
         expect.objectContaining({
           type: "turn/started",
-          parentToolCallId: "delegation-1",
-          providerThreadId: "child-provider-thread",
-          scope: turnScope("child-turn"),
+          parentToolCallId: harness.itemId("delegation-1"),
+          scope: turnScope(harness.turnId("child-turn")),
         }),
       );
 
       expect(
-        translator.translateEvent(
+        harness.translate(
           codexEvent("item/completed", {
             threadId: "child-provider-thread",
             turnId: "child-turn",
@@ -1576,11 +1808,10 @@ describe("codex delegation-turn nesting", () => {
       ).toContainEqual(
         expect.objectContaining({
           type: "item/completed",
-          providerThreadId: "child-provider-thread",
           item: expect.objectContaining({
             type: "agentMessage",
-            id: "child-assistant-1",
-            parentToolCallId: "delegation-1",
+            id: harness.itemId("child-assistant-1"),
+            parentToolCallId: harness.itemId("delegation-1"),
           }),
         }),
       );

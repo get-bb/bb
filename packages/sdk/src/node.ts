@@ -3,7 +3,8 @@ import {
   createHostDaemonLocalClient,
   DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST,
 } from "@bb/host-daemon-contract";
-import { createBbSdk, type BbSdk } from "./core.js";
+import { createGuideArea } from "./areas/guide.js";
+import { createBbSdk, type BbSdk, type BbSdkAreas } from "./core.js";
 import { createNodeWebsocketFactory } from "./node-websocket.js";
 import {
   createRequestTimeoutFetch,
@@ -65,6 +66,7 @@ export function createNodeTransport(
 export function createNodeBbSdk(args: CreateNodeBbSdkArgs = {}): BbSdk {
   return createBbSdk({
     context: args.context,
+    guide: createGuideArea(),
     transport: createNodeTransport(args),
   });
 }
@@ -94,6 +96,11 @@ export {
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
 };
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
+export {
+  pluginMutationResponseSchema,
+  type PluginMutationResponse,
+} from "./areas/plugins.js";
+export { createBuiltinPlanCommandTextInput } from "./core.js";
 export { createGuideArea } from "./areas/guide.js";
 export {
   DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
@@ -101,7 +108,13 @@ export {
   ThreadWaitTimeoutError,
   ThreadWaitUnreachableError,
 } from "./areas/threads.js";
-export type { BbSdk, BbSdkContext, BbSdkTransport, FetchImplementation };
+export type {
+  BbSdk,
+  BbSdkAreas,
+  BbSdkContext,
+  BbSdkTransport,
+  FetchImplementation,
+};
 export type * from "./areas/skills.js";
 export type {
   BbRealtimeSocket,

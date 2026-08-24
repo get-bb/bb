@@ -6,20 +6,20 @@ import { getAuthenticatedDaemon } from "./auth.js";
 
 type AuthenticatedDaemonContext = Parameters<typeof getAuthenticatedDaemon>[0];
 
-export interface RequireAuthorizedActiveSessionArgs {
+interface RequireAuthorizedActiveSessionArgs {
   hostId: string;
   sessionId: string;
 }
 
-export interface RequireAuthenticatedDaemonSessionArgs {
+interface RequireAuthenticatedDaemonSessionArgs {
   context: AuthenticatedDaemonContext;
   db: DbConnection;
   sessionId: string;
 }
 
-export type InactiveSessionReason = "active" | "closed" | "missing";
+type InactiveSessionReason = "active" | "closed" | "missing";
 
-export interface InactiveSessionLogFields {
+interface InactiveSessionLogFields {
   authenticatedHostId?: string;
   closeReason?: string | null;
   closedAt?: number | null;
@@ -31,7 +31,7 @@ export interface InactiveSessionLogFields {
   sessionStatus?: string;
 }
 
-export interface GetInactiveSessionLogFieldsArgs {
+interface GetInactiveSessionLogFieldsArgs {
   authenticatedHostId?: string;
   now: number;
   sessionId: string;

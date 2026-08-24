@@ -36,6 +36,7 @@ export const PANE_FOCUS_APP_COMMAND_IDS = [
 ] as const;
 
 export const APP_COMMAND_IDS = [
+  "palette.open",
   "thread.new",
   "thread.search",
   "thread.rename",
@@ -68,14 +69,16 @@ export const APP_COMMAND_IDS = [
   "modelPicker.cycleReasoningBackward",
   "browser.focusLocation",
   "browser.reload",
+  "browser.find",
   "workspace.openPreferred",
+  "logs.openServerDaemon",
   ...QUESTION_SELECT_APP_COMMAND_IDS,
 ] as const;
 
 export const appCommandIdSchema = z.enum(APP_COMMAND_IDS);
 export type AppCommandId = z.infer<typeof appCommandIdSchema>;
 
-export const APP_COMMAND_CONTEXT_KEYS = [
+const APP_COMMAND_CONTEXT_KEYS = [
   "mainSurface",
   "modalOpen",
   "editableFocus",
@@ -89,7 +92,7 @@ export const APP_COMMAND_CONTEXT_KEYS = [
   "macPlatform",
 ] as const;
 
-export const appCommandContextKeySchema = z.enum(APP_COMMAND_CONTEXT_KEYS);
+const appCommandContextKeySchema = z.enum(APP_COMMAND_CONTEXT_KEYS);
 export type AppCommandContextKey = z.infer<typeof appCommandContextKeySchema>;
 export type AppCommandContext = Record<AppCommandContextKey, boolean>;
 
@@ -192,13 +195,12 @@ export function matchesAppShortcut(
   );
 }
 
-export const appCommandWhenSchema = z
+const appCommandWhenSchema = z
   .object({
     all: z.array(appCommandContextKeySchema),
     none: z.array(appCommandContextKeySchema),
   })
   .strict();
-export type AppCommandWhen = z.infer<typeof appCommandWhenSchema>;
 
 export const appKeybindingSchema = z
   .object({
@@ -210,7 +212,7 @@ export const appKeybindingSchema = z
   .strict();
 export type AppKeybinding = z.infer<typeof appKeybindingSchema>;
 
-export const appDefaultKeybindingSchema = appKeybindingSchema.extend({
+const appDefaultKeybindingSchema = appKeybindingSchema.extend({
   // Null keeps a command assignable without shipping a default shortcut.
   shortcut: appShortcutSchema.nullable(),
 });
@@ -237,14 +239,13 @@ export const appDefaultKeybindingsSchema = z
   .max(256);
 export type AppDefaultKeybindings = z.infer<typeof appDefaultKeybindingsSchema>;
 
-export const appKeybindingOverrideSchema = z
+const appKeybindingOverrideSchema = z
   .object({
     command: appCommandIdSchema,
     // Null has explicit meaning: disable every default binding for this command.
     shortcut: appShortcutSchema.nullable(),
   })
   .strict();
-export type AppKeybindingOverride = z.infer<typeof appKeybindingOverrideSchema>;
 
 export const appKeybindingOverridesSchema = z
   .array(appKeybindingOverrideSchema)

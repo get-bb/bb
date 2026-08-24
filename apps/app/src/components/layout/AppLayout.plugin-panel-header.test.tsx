@@ -19,18 +19,15 @@ vi.mock("@/components/sidebar/AppSidebar", () => ({
   AppSidebar: () => <aside data-testid="app-sidebar" />,
 }));
 
-vi.mock("@/hooks/useThreadSplitsEnabled", () => ({
-  useThreadSplitsEnabled: () => true,
-}));
-
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
     data: {
       experiments: {
-        claudeCodeMockCliTraffic: false,
+        changelogPreview: false,
         editMessages: false,
-        newOnboarding: false,
+        mobileApp: false,
         providerSessionReaping: false,
+        timelineWindowing: false,
       },
     },
   }),
@@ -50,8 +47,8 @@ vi.mock("@/lib/plugin-slots", () => ({
 }));
 
 vi.mock("@/components/plugin/PluginPanelHeader", () => ({
-  PluginPanelHeaderCenter: ({ panel }: { panel: { title: string } }) => (
-    <span data-testid="plugin-panel-header-center">{panel.title}</span>
+  PluginPanelHeaderCenter: ({ chrome }: { chrome: { title: string } }) => (
+    <span data-testid="plugin-panel-header-center">{chrome.title}</span>
   ),
   PluginPanelHeaderActions: () => null,
 }));
@@ -174,17 +171,14 @@ describe("AppLayout plugin panel header", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the shared header on compact viewports so the body clears the sidebar trigger", () => {
+  it("leaves the compact header to the plugin page panel host", () => {
     viewportState.compact = true;
     renderPluginPanelRoute();
 
-    expect(screen.getByTestId("app-page-header")).toBeTruthy();
-    expect(screen.getByTestId("plugin-panel-header-center").textContent).toBe(
-      "Helm Wiki",
-    );
+    expect(screen.queryByTestId("app-page-header")).toBeNull();
   });
 
-  it("leaves the header to the split workspace on regular viewports", () => {
+  it("leaves the regular header to the plugin page panel host", () => {
     renderPluginPanelRoute();
 
     expect(screen.queryByTestId("app-page-header")).toBeNull();

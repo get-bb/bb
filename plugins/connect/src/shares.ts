@@ -109,7 +109,7 @@ export function serverOwnPort(loopbackBaseUrl: string): number {
   return url.protocol === "https:" ? 443 : 80;
 }
 
-export interface ShareRegistryOptions {
+interface ShareRegistryOptions {
   kv: Pick<PluginKvStorage, "get" | "set" | "delete">;
   hosts: Pick<PluginHosts, "declareSharedPorts" | "ensureSharedPortTunnel">;
   hostResolver: ShareHostResolver;

@@ -82,14 +82,8 @@ function observeOverflow(
   };
 }
 
-interface ConversationMessageOverflowToggleLabels {
-  collapsed: string;
-  expanded: string;
-}
-
 interface ConversationMessageOverflowToggleProps {
   expanded: boolean;
-  labels: ConversationMessageOverflowToggleLabels;
   onToggle: () => void;
 }
 
@@ -132,9 +126,12 @@ export function useOverflowMeasurement({
       if (!element.isConnected) return;
       setMeasurement(nextMeasurement);
     };
-    applyMeasurement(readOverflowMeasurement(element));
-
     if (typeof ResizeObserver === "undefined") {
+      // Modern browsers deliver one initial ResizeObserver batch for every
+      // observed element. Waiting for that batch lets the shared observer
+      // complete all sibling layout reads before any React state write. A
+      // synchronous read here would instead force layout once per message.
+      applyMeasurement(readOverflowMeasurement(element));
       return;
     }
 
@@ -150,7 +147,6 @@ export function useIsOverflowing(args: UseOverflowMeasurementArgs): boolean {
 
 export function ConversationMessageOverflowToggle({
   expanded,
-  labels,
   onToggle,
 }: ConversationMessageOverflowToggleProps) {
   return (
@@ -161,7 +157,7 @@ export function ConversationMessageOverflowToggle({
         className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground"
         aria-expanded={expanded}
       >
-        {expanded ? labels.expanded : labels.collapsed}
+        {expanded ? "Show less" : "Show more"}
       </button>
     </div>
   );

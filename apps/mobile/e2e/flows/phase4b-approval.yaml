@@ -1,0 +1,48 @@
+# Phase 4b approval banner: with `approve:command echo hi` sent to THREAD_ID
+# through the API (the fake provider blocks on a command approval), open the
+# Interactions showcase's Live thread section, see the approval card, tap
+# Allow once, and watch the banner clear. Pass `-e THREAD_ID=<id>`.
+#
+# Run: maestro test -e THREAD_ID=thr_xxx e2e/flows/phase4b-approval.yaml
+appId: app.getbb.mobile
+env:
+  METRO_URL: "http://127.0.0.1:8082"
+  SERVER_URL: "http://127.0.0.1:41999"
+---
+- runFlow: ../subflows/launch-to-home.yaml
+- runFlow: ../subflows/open-settings.yaml
+- extendedWaitUntil:
+    visible:
+      id: "settings-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "settings-dev-interactions"
+    direction: DOWN
+    timeout: 30000
+- tapOn:
+    id: "settings-dev-interactions"
+- extendedWaitUntil:
+    visible:
+      id: "dev-interactions-screen"
+    timeout: 30000
+- tapOn:
+    id: "dev-live-thread-input"
+- inputText: "${THREAD_ID}"
+- hideKeyboard
+- tapOn:
+    id: "dev-live-thread-load"
+- extendedWaitUntil:
+    visible:
+      id: "pending-interaction-approval"
+    timeout: 20000
+- assertVisible: "(?s).*echo hi.*"
+- takeScreenshot: phase4b-approval
+- tapOn:
+    id: "approval-allow_once"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "dev-live-thread-no-interaction"
+    timeout: 20000
+- takeScreenshot: phase4b-approval-allowed

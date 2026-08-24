@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -12,6 +12,7 @@ import {
 import { join } from "node:path";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
+import { sha256Hex } from "./sha256-hex.js";
 
 /**
  * The daemon's one content-addressed cache for executable artifacts it is
@@ -30,7 +31,7 @@ import type { HostDaemonLogger } from "./logger.js";
 
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/u;
 
-export type FetchNodeArtifact = (args: {
+type FetchNodeArtifact = (args: {
   digest: string;
   byteLength: number;
 }) => Promise<Uint8Array>;
@@ -46,17 +47,19 @@ export type FetchNodeArtifact = (args: {
  *   artifacts). Every use touches its digest directory, so age is a real
  *   "nobody has run this in a month" signal rather than a guess.
  */
-export type NodeArtifactPruneStrategy =
+type NodeArtifactPruneStrategy =
   | { kind: "keep-only-current" }
   | { kind: "keep-recently-used"; maxAgeMs: number };
 
-export interface EnsureCachedNodeArtifactArgs {
+interface EnsureCachedNodeArtifactArgs {
   /** Root of one artifact family. Digest directories are its children. */
   cacheDir: string;
   digest: string;
   byteLength: number;
-  /** Basename inside the digest directory, e.g. `host.js`. */
+  /** Basename inside the digest directory, e.g. `host.mjs`. */
   fileName: string;
+  /** Previous basenames that may contain the same verified artifact. */
+  legacyFileNames?: readonly string[];
   fetchArtifact: FetchNodeArtifact;
   prune: NodeArtifactPruneStrategy;
   logger: Pick<HostDaemonLogger, "debug" | "warn">;
@@ -65,10 +68,6 @@ export interface EnsureCachedNodeArtifactArgs {
 /** In-flight pulls keyed by `${cacheDir}\0${digest}` so concurrent callers
  *  for the same artifact share one download. */
 const pendingPulls = new Map<string, Promise<string>>();
-
-function sha256Hex(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
 
 function describeMismatch(
   digest: string,
@@ -130,6 +129,18 @@ async function ensureCachedNodeArtifactUnlocked(
       { cacheDir: args.cacheDir, digest: args.digest },
       "Using cached host artifact",
     );
+    await removeLegacyArtifactFiles(directory, args);
+    await touchDirectory(directory);
+    await pruneStaleDigests(args);
+    return artifactPath;
+  }
+
+  const migratedLegacyPath = await migrateLegacyArtifact(
+    directory,
+    artifactPath,
+    args,
+  );
+  if (migratedLegacyPath) {
     await touchDirectory(directory);
     await pruneStaleDigests(args);
     return artifactPath;
@@ -164,12 +175,58 @@ async function ensureCachedNodeArtifactUnlocked(
       await rm(staged, { force: true });
       throw error;
     }
+    await removeLegacyArtifactFiles(directory, args);
     await pruneStaleDigests(args);
     return artifactPath;
   }
   throw new Error(
     `Host artifact download failed verification after retry: ${lastMismatch}`,
   );
+}
+
+async function migrateLegacyArtifact(
+  directory: string,
+  artifactPath: string,
+  args: EnsureCachedNodeArtifactArgs,
+): Promise<boolean> {
+  for (const legacyFileName of args.legacyFileNames ?? []) {
+    if (legacyFileName === args.fileName) continue;
+    const legacyPath = join(directory, legacyFileName);
+    if (!(await isVerifiedCachedArtifact(legacyPath, args))) continue;
+
+    await rename(legacyPath, artifactPath);
+    args.logger.debug(
+      {
+        cacheDir: args.cacheDir,
+        digest: args.digest,
+        legacyFileName,
+        fileName: args.fileName,
+      },
+      "Migrated cached host artifact",
+    );
+    await removeLegacyArtifactFiles(directory, args);
+    return true;
+  }
+  return false;
+}
+
+async function removeLegacyArtifactFiles(
+  directory: string,
+  args: EnsureCachedNodeArtifactArgs,
+): Promise<void> {
+  const legacyPaths = (args.legacyFileNames ?? [])
+    .filter((fileName) => fileName !== args.fileName)
+    .map((fileName) => join(directory, fileName));
+  const results = await Promise.allSettled(
+    legacyPaths.map((path) => rm(path, { force: true })),
+  );
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") return;
+    args.logger.warn(
+      { path: legacyPaths[index], err: result.reason },
+      "Failed to remove legacy host artifact",
+    );
+  });
 }
 
 async function isVerifiedCachedArtifact(

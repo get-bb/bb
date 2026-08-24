@@ -11,12 +11,12 @@ import {
 } from "./env-vars.js";
 import { assignIfDefined } from "./objects.js";
 
-export interface DevAppConfig {
+interface DevAppConfig {
   BB_DEV_APP_HOST: string;
   BB_DEV_APP_PORT?: number;
 }
 
-export type LoadDevAppConfigArgs = EnvLoaderArgs;
+type LoadDevAppConfigArgs = EnvLoaderArgs;
 
 export function loadDevAppConfig(
   args: LoadDevAppConfigArgs = {},

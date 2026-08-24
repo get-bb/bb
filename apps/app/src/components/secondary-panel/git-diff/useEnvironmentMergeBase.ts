@@ -75,7 +75,7 @@ export function shouldSyncSelectedMergeBaseBranch({
   );
 }
 
-export function resolveImplicitMergeBaseBranch({
+function resolveImplicitMergeBaseBranch({
   environment,
   workspaceStatus,
 }: ResolveImplicitMergeBaseBranchParams): string | undefined {
@@ -176,13 +176,14 @@ export function useEnvironmentMergeBase({
   const showBranchComparisonUi = Boolean(
     effectiveMergeBaseBranch || workspaceStatus?.branch.defaultBranch,
   );
-  const mergeBaseBranch = effectiveMergeBaseBranch;
   const isOnDefaultBranch =
     workspaceStatus?.branch.currentBranch != null &&
     workspaceStatus.branch.currentBranch ===
       workspaceStatus.branch.defaultBranch;
   const showMergeBase =
-    showBranchComparisonUi && Boolean(mergeBaseBranch) && !isOnDefaultBranch;
+    showBranchComparisonUi &&
+    Boolean(effectiveMergeBaseBranch) &&
+    !isOnDefaultBranch;
 
   const handleMergeBaseBranchChange: MergeBaseBranchChangeHandler = useCallback(
     (branch) => {
@@ -255,6 +256,5 @@ export function useEnvironmentMergeBase({
     handleMergeBaseBranchChange,
     showBranchComparisonUi,
     showMergeBase,
-    mergeBaseBranch,
   };
 }

@@ -57,7 +57,7 @@ interface RecoverOrphanedEnvironmentDestroyRequestsArgs {
   updatedBefore: number;
 }
 
-export interface RecoverOrphanedEnvironmentDestroyRequestsResult {
+interface RecoverOrphanedEnvironmentDestroyRequestsResult {
   destroyed: number;
   errored: number;
 }
@@ -67,7 +67,7 @@ type EnvironmentDestroyCommand =
 type EnvironmentDestroyCommandResultReport =
   CommandResultReportForType<"environment.destroy">;
 
-export interface SettleEnvironmentDestroyCommandResultArgs {
+interface SettleEnvironmentDestroyCommandResultArgs {
   command: EnvironmentDestroyCommand;
   deps: EnvironmentCleanupSettlementDeps;
   execution: HostDaemonCommandExecutionRecord;
@@ -96,14 +96,6 @@ interface EnvironmentCleanupSettlementDeps extends EnvironmentCleanupWriteDeps {
 }
 
 type EnvironmentCleanupDecisionDeps = Pick<AppDeps, "db">;
-type EnvironmentCleanupHostConnectionDeps = Pick<AppDeps, "db" | "hub">;
-
-function hasConnectedHostDaemon(
-  deps: EnvironmentCleanupHostConnectionDeps,
-  hostId: string,
-): boolean {
-  return deps.hub.hasDaemonForHost(hostId);
-}
 
 function workspaceCanBeDestroyedNow(
   deps: LoggedWorkSessionDeps,
@@ -122,7 +114,7 @@ function workspaceCanBeDestroyedNow(
     return false;
   }
 
-  if (!hasConnectedHostDaemon(deps, environment.hostId)) {
+  if (!deps.hub.hasDaemonForHost(environment.hostId)) {
     return false;
   }
 
@@ -228,10 +220,6 @@ export function settleEnvironmentDestroyCommandResult(
   return {
     postCommitActions: [
       {
-        name: "Terminal cleanup after environment destroy",
-        context: {
-          environmentId: environment.id,
-        },
         run: (deps) =>
           deps.terminalSessions.closeDestroyedEnvironmentTerminals({
             environmentId: environment.id,

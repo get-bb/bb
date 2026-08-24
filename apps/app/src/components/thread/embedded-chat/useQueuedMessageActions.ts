@@ -17,7 +17,7 @@ import { appToast } from "@/components/ui/app-toast";
 import { BbHttpError } from "@/lib/sdk";
 import type { InlineQueuedMessageEditState } from "./useInlineQueuedMessageEditing";
 
-export type QueuedMessageSendGuard = "current-head" | "exists" | "none";
+type QueuedMessageSendGuard = "current-head" | "exists" | "none";
 
 interface SendQueuedMessageByIdArgs {
   guard: QueuedMessageSendGuard;
@@ -25,8 +25,8 @@ interface SendQueuedMessageByIdArgs {
 }
 
 interface UseQueuedMessageActionsArgs {
-  /** The thread owning the queue. Null disables every action. */
-  threadId: string | null;
+  /** The thread owning the queue. */
+  threadId: string;
   queuedMessages: readonly ThreadQueuedMessage[];
   /**
    * How long a steered ("send now") message keeps its "Sending..." label:
@@ -45,7 +45,7 @@ interface UseQueuedMessageActionsArgs {
   activeComposerDraftInput: PromptInput[];
 }
 
-export interface UseQueuedMessageActionsResult {
+interface UseQueuedMessageActionsResult {
   /** The processing state QueuedMessagesList should display. */
   processingQueuedMessage: {
     action: QueuedMessageProcessingAction;
@@ -107,7 +107,7 @@ export function useQueuedMessageActions({
 
   const sendQueuedMessageById = useCallback(
     async ({ guard, messageId }: SendQueuedMessageByIdArgs) => {
-      if (threadId === null || (canSendNow !== undefined && !canSendNow())) {
+      if (canSendNow !== undefined && !canSendNow()) {
         return;
       }
       if (
@@ -169,7 +169,6 @@ export function useQueuedMessageActions({
 
   const handleSaveInlineQueuedMessage = useCallback(async () => {
     if (
-      threadId === null ||
       !inlineEditingQueuedMessage ||
       activeComposerDraftInput.length === 0 ||
       updateQueuedMessage.isPending
@@ -224,9 +223,6 @@ export function useQueuedMessageActions({
 
   const handleDeleteQueuedMessage = useCallback(
     (queuedMessageId: string) => {
-      if (threadId === null) {
-        return;
-      }
       setProcessingQueuedMessage({ id: queuedMessageId, action: "delete" });
       void deleteQueuedMessage
         .mutateAsync({
@@ -253,9 +249,6 @@ export function useQueuedMessageActions({
 
   const handleReorderQueuedMessage = useCallback(
     (request: QueuedMessageReorderRequest) => {
-      if (threadId === null) {
-        return;
-      }
       void reorderQueuedMessage
         .mutateAsync({
           ...request,
@@ -276,9 +269,6 @@ export function useQueuedMessageActions({
 
   const handleSetQueuedMessageGroupBoundary = useCallback(
     (request: QueuedMessageGroupBoundaryRequest) => {
-      if (threadId === null) {
-        return;
-      }
       void setQueuedMessageGroupBoundary
         .mutateAsync({
           id: threadId,

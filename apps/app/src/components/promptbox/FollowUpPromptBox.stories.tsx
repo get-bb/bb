@@ -62,8 +62,8 @@ import type {
   ExecutionPermissionConfig,
 } from "@/components/promptbox/ExecutionControls";
 import { PageShell } from "@/components/ui/page-shell.js";
-import { promptDraftToInput, type PromptDraftState } from "@/lib/prompt-draft";
-import { queuedInputToDraft } from "@/views/thread-detail/threadQueuedMessages";
+import { promptDraftToInput, type PromptDraftState } from "@bb/client-core";
+import { queuedInputToDraft } from "@bb/client-core";
 
 export default {
   title: "promptbox/Follow Up Prompt Box",
@@ -73,14 +73,12 @@ const noop = () => {};
 const STORY_BRANCH_NAME = "bb/design-system-polish";
 
 // FollowUp commits the provider — omit `onChange` so the picker renders the
-// provider segment as locked, and pass `displayName` so the static label
-// shows even without a selectedId lookup.
+// provider segment as locked.
 const baseExecution = makeExecutionControlsProps({
   provider: {
     options: STORY_PROVIDER_OPTIONS,
     selectedId: "codex",
     hasMultiple: true,
-    displayName: "Codex",
   },
 });
 const claudePlanExecution = makeExecutionControlsProps({
@@ -88,7 +86,6 @@ const claudePlanExecution = makeExecutionControlsProps({
     options: STORY_PROVIDER_OPTIONS,
     selectedId: "claude-code",
     hasMultiple: true,
-    displayName: "Claude Code",
   },
   model: {
     active: { model: "claude-sonnet-5" },
@@ -560,7 +557,7 @@ interface RowConfig {
   contextWindowUsage?: ThreadContextWindowUsage | null;
   stack?: ReactNode | null;
   queuedMessages?: readonly ThreadQueuedMessage[];
-  zenModeResetKey?: string;
+  collapseResetKey?: string;
   hideComposer?: boolean;
   /** Defaults to the editable execution controls; override to show the read-only model/provider config. */
   execution?: ExecutionControlsProps;
@@ -611,7 +608,7 @@ function Row({
   contextWindowUsage = null,
   stack = null,
   queuedMessages: initialQueuedMessages,
-  zenModeResetKey = "thr_demo",
+  collapseResetKey = "thr_demo",
   hideComposer = false,
   execution = baseExecution,
   permission = basePermission,
@@ -726,7 +723,7 @@ function Row({
                 permissionReadOnly
                 promptActions={promptActions}
                 typeahead={typeaheadBase}
-                zenModeResetKey={`${zenModeResetKey}:queued-message`}
+                collapseResetKey={`${collapseResetKey}:queued-message`}
                 isPrimaryComposer={false}
                 showScrollToBottomButton={false}
               />
@@ -744,7 +741,7 @@ function Row({
       resolvedCompactPlaceholder,
       resolvedPlaceholder,
       threadRuntimeDisplayStatus,
-      zenModeResetKey,
+      collapseResetKey,
     ],
   );
   const queueElement =
@@ -819,7 +816,7 @@ function Row({
         promptActions={promptActions}
         readOnly={readOnly}
         typeahead={typeaheadBase}
-        zenModeResetKey={zenModeResetKey}
+        collapseResetKey={collapseResetKey}
       />
     </PromptStage>
   );

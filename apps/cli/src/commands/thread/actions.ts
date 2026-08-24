@@ -24,6 +24,7 @@ import {
   parsePermissionMode,
   parseServiceTier,
   PERMISSION_MODE_HELP,
+  PLAN_HELP,
   buildPromptInputs,
   collectOption,
 } from "./helpers.js";
@@ -69,6 +70,7 @@ interface ThreadTellCommandOptions {
   reasoningLevel?: string;
   serviceTier?: string;
   mode?: string;
+  plan?: boolean;
   file?: string[];
   image?: string[];
 }
@@ -76,10 +78,6 @@ interface ThreadTellCommandOptions {
 interface ThreadActionOptions {
   self?: boolean;
   json?: boolean;
-}
-
-interface ThreadRetryCommandOptions extends ThreadActionOptions {
-  requestId?: string;
 }
 
 interface ThreadEditMessageCommandOptions {
@@ -101,6 +99,7 @@ interface PostThreadMessageArgs {
   reasoningLevel?: ReasoningLevel;
   serviceTier?: ServiceTier;
   senderThreadId?: string;
+  plan?: boolean;
   files?: readonly string[];
   images?: readonly string[];
 }
@@ -427,6 +426,7 @@ export function registerActionsCommands(
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
+    .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
       "Pass a host-readable absolute or uploaded attachment file path (repeatable)",
@@ -452,6 +452,7 @@ export function registerActionsCommands(
             reasoningLevel: parseReasoningLevel(opts.reasoningLevel),
             serviceTier: parseServiceTier(opts.serviceTier),
             senderThreadId: resolveSenderThreadId(id),
+            plan: opts.plan,
             files: opts.file,
             images: opts.image,
           });
@@ -460,42 +461,6 @@ export function registerActionsCommands(
             response.mode === "steer"
               ? `Thread ${id} steered`
               : `Thread ${id} updated`,
-          );
-        },
-      ),
-    );
-
-  parent
-    .command("retry [id]")
-    .description("Continue a turn after a provider subscription limit")
-    .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option(
-      "--request-id <id>",
-      "Require this failed client request id before continuing",
-    )
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (id: string | undefined, opts: ThreadRetryCommandOptions) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          const sdk = createCliBbSdk(getUrl());
-          const status = await sdk.threads.rateLimitRecovery({ threadId });
-          const failedRequestId =
-            opts.requestId ?? status.candidate?.failedRequestId;
-          if (failedRequestId === undefined) {
-            throw new Error(
-              `Thread ${threadId} cannot be continued after a provider rate limit (${status.reason}).`,
-            );
-          }
-          const result = await sdk.threads.continueAfterRateLimit({
-            threadId,
-            failedRequestId,
-            mode: "manual",
-          });
-          const output = { threadId, failedRequestId, ...result };
-          if (outputJson(opts, output)) return;
-          console.log(
-            `Thread ${threadId} provider rate limit retry requested manually`,
           );
         },
       ),
@@ -570,6 +535,7 @@ async function postThreadMessage(
     threadId: args.threadId,
     input: buildPromptInputs({
       message: args.message,
+      plan: args.plan,
       files: args.files,
       images: args.images,
     }),

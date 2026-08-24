@@ -190,7 +190,7 @@ const BUBBLE_ACTIONS: BubbleAction[] = [
   },
 ];
 
-export interface TasksEditorProps {
+interface TasksEditorProps {
   /** Markdown source; the canonical representation of the content. */
   value: string;
   onChange(markdown: string): void;

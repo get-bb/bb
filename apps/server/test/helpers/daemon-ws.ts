@@ -7,7 +7,7 @@ export interface TestDaemonWebSocket {
   send(data: string): void;
 }
 
-export interface FeedRawDaemonWebSocketMessageArgs {
+interface FeedRawDaemonWebSocketMessageArgs {
   harness: TestAppHarness;
   hostId: string;
   rawMessage: JsonObject;

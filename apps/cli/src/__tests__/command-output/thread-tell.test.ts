@@ -128,6 +128,56 @@ describe("bb thread tell command output", () => {
     });
   });
 
+  // Plan mode is keyed on the structured /plan command mention the composer
+  // sends, never on literal text; without the mention the Claude CLI answers
+  // "/plan isn't available in this environment" (#2019).
+  it("bb thread tell --plan sends the composer's /plan command mention", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(
+      [
+        "thread",
+        "tell",
+        "thread-plan",
+        "add a README",
+        "--plan",
+        "--file",
+        "/tmp/report.pdf",
+      ],
+      register,
+    );
+
+    expect(post).toHaveBeenCalledWith({
+      param: { id: "thread-plan" },
+      json: {
+        input: [
+          {
+            type: "text",
+            text: "/plan add a README",
+            mentions: [
+              {
+                start: 0,
+                end: 5,
+                resource: {
+                  kind: "command",
+                  trigger: "/",
+                  name: "plan",
+                  source: "command",
+                  origin: "builtin",
+                  label: "plan",
+                  argumentHint: null,
+                },
+              },
+            ],
+          },
+          { type: "localFile", path: "/tmp/report.pdf" },
+        ],
+        mode: "steer-if-active",
+      },
+    });
+  });
+
   it("bb thread tell forwards host-readable paths without reading them on the CLI machine", async () => {
     const post = vi.fn(async () => ({ ok: true }));
     stubServerApi({ "v1.threads.:id.send.$post": post });

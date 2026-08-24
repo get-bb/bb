@@ -6,6 +6,7 @@ import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type { AgentRuntimeSkillRoot } from "@bb/agent-runtime";
 import type { HostDaemonInjectedSkillSource } from "@bb/host-daemon-contract";
 import type { HostDaemonSkillTree } from "@bb/host-daemon-contract";
+import { isFsErrorWithCode } from "./fs-errors.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 
 const STAGING_ROOT_SEGMENTS = ["runtime", "global-skills"] as const;
@@ -29,25 +30,25 @@ export interface InjectedSkillsLogger {
   warn(context: object, message: string): void;
 }
 
-export interface StageInjectedSkillSourcesArgs {
+interface StageInjectedSkillSourcesArgs {
   dataDir: string;
   fetchSkillTree?: FetchSkillTree;
   injectedSkillSources: readonly HostDaemonInjectedSkillSource[];
   logger?: InjectedSkillsLogger;
 }
 
-export interface CleanupInjectedSkillStagingDirsArgs {
+interface CleanupInjectedSkillStagingDirsArgs {
   dataDir: string;
   keepCatalogHashes: readonly string[];
   logger?: InjectedSkillsLogger;
 }
 
-export interface StagedInjectedSkills {
+interface StagedInjectedSkills {
   catalogHash: string;
   skillRoots: readonly AgentRuntimeSkillRoot[];
 }
 
-export interface CopyInjectedSkillSourceArgs {
+interface CopyInjectedSkillSourceArgs {
   destinationPath: string;
   name: string;
   sourceRootPath: string;
@@ -111,19 +112,6 @@ interface BuildSkillRootsArgs {
   catalogHash: string;
   stageRootPath: string;
   trees: readonly CollectedSkillTree[];
-}
-
-interface PluginManifestAuthor {
-  name: string;
-}
-
-interface ClaudePluginManifest {
-  $schema: string;
-  name: string;
-  version: string;
-  description: string;
-  author: PluginManifestAuthor;
-  skills: string[];
 }
 
 interface CatalogSkillEntry {
@@ -200,10 +188,6 @@ function createNoopLogger(): InjectedSkillsLogger {
     debug: () => undefined,
     warn: () => undefined,
   };
-}
-
-function isFsErrorWithCode(error: Error, code: string): boolean {
-  return "code" in error && error.code === code;
 }
 
 function resolveStagingRootPath(dataDir: string): string {
@@ -455,21 +439,6 @@ export async function copyInjectedSkillSource(
   });
 }
 
-function createClaudePluginManifest(
-  skillNames: readonly string[],
-): ClaudePluginManifest {
-  return {
-    $schema: "https://anthropic.com/claude-code/plugin.schema.json",
-    name: "bb-global-skills",
-    version: "0.1.0",
-    description: "Global skills staged by bb.",
-    author: {
-      name: "bb",
-    },
-    skills: skillNames.map((skillName) => `./skills/${skillName}`),
-  };
-}
-
 function createCatalogFile(args: CreateCatalogFileArgs): CatalogFile {
   return {
     catalogHash: args.catalogHash,
@@ -493,7 +462,7 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
     await fs.access(path.join(stageRootPath, "catalog.json"));
     return stageRootPath;
   } catch (error) {
-    if (!(error instanceof Error) || !isFsErrorWithCode(error, "ENOENT")) {
+    if (!isFsErrorWithCode(error, "ENOENT")) {
       throw error;
     }
   }
@@ -505,23 +474,14 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
   );
   await fs.rm(tempRootPath, { recursive: true, force: true });
   await fs.mkdir(path.join(tempRootPath, "skills"), { recursive: true });
-  await fs.mkdir(path.join(tempRootPath, ".claude-plugin"), {
-    recursive: true,
-  });
 
   try {
-    const skillNames = args.trees.map((tree) => tree.source.name);
     for (const tree of args.trees) {
       await copyCollectedTree({
         skillDirectoryPath: path.join(tempRootPath, "skills", tree.source.name),
         tree,
       });
     }
-    await fs.writeFile(
-      path.join(tempRootPath, ".claude-plugin", "plugin.json"),
-      `${JSON.stringify(createClaudePluginManifest(skillNames), null, 2)}\n`,
-      "utf8",
-    );
     await fs.writeFile(
       path.join(tempRootPath, "catalog.json"),
       `${JSON.stringify(
@@ -537,9 +497,8 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
     await fs.rename(tempRootPath, stageRootPath);
   } catch (error) {
     if (
-      error instanceof Error &&
-      (isFsErrorWithCode(error, "EEXIST") ||
-        isFsErrorWithCode(error, "ENOTEMPTY"))
+      isFsErrorWithCode(error, "EEXIST") ||
+      isFsErrorWithCode(error, "ENOTEMPTY")
     ) {
       await fs.rm(tempRootPath, { recursive: true, force: true });
       return stageRootPath;
@@ -569,31 +528,21 @@ async function writeStageRootOnce(args: WriteStageRootArgs): Promise<string> {
   return write;
 }
 
+/**
+ * One root for every provider: the staged `skills/` directory, one
+ * subdirectory per skill (`<path>/<name>/SKILL.md`), plus the skill list.
+ * Each bridge maps it to its provider's own layout (a codex extra root, a
+ * claude local plugin it assembles itself, a pi skill path, an ACP prompt
+ * listing); the daemon stages no provider-native manifest.
+ */
 function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
-  const skillDirectoryRootPath = path.join(args.stageRootPath, "skills");
   return [
     {
-      id: `global-skills:${args.catalogHash}:codex`,
-      providerId: "codex",
-      skillDirectoryRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:claude-code`,
-      providerId: "claude-code",
-      localPluginPath: args.stageRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:pi`,
-      providerId: "pi",
-      skillDirectoryRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:acp`,
-      providerId: "acp",
-      skillDirectoryRootPath,
+      id: `global-skills:${args.catalogHash}`,
+      path: path.join(args.stageRootPath, "skills"),
       skills: args.trees.map((tree) => ({
-        description: tree.source.description,
         name: tree.source.name,
+        description: tree.source.description,
       })),
     },
   ];
@@ -714,7 +663,7 @@ async function gcSkillStore(dataDir: string): Promise<void> {
   try {
     entries = await fs.readdir(storeRootPath, { withFileTypes: true });
   } catch (error) {
-    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) return;
+    if (isFsErrorWithCode(error, "ENOENT")) return;
     throw error;
   }
   const completeTrees: { name: string; usedAt: number }[] = [];
@@ -730,7 +679,7 @@ async function gcSkillStore(dataDir: string): Promise<void> {
       );
       completeTrees.push({ name: entry.name, usedAt: stat.mtimeMs });
     } catch (error) {
-      if (!(error instanceof Error) || !isFsErrorWithCode(error, "ENOENT")) {
+      if (!isFsErrorWithCode(error, "ENOENT")) {
         throw error;
       }
     }
@@ -801,9 +750,8 @@ async function writeFetchedTreeToStore(args: {
     await fs.rename(tempRootPath, treeRootPath);
   } catch (error) {
     if (
-      error instanceof Error &&
-      (isFsErrorWithCode(error, "EEXIST") ||
-        isFsErrorWithCode(error, "ENOTEMPTY"))
+      isFsErrorWithCode(error, "EEXIST") ||
+      isFsErrorWithCode(error, "ENOTEMPTY")
     ) {
       await fs.rm(tempRootPath, { recursive: true, force: true });
     } else {
@@ -835,7 +783,7 @@ export async function ensureStoredSkillTree(args: {
       await gcSkillStore(args.dataDir);
       return path.join(treeRootPath, STORE_CONTENT_DIR);
     } catch (error) {
-      if (!(error instanceof Error) || !isFsErrorWithCode(error, "ENOENT")) {
+      if (!isFsErrorWithCode(error, "ENOENT")) {
         throw error;
       }
     }
@@ -967,7 +915,7 @@ export async function cleanupInjectedSkillStagingDirs(
   try {
     entries = await fs.readdir(stagingRootPath, { withFileTypes: true });
   } catch (error) {
-    if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+    if (isFsErrorWithCode(error, "ENOENT")) {
       return;
     }
     throw error;
@@ -985,7 +933,7 @@ export async function cleanupInjectedSkillStagingDirs(
         try {
           mtimeMs = (await fs.stat(entryPath)).mtimeMs;
         } catch (error) {
-          if (error instanceof Error && isFsErrorWithCode(error, "ENOENT")) {
+          if (isFsErrorWithCode(error, "ENOENT")) {
             return;
           }
           throw error;

@@ -6,7 +6,7 @@ interface PendingActiveTurnWaiter {
   timeout: ReturnType<typeof setTimeout>;
 }
 
-export interface WaitForActiveTurnStateArgs {
+interface WaitForActiveTurnStateArgs {
   threadId: string;
   timeoutMs: number;
 }

@@ -72,14 +72,8 @@ interface ResolvedTarget {
  * context (plan §3): it renders a cursor ghost + a drop-zone overlay directly,
  * hit-tests panes by their {@link SPLIT_PANE_DATA_ATTR}, and calls back with the
  * chosen target. Colors come from theme tokens (never hardcoded), per AGENTS.md.
- *
- * Call from a `pointerdown` handler with the event's start coordinates.
  */
-export function beginSplitDrag(
-  startX: number,
-  startY: number,
-  config: SplitDragConfig,
-): void {
+export function beginSplitDrag(config: SplitDragConfig): void {
   let engaged = false;
   let target: SplitDropTarget | null = null;
   let ghostEl: HTMLElement | null = null;

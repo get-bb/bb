@@ -123,26 +123,14 @@ export function useGitDiffPanel({
       ? [selectedMergeBaseBranchRef.name, ...mergeBaseRemoteBranchList]
       : mergeBaseRemoteBranchList;
   }, [mergeBaseRemoteBranchList, selectedMergeBaseBranchRef]);
-  const mergeBaseBranchOptionsTruncated = Boolean(
-    mergeBaseBranches?.branchesTruncated ||
-    mergeBaseBranches?.remoteBranchesTruncated,
-  );
-
   useEffect(() => {
     setMergeBaseBranchSearchQuery("");
     setPendingGitDiffIntent(null);
   }, [environmentId, threadId]);
 
-  const openThreadSecondaryPanel = useCallback(
-    (panel: ThreadSecondaryPanelTab) => {
-      setThreadSecondaryPanel(panel);
-    },
-    [setThreadSecondaryPanel],
-  );
-
   const openThreadDiffPanel = useCallback(() => {
-    openThreadSecondaryPanel("git-diff");
-  }, [openThreadSecondaryPanel]);
+    setThreadSecondaryPanel("git-diff");
+  }, [setThreadSecondaryPanel]);
 
   const closeThreadSecondaryPanel = useCallback(() => {
     setThreadSecondaryPanel(null);
@@ -171,12 +159,10 @@ export function useGitDiffPanel({
     clearPendingGitDiffIntent,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
-    mergeBaseBranchOptionsTruncated,
     mergeBaseRemoteBranchOptions,
     openCommitDiff,
     openDiffFile,
     openThreadDiffPanel,
-    openThreadSecondaryPanel,
     pendingGitDiffCommitSha,
     pendingGitDiffScrollPath,
     requestedMergeBaseBranch,

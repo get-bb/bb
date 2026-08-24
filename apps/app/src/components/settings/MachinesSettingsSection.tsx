@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Host, PermissionMode } from "@bb/domain";
+import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { Button } from "@bb/shared-ui/button";
 import {
@@ -17,6 +18,13 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { ResourceRowDetailChevron } from "@bb/shared-ui/resource-list";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { AddMachineDialog } from "@/components/dialogs/AddMachineDialog";
 import { ConfirmDeleteDialog } from "@/components/dialogs/ConfirmDeleteDialog";
 import { appToast } from "@/components/ui/app-toast";
@@ -33,10 +41,10 @@ import {
   useRenameHost,
   useRetryHostUpdate,
 } from "@/hooks/mutations/host-mutations";
-import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
-import { PersistentHostIconName } from "@/lib/host-display";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
@@ -46,19 +54,19 @@ import {
   hostCanRetryUpdate,
 } from "@/lib/host-update-status";
 
-/** Fixed column so every machine's limit lands on the same vertical line. */
-const MACHINE_LIMIT_COLUMN = "w-36 shrink-0 truncate";
-
-const PERMISSION_MODE_LABELS: Record<PermissionMode, string> =
-  Object.fromEntries(
-    PERMISSION_MODE_OPTIONS.map((option) => [option.value, option.label]),
-  ) as Record<PermissionMode, string>;
+const PERMISSION_MODE_PRESENTATION: Record<
+  PermissionMode,
+  (typeof PERMISSION_MODE_OPTIONS)[number]
+> = Object.fromEntries(
+  PERMISSION_MODE_OPTIONS.map((option) => [option.value, option]),
+) as Record<PermissionMode, (typeof PERMISSION_MODE_OPTIONS)[number]>;
 
 const MACHINES_SECTION_DESCRIPTION =
   "Computers that can run your tasks. Pair a machine to run projects and threads on it.";
 
-const PRIMARY_REMOVE_DISABLED_REASON =
-  "This machine runs bb and can't be removed.";
+const PRIMARY_REMOVE_DISABLED_REASON = "bb's primary machine can't be removed.";
+
+const MACHINE_MENU_ITEM_CLASS = "min-h-9 px-2.5 py-2";
 
 const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   darwin: "macOS",
@@ -67,40 +75,11 @@ const PLATFORM_LABELS: Record<HostPlatform, string | null> = {
   unknown: null,
 };
 
-function machineMetaLine({
-  host,
-  platformLabel,
-  projectCount,
-  now,
-}: {
-  host: Host;
-  platformLabel: string | null;
-  projectCount: number;
-  now: number;
-}): string {
-  const parts: string[] = [];
-  const updateStatus = formatHostUpdateStatus(host);
-  if (updateStatus !== null) {
-    parts.push(updateStatus);
-  } else if (host.status === "connected") {
-    parts.push("Online");
-  } else if (host.lastSeenAt !== null) {
-    parts.push(
-      `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`,
-    );
-  } else {
-    parts.push("Offline");
-  }
-  if (platformLabel !== null) {
-    parts.push(platformLabel);
-  }
-  parts.push(`${projectCount} ${projectCount === 1 ? "project" : "projects"}`);
-  return parts.join(" · ");
-}
-
 interface MachineRowProps {
   host: Host;
   isPrimary: boolean;
+  isThisMachine: boolean;
+  showPrimaryBadge: boolean;
   platformLabel: string | null;
   projectCount: number;
   now: number;
@@ -113,6 +92,8 @@ interface MachineRowProps {
 function MachineRow({
   host,
   isPrimary,
+  isThisMachine,
+  showPrimaryBadge,
   platformLabel,
   projectCount,
   now,
@@ -121,74 +102,131 @@ function MachineRow({
   onRetryUpdate,
   retryUpdatePending,
 }: MachineRowProps) {
+  const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
+  const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
+  const connectionLabel =
+    host.status === "connected"
+      ? "Online"
+      : host.lastSeenAt === null
+        ? "Offline"
+        : `Offline · last seen ${formatRelativeTime({ timestamp: host.lastSeenAt, now })}`;
+  const updateStatus = formatHostUpdateStatus(host);
+  const removeItem = (
+    <DropdownMenuItem
+      variant="destructive"
+      aria-disabled={isPrimary || undefined}
+      className={cn(
+        MACHINE_MENU_ITEM_CLASS,
+        isPrimary && "cursor-not-allowed focus:bg-transparent",
+      )}
+      onSelect={(event) => {
+        if (isPrimary) {
+          event.preventDefault();
+          return;
+        }
+        onRemove();
+      }}
+    >
+      <Icon name="Trash2" aria-hidden />
+      <span className="min-w-0 truncate">Remove machine</span>
+    </DropdownMenuItem>
+  );
+
   return (
-    <SettingsRow className="group relative">
-      {/* Stretched link: the whole row opens the machine page, while the
-          controls above it keep their own click targets. */}
-      <Link
-        to={getSettingsMachineRoutePath(host.id)}
-        aria-label={`Open ${host.name}`}
-        className="absolute inset-0 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      />
-      <Icon
-        name={PersistentHostIconName}
-        className="size-4 shrink-0 text-muted-foreground"
-      />
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <MachineStatusDot connected={host.status === "connected"} />
-          <span className="min-w-0 truncate text-sm font-medium text-foreground">
-            {host.name}
-          </span>
-          {isPrimary ? <SettingsBadge>this machine</SettingsBadge> : null}
-        </div>
-        <p className="min-w-0 text-xs text-subtle-foreground/75">
-          {machineMetaLine({ host, platformLabel, projectCount, now })}
-        </p>
-      </div>
-      {/* Read-only here on purpose: the machine page owns the control, but the
-          list still has to answer "which machines are capped?" at a glance. */}
-      <span className={cn(MACHINE_LIMIT_COLUMN, "text-sm text-foreground")}>
-        {PERMISSION_MODE_LABELS[host.maxPermissionMode]}
-      </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative -mr-1 h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
-            aria-label={`${host.name} actions`}
-          >
-            <Icon name="MoreHorizontal" className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem onSelect={onRename}>Rename</DropdownMenuItem>
-          {hostCanRetryUpdate(host) ? (
-            <DropdownMenuItem
-              disabled={retryUpdatePending}
-              onSelect={onRetryUpdate}
-            >
-              {retryUpdatePending ? "Retrying update…" : "Retry update"}
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
-            disabled={isPrimary}
-            title={isPrimary ? PRIMARY_REMOVE_DISABLED_REASON : undefined}
-            onSelect={onRemove}
-          >
-            <span className="min-w-0 flex-1">
-              Remove machine
-              {isPrimary ? (
-                <span className="block text-2xs text-subtle-foreground">
-                  {PRIMARY_REMOVE_DISABLED_REASON}
-                </span>
+    <SettingsRow>
+      <div
+        data-machine-row
+        className="group group/machine -mx-2 flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-state-hover focus-within:bg-state-hover"
+      >
+        <Link
+          to={getSettingsMachineRoutePath(host.id)}
+          aria-label={`Open ${host.name}`}
+          className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="min-w-0 flex-1 space-y-1">
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                {host.name}
+              </span>
+              {isThisMachine ? (
+                <SettingsBadge>this machine</SettingsBadge>
               ) : null}
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              {showPrimaryBadge ? <SettingsBadge>primary</SettingsBadge> : null}
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-subtle-foreground/75">
+              <span className="inline-flex shrink-0 items-center gap-1.5">
+                <MachineStatusDot connected={host.status === "connected"} />
+                {connectionLabel}
+              </span>
+              {platformLabel === null ? null : (
+                <span className="truncate">{platformLabel}</span>
+              )}
+              <span className="shrink-0">{projectLabel}</span>
+              <span
+                className={cn(
+                  "shrink-0",
+                  permission.tone === "warning" && "text-warning-text",
+                )}
+              >
+                {permission.label}
+              </span>
+              {updateStatus === null ? null : (
+                <span className="min-w-0 text-warning-text">
+                  {updateStatus}
+                </span>
+              )}
+            </div>
+          </div>
+        </Link>
+        <div className="flex shrink-0 items-center gap-1">
+          <TooltipProvider delayDuration={250}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+                  aria-label={`${host.name} actions`}
+                >
+                  <Icon name="MoreHorizontal" className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-max min-w-0">
+                <DropdownMenuItem
+                  className={MACHINE_MENU_ITEM_CLASS}
+                  onSelect={onRename}
+                >
+                  <Icon name="Edit" aria-hidden />
+                  <span className="min-w-0 truncate">Rename</span>
+                </DropdownMenuItem>
+                {hostCanRetryUpdate(host) ? (
+                  <DropdownMenuItem
+                    className={MACHINE_MENU_ITEM_CLASS}
+                    disabled={retryUpdatePending}
+                    onSelect={onRetryUpdate}
+                  >
+                    <Icon name={RETRY_ACTION_ICON} aria-hidden />
+                    <span className="min-w-0 truncate">
+                      {retryUpdatePending ? "Retrying update…" : "Retry update"}
+                    </span>
+                  </DropdownMenuItem>
+                ) : null}
+                {isPrimary ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>{removeItem}</TooltipTrigger>
+                    <TooltipContent side="left">
+                      {PRIMARY_REMOVE_DISABLED_REASON}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  removeItem
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </TooltipProvider>
+          <ResourceRowDetailChevron />
+        </div>
+      </div>
     </SettingsRow>
   );
 }
@@ -200,6 +238,7 @@ function MachineRow({
 export function MachinesSettingsSection() {
   const systemConfig = useSystemConfig();
   const hostsQuery = useHosts();
+  const { localDaemonHostId, platform: localDaemonPlatform } = useHostDaemon();
   const sidebarNavigationQuery = useSidebarNavigation();
   const renameHost = useRenameHost();
   const removeHost = useRemoveHost();
@@ -210,10 +249,6 @@ export function MachinesSettingsSection() {
 
   const hosts = hostsQuery.data;
   const serverPrimaryHostId = systemConfig.data?.primaryHostId ?? null;
-  const primaryHostId = useMemo(
-    () => selectPrimaryHost(hosts, serverPrimaryHostId)?.id ?? null,
-    [hosts, serverPrimaryHostId],
-  );
   const projects = sidebarNavigationQuery.data?.projects;
   const projectCountByHostId = useMemo(() => {
     const counts = new Map<string, number>();
@@ -228,6 +263,7 @@ export function MachinesSettingsSection() {
 
   const now = Date.now();
   const primaryHostPlatform = systemConfig.data?.primaryHostPlatform ?? null;
+  const showMachineIdentityBadges = (hosts?.length ?? 0) > 1;
 
   return (
     <>
@@ -250,53 +286,52 @@ export function MachinesSettingsSection() {
         ) : hosts.length === 0 ? (
           <p className="text-sm text-subtle-foreground">No machines yet.</p>
         ) : (
-          <>
-            <div className="flex items-center gap-3 border-b border-border pb-2.5 text-2xs uppercase tracking-wide text-subtle-foreground">
-              <span className="size-4 shrink-0" aria-hidden />
-              <span className="min-w-0 flex-1">Machine</span>
-              <span className={MACHINE_LIMIT_COLUMN}>Permission limit</span>
-              <span className="w-6 shrink-0" aria-hidden />
-            </div>
-            <div className="pt-2.5">
-              <SettingsRowList>
-                {hosts.map((host) => (
-                  <MachineRow
-                    key={host.id}
-                    host={host}
-                    isPrimary={host.id === primaryHostId}
-                    platformLabel={
-                      host.id === primaryHostId && primaryHostPlatform !== null
-                        ? PLATFORM_LABELS[primaryHostPlatform]
-                        : null
-                    }
-                    projectCount={projectCountByHostId.get(host.id) ?? 0}
-                    now={now}
-                    onRename={() => {
-                      renameHost.reset();
-                      setRenameTarget(host);
-                    }}
-                    onRemove={() => {
-                      removeHost.reset();
-                      setRemoveTarget(host);
-                    }}
-                    onRetryUpdate={() =>
-                      retryHostUpdate.mutate(host.id, {
-                        onSuccess: () => {
-                          appToast.success(
-                            `Update retry requested for ${host.name}`,
-                          );
-                        },
-                      })
-                    }
-                    retryUpdatePending={
-                      retryHostUpdate.isPending &&
-                      retryHostUpdate.variables === host.id
-                    }
-                  />
-                ))}
-              </SettingsRowList>
-            </div>
-          </>
+          <SettingsRowList>
+            {hosts.map((host) => (
+              <MachineRow
+                key={host.id}
+                host={host}
+                isPrimary={host.id === serverPrimaryHostId}
+                isThisMachine={
+                  showMachineIdentityBadges && host.id === localDaemonHostId
+                }
+                showPrimaryBadge={
+                  showMachineIdentityBadges && host.id === serverPrimaryHostId
+                }
+                platformLabel={
+                  host.id === localDaemonHostId && localDaemonPlatform !== null
+                    ? PLATFORM_LABELS[localDaemonPlatform]
+                    : host.id === serverPrimaryHostId &&
+                        primaryHostPlatform !== null
+                      ? PLATFORM_LABELS[primaryHostPlatform]
+                      : null
+                }
+                projectCount={projectCountByHostId.get(host.id) ?? 0}
+                now={now}
+                onRename={() => {
+                  renameHost.reset();
+                  setRenameTarget(host);
+                }}
+                onRemove={() => {
+                  removeHost.reset();
+                  setRemoveTarget(host);
+                }}
+                onRetryUpdate={() =>
+                  retryHostUpdate.mutate(host.id, {
+                    onSuccess: () => {
+                      appToast.success(
+                        `Update retry requested for ${host.name}`,
+                      );
+                    },
+                  })
+                }
+                retryUpdatePending={
+                  retryHostUpdate.isPending &&
+                  retryHostUpdate.variables === host.id
+                }
+              />
+            ))}
+          </SettingsRowList>
         )}
       </SettingsSection>
 

@@ -39,11 +39,11 @@ It reconciles when the plugin starts, a host connects, its configuration
 changes, or a worker exits unexpectedly. Disabling the plugin disposes its host
 workers and their child processes.
 
-The opt-in builtin Provider retry plugin continues Codex and Claude Code
-turns after a structured subscription window resets. Enable it under
-Extensions → Plugins or run `bb plugin enable provider-retry`. It keeps its
-timers in memory, coordinates waits by machine/provider subscription, and adds
-a composer banner with a Cancel action while an automatic retry is pending.
+The builtin Provider retry plugin is enabled on fresh installations. It
+continues Codex and Claude Code turns after a structured subscription window
+resets, keeps its timers in memory, coordinates waits by machine/provider
+subscription, and adds a composer banner with a Cancel action while an
+automatic retry is pending.
 The banner disappears when the retry starts, is cancelled, or the user
 continues the thread. A server restart or plugin reload clears pending timers
 without changing the original failed thread. Inspect it with
@@ -137,14 +137,17 @@ and the `bb tasks` command. Common agent operations are:
   bb tasks comment <key-or-id> (--body <markdown> | --body-file <path>) [--json]
   bb tasks attachment add <key-or-comment-id> --file <path> [--json]
   bb tasks attachment get <attachment-id> --out <path> [--json]
-  bb tasks attach <key-or-id> [--json]
+  bb tasks attach <key-or-id> [--thread <thread-id>] [--json]
+  bb tasks detach <key-or-id> [--thread <thread-id>] [--json]
   bb tasks update <key-or-id> --status in_review [--json]
   bb tasks update <key-or-id> (--parent <parent-key-or-id> | --no-parent) [--json]
 
 Run `bb tasks --help` for project, folder, task, label, attachment, and demo-data
 commands, plus preset management, delegation, and attached-thread inspection.
 Delegated threads are attached automatically; use `bb tasks attach` only when
-work started outside Tasks. Task update resolves both task keys and IDs for
+work started outside Tasks, and `bb tasks detach` when a thread is done with a
+task or a respawned worker replaced it. `bb tasks threads <key>` lists live
+threads first, newest first. Task update resolves both task keys and IDs for
 `--parent`; use `--no-parent` to promote a subtask to the top level. File paths
 in tasks commands resolve on the invoking machine (the thread's machine inside
 an agent thread, otherwise the server's); pass `--machine <id-or-name>` to
@@ -192,6 +195,9 @@ added/updated/unchanged counts.
                                  (the two flags are mutually exclusive)
                                  --tag-prefix <prefix> resolves a git: semver
                                  range over <prefix>vX.Y.Z tags
+                                 Installing a local path for an id that is
+                                 already installed from another local path
+                                 moves it there and keeps its settings
   bb plugin outdated             Check installed plugins for compatible
                                  updates (table; --json for raw results).
                                  Columns: installed, latest compatible,
@@ -204,13 +210,18 @@ added/updated/unchanged counts.
                                  install (--yes skips; non-TTY refuses without
                                  --yes). Use outdated to preview; pinned
                                  installs stay put
-  bb plugin list                 Status, services, schedules, handler timings
+  bb plugin list                 Status, services, schedules, handler timings.
+                                 `bb status` also names enabled plugins that
+                                 are incompatible, failed, or missing
   bb plugin source <id> [--json] Show requested/resolved source, subdirectory,
                                  semver range with its tag prefix and resolved
                                  tag, engine ranges, install time, and recent
                                  activation history
   bb plugin enable|disable <id>  Load or unload an installed plugin
-  bb plugin reload [id]          Re-run factories against current sources
+  bb plugin reload [id]          Re-run factories against current sources.
+                                 Exits 1 when a plugin does not come up on
+                                 them (previous instance kept, or degraded
+                                 because a service ignored its abort)
   bb plugin config <id> [set <key> <value> | unset <key>]
                                  Show or change a plugin's declared settings
   bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's bb.log output
@@ -218,8 +229,10 @@ added/updated/unchanged counts.
   bb plugin token <id> [--rotate]  Print the token for auth:"token" HTTP
                                  routes; --rotate generates a new token,
                                  invalidating the old one
-  bb plugin remove <id>          Uninstall (managed git:/npm: files deleted;
-                                 builtin removals are remembered)
+  bb plugin remove <id>          Uninstall and delete the plugin's settings,
+                                 secrets, and schedules (managed git:/npm:
+                                 files deleted; local path sources stay on
+                                 disk; builtin removals are remembered)
   bb plugin new <name> [--app]   Scaffold a new plugin and install its npm
                                  dependencies, including @get-bb/plugin-sdk
                                  pinned to this bb's exact SDK version (no
@@ -241,8 +254,8 @@ added/updated/unchanged counts.
                                  nothing migrates unless you ask
   bb plugin build [path]         Compile the plugin into dist/ — the backend
                                  bundle (server.js, server.meta.json); when
-                                 bb.app is declared, the frontend bundle
-                                 (app.js, app.css, app.meta.json); when
+                                 bb.app is declared, the minified frontend
+                                 bundle (app.js, app.css, app.meta.json); when
                                  bb.host is declared, the self-contained Node
                                  host bundle (host.js, host.js.map,
                                  host.meta.json recording its digest — host
@@ -254,7 +267,8 @@ added/updated/unchanged counts.
                                  pluginId, pluginVersion, and builtWith (bb +
                                  plugin SDK versions); no server required
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
-                                 on every change rebuild its declared frontend,
+                                 on every change rebuild its declared frontend
+                                 (unminified, for readable stack traces),
                                  host, and provider-bridge bundles, then
                                  reload the plugin; Ctrl+C to stop
 
@@ -324,7 +338,7 @@ to the bundled copy and update automatically when the BB app updates.
 The BB Community marketplace (reserved name `bb-community`) lists reviewed
 plugins that live outside the app bundle. bb reads its manifest from
 https://getbb.app/marketplace/v1/marketplace.json (override the URL with
-BB_MARKETPLACE_URL) at startup and every six hours, with a conditional
+BB_MARKETPLACE_URL) at startup and every two hours, with a conditional
 request. bb stores the last catalog it validated: an unreachable server or an
 invalid manifest keeps that catalog, and the app bundles a seed snapshot for
 a first run with no network. A refresh updates discovery metadata and icons
@@ -392,7 +406,12 @@ Reinstalling an already-installed managed plugin is refused — use
 leaves the latest failure visible as needing attention. Exact npm versions,
 git tags and commits, path sources, and bundled official plugins are pinned;
 npm ranges/omitted specs/dist-tags, omitted Git refs (the repository default
-branch), Git branches, and Git semver ranges track compatible updates.
+branch), Git branches, and Git semver ranges track compatible updates. A
+pinned git:/npm: source changes only through `bb plugin remove` (which
+deletes the plugin's settings, secrets, and schedules) and a fresh install. A
+local path plugin is never removed to change it: edit it in place and
+`bb plugin reload <id>`, or `bb plugin install path:<new dir>` to move it to
+another directory; both keep its configuration.
 
 Git semver ranges
 
@@ -471,7 +490,12 @@ private `@bb/*` workspace packages; the host build rejects direct, transitive,
 type-only, and relative imports that resolve into those packages.
 Keep the SDK in exact devDependencies: the builder supplies and bundles its
 small host runtime, so managed installs and remote workers do not resolve an
-SDK package at runtime.
+SDK package at runtime. That covers the bare `@get-bb/plugin-sdk` import. An
+SDK subpath (`@get-bb/plugin-sdk/host`, `/provider-bridge`,
+`/provider-bridge/acp`, `/ai-services`) imported from server or host code is
+bundled from the plugin's own installed SDK, so a plugin that imports one
+needs the SDK as a real dependency; the build names the missing install
+rather than shipping an import bb cannot serve.
 Path installs always load server.ts from source, so `bb plugin dev`/reload see
 edits immediately.
 
@@ -516,7 +540,12 @@ useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
 connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
 useBbContext,
-useBbNavigate, useComposer (read/replace/update/clear scoped composer text,
+useBbNavigate (including openUrl(url), which applies the current
+client's in-app/external-browser preference, plus
+experimental_openFilePreview({ target, location }) and
+experimental_openFileExternally({ target, location }) for explicit live
+workspace/host/thread-storage files), useComposer
+(read/replace/update/clear scoped composer text,
 apply a class-based text effect, lock input, quote selections, insert mention
 pills, and focus the composer), and useComposerView (reactive bound scope,
 layout, draft, and run state). Plain-text edits preserve attachments and
@@ -530,11 +559,48 @@ error codes. Components are vendored shadcn source the plugin owns (the
 shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
-running BB via the pinned ref in components.json). `import { toast } from
+running BB via the pinned ref in components.json). Product capabilities are
+the exception: UrlLink renders a real anchor whose ordinary
+HTTP(S) activation uses the same client preference as first-party links while
+leaving app routes, modifiers, copying, unsupported schemes, and explicit
+targets browser-owned. A `_blank` or named target preserves your `rel` tokens
+but adds `noopener noreferrer` unless `rel` explicitly contains `opener`.
+experimental_FileLink renders a real explicit live-file anchor whose ordinary activation uses the same
+preview/file-opener controller as first-party links. Valid targets expose an
+encoded, scheme-safe href; traversal paths, ill-formed Unicode, and other
+malformed runtime targets are inert in both the app and SDK test harness. Its
+lazy context menu adds Open with, preferred-external, installed-app, and copy
+actions without reading the file or discovering editors on mount.
+experimental_ProviderModelPicker is the controlled
+`{ providerId, model, reasoningLevel, serviceTier? }` selector backed by the
+same catalog and picker as bb's composers; provider switches emit only after
+the target provider's verified defaults and capabilities resolve. Its optional
+`routing` targets a host or existing environment; `disabled` renders the same
+selection summary read-only. Tasks presets and Automations use this component
+instead of plugin-owned catalog RPCs.
+Every `fixedTabs` registration must include `panelId` equal to its
+containing nav panel's `id`; it is also an owner-scoped reference. Add
+`experimental_target: { validate }` for a typed JSON-safe transient target,
+select it with `experimental_useAppPanel().openFixedTab({ surface: { kind:
+"current" }, tab, target? })`, and read the target state inside the fixed tab
+with `experimental_useFixedTabTarget(tab)`. Target state survives tab, panel,
+and route remounts for the current app session; call `clear()` when returning to
+the tab's untargeted state. Selection persists across refreshes, but targets do
+not. A plugin can address only its own eligible tab on the current nav panel.
+`import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
-sonner, vaul, and @pierre/diffs (the app's syntax-highlighted diff
-renderer) are runtime-shimmed (never bundled), everything else
-bundles from the plugin's node_modules (`npm install` for authors; BB installs
+sonner, vaul, @pierre/diffs, and the host-resident clsx, tailwind-merge, and
+class-variance-authority libraries are runtime-shimmed (never bundled) —
+though source and diffs should go through the host's own
+experimental_SourceCode / experimental_Diff components rather than
+@pierre/diffs directly, so bb owns patch normalization, syntax
+highlighting, and the live code theme. A Diff caller that has loaded complete
+old/new UTF-8 file contents can pass them through
+`experimental_fullFileContents` to enable
+expand-context controls without exposing Pierre types. BB's original renderer
+validates those paths and hunk lines before enabling expansion; a replacement
+that implements its own expansion must do the same.
+Everything else (zod included) bundles from the plugin's node_modules (`npm install` for authors; BB installs
 release packages with their declared production dependencies). A crashing slot collapses to a
 "plugin <id> crashed" chip without
 touching the rest of the app. Installed plugins and their declared settings
@@ -591,8 +657,13 @@ Zap. Roomy surfaces reuse the same icon when no logo override is declared.
 
 Add `bb.branding.logo.light` only for intentionally different rich/full-size
 identity artwork; optional `bb.branding.logo.dark` is preferred in dark mode.
-Logo paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
-files are not auto-detected, and a dark logo requires a light logo. Logo-only
+Logo paths must be plugin-relative `.svg`, `.png`, or `.webp` files.
+`bb plugin build` refuses an SVG logo that carries a script vector (a
+`script`, `handler` or `listener` element, an `on*` attribute, or a
+`javascript:` href) and takes any other tool export as-is; install and load
+never refuse a logo, and every SVG bb serves carries `nosniff` and a
+`default-src 'none'` CSP. Root logo files are not auto-detected, and a dark
+logo requires a light logo. Logo-only
 manifests remain supported for compatibility, so at least an icon or light logo
 is required. Do not duplicate the same artwork across fields. BB rejects nulls,
 empty strings, missing or escaping assets, and unsupported extensions. Reload
@@ -687,7 +758,7 @@ Its card header includes an open-in-sidebar action for the source HTML file.
 The `plugins/` directory contains every bundled plugin: the auto-installed
 builtins and the store-only BB Official GitHub, Docs, Memory, and Tasks
 plugins. The `examples/plugins/` reference plugins cover slack-bot (webhook
-bot), agent-enrichment (agent surfaces), composer-customization (all composer
-regions), and t3sidebar (a replacement sidebar thread list). Thread Hover
+bot), agent-enrichment (agent surfaces), and composer-customization (all
+composer regions). Thread Hover
 Cards installs from the BB Community marketplace (source: the bb-plugins
 repo).

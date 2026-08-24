@@ -74,7 +74,7 @@ export const MACOS_CHROME_CONTROL_NO_DRAG_CLASS = `${MACOS_WINDOW_NO_DRAG_CLASS}
 export const MACOS_CHROME_TRAFFIC_LIGHT_AXIS_NUDGE_CLASS =
   MACOS_CHROME_CONTROL_AXIS_CLASS;
 
-export type BbDesktopInfoResult = BbDesktopApi | null;
+type BbDesktopInfoResult = BbDesktopApi | null;
 export const DEFAULT_DESKTOP_WINDOW_STATE: BbDesktopWindowState = {
   isFullScreen: false,
 };

@@ -39,12 +39,18 @@ const REMOTE_HOST_NAME = "Sawyer Air";
 
 function createConnectFakeHost(options?: {
   remoteIdentity?: { label: string; baseDomain: string };
+  /** The `mobileApp` experiment (defaults on so pairing paths are exercised). */
+  mobileApp?: boolean;
 }): FakePluginHost {
   return createFakePluginHost({
     pluginId: "connect",
     sdk: {
       system: {
-        config: async () => ({ primaryHostId: SERVER_HOST_ID }) as never,
+        config: async () =>
+          ({
+            primaryHostId: SERVER_HOST_ID,
+            experiments: { mobileApp: options?.mobileApp ?? true },
+          }) as never,
       },
       hosts: {
         get: async ({ hostId }: { hostId: string }) => {
@@ -2389,8 +2395,10 @@ describe("connect CLI", () => {
     vi.unstubAllGlobals();
   });
 
-  async function loadCli(): Promise<FakePluginHost> {
-    host = createConnectFakeHost();
+  async function loadCli(options?: {
+    mobileApp?: boolean;
+  }): Promise<FakePluginHost> {
+    host = createConnectFakeHost(options);
     await plugin(host.bb as unknown as Parameters<typeof plugin>[0]);
     return host;
   }
@@ -2532,6 +2540,121 @@ describe("connect CLI", () => {
     expect(parsed.servers[1]?.url).toBe(
       "http://sawyer-desktop.localhost:59342",
     );
+  });
+
+  it("machine-code is off until the mobileApp experiment is on", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli({ mobileApp: false });
+    const result = await harness.runCli(["machine-code"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('"Mobile app" experiment');
+    expect(result.stderr).toContain("bb settings experiment mobileApp true");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("machine-code when unpaired errors clearly", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli();
+    const result = await harness.runCli(["machine-code"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("not connected to getbb.app");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("machine-code prints the pairing payload as text or json", async () => {
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/api/connect/redeem")) {
+          return new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          );
+        }
+        if (url === "https://getbb.app/api/connect/machine-code") {
+          return new Response(
+            JSON.stringify({
+              code: "K7QP-2M4X",
+              expiresInMs: 600_000,
+              serverUrl: "https://sawyer.getbb.app",
+            }),
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { harness } = await loadCli();
+    await harness.runCli([
+      "--code",
+      "ABCD",
+      "--server",
+      "https://sawyer.getbb.app",
+    ]);
+
+    const before = Date.now();
+    const text = await harness.runCli(["machine-code"]);
+    expect(text.exitCode).toBe(0);
+    expect(text.stdout).toContain("Code:       K7QP-2M4X");
+    expect(text.stdout).toContain("Server:     https://sawyer.getbb.app");
+    expect(text.stdout).toContain("Apex:       https://getbb.app");
+    expect(text.stdout).toContain("in about 10 min");
+    expect(text.stdout).toContain("Add mobile device");
+
+    const json = await harness.runCli(["machine-code", "--json"]);
+    expect(json.exitCode).toBe(0);
+    const parsed = JSON.parse(json.stdout ?? "") as Record<string, unknown>;
+    expect(parsed).toEqual({
+      code: "K7QP-2M4X",
+      serverUrl: "https://sawyer.getbb.app",
+      apex: "https://getbb.app",
+      expiresAt: expect.any(Number),
+    });
+    expect(parsed.expiresAt as number).toBeGreaterThanOrEqual(before + 600_000);
+    // Minted through the apex with the server's own pairing credential.
+    const call = fetchMock.mock.calls.find(
+      ([input]) =>
+        String(input) === "https://getbb.app/api/connect/machine-code",
+    );
+    expect(call?.[1]).toEqual({
+      method: "POST",
+      headers: { "x-bb-connect-machine": "bbcred_live" },
+    });
+  });
+
+  it("machine-code explains the account machine limit and names the dashboard", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/connect/redeem")) {
+          return new Response(
+            JSON.stringify({ credential: "bbcred_live", handle: "sawyer" }),
+            { status: 200 },
+          );
+        }
+        if (url.endsWith("/api/connect/machine-code")) {
+          return new Response(JSON.stringify({ error: "machine-limit" }), {
+            status: 409,
+          });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+    const { harness } = await loadCli();
+    await harness.runCli([
+      "--code",
+      "ABCD",
+      "--server",
+      "https://sawyer.getbb.app",
+    ]);
+    const result = await harness.runCli(["machine-code"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("machine limit");
+    expect(result.stderr).toContain("https://getbb.app/dashboard");
+    expect(result.stderr).not.toContain("machine_limit");
   });
 
   it("expose / shares / unexpose happy path", async () => {

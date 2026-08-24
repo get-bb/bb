@@ -44,6 +44,7 @@ export type AddPluginInitial = {
   displayName: string;
   icon: string | null;
   iconUrl: string | null;
+  iconTinted: boolean;
   /** The entry's install source; decides how the dialog describes the install. */
   source: string;
 };
@@ -69,7 +70,7 @@ function catalogInstallDescription(
   return `Install this ${publisherLabel} plugin from its listed source repository.`;
 }
 
-export interface AddPluginDialogProps {
+interface AddPluginDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onInstalled?: (plugin: InstalledPlugin) => void;
@@ -125,7 +126,7 @@ function buildRequest(
 /** One labelled fact of the resolved source, rendered as a definition row. */
 function resolvedSourceRows(
   source: PluginCatalogResolvedSource,
-): { label: string; value: string }[] {
+): { label: string; value: string; href?: string }[] {
   if (source.kind === "npm") {
     return [
       {
@@ -138,7 +139,9 @@ function resolvedSourceRows(
     ];
   }
   return [
-    { label: "repository", value: source.url },
+    // The repository row is a link so a reader can inspect the code that
+    // the confirmation describes before it installs.
+    { label: "repository", value: source.url, href: source.url },
     ...(source.subdir === undefined
       ? []
       : [{ label: "subdirectory", value: source.subdir }]),
@@ -232,7 +235,18 @@ function ThirdPartySourceDisclosure({
               {row.label}
             </dt>
             <dd className="min-w-0 break-all font-mono text-2xs text-foreground">
-              {row.value}
+              {row.href === undefined ? (
+                row.value
+              ) : (
+                <a
+                  href={row.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  {row.value}
+                </a>
+              )}
             </dd>
           </div>
         ))}
@@ -256,8 +270,7 @@ function AddPluginDialogContent({
   // Only a third-party listing needs its source resolved before confirming:
   // the official catalog is BB's own and installs without a round trip.
   const thirdParty =
-    initial !== null &&
-    initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME;
+    initial !== null && initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME;
   const planQuery = useCatalogInstallPlan(
     thirdParty && initial !== null
       ? { entryId: initial.entryId, marketplace: initial.marketplace }

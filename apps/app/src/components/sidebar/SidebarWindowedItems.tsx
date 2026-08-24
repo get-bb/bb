@@ -210,7 +210,7 @@ export function SidebarWindowedItems({
     }
     // The pass re-runs only when the key list (or windowing mode) changes;
     // scroll-driven changes are the observer's job.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react/exhaustive-deps
   }, [windowingEnabled, keySignature]);
 
   useEffect(() => {

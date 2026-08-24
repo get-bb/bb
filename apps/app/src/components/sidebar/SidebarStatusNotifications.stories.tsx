@@ -18,7 +18,7 @@ import {
   type ProjectListRowModel,
 } from "./ProjectListProjects";
 import type { ProjectThreadListState } from "./ProjectRow";
-import { compareStandardThreads } from "./projectThreadGroups";
+import { compareStandardThreads } from "@bb/client-core";
 import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
 
 export default {
@@ -167,6 +167,7 @@ function StoryThreadRow({
     <ThreadRow
       projectId={PROJECT_IDS.bb}
       thread={thread}
+      crossProjectId={null}
       isActive={isActive}
       hasComposerDraft={hasComposerDraft}
       options={defaultThreadOption}

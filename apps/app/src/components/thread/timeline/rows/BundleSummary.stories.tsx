@@ -14,6 +14,8 @@ import {
   conversationRow,
   delegationRow,
   fileChangeRow,
+  fileReadRow,
+  searchRow,
   toolRow,
   webFetchRow,
   webSearchRow,
@@ -57,15 +59,11 @@ function bundleId(children: readonly TimelineRow[]): string {
   ].join(":");
 }
 
-interface ExplorationToolRowArgs {
-  id: string;
-  seq: number;
-  toolName: "Read" | "Grep" | "Glob";
-  toolArgs: Record<string, string | number>;
-  intentPath: string | null;
-  intentType: "read" | "search" | "list_files";
-  output: string;
-}
+type ExplorationRowArgs = { id: string; seq: number } & (
+  | { kind: "read"; path: string }
+  | { kind: "search"; query: string; path: string | null }
+  | { kind: "list"; pattern: string; path: string | null }
+);
 
 interface PlainToolRowArgs {
   id: string;
@@ -452,106 +450,76 @@ const fileChangeBundleMixedStatusRows: TimelineRow[] = [
 ];
 
 // ---- Exploration bundle ---------------------------------------------------
-// `command` and `tool` rows that carry exploration `activityIntents` (Read,
-// Grep, list_files, search) bundle under the "exploration" concept regardless
-// of underlying workKind. Real intents pulled from thr_zeb7z9afmw / turn
-// 019dd185-... — the agent reading the projection refactor.
+// Grammar v3 `file-read` / `search` rows (what a Read / Grep / Glob call
+// projects to, including persisted legacy tool calls the read-time adapter
+// upgrades) bundle under the "exploration" concept. Real paths pulled from
+// thr_zeb7z9afmw / turn 019dd185-... — the agent reading the projection
+// refactor.
 
-function explorationToolRow(args: ExplorationToolRowArgs): TimelineRow {
-  return toolRow({
-    id: `thr_zeb7z9afmw:tool:${args.id}`,
+function explorationRow(args: ExplorationRowArgs): TimelineRow {
+  const base = {
     threadId: "thr_zeb7z9afmw",
     turnId: "019dd185-ef12-7d50-aa48-47882e9c8aaf",
     sourceSeqStart: args.seq,
     sourceSeqEnd: args.seq,
     startedAt: 1777337100000 + args.seq,
     createdAt: 1777337100000 + args.seq + 50,
-    status: "completed",
+    status: "completed" as const,
     callId: args.id,
-    toolName: args.toolName,
-    toolArgs: args.toolArgs,
-    output: args.output,
-    approvalStatus: null,
-    activityIntents:
-      args.intentType === "read"
-        ? [
-            {
-              type: "read",
-              command: args.toolName,
-              name: args.intentPath?.split("/").pop() ?? "unknown",
-              path: args.intentPath,
-            },
-          ]
-        : args.intentType === "search"
-          ? [
-              {
-                type: "search",
-                command: args.toolName,
-                query:
-                  typeof args.toolArgs.pattern === "string"
-                    ? args.toolArgs.pattern
-                    : null,
-                path: args.intentPath,
-              },
-            ]
-          : [
-              {
-                type: "list_files",
-                command: args.toolName,
-                path: args.intentPath,
-              },
-            ],
     durationMs: 50,
-  });
+  };
+  switch (args.kind) {
+    case "read":
+      return fileReadRow({
+        ...base,
+        id: `thr_zeb7z9afmw:file-read:${args.id}`,
+        path: args.path,
+      });
+    case "search":
+      return searchRow({
+        ...base,
+        id: `thr_zeb7z9afmw:search:${args.id}`,
+        mode: "content",
+        query: args.query,
+        path: args.path,
+      });
+    case "list":
+      return searchRow({
+        ...base,
+        id: `thr_zeb7z9afmw:search:${args.id}`,
+        mode: "path",
+        query: args.pattern,
+        path: args.path,
+      });
+  }
 }
 
 const explorationBundleRows: TimelineRow[] = [
-  explorationToolRow({
+  explorationRow({
     id: "call_explore_read_assist_stream",
     seq: 35100,
-    toolName: "Read",
-    toolArgs: {
-      file_path:
-        "/Users/michael/.bb-dev/worktrees/env_33i22gvcqe/bb/packages/core-ui/src/assistant-stream-projection.ts",
-    },
-    intentPath: "packages/core-ui/src/assistant-stream-projection.ts",
-    intentType: "read",
-    output: "...file contents...",
+    kind: "read",
+    path: "packages/core-ui/src/assistant-stream-projection.ts",
   }),
-  explorationToolRow({
+  explorationRow({
     id: "call_explore_read_index",
     seq: 35110,
-    toolName: "Read",
-    toolArgs: {
-      file_path:
-        "/Users/michael/.bb-dev/worktrees/env_33i22gvcqe/bb/packages/core-ui/src/index.ts",
-    },
-    intentPath: "packages/core-ui/src/index.ts",
-    intentType: "read",
-    output: "...file contents...",
+    kind: "read",
+    path: "packages/core-ui/src/index.ts",
   }),
-  explorationToolRow({
+  explorationRow({
     id: "call_explore_grep_finalized",
     seq: 35120,
-    toolName: "Grep",
-    toolArgs: {
-      pattern: "finalizedReasoningMessageKeys",
-      path: "packages/core-ui/src",
-    },
-    intentPath: "packages/core-ui/src",
-    intentType: "search",
-    output:
-      "src/assistant-stream-projection.ts:24\nsrc/to-view-messages.ts:131",
+    kind: "search",
+    query: "finalizedReasoningMessageKeys",
+    path: "packages/core-ui/src",
   }),
-  explorationToolRow({
+  explorationRow({
     id: "call_explore_glob_tests",
     seq: 35130,
-    toolName: "Glob",
-    toolArgs: { pattern: "packages/thread-view/test/*.test.ts" },
-    intentPath: "packages/thread-view/test",
-    intentType: "list_files",
-    output:
-      "packages/thread-view/test/timeline-view.test.ts\npackages/thread-view/test/timeline-progression.test.ts",
+    kind: "list",
+    pattern: "packages/thread-view/test/*.test.ts",
+    path: "packages/thread-view/test",
   }),
 ];
 
@@ -574,7 +542,6 @@ function plainToolRow(args: PlainToolRowArgs): TimelineRow {
     toolArgs: args.toolArgs,
     output: args.output,
     approvalStatus: null,
-    activityIntents: [],
     durationMs: 100,
   });
 }
@@ -891,8 +858,8 @@ function frontierRead(
   path: string,
   status: TimelineRowStatus,
 ): TimelineRow {
-  return toolRow({
-    id: `${CONV_THREAD_ID}:tool:frontier_${idSuffix}`,
+  return fileReadRow({
+    id: `${CONV_THREAD_ID}:file-read:frontier_${idSuffix}`,
     threadId: CONV_THREAD_ID,
     turnId: CONV_TURN_ID,
     sourceSeqStart: seq,
@@ -900,17 +867,7 @@ function frontierRead(
     createdAt: status === "pending" ? Date.now() : Date.now() - 4000,
     status,
     callId: `frontier_${idSuffix}`,
-    toolName: "Read",
-    toolArgs: { file_path: path },
-    output: status === "pending" ? "" : "...file contents...",
-    activityIntents: [
-      {
-        type: "read",
-        command: "Read",
-        name: path.split("/").pop() ?? path,
-        path,
-      },
-    ],
+    path,
     durationMs: status === "pending" ? null : 60,
   });
 }

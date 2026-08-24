@@ -12,6 +12,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCodexInteractiveResponse,
   decodeCodexInteractiveRequest,
+  extractCodexMacOsPermissionRequest,
 } from "./interactive-requests.js";
 import { ProviderRequestDecodeError } from "@bb/provider-bridge-protocol/bridge-kit";
 
@@ -150,102 +151,102 @@ describe("decodeCodexInteractiveRequest", () => {
     });
   });
 
-  it("rejects unsupported macOS permissions in command session grants", () => {
-    expect(() =>
-      decodeCodexInteractiveRequest({
-        id: 8,
-        method: "item/commandExecution/requestApproval",
-        params: {
-          threadId: "t1",
-          turnId: "turn-1",
-          itemId: "item-1",
-          reason: "Needs approval",
-          command: "osascript -e 'tell app \"Finder\" to activate'",
-          cwd: "/tmp/project",
-          commandActions: [],
-          additionalPermissions: {
-            network: null,
-            fileSystem: null,
-            macos: {
-              preferences: "read_only",
-              automations: {
-                bundle_ids: ["com.apple.finder"],
-              },
-              launchServices: true,
-              accessibility: true,
-              calendar: false,
-              reminders: false,
-              contacts: "none",
+  it("keeps a command approval that asks for macOS permissions and surfaces the profile beside it", () => {
+    const request = {
+      id: 8,
+      method: "item/commandExecution/requestApproval",
+      params: {
+        threadId: "t1",
+        turnId: "turn-1",
+        itemId: "item-1",
+        reason: "Needs approval",
+        command: "osascript -e 'tell app \"Finder\" to activate'",
+        cwd: "/tmp/project",
+        commandActions: [],
+        additionalPermissions: {
+          network: { enabled: true },
+          fileSystem: null,
+          macos: {
+            preferences: "read_only",
+            automations: {
+              bundle_ids: ["com.apple.finder"],
             },
+            launchServices: true,
+            accessibility: true,
+            calendar: false,
+            reminders: false,
+            contacts: "none",
           },
-          availableDecisions: ["accept", "decline"],
         },
-      }),
-    ).toThrowError(ProviderRequestDecodeError);
+        availableDecisions: ["accept", "acceptForSession", "decline"],
+      },
+    };
+
+    // The approval reaches the user for the command, with the grantable
+    // (network/file-system) session grant only: bb's permission layer cannot
+    // grant macOS capabilities, and that must not fail the whole approval.
+    const decoded = decodeCodexInteractiveRequest(request);
+    expect(decoded?.payload).toMatchObject({
+      kind: "approval",
+      subject: {
+        kind: "command",
+        itemId: "item-1",
+        sessionGrant: { network: { enabled: true }, fileSystem: null },
+      },
+      availableDecisions: ["allow_once", "allow_for_session", "deny"],
+    });
+
+    // The macOS profile rides the timeline as the codex plugin's own item.
+    expect(extractCodexMacOsPermissionRequest(request)).toEqual({
+      providerThreadId: "t1",
+      turnId: "turn-1",
+      item: {
+        approvalItemId: "item-1",
+        reason: "Needs approval",
+        permissions: {
+          preferences: "read_only",
+          automations: { kind: "bundle_ids", bundleIds: ["com.apple.finder"] },
+          launchServices: true,
+          accessibility: true,
+          calendar: false,
+          reminders: false,
+          contacts: "none",
+        },
+      },
+    });
   });
 
-  it("rejects macOS automation none in command approvals", () => {
-    expect(() =>
-      decodeCodexInteractiveRequest({
+  it("extracts no macOS profile from approvals that carry none", () => {
+    expect(
+      extractCodexMacOsPermissionRequest({
         id: 81,
         method: "item/commandExecution/requestApproval",
         params: {
           threadId: "t1",
           turnId: "turn-1",
           itemId: "item-1",
-          reason: "Needs approval",
+          reason: null,
           command: "open -a Finder",
           cwd: "/tmp/project",
           commandActions: [],
-          additionalPermissions: {
-            network: null,
-            fileSystem: null,
-            macos: {
-              preferences: "none",
-              automations: "none",
-              launchServices: false,
-              accessibility: false,
-              calendar: false,
-              reminders: false,
-              contacts: "none",
-            },
-          },
+          additionalPermissions: { network: null, fileSystem: null },
           availableDecisions: ["accept", "decline"],
         },
       }),
-    ).toThrowError(ProviderRequestDecodeError);
-  });
-
-  it("rejects unsupported macOS automation grants from command session grants", () => {
-    expect(() =>
-      decodeCodexInteractiveRequest({
+    ).toBeNull();
+    expect(
+      extractCodexMacOsPermissionRequest({
         id: 82,
-        method: "item/commandExecution/requestApproval",
+        method: "item/permissions/requestApproval",
         params: {
           threadId: "t1",
           turnId: "turn-1",
           itemId: "item-1",
-          reason: "Needs approval",
-          command: "open -a Finder",
-          cwd: "/tmp/project",
-          commandActions: [],
-          additionalPermissions: {
-            network: null,
-            fileSystem: null,
-            macos: {
-              preferences: "none",
-              automations: "all",
-              launchServices: false,
-              accessibility: false,
-              calendar: false,
-              reminders: false,
-              contacts: "none",
-            },
-          },
-          availableDecisions: ["accept", "decline"],
+          reason: null,
+          permissions: { network: { enabled: true }, fileSystem: null },
         },
       }),
-    ).toThrowError(ProviderRequestDecodeError);
+    ).toBeNull();
   });
 
   it("ignores unsupported policy-amendment decisions when simple decisions remain", () => {
@@ -479,24 +480,18 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps bb command approvals back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 8,
-          method: "item/commandExecution/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-1",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "command",
-              itemId: "item-1",
-              command: "git push",
-              cwd: "/tmp/project",
-              actions: [],
-              sessionGrant: null,
-            },
-            reason: null,
-            availableDecisions: ["allow_once", "allow_for_session", "deny"],
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "command",
+            itemId: "item-1",
+            command: "git push",
+            cwd: "/tmp/project",
+            actions: [],
+            sessionGrant: null,
           },
+          reason: null,
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
         },
         resolution: {
           decision: "allow_for_session",
@@ -511,24 +506,18 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps command denial back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 10,
-          method: "item/commandExecution/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-3",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "command",
-              itemId: "item-3",
-              command: "git push",
-              cwd: "/tmp/project",
-              actions: [],
-              sessionGrant: null,
-            },
-            reason: null,
-            availableDecisions: ["allow_once", "deny"],
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "command",
+            itemId: "item-3",
+            command: "git push",
+            cwd: "/tmp/project",
+            actions: [],
+            sessionGrant: null,
           },
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
         },
         resolution: {
           decision: "deny",
@@ -542,22 +531,16 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps file-change approvals back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 12,
-          method: "item/fileChange/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-file-change",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "file_change",
-              itemId: "item-file-change",
-              writeScope: null,
-              sessionGrant: null,
-            },
-            reason: "Review generated file changes",
-            availableDecisions: ["allow_once", "allow_for_session", "deny"],
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "file_change",
+            itemId: "item-file-change",
+            writeScope: null,
+            sessionGrant: null,
           },
+          reason: "Review generated file changes",
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
         },
         resolution: {
           decision: "allow_for_session",
@@ -572,28 +555,22 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps permission grants back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 13,
-          method: "item/permissions/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-permissions",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "permission_grant",
-              itemId: "item-permissions",
-              toolName: null,
-              permissions: {
-                network: { enabled: true },
-                fileSystem: {
-                  read: ["/tmp/project/README.md"],
-                  write: [],
-                },
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "permission_grant",
+            itemId: "item-permissions",
+            toolName: null,
+            permissions: {
+              network: { enabled: true },
+              fileSystem: {
+                read: ["/tmp/project/README.md"],
+                write: [],
               },
             },
-            reason: "Need network access",
-            availableDecisions: ["allow_once", "allow_for_session", "deny"],
           },
+          reason: "Need network access",
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
         },
         resolution: {
           decision: "allow_for_session",

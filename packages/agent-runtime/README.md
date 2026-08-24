@@ -1,6 +1,6 @@
 # @bb/agent-runtime
 
-Manages agent provider processes (codex, claude-code, pi) and exposes a clean session interface. Handles process spawning, stdio framing, JSON-RPC dispatch, event translation, tool call routing, crash detection, and shutdown.
+Manages provider bridge processes and exposes a clean session interface. Handles process spawning, stdio framing, JSON-RPC dispatch, event assembly, tool call routing, crash detection, and shutdown.
 
 Consumers say "start a thread, run a turn, give me events" — they never touch processes, adapters, or wire formats.
 
@@ -27,12 +27,16 @@ const runtime = createAgentRuntime({
   onProcessExit: (info) => { /* crash detection */ },
 });
 
-// Start a thread, run turns, get events via callbacks
+// Start a thread, run turns, get events via callbacks. `bridgeLaunch` is the
+// plugin-delivered bridge the host daemon resolved for this provider (a
+// verified artifact path, the plugin's declared capabilities, its static
+// provider options); the runtime infers nothing from the provider id.
 const { providerThreadId } = await runtime.startThread({
   environmentId: "env-1",
   threadId: "t1",
   projectId: "p1",
-  providerId: "codex",
+  providerId: "my-provider",
+  bridgeLaunch,
   options: { permissionMode: "full", instructions: "Be concise." },
   dynamicTools: [{ name: "my_tool", description: "...", inputSchema: { ... } }],
 });
@@ -47,7 +51,8 @@ await runtime.startThread({
   environmentId: "env-1",
   threadId: "t2",
   projectId: "p1",
-  providerId: "claude-code",
+  providerId: "another-provider",
+  bridgeLaunch: anotherBridgeLaunch,
 });
 
 // Resume across process lifetimes
@@ -55,7 +60,8 @@ await runtime.resumeThread({
   environmentId: "env-1",
   threadId: "t3",
   providerThreadId, // from previous session
-  providerId: "codex",
+  providerId: "my-provider",
+  bridgeLaunch,
 });
 
 await runtime.shutdown();
@@ -73,7 +79,8 @@ The runtime fails fast when providers crash or are unavailable:
 - **Crash during initialize** → `ensureProvider` rejects with stderr output
 - **Crash during a turn** → pending `runTurn` promise rejects with "exited unexpectedly"
 - **Crash between turns** → next `runTurn` call rejects immediately
-- **Identity not resolved** → `startThread` throws after 5s instead of silently returning wrong data
+- **`thread/start`, `thread/resume` or `thread/fork` result without `providerThreadId`** → the construction rejects immediately with `Invalid JSON-RPC result for thread/start: providerThreadId: …` (naming the method), tells the bridge to release the thread (`thread/stop { intent: "release" }`, best effort) and forgets it; a `thread/identity` notification never stands in for the result
+- **`thread/resume` rejected or timed out** → `resumeThread` rejects with the bridge's error; the thread is released on the bridge (best effort) and forgotten exactly as after a failed `thread/start`, so the next command resumes it again rather than running a turn on a session the bridge never opened
 
 ### Multi-thread / multi-provider
 
@@ -100,7 +107,7 @@ All providers must be authenticated in the current environment before running in
 
 Integration tests hit real provider APIs and take 30-60 seconds. Some lessons learned:
 
-**Don't assume provider behavior — test it directly.** Each provider (codex, claude-code, pi) has different concurrency, turn lifecycle, and session resume semantics. When a test fails or hangs, write a small standalone test that probes the provider directly (e.g., "does codex handle two concurrent turns on different threads?") instead of guessing and tweaking timeouts. The `vitest.config.ts` unit test config is handy for running quick one-off investigations since it includes `src/**/*.test.ts`.
+**Don't assume provider behavior — test it directly.** Each provider has different concurrency, turn lifecycle, and session resume semantics. When a test fails or hangs, write a small standalone test that probes the provider directly (e.g., "does codex handle two concurrent turns on different threads?") instead of guessing and tweaking timeouts. The `vitest.config.ts` unit test config is handy for running quick one-off investigations since it includes `src/**/*.test.ts`.
 
 **Save output to a file, then read it.** Tests are slow — if you pipe output through `grep` and it doesn't match, you've wasted a full test run. Instead:
 
@@ -120,73 +127,50 @@ The root `test:integration --force` run also schedules `@bb/integration-tests#te
 - Provider needs credentials that aren't in the environment
 - Bridge process crashed on startup (check stderr — the runtime captures it in `proc.stderrChunks`)
 
-### Test coverage
-
-**Unit tests (110)** — runtime lifecycle, multi-thread event routing, multi-provider, tool call round-trips, JSON-RPC error handling, fail-fast on crashes (binary not found, crash during init, crash mid-turn, crash between turns), concurrent `ensureProvider` deduplication, resume across runtimes, adapter event translation.
-
-**Integration tests (27)** run all 3 providers concurrently in ~45 seconds:
-
-- **Per-provider tests** (7 × 3 = 21): lists models, single turn, follow-up turn, developer instructions, error recovery, dynamic tool calls, resume across process lifetimes
-- **Cross-provider tests** (6): multi-thread on same runtime, multi-provider in single runtime, dynamic tools across resume, memory recall across resume, combined memory+tools across restart, multi-provider matrix with resume
-
 ### Building
 
-`@bb/agent-runtime` is source-only inside this workspace. The host daemon build
-creates the bridge bundles it needs for runtime startup.
+`@bb/agent-runtime` is source-only inside this workspace and builds no bridges.
+A bridge is a provider plugin's build artifact; the host daemon resolves it to a
+verified local path and names it in every command's `bridgeLaunch`.
 
 ## Architecture
 
 ```
-Consumer (host-daemon, server)
+Consumer (host-daemon)
   │
   └─ createAgentRuntime(options)
        │
-       ├─ AgentRuntime            Process lifecycle, JSON-RPC framing,
-       │   ├─ ensureProvider()    event routing, tool call dispatch
-       │   ├─ startThread()      Deduplicates concurrent provider starts.
-       │   ├─ runTurn()          Fails fast if provider has crashed.
+       ├─ AgentRuntime                 Process lifecycle, JSON-RPC framing,
+       │   ├─ ensureProvider()         event routing, tool call dispatch
+       │   ├─ startThread()           Deduplicates concurrent provider starts.
+       │   ├─ runTurn()               Fails fast if provider has crashed.
        │   └─ shutdown()
        │
-       ├─ ProviderAdapter         Command building, event translation
-       │   ├─ buildCommand()      (one instance per provider process)
-       │   ├─ translateEvent()    Per-thread turn state for multi-thread.
-       │   └─ decodeToolCallRequest()
+       ├─ BridgeProtocolAdapter        The one adapter: builds canonical
+       │   ├─ buildCommandPlan()       Provider Bridge Protocol requests,
+       │   ├─ translateEvent()         assembles `thread/delta` notifications
+       │   └─ decodeToolCallRequest()  into ThreadEvents, decodes tool calls
+       │                               and interactive requests
        │
-       └─ Bridge Process          SDK-specific child process
-           ├─ codex               spawns `codex app-server` directly
-           ├─ claude-code         Node.js bridge → Claude Agent SDK
-           └─ pi                  Node.js bridge → Pi coding agent SDK
+       └─ Bridge Process               The plugin-delivered bridge artifact,
+                                       run under the bridge worker bootstrap;
+                                       one process per provider artifact in
+                                       the environment
 ```
 
-The runtime never interprets provider-specific wire content. Each adapter owns its translation between the runtime's `AdapterCommand` and the provider's JSON-RPC format.
-
-### The two sanctioned adapter shapes
-
-A new provider picks one of two shapes; both are deliberate, and they are
-not meant to converge on a shared bridge skeleton (evaluated 2026-06: the
-genuinely shared plumbing between the claude-code and pi bridges is ~470
-lines whose extraction would cost more than it deletes):
-
-1. **In-process protocol adapter** (codex). The provider ships its own
-   long-running JSON-RPC server (`codex app-server`); the adapter spawns it
-   directly and translates its protocol. No bridge code. Pick this when the
-   provider exposes a stable wire protocol.
-2. **Bridge-process adapter** (claude-code, pi). The provider ships an SDK
-   library; a small Node bridge process under `<provider>/bridge/` hosts the
-   SDK and exposes the same JSON-RPC surface to the runtime. Pick this when
-   the provider only offers an SDK. Each bridge owns its SDK's quirks
-   (claude-code: interactive permissions, stale-resume recovery; pi:
-   steer-with-images, context-window reporting) — keep those per-provider
-   rather than growing a generic skeleton with one-provider knobs.
-
-Shared event-translation mechanics (turn/item id registries, error-category
-mapping, unhandled-event envelopes, command-output normalization) live in
-`src/shared/` and are consumed by all adapters.
+Every provider — first-party plugin bridges, third-party plugin bridges, the
+test harness's scripted echo bridge — speaks the Provider Bridge Protocol
+(`@bb/provider-bridge-protocol`), so there is one adapter and no
+provider-specific implementation behind an interface. The runtime never
+interprets provider-specific wire content: each bridge owns its provider's
+quirks and emits parsed semantic deltas that the shared assembler turns into
+canonical timeline events. Which binary runs comes from the `bridgeLaunch` on
+every command (the host daemon resolves the plugin's artifact to a verified
+local path); the provider id is an opaque label here.
 
 ## Dependencies
 
 - `@bb/domain` — shared types (ThreadEvent, ProviderThreadEvent, PromptInput, ToolCallRequest, etc.)
-- `@bb/templates` — markdown templates for provider instructions
-- `@anthropic-ai/claude-agent-sdk` — Claude Code
-- `@earendil-works/pi-ai`, `@earendil-works/pi-coding-agent` — Pi
+- `@bb/provider-bridge-protocol` — the bridge wire contract, the `thread/delta` assembler, and the bridge kit
+- `@bb/process-utils` — child-process helpers
 - `zod` — schema validation at provider boundaries

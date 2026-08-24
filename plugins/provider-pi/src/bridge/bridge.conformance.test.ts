@@ -1,0 +1,63 @@
+import { afterEach, beforeEach, expect, it } from "vitest";
+import {
+  experimental_formatConformanceReport as formatConformanceReport,
+  experimental_runBridgeConformance as runBridgeConformance,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
+import { handleLine } from "./bridge.js";
+import { type FakePiBridgeHarness, startFakePiBridge } from "./test-support.js";
+
+/**
+ * The pi bridge's conformance run: the canonical protocol suite against the
+ * bridge with a scripted `pi --mode rpc` child underneath (fake-pi-rpc.mjs),
+ * the same seam (`BB_PI_BRIDGE_COMMAND`/`_ARGS`) a live run uses to find pi.
+ */
+
+let harness: FakePiBridgeHarness;
+
+beforeEach(async () => {
+  // The conformance kit sends the initialize handshake itself.
+  harness = await startFakePiBridge({ prefix: "bb-pi-conformance-ws-", initialize: false });
+});
+
+afterEach(async () => {
+  await harness.teardown();
+});
+
+it("passes the canonical protocol suite against a scripted pi rpc child", async () => {
+  const report = await runBridgeConformance({
+    transport: { send: handleLine, takeMessages: harness.takeMessages },
+    providerId: "pi",
+    session: {
+      cwd: harness.workspaceDir,
+      promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      interruptiblePromptInput: [{ type: "text", text: "/hold", mentions: [] }],
+    },
+    timeoutMs: 10_000,
+  });
+
+  console.info(`pi bridge conformance:\n${formatConformanceReport(report)}`);
+
+  const statusById = Object.fromEntries(
+    report.results.map((result) => [result.id, result.status]),
+  );
+  expect(statusById).toMatchObject({
+    "rpc/unknown-method": "pass",
+    "rpc/invalid-params": "pass",
+    "rpc/non-json-ignored": "pass",
+    "rpc/response-not-request": "pass",
+    "handshake/initialize": "pass",
+    "session/start-identity": "pass",
+    "turn/lifecycle": "pass",
+    "events/schema-valid": "pass",
+    "item/opens-before-delta": "pass",
+    "stop/release-not-interrupted": "pass",
+    "session/resume-identity": "pass",
+    "session/resume-id-uniqueness": "pass",
+    "session/fork-identity": "pass",
+    "session/threads-independent": "pass",
+    "stop/interrupt-settles-before-result": "pass",
+  });
+  expect(
+    report.results.filter((result) => result.status !== "pass").map((r) => r.id),
+  ).toEqual([]);
+}, 60_000);

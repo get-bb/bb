@@ -19,7 +19,7 @@ export interface LiteralAgentSelection {
   line: number | null;
 }
 
-export interface InspectedWorkflowSource {
+interface InspectedWorkflowSource {
   workflow: ParsedWorkflow;
   literalSelections: LiteralAgentSelection[];
 }

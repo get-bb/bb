@@ -1,8 +1,7 @@
 import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import { useStore } from "jotai";
-import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { useThreadSplitsEnabled } from "@/hooks/useThreadSplitsEnabled";
+import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { getThreadRoutePath } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
@@ -60,13 +59,12 @@ export function useThreadRowSplitDrag({
   openInSplit: () => void;
 } {
   const store = useStore();
-  const navigate = useNavigate();
+  const navigate = useRouteNavigate();
   const isCompact = useIsCompactViewport();
-  const threadSplitsEnabled = useThreadSplitsEnabled();
 
   const onPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
-      if (!threadSplitsEnabled || event.button !== 0) {
+      if (event.button !== 0) {
         return;
       }
       const rowEl = event.currentTarget;
@@ -79,7 +77,7 @@ export function useThreadRowSplitDrag({
       const startLayout = store.get(splitLayoutAtom);
       const fallback = singlePaneFallback(startLayout);
 
-      beginSplitDrag(startX, startY, {
+      beginSplitDrag({
         ghostLabel: title,
         sourceEl: rowEl,
         cancelSidebarReorderOnEngage: true,
@@ -129,7 +127,7 @@ export function useThreadRowSplitDrag({
         },
       });
     },
-    [navigate, projectId, store, threadId, threadSplitsEnabled, title],
+    [navigate, projectId, store, threadId, title],
   );
 
   const openInSplit = useCallback(() => {
@@ -139,13 +137,11 @@ export function useThreadRowSplitDrag({
       projectId,
       threadId,
       isCompact,
-      threadSplitsEnabled,
     });
-  }, [isCompact, navigate, projectId, store, threadId, threadSplitsEnabled]);
+  }, [isCompact, navigate, projectId, store, threadId]);
 
   return {
-    onPointerDown:
-      threadSplitsEnabled && !isCompact ? onPointerDown : undefined,
+    onPointerDown: !isCompact ? onPointerDown : undefined,
     openInSplit,
   };
 }

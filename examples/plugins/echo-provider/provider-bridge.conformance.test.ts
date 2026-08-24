@@ -1,65 +1,46 @@
 /**
  * The echo bridge's conformance run: drives the bridge in-process through the
  * canonical Provider Bridge Protocol suite (JSON-RPC hygiene, the initialize
- * handshake, and the shared session lifecycle) and asserts a fully green
- * report. This is the test every provider bridge should ship — a conformant
- * bridge passes all eleven scenarios.
+ * handshake, the shared session lifecycle, and the zero-work turn) and
+ * asserts a fully green report. This is the test every provider bridge
+ * should ship — a conformant bridge passes every rule its fixture enables:
+ * fourteen here, the twelve every bridge runs plus the zero-work turn and
+ * the declared-icon check. Everything it needs comes from the published
+ * `@get-bb/plugin-sdk/provider-bridge/testing` kit; no private bb package
+ * is involved.
+ *
+ * The lifecycle scenarios run the bridge's full grammar v3 turn (command,
+ * fileRead, search, a delegation with a child turn, planSteps, tools, the
+ * extension item and state, the streamed message), so `events/schema-valid`
+ * and `item/opens-before-delta` cover every v3 shape the bridge emits.
  *
  * The transport is the in-process pattern: `send` is the bridge's exported
- * line handler, and `takeMessages` drains a captured stdout buffer (the
- * bridge writes protocol lines with process.stdout.write).
+ * line handler, and `takeMessages` drains the captured stdout (the bridge
+ * writes protocol lines with process.stdout.write). The bridge emits
+ * `thread/delta` notifications; the kit assembles them through the runtime's
+ * real delta assembler, so its grammar checks run over the canonical
+ * ThreadEvents the runtime would build.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import {
-  formatConformanceReport,
-  runBridgeConformance,
-  type BridgeConformanceTransport,
-} from "@bb/provider-bridge-protocol/conformance";
+  experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
+  experimental_formatConformanceReport as formatConformanceReport,
+  experimental_runBridgeConformance as runBridgeConformance,
+} from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
+
 import { handleLine } from "./src/provider-bridge.js";
+import { ECHO_PLUGIN_ID } from "./src/vocabulary.js";
 
-interface CapturedStdout {
-  messages: unknown[];
-  restore: () => void;
-}
-
-/** Buffer every protocol line the bridge writes to stdout. */
-function captureStdoutJsonLines(): CapturedStdout {
-  const messages: unknown[] = [];
-  const originalWrite = process.stdout.write.bind(process.stdout);
-  let pending = "";
-  process.stdout.write = ((chunk: string | Uint8Array): boolean => {
-    pending += typeof chunk === "string" ? chunk : chunk.toString();
-    for (;;) {
-      const newlineIndex = pending.indexOf("\n");
-      if (newlineIndex === -1) {
-        break;
-      }
-      const line = pending.slice(0, newlineIndex);
-      pending = pending.slice(newlineIndex + 1);
-      if (line.trim().length === 0) {
-        continue;
-      }
-      messages.push(JSON.parse(line));
-    }
-    return true;
-  }) as typeof process.stdout.write;
-  return {
-    messages,
-    restore: () => {
-      process.stdout.write = originalWrite;
-    },
-  };
-}
-
-let output: CapturedStdout;
+let output: CapturedBridgeJsonRpcOutput;
 let workspaceDir: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-echo-conformance-"));
-  output = captureStdoutJsonLines();
+  output = captureBridgeJsonRpcOutput();
 });
 
 afterEach(() => {
@@ -68,21 +49,22 @@ afterEach(() => {
 });
 
 it("passes the canonical protocol suite", async () => {
-  let drained = 0;
-  const transport: BridgeConformanceTransport = {
-    send: (line) => handleLine(line),
-    takeMessages: () => {
-      const fresh = output.messages.slice(drained);
-      drained = output.messages.length;
-      return fresh;
-    },
-  };
-
   const report = await runBridgeConformance({
-    transport,
+    transport: { send: handleLine, takeMessages: output.takeMessages },
+    // The kit holds one stateful assembler for the whole run — the runtime
+    // adapter's exact delta→event translation, so cross-resume id uniqueness
+    // is checked against the ids the runtime would really mint.
+    providerId: "echo",
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
+      // `/noop` is the prompt the echo agent completes without activity, so
+      // the kit can check that such a turn still settles.
+      zeroWorkPromptInput: [{ type: "text", text: "/noop", mentions: [] }],
+      // What package.json declares under `bb.branding.experimental_icons`:
+      // the receipt row's `echo-provider/receipt` glyph must name one of
+      // these, or the server persists the row as provider/unhandled.
+      icons: { pluginId: ECHO_PLUGIN_ID, names: ["receipt"] },
     },
     timeoutMs: 5_000,
   });
@@ -105,7 +87,11 @@ it("passes the canonical protocol suite", async () => {
     "events/schema-valid": "pass",
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
+    "session/resume-identity": "pass",
     "session/resume-id-uniqueness": "pass",
+    "skills/configure-declared": "pass",
+    "presentation/icon-namespaced-declared": "pass",
+    "turn/settles-without-activity": "pass",
   });
   expect(report.passed).toBe(true);
 }, 30_000);

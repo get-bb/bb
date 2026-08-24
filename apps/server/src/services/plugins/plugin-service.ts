@@ -6,10 +6,16 @@ import { CronExpressionParser } from "cron-parser";
 import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
+  derivePluginId,
   formatPluginThemeId,
+  isNamespacedGlyph,
+  isPluginOwnedIconPath,
   type DeclaredCodeTheme,
+  type DynamicTool,
   type JsonValue,
   type PluginThemeMeta,
+  type SystemChangeKind,
+  type ThreadEventItemPresentation,
   type ToolCallResponse,
 } from "@bb/domain";
 import {
@@ -73,11 +79,7 @@ import {
   parsePluginSource,
   recoverInterruptedGitPluginPromotion,
 } from "./install-sources.js";
-import {
-  derivePluginId,
-  readPluginManifest,
-  type PluginManifest,
-} from "./manifest.js";
+import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import { listBundledPluginRegistrations } from "./builtin-registry.js";
 import {
   type BbPluginApi,
@@ -133,30 +135,39 @@ import type {
 } from "./plugin-service-internal.js";
 export type {
   PluginAgentToolContribution,
-  PluginApplyUpdateOutcome,
-  PluginApplyUpdateResult,
-  PluginHandlerStats,
-  PluginInstructionContribution,
-  PluginResolvedAgentConfiguration,
-  PluginListEntry,
-  PluginMentionProviderContribution,
   PluginMentionResolveResult,
-  PluginMentionSearchGroup,
-  PluginMentionSearchItem,
-  PluginRuntimeStatus,
-  PluginScheduleEntry,
   PluginServiceDeps,
-  PluginServiceEntry,
-  PluginServiceState,
-  PluginSourceView,
   PluginThreadEventEmitter,
-  PluginUpdateCheckEntry,
   PluginWireLookup,
 } from "./plugin-service-internal.js";
 
 export interface PluginSkillRootContribution {
   pluginId: string;
   rootPath: string;
+}
+
+/**
+ * Result of `reload`. `plugins` is the full inventory after the reload. A
+ * reload fails when any targeted plugin is not running its current sources
+ * afterwards: the new sources did not load (the previous instance keeps
+ * serving), or a service of the previous instance never stopped and the
+ * plugin is degraded with nothing loaded (#2029). A plugin the user disabled
+ * stays disabled and is not a failure.
+ */
+export type PluginReloadOutcome =
+  | { ok: true; plugins: PluginListEntry[] }
+  | { ok: false; error: string; plugins: PluginListEntry[] };
+
+/**
+ * `fs.watch` is allowed to omit the changed filename. The dev loop still has
+ * to reload in that case; `.` is a non-ignored synthetic path representing an
+ * unknown change somewhere below the watched plugin root.
+ */
+export function dispatchPluginSourceWatchChange(
+  handleChange: (relativePath: string) => void,
+  filename: string | null,
+): void {
+  handleChange(filename === null || filename.length === 0 ? "." : filename);
 }
 
 export interface PluginService {
@@ -173,6 +184,14 @@ export interface PluginService {
   start(): Promise<void>;
   /** Dispose all loaded plugins (server shutdown). */
   stop(): Promise<void>;
+  /**
+   * Route a process-level uncaught exception raised from a background
+   * service's async context (an unlistened EventEmitter 'error', a timer
+   * throw, a detached rejection) back to that service's supervisor, which
+   * aborts and restarts it with backoff. Returns false when no service owns
+   * the error; the caller then keeps Node's default and exits.
+   */
+  handleUncaughtException(error: unknown): boolean;
   list(): PluginListEntry[];
   /** Palettes declared by currently loaded plugins, ordered by plugin id. */
   listThemes(): PluginThemeMeta[];
@@ -239,6 +258,9 @@ export interface PluginService {
   >;
   installPath(path: string): Promise<PluginListEntry>;
   checkForUpdates(id?: string): Promise<PluginUpdateCheckEntry[]>;
+  /** Check every plugin for updates every 6 hours; see PluginUpdates. */
+  startPeriodicUpdateChecks(): void;
+  stopPeriodicUpdateChecks(): Promise<void>;
   listUpdateResults(): PluginUpdateCheckEntry[];
   getSource(id: string): Promise<PluginSourceView | undefined>;
   applyUpdate(id: string): Promise<PluginApplyUpdateOutcome>;
@@ -247,7 +269,8 @@ export interface PluginService {
     id: string,
     enabled: boolean,
   ): Promise<PluginListEntry | undefined>;
-  reload(id?: string): Promise<void>;
+  /** Reload one plugin, or every plugin; see PluginReloadOutcome. */
+  reload(id?: string): Promise<PluginReloadOutcome>;
   /** Live API handle for a running plugin (used by later phases and tests). */
   getApi(id: string): BbPluginApi | undefined;
   /**
@@ -264,6 +287,17 @@ export interface PluginService {
   getBrandingAsset(
     id: string,
     variant: PluginBrandingAssetVariant,
+  ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
+  /**
+   * Immutable byte snapshot of one declared icon
+   * (`bb.branding.experimental_icons[name]`), backing
+   * GET /plugins/:id/assets/icons/<name>.svg. Identity-backed like the
+   * branding assets: served for a disabled plugin, gone after uninstall.
+   * Undefined for an unknown plugin or name.
+   */
+  getIconAsset(
+    id: string,
+    name: string,
   ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
   /** Active generations a reconnecting daemon uses to retire stale workers. */
   listHostArtifactGenerations(): Array<{
@@ -853,17 +887,16 @@ function normalizePluginAgentToolSelections(args: {
 }
 
 function normalizePluginAgentSelectionIds(args: {
-  field: "skills";
   knownIds: ReadonlySet<string>;
   pluginId: string;
   value: unknown;
 }): string[] {
   if (!Array.isArray(args.value)) {
-    throw new Error(`configure() output.${args.field} must be an array`);
+    throw new Error("configure() output.skills must be an array");
   }
   if (args.value.length > PLUGIN_AGENT_SELECTION_MAX_IDS) {
     throw new Error(
-      `configure() output.${args.field} exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
+      `configure() output.skills exceeds the ${PLUGIN_AGENT_SELECTION_MAX_IDS}-id limit`,
     );
   }
   const selected: string[] = [];
@@ -872,12 +905,12 @@ function normalizePluginAgentSelectionIds(args: {
     const id = args.value[index];
     if (typeof id !== "string" || id.length === 0) {
       throw new Error(
-        `configure() output.${args.field}[${index}] must be a non-empty string`,
+        `configure() output.skills[${index}] must be a non-empty string`,
       );
     }
     if (seen.has(id)) {
       throw new Error(
-        `configure() output.${args.field} contains duplicate id ${JSON.stringify(id)}`,
+        `configure() output.skills contains duplicate id ${JSON.stringify(id)}`,
       );
     }
     if (!args.knownIds.has(id)) {
@@ -938,7 +971,6 @@ function normalizePluginAgentConfiguration(args: {
     toolIds: toolSelections.toolIds,
     toolParameterOverrides: toolSelections.parameterOverrides,
     skillIds: normalizePluginAgentSelectionIds({
-      field: "skills",
       knownIds: args.knownSkillIds,
       pluginId: args.pluginId,
       value: output.skills,
@@ -946,6 +978,9 @@ function normalizePluginAgentConfiguration(args: {
     instructions,
   };
 }
+
+/** The glyph a bb-injected tool wears when neither it nor its plugin names one. */
+const GENERIC_AGENT_TOOL_GLYPH = "Toolbox";
 
 export function createPluginService(deps: PluginServiceDeps): PluginService {
   const logger = deps.logger;
@@ -960,6 +995,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   const artifactRetentionMs =
     deps.artifactRetentionMs ?? DEFAULT_ARTIFACT_RETENTION_MS;
   const now = deps.now ?? Date.now;
+  let lastNotifiedProviderRegistrationRevision =
+    deps.providerRegistry?.getRegistrationRevision() ?? 0;
   const scheduleStabilizationWindow =
     deps.scheduleStabilizationWindow ??
     ((durationMs: number, onElapsed: () => void) => {
@@ -985,12 +1022,13 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     disposeOne,
     emitThreadEvent,
     handlerStats,
+    handleUncaughtException,
     hungServices,
     hostArtifacts,
     identities,
     invokeWrapped,
     isBuiltinPluginId,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     loadAll,
     loaded,
     loadOne,
@@ -1031,6 +1069,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     withLifecycleLock,
     disposeOne,
     loadOne,
+    statuses,
     validateInstallDir: (args) => managedValidateInstallDir(args),
     checkEngineRange,
     checkPluginSdkRange,
@@ -1071,7 +1110,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     sourceKind,
     checkEngineRange,
     checkPluginSdkRange,
-    isPackagedBuiltinAppEntry,
+    isPackagedBuiltinEntry,
     registerInstalled,
     assertInstallRegistrationAvailable,
     refuseBuiltinShadow,
@@ -1091,6 +1130,57 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     managedArtifacts: managedPluginArtifacts,
     runArtifactGc,
   });
+
+  /**
+   * The one full presentation a bb-injected tool carries to the bridge
+   * (grammar v3). Label: the plugin's declared `presentation.label`, else
+   * `Running <name>` / `Ran <name>`. Icon: the declared glyph, else the
+   * plugin's branding icon when it is a host glyph name — not a plugin-owned
+   * asset path, and not a namespaced `"<pluginId>/<name>"` reference (the
+   * manifest schema refuses that shape for `bb.branding.icon`; were one to
+   * reach here, ingest would check the glyph against the tool's plugin and
+   * replace every call row with `provider/unhandled`) — else `Toolbox`.
+   * Resolved here, once, so the wire never carries a hole a bridge would
+   * have to fill with a tool-name table of its own.
+   */
+  function resolveAgentToolPresentation(
+    pluginId: string,
+    record: PluginAgentToolRecord,
+  ): ThreadEventItemPresentation {
+    const declared = record.presentation;
+    const brandingIcon = loaded.get(pluginId)?.manifest.branding.icon;
+    const glyph =
+      declared?.icon?.glyph ??
+      (brandingIcon !== undefined &&
+      !isPluginOwnedIconPath(brandingIcon) &&
+      !isNamespacedGlyph(brandingIcon)
+        ? brandingIcon
+        : GENERIC_AGENT_TOOL_GLYPH);
+    return {
+      label: declared?.label ?? {
+        pending: `Running ${record.name}`,
+        completed: `Ran ${record.name}`,
+      },
+      icon: { glyph },
+      ...(declared?.suppress === undefined
+        ? {}
+        : { suppress: declared.suppress }),
+      ...(declared?.tint === undefined ? {} : { tint: declared.tint }),
+    };
+  }
+
+  function toAgentDynamicTool(
+    pluginId: string,
+    record: PluginAgentToolRecord,
+    inputSchema: unknown = record.inputSchema,
+  ): DynamicTool {
+    return {
+      name: record.name,
+      description: record.description,
+      inputSchema,
+      presentation: resolveAgentToolPresentation(pluginId, record),
+    };
+  }
 
   /**
    * The live native-tool view: loaded plugins in id order, registration
@@ -1148,11 +1238,23 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   /**
    * Broadcast that the set of running plugins (and therefore host-rendered
    * contributions) changed, so open app pages re-fetch instead of waiting
-   * out their query stale time. Fired on install/remove/enable/disable/
+   * out their query stale time. Provider cache invalidation gets its own
+   * change kind and only rides the broadcast when the registry changed since
+   * the previous lifecycle boundary. Fired on install/remove/enable/disable/
    * reload completion.
    */
   function notifyPluginsChanged(): void {
-    deps.hub.notifySystem(["plugins-changed"]);
+    const changes: SystemChangeKind[] = ["plugins-changed"];
+    const providerRegistrationRevision =
+      deps.providerRegistry?.getRegistrationRevision();
+    if (
+      providerRegistrationRevision !== undefined &&
+      providerRegistrationRevision !== lastNotifiedProviderRegistrationRevision
+    ) {
+      lastNotifiedProviderRegistrationRevision = providerRegistrationRevision;
+      changes.push("provider-registrations-changed");
+    }
+    deps.hub.notifySystem(changes);
   }
 
   function compactPath(path: string): string {
@@ -1386,6 +1488,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.logoDark?.url
               : identity?.brandingAssets.logoDark?.url) ?? null,
+          providerIds:
+            loadedPlugin?.handle
+              .listProviderDeclarations()
+              .map((declaration) => declaration.id) ?? [],
+          // Declared icons ride the identity like the compact icon, so a
+          // row referencing "<pluginId>/<name>" resolves while the plugin is
+          // disabled and stops resolving only once it is uninstalled.
+          icons: Object.fromEntries(
+            [
+              ...((loadedPlugin !== undefined
+                ? brandingAssets.get(row.id)?.icons
+                : identity?.brandingAssets.icons) ?? []),
+            ].map(([name, asset]) => [name, asset.url]),
+          ),
         };
       });
   }
@@ -1430,7 +1546,6 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (!theme) continue;
         return readPluginThemeCodeTheme(
           themeId,
-          plugin.manifest.rootDir,
           theme.codeTheme ?? undefined,
           theme.codeThemePaths,
         );
@@ -1540,14 +1655,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
               }
             },
             reloadPlugin: async () => {
-              await withLifecycleLock(row.id, async () => {
+              const problem = await withLifecycleLock(row.id, async () => {
                 const current = getInstalledPlugin(deps.db, row.id);
-                if (current === undefined) return;
+                if (current === undefined) return null;
                 await disposeOne(row.id);
-                await loadOne(current);
+                return loadOne(current);
               });
               await syncCliSkill();
               notifyPluginsChanged();
+              // The dev loop logs a thrown reload as "reload failed: …"
+              // instead of "reloaded" while the plugin is not running.
+              if (problem !== null) throw new Error(problem);
             },
             log: (message) => logger.info(`plugin ${row.id}: ${message}`),
           });
@@ -1555,9 +1673,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             bundled.rootDir,
             { recursive: true },
             (_event, filename) => {
-              if (typeof filename === "string" && filename.length > 0) {
-                loop.handleChange(filename);
-              }
+              dispatchPluginSourceWatchChange(loop.handleChange, filename);
             },
           );
           watcher.on("close", () => loop.dispose());
@@ -1574,6 +1690,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       await syncCliSkill();
       notifyPluginsChanged();
     },
+
+    handleUncaughtException,
 
     list,
 
@@ -1697,6 +1815,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             recursive: true,
             force: true,
           });
+          logger.info(
+            `plugin ${id} removed from ${row.source}; its settings, secrets, and schedules were deleted`,
+          );
           // Legacy managed installs still own their mutable pre-cache layout.
           // Immutable artifact directories are retained for future GC policy;
           // path: sources are the user's directory and are never deleted.
@@ -1751,11 +1872,19 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       const rows = listInstalledPlugins(deps.db).filter(
         (row) => id === undefined || row.id === id,
       );
+      const failures: string[] = [];
       for (const row of rows.sort((a, b) => a.id.localeCompare(b.id))) {
-        await withLifecycleLock(row.id, () => loadOne(row));
+        const problem = await withLifecycleLock(row.id, () => loadOne(row));
+        if (problem !== null) {
+          failures.push(`plugin "${row.id}" reload failed: ${problem}`);
+        }
       }
       await syncCliSkill();
       notifyPluginsChanged();
+      const plugins = list();
+      return failures.length === 0
+        ? { ok: true, plugins }
+        : { ok: false, error: failures.join("; "), plugins };
     },
 
     getApi(id) {
@@ -1786,6 +1915,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           : variant === "logo-dark"
             ? set?.logoDark
             : set?.logo;
+      if (!asset) return undefined;
+      return {
+        bytes: asset.bytes,
+        contentType: asset.contentType,
+        hash: asset.hash,
+      };
+    },
+
+    getIconAsset(id, name) {
+      // Declared icons are identity too: a row persisted with
+      // "<pluginId>/<name>" keeps rendering while the plugin is disabled,
+      // and 404s only once the plugin is uninstalled (identities.delete).
+      const set = loaded.has(id)
+        ? brandingAssets.get(id)
+        : identities.get(id)?.brandingAssets;
+      const asset = set?.icons.get(name);
       if (!asset) return undefined;
       return {
         bytes: asset.bytes,
@@ -1898,6 +2043,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             );
           }
         }
+        deps.onSettingsChanged?.(id);
         // Effective values changed: broadcast so every open page's settings
         // queries (plugin-sdk useSettings included) refetch instead of
         // serving the pre-save snapshot until stale time.
@@ -2053,11 +2199,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     listAgentTools() {
       return collectAgentTools().map(({ pluginId, record }) => ({
         pluginId,
-        tool: {
-          name: record.name,
-          description: record.description,
-          inputSchema: record.inputSchema,
-        },
+        tool: toAgentDynamicTool(pluginId, record),
         instructions: record.instructions,
       }));
     },
@@ -2079,11 +2221,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           tools.push(
             ...pluginTools.map(({ record }) => ({
               pluginId,
-              tool: {
-                name: record.name,
-                description: record.description,
-                inputSchema: record.inputSchema,
-              },
+              tool: toAgentDynamicTool(pluginId, record),
               instructions: record.instructions,
             })),
           );
@@ -2114,12 +2252,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             .filter(({ record }) => selectedTools.has(record.name))
             .map(({ record }) => ({
               pluginId,
-              tool: {
-                name: record.name,
-                description: record.description,
-                inputSchema:
-                  parameterOverrides.get(record.name) ?? record.inputSchema,
-              },
+              tool: toAgentDynamicTool(
+                pluginId,
+                record,
+                parameterOverrides.get(record.name) ?? record.inputSchema,
+              ),
               instructions: record.instructions,
             })),
         );

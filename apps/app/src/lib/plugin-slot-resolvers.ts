@@ -8,7 +8,7 @@ import type {
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
   PluginPendingInteractionSlot,
-  PluginThreadListSlot,
+  PluginTimelineRendererSlot,
 } from "./plugin-slots";
 
 type ComposerAction = NonNullable<ComposerCustomization["actions"]>[number];
@@ -31,7 +31,7 @@ export interface ResolvedComposerAction extends ResolvedComposerContribution {
   action: ComposerAction;
 }
 
-export interface ResolvedComposerBanner extends ResolvedComposerContribution {
+interface ResolvedComposerBanner extends ResolvedComposerContribution {
   banner: ComposerBanner;
 }
 
@@ -40,12 +40,12 @@ export interface ResolvedComposerPlusMenuItem extends ResolvedComposerContributi
 }
 
 /** One plugin customization's ordered effect rules. */
-export interface ResolvedComposerEditorEffects extends ResolvedComposerContribution {
+interface ResolvedComposerEditorEffects extends ResolvedComposerContribution {
   effects: readonly ComposerEditorEffect[];
 }
 
 /** One plugin customization's draft observer callback. */
-export interface ResolvedComposerDraftObserver extends ResolvedComposerContribution {
+interface ResolvedComposerDraftObserver extends ResolvedComposerContribution {
   onDraftChange: ComposerDraftObserver;
 }
 
@@ -73,23 +73,13 @@ function resolvedComposerContribution(
   };
 }
 
-export function composerCustomizationApplies(
+function composerCustomizationApplies(
   customization: PluginComposerCustomizationSlot,
   scopeKind: PluginComposerScope["kind"],
 ): boolean {
   return (
     customization.scopes === undefined ||
     customization.scopes.includes(scopeKind)
-  );
-}
-
-/** Preserve snapshot order while applying the shared Composer scope contract. */
-export function resolveComposerCustomizations(
-  customizations: readonly PluginComposerCustomizationSlot[],
-  scopeKind: PluginComposerScope["kind"],
-): readonly PluginComposerCustomizationSlot[] {
-  return customizations.filter((customization) =>
-    composerCustomizationApplies(customization, scopeKind),
   );
 }
 
@@ -191,6 +181,40 @@ export function resolvePendingInteraction(
   );
 }
 
+/**
+ * The plugin renderer for a timeline row, if one is registered.
+ *
+ * An extension row resolves by its kind: the store already guarantees the
+ * registering plugin owns the kind's namespace. A generic tool row resolves
+ * to the `"tool"` registration of the plugin that owns the thread's
+ * provider (`providerPluginId`, null when the provider's owner is unknown,
+ * in which case no plugin may claim the row).
+ */
+export function resolveTimelineRenderer(
+  registrations: readonly PluginTimelineRendererSlot[],
+  target:
+    | { kind: "extension"; extensionKind: string }
+    | { kind: "tool"; providerPluginId: string | null },
+): PluginTimelineRendererSlot | null {
+  if (target.kind === "extension") {
+    return (
+      registrations.find(
+        (registration) => registration.kind === target.extensionKind,
+      ) ?? null
+    );
+  }
+  if (target.providerPluginId === null) {
+    return null;
+  }
+  return (
+    registrations.find(
+      (registration) =>
+        registration.kind === "tool" &&
+        registration.pluginId === target.providerPluginId,
+    ) ?? null
+  );
+}
+
 export type ResolvedMessageDirective =
   | { status: "ok"; slot: PluginMessageDirectiveSlot }
   | { status: "collision"; pluginIds: readonly string[] };
@@ -209,15 +233,6 @@ function resolveMessageDirectiveClaimants(
       ...new Set(claimants.map((claimant) => claimant.pluginId)),
     ].sort(),
   };
-}
-
-export function resolveMessageDirective(
-  registrations: readonly PluginMessageDirectiveSlot[],
-  directiveId: string,
-): ResolvedMessageDirective | null {
-  return resolveMessageDirectiveClaimants(
-    registrations.filter((registration) => registration.id === directiveId),
-  );
 }
 
 export function resolveMessageDirectiveRegistry(
@@ -265,13 +280,11 @@ export function resolveReplacement<Registration>(
     : { kind: "plugin", registration };
 }
 
-export function resolveThreadListReplacement(
-  registrations: readonly PluginThreadListSlot[],
-  applies?: (registration: PluginThreadListSlot) => boolean,
-): ResolvedReplacement<PluginThreadListSlot> {
-  return resolveReplacement(registrations, applies);
-}
-
+/**
+ * A per-open viewer choice (the link context menu): "builtin" pins the
+ * built-in preview; an opener ref forces that plugin opener. Absent means
+ * follow the extension's automatic or pinned Settings choice.
+ */
 export type FileOpenerOverride =
   | "builtin"
   | { pluginId: string; openerId: string };

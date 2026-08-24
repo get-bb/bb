@@ -1,12 +1,17 @@
-import { useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
 import type { PromptMentionCommandTrigger } from "@bb/domain";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
   toProviderCommandSuggestion,
   type ProviderCommandSuggestion,
-} from "@/components/promptbox/mentions/types";
-import { useProjectCommands } from "./queries/project-queries";
+} from "@bb/client-core";
+import {
+  projectCommandsQueryOptions,
+  useProjectCommands,
+} from "./queries/project-queries";
 
-export interface UseCommandSuggestionsArgs {
+interface UseCommandSuggestionsArgs {
   projectId: string | undefined;
   providerId: string | undefined;
   /** Composer surface used to exclude commands that require an existing thread. */
@@ -23,9 +28,20 @@ export interface UseCommandSuggestionsArgs {
   hostId?: string | null;
   /** Text typed after the trigger char, or `null` when no command trigger is active. */
   query: string | null;
+  /**
+   * `true` once the composer editor has received focus. On coarse-pointer
+   * devices that focus is a deliberate tap, so the command catalog is warmed
+   * then instead of on the first `/`, which would otherwise wait a full
+   * round-trip (a daemon `host.list_commands`) on a mobile link. Fine-pointer
+   * composers autofocus on mount, so they keep the fetch on first `/`.
+   */
+  composerFocused?: boolean;
 }
 
-export interface UseCommandSuggestionsResult {
+/** How long a focus-time prefetch of the command catalog is reused. */
+const COMMAND_CATALOG_PREFETCH_STALE_TIME_MS = 30_000;
+
+interface UseCommandSuggestionsResult {
   /** The provider's command trigger char, or `null` when the feature is inert. */
   trigger: PromptMentionCommandTrigger | null;
   suggestions: ProviderCommandSuggestion[];
@@ -41,7 +57,7 @@ export interface UseCommandSuggestionsResult {
   loadMore: () => void;
 }
 
-export interface CommandSuggestionPromptAction {
+interface CommandSuggestionPromptAction {
   text?: string;
   command?: {
     trigger: PromptMentionCommandTrigger;
@@ -176,6 +192,42 @@ export function useCommandSuggestions(
     },
     { enabled: isActive },
   );
+  const queryClient = useQueryClient();
+  const isPointerCoarse = usePointerCoarse();
+  const shouldPrefetchCatalog =
+    args.composerFocused === true &&
+    isPointerCoarse &&
+    args.projectId !== undefined &&
+    args.providerId !== undefined &&
+    trigger !== null;
+  const prefetchProjectId = args.projectId;
+  const prefetchProviderId = args.providerId;
+  const prefetchEnvironmentId = args.environmentId;
+  const prefetchHostId = args.hostId ?? null;
+  useEffect(() => {
+    if (!shouldPrefetchCatalog) {
+      return;
+    }
+    void queryClient.prefetchQuery({
+      ...projectCommandsQueryOptions({
+        projectId: prefetchProjectId,
+        providerId: prefetchProviderId,
+        environmentId: prefetchEnvironmentId,
+        hostId: prefetchHostId,
+      }),
+      // Same no-retry policy as the typeahead observer: a failed warm-up must
+      // not turn into three daemon round-trips behind the user's back.
+      retry: false,
+      staleTime: COMMAND_CATALOG_PREFETCH_STALE_TIME_MS,
+    });
+  }, [
+    prefetchEnvironmentId,
+    prefetchHostId,
+    prefetchProjectId,
+    prefetchProviderId,
+    queryClient,
+    shouldPrefetchCatalog,
+  ]);
 
   const suggestions = useMemo<ProviderCommandSuggestion[]>(() => {
     if (!isActive) {

@@ -2,17 +2,20 @@ import type { ThreadEvent } from "@bb/domain";
 import { describe, expect, it } from "vitest";
 import {
   checkItemOpensBeforeDelta,
+  checkPresentationIconsDeclared,
   runBridgeConformance,
 } from "../src/conformance/index.js";
 import {
   bridgeCapabilitiesSchema,
   initializeResultSchema,
-  threadEventNotificationSchema,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  providerInstallationStatusParamsSchema,
   threadStopParamsSchema,
   ThreadEventGrammar,
   toolCallRequestParamsSchema,
   turnStartParamsSchema,
 } from "../src/index.js";
+import { THREAD_DELTA_NOTIFICATION_METHOD } from "../src/thread-delta.js";
 
 describe("handshake", () => {
   it("reads an older bridge's minimal initialize result as definite absences", () => {
@@ -39,13 +42,20 @@ describe("handshake", () => {
   });
 });
 
-describe("thread/event strictness", () => {
-  it("rejects a payload whose event is not a valid ThreadEvent", () => {
-    const result = threadEventNotificationSchema.safeParse({
-      threadId: "thr_1",
-      event: { type: "definitely/not/a/thread/event", data: {} },
-    });
-    expect(result.success).toBe(false);
+describe("provider installation status", () => {
+  it("accepts the typed thread rewind requirement and rejects arbitrary operations", () => {
+    expect(
+      providerInstallationStatusParamsSchema.parse({
+        providerId: "codex",
+        requirement: "thread_rewind",
+      }).requirement,
+    ).toBe("thread_rewind");
+    expect(
+      providerInstallationStatusParamsSchema.safeParse({
+        providerId: "codex",
+        requirement: "anything",
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -141,6 +151,169 @@ describe("conformance item/opens-before-delta", () => {
 
   it("skips an empty log rather than passing it", () => {
     expect(checkItemOpensBeforeDelta([]).status).toBe("skipped");
+  });
+});
+
+describe("conformance presentation/icon-namespaced-declared", () => {
+  const scope = { kind: "turn", turnId: "turn_1" } as const;
+  const icons = { pluginId: "echo-provider", names: ["receipt"] };
+  const completed = (
+    id: string,
+    glyph: string,
+    server = "mcp",
+  ): ThreadEvent => ({
+    type: "item/completed",
+    threadId: "thr_1",
+    providerThreadId: "p_1",
+    item: {
+      type: "toolCall",
+      id,
+      tool: "stamp",
+      server,
+      status: "completed",
+      presentation: {
+        label: { pending: "Stamping", completed: "Stamped" },
+        icon: { glyph },
+      },
+    },
+    scope,
+  });
+
+  it("passes a declared icon and ignores host glyphs", () => {
+    const result = checkPresentationIconsDeclared(
+      [
+        completed("item_1", "echo-provider/receipt"),
+        completed("item_2", "Terminal"),
+        completed("item_3", "NotAGlyphAnyoneKnows"),
+      ],
+      icons,
+    );
+    expect(result.status).toBe("pass");
+  });
+
+  it("fails a glyph naming another plugin, or an undeclared name, naming the item and the glyph", () => {
+    const foreign = checkPresentationIconsDeclared(
+      [completed("item_1", "other-plugin/receipt")],
+      icons,
+    );
+    expect(foreign.status).toBe("fail");
+    expect(foreign.detail).toContain('"item_1"');
+    expect(foreign.detail).toContain('"other-plugin/receipt"');
+    expect(foreign.detail).toContain("provider/unhandled");
+
+    const undeclared = checkPresentationIconsDeclared(
+      [completed("item_2", "echo-provider/seal")],
+      icons,
+    );
+    expect(undeclared.status).toBe("fail");
+    expect(undeclared.detail).toContain('"echo-provider/seal"');
+    expect(undeclared.detail).toContain("declared: receipt");
+
+    // A plugin that declares nothing cannot emit any namespaced glyph.
+    expect(
+      checkPresentationIconsDeclared(
+        [completed("item_3", "echo-provider/receipt")],
+        { pluginId: "echo-provider", names: [] },
+      ).status,
+    ).toBe("fail");
+  });
+
+  it("does not inspect a bb-injected tool row, whose glyph the server checks against the tool's plugin", () => {
+    expect(
+      checkPresentationIconsDeclared(
+        [completed("item_1", "tool-plugin/stamp", "bb")],
+        icons,
+      ).status,
+    ).toBe("skipped");
+    expect(
+      checkPresentationIconsDeclared(
+        [
+          completed("item_1", "tool-plugin/stamp", "bb"),
+          completed("item_2", "echo-provider/receipt"),
+        ],
+        icons,
+      ).status,
+    ).toBe("pass");
+  });
+
+  it("skips a log with no presentation to inspect", () => {
+    expect(checkPresentationIconsDeclared([], icons).status).toBe("skipped");
+  });
+
+  it("inspects the thread-scoped delegation and background-task snapshots, where a background item's terminal glyph travels", () => {
+    const threadScope = { kind: "thread" } as const;
+    const delegation = (
+      type: "item/delegation/progress" | "item/delegation/completed",
+      glyph: string,
+    ): ThreadEvent => ({
+      type,
+      threadId: "thr_1",
+      providerThreadId: "p_1",
+      item: {
+        type: "delegation",
+        id: "deleg_1",
+        childRef: "child_1",
+        label: "child",
+        status: type === "item/delegation/completed" ? "completed" : "pending",
+        background: true,
+        presentation: {
+          label: { pending: "Delegating", completed: "Delegated" },
+          icon: { glyph },
+        },
+      },
+      scope: threadScope,
+    });
+    const backgroundTask = (
+      type: "item/backgroundTask/progress" | "item/backgroundTask/completed",
+      glyph: string,
+    ): ThreadEvent => ({
+      type,
+      threadId: "thr_1",
+      providerThreadId: "p_1",
+      item: {
+        type: "backgroundTask",
+        id: "bg_1",
+        familyId: "fam_1",
+        taskType: "local_bash",
+        description: "bg",
+        status:
+          type === "item/backgroundTask/completed" ? "completed" : "pending",
+        taskStatus:
+          type === "item/backgroundTask/completed" ? "completed" : "running",
+        skipTranscript: false,
+        presentation: {
+          label: { pending: "Running", completed: "Ran" },
+          icon: { glyph },
+        },
+      },
+      scope: threadScope,
+    });
+
+    expect(
+      checkPresentationIconsDeclared(
+        [
+          delegation("item/delegation/progress", "echo-provider/receipt"),
+          delegation("item/delegation/completed", "echo-provider/receipt"),
+          backgroundTask(
+            "item/backgroundTask/progress",
+            "echo-provider/receipt",
+          ),
+          backgroundTask("item/backgroundTask/completed", "Terminal"),
+        ],
+        icons,
+      ).status,
+    ).toBe("pass");
+
+    for (const event of [
+      delegation("item/delegation/progress", "other-plugin/receipt"),
+      delegation("item/delegation/completed", "echo-provider/seal"),
+      backgroundTask("item/backgroundTask/progress", "echo-provider/seal"),
+      backgroundTask("item/backgroundTask/completed", "other-plugin/receipt"),
+    ]) {
+      const result = checkPresentationIconsDeclared([event], icons);
+      expect(result.status, event.type).toBe("fail");
+      expect(result.detail).toContain(event.type);
+    }
   });
 });
 
@@ -309,52 +482,46 @@ describe("conformance turn/settles-without-activity", () => {
     const providerThreadId = "p_stub_1";
     let turnCounter = 0;
 
-    const emit = (threadId: string, event: ThreadEvent): void => {
+    // The stub plays the bridge: it emits the thread/delta batches a real
+    // bridge would, and the kit assembles them through the runtime's own
+    // delta assembler.
+    const emit = (threadId: string, deltas: unknown[]): void => {
       outbox.push({
         jsonrpc: "2.0",
-        method: "thread/event",
-        params: { threadId, event },
+        method: THREAD_DELTA_NOTIFICATION_METHOD,
+        params: { threadId, deltas },
       });
     };
 
-    const runTurn = (threadId: string, zeroWork: boolean): void => {
+    const runTurn = (
+      threadId: string,
+      clientRequestId: unknown,
+      zeroWork: boolean,
+    ): void => {
       turnCounter += 1;
-      const turnId = `turn_${turnCounter}`;
-      const scope = { kind: "turn", turnId } as const;
+      const accepted = { kind: "input.accepted", clientRequestId };
       if (zeroWork) {
         if (!options.settlesZeroWork) {
           // The #1431 bug: the provider finished, but no bb turn ever settles.
           return;
         }
-        emit(threadId, {
-          type: "turn/completed",
-          threadId,
-          providerThreadId,
-          status: "completed",
-          scope,
-        });
+        // Accepted and settled with no activity in between: the boundary
+        // claims the turn the pending acceptance opened.
+        emit(threadId, [
+          accepted,
+          { kind: "turn.boundary", status: "completed", claimIfIdle: true },
+        ]);
         return;
       }
-      emit(threadId, {
-        type: "turn/started",
-        threadId,
-        providerThreadId,
-        scope,
-      });
-      emit(threadId, {
-        type: "item/started",
-        threadId,
-        providerThreadId,
-        scope,
-        item: { type: "agentMessage", id: `item_${turnCounter}`, text: "hi" },
-      });
-      emit(threadId, {
-        type: "turn/completed",
-        threadId,
-        providerThreadId,
-        status: "completed",
-        scope,
-      });
+      const key = { providerItemId: `item_${turnCounter}` };
+      const item = { type: "agentMessage", text: "hi" };
+      emit(threadId, [
+        accepted,
+        { kind: "turn.open" },
+        { kind: "item.open", key, item },
+        { kind: "item.close", key, status: "completed", item },
+        { kind: "turn.boundary", status: "completed" },
+      ]);
     };
 
     const handleLine = (line: string): void => {
@@ -375,7 +542,10 @@ describe("conformance turn/settles-without-activity", () => {
       };
       switch (method) {
         case "initialize":
-          respond({ protocolVersion: 1, capabilities: {} });
+          respond({
+            protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
+            capabilities: {},
+          });
           return;
         case "thread/start":
         case "thread/resume":
@@ -383,7 +553,11 @@ describe("conformance turn/settles-without-activity", () => {
           return;
         case "turn/start": {
           const threadId = String(params?.threadId ?? "");
-          runTurn(threadId, promptText(params?.input) === "/clear");
+          runTurn(
+            threadId,
+            params?.clientRequestId,
+            promptText(params?.input) === "/clear",
+          );
           respond({});
           return;
         }
@@ -423,6 +597,7 @@ describe("conformance turn/settles-without-activity", () => {
   ) {
     const report = await runBridgeConformance({
       transport: createStubBridge(options),
+      providerId: "stub",
       session: options.withFixture
         ? zeroWorkFixture
         : {

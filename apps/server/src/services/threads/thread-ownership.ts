@@ -46,7 +46,6 @@ interface QueueParentSystemMessageBestEffortArgs {
 
 interface HandleThreadOwnershipChangeArgs {
   previousThread: Thread;
-  queueParentMessages: boolean;
   updatedThread: Thread;
 }
 
@@ -125,10 +124,6 @@ export async function handleThreadOwnershipChange(
     previousParentThreadId: args.previousThread.parentThreadId,
     nextParentThreadId: args.updatedThread.parentThreadId,
   });
-
-  if (!args.queueParentMessages) {
-    return;
-  }
 
   if (args.updatedThread.parentThreadId) {
     await queueParentSystemMessageBestEffort(deps, {

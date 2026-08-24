@@ -21,7 +21,7 @@ const hostDaemonErrorResponseSchema = z.object({
  * Get or create the host daemon client.
  * Recreates the client if the port changes.
  */
-export function getHostDaemonClient(port: number) {
+function getHostDaemonClient(port: number) {
   if (!client || clientPort !== port) {
     client = createHostDaemonLocalClient(
       `http://${DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST}:${port}`,

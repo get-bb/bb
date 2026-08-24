@@ -149,15 +149,21 @@ describe("buildPluginApp", () => {
     // Host typography scale: the utility reads the token, and the plugin
     // sheet carries the host's override (0.8125rem, not Tailwind's 0.875rem).
     expect(css).toMatch(/\.text-sm\s*\{[^}]*var\(--text-sm/);
-    expect(css).toContain("--text-sm: 0.8125rem");
+    expect(css).toContain("--text-sm:.8125rem");
     // tw-animate-css utilities (host idiom for overlay open/close animation).
     expect(css).toContain(".animate-in");
     expect(css).toContain(".fade-in-0");
     // Utilities stay scoped to this plugin's own mounts, with a generic-root
     // fallback for hosts whose portals predate the per-plugin id attribute.
-    expect(css).toContain(
-      '@scope ([data-bb-plugin="fixture"], [data-bb-plugin-root]:not([data-bb-plugin]))',
-    );
+    // Two arms per selector: the self arm styles portaled overlays, which
+    // carry the scope attribute on the styled element itself. (Minified
+    // selector text: no quotes around an identifier attribute value, no
+    // space after the list comma.)
+    const scope =
+      ":where([data-bb-plugin=fixture],[data-bb-plugin-root]:not([data-bb-plugin]))";
+    expect(css).toContain(`${scope} .animate-in`);
+    expect(css).toContain(`${scope}.animate-in`);
+    expect(css).not.toContain("@scope");
 
     const meta = JSON.parse(await readFile(result.metaPath, "utf8"));
     expect(meta).toEqual({
@@ -192,10 +198,18 @@ describe("buildPluginApp", () => {
     );
     const css = await readFile(cssPath, "utf8");
 
-    expect(css).toContain(".fixture-highlight");
-    expect(css).toContain("background: hotpink");
+    // Minified by the same lightningcss pass as the utilities.
+    expect(css).toContain(".fixture-highlight{background:#ff69b4}");
     expect(css).toContain("@keyframes fixture-pulse");
-    expect(css.match(/@scope/g)).toHaveLength(1);
+    // Authored CSS is appended after the scoped Tailwind layer and keeps its
+    // own selectors: they may target editor decorations outside the mount.
+    expect(css.indexOf(".fixture-highlight{")).toBeGreaterThan(
+      css.lastIndexOf("@layer utilities{"),
+    );
+    const scope =
+      ":where([data-bb-plugin=fixture],[data-bb-plugin-root]:not([data-bb-plugin]))";
+    expect(css).not.toContain(`${scope} .fixture-highlight`);
+    expect(css).not.toContain(`${scope}.fixture-highlight`);
   });
 
   it("throws at import time without the BB runtime and loads once slots are set", async () => {
@@ -378,11 +392,10 @@ describe("buildPluginApp", () => {
     });
     // The vendored starter components bundle real npm deps (`bb plugin new`
     // runs npm install for authors); the offline test links them from the
-    // repo's own install instead.
+    // repo's own install instead. cva/clsx/tailwind-merge are deliberately
+    // absent: the build shims them to host slots, so linking them would
+    // hide a shim regression.
     await linkScaffoldDeps(targetDir, [
-      "class-variance-authority",
-      "clsx",
-      "tailwind-merge",
       "@radix-ui/react-slot",
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
@@ -404,6 +417,11 @@ describe("buildPluginApp", () => {
       // forwardRef at module scope — the stub must provide it.
       react: { forwardRef: (render: unknown) => render },
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
+      // The vendored button calls cva() at module scope, and lib/utils reads
+      // clsx/twMerge; all three come from host slots, never the bundle.
+      classVarianceAuthority: { cva: () => () => "" },
+      clsx: { clsx: () => "" },
+      tailwindMerge: { twMerge: (value: string) => value },
       pluginSdkApp: {
         definePluginApp: (setup: unknown) => ({
           __bbPluginApp: true,

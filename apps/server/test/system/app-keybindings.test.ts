@@ -458,6 +458,7 @@ describe("app keybindings", () => {
         "terminal.open",
         "browser.focusLocation",
         "browser.reload",
+        "browser.find",
         "window.new",
       ]);
     });
@@ -633,9 +634,11 @@ describe("app keybindings", () => {
     await withTestHarness(async (harness) => {
       harness.db.$client
         .prepare(
-          "INSERT INTO app_settings (id, keybinding_overrides, updated_at) VALUES (?, ?, ?)",
+          `INSERT INTO app_settings_values (key, value, updated_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
         )
-        .run("current", "not-json", Date.now());
+        .run("keybindingOverrides", "not-json", Date.now());
 
       const response = await harness.app.request("/api/v1/system/config");
       expect(response.status).toBe(200);

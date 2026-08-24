@@ -19,6 +19,7 @@ import {
   allThreadQueryKeyPrefix,
   allThreadStorageFilePreviewQueryKeyPrefix,
   allThreadStorageFilesQueryKeyPrefix,
+  allThreadStorageLocationsQueryKeyPrefix,
   allThreadStoragePathsQueryKeyPrefix,
   allThreadTimelineQueryKeyPrefix,
   allThreadTimelineTurnSummaryDetailsQueryKeyPrefix,
@@ -33,6 +34,7 @@ import {
 } from "../queries/query-keys";
 import { allThreadDefaultExecutionOptionsQueryKeyPrefix } from "../queries/thread-default-execution-options-query";
 import type { QueryClientArg } from "../cache-effect-types";
+import { clearCachedModelCatalogs } from "@/lib/model-catalog-cache";
 import { bumpAllDiffPatchEvictionGenerations } from "./environment-diff-patch-cache-owner";
 import { invalidateSystemVersion } from "./system-version-cache-owner";
 import {
@@ -44,13 +46,38 @@ interface SystemExecutionOptionsInvalidationArgs extends QueryClientArg {
   hostId: string;
 }
 
+interface ServerReconnectInvalidationArgs extends QueryClientArg {
+  /**
+   * Last moment the previous socket was known healthy. Data that resolved
+   * after it observed server state the socket could not have missed, so it is
+   * left alone; everything older (including never-loaded and errored queries,
+   * whose `dataUpdatedAt` is 0) is refetched.
+   */
+  disconnectedAt: number;
+}
+
+/**
+ * Reconnect catch-up. Mirrors the initial-connect watermark rather than a
+ * blanket invalidation: on a phone every app switch reconnects the socket
+ * while focus refetches and the flush of changes merged while hidden are
+ * already loading the visible thread. A blanket invalidate with the default
+ * `cancelRefetch: true` would abort those partially downloaded responses and
+ * start every one over.
+ */
 export function invalidateRealtimeQueriesAfterServerReconnect({
+  disconnectedAt,
   queryClient,
-}: QueryClientArg): void {
-  invalidateQueryKeys({
-    queryClient,
-    queryKeys: getServerReconnectInvalidationQueryKeys(),
-  });
+}: ServerReconnectInvalidationArgs): void {
+  for (const queryKey of getServerReconnectInvalidationQueryKeys()) {
+    void queryClient.invalidateQueries(
+      {
+        queryKey,
+        predicate: (query) => query.state.dataUpdatedAt < disconnectedAt,
+      },
+      // A fetch already in flight resolves to post-reconnect data; keep it.
+      { cancelRefetch: false },
+    );
+  }
   // A reconnect is how the app learns the server restarted, which is exactly
   // what a bb self-update does — so re-check the version rather than keep
   // advertising the update the user just applied.
@@ -116,6 +143,15 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
+/** Refresh the provider directory after its effective order can change. */
+export function invalidateSystemProviders({
+  queryClient,
+}: QueryClientArg): Promise<void> {
+  return queryClient.invalidateQueries({
+    queryKey: allSystemProvidersQueryKeyPrefix(),
+  });
+}
+
 /** Refresh provider/model catalogs after a provider CLI install or update. */
 export function invalidateSystemExecutionOptions({
   hostId,
@@ -142,6 +178,22 @@ export function invalidateGeneralSettingsDependencies({
   });
 }
 
+/**
+ * Forget every model catalog after streamer mode flips. An invalidation would
+ * keep showing the previous catalog, and the localStorage preload would replay
+ * it on the next mount, until a refetch succeeds; both can still name a model
+ * the server now hides. A reset drops the data first, so open pickers show a
+ * loading state and refetch instead of the stale list.
+ */
+export function resetModelCatalogsAfterStreamerModeChange({
+  queryClient,
+}: QueryClientArg): Promise<void> {
+  clearCachedModelCatalogs();
+  return queryClient.resetQueries({
+    queryKey: allSystemExecutionOptionsQueryKeyPrefix(),
+  });
+}
+
 function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
   return [
     hostsQueryKey(),
@@ -161,6 +213,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
     allThreadPendingInteractionsQueryKeyPrefix(),
     allThreadDefaultExecutionOptionsQueryKeyPrefix(),
     allThreadStorageFilesQueryKeyPrefix(),
+    allThreadStorageLocationsQueryKeyPrefix(),
     allThreadStoragePathsQueryKeyPrefix(),
     allThreadStorageFilePreviewQueryKeyPrefix(),
     allThreadHostFilePreviewQueryKeyPrefix(),

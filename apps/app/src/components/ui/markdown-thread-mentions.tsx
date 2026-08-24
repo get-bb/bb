@@ -15,6 +15,10 @@ import {
   resolveThreadMentionResource,
 } from "@/components/thread/timeline/ConversationMessageMentions.js";
 import {
+  isMentionBoundary,
+  isMentionEndBoundary,
+  isRawThreadIdBoundary,
+  isRawThreadIdEndBoundary,
   useRawThreadMentionResource,
   useSidebarThreadMentionResource,
   useThreadMentionResource,
@@ -210,33 +214,7 @@ function collectAuthoredMarkdownLinkNodes(tree: Nodes): WeakSet<object> {
   return linkNodes;
 }
 
-function isMentionBoundary(text: string, index: number): boolean {
-  const previous = text[index - 1];
-  return previous === undefined || !/[\p{L}\p{N}_.+-]/u.test(previous);
-}
-
-function isRawThreadIdBoundary(text: string, index: number): boolean {
-  const previous = text[index - 1];
-  return (
-    previous !== "/" && previous !== "\\" && isMentionBoundary(text, index)
-  );
-}
-
-function isMentionEndBoundary(text: string, index: number): boolean {
-  const next = text[index];
-  if (next === undefined) return true;
-  if (next === ".") {
-    const afterPeriod = text[index + 1];
-    return afterPeriod === undefined || /[\s,;:!?)}\]"'’”]/u.test(afterPeriod);
-  }
-  return !/[\p{L}\p{N}_.+\/-]/u.test(next);
-}
-
-function isRawThreadIdEndBoundary(text: string, index: number): boolean {
-  return text[index] !== "\\" && isMentionEndBoundary(text, index);
-}
-
-export interface RawThreadIdTextSegment {
+interface RawThreadIdTextSegment {
   rawThreadId: string | null;
   text: string;
 }
