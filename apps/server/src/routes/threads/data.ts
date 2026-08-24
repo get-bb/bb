@@ -348,8 +348,9 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       summaryOnly,
       includeProviderUnhandledOperations,
     };
+    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const full = timelineCache.getOrBuild(
-      buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }),
+      { key: buildThreadTimelineCacheKey({ ...keyArgs, maxSeq }), paramsKey },
       () => {
         const { profile, response } = buildThreadTimelineWithProfile(
           deps.db,
@@ -392,7 +393,6 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       query.afterSequence,
       "afterSequence",
     );
-    const paramsKey = buildThreadTimelineParamsKey(keyArgs);
     const previous =
       afterSequence === undefined
         ? undefined
@@ -401,7 +401,13 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
       previous === undefined
         ? undefined
         : computeTimelineRowDelta(previous.rows, full.rows);
-    timelineLatestRowsCache.set(paramsKey, { maxSeq, rows: full.rows });
+    // Keyed by the response's own revision, not the route-computed `maxSeq`:
+    // the cache's rebuild floor may serve a window built just before the
+    // newest events, and the snapshot must name the revision the rows reflect.
+    timelineLatestRowsCache.set(paramsKey, {
+      maxSeq: full.maxSeq,
+      rows: full.rows,
+    });
 
     return context.json(
       delta === undefined ? full : { ...full, rows: [], delta },
