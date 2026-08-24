@@ -553,6 +553,9 @@ function recordEnvironmentProvisioningFailureInTransaction(
       threadId: thread.id,
     });
     if (outcome.applied) {
+      // Bare on purpose: in-transaction producers cannot build `statusChange`
+      // metadata (see buildThreadStatusChangeMetadata); clients fall back to
+      // the throttled thread-list refetch.
       deps.hub.notifyThread(thread.id, ["status-changed"]);
     }
   }
