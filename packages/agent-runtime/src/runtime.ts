@@ -316,6 +316,13 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     string,
     AgentRuntimeProviderRecoveryHint
   >();
+  /**
+   * Threads whose unsolicited `restartRecommended` hint arrived while an
+   * operation was in flight and no turn was open: the restart is retried as
+   * soon as the operations drain. A hint carried by a rejected request never
+   * joins this set — that restart waits for the thread's next turn by design.
+   */
+  const threadsRetryingBridgeRestartOnIdle = new Set<string>();
   const idleProviderSessionSinceMsByThreadId = new Map<string, number>();
   // Accepted turn dispatches awaiting the provider's turn/started. The
   // watchdog makes a stalled entry visible instead of silently hung (#1156's
@@ -613,15 +620,15 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             request: args.request,
           });
         }
-        handleRecoveryHint({ hint, proc: args.proc });
+        handleRecoveryHint({ hint, proc: args.proc, source: "rejection" });
         throw toRecoveryError({ cause: error, code: "rate_limited", hint });
       case "authRequired":
-        handleRecoveryHint({ hint, proc: args.proc });
+        handleRecoveryHint({ hint, proc: args.proc, source: "rejection" });
         throw toRecoveryError({ cause: error, code: "auth_required", hint });
       case "restartRecommended":
         // The request itself failed and is reported as is; the restart runs
         // once this operation is over (before the thread's next turn).
-        handleRecoveryHint({ hint, proc: args.proc });
+        handleRecoveryHint({ hint, proc: args.proc, source: "rejection" });
         throw error;
       case "staleTurn":
         // Only a steer can be stale; steerTurn claims this hint itself.
@@ -765,7 +772,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     }
     // Still rate limited after the last rung: forward the hint so the daemon
     // learns the provider is rate limited, not only that this request failed.
-    handleRecoveryHint({ hint: lastHint, proc: args.proc });
+    handleRecoveryHint({ hint: lastHint, proc: args.proc, source: "rejection" });
     throw toRecoveryError({
       cause: lastError,
       code: "rate_limited",
@@ -849,6 +856,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function clearThreadRuntimeConfig(threadId: string): void {
     threadsAwaitingBridgeRestart.delete(threadId);
+    threadsRetryingBridgeRestartOnIdle.delete(threadId);
     idleProviderSessionSinceMsByThreadId.delete(threadId);
     pendingTurnStarts.delete(threadId);
     threadGoalState.clearThread(threadId);
@@ -866,9 +874,41 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
     const current = threadOperationCounts.get(threadId);
     if (current === undefined || current <= 1) {
       threadOperationCounts.delete(threadId);
+      retryBridgeRestartOnIdle(threadId);
       return;
     }
     threadOperationCounts.set(threadId, current - 1);
+  }
+
+  /**
+   * A `restartRecommended` hint that reached the thread while one of its
+   * operations was in flight was kept, not scheduled. One read can carry the
+   * turn/start response, the turn's terminal delta and the hint together: the
+   * response settles the turn operation on a microtask that runs only after
+   * the whole batch, so the hint still finds the operation in flight and,
+   * without this, waits for the thread's next turn. Schedule it now that the
+   * thread is idle, exactly as if the hint had arrived one read later. A
+   * thread whose turn is still open keeps waiting for that turn.
+   */
+  function retryBridgeRestartOnIdle(threadId: string): void {
+    if (!threadsRetryingBridgeRestartOnIdle.has(threadId)) {
+      return;
+    }
+    queueMicrotask(() => {
+      const hint = threadsAwaitingBridgeRestart.get(threadId);
+      if (hint === undefined) {
+        threadsRetryingBridgeRestartOnIdle.delete(threadId);
+        return;
+      }
+      if (
+        threadHasInFlightOperation(threadId) ||
+        turnState.getActiveTurnId(threadId) !== null
+      ) {
+        return;
+      }
+      threadsRetryingBridgeRestartOnIdle.delete(threadId);
+      scheduleBridgeRestart({ hint, threadId, retryOnIdle: true });
+    });
   }
 
   function threadHasInFlightOperation(threadId: string): boolean {
@@ -1020,11 +1060,20 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   function handleRecoveryHint(args: {
     hint: AgentRuntimeProviderRecoveryHint;
     proc: ProviderProcess;
+    /**
+     * A hint carried by a rejected request restarts before the thread's next
+     * turn; an unsolicited one restarts as soon as the thread is idle.
+     */
+    source: "rejection" | "unsolicited";
   }): void {
     const { hint } = args;
     options.onProviderRecovery?.(hint);
     if (hint.kind === "restartRecommended" && hint.threadId !== undefined) {
-      scheduleBridgeRestart({ proc: args.proc, hint, threadId: hint.threadId });
+      scheduleBridgeRestart({
+        hint,
+        retryOnIdle: args.source === "unsolicited",
+        threadId: hint.threadId,
+      });
     }
   }
 
@@ -1036,19 +1085,23 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
    */
   function scheduleBridgeRestart(args: {
     hint: AgentRuntimeProviderRecoveryHint;
-    proc: ProviderProcess;
+    retryOnIdle: boolean;
     threadId: string;
   }): void {
     if (!threadRuntimeConfigs.has(args.threadId)) {
       return;
     }
     threadsAwaitingBridgeRestart.set(args.threadId, args.hint);
-    if (
-      turnState.getActiveTurnId(args.threadId) !== null ||
-      threadHasInFlightOperation(args.threadId)
-    ) {
+    if (turnState.getActiveTurnId(args.threadId) !== null) {
       return;
     }
+    if (threadHasInFlightOperation(args.threadId)) {
+      if (args.retryOnIdle) {
+        threadsRetryingBridgeRestartOnIdle.add(args.threadId);
+      }
+      return;
+    }
+    threadsRetryingBridgeRestartOnIdle.delete(args.threadId);
     void runThreadOperation({
       threadId: args.threadId,
       work: async () => {
@@ -1385,6 +1438,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       handleRecoveryHint({
         hint: { providerId: args.proc.providerId, ...recoveryHint },
         proc: args.proc,
+        source: "unsolicited",
       });
       return;
     }

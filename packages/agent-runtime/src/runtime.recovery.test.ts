@@ -1093,6 +1093,43 @@ describe("runtime recovery hints", () => {
     ).resolves.toEqual({ status: "steered" });
   });
 
+  it("restartRecommended read while its turn/start is still in flight restarts once the turn settles", async () => {
+    const { events, processLog, record, runtime, stderr } =
+      createRecoveryRuntime();
+    await startThread(runtime, "t-batch");
+
+    // The bridge opens the turn, settles it and raises the hint before it
+    // answers turn/start, so the hint reaches the runtime while the turn
+    // operation is still in flight — the state one read that batches the
+    // turn/start response, the terminal delta and the hint produces on a
+    // loaded machine. The hint must not wait for the thread's next turn.
+    await runtime.runTurn({
+      clientRequestId: "creq_rcvrbatchx",
+      input: [promptTextInput({ text: "recover:restartRecommended" })],
+      options: {
+        ...fullRuntimeOptions,
+        providerOptions: { scripted: { turnStartResponseDelayMs: 200 } },
+      },
+      threadId: "t-batch",
+    });
+    await waitForThreadTurnCompleted({ events, threadId: "t-batch" });
+    await waitForRuntimeState({
+      label: "the restart ran once the turn operation settled",
+      predicate: () =>
+        countSpawns(processLog) === 2 &&
+        record.last("thread/resume") !== undefined,
+      timeoutMs: 5_000,
+    });
+    expect(resumedThreadIds(record)).toEqual(["t-batch"]);
+    expect(
+      stderr.some((line) =>
+        line.startsWith(
+          `Restarting the "${PROVIDER_ID}" bridge for thread "t-batch"`,
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("restartRecommended: defers while a sibling on the process holds open background work", async () => {
     const { events, processLog, record, runtime, stderr } =
       createRecoveryRuntime();

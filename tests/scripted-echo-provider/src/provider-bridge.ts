@@ -106,6 +106,13 @@ export const scriptedEchoOptionsSchema = z
     /** Every session construction answers after this many ms. */
     startDelayMs: z.number().int().nonnegative().optional(),
     /**
+     * Open the turn, play its deltas and settle it first, and answer the
+     * `turn/start` request only after this many ms — so a recovery hint the
+     * turn raises reaches the runtime while its turn/start is still in
+     * flight, whatever the read batching.
+     */
+    turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
+    /**
      * Answer thread/start, thread/resume and thread/fork with `{ threadId }`
      * instead of an identity.
      */
@@ -1231,15 +1238,20 @@ const handlers: Record<string, RequestHandler> = {
     logProcessStep(
       `turn/start:${process.pid}:${parsed.data.threadId}:${promptText(parsed.data.input)}`,
     );
-    io.sendResult(id, {});
-    if (session.options.swallowTurnStart === true) {
-      return;
+    const responseDelayMs = session.options.turnStartResponseDelayMs;
+    if (responseDelayMs === undefined) {
+      io.sendResult(id, {});
     }
-    beginTurn({
-      session,
-      input: parsed.data.input,
-      clientRequestId: parsed.data.clientRequestId,
-    });
+    if (session.options.swallowTurnStart !== true) {
+      beginTurn({
+        session,
+        input: parsed.data.input,
+        clientRequestId: parsed.data.clientRequestId,
+      });
+    }
+    if (responseDelayMs !== undefined) {
+      setTimeout(() => io.sendResult(id, {}), responseDelayMs);
+    }
   },
 
   [BRIDGE_REQUEST_METHODS.turnSteer]: (id, params) => {
