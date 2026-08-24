@@ -92,7 +92,10 @@ export interface PruneClosedSessionsResult {
 }
 
 export interface PruneDestroyedEnvironmentsArgs {
-  destroyedBefore: number;
+  // Compared against `environments.updatedAt`: the table has no destroy
+  // timestamp, and any metadata write (e.g. PATCH /environments/:id) moves
+  // this clock, restarting the retention window for a destroyed row.
+  updatedBefore: number;
   limit: number;
 }
 
@@ -391,7 +394,7 @@ export function pruneDestroyedEnvironments(
     .where(
       and(
         eq(environments.status, "destroyed"),
-        lt(environments.updatedAt, args.destroyedBefore),
+        lt(environments.updatedAt, args.updatedBefore),
       ),
     )
     .orderBy(asc(environments.updatedAt), asc(environments.id))
@@ -399,11 +402,16 @@ export function pruneDestroyedEnvironments(
     .all()
     .map((environment) => environment.id);
 
-  // One DELETE per environment: the expensive part is the ON DELETE SET NULL
-  // cascade over that environment's events and threads, which SQLite runs
-  // synchronously inside the statement. A single `id IN (...)` delete over a
-  // restart backlog held the event loop for seconds; per-row statements keep
-  // each implicit transaction to one environment and bound a tick by `limit`.
+  // `limit` on the SELECT above is what bounds a call: each environment's
+  // ON DELETE SET NULL cascade over its events and threads runs synchronously
+  // inside the DELETE and this loop never yields, so a call costs `limit`
+  // cascades whether they run as one `id IN (...)` statement or one statement
+  // each (a restart backlog with no LIMIT held the event loop for seconds).
+  // One DELETE per environment only keeps each implicit transaction to a
+  // single environment, so a failure mid-batch leaves already-pruned rows
+  // pruned and each notification follows its own commit. Keeping the event
+  // loop responsive across environments is the caller's job: the server sweep
+  // calls this with `limit: 1` and yields between calls.
   for (const environmentId of staleEnvironmentIds) {
     db.delete(environments).where(eq(environments.id, environmentId)).run();
     notifier.notifyEnvironment(environmentId, ["environment-deleted"]);

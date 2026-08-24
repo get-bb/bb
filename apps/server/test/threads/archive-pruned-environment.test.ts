@@ -52,7 +52,7 @@ function seedThreadWithPrunedEnvironment(
     .run();
   expect(
     pruneDestroyedEnvironments(deps.db, deps.hub, {
-      destroyedBefore: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS,
+      updatedBefore: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS,
       limit: DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
     }).deleted,
   ).toBe(1);

@@ -23,6 +23,7 @@ import {
 } from "../../src/data/threads.js";
 import {
   createEnvironment,
+  updateEnvironmentMetadata,
 } from "../../src/data/environments.js";
 import { openSession } from "../../src/data/sessions.js";
 import {
@@ -716,7 +717,7 @@ describe("pruneDestroyedEnvironments", () => {
     };
 
     const result = pruneDestroyedEnvironments(db, spy, {
-      destroyedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
       limit: 10,
     });
     expect(result.deleted).toBe(1);
@@ -759,7 +760,7 @@ describe("pruneDestroyedEnvironments", () => {
     };
 
     const result = pruneDestroyedEnvironments(db, spy, {
-      destroyedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
       limit: 10,
     });
     expect(result.deleted).toBe(0);
@@ -768,6 +769,43 @@ describe("pruneDestroyedEnvironments", () => {
         ?.status,
     ).toBe("destroying");
     expect(spy.notifyEnvironment).not.toHaveBeenCalled();
+  });
+
+  it("a metadata write on a destroyed environment restarts its retention clock", () => {
+    const { db, host, project } = setup();
+    const now = Date.now();
+
+    const environment = createEnvironment(db, noopNotifier, {
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/destroyed-then-renamed",
+      managed: true,
+      workspaceProvisionType: "managed-worktree",
+      status: "destroyed",
+    });
+    db.update(environments)
+      .set({ updatedAt: now - 8 * 24 * 60 * 60_000 })
+      .where(eq(environments.id, environment.id))
+      .run();
+
+    // `updatedBefore` is matched against `updatedAt`, the same clock every
+    // metadata write bumps; there is no destroy timestamp to fall back on.
+    updateEnvironmentMetadata(db, noopNotifier, environment.id, {
+      name: "renamed",
+    });
+
+    const result = pruneDestroyedEnvironments(db, noopNotifier, {
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: 10,
+    });
+    expect(result).toEqual({ deleted: 0 });
+    expect(
+      db
+        .select({ status: environments.status })
+        .from(environments)
+        .where(eq(environments.id, environment.id))
+        .get()?.status,
+    ).toBe("destroyed");
   });
 
   it("deletes the oldest stale destroyed environments first and honors the batch limit", () => {
@@ -804,7 +842,7 @@ describe("pruneDestroyedEnvironments", () => {
       notifyProject: vi.fn(),
       notifySystem: vi.fn(),
     };
-    const args = { destroyedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS, limit: 2 };
+    const args = { updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS, limit: 2 };
     const remainingIds = () =>
       db
         .select({ id: environments.id })
@@ -883,7 +921,7 @@ describe("pruneDestroyedEnvironments", () => {
     );
 
     const result = pruneDestroyedEnvironments(db, noopNotifier, {
-      destroyedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
       limit: 10,
     });
     expect(result).toEqual({ deleted: 1 });

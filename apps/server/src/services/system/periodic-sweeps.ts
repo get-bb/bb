@@ -512,14 +512,30 @@ function runClosedSessionPruneSweep(
   });
 }
 
-function runDestroyedEnvironmentPruneSweep(
+async function runDestroyedEnvironmentPruneSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
   now: number,
-): void {
-  pruneDestroyedEnvironments(deps.db, deps.hub, {
-    destroyedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
-    limit: DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
-  });
+): Promise<void> {
+  // One environment per event-loop turn. Each DELETE runs its ON DELETE SET
+  // NULL cascade synchronously, and that cost scales with the environment's
+  // event count (~756 ms measured for 101k events), so a batch of ten deleted
+  // back-to-back could stall the loop longer than the backlog this sweep was
+  // bounded to avoid. The `running` guard in runPeriodicSweepJob keeps the next
+  // tick from overlapping while this one is parked on setImmediate.
+  for (
+    let pruned = 0;
+    pruned < DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE;
+    pruned += 1
+  ) {
+    const { deleted } = pruneDestroyedEnvironments(deps.db, deps.hub, {
+      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+      limit: 1,
+    });
+    if (deleted === 0) {
+      break;
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
 
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
