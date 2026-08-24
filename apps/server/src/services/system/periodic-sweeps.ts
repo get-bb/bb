@@ -9,6 +9,8 @@ import {
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
+  DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  DESTROYED_ENVIRONMENT_TTL_MS,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
   getDatabaseCompactionStats,
@@ -512,8 +514,12 @@ function runClosedSessionPruneSweep(
 
 function runDestroyedEnvironmentPruneSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
 ): void {
-  pruneDestroyedEnvironments(deps.db, deps.hub);
+  pruneDestroyedEnvironments(deps.db, deps.hub, {
+    destroyedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+    limit: DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  });
 }
 
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
