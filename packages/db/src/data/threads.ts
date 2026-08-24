@@ -373,6 +373,15 @@ export function listThreadMentionRowsByIds(
     .all();
 }
 
+/**
+ * Default row cap for thread listings. The sidebar and every SDK/CLI list
+ * ride these queries; without a cap one long-lived install (thousands of
+ * archived-then-restored threads) makes every list read scale with history.
+ * Generous enough that hitting it means paging, not filtering — callers pass
+ * an explicit `limit` to page or to read more.
+ */
+export const DEFAULT_THREAD_LIST_LIMIT = 200;
+
 export interface ListThreadsOptions {
   projectId?: string;
   archived?: boolean;
@@ -400,6 +409,12 @@ type ThreadRow = typeof threads.$inferSelect;
 export interface ListThreadsForProjectsOptions {
   projectIds: readonly string[];
   archived?: boolean;
+  /**
+   * Row cap across all listed projects combined (the query orders by the
+   * active-thread sidebar order, so the cap keeps the most relevant rows).
+   * Defaults to {@link DEFAULT_THREAD_LIST_LIMIT}.
+   */
+  limit?: number;
 }
 
 export interface PinThreadArgs {
@@ -1204,10 +1219,8 @@ export function listThreadsWithPendingInteractionState(
   let query = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsFilters(options)))
     .orderBy(...buildListThreadsOrderBy(options))
-    .$dynamic();
-  if (options.limit !== undefined) {
-    query = query.limit(options.limit);
-  }
+    .$dynamic()
+    .limit(options.limit ?? DEFAULT_THREAD_LIST_LIMIT);
   if (options.offset !== undefined) {
     query = query.offset(options.offset);
   }
@@ -1261,6 +1274,7 @@ export function listThreadsWithPendingInteractionStateForProjects(
   const rows = threadWithPendingInteractionBaseQuery(db)
     .where(and(...buildListThreadsForProjectsFilters(options)))
     .orderBy(...buildListThreadsForProjectsOrderBy(options))
+    .limit(options.limit ?? DEFAULT_THREAD_LIST_LIMIT)
     .all();
 
   return rows.map(toThreadWithPendingInteractionState);

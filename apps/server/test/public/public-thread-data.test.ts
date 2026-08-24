@@ -210,6 +210,33 @@ describe("public thread data routes", () => {
     });
   });
 
+  it("caps thread lists and reports truncation in the has-more header", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      for (let index = 0; index < 3; index += 1) {
+        seedThread(harness.deps, {
+          projectId: project.id,
+          title: `Thread ${index}`,
+        });
+      }
+
+      const capped = await harness.app.request("/api/v1/threads?limit=2");
+      expect(capped.status).toBe(200);
+      expect(capped.headers.get("x-bb-thread-list-has-more")).toBe("true");
+      expect(z.array(z.unknown()).parse(await readJson(capped))).toHaveLength(
+        2,
+      );
+
+      const full = await harness.app.request("/api/v1/threads");
+      expect(full.status).toBe(200);
+      expect(full.headers.get("x-bb-thread-list-has-more")).toBe("false");
+      expect(z.array(z.unknown()).parse(await readJson(full))).toHaveLength(3);
+    });
+  });
+
   it("updates visibility and requires includeHidden to list hidden threads", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps);

@@ -7,6 +7,7 @@ import {
   createThread,
   countLiveThreadsInEnvironment,
   countNonDeletedAssignedChildThreads,
+  DEFAULT_THREAD_LIST_LIMIT,
   getThread,
   getThreadExecutionOverride,
   hasActiveThreadAttention,
@@ -233,6 +234,38 @@ describe("threads", () => {
         parentThreadId: parent.id,
       }),
     ).toBe(2);
+  });
+
+  it("caps thread listings at the default limit and honors explicit limits", () => {
+    const { db, project } = setup();
+    for (let index = 0; index < DEFAULT_THREAD_LIST_LIMIT + 1; index += 1) {
+      createThread(db, noopNotifier, {
+        projectId: project.id,
+        providerId: "codex",
+      });
+    }
+
+    expect(
+      listThreadsWithPendingInteractionState(db, { projectId: project.id }),
+    ).toHaveLength(DEFAULT_THREAD_LIST_LIMIT);
+    expect(
+      listThreadsWithPendingInteractionState(db, {
+        projectId: project.id,
+        limit: DEFAULT_THREAD_LIST_LIMIT + 1,
+      }),
+    ).toHaveLength(DEFAULT_THREAD_LIST_LIMIT + 1);
+
+    expect(
+      listThreadsWithPendingInteractionStateForProjects(db, {
+        projectIds: [project.id],
+      }),
+    ).toHaveLength(DEFAULT_THREAD_LIST_LIMIT);
+    expect(
+      listThreadsWithPendingInteractionStateForProjects(db, {
+        projectIds: [project.id],
+        limit: 5,
+      }),
+    ).toHaveLength(5);
   });
 
   it("allows hidden threads to belong to sections", () => {

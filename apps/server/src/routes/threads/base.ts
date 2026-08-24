@@ -1,4 +1,5 @@
 import {
+  DEFAULT_THREAD_LIST_LIMIT,
   THREAD_SEARCH_LIMIT_PER_GROUP_DEFAULT,
   THREAD_SEARCH_LIMIT_PER_GROUP_MAX,
   countNonDeletedAssignedChildThreads,
@@ -233,7 +234,13 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
     if (query.sectionId) {
       requireThreadSection(deps, query.sectionId);
     }
-    const threads = listThreadsWithPendingInteractionState(deps.db, {
+    // The list is capped (default DEFAULT_THREAD_LIST_LIMIT) so one
+    // long-lived install cannot make every list read scale with its full
+    // history. The response stays a bare array for compatibility, so the
+    // truncation signal rides a header: fetch one probe row past the cap and
+    // report whether it existed. Callers page with limit/offset.
+    const effectiveLimit = limit ?? DEFAULT_THREAD_LIST_LIMIT;
+    const threadRows = listThreadsWithPendingInteractionState(deps.db, {
       ...(query.projectId ? { projectId: query.projectId } : {}),
       ...(query.parentThreadId ? { parentThreadId: query.parentThreadId } : {}),
       ...(query.sourceThreadId ? { sourceThreadId: query.sourceThreadId } : {}),
@@ -246,9 +253,12 @@ export function registerThreadBaseRoutes(app: Hono, deps: AppDeps): void {
         query.archived === undefined ? undefined : query.archived === "true",
       hasParent:
         query.hasParent === undefined ? undefined : query.hasParent === "true",
-      ...(limit !== undefined ? { limit } : {}),
+      limit: effectiveLimit + 1,
       ...(offset !== undefined ? { offset } : {}),
     });
+    const hasMore = threadRows.length > effectiveLimit;
+    const threads = hasMore ? threadRows.slice(0, effectiveLimit) : threadRows;
+    context.header("x-bb-thread-list-has-more", hasMore ? "true" : "false");
     return context.json(
       toThreadListEntryResponses(deps, { threads }) satisfies ThreadListEntry[],
     );
