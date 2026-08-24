@@ -113,8 +113,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
@@ -1013,6 +1013,7 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
+    vi.useRealTimers();
   });
 
   function links(pluginId: string): HTMLLinkElement[] {
@@ -1079,6 +1080,7 @@ describe("applyPluginCss", () => {
   });
 
   it("preloads inactive CSS and removes the sheet only after its final consumer releases", async () => {
+    vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(preloads("hello")).toHaveLength(1);
     expect(preloads("hello")[0]?.fetchPriority).toBe("low");
@@ -1091,14 +1093,86 @@ describe("applyPluginCss", () => {
     expect(links("hello")).toHaveLength(1);
 
     releaseFirst();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(links("hello")).toHaveLength(1);
     releaseSecond();
-    await Promise.resolve();
+    // The final release waits out a grace window before it detaches the sheet.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(links("hello")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello")).toHaveLength(0);
+  });
+
+  it("keeps the same sheet when a consumer retains within the grace window", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const releaseFirst = retainPluginCss("hello");
+    const first = links("hello")[0];
+    expect(first).toBeDefined();
+
+    // Thread-to-thread navigation: the old composer releases and the new one
+    // retains a moment later. The sheet must never leave the document.
+    releaseFirst();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(links("hello")[0]).toBe(first);
+    const releaseSecond = retainPluginCss("hello");
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(links("hello")).toHaveLength(1);
+    expect(links("hello")[0]).toBe(first);
+    expect(preloads("hello")).toHaveLength(0);
+
+    releaseSecond();
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(links("hello")).toHaveLength(0);
   });
 
+  it("removes the sheet at once and cancels the timer when the URL is cleared during the grace", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const release = retainPluginCss("hello");
+    expect(links("hello")).toHaveLength(1);
+
+    release();
+    expect(vi.getTimerCount()).toBe(1);
+    applyPluginCss("hello", null);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello")).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello")).toHaveLength(0);
+  });
+
+  it("swaps to one preload of the new URL when it changes during the grace", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const release = retainPluginCss("hello");
+    links("hello")[0]?.dispatchEvent(new Event("load"));
+    expect(links("hello")).toHaveLength(1);
+
+    release();
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+  });
+
   it("never ties app-wide bb.themes palette CSS to plugin UI mounts", async () => {
+    vi.useFakeTimers();
     const paletteCss = ":root { --canvas: rebeccapurple; }";
     applyAppThemeCss(paletteCss);
     const palette = document.getElementById("bb-app-theme");
@@ -1112,7 +1186,7 @@ describe("applyPluginCss", () => {
 
     const release = retainPluginCss("palette-owner");
     release();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(links("palette-owner")).toHaveLength(0);
     expect(document.getElementById("bb-app-theme")).toBe(palette);
     expect(palette?.textContent).toBe(paletteCss);

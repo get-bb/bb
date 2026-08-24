@@ -30,6 +30,7 @@ describe("PluginSlotMount", () => {
   afterEach(() => {
     cleanup();
     resetPluginCssForTest();
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -54,6 +55,7 @@ describe("PluginSlotMount", () => {
   });
 
   it("keeps one sheet through simultaneous mounts and a portal until the final route unmount", async () => {
+    vi.useFakeTimers();
     applyPluginCss("demo", "/demo.css?h=v1");
     function PortalContent() {
       return createPortal(<div>portalled plugin content</div>, document.body);
@@ -90,6 +92,12 @@ describe("PluginSlotMount", () => {
 
     view.unmount();
     await act(async () => {});
+    // The final release holds the sheet through a grace window so a remount
+    // across navigation reuses it instead of paying a second recalc.
+    expect(pluginSheets()).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+    });
     expect(pluginSheets()).toHaveLength(0);
   });
 

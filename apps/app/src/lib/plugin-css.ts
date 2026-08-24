@@ -2,10 +2,16 @@ import { useInsertionEffect } from "react";
 
 const CSS_MARKER = "data-bb-plugin-css";
 const CSS_PRELOAD_MARKER = "data-bb-plugin-css-preload";
+// Thread-to-thread navigation remounts the composer: the old slot releases the
+// sheet and the new one retains it 150-1,000 ms later. Detaching in between
+// costs two full style recalcs plus a re-activation, so the final release
+// waits this long before it removes the <link>.
+const CSS_RELEASE_GRACE_MS = 1_500;
 
 interface PluginCssRecord {
   consumers: number;
   cleanupEpoch: number;
+  cleanupTimer: ReturnType<typeof setTimeout> | null;
   loadedUrl: string | null;
   pendingStylesheet: HTMLLinkElement | null;
   preload: HTMLLinkElement | null;
@@ -21,6 +27,7 @@ function recordFor(pluginId: string): PluginCssRecord {
   const created: PluginCssRecord = {
     consumers: 0,
     cleanupEpoch: 0,
+    cleanupTimer: null,
     loadedUrl: null,
     pendingStylesheet: null,
     preload: null,
@@ -124,12 +131,22 @@ function deactivateStylesheet(record: PluginCssRecord): void {
   record.stylesheet = null;
 }
 
+function cancelDeferredDeactivate(record: PluginCssRecord): void {
+  record.cleanupEpoch += 1;
+  if (record.cleanupTimer !== null) {
+    clearTimeout(record.cleanupTimer);
+    record.cleanupTimer = null;
+  }
+}
+
 function deactivateAfterFinalRelease(
   pluginId: string,
   record: PluginCssRecord,
 ): void {
-  const cleanupEpoch = ++record.cleanupEpoch;
-  queueMicrotask(() => {
+  cancelDeferredDeactivate(record);
+  const cleanupEpoch = record.cleanupEpoch;
+  record.cleanupTimer = setTimeout(() => {
+    record.cleanupTimer = null;
     if (record.cleanupEpoch !== cleanupEpoch || record.consumers > 0) return;
     deactivateStylesheet(record);
     if (record.url === null) {
@@ -137,7 +154,7 @@ function deactivateAfterFinalRelease(
       return;
     }
     startPreload(pluginId, record, record.url);
-  });
+  }, CSS_RELEASE_GRACE_MS);
 }
 
 /**
@@ -145,14 +162,15 @@ function deactivateAfterFinalRelease(
  *
  * An inactive bundle warms its immutable response with a low-priority preload
  * and removes that link after it settles. Mounted plugin UI owns a real
- * stylesheet through {@link retainPluginCss}; the final release removes it.
+ * stylesheet through {@link retainPluginCss}; the final release removes it
+ * after a short grace so a remount across navigation reuses the active sheet.
  * A changed URL loads beside the active sheet and replaces it only after the
  * new response succeeds, so a failed live reload leaves the old CSS usable.
  */
 export function applyPluginCss(pluginId: string, url: string | null): void {
   const record = recordFor(pluginId);
   if (url === null) {
-    record.cleanupEpoch += 1;
+    cancelDeferredDeactivate(record);
     record.url = null;
     record.loadedUrl = null;
     removeLink(record.preload);
@@ -168,7 +186,7 @@ export function applyPluginCss(pluginId: string, url: string | null): void {
     return;
   }
 
-  record.cleanupEpoch += 1;
+  cancelDeferredDeactivate(record);
   record.url = url;
   record.loadedUrl = linkUrl(record.stylesheet) === url ? url : null;
   removeLink(record.preload);
@@ -184,7 +202,7 @@ export function applyPluginCss(pluginId: string, url: string | null): void {
 /** Keep one plugin stylesheet active until the returned release is called. */
 export function retainPluginCss(pluginId: string): () => void {
   const record = recordFor(pluginId);
-  record.cleanupEpoch += 1;
+  cancelDeferredDeactivate(record);
   record.consumers += 1;
   if (record.url !== null) activateStylesheet(pluginId, record, record.url);
   let released = false;
@@ -209,7 +227,7 @@ export function usePluginCss(pluginId: string | null): void {
 /** Test-only. */
 export function resetPluginCssForTest(): void {
   for (const record of recordsByPluginId.values()) {
-    record.cleanupEpoch += 1;
+    cancelDeferredDeactivate(record);
     removeLink(record.preload);
     deactivateStylesheet(record);
   }
