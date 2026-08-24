@@ -344,12 +344,9 @@
     },
     // `bb plugin types|build|dev` on a vendored-layout plugin reads
     // packages/plugin-sdk/bundled-types at runtime (no workspace embed).
-    // startup-graph.test.ts runs the built dist/index.js to guard the
-    // code-split layout, so the CLI's own build must be fresh.
     "@bb/cli#test": {
       "dependsOn": [
         "//#ensure-native-modules",
-        "@bb/cli#build",
         "@get-bb/plugin-sdk#build:types",
         "topo"
       ],

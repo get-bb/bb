@@ -113,8 +113,15 @@ const RELATIVE_JS_SPECIFIER = /["'](\.\.?\/[^"']+\.js)["']/g;
  * clearing it, so build A -> build B -> cache-hit restore of A leaves both
  * generations' content-hashed chunks side by side. The entry only references
  * its own hashes, so the extra files are dead weight, but packaging copies
- * the directory wholesale and `npm pack` ships everything under it. Pruning
- * at packaging time makes a locally packed tarball match a clean build.
+ * the directory wholesale and `npm pack` ships everything under it. bb-app
+ * prunes the copy it takes from apps/host-daemon/dist during its build, and
+ * again from its `prepack` hook because its own build output is restored the
+ * same way on a cache hit, so a locally packed tarball matches a clean build.
+ *
+ * Refuses (throws) when the entry reaches no chunk at all. Reachability is a
+ * regex over quoted `./x.js` specifiers, so a chunk layout it does not
+ * recognise (another extension, say) would otherwise look like every chunk
+ * is stale and empty the directory with exit code 0.
  *
  * Returns the paths that were removed.
  */
@@ -143,6 +150,12 @@ export async function pruneUnreferencedChunks({ chunkDir, entry }) {
         queue.push(target);
       }
     }
+  }
+
+  if (![...chunkFiles].some((chunkFile) => reachable.has(chunkFile))) {
+    throw new Error(
+      `${path.resolve(entry)} references no chunk in ${resolvedChunkDir}; refusing to prune`,
+    );
   }
 
   const removed = [];

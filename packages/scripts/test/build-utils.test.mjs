@@ -86,4 +86,22 @@ describe("pruneUnreferencedChunks", () => {
     );
     expect(readdirSync(chunkDir)).toEqual(["chunk-A.js"]);
   });
+
+  it("refuses to prune when the entry reaches no chunk", async () => {
+    const dist = mkdtempSync(join(tmpdir(), "bb-prune-chunks-"));
+    tempDirs.push(dist);
+    const chunkDir = join(dist, "bb-chunks");
+    mkdirSync(chunkDir);
+    const entry = join(dist, "bb");
+    // A chunk extension the specifier regex does not recognise: every chunk
+    // then looks unreferenced, and a wipe here would only surface later as
+    // ERR_MODULE_NOT_FOUND from the packed `bb`.
+    writeFileSync(entry, 'import{a}from"./bb-chunks/chunk-A.mjs";\n');
+    writeFileSync(join(chunkDir, "chunk-A.mjs"), "export var a=1;\n");
+
+    await expect(pruneUnreferencedChunks({ chunkDir, entry })).rejects.toThrow(
+      /references no chunk/,
+    );
+    expect(readdirSync(chunkDir)).toEqual(["chunk-A.mjs"]);
+  });
 });

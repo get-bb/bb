@@ -1,10 +1,10 @@
 import { execFile } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 import { CORE_COMMAND_GROUPS } from "../command-groups.js";
 import { readBbAppVersion } from "./bb-app-version.js";
 
@@ -17,12 +17,14 @@ import { readBbAppVersion } from "./bb-app-version.js";
  * import anywhere on the entry's static path pulls the whole subtree into
  * the entry chunk and every invocation pays for it again. A resolve hook
  * records which modules Node actually loaded, once for the sources under
- * tsx (real module boundaries whatever the build does) and once for the
- * turbo-built dist/index.js (the split layout itself: a single-file bundle
- * runs every command correctly but evaluates all of it on each start).
+ * tsx (real module boundaries whatever the build does) and once for a split
+ * bundle built the way `@bb/cli#build` builds dist/index.js (the split
+ * layout itself: a single-file bundle runs every command correctly but
+ * evaluates all of it on each start).
  */
 const execFileAsync = promisify(execFile);
 const cliRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const workspaceRoot = resolve(cliRoot, "..", "..");
 
 /**
  * The hook appends every resolved module URL to the log file named by the
@@ -52,9 +54,13 @@ register(new URL("./resolve-hooks.mjs", import.meta.url), {
 /** Env the child must not inherit: a re-exec hop or a version override. */
 const STRIPPED_ENV_KEYS = new Set(["BB_CLI", "BB_APP_VERSION"]);
 
+const cliPackageJsonSchema = z.object({
+  scripts: z.object({ build: z.string() }),
+});
+
 /**
- * `source` runs src/index.ts under tsx; `dist` runs the dist/index.js that
- * `@bb/cli#build` wrote (turbo runs it before `@bb/cli#test`).
+ * `source` runs src/index.ts under tsx; `dist` runs the split bundle this
+ * suite builds into its own temp dir.
  */
 type CliEntry = "source" | "dist";
 
@@ -67,10 +73,18 @@ interface CliRun {
 describe("bb startup module graph", () => {
   let tempDir: string;
   let registerHooksPath: string;
+  let distEntry: string;
 
   beforeAll(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "bb-cli-startup-graph-"));
+    // Under apps/cli, not os.tmpdir(): version.ts walks up from the built
+    // chunk directory to packages/bb-app/package.json, so the bundle has to
+    // sit inside the workspace for `--version` to answer. `.tmp/` is
+    // gitignored at every level.
+    const packageTmpDir = join(cliRoot, ".tmp");
+    await mkdir(packageTmpDir, { recursive: true });
+    tempDir = await mkdtemp(join(packageTmpDir, "startup-graph-"));
     registerHooksPath = join(tempDir, "register-hooks.mjs");
+    distEntry = join(tempDir, "dist", "index.js");
     await writeFile(join(tempDir, "resolve-hooks.mjs"), RESOLVE_HOOKS_SOURCE);
     await writeFile(registerHooksPath, REGISTER_HOOKS_SOURCE);
   });
@@ -102,7 +116,7 @@ describe("bb startup module graph", () => {
             registerHooksPath,
             "src/index.ts",
           ]
-        : ["--import", registerHooksPath, "dist/index.js"];
+        : ["--import", registerHooksPath, distEntry];
     const { stdout } = await execFileAsync(
       process.execPath,
       [...entryArgs, ...args],
@@ -168,32 +182,52 @@ describe("bb startup module graph", () => {
     }
   }, 30_000);
 
-  describe("turbo-built dist/index.js", () => {
+  describe("split dist/index.js", () => {
     // esbuild names a lazily imported module's chunk `<module>-<hash>.js`
     // (a group's `index.ts` takes its directory name) and the shared pieces
     // it hoists `chunk-<hash>.js`.
-    const chunkDir = "/apps/cli/dist/index-chunks/";
+    let chunkDirUrl: string;
 
     beforeAll(async () => {
-      try {
-        await access(join(cliRoot, "dist", "index.js"));
-      } catch {
-        throw new Error(
-          "apps/cli/dist/index.js is missing: run `pnpm exec turbo run build --filter=@bb/cli` (turbo does this before @bb/cli#test)",
-        );
-      }
+      // Built here rather than read from apps/cli/dist: that directory is a
+      // turbo output, and another test task's nested
+      // `turbo run build --filter=@bb/cli` (the root `pnpm bb` wrapper that
+      // @bb/scripts#test exercises) restores it in place, truncating each
+      // file as it rewrites it, so a child started at that moment reads a
+      // half-written module. Same invocation as the package's `build`
+      // script minus `--clean-dist`, which would delete apps/cli/dist.
+      chunkDirUrl = `${pathToFileURL(join(tempDir, "dist", "index-chunks")).href}/`;
+      await execFileAsync(
+        process.execPath,
+        [
+          resolve(workspaceRoot, "scripts", "build-node-entry.mjs"),
+          "src/index.ts",
+          distEntry,
+          "--split",
+        ],
+        { cwd: cliRoot },
+      );
+    }, 60_000);
+
+    it("is how @bb/cli#build builds the shipped CLI", async () => {
+      // The cases below prove the split layout of the bundle built above;
+      // this keeps dist/index.js (what bb-app packages) built the same way.
+      const packageJson = cliPackageJsonSchema.parse(
+        JSON.parse(await readFile(join(cliRoot, "package.json"), "utf8")),
+      );
+      expect(packageJson.scripts.build.split(" ")).toContain("--split");
     });
 
     it("answers --version from the entry and its shared chunks alone", async () => {
       const run = await runCli("dist", ["--version"]);
 
       expect(run.stdout.trim()).toBe(await readBbAppVersion());
-      expect(loaded(run, "/apps/cli/dist/index.js")).toHaveLength(1);
+      expect(loaded(run, pathToFileURL(distEntry).href)).toHaveLength(1);
 
       // A build without `--split` resolves no chunk at all: every command
       // then evaluates the whole bundle again, which is what this layout
       // exists to avoid.
-      const chunks = loaded(run, chunkDir);
+      const chunks = loaded(run, chunkDirUrl);
       expect(chunks).not.toHaveLength(0);
       // Only the shared chunks (version.ts and esbuild's module runtime): no
       // command group and no context-env chunk.
@@ -206,7 +240,7 @@ describe("bb startup module graph", () => {
       const run = await runCli("dist", ["thread", "--help"]);
 
       expect(run.stdout).toContain("Usage: bb thread");
-      expect(loaded(run, `${chunkDir}thread-`)).toHaveLength(1);
+      expect(loaded(run, `${chunkDirUrl}thread-`)).toHaveLength(1);
 
       // Every other group's chunk, the plugin proxy and mime-types stay on
       // disk unread. (`plugin-` also covers `plugin-cli-proxy-`.)
@@ -214,7 +248,7 @@ describe("bb startup module graph", () => {
         (name) => name !== "thread",
       );
       for (const name of [...otherGroups, "plugin-cli-proxy", "mime-types"]) {
-        expect(loaded(run, `${chunkDir}${name}-`), name).toEqual([]);
+        expect(loaded(run, `${chunkDirUrl}${name}-`), name).toEqual([]);
       }
     }, 30_000);
   });
