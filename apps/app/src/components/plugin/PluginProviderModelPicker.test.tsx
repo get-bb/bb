@@ -49,12 +49,11 @@ function provider(
 ): ProviderInfo {
   return {
     id,
+    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
     available: true,
-    experimental_providerHealth: true,
-    experimental_providerUsage: true,
-    experimental_providerInstallation: false,
+    maintenance: { health: true, usage: true, installation: false },
     strings: {
       signInHint: "Sign in",
       expiredHint: "Sign in again",
@@ -70,6 +69,7 @@ function provider(
       supportsFork: true,
       supportsSessionRewind: true,
       permissionModes: ["auto"],
+      modelCatalogScope: "host",
     },
   };
 }

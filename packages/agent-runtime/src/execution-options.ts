@@ -1,9 +1,5 @@
 import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type {
-  ClassifyProviderExecutionSettingsChangeArgs,
-  ProviderExecutionSettingsChange,
-} from "./provider-adapter.js";
-import type {
   AgentRuntimeExecutionOptions,
   AgentRuntimeSkillRoot,
 } from "./types.js";
@@ -21,11 +17,6 @@ interface ToProviderExecutionContextArgs {
   execOpts: AgentRuntimeExecutionOptions;
   instructions: string | undefined;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
-}
-
-interface SameExecutionSettingsArgs {
-  left: AgentRuntimeExecutionOptions;
-  right: AgentRuntimeExecutionOptions;
 }
 
 export function assertProviderSupportsExecutionOptions(
@@ -50,58 +41,6 @@ export function assertProviderSupportsExecutionOptions(
       `Provider "${args.providerId}" does not support permission mode "${args.options.permissionMode}".`,
     );
   }
-}
-
-/**
- * Stable structural equality for the opaque provider-options bag. Key order
- * is not semantic, so two bags with the same entries compare equal however
- * the plugin's hook happened to build them.
- */
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (typeof value === "object" && value !== null) {
-    return `{${Object.keys(value)
-      .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonicalJson(
-            (value as Record<string, unknown>)[key],
-          )}`,
-      )
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-export function sameProviderOptions(
-  left: Record<string, unknown>,
-  right: Record<string, unknown>,
-): boolean {
-  return canonicalJson(left) === canonicalJson(right);
-}
-
-export function sameExecutionSettings(args: SameExecutionSettingsArgs): boolean {
-  return (
-    args.left.model === args.right.model &&
-    args.left.serviceTier === args.right.serviceTier &&
-    args.left.reasoningLevel === args.right.reasoningLevel &&
-    args.left.promptMode === args.right.promptMode &&
-    sameProviderOptions(args.left.providerOptions, args.right.providerOptions) &&
-    args.left.permissionMode === args.right.permissionMode &&
-    args.left.permissionScope === args.right.permissionScope &&
-    args.left.approvalReviewer === args.right.approvalReviewer &&
-    args.left.permissionEscalation === args.right.permissionEscalation
-  );
-}
-
-export function classifySessionExecutionSettingsChange(
-  args: ClassifyProviderExecutionSettingsChangeArgs,
-): ProviderExecutionSettingsChange {
-  return sameExecutionSettings({ left: args.current, right: args.next })
-    ? "unchanged"
-    : "session";
 }
 
 export function toProviderExecutionContext(

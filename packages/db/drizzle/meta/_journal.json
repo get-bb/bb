@@ -750,6 +750,13 @@
       "when": 1787305850786,
       "tag": "0106_thread_state_index",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "6",
+      "when": 1787331095369,
+      "tag": "0107_kind_based_indexes",
+      "breakpoints": true
     }
   ]
 }

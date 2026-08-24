@@ -34,6 +34,7 @@ import { usePluginThreadPanelOpenHandler } from "@/components/plugin/plugin-thre
 import {
   PluginComposerViewContext,
   usePluginComposerHost,
+  usePluginComposerHostDraft,
 } from "@/components/plugin/plugin-composer-host";
 import { sdk } from "@/lib/sdk";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
@@ -61,6 +62,7 @@ import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
+import { deprecatedAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
@@ -306,6 +308,15 @@ export function useBbContext(): BbContext {
   );
 }
 
+/**
+ * `BbNavigate` plus the one-release alias for the renamed `openUrl`, for
+ * plugins built against an SDK before 0.4.16. Removal target: bb 0.42 (see
+ * plugin-sdk-deprecated-aliases.ts).
+ */
+interface BbNavigateWithDeprecatedAliases extends BbNavigate {
+  experimental_openUrl: BbNavigate["openUrl"];
+}
+
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const location = useLocation();
@@ -369,7 +380,7 @@ export function useBbNavigate(): BbNavigate {
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
     [openThreadPanelHandler, pluginId],
   );
-  const experimental_openUrl = useCallback<BbNavigate["experimental_openUrl"]>(
+  const openUrl = useCallback<BbNavigate["openUrl"]>(
     (url) => appNavigation.openUrl({ url }),
     [appNavigation],
   );
@@ -393,7 +404,7 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
-  return useMemo(
+  return useMemo<BbNavigateWithDeprecatedAliases>(
     () => ({
       toThread,
       toProject,
@@ -402,7 +413,12 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
-      experimental_openUrl,
+      openUrl,
+      experimental_openUrl: deprecatedAlias(
+        "experimental_openUrl",
+        "openUrl",
+        openUrl,
+      ),
     }),
     [
       toThread,
@@ -412,7 +428,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
-      experimental_openUrl,
+      openUrl,
     ],
   );
 }
@@ -622,7 +638,8 @@ export function useComposerView(): ComposerView {
     [projectId, threadId],
   );
   const routeDraft = usePromptDraftStorage(routeScope);
-  const draft = composerHost?.draft ?? routeDraft;
+  const hostDraft = usePluginComposerHostDraft(composerHost);
+  const draft = hostDraft ?? routeDraft;
   const fallback = useMemo<ComposerView>(
     () => ({
       scope:
@@ -656,6 +673,7 @@ export function useComposer(): PluginComposerApi {
   const pluginId = usePluginId();
   const slotOwnershipRegistry = useContext(PluginSlotOwnershipContext);
   const composerHost = usePluginComposerHost();
+  const composerHostDraft = usePluginComposerHostDraft(composerHost);
   const { projectId, threadId } = useRouteState();
   const routeScope: PromptDraftScope = useMemo(
     () =>
@@ -852,7 +870,7 @@ export function useComposer(): PluginComposerApi {
   );
 
   const focus = focusActiveComposer;
-  const composerText = composerHost?.draft.text ?? routeDraft.text;
+  const composerText = composerHostDraft?.text ?? routeDraft.text;
 
   return useMemo(
     () => ({

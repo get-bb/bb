@@ -148,13 +148,18 @@ function requestHostOnlineRpcResponse(
   });
 }
 
+/** The error a host command raises when its timeout elapses. */
+export function hostCommandTimeoutError(): ApiError {
+  return new ApiError(
+    504,
+    "command_timeout",
+    "Timed out waiting for command result",
+  );
+}
+
 function throwOnlineRpcError(error: unknown): never {
   if (error instanceof HostOnlineRpcTimeoutError) {
-    throw new ApiError(
-      504,
-      "command_timeout",
-      "Timed out waiting for command result",
-    );
+    throw hostCommandTimeoutError();
   }
 
   if (error instanceof HostOnlineRpcUnavailableError) {

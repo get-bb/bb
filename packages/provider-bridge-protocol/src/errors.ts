@@ -1,3 +1,6 @@
+import { providerRecoveryKindSchema } from "@bb/domain";
+import { z } from "zod";
+
 /**
  * JSON-RPC error codes on the bridge wire.
  *
@@ -21,3 +24,27 @@ export const BRIDGE_JSON_RPC_ERRORS = {
   /** thread/fork with a checkpoint on a bridge that only forks at the tip. */
   FORK_CHECKPOINT_UNSUPPORTED: -32003,
 } as const;
+
+/**
+ * A typed recovery hint: what went wrong in the provider's own terms and
+ * whether the runtime may retry after acting on it. One payload, two
+ * carriers: a rejected request carries it as `error.data.recovery` (the
+ * JSON-RPC id is the correlation); a condition with no request to ride on
+ * (a terminal 401 mid-turn) rides the `provider/recovery` notification.
+ * Never both for one event. The runtime keys on `kind` and matches no text.
+ */
+export const providerRecoveryHintSchema = z.object({
+  kind: providerRecoveryKindSchema,
+  message: z.string().min(1),
+  retryable: z.boolean(),
+});
+export type ProviderRecoveryHint = z.infer<typeof providerRecoveryHintSchema>;
+
+/**
+ * Optional `error.data` on any bridge → runtime JSON-RPC error response.
+ * Additive: a response without `data` is a plain failure.
+ */
+export const bridgeErrorDataSchema = z
+  .object({ recovery: providerRecoveryHintSchema.optional() })
+  .passthrough();
+export type BridgeErrorData = z.infer<typeof bridgeErrorDataSchema>;

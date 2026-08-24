@@ -10,7 +10,7 @@ const LABEL = "Alpha";
 function AlphaThreadList({
   activeProjectId,
   activeThreadId,
-  experimental_Original: Original,
+  Original,
   searchQuery,
 }: PluginThreadListProps) {
   const [embedOriginal, setEmbedOriginal] = useState(false);
@@ -52,7 +52,7 @@ function AlphaThreadList({
 }
 
 function AlphaFileOpener({
-  experimental_Original: Original,
+  Original,
   path,
   source,
 }: PluginFileOpenerProps) {

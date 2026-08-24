@@ -8,7 +8,6 @@ import type { Hono } from "hono";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { AppDeps } from "../types.js";
 import { getProviderInstallations } from "../services/system/provider-installations.js";
-import { resolveAcpLaunchSpecForProviderId } from "../services/system/acp-launch-spec.js";
 import { resolveBridgeLaunchForProviderId } from "../services/system/provider-bridge-launch.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { COMMAND_TIMEOUT_MS } from "../constants.js";
@@ -300,7 +299,7 @@ export function registerHostRoutes(
     const registration = deps.providerRegistry.get(payload.provider);
     if (
       registration === null ||
-      !registration.info.experimental_providerInstallation
+      !registration.info.maintenance.installation
     ) {
       throw new ApiError(
         404,
@@ -319,10 +318,6 @@ export function registerHostRoutes(
         `Provider bridge is unavailable for ${payload.provider}`,
       );
     }
-    const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-      deps,
-      payload.provider,
-    );
     const result = await callHostOnlineRpc(deps, {
       hostId,
       timeoutMs: PROVIDER_CLI_INSTALL_TIMEOUT_MS,
@@ -331,7 +326,6 @@ export function registerHostRoutes(
         providerId: payload.provider,
         action: payload.actionKind,
         bridgeLaunch,
-        ...(acpLaunchSpec === undefined ? {} : { acpLaunchSpec }),
       },
     });
     return new Response(providerCliInstallEventsToNdjson(result.events), {

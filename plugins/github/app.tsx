@@ -20,7 +20,7 @@ import {
   definePluginApp,
   experimental_Diff as Diff,
   experimental_FileLink as FileLink,
-  experimental_UrlLink as UrlLink,
+  UrlLink as UrlLink,
   useBbNavigate,
   useRealtime,
   useRpc,
@@ -707,7 +707,7 @@ function RowMenu({ item }: { item: Item }) {
         {item.kind === "issue" ? <DropdownMenuSeparator /> : null}
         <DropdownMenuItem
           onSelect={() => {
-            navigate.experimental_openUrl(item.url);
+            navigate.openUrl(item.url);
           }}
         >
           Open on GitHub ↗

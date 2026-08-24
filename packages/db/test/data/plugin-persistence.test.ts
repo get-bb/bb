@@ -1,24 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  createConnection,
   createPluginArtifact,
   deletePluginArtifact,
   deleteInstalledPlugin,
   getInstalledPluginRegistration,
   getInstalledPlugin,
   listPluginArtifacts,
-  migrate,
   upsertInstalledPlugin,
   type DbConnection,
 } from "../../src/index.js";
 import type { UpsertInstalledPluginInput } from "../../src/data/plugins.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 describe("normalized plugin persistence", () => {
   let db: DbConnection;
 
   beforeEach(() => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
   });
 
   afterEach(() => db.$client.close());

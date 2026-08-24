@@ -14,7 +14,10 @@ import { createLastKnownCache } from "@/lib/last-known-cache";
  */
 const providerListCache = createLastKnownCache({
   prefix: "bb.provider-list",
-  version: "1",
+  // Bumped to 2 when `ProviderInfo.capabilities` gained the required
+  // `modelCatalogScope`: a version-1 entry parses as invalid and is dropped,
+  // which is one cold paint rather than a replayed shape the schema rejects.
+  version: "2",
   schema: z.array(providerInfoSchema),
 });
 

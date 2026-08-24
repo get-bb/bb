@@ -11,10 +11,17 @@
     "name": "ACP providers",
     "description": "Run bb threads with ACP agents (supports Cursor, opencode, omp and more).",
     "branding": {
-      "icon": "./icons/acp.svg"
+      "icon": "./icons/acp.svg",
+      "experimental_icons": {
+        "cursor": "./icons/cursor.svg",
+        "opencode": "./icons/opencode.svg",
+        "omp": "./icons/omp.svg",
+        "grok": "./icons/grok.svg",
+        "hermes-agent": "./icons/hermes-agent.svg"
+      }
     },
     "server": "./server.ts",
-    "host": "./src/bridge/bridge.ts"
+    "host": "./src/host.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -24,10 +31,6 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@bb/agent-runtime": "workspace:*",
-    "@bb/domain": "workspace:*",
-    "@bb/host-daemon-contract": "workspace:*",
-    "@bb/provider-bridge-protocol": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
@@ -36,6 +39,8 @@
   },
   "dependencies": {
     "@get-bb/plugin-sdk": "workspace:*",
+    "smol-toml": "^1.7.1",
+    "yaml": "^2.9.0",
     "zod": "^4.3.6"
   }
 }

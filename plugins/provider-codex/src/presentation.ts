@@ -8,32 +8,22 @@
  * (label while pending, label once settled, a host glyph, an optional
  * headline, and whether clients may collapse the row). Core keeps no table of
  * codex tool names; the persisted event carries this snapshot, so a row
- * renders the same way after the plugin is upgraded or removed.
+ * renders the same way after the plugin is upgraded or removed. The rows
+ * whose wording is the same for every provider (reasoning, compaction, web
+ * search and fetch, the generic tool fallback) and the headline/detail
+ * truncators come from the bridge kit.
  *
  * Icons are host glyph names from the shared icon registry
  * (`@bb/shared-ui/icon`); the persisted form is glyph-only by design.
  */
-import type { DeltaPresentation } from "@get-bb/plugin-sdk/provider-bridge";
-
-/** Row headlines stay one line and short; the item carries the full text. */
-const TITLE_MAX_LENGTH = 160;
-
-export function presentationTitle(text: string): string | undefined {
-  const firstLine = text.trim().split("\n", 1)[0]?.trim() ?? "";
-  if (firstLine.length === 0) {
-    return undefined;
-  }
-  return firstLine.length > TITLE_MAX_LENGTH
-    ? `${firstLine.slice(0, TITLE_MAX_LENGTH - 1)}…`
-    : firstLine;
-}
-
-function withTitle(
-  presentation: DeltaPresentation,
-  title: string | undefined,
-): DeltaPresentation {
-  return title === undefined ? presentation : { ...presentation, title };
-}
+import {
+  type DeltaPresentation,
+  experimental_presentationDetail as presentationDetail,
+  experimental_presentationFileName as presentationFileName,
+  experimental_presentationTitle as presentationTitle,
+  experimental_toolPresentation as toolPresentation,
+  experimental_withTitle as withTitle,
+} from "@get-bb/plugin-sdk/provider-bridge";
 
 /**
  * Codex wraps every shell command as `<shell> -lc "<command>"`; the headline
@@ -60,11 +50,6 @@ function unwrapShellCommand(command: string): string {
   return inner;
 }
 
-function fileName(path: string): string {
-  const segments = path.split("/").filter((segment) => segment.length > 0);
-  return segments[segments.length - 1] ?? path;
-}
-
 // ---------------------------------------------------------------------------
 // Core-kind items
 // ---------------------------------------------------------------------------
@@ -74,19 +59,9 @@ export const AGENT_MESSAGE_PRESENTATION: DeltaPresentation = {
   icon: { glyph: "MessageSquare" },
 };
 
-export const REASONING_PRESENTATION: DeltaPresentation = {
-  label: { pending: "Thinking", completed: "Thought" },
-  icon: { glyph: "Brain" },
-};
-
 export const PLAN_PRESENTATION: DeltaPresentation = {
   label: { pending: "Writing plan", completed: "Wrote plan" },
   icon: { glyph: "ListTodo" },
-};
-
-export const COMPACTION_PRESENTATION: DeltaPresentation = {
-  label: { pending: "Compacting context", completed: "Compacted context" },
-  icon: { glyph: "Archive" },
 };
 
 export const IMAGE_VIEW_PRESENTATION: DeltaPresentation = {
@@ -107,7 +82,7 @@ export function commandPresentation(command: string): DeltaPresentation {
 export function fileChangePresentation(
   paths: readonly string[],
 ): DeltaPresentation {
-  const names = [...new Set(paths.map(fileName))];
+  const names = [...new Set(paths.map(presentationFileName))];
   const plural = names.length > 1;
   return withTitle(
     {
@@ -121,35 +96,18 @@ export function fileChangePresentation(
   );
 }
 
-export function webSearchPresentation(
-  queries: readonly string[],
-): DeltaPresentation {
-  return withTitle(
-    {
-      label: { pending: "Searching the web", completed: "Searched the web" },
-      icon: { glyph: "Globe" },
-    },
-    queries[0] === undefined ? undefined : presentationTitle(queries[0]),
-  );
-}
-
-export function webFetchPresentation(url: string): DeltaPresentation {
-  return withTitle(
-    {
-      label: { pending: "Fetching page", completed: "Fetched page" },
-      icon: { glyph: "Browser" },
-    },
-    presentationTitle(url),
-  );
-}
-
 export function imageViewPresentation(path: string): DeltaPresentation {
-  return withTitle(IMAGE_VIEW_PRESENTATION, presentationTitle(fileName(path)));
+  return withTitle(
+    IMAGE_VIEW_PRESENTATION,
+    presentationTitle(presentationFileName(path)),
+  );
 }
 
 /**
  * A plan-steps snapshot (codex `update_plan`). The headline is the step in
  * progress — what the agent is doing now — falling back to the explanation.
+ * Unlike the kit's plan-steps row this one is not collapsed: codex's plan
+ * updates are the agent's visible progress, not bookkeeping.
  */
 export function planStepsPresentation(args: {
   steps: readonly { step: string; status: string }[];
@@ -220,24 +178,7 @@ export function mcpToolPresentation(args: {
       return nodeRepl;
     }
   }
-  return withTitle(
-    {
-      label: { pending: `Running ${args.tool}`, completed: `Ran ${args.tool}` },
-      icon: { glyph: "Toolbox" },
-    },
-    args.server,
-  );
-}
-
-/**
- * A dynamic tool that is codex's own (a bb-injected tool carries its own
- * presentation on its definition instead).
- */
-export function dynamicToolPresentation(tool: string): DeltaPresentation {
-  return {
-    label: { pending: `Running ${tool}`, completed: `Ran ${tool}` },
-    icon: { glyph: "Toolbox" },
-  };
+  return withTitle(toolPresentation(args.tool), args.server);
 }
 
 // ---------------------------------------------------------------------------
@@ -264,15 +205,6 @@ export function macOsPermissionPresentation(
       ? "No macOS capability was requested."
       : `Requested: ${requested.join(", ")}. bb cannot grant macOS permissions; the approval covers the command only.`;
   return { ...presentation, detail: presentationDetail(detail) };
-}
-
-/** Row details are capped by the persisted presentation schema. */
-const DETAIL_MAX_LENGTH = 280;
-
-export function presentationDetail(text: string): string {
-  return text.length > DETAIL_MAX_LENGTH
-    ? `${text.slice(0, DETAIL_MAX_LENGTH - 1)}…`
-    : text;
 }
 
 // ---------------------------------------------------------------------------

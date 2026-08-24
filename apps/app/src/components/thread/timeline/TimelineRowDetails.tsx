@@ -17,6 +17,10 @@ import { ToolCallDetailBlock } from "./ToolCallDetailBlock.js";
 import { QuestionWorkRowBody } from "./QuestionWorkRowBody.js";
 import { WorkflowWorkRowBody } from "./WorkflowWorkRowBody.js";
 import {
+  PlanStepsWorkRowBody,
+  PresentationDetail,
+} from "./PresentationWorkRowBodies.js";
+import {
   useTimelineWorkRowFullOutput,
   type TimelinePreviewableWorkRow,
   type TimelineWorkRowFullOutput,
@@ -214,6 +218,7 @@ function ToolWorkRowBody({ row }: ToolWorkRowBodyProps) {
   const fullOutput = useTimelineWorkRowFullOutput(row);
   return (
     <div className="space-y-1">
+      <PresentationDetail presentation={row.presentation} />
       <ToolCallDetailBlock
         toolName={row.toolName}
         args={row.toolArgs}
@@ -267,7 +272,20 @@ export function WorkRowBody({
     case "question":
       return <QuestionWorkRowBody row={row} />;
     case "workflow":
-      return <WorkflowWorkRowBody row={row} />;
+      return (
+        <div className="space-y-2">
+          <PresentationDetail presentation={row.presentation} />
+          <WorkflowWorkRowBody row={row} />
+        </div>
+      );
+    case "plan-steps":
+      return <PlanStepsWorkRowBody row={row} />;
+    case "extension":
+      // The declarative base: label/icon/title live in the row title; the
+      // body is the bridge's detail. A plugin renderer for the kind replaces
+      // this through `experimental_timelineRenderer` (see
+      // TimelineExpandableBody).
+      return <PresentationDetail presentation={row.presentation} />;
     case "image-view":
       return (
         <ImageViewWorkRowBody
@@ -278,6 +296,9 @@ export function WorkRowBody({
     case "approval":
     case "web-search":
     case "web-fetch":
+    case "file-read":
+    case "search":
+      // Title-only rows: the title carries the bridge's label and headline.
       return null;
     default:
       return assertNever(row);

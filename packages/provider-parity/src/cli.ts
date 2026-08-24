@@ -24,6 +24,7 @@ import {
   compareCell,
   countCellInputs,
   isReplayable,
+  missingBridgeModule,
   listRecordedCells,
   readAllowlist,
   readBridgeRecording,
@@ -173,12 +174,18 @@ async function main(): Promise<void> {
     const key = cellKey(cell);
     if (!isReplayable(cell.provider)) {
       skipped += 1;
-      process.stdout.write(`SKIP ${key}: provider is not replayable (in-process SDK)\n`);
+      process.stdout.write(`SKIP ${key}: provider has no replay profile\n`);
       continue;
     }
     if (readBridgeRecording(cell.dir).manifest?.scope === "process") {
       skipped += 1;
       process.stdout.write(`SKIP ${key}: process-scoped recording (no thread events to compare)\n`);
+      continue;
+    }
+    const missingOld = missingBridgeModule(oldLeg.checkoutRoot, cell.provider);
+    if (missingOld !== null) {
+      skipped += 1;
+      process.stdout.write(`SKIP ${key}: old checkout has no ${missingOld} (its bridge cannot be replayed)\n`);
       continue;
     }
     const onStderr = args.verbose

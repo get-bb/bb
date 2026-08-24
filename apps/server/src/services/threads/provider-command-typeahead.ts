@@ -1,14 +1,10 @@
 import {
-  buildAcpProviderInfo,
-  isAcpProviderId,
-} from "../providers/acp-provider-tier.js";
-import {
   providerCommandSectionRank,
   type CommandListResponse,
   type ProviderCommand,
 } from "@bb/server-contract";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
-import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import type { ProviderRegistration } from "../providers/provider-registry.js";
 import type { ResolvedSkillCatalogEntry } from "../skills/injected-skills.js";
 
 const BUILT_IN_PROVIDER_COMMANDS: ProviderCommand[] = [
@@ -29,30 +25,14 @@ function providerComposerHasSkillsAction(
 
 /**
  * Whether the provider declares a skills composer action (slash-command
- * typeahead). Registered providers (core seed + plugin registrations) are
- * looked up in the registry; dynamic ACP providers (`acp-*`) share the ACP
- * catalog template via `buildAcpProviderInfo`.
+ * typeahead), from its own registration. bb-managed skills reach every such
+ * provider; whether the daemon also scans provider-native roots is the
+ * registration's native-root surface, decided separately.
  */
 export function providerHasCommandSurface(
-  registry: ProviderRegistryService,
-  providerId: string,
+  registration: ProviderRegistration,
 ): boolean {
-  const registration = registry.get(providerId);
-  if (registration) {
-    return providerComposerHasSkillsAction(
-      registration.info.composerActions,
-    );
-  }
-  if (isAcpProviderId(providerId)) {
-    return providerComposerHasSkillsAction(
-      buildAcpProviderInfo({
-        id: providerId,
-        displayName: providerId,
-        logoUrl: null,
-      }).composerActions,
-    );
-  }
-  return false;
+  return providerComposerHasSkillsAction(registration.info.composerActions);
 }
 
 function toProviderCommand(command: HostProviderCommand): ProviderCommand {

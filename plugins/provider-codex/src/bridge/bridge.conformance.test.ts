@@ -1,19 +1,14 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
-  experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
   experimental_formatConformanceReport as formatConformanceReport,
   experimental_runBridgeConformance as runBridgeConformance,
-  experimental_toConformanceMessages as toConformanceMessages,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type {
-  BridgeConformanceTransport,
-  CapturedBridgeJsonRpcOutput,
-} from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 import { handleLine } from "./bridge.js";
 
@@ -39,8 +34,6 @@ import { handleLine } from "./bridge.js";
  * turn-start correlation — never from a late signal.
  */
 
-const CONFORMANCE_THREAD_ID = "thr_conformance_1";
-
 const fakeAppServerPath = fileURLToPath(
   new URL("./fake-codex-app-server.mjs", import.meta.url),
 );
@@ -50,62 +43,36 @@ let workspaceDir: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-conformance-ws-"));
+  // The kit's recovery/session-archived rule archives the session (the
+  // bridge kills that thread's child) and resumes it on a fresh child, so
+  // the fake's archive state has to outlive one child process.
+  const fakeScriptPath = join(workspaceDir, "fake-codex-script.json");
+  writeFileSync(
+    fakeScriptPath,
+    JSON.stringify({
+      archiveStatePath: join(workspaceDir, "fake-codex-archived.json"),
+    }),
+  );
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_COMMAND", process.execPath);
   vi.stubEnv(
     "BB_CODEX_BRIDGE_APP_SERVER_ARGS",
-    JSON.stringify([fakeAppServerPath]),
+    JSON.stringify([fakeAppServerPath, fakeScriptPath]),
   );
   output = captureBridgeJsonRpcOutput();
 });
 
-afterEach(async () => {
-  // Release the session the kit leaves behind (its last scenario resumes and
-  // runs a turn) so no fake app-server child outlives the test.
-  const cleanupId = 990_001;
-  handleLine(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: cleanupId,
-      method: "thread/stop",
-      params: {
-        threadId: CONFORMANCE_THREAD_ID,
-        providerThreadId: "conformance-cleanup",
-        intent: "release",
-        activeTurnId: null,
-      },
-    }),
-  );
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (output.messages.some((message) => message.id === cleanupId)) {
-      break;
-    }
-    await new Promise((resolveTick) => setTimeout(resolveTick, 20));
-  }
+afterEach(() => {
+  // The kit releases its session at the end of the run, so no fake
+  // app-server child outlives the test.
   output.restore();
   vi.unstubAllEnvs();
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
 it("passes the canonical protocol suite against supervised fake app-server children", async () => {
-  let drained = 0;
-  // The conformance kit's grammar checks run over canonical ThreadEvents;
-  // the codex bridge emits thread/delta. Run deltas through a real assembler
-  // (the runtime adapter's exact translation, held stateful across the whole
-  // run) and hand the kit its assembled-event notifications.
-  const collector = createBridgeDeltaEventCollector("codex");
-  const transport: BridgeConformanceTransport = {
-    send: (line) => handleLine(line),
-    takeMessages: () => {
-      const fresh = output.messages.slice(drained);
-      drained = output.messages.length;
-      return fresh.flatMap((message) =>
-        toConformanceMessages(message, collector),
-      );
-    },
-  };
-
   const report = await runBridgeConformance({
-    transport,
+    transport: { send: handleLine, takeMessages: output.takeMessages },
+    providerId: "codex",
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
@@ -113,6 +80,11 @@ it("passes the canonical protocol suite against supervised fake app-server child
       // turn/started and no turn/completed at all; only the bridge's
       // dispatch-owned settlement can close the bb turn.
       zeroWorkPromptInput: [{ type: "text", text: "/clear", mentions: [] }],
+      // The fake opens a turn for this prompt and never settles it; only an
+      // interrupt ends it.
+      interruptiblePromptInput: [
+        { type: "text", text: "/wait-for-interrupt", mentions: [] },
+      ],
     },
     timeoutMs: 10_000,
   });
@@ -131,13 +103,19 @@ it("passes the canonical protocol suite against supervised fake app-server child
     "rpc/non-json-ignored": "pass",
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
+    "skills/configure-declared": "pass",
     "session/start-identity": "pass",
     "turn/lifecycle": "pass",
     "events/schema-valid": "pass",
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
+    "session/resume-identity": "pass",
     "session/resume-id-uniqueness": "pass",
+    "session/fork-identity": "pass",
     "turn/settles-without-activity": "pass",
+    "recovery/session-archived": "pass",
+    "session/threads-independent": "pass",
+    "stop/interrupt-settles-before-result": "pass",
   });
 
   // Stronger than `report.passed`: no rule may be non-green, not even skipped.

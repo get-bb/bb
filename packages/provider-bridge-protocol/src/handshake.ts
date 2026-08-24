@@ -42,8 +42,9 @@ export function negotiateGrammarVersion(
  * the steer text into the running model loop (claude, codex); `queue` holds
  * it for the next prompt boundary (ACP v1 cancels the live prompt and
  * re-prompts with the queued text). The runtime sends `turn/steer` either
- * way; the mode is what the composer tells the user and what WS4's recovery
- * logic keys `staleTurn` on.
+ * way and drops a steer whose turn is gone on the bridge's `staleTurn`
+ * recovery hint whatever the mode; nothing reads the mode yet (see
+ * `steerMode` below).
  */
 export const bridgeSteerModeSchema = z.enum(["inject", "queue"]);
 export type BridgeSteerMode = z.infer<typeof bridgeSteerModeSchema>;
@@ -102,13 +103,13 @@ export const bridgeCapabilitiesSchema = z
     approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),
     /**
      * The `thread/delta` grammar range this bridge speaks. A bridge that says
-     * nothing speaks exactly the protocol version it negotiated — today's
-     * bridges all emit v2 — so the default is `[2, 2]`, never a wider range
-     * it never claimed. A v3-capable bridge reports `[2, 3]` (or `[3, 3]`
-     * once the v2 paths are deleted) and emits the highest version inside
-     * the intersection with the runtime's `initialize` params range
-     * ({@link negotiateGrammarVersion}); the runtime rejects a disjoint
-     * range at startup.
+     * nothing is read as speaking exactly the protocol version it negotiated,
+     * so the default is `[2, 2]` — never a wider range it never claimed.
+     * Every bridge in this repo emits v3 and reports `[3, 3]`, and the
+     * runtime's assembler speaks `[3, 3]` only (`ASSEMBLER_GRAMMAR_VERSIONS`),
+     * so a bridge that takes the default is refused at startup: the two
+     * ranges must intersect ({@link negotiateGrammarVersion}) and both sides
+     * emit the highest common version.
      */
     grammarVersions: bridgeGrammarVersionsSchema.default([
       PROVIDER_BRIDGE_PROTOCOL_VERSION,
@@ -119,11 +120,25 @@ export const bridgeCapabilitiesSchema = z
      * `queue`, the conservative reading: absence is the definite "no" the
      * rest of this handshake uses, and `inject` is the stronger promise (the
      * steer reaches the model before the turn ends) a bridge must make
-     * explicitly. Nothing in the runtime branches on it yet, so the default
-     * changes no behavior today; claude and codex declare `inject` before WS4
-     * reads it.
+     * explicitly. Nothing in the runtime, server, or clients reads it today:
+     * `turn/steer` is sent either way, and a steer whose turn is gone is
+     * dropped on the bridge's `staleTurn` recovery hint or `NO_ACTIVE_TURN`
+     * error (`steerTurn` in @bb/agent-runtime), whatever the mode. claude,
+     * codex, and pi declare `inject`; ACP and the echo example declare
+     * `queue`.
      */
     steerMode: bridgeSteerModeSchema.default("queue"),
+    /**
+     * Which optional requests the bridge handles. `skills.configure`: the
+     * bridge accepts `skills/configure` (bb's injected skill roots). When
+     * false the runtime never sends it, so a bridge that answers unknown
+     * methods with METHOD_NOT_FOUND — as the protocol instructs — still
+     * starts threads; it simply runs without injected skills. A bridge that
+     * handles the request declares it; the runtime never probes.
+     */
+    skills: z
+      .object({ configure: z.boolean().default(false) })
+      .default({ configure: false }),
   })
   .passthrough();
 

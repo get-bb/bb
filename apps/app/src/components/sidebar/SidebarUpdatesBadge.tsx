@@ -4,11 +4,10 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { SidebarMenuItem } from "@/components/ui/sidebar.js";
+import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
-import {
-  getProviderIconColorClass,
-  getProviderIconInfo,
-} from "@/lib/provider-icon";
+import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
+import { getProviderIconInfo } from "@/lib/provider-icon";
 import { getSettingsRoutePath } from "@/lib/route-paths";
 
 interface SidebarUpdatesBadgeProps {
@@ -47,6 +46,9 @@ interface StaleProvider {
  */
 export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
   const inventory = useUpdateInventory();
+  // The marks live with the provider registrations, so the roster is what
+  // turns a stale CLI's provider id into its brand mark.
+  const providers = useSystemProviders().data;
 
   const stuckDaemonCount = inventory.machines.filter(
     (machine) => machine.canRetryDaemonUpdate,
@@ -122,19 +124,32 @@ export function SidebarUpdatesBadge({ onNavigate }: SidebarUpdatesBadgeProps) {
               <span className="flex items-center gap-1">
                 {staleProviders.map((stale) => {
                   const providerId = stale.provider;
-                  const iconInfo = getProviderIconInfo(providerId);
+                  const provider = providers?.find(
+                    (candidate) => candidate.id === providerId,
+                  );
+                  const iconInfo = getProviderIconInfo(
+                    providerId,
+                    provider ?? null,
+                  );
                   if (iconInfo === undefined) {
                     return null;
                   }
-                  const { icon: ProviderIcon } = iconInfo;
                   return (
-                    <ProviderIcon
+                    <span
                       key={stale.provider}
-                      className={cn(
-                        "size-3",
-                        getProviderIconColorClass(providerId),
+                      data-provider-icon={providerId}
+                      aria-hidden
+                    >
+                      {provider === undefined ? (
+                        <iconInfo.icon className="size-3" />
+                      ) : (
+                        <ProviderIconMark
+                          provider={provider}
+                          icon={iconInfo.icon}
+                          className="size-3"
+                        />
                       )}
-                    />
+                    </span>
                   );
                 })}
               </span>

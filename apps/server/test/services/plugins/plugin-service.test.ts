@@ -20,6 +20,7 @@ import {
 } from "@bb/db";
 import { PLUGIN_SDK_VERSION, type SystemChangeKind } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -116,6 +117,7 @@ describe("plugin service", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -134,6 +136,7 @@ describe("plugin service", () => {
     captured: TelemetryEvent[],
   ): PluginService {
     return createPluginService({
+      aiServices: createAiServiceRegistry(),
       db,
       hub: {
         getDaemonSessionIdForHost: () => null,
@@ -591,6 +594,7 @@ describe("plugin service", () => {
     } as unknown as Logger;
     const makeService = (appVersion: string) =>
       createPluginService({
+      aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -646,14 +650,14 @@ describe("plugin service", () => {
     await after.stop();
   });
 
-  it("keeps a persisted 0.4.14 scaffold plugin running after the 0.4.15 SDK upgrade", async () => {
+  it("keeps a persisted 0.4.8 scaffold plugin running after the 0.4.17 SDK upgrade", async () => {
     // This package.json is frozen from `bb plugin new sdk-upgrade-fixture`
-    // shipped by bb 0.39.0 with @get-bb/plugin-sdk 0.4.14. Copy it into a
+    // shipped by bb 0.39.0 with @get-bb/plugin-sdk 0.4.8. Copy it into a
     // user-owned path, then persist the registration before starting the
     // current host so this exercises a real upgrade rather than a fresh
     // current-version install.
     const fixtureDir = new URL(
-      "../../fixtures/plugins/bb-plugin-sdk-0.4.14-scaffold/",
+      "../../fixtures/plugins/bb-plugin-sdk-0.4.8-scaffold/",
       import.meta.url,
     );
     const rootDir = join(workDir, "bb-plugin-sdk-upgrade-fixture");
@@ -664,9 +668,9 @@ describe("plugin service", () => {
       engines: { bbPluginSdk: string };
       devDependencies: Record<string, string>;
     };
-    expect(manifest.engines.bbPluginSdk).toBe(">=0.4.14");
-    expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.14");
-    expect(PLUGIN_SDK_VERSION).toBe("0.4.15");
+    expect(manifest.engines.bbPluginSdk).toBe(">=0.4.8");
+    expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.8");
+    expect(PLUGIN_SDK_VERSION).toBe("0.4.17");
 
     upsertInstalledPlugin(db, {
       id: "sdk-upgrade-fixture",
@@ -687,6 +691,7 @@ describe("plugin service", () => {
     });
 
     const upgraded = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -715,6 +720,7 @@ describe("plugin service", () => {
 
   it("skips the engines gate on 0.0.0 dev builds instead of marking everything incompatible", async () => {
     const devService = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -891,6 +897,56 @@ describe("plugin service", () => {
       status: "running",
     });
     expect(service.getApi("reinstalled")).toBeDefined();
+  });
+
+  it("reports a settings change to the server once the plugin's own listeners ran", async () => {
+    const changed: string[] = [];
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-observed",
+      serverSource: `
+        export default function plugin(bb) {
+          const settings = bb.settings.define({
+            floor: { type: "string", label: "Floor", default: "60" },
+          });
+          settings.onChange((next) => {
+            globalThis.__observedFloor = next.floor;
+          });
+        }`,
+    });
+    const observing = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      bundledPlugins: [],
+      loadTimeoutMs: 2000,
+      onSettingsChanged: (pluginId) => {
+        // The plugin's listeners ran first: a server cache that re-reads the
+        // plugin on invalidation sees the new values.
+        changed.push(
+          `${pluginId}:${String((globalThis as Record<string, unknown>).__observedFloor)}`,
+        );
+      },
+    });
+    try {
+      await observing.installPath(rootDir);
+      await observing.updateSettings("observed", { floor: "1" });
+      expect(changed).toEqual(["observed:1"]);
+      // Writing the same effective values fires nothing.
+      await observing.updateSettings("observed", { floor: "1" });
+      expect(changed).toEqual(["observed:1"]);
+      await observing.updateSettings("observed", { floor: null });
+      expect(changed).toEqual(["observed:1", "observed:60"]);
+    } finally {
+      await observing.stop();
+    }
   });
 
   it("re-points a path plugin at a new checkout and keeps its settings, secrets, and schedules", async () => {
@@ -1099,6 +1155,7 @@ describe("plugins-changed broadcast", () => {
     notifySystem = vi.fn<(changes: SystemChangeKind[]) => void>();
     providerRegistry = createProviderRegistryService();
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {

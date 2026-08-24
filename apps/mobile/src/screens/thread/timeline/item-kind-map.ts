@@ -30,8 +30,8 @@ export const MOBILE_ITEM_KIND_MAP = {
   agentMessage: { row: "conversation:assistant" },
   commandExecution: { row: "work:command" },
   fileChange: { row: "work:file-change" },
-  fileRead: { fallback: "WS3 (projection + renderers): file-read row" },
-  search: { fallback: "WS3 (projection + renderers): search row" },
+  fileRead: { row: "work:file-read" },
+  search: { row: "work:search" },
   webSearch: { row: "work:web-search" },
   webFetch: { row: "work:web-fetch" },
   imageView: { row: "work:image-view" },
@@ -41,17 +41,13 @@ export const MOBILE_ITEM_KIND_MAP = {
       "folded into the assistant conversation row by the server projection",
   },
   plan: { row: "conversation:assistant" },
-  planSteps: { fallback: "WS3 (projection + renderers): plan-steps row" },
+  planSteps: { row: "work:plan-steps" },
   contextCompaction: { row: "system" },
   backgroundTask: { row: "work:workflow" },
-  delegation: {
-    fallback:
-      "WS3 (projection + renderers): the v3 delegation item folds onto work:delegation",
-  },
-  extension: {
-    fallback:
-      "WS3 (projection + renderers): declarative base from presentation",
-  },
+  delegation: { row: "work:delegation" },
+  // A plugin-defined kind: the declarative base (label, glyph, tint,
+  // detail) is the whole renderer; mobile loads no plugin JS.
+  extension: { row: "work:extension" },
 } as const satisfies Record<
   CoreItemKind | "extension",
   MobileItemKindRendering

@@ -1,0 +1,184 @@
+{
+  "providerId": "pi",
+  "variant": "default",
+  "workspace": {
+    "commands": [
+      {
+        "name": "cwd-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-pi-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-pi-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-pi-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-pi-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "settings-abs-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "settings-abs-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "settings-relative-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "settings-relative-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "settings-user-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "settings-user-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "cwd-agents-skill",
+        "description": "cwd-agents-skill skill",
+        "filePath": "<root>/ws/packages/app/.agents/skills/cwd-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-pi-skill",
+        "description": "cwd-pi-skill skill",
+        "filePath": "<root>/ws/packages/app/.pi/skills/cwd-pi-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-pi-agent-skill",
+        "description": "home-pi-agent-skill skill",
+        "filePath": "<home>/.pi/agent/skills/home-pi-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "settings-abs-skill",
+        "description": "settings-abs-skill skill",
+        "filePath": "<root>/pi-settings-abs/settings-abs-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "settings-relative-skill",
+        "description": "settings-relative-skill skill",
+        "filePath": "<home>/.pi/agent/relative-skills/settings-relative-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "settings-user-skill",
+        "description": "settings-user-skill skill",
+        "filePath": "<home>/pi-settings-user/settings-user-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-pi-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-pi-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "settings-abs-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "settings-abs-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "settings-relative-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "settings-relative-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "settings-user-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "settings-user-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-pi-agent-skill",
+        "description": "home-pi-agent-skill skill",
+        "filePath": "<home>/.pi/agent/skills/home-pi-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "settings-abs-skill",
+        "description": "settings-abs-skill skill",
+        "filePath": "<root>/pi-settings-abs/settings-abs-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "settings-relative-skill",
+        "description": "settings-relative-skill skill",
+        "filePath": "<home>/.pi/agent/relative-skills/settings-relative-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "settings-user-skill",
+        "description": "settings-user-skill skill",
+        "filePath": "<home>/pi-settings-user/settings-user-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  }
+}

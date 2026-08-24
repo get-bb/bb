@@ -4,7 +4,10 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProviderInfo } from "@bb/domain";
 import { defaultAppSettings } from "@bb/domain";
-import { ProvidersSettingsSection } from "./ProvidersSettingsSection";
+import {
+  ProvidersSettingsSection,
+  reorderProviderIds,
+} from "./ProvidersSettingsSection";
 
 const mocks = vi.hoisted(() => ({
   providers: [] as ProviderInfo[],
@@ -17,12 +20,11 @@ vi.mock("@/hooks/queries/system-queries", () => ({
 function provider(id: string, displayName: string): ProviderInfo {
   return {
     id,
+    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
     available: true,
-    experimental_providerHealth: false,
-    experimental_providerUsage: false,
-    experimental_providerInstallation: false,
+    maintenance: { health: false, usage: false, installation: false },
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -30,6 +32,7 @@ function provider(id: string, displayName: string): ProviderInfo {
       supportsNativeUserQuestion: false,
       supportsFork: false,
       supportsSessionRewind: false,
+      modelCatalogScope: "workspace",
       permissionModes: ["full"],
     },
     composerActions: [],
@@ -39,10 +42,7 @@ function provider(id: string, displayName: string): ProviderInfo {
 afterEach(cleanup);
 
 describe("ProvidersSettingsSection", () => {
-  it("writes the full picker order and the default as user settings", () => {
-    // The server lists providers in effective order; the section must write
-    // the COMPLETE order back (not just the moved id), so the server's
-    // pinned-then-install-order overlay cannot reshuffle the unmoved rows.
+  it("shows reorder handles and writes the default as a user setting", () => {
     mocks.providers = [
       provider("alpha", "Alpha"),
       provider("beta", "Beta"),
@@ -66,20 +66,26 @@ describe("ProvidersSettingsSection", () => {
     ]);
     expect(screen.getAllByText("Default")).toHaveLength(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Move Gamma up" }));
-    expect(onChange).toHaveBeenLastCalledWith({
-      ...defaultAppSettings,
-      providerOrder: ["alpha", "gamma", "beta"],
+    const reorderHandles = screen.getAllByRole("button", {
+      name: /Reorder (Alpha|Beta|Gamma)/,
     });
+    expect(reorderHandles).toHaveLength(3);
+    // Keep each sortable row directly under the divided list. An extra wrapper
+    // makes every SettingsRow both `first` and `last` and removes its padding.
+    expect(reorderHandles[0]?.parentElement?.className).toContain(
+      "group/provider-row",
+    );
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Make default" })[1]!);
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Make default" })[1]!,
+    );
     expect(onChange).toHaveBeenLastCalledWith({
       ...defaultAppSettings,
       defaultProviderId: "gamma",
     });
   });
 
-  it("disables the edges and marks an unavailable provider", () => {
+  it("marks an unavailable provider and blocks it as the default", () => {
     mocks.providers = [
       provider("alpha", "Alpha"),
       { ...provider("beta", "Beta"), available: false },
@@ -91,19 +97,23 @@ describe("ProvidersSettingsSection", () => {
         onGeneralSettingsChange={vi.fn()}
       />,
     );
-    expect(
-      (screen.getByRole("button", { name: "Move Alpha up" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-    expect(
-      (screen.getByRole("button", { name: "Move Beta down" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
     expect(screen.getByText("Unavailable")).toBeTruthy();
     // An unavailable provider cannot become the default.
     expect(
-      (screen.getByRole("button", { name: "Make default" }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: "Make default",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
+  });
+
+  it("builds the complete picker order after a drag", () => {
+    expect(
+      reorderProviderIds(["alpha", "beta", "gamma"], "gamma", "alpha"),
+    ).toEqual(["gamma", "alpha", "beta"]);
+    expect(
+      reorderProviderIds(["alpha", "beta", "gamma"], "gamma", "gamma"),
+    ).toBeNull();
   });
 });

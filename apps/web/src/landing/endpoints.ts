@@ -31,8 +31,8 @@ type MarketingEnv = {
 };
 
 type DownloadEventProperties = {
-  $current_url: string;
-  $referrer?: string;
+  "$current_url": string;
+  "$referrer"?: string;
   download_target: typeof DOWNLOAD_TARGET;
   placement: DownloadPlacement;
   tracking_source: typeof TRACKING_SOURCE;
@@ -76,10 +76,7 @@ export async function handleDownloadMacos(
 
 function jsonResponse(body: object, status: number): Response {
   return new Response(JSON.stringify(body), {
-    headers: {
-      "Cache-Control": "no-store",
-      "content-type": "application/json",
-    },
+    headers: { "Cache-Control": "no-store", "content-type": "application/json" },
     status,
   });
 }
@@ -216,7 +213,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-async function trackDownloadClick(args: TrackDownloadClickArgs): Promise<void> {
+async function trackDownloadClick(
+  args: TrackDownloadClickArgs,
+): Promise<void> {
   if (!args.postHogKey) {
     return;
   }
@@ -286,9 +285,7 @@ function parseDownloadPlacement(
   }
 }
 
-function readReferrerSearchParams(
-  referrer: string | null,
-): URLSearchParams | null {
+function readReferrerSearchParams(referrer: string | null): URLSearchParams | null {
   if (!referrer) {
     return null;
   }

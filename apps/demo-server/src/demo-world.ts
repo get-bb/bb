@@ -70,6 +70,13 @@ const SYSTEM_CONFIG = systemConfigResponseSchema.parse({
   featureFlags: defaultFeatureFlags,
   // Replaced per request with the origin the app reached us on.
   serverUrl: "https://demo.invalid",
+  // The demo serves no AI service; the settings name the defaults.
+  aiServices: {
+    inference: "codex/gpt-5.5",
+    inferenceFallback: "codex/gpt-5.5",
+    transcription: "openai/gpt-4o-transcribe",
+    services: [],
+  },
 });
 
 /** How long a thread shows "Working…" before the scripted reply lands. */

@@ -18,6 +18,7 @@ import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
 } from "./model-brand-prefix";
+import { fastServiceTierLabel } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
@@ -253,6 +254,12 @@ interface ModelReasoningPickerProps {
   commandShortcutsEnabled?: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
   className?: string;
+  /**
+   * The committed provider's declared label for its fast tier (the toggle
+   * reads `<label> mode`); a previewed provider's own declaration wins while
+   * previewing. Defaults to "Fast".
+   */
+  fastModeLabel?: string;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
   /** Render with the popover open on mount. Story-only escape hatch. */
@@ -304,6 +311,7 @@ export function ModelReasoningPicker({
   commandShortcutsEnabled = true,
   serviceTierSupportByProvider,
   className,
+  fastModeLabel,
   muted,
   defaultOpen = false,
   modal = true,
@@ -433,6 +441,17 @@ export function ModelReasoningPicker({
     !previewQuery.isError &&
     previewQuery.data.modelLoadError === null;
 
+  // The previewed provider's own declaration labels its reasoning levels and
+  // its fast tier while previewing (each provider declares its own names).
+  const previewProvider = useMemo(
+    () =>
+      isPreviewing
+        ? previewQuery.data?.providers.find(
+            (provider) => provider.id === previewProviderId,
+          )
+        : undefined,
+    [isPreviewing, previewProviderId, previewQuery.data?.providers],
+  );
   const previewSelection = useMemo(
     () =>
       isPreviewing
@@ -441,6 +460,7 @@ export function ModelReasoningPicker({
             selectedOnlyModels: previewQuery.data?.selectedOnlyModels ?? [],
             selectedModel: "",
             preferredReasoningLevel: reasoningValue,
+            provider: previewProvider,
             catalogIsVerified: previewCatalogIsVerified,
             formatModelLabel: formatModelLabel ?? preserveModelLabel,
           })
@@ -449,6 +469,7 @@ export function ModelReasoningPicker({
       formatModelLabel,
       isPreviewing,
       previewCatalogIsVerified,
+      previewProvider,
       previewQuery.data?.models,
       previewQuery.data?.selectedOnlyModels,
       reasoningValue,
@@ -573,6 +594,10 @@ export function ModelReasoningPicker({
     (serviceTierSupportByProvider
       ? (serviceTierSupportByProvider[activeProviderId] ?? false)
       : showFastModeToggle);
+  const effectiveFastModeLabel = isPreviewing
+    ? fastServiceTierLabel(previewProvider)
+    : (fastModeLabel ?? "Fast");
+  const fastModeText = `${effectiveFastModeLabel} mode`;
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
   const showReasoningSection =
@@ -899,7 +924,7 @@ export function ModelReasoningPicker({
         {modelIsLoading ? (
           <>
             {TriggerIcon ? (
-              <TriggerIcon className="size-3.5 shrink-0" />
+              <TriggerIcon className="size-4 shrink-0" />
             ) : (
               <Icon
                 name="Spinner"
@@ -925,7 +950,7 @@ export function ModelReasoningPicker({
             className="size-3.5 shrink-0 fill-current text-subtle-foreground"
           />
         ) : TriggerIcon ? (
-          <TriggerIcon className="size-3.5 shrink-0" />
+          <TriggerIcon className="size-4 shrink-0" />
         ) : null}
         {modelIsLoading ? null : (
           <>
@@ -988,8 +1013,10 @@ export function ModelReasoningPicker({
           "flex flex-col p-0",
           MODEL_PICKER_MENU_WIDTH_CLASS_NAME,
           "max-md:w-full max-md:min-w-0 max-md:max-w-none",
+          // The provider tabs and the search field stay pinned; the menu body
+          // below them owns the only scroll region (see MenuHoverProvider).
           !isCompactViewport &&
-            "max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain",
+            "max-h-[var(--radix-popover-content-available-height)] overflow-hidden",
         )}
       >
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
@@ -1000,7 +1027,7 @@ export function ModelReasoningPicker({
               "flex items-center gap-0.5 border-b border-border px-2.5 pt-1",
               isCompactViewport
                 ? "sticky top-0 z-10 bg-background"
-                : "bg-surface-recessed",
+                : "shrink-0 bg-surface-recessed",
             )}
           >
             {providerOptions.map((provider) => {
@@ -1057,182 +1084,194 @@ export function ModelReasoningPicker({
         ) : null}
 
         <MenuHoverProvider>
-          {/* Model list — keyed by the active provider so each provider mounts a
+          {/* Menu body — the single desktop scroll region. The model rows, the
+            reasoning rows and the footer controls scroll together, so one wheel
+            or touch gesture reaches every option. A second scroller on the model
+            list captured the gesture that started over the models and left the
+            rows below it unreachable in a short viewport. */}
+          <div
+            className={cn(
+              !isCompactViewport &&
+                "min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            )}
+          >
+            {/* Model list — keyed by the active provider so each provider mounts a
             fresh subtree. Rows are keyed by model id, but reusing one subtree
             across provider switches was observed to leave the previous
             provider's rows on screen; remounting per provider guarantees the
             list always matches the active tab. */}
-          <div
-            key={activeProviderId || "no-provider"}
-            role={showSearchInput ? "listbox" : undefined}
-            id={showSearchInput ? listboxId : undefined}
-            aria-label={showSearchInput ? "Models" : undefined}
-            className={cn(
-              "overflow-y-auto px-1 pb-1 pt-0",
-              !isCompactViewport &&
-                // Preserve the model scroller's intended height when the outer
-                // menu is capped; otherwise this flex item collapses before the
-                // full desktop menu can scroll to the reasoning controls.
-                "shrink-0 max-h-[min(250px,var(--radix-popover-content-available-height,250px)-80px)]",
-            )}
-          >
-            {isShowingModelError ? null : (
-              <MenuSectionLabel>Model</MenuSectionLabel>
-            )}
-            {activeModelIsLoading ? (
-              <ModelPickerLoadingRows />
-            ) : hasActiveModelOptions ? (
-              <>
-                {navRows.map((row, index) => {
-                  const active = highlightedIndex === index;
-                  const domId = optionDomId(index);
-                  if (row.kind === "more-toggle") {
+            <div
+              key={activeProviderId || "no-provider"}
+              role={showSearchInput ? "listbox" : undefined}
+              id={showSearchInput ? listboxId : undefined}
+              aria-label={showSearchInput ? "Models" : undefined}
+              className={cn(
+                "px-1 pb-1 pt-0",
+                // Compact keeps its own block so the drawer's section labels stick
+                // exactly as before. Desktop shares the menu body's scroll region.
+                isCompactViewport && "overflow-y-auto",
+              )}
+            >
+              {isShowingModelError ? null : (
+                <MenuSectionLabel>Model</MenuSectionLabel>
+              )}
+              {activeModelIsLoading ? (
+                <ModelPickerLoadingRows />
+              ) : hasActiveModelOptions ? (
+                <>
+                  {navRows.map((row, index) => {
+                    const active = highlightedIndex === index;
+                    const domId = optionDomId(index);
+                    if (row.kind === "more-toggle") {
+                      return (
+                        <MoreModelsToggleRow
+                          key="more-toggle"
+                          id={domId}
+                          isActive={active}
+                          expanded={showMoreModels}
+                          onToggle={() =>
+                            setShowMoreModels((current) => !current)
+                          }
+                        />
+                      );
+                    }
+                    const option = row.option;
                     return (
-                      <MoreModelsToggleRow
-                        key="more-toggle"
+                      <MenuRowButton
+                        key={option.value}
                         id={domId}
+                        role={showSearchInput ? "option" : undefined}
                         isActive={active}
-                        expanded={showMoreModels}
-                        onToggle={() =>
-                          setShowMoreModels((current) => !current)
-                        }
+                        // The menu always reflects the provider whose models it
+                        // lists (committed or previewed) — strip with the
+                        // active provider's declared prefix.
+                        label={stripModelBrandPrefix(
+                          option.label,
+                          activeBrandPrefix,
+                        )}
+                        qualifier={option.routeProviderId}
+                        selected={!isPreviewing && option.value === modelValue}
+                        disabled={previewSelectionBlocked}
+                        onClick={() => handleModelSelect(option.value)}
                       />
                     );
-                  }
-                  const option = row.option;
-                  return (
-                    <MenuRowButton
-                      key={option.value}
-                      id={domId}
-                      role={showSearchInput ? "option" : undefined}
-                      isActive={active}
-                      // The menu always reflects the provider whose models it
-                      // lists (committed or previewed) — strip with the
-                      // active provider's declared prefix.
-                      label={stripModelBrandPrefix(
-                        option.label,
-                        activeBrandPrefix,
-                      )}
-                      qualifier={option.routeProviderId}
-                      selected={!isPreviewing && option.value === modelValue}
-                      disabled={previewSelectionBlocked}
-                      onClick={() => handleModelSelect(option.value)}
-                    />
-                  );
-                })}
-                {/* Desktop, not searching: the selected-only models live in a
+                  })}
+                  {/* Desktop, not searching: the selected-only models live in a
                     hover submenu that is excluded from keyboard nav. During a
                     search they are flattened into `navRows` above so every match
                     stays reachable from the keyboard. */}
-                {!isCompactViewport &&
-                !isSearching &&
-                filteredMoreModelOptions.length > 0 ? (
-                  <MoreModelsSubmenu
-                    open={moreModelsOpen}
-                    onOpenChange={setMoreModelsOpen}
-                    openSub={openSub}
-                    activeBrandPrefix={activeBrandPrefix}
-                    isPreviewing={isPreviewing}
-                    modelValue={modelValue}
-                    options={filteredMoreModelOptions}
-                    onSelect={handleModelSelect}
-                  />
-                ) : null}
-                {isSearching && navRows.length === 0 ? (
-                  <div
-                    className={cn(
-                      "px-2 text-xs text-muted-foreground",
-                      isCompactViewport ? "py-2" : "py-[0.3125rem]",
-                    )}
-                  >
-                    No models match your search
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div
-                className={cn(
-                  "px-2 text-xs leading-relaxed text-muted-foreground",
-                  isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
-                )}
-                title={activeModelLoadErrorMessage ?? undefined}
-              >
-                {activeModelLoadErrorMatches && activeModelLoadError ? (
-                  <ModelLoadErrorMessage
-                    error={activeModelLoadError}
-                    providerLabel={activeProviderLabel}
-                    {...(activeProvider?.installUrl === undefined
-                      ? {}
-                      : { installUrl: activeProvider.installUrl })}
-                  />
-                ) : activeModelLoadFailed ? (
-                  activeModelFailureMessage
-                ) : (
-                  "No models available"
-                )}
-              </div>
-            )}
-          </div>
+                  {!isCompactViewport &&
+                  !isSearching &&
+                  filteredMoreModelOptions.length > 0 ? (
+                    <MoreModelsSubmenu
+                      open={moreModelsOpen}
+                      onOpenChange={setMoreModelsOpen}
+                      openSub={openSub}
+                      activeBrandPrefix={activeBrandPrefix}
+                      isPreviewing={isPreviewing}
+                      modelValue={modelValue}
+                      options={filteredMoreModelOptions}
+                      onSelect={handleModelSelect}
+                    />
+                  ) : null}
+                  {isSearching && navRows.length === 0 ? (
+                    <div
+                      className={cn(
+                        "px-2 text-xs text-muted-foreground",
+                        isCompactViewport ? "py-2" : "py-[0.3125rem]",
+                      )}
+                    >
+                      No models match your search
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div
+                  className={cn(
+                    "px-2 text-xs leading-relaxed text-muted-foreground",
+                    isCompactViewport ? "pb-3 pt-2" : "pb-2 pt-1.5",
+                  )}
+                  title={activeModelLoadErrorMessage ?? undefined}
+                >
+                  {activeModelLoadErrorMatches && activeModelLoadError ? (
+                    <ModelLoadErrorMessage
+                      error={activeModelLoadError}
+                      providerLabel={activeProviderLabel}
+                      {...(activeProvider?.installUrl === undefined
+                        ? {}
+                        : { installUrl: activeProvider.installUrl })}
+                    />
+                  ) : activeModelLoadFailed ? (
+                    activeModelFailureMessage
+                  ) : (
+                    "No models available"
+                  )}
+                </div>
+              )}
+            </div>
 
-          {/* Reasoning section — the committed model's levels, or (while
+            {/* Reasoning section — the committed model's levels, or (while
             previewing) the previewed provider's default-model levels. Like the
             model list, nothing is checked during preview until committed. */}
-          {showReasoningSection ? (
-            <>
-              <div className="border-t border-border" />
-              <div className="px-1 pb-1 pt-0">
-                <MenuSectionLabel>Reasoning</MenuSectionLabel>
-                {activeReasoningOptions.map((option) => (
-                  <MenuRowButton
-                    key={option.value}
-                    label={option.label}
-                    selected={!isPreviewing && option.value === reasoningValue}
-                    disabled={previewSelectionBlocked}
-                    onClick={() => handleReasoningSelect(option.value)}
-                  />
-                ))}
-              </div>
-            </>
-          ) : null}
-
-          {/* Fast mode toggle */}
-          {effectiveShowFastModeToggle ? (
-            <>
-              <div className="border-t border-border" />
-              <div className="p-1">
-                <div className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <Icon
-                      name="Zap"
-                      className="size-4 fill-current text-muted-foreground"
+            {showReasoningSection ? (
+              <>
+                <div className="border-t border-border" />
+                <div className="px-1 pb-1 pt-0">
+                  <MenuSectionLabel>Reasoning</MenuSectionLabel>
+                  {activeReasoningOptions.map((option) => (
+                    <MenuRowButton
+                      key={option.value}
+                      label={option.label}
+                      selected={
+                        !isPreviewing && option.value === reasoningValue
+                      }
+                      disabled={previewSelectionBlocked}
+                      onClick={() => handleReasoningSelect(option.value)}
                     />
-                    <span>Fast mode</span>
-                  </span>
-                  <Switch
-                    checked={fastModeEnabled}
-                    onCheckedChange={onFastModeChange}
-                    aria-label="Fast mode"
-                    className={LIST_HOVER_TRANSITION}
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {/* Fast mode toggle */}
+            {effectiveShowFastModeToggle ? (
+              <>
+                <div className="border-t border-border" />
+                <div className="p-1">
+                  <div className="flex items-center justify-between gap-3 rounded-sm px-2 py-[0.3125rem] text-xs">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <Icon
+                        name="Zap"
+                        className="size-4 fill-current text-muted-foreground"
+                      />
+                      <span>{fastModeText}</span>
+                    </span>
+                    <Switch
+                      checked={fastModeEnabled}
+                      onCheckedChange={onFastModeChange}
+                      aria-label={fastModeText}
+                      className={LIST_HOVER_TRANSITION}
+                    />
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            {footerAction ? (
+              <>
+                <div className="border-t border-border" />
+                <div className="p-1">
+                  <MenuActionButton
+                    label={footerAction.label}
+                    iconName={footerAction.iconName ?? "MessageSquarePlus"}
+                    disabled={footerAction.disabled}
+                    title={footerAction.title}
+                    onClick={handleFooterActionClick}
                   />
                 </div>
-              </div>
-            </>
-          ) : null}
-
-          {footerAction ? (
-            <>
-              <div className="border-t border-border" />
-              <div className="p-1">
-                <MenuActionButton
-                  label={footerAction.label}
-                  iconName={footerAction.iconName ?? "MessageSquarePlus"}
-                  disabled={footerAction.disabled}
-                  title={footerAction.title}
-                  onClick={handleFooterActionClick}
-                />
-              </div>
-            </>
-          ) : null}
+              </>
+            ) : null}
+          </div>
         </MenuHoverProvider>
       </PopoverContent>
     </Popover>

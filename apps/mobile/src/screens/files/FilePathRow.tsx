@@ -2,7 +2,7 @@ import { memo } from "react";
 import { Pressable, View } from "react-native";
 import { buildHighlightSegments, splitPathForRow } from "@/data/files";
 import { useTheme } from "@/theme";
-import { cn, Icon, Text, type IconName } from "@/ui";
+import { cn, Icon, LONG_PRESS_DELAY_MS, Text, type IconName } from "@/ui";
 
 interface FilePathRowProps {
   /** Root-relative (or absolute) path shown split into name + directory. */
@@ -53,7 +53,7 @@ export const FilePathRow = memo(function FilePathRow({
       accessibilityLabel={path}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={350}
+      delayLongPress={LONG_PRESS_DELAY_MS}
       testID={testID}
       className="min-h-[44px] flex-row items-center gap-3 px-4 py-2 active:bg-state-hover"
     >

@@ -69,6 +69,10 @@ const providerOptions: readonly ProviderPickerOption[] = [
   { value: "claude-code", label: "Claude Code", brandPrefix: "Claude " },
 ];
 
+function ProviderMaskIcon({ className }: { className?: string }) {
+  return <span className={className} data-testid="provider-mask-icon" />;
+}
+
 const codexModels: readonly PickerOption<string>[] = [
   { value: "gpt-5.5", label: "GPT-5.5" },
 ];
@@ -247,6 +251,19 @@ afterEach(() => {
 });
 
 describe("ModelReasoningPicker", () => {
+  it("gives a non-SVG provider mark the same 16px trigger size as button SVGs", () => {
+    renderPicker({
+      pickerProviderOptions: [
+        { ...providerOptions[0], icon: ProviderMaskIcon },
+        providerOptions[1],
+      ],
+    });
+
+    expect(screen.getByTestId("provider-mask-icon").classList).toContain(
+      "size-4",
+    );
+  });
+
   it("keeps a failed provider tab visible with its provider-plugin error", () => {
     renderPicker({
       modelOptions: [],
@@ -478,7 +495,11 @@ describe("ModelReasoningPicker", () => {
     ).toBe("");
   });
 
-  it("keeps the desktop menu scrollable within the available viewport height", () => {
+  // A short viewport cuts the menu off below the model rows. The models and the
+  // reasoning rows must share one scroll region: when the model list is its own
+  // scroller, a wheel or touch gesture that starts over the models is captured
+  // by it, and the reasoning rows underneath stay unreachable.
+  it("scrolls the desktop models and reasoning rows as one region", () => {
     renderPicker({ modelOptions: manyCodexModels });
 
     fireEvent.click(
@@ -489,11 +510,22 @@ describe("ModelReasoningPicker", () => {
     expect(menu.className).toContain(
       "max-h-[var(--radix-popover-content-available-height)]",
     );
-    expect(menu.className).toContain("overflow-y-auto");
-    expect(menu.className).toContain("overscroll-contain");
-    expect(
-      screen.getByRole("listbox", { name: "Models" }).className,
-    ).toContain("shrink-0");
+
+    const scrollers = [
+      ...(menu.className.includes("overflow-y-auto") ? [menu] : []),
+      ...menu.querySelectorAll<HTMLElement>("[class*='overflow-y-auto']"),
+    ];
+    expect(scrollers).toHaveLength(1);
+
+    const body = scrollers[0];
+    expect(body.className).toContain("overscroll-contain");
+    expect(body.contains(screen.getByRole("listbox", { name: "Models" }))).toBe(
+      true,
+    );
+    expect(body.contains(screen.getByText("High"))).toBe(true);
+
+    const models = screen.getByRole("listbox", { name: "Models" });
+    expect(models.className).not.toContain("max-h-");
   });
 
   it("leaves compact drawer height and scrolling to the responsive shell", async () => {
@@ -508,7 +540,7 @@ describe("ModelReasoningPicker", () => {
     );
     expect(
       (await screen.findByRole("listbox", { name: "Models" })).className,
-    ).not.toContain("shrink-0");
+    ).not.toContain("max-h-");
   });
 
   it("commits a provider tab immediately and keeps its models selectable", async () => {

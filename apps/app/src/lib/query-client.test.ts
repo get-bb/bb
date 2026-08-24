@@ -117,6 +117,83 @@ describe("createAppQueryClient", () => {
     queryClient.clear();
   });
 
+  it("keeps the default focus refetch when no gate is configured", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+      showMutationErrorToasts: false,
+    });
+    queryClient.mount();
+
+    const queryFn = vi.fn(() => Promise.resolve("data"));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["focus-ungated"],
+      queryFn,
+      staleTime: 0,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().data).toBe("data");
+    });
+
+    window.dispatchEvent(new Event("pageshow"));
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+
+    unsubscribe();
+    queryClient.unmount();
+    queryClient.clear();
+  });
+
+  it("skips the default focus refetch while the gate reports realtime coverage", async () => {
+    let realtimeConnected = true;
+    const queryClient = createAppQueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+      shouldRefetchOnWindowFocus: () => !realtimeConnected,
+      showMutationErrorToasts: false,
+    });
+    queryClient.mount();
+
+    const queryFn = vi.fn(() => Promise.resolve("data"));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["focus-gated"],
+      queryFn,
+      // Instantly stale so a permitted focus refetch always fires.
+      staleTime: 0,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().data).toBe("data");
+    });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    // Connected: realtime owns freshness, focus must not refetch.
+    window.dispatchEvent(new Event("pageshow"));
+    await Promise.resolve();
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    // Coverage lost: focus refetch is the fallback again.
+    realtimeConnected = false;
+    window.dispatchEvent(new Event("pageshow"));
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+
+    unsubscribe();
+    queryClient.unmount();
+    queryClient.clear();
+  });
+
   it("resumes a suspend-cancelled fetch that no focus refetch would restart", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: {

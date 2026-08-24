@@ -1,9 +1,10 @@
 import type { AlignType, Table, TableCell } from "mdast";
 import { toString as mdastToString } from "mdast-util-to-string";
 import { memo, useMemo } from "react";
-import { ScrollView, Text as RNText, View } from "react-native";
+import { Pressable, ScrollView, Text as RNText, View } from "react-native";
 import { FONT_FAMILIES } from "@/theme/fonts";
 import { nativeTypography } from "@/theme/theme.native";
+import { LONG_PRESS_DELAY_MS } from "@/ui/long-press";
 import { buildTableModel } from "./blocks";
 import { useMarkdownContext } from "./MarkdownContext";
 import { renderInline } from "./render-inline";
@@ -59,8 +60,14 @@ function textAlign(align: AlignType): "left" | "center" | "right" {
 
 export const MarkdownTable = memo(function MarkdownTable({
   table,
+  onLongPress,
 }: {
   table: Table;
+  /**
+   * Long-press on the table body: the quote-this-block shortcut, or the
+   * body-level message actions when no block handler exists.
+   */
+  onLongPress?: () => void;
 }) {
   const ctx = useMarkdownContext();
   const { tokens } = ctx;
@@ -118,7 +125,22 @@ export const MarkdownTable = memo(function MarkdownTable({
       showsHorizontalScrollIndicator={false}
       nestedScrollEnabled
     >
-      <View
+      {/*
+        The long-press target lives INSIDE the ScrollView on purpose. On the
+        new architecture a ScrollView refuses to take over a touch while one
+        of its ancestors is the JS responder (RCTScrollViewComponentView
+        `_shouldDisableScrollInteraction`), and a Pressable claims the
+        responder as soon as a touch starts. Timeline messages wrap their
+        markdown in Pressables, so a table under them could not scroll
+        sideways. A Pressable descendant claims the responder first, and the
+        ScrollView cancels a descendant normally once the drag starts. Since
+        it claims every touch, it must also carry the body-level long-press
+        when there is no block handler (render-blocks passes the fallback).
+      */}
+      <Pressable
+        accessible={false}
+        onLongPress={onLongPress}
+        delayLongPress={LONG_PRESS_DELAY_MS}
         style={{
           borderWidth: 1,
           borderRightWidth: 0,
@@ -153,7 +175,7 @@ export const MarkdownTable = memo(function MarkdownTable({
             )}
           </View>
         ))}
-      </View>
+      </Pressable>
     </ScrollView>
   );
 });

@@ -1348,6 +1348,8 @@ describe("@bb/sdk", () => {
       app: { hasApp: false, bundle: null },
       logoUrl: null,
       logoDarkUrl: null,
+      providerIds: [],
+      icons: {},
     };
     const catalog = {
       pluginCount: 1,

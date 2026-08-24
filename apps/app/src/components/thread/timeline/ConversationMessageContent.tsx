@@ -495,7 +495,9 @@ function UserConversationMessage({
   const requestLabel = turnRequestLabel(turnRequest);
 
   return (
-    <div className="w-full">
+    // `data-message-column` marks the full timeline width for the action row,
+    // which expands into this column's empty gutter on touch.
+    <div className="w-full" data-message-column="">
       <div className="group/message ml-auto flex w-fit max-w-[70%] flex-col items-end">
         {requestLabel ? (
           <div className="mb-1 flex justify-end">
@@ -505,42 +507,50 @@ function UserConversationMessage({
             />
           </div>
         ) : null}
-        <div className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
-          {messageText ? (
-            <CollapsibleMessageText
-              mentions={mentions}
-              resolveMentionLink={resolveMentionLink}
-              resolveSegmentLinkHref={resolveSegmentLinkHref}
-              onOpenLink={onOpenLink}
-              text={text}
-              mutePrefixLength={mutePrefixLength || undefined}
+        {/*
+          Sub-column sized by the bubble alone (the action bar below fills it
+          without contributing intrinsic width), so the bar's measured slot is
+          exactly the bubble's width and its actions can never extend past the
+          bubble.
+        */}
+        <div className="flex w-fit max-w-full flex-col items-end">
+          <div className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-4 py-2.5 text-sm leading-relaxed text-foreground">
+            {messageText ? (
+              <CollapsibleMessageText
+                mentions={mentions}
+                resolveMentionLink={resolveMentionLink}
+                resolveSegmentLinkHref={resolveSegmentLinkHref}
+                onOpenLink={onOpenLink}
+                text={text}
+                mutePrefixLength={mutePrefixLength || undefined}
+              />
+            ) : (
+              <p className="text-muted-foreground">Sent attachments</p>
+            )}
+            <ConversationAttachments
+              align="end"
+              filePaths={attachmentItems.filePaths}
+              imageItems={attachmentItems.imageItems}
+              onOpenLocalFileLink={onOpenLocalFileLink}
+              projectId={projectId}
             />
-          ) : (
-            <p className="text-muted-foreground">Sent attachments</p>
-          )}
-          <ConversationAttachments
-            align="end"
-            filePaths={attachmentItems.filePaths}
-            imageItems={attachmentItems.imageItems}
-            onOpenLocalFileLink={onOpenLocalFileLink}
-            projectId={projectId}
+          </div>
+          {/*
+            The bar's slot sits in normal flow and reserves the row's height
+            whether or not the hover-revealed actions are showing; it renders
+            nothing at all when the message has no action. `MessageActionBar`
+            is the one place that decides which of those two cases holds.
+          */}
+          <MessageActionBar
+            messageText={messageText}
+            alignment="end"
+            mobileActionDisplay={mobileActionDisplay}
+            addToChatAttachments={addToChatAttachments}
+            onAddToChat={onAddToChat}
+            onEdit={onEdit}
+            pluginActions={pluginActions}
           />
         </div>
-        {/*
-          The bar sits in normal flow: it is hidden by opacity, so it occupies
-          its own height whether or not it is revealed, and it renders nothing
-          at all when the message has no action. `MessageActionBar` is the one
-          place that decides which of those two cases holds.
-        */}
-        <MessageActionBar
-          messageText={messageText}
-          alignment="end"
-          mobileActionDisplay={mobileActionDisplay}
-          addToChatAttachments={addToChatAttachments}
-          onAddToChat={onAddToChat}
-          onEdit={onEdit}
-          pluginActions={pluginActions}
-        />
       </div>
     </div>
   );
@@ -667,7 +677,10 @@ function AssistantConversationMessage({
   ]);
 
   return (
-    <div className="group/message w-full px-2 text-sm font-normal leading-relaxed">
+    <div
+      className="group/message w-full px-2 text-sm font-normal leading-relaxed"
+      data-message-column=""
+    >
       {/*
         Reports in-bounds text selections up to the timeline-level controller
         that drives the single floating selection menu (Add to chat / Reply in

@@ -237,6 +237,100 @@ export function Overview() {
   );
 }
 
+const overflowStoryPluginActions = [
+  {
+    key: "story/summarize",
+    pluginId: null,
+    icon: "Sparkles",
+    label: "Summarize",
+    onSelect: noop,
+  },
+  {
+    key: "story/translate",
+    pluginId: null,
+    icon: "Globe",
+    label: "Translate",
+    onSelect: noop,
+  },
+  {
+    key: "story/save",
+    pluginId: null,
+    icon: "Bookmark",
+    label: "Save to notes",
+    onSelect: noop,
+  },
+  {
+    key: "story/pin",
+    pluginId: null,
+    icon: "Pin",
+    label: "Pin message",
+    onSelect: noop,
+  },
+  {
+    key: "story/share",
+    pluginId: null,
+    icon: "Share",
+    label: "Share",
+    onSelect: noop,
+  },
+];
+
+/**
+ * QA fixtures for the width-tracked action row: the assistant row spans the
+ * message column, so its actions collapse into the "⋯" menu only when the
+ * column itself is narrower than the full set.
+ */
+export function ActionOverflow() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="wide column"
+        hint="native + five plugin actions all fit inline"
+      >
+        <TimelineStage>
+          <div className="[&_button]:opacity-100">
+            <ConversationMessageContent
+              role="assistant"
+              id="row_story_overflow_wide"
+              threadId="thr_story"
+              turnId="turn_story_overflow_wide"
+              text="Done — the migration ran cleanly on all three environments."
+              attachments={null}
+              showActions={true}
+              mobileActionDisplay="inline"
+              streaming={false}
+              onAddToChat={noop}
+              onFork={noop}
+              pluginActions={overflowStoryPluginActions}
+            />
+          </div>
+        </TimelineStage>
+      </StoryRow>
+      <StoryRow
+        label="narrow column"
+        hint="a 160px column collapses trailing actions into the overflow menu"
+      >
+        <div className="w-[160px] [&_button]:opacity-100">
+          <ConversationMessageContent
+            role="assistant"
+            id="row_story_overflow_narrow"
+            threadId="thr_story"
+            turnId="turn_story_overflow_narrow"
+            text="Done — migration complete."
+            attachments={null}
+            showActions={true}
+            mobileActionDisplay="inline"
+            streaming={false}
+            onAddToChat={noop}
+            onFork={noop}
+            pluginActions={overflowStoryPluginActions}
+          />
+        </div>
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
 export function MobileActionsAndSelection() {
   return (
     <div className="mobile-agent-actions-review mx-auto w-full max-w-[390px] rounded-lg border border-border bg-background p-4">

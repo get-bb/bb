@@ -6,6 +6,7 @@ import {
   type TransitionEvent,
   useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -385,6 +386,14 @@ export function ThreadSecondaryPanel({
   // silently closing it again. Only a collapse from a layout this Panel
   // instance actually held expanded may close the persisted panel.
   const hasPanelExpandedRef = useRef(false);
+  // The panel host survives thread navigation (stable panelGroupKey on the
+  // thread-detail layout), so the guard must re-arm per thread: a collapse
+  // applied while showing the next thread must not pass on the previous
+  // thread's expansion. Child layout effects run before the parent group's
+  // setLayout effect, so this reset lands first.
+  useLayoutEffect(() => {
+    hasPanelExpandedRef.current = false;
+  }, [splitPanelStateId]);
   const handlePanelResize = useCallback(
     (size: number) => {
       if (size > 0) {

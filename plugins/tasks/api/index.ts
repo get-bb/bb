@@ -419,7 +419,8 @@ async function resolveAgentThreadInfo(
  * live host provider list (one call, only when at least one provider is
  * needed). A provider that is no longer installed — or a provider list that
  * fails to load — leaves no entry, and callers fall back to a badge carrying
- * the raw provider id so the UI can still render a brand glyph by id.
+ * the raw provider id and no logo, which the UI shows as the generic agent
+ * glyph.
  */
 async function resolveProviderBadges(
   bb: BbPluginApi,

@@ -1,14 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
+import {
+  experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
+  experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { experimental_createDeltaAssembler as createDeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { DeltaAssembler } from "@get-bb/plugin-sdk/provider-bridge/testing";
 import type { ServerNotification as CodexServerNotification } from "./generated/codex-app-server/schema/ServerNotification.js";
 import type { Turn } from "./generated/codex-app-server/schema/v2/Turn.js";
 import {
   AGENT_MESSAGE_PRESENTATION,
-  COMPACTION_PRESENTATION,
   PLAN_PRESENTATION,
-  REASONING_PRESENTATION,
 } from "./presentation.js";
 import {
   createCodexEventTranslator,

@@ -1,8 +1,12 @@
+import type { JsonValue, ThreadEventPlanStep } from "@bb/domain";
 import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
   TimelineApprovalWorkRow,
   TimelineCommandWorkRow,
+  TimelineExtensionWorkRow,
+  TimelinePlanStepsWorkRow,
+  TimelineRowPresentation,
   TimelineConversationAttachments,
   TimelineConversationRow,
   TimelineConversationTurnRequest,
@@ -10,6 +14,7 @@ import type {
   TimelineDiffStats,
   TimelineFileChange,
   TimelineFileChangeWorkRow,
+  TimelineFileReadWorkRow,
   TimelineImageViewWorkRow,
   TimelineParentChange,
   TimelineNonOperationSystemRow,
@@ -18,6 +23,7 @@ import type {
   TimelineRow,
   TimelineRowBase,
   TimelineRowStatus,
+  TimelineSearchWorkRow,
   TimelineSystemOperationKind,
   TimelineSystemRow,
   TimelineToolWorkRow,
@@ -81,18 +87,74 @@ interface CommandRowArgs extends RowBaseOverrideArgs {
 }
 
 interface ToolRowArgs extends RowBaseOverrideArgs {
-  activityIntents?: TimelineActivityIntent[];
   approvalStatus?: TimelineApprovalStatus;
   callId?: string;
   durationMs?: number | null;
   id?: string;
   output?: string;
+  presentation?: TimelineRowPresentation;
   seq?: number;
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
   status?: TimelineRowStatus;
   toolArgs?: TimelineToolWorkRow["toolArgs"];
   toolName?: string;
+  turnId?: string | null;
+}
+
+interface FileReadRowArgs extends RowBaseOverrideArgs {
+  callId?: string;
+  cmd?: string | null;
+  durationMs?: number | null;
+  id?: string;
+  path: string;
+  presentation?: TimelineRowPresentation;
+  seq?: number;
+  sourceSeqEnd?: number;
+  sourceSeqStart?: number;
+  status?: TimelineRowStatus;
+  turnId?: string | null;
+}
+
+interface SearchRowArgs extends RowBaseOverrideArgs {
+  callId?: string;
+  cmd?: string | null;
+  durationMs?: number | null;
+  id?: string;
+  mode: TimelineSearchWorkRow["mode"];
+  path?: string | null;
+  presentation?: TimelineRowPresentation;
+  query: string;
+  seq?: number;
+  sourceSeqEnd?: number;
+  sourceSeqStart?: number;
+  status?: TimelineRowStatus;
+  turnId?: string | null;
+}
+
+interface ExtensionRowArgs extends RowBaseOverrideArgs {
+  callId?: string;
+  durationMs?: number | null;
+  extensionKind?: TimelineExtensionWorkRow["extensionKind"];
+  id?: string;
+  payload?: JsonValue;
+  presentation?: TimelineRowPresentation;
+  seq?: number;
+  sourceSeqStart?: number;
+  status?: TimelineRowStatus;
+  turnId?: string | null;
+}
+
+interface PlanStepsRowArgs extends RowBaseOverrideArgs {
+  callId?: string;
+  durationMs?: number | null;
+  explanation?: string | null;
+  id?: string;
+  presentation?: TimelineRowPresentation;
+  seq?: number;
+  sourceSeqStart?: number;
+  status?: TimelineRowStatus;
+  steps?: ThreadEventPlanStep[];
   turnId?: string | null;
 }
 
@@ -288,6 +350,8 @@ const DEFAULT_COMMAND_ID = "command-1";
 const DEFAULT_CONVERSATION_ID = "conversation-1";
 const DEFAULT_DELEGATION_ID = "delegation-1";
 const DEFAULT_FILE_CHANGE_ID = "file-change-1";
+const DEFAULT_FILE_READ_ID = "file-read-1";
+const DEFAULT_SEARCH_ID = "search-1";
 const DEFAULT_QUESTION_ID = "question-1";
 const DEFAULT_SYSTEM_ID = "system-1";
 const DEFAULT_TOOL_ID = "tool-1";
@@ -512,13 +576,13 @@ export function commandRow({
 }
 
 export function toolRow({
-  activityIntents = [],
   approvalStatus = null,
   callId,
   createdAt,
   durationMs = 2_300,
   id = DEFAULT_TOOL_ID,
   output = "",
+  presentation,
   seq,
   sourceSeqEnd,
   sourceSeqStart,
@@ -550,7 +614,189 @@ export function toolRow({
     output,
     completedAt: completedAtFromDuration(base.startedAt, durationMs),
     approvalStatus,
-    activityIntents,
+    ...(presentation ? { presentation } : {}),
+  };
+}
+
+/**
+ * A grammar v3 `file-read` row: what a structured Read (and, through the
+ * read-time legacy adapter, a persisted Read tool call) projects to.
+ */
+export function fileReadRow({
+  callId,
+  cmd = null,
+  createdAt,
+  durationMs = 60,
+  id = DEFAULT_FILE_READ_ID,
+  path,
+  presentation,
+  seq,
+  sourceSeqEnd,
+  sourceSeqStart,
+  startedAt,
+  status = "completed",
+  threadId,
+  turnId,
+}: FileReadRowArgs): TimelineFileReadWorkRow {
+  const base = baseRow({
+    createdAt,
+    id,
+    seq,
+    sourceSeqEnd,
+    sourceSeqStart,
+    startedAt,
+    threadId,
+    turnId,
+  });
+  return {
+    ...base,
+    kind: "work",
+    workKind: "file-read",
+    status,
+    callId: callId ?? id,
+    path,
+    cmd,
+    completedAt: completedAtFromDuration(base.startedAt, durationMs),
+    ...(presentation ? { presentation } : {}),
+  };
+}
+
+/**
+ * A grammar v3 `search` row: `content` for a Grep-style search, `path` for
+ * a Glob-style name match, `list` for a directory listing.
+ */
+export function searchRow({
+  callId,
+  cmd = null,
+  createdAt,
+  durationMs = 60,
+  id = DEFAULT_SEARCH_ID,
+  mode,
+  path = null,
+  presentation,
+  query,
+  seq,
+  sourceSeqEnd,
+  sourceSeqStart,
+  startedAt,
+  status = "completed",
+  threadId,
+  turnId,
+}: SearchRowArgs): TimelineSearchWorkRow {
+  const base = baseRow({
+    createdAt,
+    id,
+    seq,
+    sourceSeqEnd,
+    sourceSeqStart,
+    startedAt,
+    threadId,
+    turnId,
+  });
+  return {
+    ...base,
+    kind: "work",
+    workKind: "search",
+    status,
+    callId: callId ?? id,
+    mode,
+    query,
+    path,
+    cmd,
+    completedAt: completedAtFromDuration(base.startedAt, durationMs),
+    ...(presentation ? { presentation } : {}),
+  };
+}
+
+/**
+ * The receipt row the echo provider example's bridge emits (its
+ * `receiptPresentation`): label, the plugin's declared icon by its namespaced
+ * glyph, headline and tint match the shape the server canary pins; the
+ * detail carries Markdown so the body's rendering is exercised.
+ */
+export const ECHO_RECEIPT_PRESENTATION: TimelineRowPresentation = {
+  label: { pending: "Writing receipt", completed: "Wrote receipt" },
+  icon: { glyph: "echo-provider/receipt" },
+  title: "hello world",
+  detail: "Echoed **2** items",
+  tint: { light: "#047857", dark: "#6ee7b7" },
+};
+
+export function extensionRow({
+  callId,
+  createdAt,
+  durationMs = 1_500,
+  extensionKind = "echo-provider/receipt",
+  id = "extension_receipt",
+  payload = { prompt: "hello world", itemCount: 2, shouted: false },
+  presentation = ECHO_RECEIPT_PRESENTATION,
+  seq,
+  sourceSeqStart,
+  startedAt,
+  status = "completed",
+  threadId,
+  turnId,
+}: ExtensionRowArgs = {}): TimelineExtensionWorkRow {
+  const base = baseRow({
+    createdAt,
+    id,
+    seq,
+    sourceSeqStart,
+    startedAt,
+    threadId,
+    turnId,
+  });
+  return {
+    ...base,
+    kind: "work",
+    workKind: "extension",
+    status,
+    callId: callId ?? id,
+    extensionKind,
+    payload,
+    presentation,
+    completedAt: completedAtFromDuration(base.startedAt, durationMs),
+  };
+}
+
+export function planStepsRow({
+  callId,
+  createdAt,
+  durationMs = 0,
+  explanation = null,
+  id = "plan_steps_1",
+  presentation,
+  seq,
+  sourceSeqStart,
+  startedAt,
+  status = "completed",
+  steps = [
+    { step: "Read the spec", status: "completed" },
+    { step: "Wire the renderer", status: "active" },
+    { step: "Write tests", status: "pending" },
+  ],
+  threadId,
+  turnId,
+}: PlanStepsRowArgs = {}): TimelinePlanStepsWorkRow {
+  const base = baseRow({
+    createdAt,
+    id,
+    seq,
+    sourceSeqStart,
+    startedAt,
+    threadId,
+    turnId,
+  });
+  return {
+    ...base,
+    kind: "work",
+    workKind: "plan-steps",
+    status,
+    callId: callId ?? id,
+    steps,
+    explanation,
+    completedAt: completedAtFromDuration(base.startedAt, durationMs),
+    ...(presentation ? { presentation } : {}),
   };
 }
 
@@ -1045,6 +1291,8 @@ export function delegationRow({
     status,
     callId: callId ?? id,
     toolName,
+    childRef: null,
+    background: false,
     subagentType,
     description,
     output,

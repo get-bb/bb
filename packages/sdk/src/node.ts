@@ -96,6 +96,10 @@ export {
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
 };
 export { BbHttpError, BbRequestTimeoutError } from "./response.js";
+export {
+  pluginMutationResponseSchema,
+  type PluginMutationResponse,
+} from "./areas/plugins.js";
 export { createBuiltinPlanCommandTextInput } from "./core.js";
 export { createGuideArea } from "./areas/guide.js";
 export {

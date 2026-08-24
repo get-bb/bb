@@ -1,4 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  assertAiServiceRegistrable,
+  providerWithoutBridgeMessage,
+  type NormalizedPluginProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import { createHash, randomUUID } from "node:crypto";
 import {
   createReadStream,
@@ -17,6 +22,7 @@ import semver from "semver";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
 import {
   isPluginOwnedIconPath,
+  parseNamespacedGlyph,
   PLUGIN_SDK_MAJOR,
   PLUGIN_SDK_VERSION,
   type Thread,
@@ -26,11 +32,10 @@ import {
   buildPluginHost,
   isIgnoredPluginDevPath,
 } from "@bb/plugin-build";
-import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
-import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
 import {
   getInstalledPlugin,
   listInstalledPlugins,
@@ -202,9 +207,11 @@ const PROVIDER_ICON_CONTENT_TYPES: Record<string, string> = {
  * snapshot — a named host glyph (`"Zap"`) has no file at all — and on any
  * failure for a plugin-owned path (missing file, unsupported extension, path
  * escaping the plugin root): the provider registers without a servable icon
- * rather than failing the plugin load.
+ * rather than failing the plugin load. The bytes are not parsed: an SVG is
+ * served as declared behind the provider logo route's headers, which keep
+ * it inert, and `bb plugin build` cannot reach a path named only in code.
  */
-function readPluginProviderIcon(
+export function readPluginProviderIcon(
   rootDir: string,
   icon: string | undefined,
 ): { bytes: Uint8Array; contentType: string } | null {
@@ -384,6 +391,11 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     deps.serviceRestartBaseMs ?? DEFAULT_SERVICE_RESTART_BASE_MS;
 
   const loaded = new Map<string, LoadedPlugin>();
+  // A provider's plugin-defined request is accepted only while its plugin
+  // is loaded here.
+  deps.pendingInteractions?.setPluginDirectory({
+    isLoaded: (pluginId) => loaded.has(pluginId),
+  });
   // A provider declaration remains useful when its host artifact fails: the
   // picker can keep a stable tab and explain that the provider is unavailable.
   // These registrations are deliberately separate from `loaded`, so no other
@@ -1304,17 +1316,37 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   function registerPluginProvider(args: {
     available: boolean;
-    declaration: PluginProviderDeclaration;
+    declaration: NormalizedPluginProviderDeclaration;
     row: InstalledPluginRow;
     settingsDescriptors: PluginSettingDescriptors;
+    /** This load's branding snapshots; the declared icons live here. */
+    brandingAssets: PluginBrandingAssetSet;
   }): { dispose(): void } {
     if (!deps.providerRegistry) {
       throw new Error("the provider registry is unavailable in this host");
     }
-    const icon = readPluginProviderIcon(
-      args.row.rootDir,
-      args.declaration.icon,
-    );
+    const declaredIcon =
+      args.declaration.icon === undefined
+        ? null
+        : parseNamespacedGlyph(args.declaration.icon);
+    let icon: { bytes: Uint8Array; contentType: string } | null;
+    if (declaredIcon !== null) {
+      // "<pluginId>/<name>": the plugin api already refused a foreign plugin
+      // id or an undeclared name at the register call, so a miss here is a
+      // programming error, not a plugin authoring error.
+      const asset =
+        declaredIcon.pluginId === args.row.id
+          ? args.brandingAssets.icons.get(declaredIcon.name)
+          : undefined;
+      if (asset === undefined) {
+        throw new Error(
+          `provider "${args.declaration.id}" icon "${args.declaration.icon}" is not an icon declared by plugin "${args.row.id}"`,
+        );
+      }
+      icon = { bytes: asset.bytes, contentType: asset.contentType };
+    } else {
+      icon = readPluginProviderIcon(args.row.rootDir, args.declaration.icon);
+    }
     return deps.providerRegistry.register({
       ...buildPluginProviderRegistration({
         available: args.available,
@@ -1329,14 +1361,16 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }),
       ...(icon === null ? {} : { icon }),
       pluginId: args.row.id,
+      iconNames: new Set(args.brandingAssets.icons.keys()),
       installRank: providerInstallRank(args.row),
     });
   }
 
   function replaceUnavailableProviderRegistrations(
     row: InstalledPluginRow,
-    declarations: readonly PluginProviderDeclaration[],
+    declarations: readonly NormalizedPluginProviderDeclaration[],
     settingsDescriptors: PluginSettingDescriptors,
+    brandingAssets: PluginBrandingAssetSet,
   ): void {
     disposeUnavailableProviderRegistrations(row.id);
     const registrations: Array<{ dispose(): void }> = [];
@@ -1348,6 +1382,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             declaration,
             row,
             settingsDescriptors,
+            brandingAssets,
           }),
         );
       }
@@ -1530,6 +1565,53 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           artifact: hostArtifactCandidate,
         });
       },
+      registerAiService: (declaration, binding) => {
+        if (binding.artifact === null) {
+          // A load whose host artifact failed to build fails below, before
+          // activate() flushes its staged registrations, so this is
+          // unreachable by construction. It is also the invariant that keeps
+          // an unbound service uncallable: it never reaches the registry
+          // core routes `BB_INFERENCE` / `BB_TRANSCRIPTION` through.
+          throw new Error(
+            `AI service "${declaration.id}" cannot go live: its host artifact failed to build: ${binding.problem}`,
+          );
+        }
+        const artifact = binding.artifact;
+        if (!deps.callPluginHost) {
+          throw new Error("host plugin transport is unavailable");
+        }
+        const callPluginHost = deps.callPluginHost;
+        const call = (
+          method: keyof typeof experimental_aiServicesHostContract,
+          input: unknown,
+          options: { hostId: string; timeoutMs: number; signal?: AbortSignal },
+        ): Promise<unknown> =>
+          callPluginHost({
+            pluginId: row.id,
+            contract: experimental_aiServicesHostContract,
+            method,
+            input,
+            hostId: options.hostId,
+            timeoutMs: options.timeoutMs,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+            artifact,
+          });
+        // Parse the host's answer with the contract's own output schema:
+        // the transport validates it, but the binding is where the type is
+        // claimed.
+        return deps.aiServices.register({
+          ...declaration,
+          pluginId: row.id,
+          completeInference: async (input, options) =>
+            experimental_aiServicesHostContract["ai.inference.complete"].output.parse(
+              await call("ai.inference.complete", input, options),
+            ),
+          transcribeVoice: async (input, options) =>
+            experimental_aiServicesHostContract["ai.voice.transcribe"].output.parse(
+              await call("ai.voice.transcribe", input, options),
+            ),
+        });
+      },
       registerProvider: (declaration) => {
         return registerPluginProvider({
           available: true,
@@ -1539,24 +1621,38 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           // at activate(), after the factory — and therefore after
           // `bb.settings.define` — has run.
           settingsDescriptors: settingsDescriptorsRef.current,
+          brandingAssets: brandingAssetCandidate,
         });
       },
+      declaredIconNames: new Set(manifest.branding.icons.keys()),
       assertProviderRegistrable: (providerId) => {
         // A declaration is metadata; the implementation is the bridge this
-        // plugin declares in its manifest (or, for pi, the bridge the daemon
-        // bundles). A failed artifact build still stages the declaration so
-        // the provider can be listed as unavailable; no declared bridge at all
-        // remains a plugin authoring error.
-        if (
-          manifest.hostEntry !== undefined ||
-          DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS.includes(providerId)
-        ) {
+        // plugin declares in its manifest. A failed artifact build still
+        // stages the declaration so the provider can be listed as
+        // unavailable; no declared bridge at all remains a plugin authoring
+        // error.
+        if (manifest.hostEntry !== undefined) {
           return;
         }
-        throw new Error(
-          `provider "${providerId}" has no bridge to run on: this plugin declares no "bb.host" entry in its manifest`,
-        );
+        throw new Error(providerWithoutBridgeMessage(providerId));
       },
+      isAiServiceIdTaken: (serviceId) => {
+        const existing = deps.aiServices.get(serviceId);
+        return existing !== null && existing.pluginId !== row.id;
+      },
+      // Checked at the register call: a reserved id, or a plugin with no
+      // bb.host entry, fails the factory — and the load — like a bridgeless
+      // provider declaration. A declared entry that failed to build stages
+      // the service unbound instead, so the factory completes and the
+      // host-artifact failure below can retain this plugin's provider
+      // declarations as unavailable; that load fails before activate() would
+      // flush the staged service, so it never goes live.
+      assertAiServiceRegistrable: (serviceId) =>
+        assertAiServiceRegistrable({
+          id: serviceId,
+          hostArtifact: hostArtifactCandidate,
+          hostArtifactProblem,
+        }),
       isProviderIdTaken: (providerId) => {
         if (!deps.providerRegistry) {
           throw new Error("the provider registry is unavailable in this host");
@@ -1565,7 +1661,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         // reload they are disposed before the staged replacements flush, so
         // re-declaring the same id is not a collision.
         const existing = deps.providerRegistry.get(providerId);
-        return existing !== null && existing.source.pluginId !== row.id;
+        return existing !== null && existing.pluginId !== row.id;
       },
     });
     // `settings.define` mutates this record in place, so binding the
@@ -1635,12 +1731,17 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         : message;
     }
     if (hostArtifactProblem !== null) {
+      // The factory ran against a missing artifact (a first install whose
+      // bb.host entry failed to build): keep its provider declarations
+      // listed as unavailable, and publish nothing else it staged — the AI
+      // services it registered stay unbound and never flush.
       rollbackGeneration?.();
       try {
         replaceUnavailableProviderRegistrations(
           row,
           handle.listProviderDeclarations(),
           handle.settings.descriptors,
+          brandingAssetCandidate,
         );
       } catch (error) {
         hostArtifactProblem += `; failed to retain provider declaration: ${

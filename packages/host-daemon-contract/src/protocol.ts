@@ -1,3 +1,123 @@
+// Version 164 stops the server accepting any interaction lifecycle record
+// from a daemon event batch. `system/interaction/lifecycle` and the legacy
+// `system/permissionGrant/lifecycle` / `system/userQuestion/lifecycle` are
+// the server's own account of an interaction it registered; it writes one on
+// registration and on every settle, and no daemon or bridge ever produced
+// one. Until now the batch route kept a daemon-posted record whenever its
+// interaction id was a real interaction on that thread, so a daemon could
+// persist a fabricated "granted" or "answered" record — with its own content
+// — for a still-pending interaction. The server now drops all three
+// unconditionally (logged, never stored). No daemon sends them, so the bytes
+// on the wire are unchanged; the bump records that the server's acceptance
+// rules narrowed (the version 159 precedent).
+//
+// Version 163 removes the `absolute` side from the declared provider-native
+// roots the server sends with `host.list_commands` and `host.list_skills`
+// (`nativeRoots.skills` and `nativeRoots.commands` are `{ user, project }`).
+// Version 157 added it for the pi plugin, which probed each connected host
+// for the skills directories pi's `settings.json` names and re-registered
+// the union across hosts as one global declaration. Pi now answers those
+// directories per host through `resolveNativeRoots`, the plugin-host RPC
+// every other provider plugin resolves its host-only roots with, so they
+// arrive in `nativeRoots.resolved.skills` as user-origin roots and nothing
+// populates the side. The roots schema is `.strict()`: an older daemon
+// expects the key and rejects a root set without it, and a newer daemon
+// rejects a server that still sends it, so the bump is what moves an
+// enrolled machine onto a daemon that reads the two-sided shape.
+//
+// Version 161 (stabilization S2) renames the maintenance facts on the wire.
+// Server → daemon: `bridgeLaunch.capabilities.experimental_providerInstallation`
+// is now `providerInstallation` (the capabilities object is strict, so an older
+// daemon rejects the new field name and a newer daemon rejects the old one).
+// Server → clients: `ProviderInfo.maintenance { health, usage, installation }`
+// is the stable shape. (An earlier draft also served the three
+// `experimental_provider*` booleans beside it for one release; that window was
+// withdrawn before release — see docs/api_to_audit.md.)
+//
+// Version 160 lets any bridge raise a plugin-defined request (WS5 layer 3)
+// and changes the wire in both directions. Daemon → server: the
+// interactive-request registration's `payload` accepts the request family's
+// plugin member, `{ kind: "<pluginId>/<name>", title, data }`, beside the
+// approval and the user question. Server → daemon: `interactive.resolve`
+// carries the new `{ kind: "request_answer", value }` resolution, the form's
+// submitted value on its way back to the bridge. An older daemon rejects the
+// resolution it does not know, and an older server rejects the payload, so
+// the bump is what moves an enrolled machine onto a daemon that speaks both.
+//
+// Version 159 adds `system/interaction/lifecycle` to `threadEventSchema`,
+// which the daemon event batch parses. It is the one interaction-lifecycle
+// event (WS5 layer 2): the server appends it on every status change of every
+// interaction, carrying the interaction's record with the payload and the
+// resolution paired by kind, and the per-shape
+// `system/permissionGrant/lifecycle` / `system/userQuestion/lifecycle` events
+// are legacy, converted at read time. The daemon never emits any of the three,
+// so the bytes on the wire are unchanged; the bump records that the server's
+// acceptance rules widened (the version 154 precedent) on a compatibility
+// assumption this layer did not test. Version 164 closes that widening: the
+// server drops all three from a daemon batch unconditionally.
+//
+// Version 158 removes the `codex.inference.complete` / `codex.voice.transcribe`
+// commands: bb's AI services (helper inference, voice transcription) are
+// served by a plugin's `bb.host` entry through the generic `plugin.host.call`
+// command (`ai.inference.complete` / `ai.voice.transcribe` methods of the
+// `@get-bb/plugin-sdk/ai-services` contract, carrying a `serviceId`), and the
+// daemon bundles no ChatGPT client. An older daemon would still answer the
+// removed commands; a newer daemon rejects them as invalid, so a server that
+// still sends them must update.
+//
+// Version 157 adds the optional `absolute` side to the provider-native skill
+// roots the server sends with `host.list_commands` and `host.list_skills`:
+// host-absolute directories a provider plugin discovered through its own host
+// RPC (pi's settings-configured skills directories, re-registered per
+// connected host as the union across hosts). The daemon scans them like the
+// relative roots, as user-origin skills. The schema is `.strict()`, so a
+// server that sends the new key to an older daemon is rejected outright;
+// the bump is what moves that daemon forward. With it the daemon's own pi
+// skill policy (settings.json / trust.json readers) is gone: the plugin
+// declares pi's roots.
+//
+// Version 156 removes the `daemon-bundled` bridge source: pi's bridge ships
+// as the provider-pi plugin's `bb.host` artifact like every other provider,
+// and the daemon bundles no bridge at all (pi itself is user-installed, gated
+// on `pi --version` >= 0.84.0 plus a `get_state` probe). `bridgeLaunch.source`
+// is the `artifact` variant only. An older daemon still accepts the removed
+// variant but would never receive it; a newer daemon refuses it, so a server
+// that still sends `daemon-bundled` for pi must update.
+//
+// Version 155 removes the typed `acpLaunchSpec` field from every command
+// schema that carried it (the thread runtime context and its resume contexts,
+// turn.submit, thread.goal.clear, and the five sessionless provider
+// commands). An ACP agent's launch spec now reaches its bridge the way every
+// other provider's static options do: inside `bridgeLaunch.providerOptions`,
+// which the owning plugin declares. The daemon→bridge hop is unchanged — the
+// bridge has always read `providerOptions.acpLaunchSpec` — and so is the
+// process key, which already fingerprints the launch's provider options.
+//
+// Forward (old server → 155 daemon) BREAKS: every schema that carried the
+// field is `.strict()` except `provider.list_models`, so an old server's
+// thread.start, turn.submit, resume contexts, thread.goal.clear,
+// provider.health, provider.installation.status, provider.installation.run
+// and provider.usage are all rejected outright, and only its model listing
+// degrades quietly (the field is stripped and the daemon lists the wrong
+// agent's models). Reverse (155 server → old daemon) is tolerated in
+// practice: the launch rides `providerOptions`, which an older daemon merges
+// and forwards, and its own typed field is optional. The bump is therefore
+// the repository rule — a wire this version deliberately narrowed does not
+// ship on an untested compatibility assumption — plus the forward break,
+// which is what moves an enrolled machine onto a daemon that speaks this
+// shape.
+//
+// This continues what version 149 started. Provider-named fields remain on
+// the wire (`codex.inference.*`, `codex.voice.*`); the runtime cleanup
+// workstream removes the last of them.
+//
+// Version 154 (WS3 layer 5): the server no longer enriches tool-call events
+// with the plugin `statusLabels` pair — the bridge's persisted `presentation`
+// is the only label source — so the `item.statusLabels` key left the toolCall
+// item schema and the daemon-wire guard that rejected a daemon-supplied one is
+// gone. A daemon never sent the key, so the bytes on the wire are unchanged;
+// the bump records that the wire's acceptance rules moved.
+//
 // Version 153 adds the optional `sourceProviderCheckpointId` to
 // `thread.start.fork`. A fork requested at an earlier source sequence now
 // clones the source session through that turn's recorded checkpoint instead
@@ -170,9 +290,17 @@
 //     provider `rootPath`, and the old vocabulary could not name a plugin
 //     provider. An old daemon rejects the new scope values.
 //
+// Version 162 (stabilization S5): `host.list_commands` and `host.list_skills`
+// carry a required `nativeRoots` set — the provider's declared skill and
+// command roots with per-root options (`recursive`, `ancestors`,
+// `namePrefix`) and the roots its plugin resolved for the host and workspace
+// — in place of the optional `nativeSkillRoots` string lists. The daemon's
+// per-provider scan table is gone; an old daemon rejects the new field and an
+// old server's `nativeSkillRoots` fails the new daemon's strict schema.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 153 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 164 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —
@@ -185,17 +313,3 @@ export const HOST_DAEMON_PROTOCOL_VERSION = 153 as const;
  * artifact, and the wire schema refuses to carry one.
  */
 export const HOST_ARTIFACT_MAX_BYTES = 256 * 1024 * 1024;
-
-/**
- * Provider ids whose bridge ships inside the daemon bundle rather than as a
- * plugin artifact. Pi is the only one left: its agent tree cannot be inlined
- * into a relocatable artifact (see the graduation plan's pi verdict). The
- * daemon refuses artifact routing for these ids, and the server needs the same
- * list to know that a declaration for one of them has an implementation even
- * with no artifact behind it — so it lives on the contract both sides read
- * rather than in two places that can drift.
- *
- * Zod-free like the byte ceiling above: a plain constant both the schemas and
- * the runtime read without pulling the validation layer in.
- */
-export const DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS: readonly string[] = ["pi"];

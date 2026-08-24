@@ -95,11 +95,7 @@ export function OpencodeIcon({ className }: { className?: string }) {
       className={className}
     >
       <title>opencode</title>
-      <path
-        d="M180 240H60V120H180V240Z"
-        fill="currentColor"
-        fillOpacity={0.45}
-      />
+      <path d="M180 240H60V120H180V240Z" fill="currentColor" fillOpacity={0.45} />
       <path
         d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z"
         fill="currentColor"

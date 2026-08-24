@@ -8,7 +8,7 @@ import {
   type MarkdownBlockPress,
   type MarkdownThreadMentions,
 } from "@/markdown";
-import { Text } from "@/ui";
+import { LONG_PRESS_DELAY_MS, Text } from "@/ui";
 import type { TimelineMessageActionsTarget } from "../../../actions/message-actions-model";
 import { useTimelineRowHost } from "../../host/TimelineRowHostProvider";
 import { TimelineRowShell } from "../shared/ExpandableRowHeader";
@@ -107,7 +107,7 @@ export function AssistantMessageRow({
       <Pressable
         accessible={false}
         onLongPress={hasText ? onLongPress : undefined}
-        delayLongPress={350}
+        delayLongPress={LONG_PRESS_DELAY_MS}
         className="py-1"
         testID="conversation-assistant-body"
       >
@@ -122,6 +122,7 @@ export function AssistantMessageRow({
             onFilePress={onFilePress}
             onLinkPress={onLinkPress}
             onBlockLongPress={onBlockLongPress}
+            onLongPress={onLongPress}
             resolveImageSource={resolveImageSource}
           />
         ) : attachmentItems.imageItems.length === 0 &&

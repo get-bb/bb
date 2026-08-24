@@ -8,55 +8,26 @@
  * as a timeline row (label while pending, label once settled, a host glyph,
  * an optional headline, and whether clients may collapse the row). Core keeps
  * no table of Claude tool names; the persisted event carries this snapshot,
- * so a row renders the same way after the plugin is upgraded or removed.
+ * so a row renders the same way after the plugin is upgraded or removed. The
+ * rows whose wording is the same for every provider (compaction, file read,
+ * search, web search and fetch, plan steps, the generic tool fallback) and
+ * the headline/detail truncators come from the bridge kit.
  *
  * Icons are host glyph names from the shared icon registry
  * (`@bb/shared-ui/icon`); the persisted form is glyph-only by design.
  */
-import type { DeltaPresentation } from "@get-bb/plugin-sdk/provider-bridge";
-
-/** Row headlines stay one line and short; the item carries the full text. */
-const TITLE_MAX_LENGTH = 160;
-
-/** Row details are capped by the persisted presentation schema. */
-const DETAIL_MAX_LENGTH = 280;
-
-export function presentationTitle(text: string): string | undefined {
-  const firstLine = text.trim().split("\n", 1)[0]?.trim() ?? "";
-  if (firstLine.length === 0) {
-    return undefined;
-  }
-  return firstLine.length > TITLE_MAX_LENGTH
-    ? `${firstLine.slice(0, TITLE_MAX_LENGTH - 1)}…`
-    : firstLine;
-}
-
-export function presentationDetail(text: string): string {
-  return text.length > DETAIL_MAX_LENGTH
-    ? `${text.slice(0, DETAIL_MAX_LENGTH - 1)}…`
-    : text;
-}
-
-function withTitle(
-  presentation: DeltaPresentation,
-  title: string | undefined,
-): DeltaPresentation {
-  return title === undefined ? presentation : { ...presentation, title };
-}
-
-function fileName(path: string): string {
-  const segments = path.split("/").filter((segment) => segment.length > 0);
-  return segments[segments.length - 1] ?? path;
-}
+import {
+  type DeltaPresentation,
+  experimental_presentationDetail as presentationDetail,
+  experimental_presentationFileName as presentationFileName,
+  experimental_presentationTitle as presentationTitle,
+  experimental_toolPresentation as toolPresentation,
+  experimental_withTitle as withTitle,
+} from "@get-bb/plugin-sdk/provider-bridge";
 
 // ---------------------------------------------------------------------------
 // Core-kind items
 // ---------------------------------------------------------------------------
-
-export const COMPACTION_PRESENTATION: DeltaPresentation = {
-  label: { pending: "Compacting context", completed: "Compacted context" },
-  icon: { glyph: "Archive" },
-};
 
 /**
  * A `Bash` call. A backgrounded command's item settles when Claude
@@ -81,35 +52,6 @@ export function commandPresentation(args: {
   );
 }
 
-export function fileReadPresentation(path: string): DeltaPresentation {
-  return withTitle(
-    {
-      label: { pending: "Reading file", completed: "Read file" },
-      icon: { glyph: "FileText" },
-    },
-    presentationTitle(fileName(path)),
-  );
-}
-
-/** `Grep` searches file contents; `Glob` matches file names. */
-export function searchPresentation(args: {
-  mode: "content" | "path";
-  query: string;
-}): DeltaPresentation {
-  return withTitle(
-    args.mode === "content"
-      ? {
-          label: { pending: "Searching files", completed: "Searched files" },
-          icon: { glyph: "Search" },
-        }
-      : {
-          label: { pending: "Finding files", completed: "Found files" },
-          icon: { glyph: "FolderOpen" },
-        },
-    presentationTitle(args.query),
-  );
-}
-
 export type ClaudeFileChangeVerb = "edit" | "write" | "notebook";
 
 export function fileChangePresentation(args: {
@@ -124,27 +66,9 @@ export function fileChangePresentation(args: {
         : { pending: "Editing file", completed: "Edited file" };
   return withTitle(
     { label, icon: { glyph: "EditFile" } },
-    args.path === null ? undefined : presentationTitle(fileName(args.path)),
-  );
-}
-
-export function webSearchPresentation(query: string): DeltaPresentation {
-  return withTitle(
-    {
-      label: { pending: "Searching the web", completed: "Searched the web" },
-      icon: { glyph: "Globe" },
-    },
-    presentationTitle(query),
-  );
-}
-
-export function webFetchPresentation(url: string): DeltaPresentation {
-  return withTitle(
-    {
-      label: { pending: "Fetching page", completed: "Fetched page" },
-      icon: { glyph: "Browser" },
-    },
-    presentationTitle(url),
+    args.path === null
+      ? undefined
+      : presentationTitle(presentationFileName(args.path)),
   );
 }
 
@@ -175,26 +99,6 @@ export function delegationPresentation(args: {
   return detailParts.length === 0
     ? presentation
     : { ...presentation, detail: presentationDetail(detailParts.join(" · ")) };
-}
-
-/**
- * A plan-steps snapshot (TodoWrite, or the folded TaskCreate/TaskUpdate/
- * TaskList/TaskGet list). The headline is the step in progress — what the
- * agent is doing now. Collapsed by default: the todo banner reads the
- * snapshot; the row is bookkeeping.
- */
-export function planStepsPresentation(
-  steps: readonly { step: string; status?: string }[],
-): DeltaPresentation {
-  const active = steps.find((step) => step.status === "active");
-  return withTitle(
-    {
-      label: { pending: "Updating plan", completed: "Updated plan" },
-      icon: { glyph: "ListTodo" },
-      suppress: true,
-    },
-    active === undefined ? undefined : presentationTitle(active.step),
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -365,10 +269,7 @@ export function builtinToolPresentation(
 ): DeltaPresentation {
   const spec = BUILTIN_TOOL_PRESENTATIONS[tool];
   if (spec === undefined) {
-    return {
-      label: { pending: `Running ${tool}`, completed: `Ran ${tool}` },
-      icon: { glyph: "Toolbox" },
-    };
+    return toolPresentation(tool);
   }
   return withTitle(
     {
@@ -380,29 +281,12 @@ export function builtinToolPresentation(
   );
 }
 
-/**
- * A bb-injected tool whose definition carries no presentation (a server from
- * before the field existed): a generic label under bb's own glyph.
- */
-export function bbToolPresentation(tool: string): DeltaPresentation {
-  return {
-    label: { pending: `Running ${tool}`, completed: `Ran ${tool}` },
-    icon: { glyph: "Toolbox" },
-  };
-}
-
 /** A tool served by an MCP server other than bb's own (`mcp__<server>__<tool>`). */
 export function mcpToolPresentation(args: {
   server: string;
   tool: string;
 }): DeltaPresentation {
-  return withTitle(
-    {
-      label: { pending: `Running ${args.tool}`, completed: `Ran ${args.tool}` },
-      icon: { glyph: "Toolbox" },
-    },
-    args.server,
-  );
+  return withTitle(toolPresentation(args.tool), args.server);
 }
 
 // ---------------------------------------------------------------------------

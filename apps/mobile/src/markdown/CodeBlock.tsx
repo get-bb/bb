@@ -4,6 +4,7 @@ import { Pressable, ScrollView, Text as RNText, View } from "react-native";
 import { FONT_FAMILIES } from "@/theme/fonts";
 import { nativeTypography } from "@/theme/theme.native";
 import { Icon } from "@/ui/Icon";
+import { LONG_PRESS_DELAY_MS } from "@/ui/long-press";
 import { toast } from "@/ui/Toast";
 import {
   codeTokenColor,
@@ -105,38 +106,47 @@ export const CodeBlock = memo(function CodeBlock({
         horizontal
         showsHorizontalScrollIndicator={false}
         nestedScrollEnabled
-        contentContainerStyle={{
-          paddingHorizontal: 12,
-          paddingBottom: 10,
-          paddingTop: 2,
-        }}
       >
-        <RNText
-          selectable={ctx.selectable}
-          style={{
-            fontFamily: FONT_FAMILIES.mono.regular,
-            fontWeight: "400",
-            fontSize: mono.fontSize,
-            lineHeight: mono.lineHeight,
-            color: tokens.foreground,
-          }}
+        {/*
+          The body gets its own Pressable inside the ScrollView, and the
+          body padding sits on it so a drag that starts in a gutter hits it
+          too. With only the outer Pressable (an ancestor of the ScrollView)
+          as responder, the new architecture never lets the ScrollView scroll
+          sideways. See MarkdownTable.
+        */}
+        <Pressable
+          accessible={false}
+          onLongPress={copy}
+          delayLongPress={LONG_PRESS_DELAY_MS}
+          style={{ paddingHorizontal: 12, paddingBottom: 10, paddingTop: 2 }}
         >
-          {lines.map((line, lineIndex) => (
-            <RNText key={lineIndex}>
-              {line.map((span, spanIndex) => (
-                <RNText
-                  key={spanIndex}
-                  style={{
-                    color: codeTokenColor(span.type, mode, tokens),
-                  }}
-                >
-                  {span.text}
-                </RNText>
-              ))}
-              {lineIndex < lines.length - 1 ? "\n" : null}
-            </RNText>
-          ))}
-        </RNText>
+          <RNText
+            selectable={ctx.selectable}
+            style={{
+              fontFamily: FONT_FAMILIES.mono.regular,
+              fontWeight: "400",
+              fontSize: mono.fontSize,
+              lineHeight: mono.lineHeight,
+              color: tokens.foreground,
+            }}
+          >
+            {lines.map((line, lineIndex) => (
+              <RNText key={lineIndex}>
+                {line.map((span, spanIndex) => (
+                  <RNText
+                    key={spanIndex}
+                    style={{
+                      color: codeTokenColor(span.type, mode, tokens),
+                    }}
+                  >
+                    {span.text}
+                  </RNText>
+                ))}
+                {lineIndex < lines.length - 1 ? "\n" : null}
+              </RNText>
+            ))}
+          </RNText>
+        </Pressable>
       </ScrollView>
     </Pressable>
   );

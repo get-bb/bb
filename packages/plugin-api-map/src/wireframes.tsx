@@ -110,6 +110,7 @@ export const APP_SHELL_MARKS = [
   "thread-panel",
   "file-opener",
   "code-renderers",
+  "timeline-renderers",
   "content-scripts",
   "command-palette-actions",
 ] as const;
@@ -602,6 +603,27 @@ function AppShellWireframeBody() {
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
                 Fix the flaky checkout tests
               </span>
+            </div>
+
+            {/* plugin-owned row: bb retains the header while the plugin
+                renderer supplies the expanded body beneath it */}
+            <div className="w-[78%] space-y-1">
+              <span className="flex items-center gap-1.5 text-foreground">
+                <PluginGlyph className="size-3.5" />
+                Re-ran checkout suite
+                <span className="text-subtle-foreground">Completed</span>
+              </span>
+              <RegionMark
+                id="timeline-renderers"
+                label="A plugin renderer supplying its timeline row body"
+                className="ml-5 block space-y-1 px-2.5 py-2"
+                chipClassName="-right-2 top-1/2 -translate-y-1/2"
+              >
+                <div className="flex items-center gap-2" aria-hidden>
+                  <span className="h-1.5 w-2/3 rounded-sm bg-muted/60" />
+                  <span className="h-1.5 w-12 rounded-sm bg-foreground/40" />
+                </div>
+              </RegionMark>
             </div>
 
             {/* assistant message: plain prose + directive + action bar */}

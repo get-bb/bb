@@ -5,7 +5,6 @@ import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
 import {
   CommandDispatchError,
-  defaultProviderInstallationStatus,
   ExpectedCommandDispatchError,
   resolveRuntimeBridgeLaunch,
   type CommandDispatchOptions,
@@ -101,7 +100,7 @@ async function requireSupportedProviderCliForThreadStart({
   command,
   options,
 }: RequireSupportedProviderCliArgs): Promise<void> {
-  if (!command.bridgeLaunch.capabilities.experimental_providerInstallation) {
+  if (!command.bridgeLaunch.capabilities.providerInstallation) {
     return;
   }
 
@@ -109,14 +108,9 @@ async function requireSupportedProviderCliForThreadStart({
     command.bridgeLaunch,
     options,
   );
-  const status = await (
-    options.providerInstallationStatus ?? defaultProviderInstallationStatus
-  )({
+  const status = await options.providerInstallationStatus({
     providerId: command.providerId,
     bridgeLaunch,
-    ...(command.acpLaunchSpec === undefined
-      ? {}
-      : { acpLaunchSpec: command.acpLaunchSpec }),
     ...(command.type === "thread.rewind.prepare"
       ? { requirement: "thread_rewind" as const }
       : {}),
@@ -190,11 +184,6 @@ async function resumeThreadRuntimeIfMissing(
     options,
   );
   await entry.runtime.resumeThread({
-    ...(command.resumeContext.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.resumeContext.acpLaunchSpec }
-      : command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
     bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,
@@ -241,9 +230,6 @@ export async function startThread(
       workspaceContext: command.workspaceContext,
     });
     const result = await entry.runtime.startThread({
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
       environmentId: command.environmentId,
       threadId: command.threadId,
@@ -286,9 +272,6 @@ export async function prepareThreadRewind(
     workspaceContext: command.workspaceContext,
   });
   return entry.runtime.prepareThreadRewind({
-    ...(command.acpLaunchSpec !== undefined
-      ? { acpLaunchSpec: command.acpLaunchSpec }
-      : {}),
     bridgeLaunch,
     environmentId: command.environmentId,
     threadId: command.threadId,

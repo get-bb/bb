@@ -116,9 +116,9 @@ describe("PromptBoxActionsMenu", () => {
     const setDraft = vi.fn();
     const host: PluginComposerHost = {
       scope: view.scope,
-      draft,
       textEffectKey: "plus-menu-update-test",
       getCurrent: () => draft,
+      subscribeDraft: () => () => {},
       setDraft,
       focus: () => document.getElementById("composer-focus-target")?.focus(),
     };
@@ -177,9 +177,9 @@ describe("PromptBoxActionsMenu", () => {
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
       scope: view.scope,
-      draft,
       textEffectKey: "plus-menu-test",
       getCurrent: () => draft,
+      subscribeDraft: () => () => {},
       setDraft: vi.fn(),
       focus: vi.fn(),
     };
@@ -221,6 +221,7 @@ describe("PromptBoxActionsMenu", () => {
             compactIconUrl: null,
             logoUrl: null,
             logoDarkUrl: null,
+            icons: new Map(),
           },
         ],
         [
@@ -231,6 +232,7 @@ describe("PromptBoxActionsMenu", () => {
             compactIconUrl: null,
             logoUrl: null,
             logoDarkUrl: null,
+            icons: new Map(),
           },
         ],
       ]),

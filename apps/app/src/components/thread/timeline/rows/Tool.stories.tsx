@@ -1,6 +1,6 @@
 import type { TimelineRow } from "@bb/server-contract";
 import { ThreadTimelineRows } from "@/components/thread/timeline";
-import { toolRow } from "@/test/fixtures/thread-timeline-rows";
+import { fileReadRow, toolRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
 export default {
@@ -44,7 +44,6 @@ const toolSearchTool: TimelineRow = toolRow({
   },
   output: "Matched tools: TodoWrite",
   approvalStatus: null,
-  activityIntents: [],
   durationMs: 105,
 });
 
@@ -65,7 +64,6 @@ const longOutputTool: TimelineRow = toolRow({
   },
   output: `Matched tool: LongOutput\nresult_id=${"0123456789abcdef".repeat(20)}`,
   approvalStatus: null,
-  activityIntents: [],
   durationMs: 100,
 });
 
@@ -88,7 +86,6 @@ const notifyUserShort: TimelineRow = toolRow({
   },
   output: "Notification delivered",
   approvalStatus: null,
-  activityIntents: [],
   durationMs: 0,
 });
 
@@ -112,7 +109,6 @@ const notifyUserLong: TimelineRow = toolRow({
   },
   output: "Notification delivered",
   approvalStatus: null,
-  activityIntents: [],
   durationMs: 50,
 });
 
@@ -143,7 +139,6 @@ const runningTool: TimelineRow = toolRow({
   },
   output: "",
   approvalStatus: null,
-  activityIntents: [],
   durationMs: null,
 });
 
@@ -168,7 +163,6 @@ const errorTool: TimelineRow = toolRow({
   },
   output: "Tool failed: deferred tool registry unavailable",
   approvalStatus: null,
-  activityIntents: [],
   durationMs: 100,
 });
 
@@ -192,7 +186,6 @@ const interruptedTool: TimelineRow = toolRow({
   },
   output: "",
   approvalStatus: null,
-  activityIntents: [],
   durationMs: 200,
 });
 
@@ -217,7 +210,6 @@ const waitingApprovalTool: TimelineRow = toolRow({
   },
   output: "",
   approvalStatus: "waiting_for_approval",
-  activityIntents: [],
   durationMs: null,
 });
 
@@ -241,14 +233,12 @@ const deniedTool: TimelineRow = toolRow({
   },
   output: "",
   approvalStatus: "denied",
-  activityIntents: [],
   durationMs: 500,
 });
 
-interface SkillReadToolArgs {
+interface SkillReadRowArgs {
   idSuffix: string;
   sequenceOffset: number;
-  skillName: string;
   skillPath: string;
 }
 
@@ -258,9 +248,12 @@ interface SkillReadStoryState {
   row: TimelineRow;
 }
 
-function createSkillReadTool(args: SkillReadToolArgs): TimelineRow {
-  return toolRow({
-    id: `thr_skill_read:tool:toolu_skill_read_${args.idSuffix}`,
+// A Read of a SKILL.md projects as a `file-read` row (the legacy Read tool
+// call upgrades to the same row at read time); the title compacts the path to
+// the skill it names.
+function createSkillReadRow(args: SkillReadRowArgs): TimelineRow {
+  return fileReadRow({
+    id: `thr_skill_read:file-read:toolu_skill_read_${args.idSuffix}`,
     threadId: "thr_skill_read",
     turnId: "turn_skill_read_1",
     sourceSeqStart: 970 + args.sequenceOffset,
@@ -269,80 +262,59 @@ function createSkillReadTool(args: SkillReadToolArgs): TimelineRow {
     createdAt: 1777933920000 + args.sequenceOffset,
     status: "completed",
     callId: `toolu_skill_read_${args.idSuffix}`,
-    toolName: "Read",
-    toolArgs: {
-      file_path: args.skillPath,
-    },
-    output: `---\nname: ${args.skillName}\ndescription: ${args.skillName} skill instructions.\n---\n`,
-    approvalStatus: null,
-    activityIntents: [
-      {
-        type: "read",
-        command: "Read",
-        name: "SKILL.md",
-        path: args.skillPath,
-      },
-    ],
+    path: args.skillPath,
     durationMs: 130,
   });
 }
 
-const projectClaudeSkillReadTool = createSkillReadTool({
+const projectClaudeSkillReadTool = createSkillReadRow({
   idSuffix: "project_claude",
   sequenceOffset: 0,
-  skillName: "moss-hardening-review",
   skillPath:
     "/Users/brsbl/Code/bb/.claude/skills/moss-hardening-review/SKILL.md",
 });
 
-const userClaudeSymlinkSkillReadTool = createSkillReadTool({
+const userClaudeSymlinkSkillReadTool = createSkillReadRow({
   idSuffix: "user_claude_symlink",
   sequenceOffset: 2,
-  skillName: "personal-review",
   skillPath: "/Users/brsbl/.claude/skills/personal-review/SKILL.md",
 });
 
-const projectCodexSkillReadTool = createSkillReadTool({
+const projectCodexSkillReadTool = createSkillReadRow({
   idSuffix: "project_codex",
   sequenceOffset: 4,
-  skillName: "workspace-tools",
   skillPath: "/Users/brsbl/Code/bb/.codex/skills/workspace-tools/SKILL.md",
 });
 
-const userCodexSkillReadTool = createSkillReadTool({
+const userCodexSkillReadTool = createSkillReadRow({
   idSuffix: "user_codex",
   sequenceOffset: 6,
-  skillName: "html-previews",
   skillPath: "/Users/brsbl/.codex/skills/html-previews/SKILL.md",
 });
 
-const codexSystemSkillReadTool = createSkillReadTool({
+const codexSystemSkillReadTool = createSkillReadRow({
   idSuffix: "codex_system",
   sequenceOffset: 8,
-  skillName: "openai-docs",
   skillPath: "/Users/brsbl/.codex/skills/.system/openai-docs/SKILL.md",
 });
 
-const codexPluginNestedSkillReadTool = createSkillReadTool({
+const codexPluginNestedSkillReadTool = createSkillReadRow({
   idSuffix: "codex_plugin_nested",
   sequenceOffset: 10,
-  skillName: "control-in-app-browser",
   skillPath:
     "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/skills/control-in-app-browser/SKILL.md",
 });
 
-const claudePluginNestedSkillReadTool = createSkillReadTool({
+const claudePluginNestedSkillReadTool = createSkillReadRow({
   idSuffix: "claude_plugin_nested",
   sequenceOffset: 12,
-  skillName: "frontend-design",
   skillPath:
     "/Users/brsbl/.claude/plugins/cache/claude-plugins-official/frontend-design/bd7cf41fc8a4/skills/frontend-design/SKILL.md",
 });
 
-const pluginRootSkillReadTool = createSkillReadTool({
+const pluginRootSkillReadTool = createSkillReadRow({
   idSuffix: "plugin_root",
   sequenceOffset: 14,
-  skillName: "browser",
   skillPath:
     "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/SKILL.md",
 });

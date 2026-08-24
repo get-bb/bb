@@ -1,11 +1,13 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-// Import-free data: the server loads this file with only the SDK root
-// specifier resolvable, so nothing here may pull in the bridge modules.
+// The server bundles this file with only the SDK root specifier external, so
+// nothing here may pull in the bridge modules: the catalog is import-free
+// data and the native-roots module needs only node builtins and zod.
 import {
   CLAUDE_CODE_ACTIVE_CATALOG_DATA,
   CLAUDE_XHIGH_CAPABLE_REASONING_EFFORT_DATA,
   DEFAULT_CLAUDE_CODE_MODEL,
 } from "./src/model-catalog-data.js";
+import { CLAUDE_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
 
 /**
  * First-party Claude Code provider plugin. The declaration is the only source
@@ -43,18 +45,24 @@ export default function plugin(bb: BbPluginApi) {
     id: "claude-code",
     displayName: "Claude Code",
     icon: "./icons/claude-code.svg",
-    experimental_strings: {
+    strings: {
       signInHint: "Run `claude` on the machine to sign in.",
       expiredHint: "Your Claude session expired. Run `claude`, then reload.",
       installUrl: "https://claude.com/claude-code",
       brandPrefix: "Claude ",
-      planModeCopy: "Claude Code will plan without normal full-access execution.",
+      planModeCopy:
+        "Claude Code will plan without normal full-access execution.",
       iconTint: { light: "#D97757", dark: "#D97757" },
     },
+    // Where Claude Code keeps its own skills and slash commands, so bb can
+    // list them beside its own and offer them in the composer. Only the
+    // workspace roots are declared here: the user roots follow
+    // CLAUDE_CONFIG_DIR, and installed Claude plugins live on the host, so
+    // the `bb.host` entry resolves those per host and workspace
+    // (`src/native-roots.ts`).
+    ...CLAUDE_NATIVE_ROOTS_DECLARATION,
+    maintenance: { health: true, usage: true, installation: true },
     capabilities: {
-      experimental_providerHealth: true,
-      experimental_providerUsage: true,
-      experimental_providerInstallation: true,
       supportsServiceTier: false,
       supportsNativeUserQuestion: true,
       fork: "checkpoint",
@@ -64,7 +72,7 @@ export default function plugin(bb: BbPluginApi) {
       permissionModes: ["accept-edits", "auto", "full"],
       reasoningLevels: ["low", "medium", "high", "xhigh", "ultracode", "max"],
     },
-    experimental_reasoningLevels: [
+    reasoningLevels: [
       { id: "low", label: "Low" },
       { id: "medium", label: "Medium" },
       { id: "high", label: "High" },
@@ -79,8 +87,11 @@ export default function plugin(bb: BbPluginApi) {
     composerActions: ["plan"],
     // The bridge honors an operator-set CLI path; provider processes are
     // spawned with inherited BB_* variables stripped, so it is declared.
-    experimental_env: { passthrough: ["BB_CLAUDE_CODE_EXECUTABLE"] },
-    experimental_models: {
+    env: { passthrough: ["BB_CLAUDE_CODE_EXECUTABLE"] },
+    models: {
+      // The CLI answers `model/list` from account state, so one probe per
+      // machine serves every workspace on it.
+      scope: "host",
       fallback: CLAUDE_CODE_ACTIVE_CATALOG_DATA.map((entry) => ({
         id: entry.model,
         displayName: entry.displayName,
@@ -90,7 +101,7 @@ export default function plugin(bb: BbPluginApi) {
         isDefault: entry.model === DEFAULT_CLAUDE_CODE_MODEL,
       })),
     },
-    experimental_deriveProviderOptions(context) {
+    deriveProviderOptions(context) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,

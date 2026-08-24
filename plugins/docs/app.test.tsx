@@ -12,7 +12,7 @@ import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app"));
 const docsRegistration = app.navPanels[0]!;
-const navigationView = docsRegistration.experimental_fixedTabs?.[0]!;
+const navigationView = docsRegistration.fixedTabs?.[0]!;
 const navigationRegistration = {
   ...docsRegistration,
   component: navigationView.component,
@@ -140,7 +140,7 @@ describe("Docs nav panel", () => {
       id: "docs",
       title: "Docs",
       path: "docs",
-      experimental_fixedTabs: [
+      fixedTabs: [
         {
           panelId: "docs",
           id: "navigation",
@@ -1284,7 +1284,7 @@ describe("Docs nav panel", () => {
           projectId: "project_1",
           experimental_hostId: "host_remote",
         },
-        experimental_Original: () => null,
+        Original: () => null,
       },
       {
         rpc: {

@@ -90,9 +90,11 @@ function scopeProviderRequestId(
 function buildDeniedInteractiveResolution(
   payload: PendingInteractionPayload,
 ): PendingInteractionResolution {
+  // Only an approval is policy-bearing; a request (a user question, a
+  // plugin-defined form) always reaches the user.
   if (!isApprovalPendingInteractionPayload(payload)) {
     throw new ProviderResponseEncodeError(
-      "User-question interactive requests cannot be auto-denied",
+      "Only approval interactive requests can be auto-denied",
     );
   }
   if (!payload.availableDecisions.includes("deny")) {
@@ -339,7 +341,7 @@ function handleInteractiveProviderRequest(
       child: args.providerProcess.child,
       id: args.parsedId,
       message:
-        "No interactive request handler is configured for user-question interactions",
+        "No interactive request handler is configured for request interactions",
     });
     return true;
   }

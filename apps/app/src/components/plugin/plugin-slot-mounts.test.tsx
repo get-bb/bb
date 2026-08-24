@@ -41,6 +41,7 @@ import {
   PluginPanelHeaderCenter,
 } from "./PluginPanelHeader";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
+import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
 import { applyPluginCss, resetPluginCssForTest } from "@/lib/plugin-css";
 import { ComposerActionsSlot } from "./PluginComposerActions";
 import { PluginContext } from "./plugin-context";
@@ -48,6 +49,7 @@ import {
   PluginComposerHostProvider,
   PluginComposerHostScopeProvider,
   type PluginComposerHost,
+  useComposerHostDraftNotifier,
   usePublishPluginComposerHost,
 } from "./plugin-composer-host";
 import { PluginHomepageSections } from "./PluginHomepageSections";
@@ -512,6 +514,7 @@ describe("useComposer", () => {
       });
       const draftRef = useRef(draft);
       draftRef.current = draft;
+      const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
           scope: {
@@ -519,13 +522,13 @@ describe("useComposer", () => {
             threadId: "thr_queue",
             queuedMessageId,
           },
-          draft,
           textEffectKey: `queued-message:thr_queue:${queuedMessageId}:1`,
           getCurrent: () => draftRef.current,
+          subscribeDraft,
           setDraft,
           focus: () => {},
         }),
-        [draft, queuedMessageId],
+        [queuedMessageId, subscribeDraft],
       );
 
       return (
@@ -616,10 +619,10 @@ describe("useComposer", () => {
                   threadId: "thr_queue",
                   queuedMessageId: "qmsg_1",
                 },
-                draft,
                 textEffectKey:
                   "queued-message:thr_queue:qmsg_1:sibling-surface",
                 getCurrent: () => draft,
+                subscribeDraft: () => () => {},
                 setDraft,
                 focus: () => {},
               }
@@ -683,6 +686,7 @@ describe("useComposer", () => {
       });
       const draftRef = useRef(draft);
       draftRef.current = draft;
+      const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
           scope: {
@@ -692,13 +696,13 @@ describe("useComposer", () => {
             tabId: "side-chat:one",
             childThreadId,
           },
-          draft,
           textEffectKey: `side-chat:side-chat:one:${childThreadId ?? ""}`,
           getCurrent: () => draftRef.current,
+          subscribeDraft,
           setDraft,
           focus: () => {},
         }),
-        [childThreadId, draft],
+        [childThreadId, subscribeDraft],
       );
 
       return (
@@ -815,16 +819,17 @@ describe("useComposer", () => {
       });
       const draftRef = useRef(draft);
       draftRef.current = draft;
+      const subscribeDraft = useComposerHostDraftNotifier(draft);
       const host = useMemo<PluginComposerHost>(
         () => ({
           scope: { kind: "new-thread", projectId },
-          draft,
           textEffectKey: `root:${projectId}`,
           getCurrent: () => draftRef.current,
+          subscribeDraft,
           setDraft,
           focus: () => {},
         }),
-        [draft, projectId],
+        [projectId, subscribeDraft],
       );
 
       return (
@@ -901,9 +906,9 @@ describe("useComposer", () => {
         };
         return {
           scope: { kind: "new-thread", projectId },
-          draft,
           textEffectKey: `root-state:${projectId ?? "null"}`,
           getCurrent: () => draft,
+          subscribeDraft: () => () => {},
           setDraft: () => {},
           focus: () => {},
         };
@@ -1050,11 +1055,11 @@ describe("useComposer", () => {
             threadId: "thr_scope_owner",
             queuedMessageId,
           },
-          draft,
           // A host can retain its editable surface while its logical scope
           // changes, as root compose does when the selected project changes.
           textEffectKey: "shared-scope-effect",
           getCurrent: () => draft,
+          subscribeDraft: () => () => {},
           setDraft: () => {},
           focus: () => {},
         }),
@@ -2038,7 +2043,7 @@ describe("plugin file opener tabs", () => {
 
   it("lets an opener delegate to the exact native preview node", () => {
     function DelegatingEditor({
-      experimental_Original: Original,
+      Original,
     }: PluginFileOpenerProps) {
       return <Original />;
     }
@@ -2228,5 +2233,108 @@ describe("plugin file opener tabs", () => {
     expect(screen.getByRole("button").textContent).toBe(
       "Native selection and editor actions",
     );
+  });
+});
+
+/**
+ * A bundle built against an SDK before 0.4.16 reads `experimental_Original`
+ * (renamed `Original` in 0.4.16). The host passes both for one release.
+ */
+describe("file opener experimental_Original alias", () => {
+  beforeEach(() => {
+    resetDeprecatedAliasWarningsForTests();
+  });
+
+  function registerOpener(
+    component: (props: PluginFileOpenerProps) => React.ReactNode,
+  ) {
+    setPluginSlotRegistrations(
+      "notes",
+      registrationSet({
+        fileOpeners: [
+          {
+            id: "editor",
+            title: "Notes editor",
+            extensions: ["md"],
+            component,
+          },
+        ],
+      }),
+    );
+  }
+
+  const tab = buildFileOpenerPanelTab(
+    { id: "editor", pluginId: "notes" },
+    {
+      path: "notes/todo.md",
+      source: {
+        kind: "workspace",
+        environmentId: "env_1",
+        projectId: null,
+        threadId: "thr_1",
+      },
+    },
+    {
+      kind: "workspace-file-preview",
+      environmentId: "env_1",
+      projectId: null,
+      tab: {
+        lineRange: { startLineNumber: 7, endLineNumber: 9 },
+        path: "notes/todo.md",
+        source: { kind: "working-tree" },
+        statusLabel: null,
+      },
+      threadId: "thr_1",
+    },
+  );
+
+  function renderOpener(nativePreview: string) {
+    return (
+      <PluginPanelTabContent
+        tab={tab}
+        context={{ kind: "thread", threadId: "thr_1" }}
+        fileOpenerOriginal={<button type="button">{nativePreview}</button>}
+      />
+    );
+  }
+
+  it("delegates to the native preview through the alias and warns once across renders", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let renders = 0;
+    registerOpener(({ experimental_Original: LegacyOriginal }) => {
+      renders += 1;
+      return LegacyOriginal === undefined ? (
+        <div>alias missing</div>
+      ) : (
+        <LegacyOriginal />
+      );
+    });
+
+    const { rerender } = render(renderOpener("Native preview and actions"));
+    expect(screen.getByRole("button").textContent).toBe(
+      "Native preview and actions",
+    );
+
+    rerender(renderOpener("Native preview for line 7"));
+    expect(screen.getByRole("button").textContent).toBe(
+      "Native preview for line 7",
+    );
+    expect(renders).toBe(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "experimental_Original is deprecated; use Original. Removed in bb 0.42",
+    );
+  });
+
+  it("never warns for an opener that reads Original", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    registerOpener(({ Original }) => <Original />);
+
+    render(renderOpener("Native preview and actions"));
+
+    expect(screen.getByRole("button").textContent).toBe(
+      "Native preview and actions",
+    );
+    expect(warn).not.toHaveBeenCalled();
   });
 });

@@ -74,6 +74,13 @@ export interface MarkdownCallbacks {
    */
   onBlockLongPress?: (block: MarkdownBlockPress) => void;
   /**
+   * Long-pressed a block that owns its touch target (a table: its target
+   * sits inside the horizontal ScrollView, so a Pressable around the whole
+   * body never sees the press) and that has no `onBlockLongPress`. Pass the
+   * body's message-level long-press here so such blocks are not dead zones.
+   */
+  onLongPress?: () => void;
+  /**
    * Directive cards. Return a node to render a card, or null to fall back to
    * the literal directive source.
    */
@@ -140,6 +147,7 @@ export function useMarkdownContextValue(
     onThreadPress,
     onMentionPress,
     onBlockLongPress,
+    onLongPress,
     renderDirective,
     resolveImageSource,
   } = inputs;
@@ -160,6 +168,7 @@ export function useMarkdownContextValue(
       onThreadPress,
       onMentionPress,
       onBlockLongPress,
+      onLongPress,
       renderDirective,
       resolveImageSource,
     }),
@@ -179,6 +188,7 @@ export function useMarkdownContextValue(
       onThreadPress,
       onMentionPress,
       onBlockLongPress,
+      onLongPress,
       renderDirective,
       resolveImageSource,
     ],

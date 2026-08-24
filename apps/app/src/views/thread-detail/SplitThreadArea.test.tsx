@@ -283,9 +283,9 @@ vi.mock("./ThreadDetailView", () => ({
       const draft = { attachments: [], mentions: [], text: "" };
       return {
         scope: { kind: "thread", threadId },
-        draft,
         textEffectKey: `test-draft-${threadId}`,
         getCurrent: () => draft,
+        subscribeDraft: () => () => {},
         setDraft: () => undefined,
         focus: () => undefined,
       };

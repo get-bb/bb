@@ -28,6 +28,7 @@ import type { ThreadTimelineResponse } from "@bb/server-contract";
 import type { CorpusThread } from "@bb/test-helpers";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { resolveRepoRelativeFile } from "./env-file-path.js";
 import {
   THREAD_TIMELINE_DEFAULT_SEGMENT_LIMIT,
   buildThreadTimelineWithProfile,
@@ -43,6 +44,32 @@ import {
 } from "../../src/services/threads/timeline-output-truncation.js";
 
 export const SNAPSHOT_MODE_ENV = "BB_PROVIDER_CORPUS_SNAPSHOT";
+
+/**
+ * Where the row baseline lives. `snapshots/rows` under the corpus is the
+ * canonical baseline minted on main and shared by every workstream; a
+ * workstream that wants to write a snapshot of its own rows points this at
+ * a shadow directory instead of overwriting the shared one.
+ */
+export const SNAPSHOT_ROWS_DIR_ENV = "BB_PROVIDER_CORPUS_SNAPSHOT_DIR";
+
+/**
+ * An additional allowlist file, merged after the shared
+ * `snapshots/allowlist.json`. A PR that intentionally changes rows carries
+ * its entries in the repository (see `allowlists/`) so the change is
+ * documented with the code and never lands in the shared file.
+ */
+export const ALLOWLIST_FILE_ENV = "BB_PROVIDER_CORPUS_ALLOWLIST";
+
+export function resolveSnapshotRowsDir(
+  snapshotsDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const value = env[SNAPSHOT_ROWS_DIR_ENV];
+  return value === undefined || value === ""
+    ? path.join(snapshotsDir, "rows")
+    : path.resolve(value);
+}
 
 export type SnapshotMode = "write" | "compare";
 
@@ -513,14 +540,33 @@ export function applyAllowlist(
   return { allowed, unallowed, usedEntryIndexes };
 }
 
-export function readAllowlist(snapshotsDir: string): AllowlistEntry[] {
-  const allowlistPath = path.join(snapshotsDir, "allowlist.json");
-  if (!fs.existsSync(allowlistPath)) {
-    return [];
-  }
+function readAllowlistFile(allowlistPath: string): AllowlistEntry[] {
   return allowlistSchema.parse(
     JSON.parse(fs.readFileSync(allowlistPath, "utf8")),
   );
+}
+
+/**
+ * The shared `snapshots/allowlist.json` (absent → none) followed by the
+ * file `BB_PROVIDER_CORPUS_ALLOWLIST` names, which must exist when set: a
+ * typo must not silently turn an intended diff into a failure.
+ */
+export function readAllowlist(
+  snapshotsDir: string,
+  env: NodeJS.ProcessEnv = process.env,
+): AllowlistEntry[] {
+  const entries: AllowlistEntry[] = [];
+  const sharedPath = path.join(snapshotsDir, "allowlist.json");
+  if (fs.existsSync(sharedPath)) {
+    entries.push(...readAllowlistFile(sharedPath));
+  }
+  const extraPath = env[ALLOWLIST_FILE_ENV];
+  if (extraPath !== undefined && extraPath !== "") {
+    entries.push(
+      ...readAllowlistFile(resolveRepoRelativeFile(ALLOWLIST_FILE_ENV, extraPath)),
+    );
+  }
+  return entries;
 }
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,19 @@ import { resolvePluginBuildToolchain } from "./toolchain.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
 
+interface BuiltProviderBridge {
+  readonly experimental_apiVersion: 1;
+  readonly handleLine: (line: string) => void;
+}
+
+function isBuiltProviderBridge(value: unknown): value is BuiltProviderBridge {
+  if (typeof value !== "object" || value === null) return false;
+  return (
+    Reflect.get(value, "experimental_apiVersion") === 1 &&
+    typeof Reflect.get(value, "handleLine") === "function"
+  );
+}
+
 interface BuiltHostEntry {
   readonly experimental_apiVersion: 1;
   readonly handlers: Readonly<
@@ -78,4 +91,62 @@ describe("builtin host artifacts", () => {
       supported: process.platform === "darwin",
     });
   }, 20_000);
+
+  /**
+   * Each first-party host entry is built the way the daemon builds it —
+   * inlining the SDK's published bundle from the plugin's own node_modules —
+   * and the result is imported, so a subpath that only resolves through the
+   * workspace source condition cannot pass.
+   *
+   * The ACP plugin's whole host side is one re-export of the published kit
+   * (`@get-bb/plugin-sdk/provider-bridge/acp`), which is exactly what a
+   * third-party ACP plugin writes; its host entry serves the agent probe (Q21)
+   * and the per-host native-roots resolver core calls when it lists skills.
+   * The claude-code, codex and pi host entries import a host contract from
+   * `@get-bb/plugin-sdk/host` beside their bridge — a runtime stub that
+   * re-implemented `experimental_defineHostEntry` alone once broke exactly
+   * this import.
+   */
+  it.each([
+    {
+      pluginDir: "provider-acp",
+      methods: ["probeAgent", "resolveNativeRoots"],
+    },
+    { pluginDir: "provider-claude-code", methods: ["resolveNativeRoots"] },
+    { pluginDir: "provider-codex", methods: ["resolveNativeRoots"] },
+    { pluginDir: "provider-pi", methods: ["resolveNativeRoots"] },
+  ])(
+    "builds the $pluginDir host entry that serves a host contract beside its bridge",
+    async ({ pluginDir, methods }) => {
+      const root = await mkdtemp(join(repositoryRoot, ".builtin-host-test-"));
+      tempDirs.push(root);
+      const source = join(repositoryRoot, "plugins", pluginDir);
+      for (const fileName of ["package.json", "server.ts"]) {
+        await cp(join(source, fileName), join(root, fileName));
+      }
+      await cp(join(source, "src"), join(root, "src"), { recursive: true });
+      // The manifest's branding icon must resolve for the build to run.
+      await cp(join(source, "icons"), join(root, "icons"), { recursive: true });
+      await symlink(
+        join(source, "node_modules"),
+        join(root, "node_modules"),
+        "dir",
+      );
+      const toolchain = await resolvePluginBuildToolchain(
+        join(repositoryRoot, "node_modules", ".unused-toolchain"),
+      );
+      const built = await buildPluginHost(root, "0.9.0-test", toolchain);
+      const imported: unknown = await import(
+        `${pathToFileURL(built.jsPath).href}?test=${Date.now()}`
+      );
+      const bridge = Reflect.get(Object(imported), "experimental_providerBridge");
+      expect(isBuiltProviderBridge(bridge)).toBe(true);
+      const entry = Reflect.get(Object(imported), "default");
+      const contract = Reflect.get(Object(entry), "contract");
+      expect(Object.keys(Object(contract))).toEqual(
+        expect.arrayContaining(methods),
+      );
+    },
+    90_000,
+  );
 });

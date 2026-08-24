@@ -15,9 +15,8 @@ import type {
   PluginCatalogSearchResult,
   PluginUpdateCheckEntry as PluginUpdateResult,
 } from "@bb/server-contract";
-import { installedPluginSchema } from "@bb/server-contract";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
-import { BbHttpError } from "@bb/sdk";
+import { BbHttpError, pluginMutationResponseSchema } from "@bb/sdk";
 import { parseDataDirEnvValue, resolveProdDataDir } from "@bb/config/runtime";
 import {
   migratePluginToPackageLayout,
@@ -101,12 +100,6 @@ async function cliBuildToolchain(): Promise<PluginBuildToolchain> {
   });
 }
 
-const pluginMutationResultSchema = z.object({
-  ok: z.boolean(),
-  error: z.string().optional(),
-  plugin: installedPluginSchema.optional(),
-  plugins: z.array(installedPluginSchema).optional(),
-});
 async function searchCatalog(
   baseUrl: string,
   query: string,
@@ -1595,7 +1588,7 @@ export function registerPluginCommands(
             );
           },
           reloadPlugin: async () => {
-            const result = pluginMutationResultSchema.parse(
+            const result = pluginMutationResponseSchema.parse(
               await callPlugins(
                 getUrl(),
                 `/reload?id=${encodeURIComponent(entry.id)}`,
@@ -1639,7 +1632,7 @@ export function registerPluginCommands(
     .action(
       action(async (id: string | undefined, opts: JsonOutputOptions) => {
         const query = id ? `?id=${encodeURIComponent(id)}` : "";
-        const response = pluginMutationResultSchema.parse(
+        const response = pluginMutationResponseSchema.parse(
           await callPlugins(getUrl(), `/reload${query}`, "POST"),
         );
         const result =
@@ -1676,7 +1669,7 @@ export function registerPluginCommands(
       .option("--json", "Output JSON")
       .action(
         action(async (id: string, opts: JsonOutputOptions) => {
-          const result = pluginMutationResultSchema.parse(
+          const result = pluginMutationResponseSchema.parse(
             await callPlugins(
               getUrl(),
               `/${encodeURIComponent(id)}/${name}`,
@@ -1869,7 +1862,7 @@ export function registerPluginCommands(
     .option("--json", "Output JSON")
     .action(
       action(async (id: string, opts: JsonOutputOptions) => {
-        const result = pluginMutationResultSchema.parse(
+        const result = pluginMutationResponseSchema.parse(
           await callPlugins(getUrl(), `/${encodeURIComponent(id)}`, "DELETE"),
         );
         if (opts.json) {

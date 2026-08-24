@@ -25,7 +25,10 @@ import {
 import type { ConsumeDragClickSuppression } from "@/components/ui/use-drag-click-suppression";
 import { SIDEBAR_STANDARD_ROW_PADDING_CLASS } from "./sidebarRowClasses";
 import type { SidebarSortableDragBindings } from "./sortableMotion";
-import type { CollapsedChildActivity } from "@bb/client-core";
+import {
+  NO_COLLAPSED_CHILD_ACTIVITY,
+  type CollapsedChildActivity,
+} from "@bb/client-core";
 import { CollapsedThreadStatusGlyph } from "./ThreadRow";
 import {
   useThreadGroupSplitIndicator,
@@ -33,6 +36,7 @@ import {
 } from "./paneContentSplitIndicator";
 import { SplitPaneMiniMap } from "./SplitPaneMiniMap";
 import { COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
+import { usePluginThreadRowStatusForThreads } from "@/lib/plugin-thread-row-status";
 
 const EMPTY_SPLIT_INDICATOR_THREADS: readonly ThreadSplitIndicatorTarget[] = [];
 
@@ -89,6 +93,7 @@ export function TopLevelSidebarSection({
     collapsedThreads,
     collapseControl?.isCollapsed === true,
   );
+  const pluginStatus = usePluginThreadRowStatusForThreads(collapsedThreads);
   const handleClickCapture = useCallback<MouseEventHandler<HTMLDivElement>>(
     (event) => {
       if (!consumeClickSuppression?.()) {
@@ -181,7 +186,9 @@ export function TopLevelSidebarSection({
           ) : null}
         </span>
         {collapseControl?.isCollapsed &&
-        (collapsedSplitIndicator.miniMap !== null || collapsedActivity) ? (
+        (collapsedSplitIndicator.miniMap !== null ||
+          collapsedActivity ||
+          pluginStatus) ? (
           <span
             data-sidebar-collapsed-activity-edge=""
             data-sidebar-hover-actions-open={actionsOpen ? "true" : undefined}
@@ -195,10 +202,15 @@ export function TopLevelSidebarSection({
               <SplitPaneMiniMap
                 slots={collapsedSplitIndicator.miniMap}
                 label={`${label} — contains a thread open in split`}
-                isWorking={collapsedActivity?.working}
+                isWorking={
+                  collapsedActivity?.working || pluginStatus?.tone === "running"
+                }
               />
-            ) : collapsedActivity ? (
-              <CollapsedThreadStatusGlyph activity={collapsedActivity} />
+            ) : collapsedActivity || pluginStatus ? (
+              <CollapsedThreadStatusGlyph
+                activity={collapsedActivity ?? NO_COLLAPSED_CHILD_ACTIVITY}
+                pluginStatus={pluginStatus}
+              />
             ) : null}
           </span>
         ) : null}

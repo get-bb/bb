@@ -16,8 +16,10 @@ import {
 } from "./command-dispatch.js";
 import {
   DISPATCH_TEST_BRIDGE_LAUNCH,
-  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+  dispatchTestRuntimeBridgeLaunch,
   silentLogger,
+  fetchDispatchTestArtifact,
+  unexpectedProviderMaintenance,
 } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
@@ -359,6 +361,8 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerInstallationStatus,
       providerInstallationRun: async () => ({
         available: true,
@@ -416,6 +420,7 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -459,6 +464,7 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -492,6 +498,7 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -526,6 +533,7 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          ...unexpectedProviderMaintenance,
           runtimeManager: manager,
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
@@ -568,6 +576,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     }).then((result) => {
@@ -617,6 +627,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -654,6 +666,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -691,6 +705,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -747,6 +763,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -827,6 +845,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -886,6 +906,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -916,6 +938,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     };
@@ -979,6 +1003,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -1011,6 +1037,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
@@ -1043,6 +1071,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1079,6 +1109,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1125,6 +1157,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1195,6 +1229,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
@@ -1226,6 +1262,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1245,7 +1283,7 @@ describe("dispatchCommand", () => {
         ...DISPATCH_TEST_BRIDGE_LAUNCH,
         capabilities: {
           ...DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
-          experimental_providerInstallation: true,
+          providerInstallation: true,
         },
       },
       type: "thread.start",
@@ -1306,6 +1344,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus: async () => unsupportedCodexStatus,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1365,6 +1405,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerInstallationStatus,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1386,7 +1428,7 @@ describe("dispatchCommand", () => {
         ...DISPATCH_TEST_BRIDGE_LAUNCH,
         capabilities: {
           ...DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
-          experimental_providerInstallation: true,
+          providerInstallation: true,
         },
       },
       type: "thread.rewind.prepare",
@@ -1444,6 +1486,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1473,6 +1517,8 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          fetchPluginHostArtifact: fetchDispatchTestArtifact,
+          ...unexpectedProviderMaintenance,
           providerInstallationStatus: async () => ({
             ...supportedCodexStatus,
             currentVersion: "0.140.0",
@@ -1505,6 +1551,8 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          fetchPluginHostArtifact: fetchDispatchTestArtifact,
+          ...unexpectedProviderMaintenance,
           runtimeManager: manager,
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
@@ -1563,6 +1611,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       providerInstallationRun: async () => ({
         available: true,
@@ -1660,6 +1710,8 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          fetchPluginHostArtifact: fetchDispatchTestArtifact,
+          ...unexpectedProviderMaintenance,
           providerInstallationRun: async () => ({
             available: true,
             command: {
@@ -1719,6 +1771,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus,
         providerInstallationRun: async () => ({
           available: true,
@@ -1803,6 +1857,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus,
         providerInstallationRun: async () => ({
           available: false,
@@ -1920,6 +1976,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerInstallationStatus: async () =>
         supportedCodexInstallationStatus(),
       runtimeManager: fixture.manager,
@@ -1988,6 +2046,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: fixture.manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -2019,6 +2079,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerHealth,
       providerUsage,
       runtimeManager: manager,
@@ -2050,11 +2112,11 @@ describe("dispatchCommand", () => {
     expect(providerHealth).toHaveBeenCalledWith({
       providerId: "pi",
       cwd: "/tmp/workspace",
-      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
     });
     expect(providerUsage).toHaveBeenCalledWith({
       providerId: "pi",
-      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
     });
   });
 });

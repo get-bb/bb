@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@bb/connect-db": "workspace:*",
-    "@bb/fuzzy-match": "workspace:*",
     "@better-auth/drizzle-adapter": "^1.6.23",
     "@fontsource-variable/inter": "^5.2.8",
     "@hugeicons/core-free-icons": "^4.1.3",
@@ -29,7 +28,6 @@
     "posthog-js": "^1.386.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "sugar-high": "^1.2.1",
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {

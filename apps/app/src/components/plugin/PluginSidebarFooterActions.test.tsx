@@ -70,6 +70,7 @@ describe("PluginSidebarFooterActions", () => {
             compactIconUrl: null,
             logoUrl: "/api/v1/plugins/remote/assets/logo?h=abc",
             logoDarkUrl: null,
+            icons: new Map(),
           },
         ],
       ]),

@@ -1,0 +1,485 @@
+{
+  "providerId": "claude-code",
+  "variant": "config-dir",
+  "workspace": {
+    "commands": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "cache-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "configdir-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "configdir-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-claude-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-review",
+        "source": "command",
+        "origin": "project",
+        "description": "Review the diff",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-child",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-skills-dir-plugin-child skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-root",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-skills-dir-plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "frontend:cwd-component",
+        "source": "command",
+        "origin": "project",
+        "description": "Scaffold a component",
+        "argumentHint": "<name>"
+      },
+      {
+        "name": "home-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-lint",
+        "source": "command",
+        "origin": "user",
+        "description": "Lint everything",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin-child skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "linked-home-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "local-plugin:local-plugin-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "local-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "managed-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "pkg-claude-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "pkg-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "project-plugin:project-plugin-cmd",
+        "source": "command",
+        "origin": "project",
+        "description": "project-plugin command",
+        "argumentHint": null
+      },
+      {
+        "name": "project-plugin:project-plugin-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "project-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "tilde-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:deploy",
+        "source": "command",
+        "origin": "user",
+        "description": "User plugin single-file command",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-cmd",
+        "source": "command",
+        "origin": "user",
+        "description": "User plugin command",
+        "argumentHint": "<target>"
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin single-file skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "user-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-claude-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-claude-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "description": "cache-plugin-skill skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/cache-plugin/0123456789ab/skills/cache-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "configdir-claude-skill",
+        "description": "configdir-claude-skill skill",
+        "filePath": "<root>/claude-config/skills/configdir-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "cwd-claude-skill",
+        "description": "cwd-claude-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/cwd-claude-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-child",
+        "description": "cwd-skills-dir-plugin-child skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/cwd-skills-dir-plugin/skills/cwd-skills-dir-plugin-child/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-root",
+        "description": "cwd-skills-dir-plugin root skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/cwd-skills-dir-plugin/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-claude-skill",
+        "description": "home-claude-skill skill",
+        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "description": "home-skills-dir-plugin-child skill",
+        "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/skills/home-skills-dir-plugin-child/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "description": "home-skills-dir-plugin root skill",
+        "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "linked-home-skill",
+        "description": "linked-home-skill skill",
+        "filePath": "<home>/.claude/skills/linked-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": true
+      },
+      {
+        "name": "local-plugin:local-plugin-skill",
+        "description": "local-plugin-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/plugins/local-plugin/skills/local-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "description": "managed-plugin-skill skill",
+        "filePath": "<root>/managed-plugins/managed-plugin/skills/managed-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "pkg-claude-skill",
+        "description": "pkg-claude-skill skill",
+        "filePath": "<root>/ws/packages/.claude/skills/pkg-claude-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "project-plugin:project-plugin-skill",
+        "description": "project-plugin-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/plugins/cache/golden-market/project-plugin/1.0.0/skills/project-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "description": "tilde-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/tilde-plugin/1.0.0/skills/tilde-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "description": "User plugin root skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/user-plugin/1.0.0/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "description": "User plugin single-file skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/user-plugin/1.0.0/extra-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "description": "user-plugin-skill skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/user-plugin/1.0.0/skills/user-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "ws-claude-skill",
+        "description": "ws-claude-skill skill",
+        "filePath": "<root>/ws/.claude/skills/ws-claude-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "cache-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "configdir-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "configdir-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-lint",
+        "source": "command",
+        "origin": "user",
+        "description": "Lint everything",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin-child skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "linked-home-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "managed-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "tilde-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:deploy",
+        "source": "command",
+        "origin": "user",
+        "description": "User plugin single-file command",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-cmd",
+        "source": "command",
+        "origin": "user",
+        "description": "User plugin command",
+        "argumentHint": "<target>"
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin single-file skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "user-plugin-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "description": "cache-plugin-skill skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/cache-plugin/0123456789ab/skills/cache-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "configdir-claude-skill",
+        "description": "configdir-claude-skill skill",
+        "filePath": "<root>/claude-config/skills/configdir-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-claude-skill",
+        "description": "home-claude-skill skill",
+        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "description": "home-skills-dir-plugin-child skill",
+        "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/skills/home-skills-dir-plugin-child/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "description": "home-skills-dir-plugin root skill",
+        "filePath": "<root>/claude-config/skills/home-skills-dir-plugin/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "linked-home-skill",
+        "description": "linked-home-skill skill",
+        "filePath": "<home>/.claude/skills/linked-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": true
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "description": "managed-plugin-skill skill",
+        "filePath": "<root>/managed-plugins/managed-plugin/skills/managed-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "description": "tilde-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/tilde-plugin/1.0.0/skills/tilde-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "description": "User plugin root skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/user-plugin/1.0.0/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "description": "User plugin single-file skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/user-plugin/1.0.0/extra-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "description": "user-plugin-skill skill",
+        "filePath": "<root>/claude-config/plugins/cache/golden-market/user-plugin/1.0.0/skills/user-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      }
+    ]
+  }
+}

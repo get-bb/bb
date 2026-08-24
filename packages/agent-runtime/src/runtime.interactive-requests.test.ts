@@ -473,6 +473,80 @@ describe("createAgentRuntime interactive requests", () => {
     await runtime.shutdown();
   });
 
+  it("forwards a plugin-defined request even under a deny escalation and returns its answer", async () => {
+    // A request is open: no policy auto-answers it, so a deny escalation that
+    // would auto-deny an approval still reaches the handler.
+    const onInteractiveRequest = vi.fn(
+      async (): Promise<PendingInteractionResolution> => ({
+        kind: "request_answer",
+        value: { TOKEN: "x" },
+      }),
+    );
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 90,
+        method: "interaction/request",
+        params: {
+          providerThreadId: "prov-1",
+          threadId: "t1",
+          turnId: "turn-1",
+          payload: {
+            kind: "secrets/secret-request",
+            title: "Add a token",
+            data: { fields: ["TOKEN"] },
+          },
+        },
+      },
+      handshake: { approvalEnforcedBy: "runtime" },
+      getThreadExecutionOptions: () => deniedEscalationOptions,
+      onInteractiveRequest,
+    });
+    expect(onInteractiveRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({ kind: "secrets/secret-request" }),
+      }),
+    );
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 90,
+      result: { kind: "request_answer", value: { TOKEN: "x" } },
+    });
+  });
+
+  it("refuses a plugin-defined request whose data exceeds 64 KiB at the wire", async () => {
+    const onInteractiveRequest = vi.fn(
+      async (): Promise<PendingInteractionResolution> => ({
+        kind: "request_answer",
+        value: null,
+      }),
+    );
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 91,
+        method: "interaction/request",
+        params: {
+          providerThreadId: "prov-1",
+          threadId: "t1",
+          turnId: "turn-1",
+          payload: {
+            kind: "secrets/secret-request",
+            title: "Add a token",
+            data: { blob: "x".repeat(64 * 1024) },
+          },
+        },
+      },
+      onInteractiveRequest,
+    });
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 91,
+      error: { code: expect.any(Number) },
+    });
+    expect(onInteractiveRequest).not.toHaveBeenCalled();
+  });
+
   it("responds to unsupported interactive requests with a JSON-RPC error instead of dropping them", async () => {
     // A request method outside the bridge protocol's inbound vocabulary.
     const answer = await answerDirectRequest({

@@ -13,6 +13,7 @@ import type {
 import {
   BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL,
   BB_DESKTOP_GET_INFO_CHANNEL,
+  BB_DESKTOP_INFO_CHANGED_CHANNEL,
   BB_DESKTOP_INSTALL_UPDATE_CHANNEL,
   BB_DESKTOP_SET_THEME_CHANNEL,
 } from "../src/desktop-update-ipc.js";
@@ -43,6 +44,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
 } from "../src/desktop-window-command-ipc.js";
 const electronMock = vi.hoisted(() => {
@@ -501,6 +503,33 @@ describe("desktop preload browser API", () => {
       channel: BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
       payload: true,
     });
+  });
+
+  it("routes the log viewer request to main and mirrors its availability", async () => {
+    const api = await loadPreload();
+
+    await api.openServerDaemonLogs?.();
+    expect(electronMock.invokeCalls).toContain(
+      BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
+    );
+
+    // Availability follows the runtime, so main re-pushes it on every swap and
+    // the renderer must read the pushed value, not its startup snapshot.
+    expect(api.serverDaemonLogsAvailable).toBeUndefined();
+    emitIpcPayload({
+      channel: BB_DESKTOP_INFO_CHANGED_CHANNEL,
+      payload: {
+        lastCheckedAt: null,
+        latestVersion: null,
+        pendingVersion: null,
+        platform: "macos",
+        serverDaemonLogsAvailable: true,
+        updateAvailable: false,
+        updateDownloaded: false,
+        version: "0.0.0-test",
+      },
+    });
+    expect(api.serverDaemonLogsAvailable).toBe(true);
   });
 
   it("answers unhandled close-window requests so main closes the window", async () => {

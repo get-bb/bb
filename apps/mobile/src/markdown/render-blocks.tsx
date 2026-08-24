@@ -5,6 +5,7 @@ import { Pressable, Text as RNText, View, type TextStyle } from "react-native";
 import { FONT_FAMILIES, FONT_WEIGHT_VALUES } from "@/theme/fonts";
 import { nativeTypography } from "@/theme/theme.native";
 import { Icon } from "@/ui/Icon";
+import { LONG_PRESS_DELAY_MS } from "@/ui/long-press";
 import { getNodeSource, splitParagraphSegments } from "./blocks";
 import { CodeBlock } from "./CodeBlock";
 import type { MarkdownContextValue } from "./MarkdownContext";
@@ -409,8 +410,6 @@ function renderBlockContent(
       return <CodeBlock code={node.value} language={node.lang ?? null} />;
     case "math":
       return <CodeBlock code={node.value} language="math" />;
-    case "table":
-      return <MarkdownTable table={node} />;
     case "html":
       return (
         <RNText
@@ -517,20 +516,38 @@ const MarkdownBlock = memo(function MarkdownBlock({
   isLast,
   keyPrefix,
 }: MarkdownBlockProps) {
+  const onBlockLongPress = ctx.onBlockLongPress;
+  const onLongPress =
+    onBlockLongPress !== undefined && source !== null
+      ? () => onBlockLongPress({ source })
+      : undefined;
+  const style = blockMargins(node, isFirst, isLast, options);
+  if (node.type === "table") {
+    // A table owns its long-press target (inside its ScrollView; see
+    // MarkdownTable), so it gets no Pressable wrapper. Without a block
+    // handler it falls back to the body-level one. Code blocks also own
+    // their target, but theirs copies the code instead of quoting it.
+    return (
+      <View style={style}>
+        <MarkdownTable
+          table={node}
+          onLongPress={onLongPress ?? ctx.onLongPress}
+        />
+      </View>
+    );
+  }
   const rendered = renderBlockContent(node, ctx, content, options, keyPrefix);
   if (rendered === null) {
     return null;
   }
-  const style = blockMargins(node, isFirst, isLast, options);
-  const onBlockLongPress = ctx.onBlockLongPress;
-  if (onBlockLongPress !== undefined && source !== null) {
+  if (onLongPress !== undefined) {
     // Not an accessibility element of its own: the text inside stays the
     // screen-reader target; long-press is a shortcut to quote this block.
     return (
       <Pressable
         accessible={false}
-        onLongPress={() => onBlockLongPress({ source })}
-        delayLongPress={350}
+        onLongPress={onLongPress}
+        delayLongPress={LONG_PRESS_DELAY_MS}
         style={style}
       >
         {rendered}

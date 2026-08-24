@@ -5,6 +5,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
+import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 import { seedHost, seedHostSession, seedPrimaryHost } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
@@ -62,33 +63,35 @@ function handleUsageRequest(
 describe("GET /api/v1/system/usage-limits", () => {
   it("does not start a usage probe the provider did not declare", async () => {
     await withTestHarness(async (harness) => {
-      harness.deps.providerRegistry.register({
-        pluginId: "provider-no-usage",
-        info: {
-          id: "no-usage",
-          displayName: "No Usage",
-          logoUrl: null,
-          available: true,
-          experimental_providerHealth: false,
-          experimental_providerUsage: false,
-          experimental_providerInstallation: false,
-          capabilities: {
-            supportsThreadArchive: false,
-            supportsThreadRename: false,
-            supportsServiceTier: false,
-            supportsNativeUserQuestion: false,
-            supportsFork: false,
-            supportsSessionRewind: false,
-            permissionModes: ["full"],
+      harness.deps.providerRegistry.register(
+        minimalProviderRegistration({
+          pluginId: "provider-no-usage",
+          info: {
+            id: "no-usage",
+            pluginId: "provider-no-usage",
+            displayName: "No Usage",
+            logoUrl: null,
+            available: true,
+            maintenance: { health: false, usage: false, installation: false },
+            capabilities: {
+              supportsThreadArchive: false,
+              supportsThreadRename: false,
+              supportsServiceTier: false,
+              supportsNativeUserQuestion: false,
+              supportsFork: false,
+              supportsSessionRewind: false,
+              modelCatalogScope: "workspace",
+              permissionModes: ["full"],
+            },
+            composerActions: [],
           },
-          composerActions: [],
-        },
-        serverCapabilities: {
-          reasoningLevels: ["medium"],
-          fork: "none",
-          supportsManualCompaction: false,
-        },
-      });
+          serverCapabilities: {
+            reasoningLevels: ["medium"],
+            fork: "none",
+            supportsManualCompaction: false,
+          },
+        }),
+      );
       const primary = seedHostSession(harness.deps, { id: "host-primary" });
       seedPrimaryHost(harness.deps, primary.host.id);
       const responder = registerHostRpcResponder(harness, {

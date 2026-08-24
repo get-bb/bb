@@ -64,12 +64,7 @@ function XMark() {
 function TweetCard({ tweet }: { tweet: Tweet }) {
   return (
     <article className="tweet">
-      <a
-        className="tweet-head"
-        href={tweet.href}
-        target="_blank"
-        rel="noreferrer"
-      >
+      <a className="tweet-head" href={tweet.href} target="_blank" rel="noreferrer">
         <img
           className="tweet-avatar"
           src={tweet.avatarSrc}
@@ -105,12 +100,7 @@ function TweetCard({ tweet }: { tweet: Tweet }) {
           height={tweet.media.height}
         />
       ) : null}
-      <a
-        className="tweet-foot"
-        href={tweet.href}
-        target="_blank"
-        rel="noreferrer"
-      >
+      <a className="tweet-foot" href={tweet.href} target="_blank" rel="noreferrer">
         <time dateTime={tweet.dateIso}>{tweet.date}</time>
       </a>
     </article>
@@ -122,12 +112,7 @@ function TweetEmbed({ href, id }: { href: string; id: string }) {
   if (!tweet) {
     return (
       <p className="tweet-fallback">
-        <a
-          className="release-link"
-          href={href}
-          target="_blank"
-          rel="noreferrer"
-        >
+        <a className="release-link" href={href} target="_blank" rel="noreferrer">
           View on X
         </a>
       </p>
@@ -193,7 +178,12 @@ export function PostHeader({
       {lightbox ? (
         <LightboxImage src={src} alt={alt} loading="eager" />
       ) : (
-        <img src={src} alt={alt} width={size?.width} height={size?.height} />
+        <img
+          src={src}
+          alt={alt}
+          width={size?.width}
+          height={size?.height}
+        />
       )}
     </figure>
   );

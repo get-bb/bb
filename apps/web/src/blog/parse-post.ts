@@ -81,9 +81,7 @@ const CAPTION_RE = /^\*(.+)\*$/;
 const TWEET_RE =
   /^tweet:(https:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[A-Za-z0-9_]+\/status\/(\d+)(?:\?.*)?)$/;
 
-function parseImage(
-  line: string,
-): Extract<PostBlock, { kind: "image" }> | null {
+function parseImage(line: string): Extract<PostBlock, { kind: "image" }> | null {
   const linked = LINKED_IMAGE_RE.exec(line);
   if (linked) {
     const src = linked[2];
@@ -229,9 +227,9 @@ export function parsePost(slug: string, source: string): Post {
     lede,
     sourceLabel: fields.sourceLabel,
     sourceHref: fields.sourceHref,
-    cover:
-      coverFromField ??
-      (firstImage ? { src: firstImage.src, alt: firstImage.alt } : undefined),
+    cover: coverFromField ?? (firstImage
+      ? { src: firstImage.src, alt: firstImage.alt }
+      : undefined),
     blocks,
   };
 }

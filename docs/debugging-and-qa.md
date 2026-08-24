@@ -151,9 +151,42 @@ cover. An entry names a scope, a path, and the PR that made the change:
 
 `path` is a JSON pointer over the snapshot, or a glob where `*` matches one
 segment and `**` any number. The run prints the entries it used; an entry that
-covers nothing fails the run because it is stale. Refresh the baseline with
-`write` only when the diff is the intended behavior change, in the PR that
-makes it, and remove the allowlist entries it absorbs.
+covers nothing fails the run because it is stale.
+
+`snapshots/rows` is the baseline minted on `main` and shared by every
+workstream, so never run `write` against it from a feature branch. A PR that
+intentionally changes rows carries its own allowlist in the repository
+(`apps/server/test/provider-corpus/allowlists/<ws>.json`, same schema, merged
+after the shared file) and compares with
+`BB_PROVIDER_CORPUS_ALLOWLIST=<that file>`. A snapshot of the branch's own
+rows goes to a shadow directory: `BB_PROVIDER_CORPUS_SNAPSHOT_DIR=<dir>`
+redirects both `write` and `compare`. Re-mint `snapshots/rows` from `main`
+after such a PR merges and delete the allowlist file it carried.
+
+A pointer allowlist cannot describe a change that adds or removes rows: every
+later sibling shifts and the diff reports the whole turn. For such a change,
+carry a row-class file instead
+(`apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json`) and set
+`BB_PROVIDER_CORPUS_ROW_CLASSES=<that file>` on the compare run. The gate then
+matches rows by identity (`callId`, `itemId`, `interactionId`, turn id, or row
+id), buckets every change into the first class whose matcher fits, and fails
+on a change no class claims or an entry that claims nothing (judged per
+entry, so a dead matcher cannot hide behind a sibling with the same name). A
+class names a `reason` and one matcher: `added`, `removed`, `moved` (the row left one
+nesting level for another), `resegmented` (a turn shows a different number of
+visible segments), `reshaped` (`from`/`to` kinds, optionally the other
+`fields` the reshape may touch), or `changed` with the `fields` it may touch;
+each narrows by `kind`, `workKind`, `role`, and `nested`. Turn bounds that follow a changed child fall into the built-in
+`container-bounds` class. The run prints the count per class and records them
+in `rows-last-run.json`. To iterate on the classes without re-projecting the
+corpus, mint the branch's rows once into a shadow directory and classify the
+two directories offline:
+
+```bash
+pnpm exec tsx scripts/provider-corpus/classify-row-diff.ts \
+  ~/.bb/provider-corpus/snapshots/rows ~/.bb/provider-corpus/snapshots/rows.<ws> \
+  --classes apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json --verbose
+```
 
 Perf compare mode passes when each thread's normalized cost is within 10% of
 the baseline (or within 5 ms of intrinsic cost for the small latest-page

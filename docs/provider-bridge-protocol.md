@@ -154,7 +154,10 @@ adapter) consumes the deltas and owns every timeline invariant:
   holds the bidirectional provider↔bb maps — both for scoping incoming
   deltas and for reverse-mapping bb ids on the command plane
   (`turn/steer.expectedTurnId`, `thread/stop.activeTurnId`) and on
-  provider-native interaction requests (`providerNativeIds: true`).
+  provider-native interaction requests (`providerNativeIds: true`). An
+  `interaction/request` carries an approval, a user question, or a
+  plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
+  the payload kind (docs/provider-plugin-api.md §4).
 - **Turn lifecycle.** Only `turn.open`, a claiming `turn.boundary`
   (`claimIfIdle`), and accepted-input lifecycle settlement ever open a
   turn; item/stream deltas never do. Accepted input queues until a turn
@@ -224,36 +227,100 @@ range is what gates a bridge: every bridge in this repo reports
   snapshot as an item, which replaced the turn-level `turn.plan` delta once
   the ACP bridge — its last speaker — migrated).
 - **`presentation`** on `item.open` and `item.close`, the one place it
-  travels: `label {pending, completed}`, `icon {glyph}` (host glyphs only —
-  a plugin-relative asset path cannot outlive the plugin, and a durable
-  content-addressed form is later work), `title?`, `detail?` (≤ 280 chars),
-  `suppress?`, `tint?`. The assembler persists it on the canonical item (the
-  close's value wins, the open's survives when the close carries none), so
-  the row renders after the plugin is gone and mobile renders every kind
-  without plugin code. Optional for core shapes until the v2 paths are
-  deleted; required when the shape is `extension`.
+  travels: `label {pending, completed}`, `icon {glyph}` (a host glyph such
+  as `"FileText"`, or one of the emitting plugin's declared icons as
+  `"<pluginId>/<name>"` from `bb.branding.experimental_icons`; the server
+  replaces a namespaced glyph the plugin did not declare with
+  `provider/unhandled` at ingest — never a path or bytes), `title?`,
+  `detail?` (≤ 280 chars), `suppress?`, `tint?`. The assembler persists it
+  on the canonical item (the close's value wins, the open's survives when
+  the close carries none), so the row renders after the plugin is gone and
+  mobile renders every kind without plugin code. Optional for core shapes
+  until the v2 paths are deleted; required when the shape is `extension`.
+  Conformance rule `presentation/icon-namespaced-declared` checks the
+  namespaced form for bridges that opt in with an `icons: { pluginId, names }`
+  fixture field (no result when the field is omitted); a `server: "bb"` tool
+  row is exempt, its glyph being checked against the tool's own plugin.
 - **bb-injected tools carry their presentation.** Every `dynamicTools[]`
   definition on `thread/start`, `thread/resume` and `thread/fork` carries the
   `presentation` the server resolved for it (from the owning plugin's
-  `experimental_presentation`, its status labels, or a generic label and the
-  plugin's glyph). A bridge stamps that presentation, beside `server: "bb"`,
+  `presentation`, or a generic label and the plugin's glyph). A bridge stamps that presentation, beside `server: "bb"`,
   on the `item.open`/`item.close` of every call to the tool, so no tool-name
-  table labels bb tools anywhere downstream. Optional on the wire while the
-  grammar migrates (a definition recorded before the field existed presents
-  generically); the stabilization pass makes it required.
+  table labels bb tools anywhere downstream. Optional on the wire: a definition recorded before the field existed
+  presents generically, and the committed recordings predate it, so it stays
+  optional until those are re-minted.
 - **Extension kinds** `"<pluginId>/<name>"`: the `extension` item shape
   (opaque JSON `payload`; its lifecycle delta must carry a `presentation`)
   and the thread-scoped
   `extension.state` delta (latest snapshot wins per kind). Only the namespace
   is validated on the wire; the server validates payloads against the
-  plugin's declared schemas at ingest.
+  plugin's declared schemas at ingest, and refuses a kind whose plugin is not
+  the one that registered the thread's provider — a bridge emits only its own
+  plugin's kinds.
 - **`provider/recovery`** is a bridge → runtime _notification_ beside
   `session/replaced`, not a delta: `{ threadId?, kind: sessionArchived |
 authRequired | restartRecommended | staleTurn | rateLimited, message,
 retryable }`. The runtime acts on the kind and never matches error text.
-  Today the bridge adapter decodes it and the runtime forwards it to its
-  `onProviderRecovery` hook (the daemon logs it); the per-kind actions land
-  with the runtime cleanup workstream.
+  See "Recovery hints" below for the actions and the carrier.
+
+### Injected skills
+
+`skills/configure { roots: [{ id, path, skills: [{ name, description }] }] }`
+is one shape for every provider: `path` is an absolute skills directory, one
+subdirectory per listed skill (`<path>/<name>/SKILL.md`). The bridge maps it
+to its provider's own layout. The runtime sends it **only to a bridge whose
+handshake declares `skills: { configure: true }`**, once per process, before
+the first thread command; a bridge that declares nothing never receives it
+and runs without injected skills, so a bridge that answers unknown methods
+with `METHOD_NOT_FOUND` still starts threads. The runtime never probes.
+Conformance rule `skills/configure-declared` pins both directions: declared →
+the request must succeed; undeclared → the request must be refused.
+
+### Recovery hints
+
+A hint says what went wrong in the provider's own terms and what the runtime
+may do about it. The `provider/error` delta beside it still carries the
+user-visible row; the hint carries the action. The runtime keys on `kind`
+only and never consults the provider id:
+
+| `kind` | Runtime action |
+| --- | --- |
+| `sessionArchived` | `thread/unarchive` the session, then retry the rejected request once (`retryable: true`). |
+| `authRequired` | Reject the request with a typed `auth_required` error (no text match anywhere downstream) and forward the hint so the host can re-check provider health. |
+| `restartRecommended` | Stop the bridge process the thread runs on and resume the thread on a fresh one — right away when the thread is idle, otherwise before its next turn. The restart waits while another thread on the same process is mid-turn or holds open background work, and never re-resumes a sibling the host already resumed on the replacement. |
+| `staleTurn` | Drop the steer: the turn it targeted is gone, and the runtime reports the steer as stale instead of failing it. |
+| `rateLimited` | With `retryable: true` on a rejected request: retry on a short bounded ladder and surface the last failure. With `retryable: false` (a turn that already failed): forward only; the runtime never re-runs a user's turn on its own. |
+
+The action follows the hint whichever attempt it arrives on: a rung of the
+rate-limit ladder or the retry after an unarchive that is rejected with
+another kind gets that kind's action exactly as a first rejection would. The
+one bound is the unarchive itself — a second `sessionArchived` on the retry is
+reported, not unarchived again.
+
+One payload, two carriers. **Rejecting a request? Put the hint in
+`error.data.recovery`.** A hint that explains a rejected runtime request (a
+resume against an archived session) rides that request's JSON-RPC error
+response as `error.data.recovery { kind, message, retryable }`; the JSON-RPC
+`id` is the correlation, and the payload names no thread because the request
+already does. A handler throws `experimental_BridgeRecoveryError` and
+`runBridgeRequest` writes the response, or it calls
+`sendError(id, code, message, { recovery })` by hand; the ACP bridge answers
+`model/list` and `thread/start` this way when the agent needs the user to sign
+in (`kind: "authRequired"`). **No request to reject? Send
+`provider/recovery`.** The notification is for unsolicited hints
+only — a terminal 401 or 429 the provider raised mid-turn, an SDK auth
+failure — and carries `threadId` for a session-scoped condition. That
+`threadId` must name a thread the sending process hosts: a process speaks only
+for its own threads, so a hint naming any other thread is dropped (with a
+stderr line) before it can act on another process's bridge. Never send
+both for one event. `data` is optional and additive; a response without it,
+or with a malformed one, is a plain failure, and a request that times out or
+whose bridge exits has no response and therefore no hint.
+
+A bridge that can heal itself does not ask the runtime to: the codex bridge
+rebuilds a thread's `codex app-server` child before the next turn after a
+terminal account error, and the claude bridge replaces its CLI child the same
+way; both still emit `authRequired`/`rateLimited` so the failure is typed.
 
 The assembler builds every v3 core kind: `fileRead`, `search` and
 `planSteps` open pending and settle from the terminal shape like `command`;
@@ -262,12 +329,16 @@ and a `background: true` delegation is thread-attached like a background
 task — its `item.progress` snapshots and its `item.close` ride the
 thread-scoped `item/delegation/progress` and `item/delegation/completed`
 events, need no open turn, and survive turn settlement and `session.ended`.
-The assembler reports `grammarVersions: [2, 3]`. An `extension` shape
+The assembler reports `grammarVersions: [3, 3]` (`ASSEMBLER_GRAMMAR_VERSIONS`),
+v3 only, as the handshake section above says. An `extension` shape
 becomes the canonical `extension` item (opaque payload, the delta's
 presentation); `extension.state` becomes the thread-scoped
 `thread/extensionState/updated` event. The server validates both payloads
-against the owning plugin's declared `experimental_extensionKinds` schema at
-ingest (64 KiB cap); an undeclared kind or a schema miss is persisted as a
+against the owning plugin's declared `extensionKinds` schema at
+ingest (64 KiB cap), and holds the kind to the same emitter rule as a
+namespaced presentation glyph: the plugin the kind names must be the plugin
+that registered the thread's provider. A kind another plugin owns, an
+undeclared kind, or a schema miss is persisted as a
 `provider/unhandled` in the same batch slot, never dropped and never stored
 unvalidated.
 
@@ -275,11 +346,11 @@ unvalidated.
 
 Three identifier families, three owners:
 
-| Identifier                              | Minted by                   | Notes                                                                                                                 |
-| --------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `threadId`                              | bb server                   | Opaque to the provider; echoed verbatim.                                                                              |
-| `providerThreadId`                      | the provider                | Its session handle (rollout id, session id). Exchanged via `thread/identity`; never used to scope bb events directly. |
-| turn ids and item ids on `ThreadEvent`s | **the runtime's assembler** | Never the provider, never the bridge.                                                                                 |
+| Identifier                              | Minted by                   | Notes                                                                                                                                                                                                |
+| --------------------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `threadId`                              | bb server                   | Opaque to the provider; echoed verbatim.                                                                                                                                                             |
+| `providerThreadId`                      | the provider                | Its session handle (rollout id, session id). Returned on the `thread/start`/`thread/resume`/`thread/fork` result (required) and echoed by `thread/identity`; never used to scope bb events directly. |
+| turn ids and item ids on `ThreadEvent`s | **the runtime's assembler** | Never the provider, never the bridge.                                                                                                                                                                |
 
 The central-minting rule is the #1320 lesson made structural: a provider can
 inject arbitrary identifiers on its own wire, but the ids that reach bb's
@@ -333,6 +404,19 @@ it:
    interruption (#1584). The bb turn ids these commands carry are
    reverse-mapped to the bridge's provider-native turn ids by the adapter,
    so the bridge compares its own ids.
+6. **After `thread/stop` the bridge holds nothing for the thread.** The
+   runtime detaches the thread the moment the stop is answered, whichever
+   the intent, so everything the bridge still owes for that thread — the
+   interrupted turn's terminal boundary first of all — must be on the wire
+   before the response, and any per-thread resource the bridge runs (a
+   provider CLI child, an SDK session) is released before or with it. A
+   provider that settles an interrupt asynchronously waits for it, bounded,
+   and settles the turn itself on timeout; the session on disk stays
+   resumable either way. Conformance rule
+   `stop/interrupt-settles-before-result`; the runtime backstops a session
+   construction that timed out on its side with a best-effort
+   `thread/stop { release }` before it forgets the thread, and sweeps a
+   bridge's process group when the bridge dies unexpectedly.
 
 ## Item lifecycle
 
@@ -389,10 +473,8 @@ carries the whole item, so refusing it would lose real content.
    of a session and apply at the next construction.
 4. Fork: absent `sourceProviderCheckpointId` means fork at the tip. A
    `fork: "tip"` bridge rejects checkpoint forks with
-   `FORK_CHECKPOINT_UNSUPPORTED`; the server only asks such a bridge for a
-   tip fork. The forked bb thread inherits the source timeline through the
-   same point the clone ends on, so the checkpoint must be the one the
-   bridge reported on that turn's `turn/completed`.
+   `FORK_CHECKPOINT_UNSUPPORTED` rather than cloning history the bb timeline
+   does not show.
 5. Open work is what the timeline says it is. A `backgroundTask` item and a
    `delegation` item that are still pending are live provider work, and the
    runtime will not reap the session while one is open. Model a native
@@ -453,7 +535,9 @@ right after `spawn()`; the call is a no-op when record mode is off. A bridge
 whose provider pipe belongs to an SDK checks
 `experimental_isProviderBridgeRecording()` and takes the spawn over (the
 Claude bridge does this through the Agent SDK's `spawnClaudeCodeProcess`
-seam). Pi runs in-process and records its SDK event boundary instead.
+seam). The pi bridge also records the bb extension's channel (fd 3 / fd 4)
+on the same two provider lanes, each message wrapped as
+`{ "bbChannel": <message> }`, so a replay can route it back onto the fds.
 
 Layout: `<dir>/<threadId>/<direction>.ndjson`, with `_process` for lines that
 belong to no thread (`initialize`, `model/list`, provider health, and the
@@ -505,7 +589,7 @@ v2 recordings: the stack's assembler reads only v3, so every replayable cell
 carries one, and they assemble to the same pinned counts as the recordings.
 
 The conformance kit runs the same recordings as its recorded-traffic
-scenario set: `replayRecordedCells` replays a bridge's cells and
+scenario set: `checkRecordedCellReplay` replays a bridge's cells and
 `checkRecordedCellReplay` reports `recorded/<cell>/{replays,
 events-schema-valid, grammar, turn-lifecycle, not-empty}` per cell. Each
 first-party bridge has a `bridge.recorded-conformance.test.ts` beside its

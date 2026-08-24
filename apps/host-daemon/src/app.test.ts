@@ -18,7 +18,8 @@ import { createDeferredPromise } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DISPATCH_TEST_BRIDGE_LAUNCH,
-  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+  DISPATCH_TEST_ARTIFACT_BYTES,
+  dispatchTestRuntimeBridgeLaunch,
 } from "../test/command/dispatch-helpers.js";
 import {
   createHostDaemonApp,
@@ -170,6 +171,14 @@ function createFetchRecorder(
       return Response.json({
         ok: true,
         interactionIds: ["pint_app_test"],
+      });
+    }
+
+    if (/^\/internal\/plugins\/[^/]+\/host\/[a-f0-9]{64}$/u.test(url.pathname)) {
+      // The bridge artifact every bridge launch in these tests names.
+      return new Response(new Uint8Array(DISPATCH_TEST_ARTIFACT_BYTES), {
+        status: 200,
+        headers: { "content-length": String(DISPATCH_TEST_ARTIFACT_BYTES.byteLength) },
       });
     }
 
@@ -478,9 +487,8 @@ describe("createHostDaemonApp", () => {
       expect(listModels).toHaveBeenCalledWith({
         providerId: "cursor",
         bridgeLaunch: {
-          ...DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
           // Resolved against this test's own daemon data dir.
-          dataDir: path.join(dataDir, "plugins", "provider-pi", "bridge-data"),
+          ...dispatchTestRuntimeBridgeLaunch(dataDir),
         },
       });
 

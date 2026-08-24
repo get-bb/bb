@@ -14,7 +14,7 @@
       "icon": "./icons/claude-code.svg"
     },
     "server": "./server.ts",
-    "host": "./src/bridge/bridge.ts"
+    "host": "./src/host.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -24,7 +24,6 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@bb/agent-runtime": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@types/node": "^22.0.0",

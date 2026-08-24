@@ -40,7 +40,6 @@ import { clampPermissionModeToHost } from "../hosts/permission-ceiling.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import { workspaceContextFromPath } from "../environments/workspace-command-target.js";
-import { resolveAcpLaunchSpecForProviderId } from "../system/acp-launch-spec.js";
 import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
@@ -216,9 +215,9 @@ function toRuntimeExecutionOptions(
     providerId: args.providerId,
   });
   // The owning plugin derives its provider-scoped options per command; an
-  // unregistered id (a dynamic ACP agent) derives none. A hook that throws
-  // fails the command with the plugin named rather than running the turn
-  // with default knobs.
+  // unregistered id (a provider whose plugin is disabled mid-thread) derives
+  // none. A hook that throws fails the command with the plugin named rather
+  // than running the turn with default knobs.
   const providerOptions =
     args.deps.providerRegistry.get(args.providerId)?.deriveProviderOptions({
       threadId: args.threadId,
@@ -291,10 +290,6 @@ export async function buildThreadStartCommand(
     environment: args.environment,
     model: args.execution.model,
   });
-  const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-    deps,
-    args.providerId,
-  );
   const bridgeLaunch = requireBridgeLaunchForProviderId(deps, args.providerId);
   return {
     type: "thread.start",
@@ -306,7 +301,6 @@ export async function buildThreadStartCommand(
     }),
     projectId: args.projectId,
     providerId: args.providerId,
-    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     bridgeLaunch,
     requestId: args.requestId,
     input: args.input,
@@ -332,10 +326,6 @@ export async function buildThreadStartCommand(
 function buildPreparedTurnSubmitCommandPayload(
   args: PreparedTurnSubmitCommandBuildArgs,
 ): PreparedTurnSubmitCommandPayload {
-  const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-    args.deps,
-    args.runtimeContext.providerId,
-  );
   const bridgeLaunch = requireBridgeLaunchForProviderId(
     args.deps,
     args.runtimeContext.providerId,
@@ -344,7 +334,6 @@ function buildPreparedTurnSubmitCommandPayload(
     type: "turn.submit",
     environmentId: args.environmentId,
     threadId: args.threadId,
-    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
     bridgeLaunch,
     input: args.input,
     ...(args.inputGroups !== undefined
@@ -364,7 +353,6 @@ function buildPreparedTurnSubmitCommandPayload(
       }),
       projectId: args.runtimeContext.projectId,
       providerId: args.runtimeContext.providerId,
-      ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
       bridgeLaunch,
       providerThreadId: args.providerThreadId,
       instructions: args.runtimeContext.instructions,

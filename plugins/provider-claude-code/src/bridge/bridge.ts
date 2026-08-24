@@ -19,7 +19,6 @@
  */
 
 import {
-  pendingInteractionResolutionSchema,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionPayload,
   type PermissionEscalation,
@@ -46,7 +45,7 @@ import {
   experimental_defineProviderBridge,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
-import { resolve as resolvePath } from "node:path";
+import { join as joinPath, resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   forkSession,
@@ -63,6 +62,7 @@ import {
 import {
   buildClaudeApprovalInteractionPayload,
   buildClaudeInteractiveResponse,
+  claudeInteractionOutcomeSchema,
   buildClaudeUserQuestionPayload,
 } from "../interactions.js";
 import {
@@ -102,6 +102,10 @@ import {
   type BuildSessionOptionsArgs,
   type PermissionEscalationWorkContext,
 } from "./session-options.js";
+import {
+  createClaudeSkillPluginsRoot,
+  ensureClaudeSkillPlugin,
+} from "./skill-plugins.js";
 import { buildReadonlyBashUpdatedInput } from "./readonly-bash-policy.js";
 import {
   buildBridgeMcpServer,
@@ -232,6 +236,12 @@ interface ThreadSession {
    * next turn so a terminal reauthentication can take effect.
    */
   restartBeforeNextTurnReason: string | null;
+  /**
+   * The recovery kind already raised for the turn in flight, so the SDK's
+   * synthetic assistant error and the result that follows it yield one hint,
+   * not two. Cleared when the turn settles.
+   */
+  recoveryHintRaisedThisTurn: "authRequired" | "rateLimited" | null;
   streamEnded: boolean;
   /** Every session-scoped notification is translated through this. */
   translator: ClaudeDeltaTranslator;
@@ -383,6 +393,53 @@ function nextInteractiveRequestId(): string {
  * runtime never configured skills for this process.
  */
 let configuredSkillRoots: ClaudeCodeSkillRoot[] | null = null;
+/**
+ * Where this process assembles the local plugins for injected skill roots:
+ * the bridge's own temp dir when the entry provides one (removed with the
+ * process), a private temp dir otherwise (bridge unit tests call
+ * `handleLine` directly).
+ */
+let skillPluginsRoot: string | null = null;
+let bridgeTempDir: string | null = null;
+
+/**
+ * One local plugin per injected root. A root whose plugin cannot be written
+ * (a read-only or full temp dir) is dropped with a warning: the provider
+ * keeps starting threads, without that root's skills, rather than failing
+ * every session over a directory it does not need for anything else.
+ */
+function assembleSkillPlugins(
+  roots: readonly { id: string; path: string }[],
+): ClaudeCodeSkillRoot[] {
+  const takenNames = new Map<string, string>();
+  const assembled: ClaudeCodeSkillRoot[] = [];
+  for (const root of roots) {
+    try {
+      assembled.push({
+        id: root.id,
+        localPluginPath: ensureClaudeSkillPlugin({
+          pluginsRoot: requireSkillPluginsRoot(),
+          root: { id: root.id, path: root.path },
+          takenNames,
+        }),
+      });
+    } catch (error) {
+      process.stderr.write(
+        `claude bridge: skipping injected skill root "${root.id}": could not assemble its plugin: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
+  }
+  return assembled;
+}
+
+function requireSkillPluginsRoot(): string {
+  if (skillPluginsRoot === null) {
+    skillPluginsRoot = createClaudeSkillPluginsRoot(
+      bridgeTempDir === null ? undefined : joinPath(bridgeTempDir, "skills"),
+    );
+  }
+  return skillPluginsRoot;
+}
 
 // Runtime waits on thread/stop until the SDK stream drains or this timeout
 // forces the session closed. Stop remains a best-effort success boundary.
@@ -659,13 +716,102 @@ function emitForSession(
   method: string,
   params: Record<string, unknown>,
 ): void {
-  sendThreadDeltas(
-    threadId,
-    threadSession.translator.translate(
-      { jsonrpc: "2.0", method, params },
-      { threadId },
-    ),
+  const deltas = threadSession.translator.translate(
+    { jsonrpc: "2.0", method, params },
+    { threadId },
   );
+  sendThreadDeltas(threadId, deltas);
+  for (const delta of deltas) {
+    if (delta.kind === "provider.error" && delta.willRetry !== true) {
+      const category = delta.errorInfo?.category;
+      const kind =
+        category === "unauthorized"
+          ? "authRequired"
+          : category === "rate-limit"
+            ? "rateLimited"
+            : null;
+      if (kind !== null) {
+        emitTerminalAccountErrorHint(
+          threadSession,
+          threadId,
+          kind,
+          delta.detail ?? delta.message,
+        );
+      }
+    }
+    if (delta.kind === "turn.boundary" || delta.kind === "session.reset") {
+      threadSession.recoveryHintRaisedThisTurn = null;
+    }
+  }
+}
+
+/**
+ * A terminal account error (the SDK's `authentication_failed` /
+ * `oauth_org_not_allowed`, a 401/403, a 429 or hard rate-limit rejection)
+ * fails the turn through its `provider.error` delta. The hint beside it is
+ * unsolicited — no runtime request failed — and tells the runtime the kind
+ * without any text on the runtime side. One hint per turn: the SDK reports
+ * the same failure as a synthetic assistant error and again on the result.
+ * The CLI child is rebuilt before the next turn by
+ * `restartBeforeNextTurnReason`; no restart is asked of the runtime.
+ */
+function emitTerminalAccountErrorHint(
+  threadSession: ThreadSession,
+  threadId: string,
+  kind: "authRequired" | "rateLimited",
+  message: string,
+): void {
+  if (threadSession.recoveryHintRaisedThisTurn === kind) {
+    return;
+  }
+  threadSession.recoveryHintRaisedThisTurn = kind;
+  send({
+    jsonrpc: "2.0",
+    method: BRIDGE_NOTIFICATION_METHODS.providerRecovery,
+    params: {
+      threadId,
+      kind,
+      message,
+      // The turn already failed; nothing is replayed on the hint's account.
+      retryable: false,
+    },
+  });
+}
+
+/**
+ * The text of a synthetic assistant error: the SDK puts the human-readable
+ * failure in the message's text blocks, with the typed code beside it.
+ */
+function getAssistantMessageErrorText(message: SDKMessage): string {
+  if (message.type === "assistant") {
+    const text = message.message.content
+      .flatMap((block) => (block.type === "text" ? [block.text] : []))
+      .join("\n")
+      .trim();
+    if (text.length > 0) {
+      return text;
+    }
+    return `Claude reported ${message.error ?? "an account error"}`;
+  }
+  return "Claude reported an account error";
+}
+
+/** The SDK's synthetic assistant errors the hint must name by kind. */
+function getAssistantMessageRecoveryKind(
+  message: SDKMessage,
+): "authRequired" | "rateLimited" | null {
+  if (message.type !== "assistant") {
+    return null;
+  }
+  switch (message.error) {
+    case "authentication_failed":
+    case "oauth_org_not_allowed":
+      return "authRequired";
+    case "rate_limit":
+      return "rateLimited";
+    default:
+      return null;
+  }
 }
 
 function emitSessionError(
@@ -858,7 +1004,9 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
 
   // The session's bb-injected tools: a call to one is a bb tool and reads the
   // way its definition says (Q31).
-  const translator = createClaudeDeltaTranslator();
+  const translator = createClaudeDeltaTranslator({
+    cwd: args.sessionConstructionConfig.sessionOptions.cwd,
+  });
   translator.configureInjectedTools(
     (args.sessionConstructionConfig.dynamicTools ?? []).map((tool) => ({
       name: tool.name,
@@ -874,6 +1022,7 @@ function createThreadSession(args: CreateThreadSessionArgs): ThreadSession {
     sessionSerial,
     closing: false,
     restartBeforeNextTurnReason: null,
+    recoveryHintRaisedThisTurn: null,
     streamEnded: false,
     translator,
     pendingInteractiveRequests: new Map(),
@@ -1306,6 +1455,18 @@ function createOnSdkMessage(
       threadId: args.threadIdRef.current,
       message,
     });
+    // The synthetic assistant error is the SDK's typed report of an account
+    // failure; the result that follows repeats it as prose, so the hint is
+    // raised here, where the kind is certain.
+    const recoveryKind = getAssistantMessageRecoveryKind(message);
+    if (recoveryKind !== null) {
+      emitTerminalAccountErrorHint(
+        threadSession,
+        args.threadIdRef.current,
+        recoveryKind,
+        getAssistantMessageErrorText(message),
+      );
+    }
   };
 }
 
@@ -1460,23 +1621,24 @@ function buildUserQuestionRequestParams(
 
 /**
  * Decode an interactive-request response: it carries the canonical
- * `PendingInteractionResolution`, which maps back through the interactions
- * module. Null means undecodable (or a resolution kind that does not match
- * the payload) and settles as a deny.
+ * `PendingInteractionResolution`, parsed together with the payload it
+ * answers so the pair is checked once, at the wire. Null means undecodable
+ * (a malformed resolution, or one of the wrong kind for the payload) or not
+ * encodable, and settles as a deny.
  */
 function decodePendingInteractiveResponse(
   pending: PendingInteractiveRequest,
   result: unknown,
 ): ClaudeInteractiveResponse | null {
-  const resolution = pendingInteractionResolutionSchema.safeParse(result);
-  if (!resolution.success) {
+  const outcome = claudeInteractionOutcomeSchema.safeParse({
+    payload: pending.payload,
+    resolution: result,
+  });
+  if (!outcome.success) {
     return null;
   }
   try {
-    return buildClaudeInteractiveResponse({
-      payload: pending.payload,
-      resolution: resolution.data,
-    });
+    return buildClaudeInteractiveResponse(outcome.data);
   } catch {
     return null;
   }
@@ -1946,6 +2108,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
           // SDK prompt iterator mid-turn.
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "inject",
+          skills: { configure: true },
         },
       };
       sendResult(request.id, result);
@@ -2017,13 +2180,12 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       sendResult(request.id, await closeThreadForStop(request.params.threadId));
       break;
     case "skills/configure":
-      // Claude loads staged skill roots as local plugins; the SDK takes them
-      // at session construction only, so the payload is latched here and
-      // applied to every session started afterwards.
-      configuredSkillRoots = request.params.roots.map((root) => ({
-        id: root.id,
-        localPluginPath: root.path,
-      }));
+      // Claude loads injected skills as local plugins; the generic root is a
+      // skills directory, so the bridge assembles one plugin per root (a
+      // manifest plus a `skills` symlink). The SDK takes plugins at session
+      // construction only, so the payload is latched here and applied to
+      // every session started afterwards.
+      configuredSkillRoots = assembleSkillPlugins(request.params.roots);
       sendResult(request.id, { ok: true });
       break;
   }
@@ -2600,6 +2762,9 @@ function shutdownGracefully(message: string): void {
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
+  start: (context) => {
+    bridgeTempDir = context.tempDir;
+  },
   onSigterm: () => {
     shutdownGracefully(
       "Bridge shutting down while awaiting permission approval",

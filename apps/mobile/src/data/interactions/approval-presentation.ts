@@ -1,6 +1,8 @@
 import {
   assertNever,
+  describePendingInteractionToolUse,
   formatPendingInteractionSubjectDetailLines,
+  type PendingInteractionToolUseAsk,
 } from "@bb/core-ui";
 import type {
   ApprovalPendingInteractionPayload,
@@ -25,6 +27,12 @@ export interface ApprovalSubjectPresentation {
   command: string | null;
   /** Plan markdown (plan subjects). */
   plan: string | null;
+  /**
+   * The tool-use ask read from the bridge's presentation (tool_use subjects):
+   * glyph, tint, headline and Markdown detail, so the banner shows the same
+   * description the timeline row does.
+   */
+  toolUse: PendingInteractionToolUseAsk | null;
   /** Secondary lines (cwd, actions, session grant, write root, permissions, plan file). */
   detailLines: string[];
 }
@@ -54,6 +62,7 @@ export function describeApprovalSubject(
         title: payload.reason ?? "Do you want to run this command?",
         command,
         plan: null,
+        toolUse: null,
         detailLines,
       };
     }
@@ -62,6 +71,7 @@ export function describeApprovalSubject(
         title: payload.reason ?? "Do you want to make these changes?",
         command: null,
         plan: null,
+        toolUse: null,
         detailLines: formatPendingInteractionSubjectDetailLines(interaction),
       };
     case "permission_grant":
@@ -69,6 +79,7 @@ export function describeApprovalSubject(
         title: payload.reason ?? "Do you want to grant this permission?",
         command: null,
         plan: null,
+        toolUse: null,
         detailLines: formatPendingInteractionSubjectDetailLines(interaction),
       };
     case "plan":
@@ -76,17 +87,22 @@ export function describeApprovalSubject(
         title: payload.reason ?? "Ready to code?",
         command: null,
         plan: subject.plan,
+        toolUse: null,
         detailLines: subject.planFilePath ? [subject.planFilePath] : [],
       };
-    // The ACP bridge raises this for generic tool permissions; the subject's
-    // presentation is the banner's base until WS5 designs the tool-use surface.
-    case "tool_use":
+    case "tool_use": {
+      const toolUse = describePendingInteractionToolUse({
+        ...payload,
+        subject,
+      });
       return {
-        title: payload.reason ?? subject.presentation.label.pending,
+        title: toolUse.title,
         command: null,
         plan: null,
-        detailLines: formatPendingInteractionSubjectDetailLines(interaction),
+        toolUse,
+        detailLines: [],
       };
+    }
     default:
       return assertNever(subject);
   }

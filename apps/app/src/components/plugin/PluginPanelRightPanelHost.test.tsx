@@ -164,7 +164,7 @@ vi.mock("@/lib/plugin-slots", () => ({
             icon: "Columns",
             component: () => null,
             generation: 1,
-            experimental_fixedTabs: fixedTabState.registrations,
+            fixedTabs: fixedTabState.registrations,
           },
         ]
       : [],

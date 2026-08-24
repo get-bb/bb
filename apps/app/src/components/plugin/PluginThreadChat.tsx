@@ -1,4 +1,10 @@
-import { useCallback, useContext, useMemo, type ReactNode } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  type ReactNode,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import type {
   ThreadChatMessageAction,
@@ -20,9 +26,12 @@ import {
 } from "@/components/thread/timeline";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { PluginContext } from "@/components/plugin/plugin-context";
+import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import { useEnvironment } from "@/hooks/queries/environment-queries";
+import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { requestProviderPluginFrontend } from "@/lib/plugin-frontend-lazy";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
@@ -91,6 +100,36 @@ function PluginThreadChatBody({
 }: PluginThreadChatBodyProps) {
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
+  // The chat may be embedded under another thread's page (a plugin panel tab
+  // showing thread B inside thread A's detail view), whose provider context
+  // would otherwise claim B's tool rows for A's provider plugin and tell the
+  // renderer the wrong provider. Resolve B's own provider plugin, request its
+  // frontend the way the route view does, and scope the rows to it.
+  const threadProviderInfo = useSystemProviderInfo(
+    thread?.environmentId
+      ? {
+          enabled: true,
+          environmentId: thread.environmentId,
+          providerId: thread.providerId,
+        }
+      : {
+          enabled: thread !== undefined,
+          providerId: thread?.providerId,
+        },
+  );
+  const threadProviderPluginId = threadProviderInfo?.pluginId ?? null;
+  useEffect(() => {
+    if (threadProviderPluginId !== null) {
+      requestProviderPluginFrontend(threadProviderPluginId);
+    }
+  }, [threadProviderPluginId]);
+  const threadProviderContextValue = useMemo(
+    () => ({
+      providerId: thread?.providerId ?? null,
+      pluginId: threadProviderPluginId,
+    }),
+    [thread?.providerId, threadProviderPluginId],
+  );
   const navigate = useNavigate();
   const { isLocalDaemonHost } = useHostDaemon();
   const environmentQuery = useEnvironment(thread?.environmentId ?? null);
@@ -235,52 +274,58 @@ function PluginThreadChatBody({
         workspaceRootPath={workspaceRootPath}
       />
     );
-    return layout === "contained" ? (
-      <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
-        {transcript}
-      </div>
-    ) : (
-      <div className="bg-background px-2 pb-3 pt-3">{transcript}</div>
+    return (
+      <ThreadProviderContext.Provider value={threadProviderContextValue}>
+        {layout === "contained" ? (
+          <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
+            {transcript}
+          </div>
+        ) : (
+          <div className="bg-background px-2 pb-3 pt-3">{transcript}</div>
+        )}
+      </ThreadProviderContext.Provider>
     );
   }
 
   return (
-    <EmbeddedThreadChat
-      variant="compact"
-      layout={layout}
-      measure={variant === "full" ? "page" : "panel"}
-      surfaceTone={variant === "compact" ? "sidebar" : "background"}
-      threadId={threadId}
-      projectId={thread.projectId}
-      providerId={thread.providerId}
-      promptContextEnvironmentId={thread.environmentId}
-      resolveMentionLink={resolveMentionLink}
-      leadingContent={leadingContent}
-      consumerMessageActions={consumerMessageActions}
-      includePluginMessageActions={false}
-      onOpenLink={onOpenLink}
-      onOpenLocalFileLink={onOpenLocalFileLink}
-      workspaceRootPath={workspaceRootPath}
-      composer={{
-        draftScope: {
-          kind: "thread",
-          projectId: thread.projectId,
-          threadId,
-        },
-        executionDefaultsThreadId: threadId,
-        executionResetKey: threadId,
-        executionEnvironmentId: thread.environmentId ?? undefined,
-        executionEnvironmentHostId: environment?.hostId,
-        // "inherit" pins sends to the thread's own resolved defaults, never
-        // widened by a plugin surface. "editable" is the opt-in that hands
-        // the picker to the user for this thread alone.
-        permissionPolicy:
-          permissionPolicy === "editable" ? "editable" : "snapshot",
-        environmentSummary,
-        pluginComposerBottomScope: { kind: "thread", threadId },
-        composerIdentity: `plugin-thread-chat:${threadId}`,
-        focusRequestKey: focusRequest,
-      }}
-    />
+    <ThreadProviderContext.Provider value={threadProviderContextValue}>
+      <EmbeddedThreadChat
+        variant="compact"
+        layout={layout}
+        measure={variant === "full" ? "page" : "panel"}
+        surfaceTone={variant === "compact" ? "sidebar" : "background"}
+        threadId={threadId}
+        projectId={thread.projectId}
+        providerId={thread.providerId}
+        promptContextEnvironmentId={thread.environmentId}
+        resolveMentionLink={resolveMentionLink}
+        leadingContent={leadingContent}
+        consumerMessageActions={consumerMessageActions}
+        includePluginMessageActions={false}
+        onOpenLink={onOpenLink}
+        onOpenLocalFileLink={onOpenLocalFileLink}
+        workspaceRootPath={workspaceRootPath}
+        composer={{
+          draftScope: {
+            kind: "thread",
+            projectId: thread.projectId,
+            threadId,
+          },
+          executionDefaultsThreadId: threadId,
+          executionResetKey: threadId,
+          executionEnvironmentId: thread.environmentId ?? undefined,
+          executionEnvironmentHostId: environment?.hostId,
+          // "inherit" pins sends to the thread's own resolved defaults, never
+          // widened by a plugin surface. "editable" is the opt-in that hands
+          // the picker to the user for this thread alone.
+          permissionPolicy:
+            permissionPolicy === "editable" ? "editable" : "snapshot",
+          environmentSummary,
+          pluginComposerBottomScope: { kind: "thread", threadId },
+          composerIdentity: `plugin-thread-chat:${threadId}`,
+          focusRequestKey: focusRequest,
+        }}
+      />
+    </ThreadProviderContext.Provider>
   );
 }

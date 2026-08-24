@@ -17,6 +17,17 @@ import {
 interface CreateAppQueryClientOptions {
   defaultOptions?: QueryClientConfig["defaultOptions"];
   showMutationErrorToasts?: boolean;
+  /**
+   * Gate for the default focus refetch. Focus refetch is the freshness
+   * fallback for when realtime coverage is lost; while the socket is
+   * connected, change events keep the cache correct and the reconnect
+   * watermark repairs any gap, so a focus event (every phone unlock and
+   * app switch) must not refetch every active query on top of that wave.
+   * Defaults to always refetching. A `defaultOptions.queries.refetchOnWindowFocus`
+   * passed alongside this gate wins over it (caller defaults are spread last),
+   * so pass one or the other.
+   */
+  shouldRefetchOnWindowFocus?: () => boolean;
 }
 
 interface AppQueryClientBrowserEventCleanup {
@@ -108,6 +119,7 @@ export function createAppQueryClient(
 
   const defaultOptions = options.defaultOptions;
   const showMutationErrorToasts = options.showMutationErrorToasts ?? true;
+  const shouldRefetchOnWindowFocus = options.shouldRefetchOnWindowFocus;
 
   return new QueryClient({
     mutationCache: new MutationCache({
@@ -133,7 +145,10 @@ export function createAppQueryClient(
       ...defaultOptions,
       queries: {
         staleTime: 2000,
-        refetchOnWindowFocus: true,
+        refetchOnWindowFocus:
+          shouldRefetchOnWindowFocus === undefined
+            ? true
+            : () => shouldRefetchOnWindowFocus(),
         retry: shouldRetryTransientReadQuery,
         retryDelay: TRANSIENT_READ_RETRY_DELAY_MS,
         ...defaultOptions?.queries,

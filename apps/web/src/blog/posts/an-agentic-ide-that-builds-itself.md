@@ -8,7 +8,7 @@ sourceLabel: This post first appeared as an X Article
 sourceHref: https://x.com/sawyerhood/status/2085039905529597982
 ---
 
-This started as a passion project by [@\_ymichael](https://x.com/_ymichael), and over time I changed from being an early user to a contributor. **bb** really worked for me in a way no other agent orchestrator has before and I think you'll like it too.
+This started as a passion project by [@_ymichael](https://x.com/_ymichael), and over time I changed from being an early user to a contributor. **bb** really worked for me in a way no other agent orchestrator has before and I think you'll like it too.
 
 Your first question is: ok, there are dozens of these, why this one?
 
@@ -23,12 +23,12 @@ Software now is cheaper than ever before and I think those previous assumptions 
 This is where **bb** shines. It is a full agent orchestrator with solid fundamentals. It has a beautiful timeline and works with any coding agent using your own subscriptions. But the thing that sets it apart is that you can extend it in any way you see fit. Here is **bb** the first time you open it:
 
 ![bb the first time you open it](/blog/an-agentic-ide-that-builds-itself/first-open.jpg)
-_Threads on the left! I've never seen this before._
+*Threads on the left! I've never seen this before.*
 
 Here is my **bb**:
 
 ![A customized bb with a task system inside the IDE](/blog/an-agentic-ide-that-builds-itself/custom.jpg)
-_Yes, I've cloned Linear inside of my IDE._
+*Yes, I've cloned Linear inside of my IDE.*
 
 Same install. Your imagination is the limit. Here is a set of things that people have added to **bb** all by just asking it to build it for them:
 
@@ -42,7 +42,7 @@ tweet:https://x.com/sawyerhood/status/2083215357872120216
 - **A digital audio workstation.** I have a surface that lets me upload samples and prompt agents to create code using [Strudel](https://strudel.cc/workshop/getting-started/) to do music production inside of **bb**.
 
 [![A DAW inside my agent orchestrator](/blog/an-agentic-ide-that-builds-itself/daw.jpg)](https://x.com/sawyerhood/status/2085039905529597982)
-_A DAW inside my agent orchestrator._
+*A DAW inside my agent orchestrator.*
 
 Moreover, much of the functionality that ships with **bb** was built using the same extension system that you can use to have **bb** customize itself: provider agnostic workflows, the ask user question tool, side chat, crons, inline previews, and remote access are all plugins.
 

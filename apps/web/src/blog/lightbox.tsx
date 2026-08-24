@@ -77,9 +77,7 @@ export function LightboxImage({
       <button
         ref={triggerRef}
         type="button"
-        className={
-          className ? `lightbox-trigger ${className}` : "lightbox-trigger"
-        }
+        className={className ? `lightbox-trigger ${className}` : "lightbox-trigger"}
         onClick={() => setOpen(true)}
       >
         <img

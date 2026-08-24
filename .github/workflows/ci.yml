@@ -43,8 +43,12 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: checks
 
+      # Four tasks for four vCPUs: TypeScript 7 and esbuild are multi-threaded,
+      # so turbo's default of ten concurrent tasks only adds contention here.
+      # Measured pinned to 4 CPUs, two rounds each: 96 s / 110 s at the
+      # default vs 90 s / 58 s at four.
       - name: Build, typecheck, and lint
-        run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only
+        run: pnpm exec turbo run build typecheck lint --cache-dir=.turbo/cache --output-logs=new-only --concurrency=4
 
       # Runs after build and typecheck, so the guard's own turbo build is a
       # cache hit and the package it packs is the one this commit really ships.

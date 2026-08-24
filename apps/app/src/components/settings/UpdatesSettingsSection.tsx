@@ -86,6 +86,7 @@ import {
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 import { getProviderIconInfo } from "@/lib/provider-icon";
+import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { sdk } from "@/lib/sdk";
 import { rawStringLocalStorage } from "@/lib/browser-storage";
 
@@ -223,6 +224,15 @@ const ROW_GRID =
   "grid min-w-0 grid-cols-[1.5rem_minmax(0,1fr)_auto] items-center gap-3";
 
 /**
+ * Vertical rhythm for every row in a machine card. `SettingsSection` already
+ * pads the card (`py-3.5`), so the first and last rows drop their own outer
+ * padding the way `SettingsRow` does; without the reset a card's own padding
+ * and the row's stacked to 22px at each end, while `UpdatesRow` — which had
+ * the reset — sat at 14px, and the bb row's card came out lopsided.
+ */
+const ROW_SPACING = "py-2 first:pt-0 last:pb-0";
+
+/**
  * A row with no destination — bb itself, which has no page of its own to open.
  * It borrows `ResourceRow`'s grid rather than its behaviour so its mark, name
  * and action land on the same three columns as the rows that are navigable;
@@ -239,7 +249,7 @@ function UpdatesRow({
 }) {
   return (
     <div
-      className={cn(ROW_GRID, "py-2.5 text-sm first:pt-0 last:pb-0", className)}
+      className={cn(ROW_GRID, ROW_SPACING, "text-sm", className)}
     >
       <span className="flex size-6 shrink-0 items-center justify-center">
         {leading}
@@ -1094,7 +1104,7 @@ export function BbDaemonUpdateRow({
 
   return (
     <ResourceRow
-      className="py-2"
+      className={ROW_SPACING}
       actionsVisibility="always"
       openLabel={`Open ${host.name} settings`}
       onOpen={() => onOpenMachine(host.id)}
@@ -1146,7 +1156,7 @@ export function ProviderCliCheckRow({
   const { host } = machine;
   return (
     <ResourceRow
-      className="py-2"
+      className={ROW_SPACING}
       actionsVisibility="always"
       openLabel={`Open ${host.name} settings`}
       onOpen={() => onOpenMachine(host.id)}
@@ -1213,6 +1223,8 @@ export function MachineUpdatesRows({
   onOpenProvider,
 }: MachineUpdatesRowsProps) {
   const { host } = machine;
+  // The marks live with the provider registrations.
+  const providerRoster = useSystemProviders().data;
   const providerEntries = visibleInstalledProviderEntries(machine);
   const issuesByProvider = new Map(
     visibleProviderUpdateIssues(machine).map((issue) => [
@@ -1239,11 +1251,17 @@ export function MachineUpdatesRows({
     const actionable =
       issue !== null && hasProviderCliAction(issue) && !running && !queued;
     const providerId = provider;
-    const ProviderIcon = getProviderIconInfo(providerId)?.icon;
+    const providerInfo = providerRoster?.find(
+      (candidate) => candidate.id === providerId,
+    );
+    const ProviderIcon = getProviderIconInfo(
+      providerId,
+      providerInfo ?? null,
+    )?.icon;
     return (
       <ResourceRow
         key={provider}
-        className="py-2"
+        className={ROW_SPACING}
         actionsVisibility="always"
         openLabel={`Open ${status.displayName} settings`}
         onOpen={() => onOpenProvider(providerId)}

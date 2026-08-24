@@ -550,7 +550,8 @@ describe("PluginHostManager", () => {
       input: { rootPath: "/tmp/workspace", listenerDelayMs: 100 },
     });
     const call = manager.call(command);
-    await vi.waitFor(() => expect(watcher).toBeDefined());
+    // This registration crosses a real worker process startup boundary.
+    await vi.waitFor(() => expect(watcher).toBeDefined(), { timeout: 5_000 });
     watcher?.onReady();
     await expect(call).resolves.toEqual({ output: { watching: true } });
     await new Promise((resolve) => setTimeout(resolve, 100));

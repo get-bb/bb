@@ -584,7 +584,7 @@ export type PromptMode = z.infer<typeof promptModeSchema>;
  * session and turn command. No provider-named field may be added here:
  * provider-flavored knobs (memory, native subagents, a native plan flag, …)
  * travel in `providerOptions`, the opaque bag the owning plugin derives per
- * command (`experimental_deriveProviderOptions`) and only its bridge reads.
+ * command (`deriveProviderOptions`) and only its bridge reads.
  */
 const runtimeThreadExecutionBaseOptionsSchema = z.object({
   model: z.string().min(1),

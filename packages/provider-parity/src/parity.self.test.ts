@@ -1,5 +1,7 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   compareParity,
   type ParityAllowlistEntry,
@@ -17,6 +19,7 @@ import {
   recordedCellInputs,
   replayCell,
   type RowCountsEntry,
+  missingBridgeModule,
 } from "./index.js";
 
 /**
@@ -62,8 +65,8 @@ describe("recorded fixtures", () => {
       const inputs = recordedCellInputs(cell);
       if (inputs.invalidDeltas.length > 0 && !isReplayable(cell.provider)) {
         // A lane recorded under a grammar this assembler no longer accepts,
-        // for a provider whose bridge cannot be replayed (in-process SDK) and
-        // so cannot be re-recorded (`pnpm rerecord`). Its pins stand until it
+        // for a provider whose bridge has no replay profile and so cannot be
+        // re-recorded (`pnpm rerecord`). Its pins stand until it
         // is re-recorded live; the cell is reported, not failed.
         skipped.push(`${key}: ${inputs.invalidDeltas.length} recorded thread/delta lines predate the current grammar`);
         if (pinned[key] !== undefined) actual[key] = pinned[key];
@@ -142,6 +145,79 @@ describe("allowlist", () => {
     expect(comparison.events).toEqual({ onlyInOld: [], onlyInNew: [] });
     expect(comparison.staleAllowlist.map((entry) => entry.reason)).toEqual(["stale"]);
     expect(comparison.passed).toBe(false);
+  });
+
+  it("lets the root pointer empty one layer of one cell, and reports it stale when the layer is already empty", () => {
+    const oldRows = [{ kind: "conversation", id: "#1", text: "answer" }];
+    const newRows = [
+      { kind: "turn", id: "#1", children: [{ kind: "work", id: "#3", toolName: "bb:AskUserQuestion" }] },
+      { kind: "conversation", id: "#5", text: "answer" },
+    ];
+    const entry: ParityAllowlistEntry = {
+      provider: "codex",
+      cell: "user-question",
+      layer: "rows",
+      path: "/",
+      pr: "#0",
+      reason: "rows are not comparable for this cell",
+    };
+    const masked = compareParity(
+      { events: [], rows: oldRows },
+      { events: [], rows: newRows },
+      [entry],
+      { provider: "codex", cell: "user-question" },
+    );
+    expect(masked.rows).toEqual({ onlyInOld: [], onlyInNew: [] });
+    expect(masked.staleAllowlist).toEqual([]);
+    expect(masked.passed).toBe(true);
+
+    // The events layer of the same cell is untouched by a rows entry.
+    const unmasked = compareParity(
+      { events: [], rows: oldRows },
+      { events: [], rows: newRows },
+      [],
+      { provider: "codex", cell: "user-question" },
+    );
+    expect(unmasked.passed).toBe(false);
+
+    const stale = compareParity(
+      { events: [], rows: [] },
+      { events: [], rows: [] },
+      [entry],
+      { provider: "codex", cell: "user-question" },
+    );
+    expect(stale.staleAllowlist).toEqual([entry]);
+  });
+});
+
+describe("old-leg pre-check", () => {
+  const created: string[] = [];
+  afterEach(() => {
+    for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+  function fakeCheckout(files: readonly string[]): string {
+    const root = mkdtempSync(join(tmpdir(), "parity-old-leg-"));
+    created.push(root);
+    for (const file of files) {
+      mkdirSync(join(root, file, ".."), { recursive: true });
+      writeFileSync(join(root, file), "");
+    }
+    return root;
+  }
+
+  it("admits an old checkout that only has the legacy bridge path the launch would resolve", () => {
+    const root = fakeCheckout(["plugins/provider-acp/src/bridge/bridge.ts"]);
+    expect(missingBridgeModule(root, "acp-cursor")).toBeNull();
+  });
+
+  it("reports the current path when neither it nor a legacy path exists", () => {
+    const root = fakeCheckout([]);
+    expect(missingBridgeModule(root, "acp-cursor")).toBe("plugins/provider-acp/src/host.ts");
+  });
+
+  it("keeps skipping pi on a checkout whose bridge ran inside the daemon bundle", () => {
+    const root = fakeCheckout(["packages/agent-runtime/src/pi/bridge/bridge.ts"]);
+    expect(missingBridgeModule(root, "pi")).toBe("plugins/provider-pi/src/host.ts");
   });
 });
 

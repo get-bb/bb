@@ -174,6 +174,7 @@ function MarkdownComponent({
   onThreadPress,
   onMentionPress,
   onBlockLongPress,
+  onLongPress,
   renderDirective,
   resolveImageSource,
 }: MarkdownProps) {
@@ -232,6 +233,7 @@ function MarkdownComponent({
     onThreadPress,
     onMentionPress,
     onBlockLongPress,
+    onLongPress,
     renderDirective,
     resolveImageSource,
   });

@@ -140,7 +140,7 @@ describe("createAgentRuntime input accepted events", () => {
     await runtime.shutdown();
   });
 
-  it("maps a bridge no-active-turn error to a stale steer", async () => {
+  it("maps a staleTurn steer rejection to a stale steer", async () => {
     const events: ThreadEvent[] = [];
     const record = createScriptedEchoRequestRecord();
     const runtime = createScriptedEchoRuntime({
@@ -151,13 +151,15 @@ describe("createAgentRuntime input accepted events", () => {
       },
       launch: {
         // The provider's view of the turn has gone while the runtime still
-        // holds it live: the bridge answers the steer with NO_ACTIVE_TURN.
+        // holds it live: the bridge answers the steer with NO_ACTIVE_TURN and
+        // the staleTurn hint the runtime acts on (the ACP bridge's shape).
         scripted: {
           failMethods: [
             {
               method: "turn/steer",
               message: "No active turn to steer",
               code: BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
+              recovery: { kind: "staleTurn", retryable: false },
             },
           ],
         },

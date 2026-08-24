@@ -20,6 +20,7 @@ import {
   Skeleton,
   Switch,
   Text,
+  TextArea,
   toast,
   useSheet,
 } from "@/ui";
@@ -29,9 +30,10 @@ import { CardNote } from "./plugin-ui";
 
 /**
  * Host-rendered declarative settings form (web PluginSettingsForm) over
- * `GET/PUT /plugins/:id/settings`: string (incl. write-only secrets),
- * boolean, select (option sheet), project (the ProjectPicker). Drafts live
- * in local state; Save sends only the changed keys.
+ * `GET/PUT /plugins/:id/settings`: string (incl. write-only secrets, and a
+ * monospace multi-line editor for `experimental_multiline`), boolean, select
+ * (option sheet), project (the ProjectPicker). Drafts live in local state;
+ * Save sends only the changed keys.
  */
 
 function SelectField({
@@ -129,6 +131,10 @@ function SettingField({
   const value = pluginSettingFieldValue(descriptor, storedValue, draft);
   const testID = `plugin-setting-${settingKey}`;
   const isSecret = descriptor.type === "string" && descriptor.secret === true;
+  const isMultiline =
+    descriptor.type === "string" &&
+    descriptor.experimental_multiline === true &&
+    !isSecret;
   const control = (() => {
     switch (descriptor.type) {
       case "boolean":
@@ -183,7 +189,20 @@ function SettingField({
         </View>
         {control}
       </View>
-      {descriptor.type === "string" ? (
+      {isMultiline ? (
+        <TextArea
+          value={typeof value === "string" ? value : ""}
+          onChangeText={onChange}
+          mono
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          editable={!disabled}
+          accessibilityLabel={descriptor.label}
+          testID={testID}
+          className="max-h-96 min-h-40"
+        />
+      ) : descriptor.type === "string" ? (
         <Input
           value={typeof value === "string" ? value : ""}
           onChangeText={onChange}

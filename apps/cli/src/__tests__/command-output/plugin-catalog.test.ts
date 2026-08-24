@@ -94,6 +94,8 @@ const installedPlugin = {
   app: { hasApp: false, bundle: null },
   logoUrl: null,
   logoDarkUrl: null,
+  providerIds: [],
+  icons: {},
 };
 
 function json(value: object, status = 200): Response {

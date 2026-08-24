@@ -14,7 +14,7 @@
       "icon": "./icons/codex.svg"
     },
     "server": "./server.ts",
-    "host": "./src/bridge/bridge.ts"
+    "host": "./src/host.ts"
   },
   "keywords": [
     "bb-plugin"
@@ -24,7 +24,6 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@bb/agent-runtime": "workspace:*",
     "@bb/domain": "workspace:*",
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",

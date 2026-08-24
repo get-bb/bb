@@ -21,7 +21,9 @@ import {
   createFakeRuntime,
   createFakeWorkspace,
   unexpectedProjectAttachmentFetch,
+  unexpectedProviderMaintenance,
   DISPATCH_TEST_BRIDGE_LAUNCH,
+  fetchDispatchTestArtifact,
 } from "./dispatch-helpers.js";
 import { RuntimeManager } from "../../src/runtime-manager.js";
 
@@ -35,6 +37,10 @@ type EnvironmentProvisionCommand = Extract<
 >;
 type RouterHarness = ReturnType<typeof createHarness>;
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
+type InteractiveResolveCommand = Extract<
+  HostDaemonCommand,
+  { type: "interactive.resolve" }
+>;
 type ThreadStartCommand = Extract<HostDaemonCommand, { type: "thread.start" }>;
 type TurnSubmitCommand = Extract<HostDaemonCommand, { type: "turn.submit" }>;
 
@@ -55,6 +61,7 @@ interface CreateTurnSubmitCommandArgs {
 
 interface CreateRouterArgs {
   logger?: CommandRouterOptions["logger"];
+  resolveInteractiveRequest?: CommandRouterOptions["resolveInteractiveRequest"];
   runtimeManager?: RuntimeManager;
 }
 
@@ -76,11 +83,14 @@ function createRouter(
     dataDir: "/tmp/bb-router-test-data",
     eventSink: noopEventSink,
     fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+    fetchPluginHostArtifact: fetchDispatchTestArtifact,
+    ...unexpectedProviderMaintenance,
     logger: {
       debug: () => undefined,
       warn: () => undefined,
       ...args.logger,
     },
+    resolveInteractiveRequest: args.resolveInteractiveRequest,
     runtimeManager: args.runtimeManager ?? harness.manager,
     threadStorageRootPath: "/tmp/bb-router-test-thread-storage",
   });
@@ -153,6 +163,19 @@ function createThreadStartCommand(): ThreadStartCommand {
     dynamicTools: [],
     injectedSkillSources: [],
     instructionMode: "append",
+  };
+}
+
+function createInteractiveResolveCommand(): InteractiveResolveCommand {
+  return {
+    type: "interactive.resolve",
+    environmentId: "env-router",
+    threadId: "thread-router",
+    interactionId: "interaction-router",
+    providerId: "fake",
+    providerThreadId: "provider-thread-router",
+    providerRequestId: "provider-request-router",
+    resolution: { decision: "allow_once", grantedPermissions: null },
   };
 }
 
@@ -309,8 +332,8 @@ describe("CommandRouter", () => {
     });
     await flushAsyncWork();
 
-    // The stop routes into the in-flight start's provider lane and must not
-    // reach the runtime before the start handoff completes.
+    // The stop shares the in-flight start's thread lane and must not reach
+    // the runtime before the start handoff completes.
     expect(harness.runtimeState.stoppedThreadId).toBeUndefined();
     expect(stopResolved).toBe(false);
 
@@ -322,6 +345,55 @@ describe("CommandRouter", () => {
     expect(stopResponse.ok).toBe(true);
     expect(harness.runtimeState.stoppedThreadId).toBe("thread-router-start");
     expect(harness.runtime.hasThread("thread-router-start")).toBe(false);
+  });
+
+  it("orders interactive.resolve after an in-flight turn.submit on the same thread", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-router" });
+    await harness.manager.ensureEnvironment({
+      environmentId: "env-router",
+      workspacePath: "/tmp/env-router",
+    });
+    const turnEntered = createDeferredPromise<void>();
+    const releaseTurn = createDeferredPromise<void>();
+    const originalRunTurn = harness.runtime.runTurn;
+    harness.runtime.runTurn = async (args) => {
+      turnEntered.resolve();
+      await releaseTurn.promise;
+      return originalRunTurn(args);
+    };
+    const resolveInteractiveRequest = vi.fn(async () => undefined);
+
+    const router = createRouter(harness, { resolveInteractiveRequest });
+    const turnTask = runRouterCommand({
+      command: createTurnSubmitCommand({ text: "hold the lane" }),
+      requestId: "turn-before-resolve",
+      router,
+    });
+    await turnEntered.promise;
+
+    const resolveTask = runRouterCommand({
+      command: createInteractiveResolveCommand(),
+      requestId: "resolve-behind-turn",
+      router,
+    });
+    await flushAsyncWork();
+
+    // The resolution shares the turn's thread lane: it must not reach the
+    // interactive-request registry while the turn dispatch is in flight.
+    expect(resolveInteractiveRequest).not.toHaveBeenCalled();
+
+    releaseTurn.resolve();
+    const turnResponse = await turnTask;
+    expect(turnResponse.ok).toBe(true);
+    const resolveResponse = await resolveTask;
+    expect(resolveResponse.ok).toBe(true);
+    expect(resolveInteractiveRequest).toHaveBeenCalledTimes(1);
+    expect(resolveInteractiveRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        interactionId: "interaction-router",
+        threadId: "thread-router",
+      }),
+    );
   });
 
   it("waits for an old-environment turn before resuming the moved thread", async () => {
@@ -428,61 +500,67 @@ describe("CommandRouter", () => {
     await runtimeManager.shutdownAll();
   });
 
-  it("does not route separate codex threads through one provider process lane", async () => {
-    const harness = createHarness({ workspacePath: "/tmp/env-router" });
-    await harness.manager.ensureEnvironment({
-      environmentId: "env-router",
-      workspacePath: "/tmp/env-router",
-    });
-    harness.threadControls.setProviderSession("thread-codex-stop", {
-      providerId: "codex",
-      providerThreadId: "provider-codex-stop",
-    });
-    harness.threadControls.setProviderSession("thread-codex-turn", {
-      providerId: "codex",
-      providerThreadId: "provider-codex-turn",
-    });
-
-    const stopEntered = createDeferredPromise<void>();
-    const releaseStop = createDeferredPromise<void>();
-    const originalStopThread = harness.runtime.stopThread;
-    harness.runtime.stopThread = async (args) => {
-      stopEntered.resolve();
-      await releaseStop.promise;
-      return originalStopThread(args);
-    };
-
-    const router = createRouter(harness);
-    const stopTask = runRouterCommand({
-      command: {
-        type: "thread.stop",
-        intent: "interrupt",
+  it.each(["codex", "claude-code", "acp-cursor"])(
+    "does not route separate %s threads through one lane",
+    async (providerId) => {
+      // Thread lanes are keyed per (environment, thread): every bridge keeps
+      // its state per bb thread and dispatches concurrently, so a
+      // thread.stop on one thread never delays another thread's dispatch.
+      const harness = createHarness({ workspacePath: "/tmp/env-router" });
+      await harness.manager.ensureEnvironment({
         environmentId: "env-router",
-        threadId: "thread-codex-stop",
-      },
-      requestId: "stop-codex-thread",
-      router,
-    });
-    await stopEntered.promise;
+        workspacePath: "/tmp/env-router",
+      });
+      harness.threadControls.setProviderSession("thread-stop", {
+        providerId,
+        providerThreadId: "provider-stop",
+      });
+      harness.threadControls.setProviderSession("thread-turn", {
+        providerId,
+        providerThreadId: "provider-turn",
+      });
 
-    const turnTask = runRouterCommand({
-      command: createTurnSubmitCommand({
-        providerId: "codex",
-        providerThreadId: "provider-codex-turn",
-        text: "codex other thread",
-        threadId: "thread-codex-turn",
-      }),
-      requestId: "turn-codex-other-thread",
-      router,
-    });
-    await flushAsyncWork();
+      const stopEntered = createDeferredPromise<void>();
+      const releaseStop = createDeferredPromise<void>();
+      const originalStopThread = harness.runtime.stopThread;
+      harness.runtime.stopThread = async (args) => {
+        stopEntered.resolve();
+        await releaseStop.promise;
+        return originalStopThread(args);
+      };
 
-    expect(harness.runtimeState.ranTurnText).toBe("codex other thread");
-    const turnResponse = await turnTask;
-    expect(turnResponse.ok).toBe(true);
+      const router = createRouter(harness);
+      const stopTask = runRouterCommand({
+        command: {
+          type: "thread.stop",
+          intent: "interrupt",
+          environmentId: "env-router",
+          threadId: "thread-stop",
+        },
+        requestId: "stop-thread",
+        router,
+      });
+      await stopEntered.promise;
 
-    releaseStop.resolve();
-    const stopResponse = await stopTask;
-    expect(stopResponse.ok).toBe(true);
-  });
+      const turnTask = runRouterCommand({
+        command: createTurnSubmitCommand({
+          providerId,
+          providerThreadId: "provider-turn",
+          text: "other thread",
+          threadId: "thread-turn",
+        }),
+        requestId: "turn-other-thread",
+        router,
+      });
+      await flushAsyncWork();
+
+      expect(harness.runtimeState.ranTurnText).toBe("other thread");
+      const turnResponse = await turnTask;
+      expect(turnResponse.ok).toBe(true);
+
+      releaseStop.resolve();
+      const stopResponse = await stopTask;
+      expect(stopResponse.ok).toBe(true);
+    },
+  );
 });

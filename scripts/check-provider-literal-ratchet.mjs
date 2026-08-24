@@ -28,6 +28,16 @@
  *   node scripts/check-provider-literal-ratchet.mjs --base origin/main  # also reject any increase vs the base branch (CI)
  *   node scripts/check-provider-literal-ratchet.mjs --write         # regenerate baseline (refuses to raise the total)
  *   node scripts/check-provider-literal-ratchet.mjs --list          # print every occurrence
+ *
+ * `BB_RATCHET_ROOT=<dir>` points the CLI at another tree (its baseline at
+ * `<dir>/scripts/provider-literal-baseline.json`, its git history for
+ * `--base`); the fixture tests drive the refusal paths through it.
+ *
+ * Allowlist: once the migration has moved every provider-id branch it can,
+ * what remains in core is listed in the baseline's `allowlist` block with a
+ * reason, an owner and when it dies. The check then requires every counted
+ * file to be on that list (delete the reference or allowlist it) and every
+ * entry to still match the live count (stale entries are removed, not kept).
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -54,7 +64,21 @@ const EXCLUDED_SEGMENTS = new Set([
   "stories",
   "dev", // dev-only fixture screens (apps/mobile/src/screens/dev)
 ]);
-const EXCLUDED_PREFIXES = [join("plugins", "provider-"), join("examples", "")];
+/**
+ * Provider implementations are allowed to name their own provider; the
+ * ratchet exists to keep provider ids out of CORE. `plugins/provider-*` is
+ * one such implementation, and so is the published ACP bridge kit — the same
+ * code, moved into `packages/` so the plugin SDK can re-export it
+ * (`@get-bb/plugin-sdk/provider-bridge/acp`). It carries no bb provider id
+ * today: it selects behavior by the agent's dialect, never by a provider id.
+ */
+const EXCLUDED_PREFIXES = [
+  join("plugins", "provider-"),
+  join("packages", "provider-bridge-acp"),
+  // Test-only helpers: they name providers so tests can pick a model.
+  join("packages", "test-helpers"),
+  join("examples", ""),
+];
 const EXCLUDED_FILE_RE =
   /\.(test|spec|stories)\.[cm]?[jt]sx?$|\.snap$|\.d\.ts$/;
 const INCLUDED_FILE_RE = /\.[cm]?[jt]sx?$/; // ts tsx js jsx mjs cjs mts cts
@@ -69,8 +93,10 @@ const INCLUDED_FILE_RE = /\.[cm]?[jt]sx?$/; // ts tsx js jsx mjs cjs mts cts
 export function providerLiteralRegex() {
   return new RegExp(
     [
-      // quoted provider-id literals (acp-* allows the bare `"acp-"` of startsWith)
-      String.raw`["'](?:codex|claude-code|pi|acp-[a-z0-9-]*|cursor)["']`,
+      // quoted provider-id literals (acp-* allows the bare `"acp-"` of
+      // startsWith). The Cursor agent's id is `acp-cursor`; a bare `"cursor"`
+      // is an editor id or a pagination cursor, never a provider.
+      String.raw`["'](?:codex|claude-code|pi|acp-[a-z0-9-]*)["']`,
       // named id constants / helpers
       String.raw`\bisAcpProviderId\b`,
       String.raw`\bACP_ID_PREFIX\b`,
@@ -79,7 +105,6 @@ export function providerLiteralRegex() {
       String.raw`\bRESERVED_PROVIDER_ID_OWNERS\b`,
       String.raw`\bPRODUCT_PROVIDER_ORDER\b`,
       String.raw`\bPRODUCT_DEFAULT_PROVIDER_ID\b`,
-      String.raw`\bDAEMON_BUNDLED_PROVIDER_BRIDGE_IDS\b`,
     ].join("|"),
     "g",
   );
@@ -122,6 +147,41 @@ function walk(dir, root, out) {
  * (or a fixture root's subdirs) in tests.
  * @returns {{files: Record<string, number>, total: number, hits: Array}}
  */
+/**
+ * Compare the live per-file counts with the baseline's allowlist. Returns
+ * the problems as strings; an empty array means every counted file is
+ * allowlisted at its current count and no entry is stale.
+ */
+export function checkAllowlist(scan, allowlist) {
+  const problems = [];
+  const entries = allowlist ?? {};
+  for (const [rel, n] of Object.entries(scan.files)) {
+    const entry = entries[rel];
+    if (entry === undefined) {
+      problems.push(
+        `  ? ${rel}: ${n} reference(s) with no allowlist entry — delete them or allowlist the file with a reason, an owner and when it dies`,
+      );
+      continue;
+    }
+    if (entry.count !== n) {
+      problems.push(
+        `  ≠ ${rel}: allowlisted at ${entry.count}, live ${n} — update the entry`,
+      );
+    }
+    for (const field of ["reason", "owner", "diesAt"]) {
+      if (typeof entry[field] !== "string" || entry[field].trim() === "") {
+        problems.push(`  ! ${rel}: allowlist entry has no ${field}`);
+      }
+    }
+  }
+  for (const rel of Object.keys(entries)) {
+    if (!(rel in scan.files)) {
+      problems.push(`  − ${rel}: allowlisted but has no reference left — remove the entry`);
+    }
+  }
+  return problems;
+}
+
 export function scanTree(root, roots = SCAN_ROOTS) {
   const files = [];
   for (const r of roots) walk(join(root, r), root, files);
@@ -166,7 +226,8 @@ function baselineFromGit(root, ref) {
 
 // --- CLI ---------------------------------------------------------------------
 function main() {
-  const ROOT = fileURLToPath(new URL("..", import.meta.url));
+  const ROOT =
+    process.env.BB_RATCHET_ROOT ?? fileURLToPath(new URL("..", import.meta.url));
   const BASELINE_PATH = join(ROOT, "scripts", "provider-literal-baseline.json");
   const argv = process.argv.slice(2);
   const flags = new Set(argv.filter((a) => a.startsWith("--")));
@@ -214,9 +275,10 @@ function main() {
       JSON.stringify(
         {
           _comment:
-            "Provider-literal ratchet (G1). Per-file occurrence count of provider-ID references in core. May only go DOWN. Regenerate: node scripts/check-provider-literal-ratchet.mjs --write. Delete this file and the guard when empty.",
+            "Provider-literal ratchet (G1). Per-file occurrence count of provider-ID references in core. May only go DOWN. Regenerate: node scripts/check-provider-literal-ratchet.mjs --write. Every counted file must have an `allowlist` entry (count, reason, owner, diesAt); the entries are authored by hand and survive --write. Delete this file and the guard when empty.",
           total: scan.total,
           files: scan.files,
+          allowlist: committed?.allowlist ?? {},
         },
         null,
         2,
@@ -295,8 +357,16 @@ function main() {
     );
     return 1;
   }
+  const allowlistProblems = checkAllowlist(scan, committed.allowlist);
+  if (allowlistProblems.length) {
+    console.error(
+      "Provider-literal ratchet FAILED — core references outside the allowlist.\n" +
+        allowlistProblems.join("\n"),
+    );
+    return 1;
+  }
   console.log(
-    `Provider-literal ratchet OK: ${scan.total} references across ${Object.keys(scan.files).length} core files.`,
+    `Provider-literal ratchet OK: ${scan.total} references across ${Object.keys(scan.files).length} core files, all allowlisted.`,
   );
   return 0;
 }

@@ -25,6 +25,7 @@ import {
   PluginComposerHostProvider,
   PluginComposerViewProvider,
   type PluginComposerHost,
+  usePluginComposerHostDraft,
   usePluginComposerViewModel,
 } from "@/components/plugin/plugin-composer-host";
 import {
@@ -262,11 +263,12 @@ function FollowUpPromptBoxStackOnly({
 >) {
   const composerScope =
     pluginComposerScope ?? pluginComposerHost?.scope ?? null;
+  const hostDraft = usePluginComposerHostDraft(pluginComposerHost ?? null);
   const composerView = usePluginComposerViewModel({
     scope: composerScope ?? DEFAULT_FOLLOW_UP_COMPOSER_SCOPE,
     layout: "expanded",
-    text: pluginComposerHost?.draft.text ?? "",
-    attachmentCount: pluginComposerHost?.draft.attachments.length ?? 0,
+    text: hostDraft?.text ?? "",
+    attachmentCount: hostDraft?.attachments.length ?? 0,
     isRunning: false,
     isSubmitting: false,
   });

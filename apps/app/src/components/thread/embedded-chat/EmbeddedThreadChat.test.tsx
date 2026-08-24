@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useEffect, useLayoutEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FollowUpComposerProps } from "@/components/promptbox/FollowUpPromptBox";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
+import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { EmbeddedThreadChat } from "./EmbeddedThreadChat";
 
 const mocks = vi.hoisted(() => ({
@@ -29,30 +31,81 @@ const mocks = vi.hoisted(() => ({
   resolveMentionLink: vi.fn(),
 }));
 
-vi.mock("@/components/promptbox/FollowUpPromptBox", () => ({
-  FollowUpPromptBox: ({
-    composer,
-    stack,
-  }: {
-    composer: Pick<
-      FollowUpComposerProps,
-      "message" | "onChangeMessage" | "onSubmit"
-    >;
-    stack: ReactNode;
-  }) => (
-    <div>
-      {stack}
-      <input
-        data-testid="embedded-chat-composer"
-        value={composer.message}
-        onChange={(event) => composer.onChangeMessage(event.target.value, [])}
-      />
-      <button type="button" onClick={composer.onSubmit}>
-        Send
-      </button>
-    </div>
-  ),
+const hostDraftMocks = vi.hoisted(() => ({
+  /** The bottom host from the most recent FollowUpPromptBox render. */
+  latestHost: null as {
+    getCurrent(): { text: string };
+    subscribeDraft(listener: () => void): () => void;
+  } | null,
+  /** latestHost.getCurrent().text captured inside each subscribeDraft notification. */
+  textAtNotify: [] as string[],
+  subscribed: false,
 }));
+
+vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
+  const { usePluginComposerHostDraft } = await import(
+    "@/components/plugin/plugin-composer-host"
+  );
+  // A host-draft subscriber, like plugin surfaces reading useComposerView().
+  function BottomHostDraftProbe({
+    host,
+  }: {
+    host: PluginComposerHost | null;
+  }) {
+    // Record what the CURRENT host's getCurrent() returns at the exact moment
+    // subscribeDraft notifies. useSyncExternalStore reads the snapshot inside
+    // the notification to decide whether to re-render, so a notify that fires
+    // before the host's identity refs are synced hands every subscriber a
+    // stale draft with no later correction. The subscription is established
+    // once and deliberately outlives probe remounts (the notifier function is
+    // shared by successive hosts of one EmbeddedThreadChat instance) so the
+    // recorder observes the notification even when the composer subtree is
+    // remounted by the switch. The latest-host sync is a layout effect: the
+    // probe is a child of EmbeddedThreadChat, so it runs before the parent's
+    // notifier effect fires.
+    useLayoutEffect(() => {
+      hostDraftMocks.latestHost = host;
+    }, [host]);
+    useEffect(() => {
+      if (hostDraftMocks.subscribed || !host) return;
+      hostDraftMocks.subscribed = true;
+      host.subscribeDraft(() => {
+        hostDraftMocks.textAtNotify.push(
+          hostDraftMocks.latestHost?.getCurrent().text ?? "",
+        );
+      });
+    }, [host]);
+    const draft = usePluginComposerHostDraft(host);
+    return <div data-testid="embedded-host-draft">{draft?.text ?? ""}</div>;
+  }
+  return {
+    FollowUpPromptBox: ({
+      composer,
+      stack,
+      pluginComposerHost,
+    }: {
+      composer: Pick<
+        FollowUpComposerProps,
+        "message" | "onChangeMessage" | "onSubmit"
+      >;
+      stack: ReactNode;
+      pluginComposerHost?: PluginComposerHost | null;
+    }) => (
+      <div>
+        {stack}
+        <input
+          data-testid="embedded-chat-composer"
+          value={composer.message}
+          onChange={(event) => composer.onChangeMessage(event.target.value, [])}
+        />
+        <button type="button" onClick={composer.onSubmit}>
+          Send
+        </button>
+        <BottomHostDraftProbe host={pluginComposerHost ?? null} />
+      </div>
+    ),
+  };
+});
 
 vi.mock("@/components/promptbox/banner/QueuedMessagesList", () => ({
   QueuedMessagesList: ({
@@ -272,14 +325,16 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
   }),
 }));
 
-function renderEmbeddedChat({
+function buildEmbeddedChat({
   threadId = "thr_child",
   surfaceTone = "background",
+  pluginComposerBottomScope,
 }: {
   threadId?: string;
   surfaceTone?: "background" | "sidebar";
+  pluginComposerBottomScope?: PluginComposerHost["scope"];
 } = {}) {
-  return render(
+  return (
     <EmbeddedThreadChat
       variant="compact"
       surfaceTone={surfaceTone}
@@ -301,9 +356,16 @@ function renderEmbeddedChat({
         executionResetKey: "thr_parent",
         permissionPolicy: "snapshot",
         environmentSummary: null,
+        ...(pluginComposerBottomScope ? { pluginComposerBottomScope } : {}),
       }}
-    />,
+    />
   );
+}
+
+function renderEmbeddedChat(
+  options: Parameters<typeof buildEmbeddedChat>[0] = {},
+) {
+  return render(buildEmbeddedChat(options));
 }
 
 describe("EmbeddedThreadChat", () => {
@@ -323,6 +385,9 @@ describe("EmbeddedThreadChat", () => {
     mocks.timelinePanelProps = [];
     mocks.timelineProjectIds = [];
     mocks.resolveMentionLink.mockReset();
+    hostDraftMocks.latestHost = null;
+    hostDraftMocks.textAtNotify = [];
+    hostDraftMocks.subscribed = false;
   });
 
   it("applies the requested surface tone to the timeline and footer", () => {
@@ -487,5 +552,64 @@ describe("EmbeddedThreadChat", () => {
 
     expect(screen.queryByTestId("pending-interaction-banner")).toBeNull();
     expect(screen.getByTestId("embedded-chat-composer")).toBeTruthy();
+  });
+
+  // The bottom host's getCurrent gates on the active-identity ref, and that
+  // ref is synced in a layout effect. A thread switch changes the host
+  // identity and the draft in ONE commit: if the draft notifier's effect ran
+  // before the identity sync, subscribers were notified while getCurrent
+  // still resolved to the pre-switch fallback draft — and no later effect
+  // notified again, so plugin surfaces showed the previous thread's draft
+  // until the next keystroke.
+  it("delivers the new thread's draft to host subscribers immediately on a thread switch", () => {
+    getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "proj-1",
+      threadId: "thr_switch_a",
+    }).setDraft({ text: "alpha draft", mentions: [], attachments: [] });
+    getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "proj-1",
+      threadId: "thr_switch_b",
+    }).setDraft({ text: "beta draft", mentions: [], attachments: [] });
+
+    const scopeFor = (threadId: string) =>
+      ({ kind: "thread", threadId }) as const;
+    const view = render(
+      buildEmbeddedChat({
+        threadId: "thr_switch_a",
+        pluginComposerBottomScope: scopeFor("thr_switch_a"),
+      }),
+    );
+    expect(screen.getByTestId("embedded-host-draft").textContent).toBe(
+      "alpha draft",
+    );
+
+    // Identity + draft change in the same commit.
+    view.rerender(
+      buildEmbeddedChat({
+        threadId: "thr_switch_b",
+        pluginComposerBottomScope: scopeFor("thr_switch_b"),
+      }),
+    );
+    expect(screen.getByTestId("embedded-host-draft").textContent).toBe(
+      "beta draft",
+    );
+    // The switch's notification must already observe the new draft: this is
+    // the read useSyncExternalStore performs inside the notify, and there is
+    // no later notification to correct a stale one.
+    expect(hostDraftMocks.textAtNotify).toEqual(["beta draft"]);
+
+    // And back, with no intervening keystroke.
+    view.rerender(
+      buildEmbeddedChat({
+        threadId: "thr_switch_a",
+        pluginComposerBottomScope: scopeFor("thr_switch_a"),
+      }),
+    );
+    expect(screen.getByTestId("embedded-host-draft").textContent).toBe(
+      "alpha draft",
+    );
+    expect(hostDraftMocks.textAtNotify).toEqual(["beta draft", "alpha draft"]);
   });
 });

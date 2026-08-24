@@ -12,8 +12,13 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type {
+  ProviderNativeRoot,
+  ProviderNativeRootSet,
+  ProviderNativeRoots,
+} from "@bb/domain";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
-import { discoverSkills } from "../command-discovery.js";
+import { discoverSkills, type SkillScanRoot } from "../command-discovery.js";
 import { CommandDispatchError } from "../command-dispatch-support.js";
 import {
   deleteHostSkill,
@@ -23,10 +28,8 @@ import {
 
 interface WorkspaceFixture {
   cwd: string;
-  builtinSkillsRootPath: string;
   dataDir: string;
   homeDir: string;
-  codexHome: string;
 }
 
 let tempRoot: string;
@@ -42,29 +45,53 @@ async function writeSkill(filePath: string, name: string): Promise<void> {
 
 async function makeWorkspaceFixture(): Promise<WorkspaceFixture> {
   const cwd = path.join(tempRoot, "workspace");
-  const builtinSkillsRootPath = path.join(tempRoot, "builtin-skills");
   const dataDir = path.join(tempRoot, "bb-data");
   const homeDir = path.join(tempRoot, "home");
-  const codexHome = path.join(homeDir, ".codex");
   await mkdir(cwd, { recursive: true });
-  await mkdir(builtinSkillsRootPath, { recursive: true });
   await mkdir(dataDir, { recursive: true });
   await mkdir(homeDir, { recursive: true });
-  await mkdir(codexHome, { recursive: true });
-  return { cwd, builtinSkillsRootPath, dataDir, homeDir, codexHome };
+  return { cwd, dataDir, homeDir };
 }
+
+function declared(
+  rootPath: string,
+  options: Partial<Omit<ProviderNativeRoot, "path">> = {},
+): ProviderNativeRoot {
+  return {
+    path: rootPath,
+    recursive: false,
+    ancestors: false,
+    namePrefix: "",
+    ...options,
+  };
+}
+
+function skillRoots(skills: Partial<ProviderNativeRoots>): ProviderNativeRootSet {
+  return {
+    skills: { user: [], project: [], ...skills },
+    commands: { user: [], project: [] },
+    resolved: { skills: [], commands: [] },
+  };
+}
+
+/** One provider-native skills directory in the workspace and one in the home. */
+const AGENT_SKILL_ROOTS = skillRoots({
+  project: [declared(".agent/skills")],
+  user: [declared(".agent/skills")],
+});
 
 async function listSkills(
   fixture: WorkspaceFixture,
-  providerId: "claude-code" | "codex",
   cwd: string | null,
+  nativeRoots: ProviderNativeRootSet,
+  providerId = "test-provider",
 ): Promise<DiscoveredSkill[]> {
   return discoverSkills({
     roots: await resolveSkillScanRoots({
       providerId,
       cwd,
       homeDir: fixture.homeDir,
-      codexHome: fixture.codexHome,
+      nativeRoots,
     }),
   });
 }
@@ -84,29 +111,24 @@ afterEach(async () => {
   await rm(tempRoot, { recursive: true, force: true });
 });
 
-describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
-  it("classifies host-owned project and provider roots only", async () => {
+describe("resolveSkillScanRoots + discoverSkills", () => {
+  it("classifies the host-owned bb project root and the declared provider roots only", async () => {
     const fixture = await makeWorkspaceFixture();
     const files = {
       "proj-bb": path.join(fixture.cwd, ".bb", "skills", "proj-bb", "SKILL.md"),
       "data-bb": path.join(fixture.dataDir, "skills", "data-bb", "SKILL.md"),
-      "builtin-bb": path.join(
-        fixture.builtinSkillsRootPath,
-        "builtin-bb",
-        "SKILL.md",
-      ),
-      "proj-claude": path.join(
+      "proj-agent": path.join(
         fixture.cwd,
-        ".claude",
+        ".agent",
         "skills",
-        "proj-claude",
+        "proj-agent",
         "SKILL.md",
       ),
-      "user-claude": path.join(
+      "user-agent": path.join(
         fixture.homeDir,
-        ".claude",
+        ".agent",
         "skills",
-        "user-claude",
+        "user-agent",
         "SKILL.md",
       ),
     };
@@ -114,7 +136,7 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
       await writeSkill(filePath, name);
     }
 
-    const skills = await listSkills(fixture, "claude-code", fixture.cwd);
+    const skills = await listSkills(fixture, fixture.cwd, AGENT_SKILL_ROOTS);
 
     expect(byName(skills, "proj-bb")).toEqual({
       id: expect.stringMatching(/^skill_[a-f0-9]{64}$/u),
@@ -125,11 +147,10 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
       linked: false,
     });
     expect(byName(skills, "data-bb")).toBeUndefined();
-    expect(byName(skills, "builtin-bb")).toBeUndefined();
-    expect(byName(skills, "proj-claude")?.rootKind).toBe("provider-project");
-    expect(byName(skills, "user-claude")?.rootKind).toBe("provider-user");
+    expect(byName(skills, "proj-agent")?.rootKind).toBe("provider-project");
+    expect(byName(skills, "user-agent")?.rootKind).toBe("provider-user");
     // Every record carries its absolute SKILL.md path.
-    expect(byName(skills, "user-claude")?.filePath).toBe(files["user-claude"]);
+    expect(byName(skills, "user-agent")?.filePath).toBe(files["user-agent"]);
   });
 
   it("keeps native skill IDs stable when the workspace root moves", async () => {
@@ -168,6 +189,26 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
     expect(first?.id).toBe(second?.id);
   });
 
+  it("keeps a declared provider skill's ID stable when the workspace root moves", async () => {
+    const roots = skillRoots({ project: [declared(".agent/skills")] });
+    const ids: string[] = [];
+    for (const checkout of ["checkout-a", "checkout-b"]) {
+      const cwd = path.join(tempRoot, checkout);
+      await writeSkill(
+        path.join(cwd, ".agent", "skills", "review", "SKILL.md"),
+        "review",
+      );
+      const skills = await listSkills(
+        { cwd, dataDir: "", homeDir: path.join(tempRoot, "home") },
+        cwd,
+        roots,
+      );
+      ids.push(byName(skills, "review")?.id ?? "");
+    }
+    expect(ids[0]).toMatch(/^skill_/u);
+    expect(ids[0]).toBe(ids[1]);
+  });
+
   it("drops project roots when cwd is null", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeSkill(
@@ -175,42 +216,20 @@ describe("resolveSkillScanRoots + discoverSkills (claude-code)", () => {
       "proj-bb",
     );
     await writeSkill(
-      path.join(fixture.dataDir, "skills", "data-bb", "SKILL.md"),
-      "data-bb",
-    );
-
-    const skills = await listSkills(fixture, "claude-code", null);
-
-    expect(byName(skills, "proj-bb")).toBeUndefined();
-    expect(byName(skills, "data-bb")).toBeUndefined();
-  });
-});
-
-describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
-  it("classifies codex project/user roots", async () => {
-    const fixture = await makeWorkspaceFixture();
-    await writeSkill(
-      path.join(fixture.cwd, ".codex", "skills", "proj-codex", "SKILL.md"),
-      "proj-codex",
+      path.join(fixture.cwd, ".agent", "skills", "proj-agent", "SKILL.md"),
+      "proj-agent",
     );
     await writeSkill(
-      path.join(fixture.codexHome, "skills", "user-codex", "SKILL.md"),
-      "user-codex",
-    );
-    await writeSkill(
-      path.join(fixture.cwd, ".bb", "skills", "proj-bb", "SKILL.md"),
-      "proj-bb",
+      path.join(fixture.homeDir, ".agent", "skills", "user-agent", "SKILL.md"),
+      "user-agent",
     );
 
-    const skills = await listSkills(fixture, "codex", fixture.cwd);
+    const skills = await listSkills(fixture, null, AGENT_SKILL_ROOTS);
 
-    expect(byName(skills, "proj-codex")?.rootKind).toBe("provider-project");
-    expect(byName(skills, "user-codex")?.rootKind).toBe("provider-user");
-    // bb roots are shared across providers.
-    expect(byName(skills, "proj-bb")?.rootKind).toBe("bb-project");
+    expect(skills.map((skill) => skill.name)).toEqual(["user-agent"]);
   });
 
-  it("classifies repository and nested .agents roots as codex project skills", async () => {
+  it("classifies repository and nested ancestor roots as provider project skills with distinct IDs", async () => {
     const fixture = await makeWorkspaceFixture();
     const cwd = path.join(fixture.cwd, "packages", "app");
     await mkdir(path.join(fixture.cwd, ".git"), { recursive: true });
@@ -229,20 +248,6 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
       path.join(cwd, ".agents", "skills", "nested-skill", "SKILL.md"),
       "nested-skill",
     );
-
-    const skills = await listSkills(fixture, "codex", cwd);
-
-    expect(byName(skills, "repository-skill")?.rootKind).toBe(
-      "provider-project",
-    );
-    expect(byName(skills, "nested-skill")?.rootKind).toBe("provider-project");
-  });
-
-  it("gives same-named .agents skills in different roots distinct IDs", async () => {
-    const fixture = await makeWorkspaceFixture();
-    const cwd = path.join(fixture.cwd, "packages", "app");
-    await mkdir(path.join(fixture.cwd, ".git"), { recursive: true });
-    await mkdir(cwd, { recursive: true });
     await writeSkill(
       path.join(fixture.cwd, ".agents", "skills", "review", "SKILL.md"),
       "review",
@@ -252,17 +257,26 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
       "review",
     );
 
-    const skills = (await listSkills(fixture, "codex", cwd)).filter(
-      (skill) => skill.name === "review",
+    const skills = await listSkills(
+      fixture,
+      cwd,
+      skillRoots({
+        project: [declared(".agents/skills", { ancestors: true })],
+      }),
     );
 
-    expect(skills).toHaveLength(2);
-    expect(new Set(skills.map((skill) => skill.id)).size).toBe(2);
+    expect(byName(skills, "repository-skill")?.rootKind).toBe(
+      "provider-project",
+    );
+    expect(byName(skills, "nested-skill")?.rootKind).toBe("provider-project");
+    const reviews = skills.filter((skill) => skill.name === "review");
+    expect(reviews).toHaveLength(2);
+    expect(new Set(reviews.map((skill) => skill.id)).size).toBe(2);
   });
 
   it("marks followed user skill directory and SKILL.md symlinks as linked", async () => {
     const fixture = await makeWorkspaceFixture();
-    const skillsRoot = path.join(fixture.codexHome, "skills");
+    const skillsRoot = path.join(fixture.homeDir, ".agent", "skills");
     const linkedDirectoryTarget = path.join(tempRoot, "linked-skill-target");
     await writeSkill(
       path.join(linkedDirectoryTarget, "SKILL.md"),
@@ -280,14 +294,39 @@ describe("resolveSkillScanRoots + discoverSkills (codex)", () => {
     await mkdir(linkedFileRoot, { recursive: true });
     await symlink(linkedFileTarget, path.join(linkedFileRoot, "SKILL.md"));
 
-    const skills = await listSkills(fixture, "codex", fixture.cwd);
+    const skills = await listSkills(fixture, fixture.cwd, AGENT_SKILL_ROOTS);
 
     expect(byName(skills, "linked-directory")?.linked).toBe(true);
     expect(byName(skills, "linked-file")?.linked).toBe(true);
   });
-});
 
-describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
+  it("classifies a prefixed declared root as a plugin root", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.homeDir, "tools", "skills", "release", "SKILL.md"),
+      "release",
+    );
+
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({
+        user: [declared("tools/skills", { namePrefix: "release-tools:" })],
+      }),
+    );
+
+    expect(byName(skills, "release-tools:release")).toMatchObject({
+      rootKind: "plugin",
+      filePath: path.join(
+        fixture.homeDir,
+        "tools",
+        "skills",
+        "release",
+        "SKILL.md",
+      ),
+    });
+  });
+
   it("classifies configured shared user and project roots", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeSkill(
@@ -305,18 +344,15 @@ describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
       "project-shared",
     );
 
-    const skills = await discoverSkills({
-      roots: await resolveSkillScanRoots({
-        providerId: "bb-shared",
-        cwd: fixture.cwd,
-        homeDir: fixture.homeDir,
-        codexHome: fixture.codexHome,
-        nativeSkillRoots: {
-          user: [".agents/skills"],
-          project: [".agents/skills"],
-        },
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({
+        user: [declared(".agents/skills")],
+        project: [declared(".agents/skills")],
       }),
-    });
+      "bb-shared",
+    );
 
     expect(byName(skills, "project-shared")?.rootKind).toBe("shared-project");
     expect(byName(skills, "user-shared")?.rootKind).toBe("shared-user");
@@ -335,28 +371,20 @@ describe("resolveSkillScanRoots + discoverSkills (shared roots)", () => {
       "dir",
     );
 
-    const skills = await discoverSkills({
-      roots: await resolveSkillScanRoots({
-        providerId: "bb-shared",
-        cwd: fixture.cwd,
-        homeDir: fixture.homeDir,
-        codexHome: fixture.codexHome,
-        nativeSkillRoots: {
-          user: [],
-          project: [".shared/skills"],
-        },
-      }),
-    });
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({ project: [declared(".shared/skills")] }),
+      "bb-shared",
+    );
 
     expect(byName(skills, "linked-root")).toMatchObject({
       rootKind: "shared-project",
       linked: true,
     });
   });
-});
 
-describe("resolveSkillScanRoots + discoverSkills (acp-cursor)", () => {
-  it("classifies a skill through a symlinked .cursor/skills root", async () => {
+  it("classifies a skill through a symlinked recursive .cursor/skills root", async () => {
     const fixture = await makeWorkspaceFixture();
     await writeSkill(
       path.join(fixture.cwd, ".agents", "skills", "impeccable", "SKILL.md"),
@@ -369,14 +397,13 @@ describe("resolveSkillScanRoots + discoverSkills (acp-cursor)", () => {
       "dir",
     );
 
-    const skills = await discoverSkills({
-      roots: await resolveSkillScanRoots({
-        providerId: "acp-cursor",
-        cwd: fixture.cwd,
-        homeDir: fixture.homeDir,
-        codexHome: fixture.codexHome,
+    const skills = await listSkills(
+      fixture,
+      fixture.cwd,
+      skillRoots({
+        project: [declared(".cursor/skills", { recursive: true })],
       }),
-    });
+    );
 
     expect(skills.filter((skill) => skill.name === "impeccable")).toHaveLength(
       1,
@@ -392,6 +419,174 @@ describe("resolveSkillScanRoots + discoverSkills (acp-cursor)", () => {
         "SKILL.md",
       ),
     });
+  });
+});
+
+/**
+ * `linked` is what the skills page shows for a skill that reaches its root
+ * through a symlink. Each scan shape has its own combination of links to
+ * inspect (the root, the skill entry, the SKILL.md itself), so each shape is
+ * pinned separately, with its negative.
+ */
+describe("discoverSkills marks the linked flag per root shape", () => {
+  const USER_SKILL_ROOT = {
+    namePrefix: "",
+    source: "skill",
+    origin: "user",
+    identitySeed: "provider-user",
+    rootKind: "provider-user",
+  } as const;
+
+  async function writeSkillTarget(name: string): Promise<string> {
+    const target = path.join(tempRoot, "targets", `${name}.md`);
+    await writeSkill(target, name);
+    return target;
+  }
+
+  /**
+   * One root per scan: a root reached through a symlink resolves to the
+   * same SKILL.md as its target, and scanning both at once would fold the
+   * linked record away in de-duplication.
+   */
+  async function discoverRoot(
+    root: SkillScanRoot,
+  ): Promise<[name: string, linked: boolean, filePath: string][]> {
+    const skills = await discoverSkills({ roots: [root] });
+    return skills.map((skill) => [skill.name, skill.linked, skill.filePath]);
+  }
+
+  it("skill-directory: the root directory or its SKILL.md being a symlink", async () => {
+    const plainRoot = path.join(tempRoot, "plain-dir");
+    await writeSkill(path.join(plainRoot, "SKILL.md"), "plain-dir");
+    const linkedRoot = path.join(tempRoot, "linked-dir");
+    await symlink(plainRoot, linkedRoot, "dir");
+    const fileLinkedRoot = path.join(tempRoot, "file-linked-dir");
+    await mkdir(fileLinkedRoot, { recursive: true });
+    await symlink(
+      await writeSkillTarget("file-linked-dir"),
+      path.join(fileLinkedRoot, "SKILL.md"),
+    );
+
+    for (const [rootPath, linked] of [
+      [plainRoot, false],
+      [linkedRoot, true],
+      [fileLinkedRoot, true],
+    ] as const) {
+      expect(
+        await discoverRoot({
+          ...USER_SKILL_ROOT,
+          shape: "skill-directory",
+          rootPath,
+        }),
+      ).toEqual([
+        [path.basename(rootPath), linked, path.join(rootPath, "SKILL.md")],
+      ]);
+    }
+  });
+
+  it("skill-file: the SKILL.md itself being a symlink", async () => {
+    const plainFile = path.join(tempRoot, "plugin", "SKILL.md");
+    await writeSkill(plainFile, "plain-plugin");
+    const linkedFile = path.join(tempRoot, "plugin-linked", "SKILL.md");
+    await mkdir(path.dirname(linkedFile), { recursive: true });
+    await symlink(await writeSkillTarget("linked-plugin"), linkedFile);
+
+    for (const [filePath, name, linked] of [
+      [plainFile, "plain-plugin", false],
+      [linkedFile, "linked-plugin", true],
+    ] as const) {
+      expect(
+        await discoverRoot({
+          ...USER_SKILL_ROOT,
+          shape: "skill-file",
+          filePath,
+          fallbackName: "unused-fallback",
+        }),
+      ).toEqual([[name, linked, filePath]]);
+    }
+  });
+
+  it("skill-recursive: only the root being a symlink counts; nested links are not walked", async () => {
+    const plainRoot = path.join(tempRoot, "recursive");
+    await writeSkill(
+      path.join(plainRoot, "category", "nested", "SKILL.md"),
+      "nested",
+    );
+    // A symlinked category inside the tree is never followed, so it can
+    // neither surface a skill nor mark one as linked.
+    await writeSkill(
+      path.join(tempRoot, "nested-link-target", "SKILL.md"),
+      "through-nested-link",
+    );
+    await symlink(
+      path.join(tempRoot, "nested-link-target"),
+      path.join(plainRoot, "linked-category"),
+      "dir",
+    );
+    const linkedRoot = path.join(tempRoot, "recursive-linked");
+    await symlink(plainRoot, linkedRoot, "dir");
+
+    for (const [rootPath, linked] of [
+      [plainRoot, false],
+      [linkedRoot, true],
+    ] as const) {
+      expect(
+        await discoverRoot({
+          ...USER_SKILL_ROOT,
+          shape: "skill-recursive",
+          rootPath,
+        }),
+      ).toEqual([
+        // Reported under the root as declared, not under its realpath.
+        [
+          "nested",
+          linked,
+          path.join(rootPath, "category", "nested", "SKILL.md"),
+        ],
+      ]);
+    }
+  });
+
+  it("skill: the root, the skill entry, or its SKILL.md being a symlink", async () => {
+    const rootPath = path.join(tempRoot, "skills");
+    await writeSkill(path.join(rootPath, "plain", "SKILL.md"), "plain");
+    await writeSkill(
+      path.join(tempRoot, "entry-target", "SKILL.md"),
+      "entry-linked",
+    );
+    await symlink(
+      path.join(tempRoot, "entry-target"),
+      path.join(rootPath, "entry-linked"),
+      "dir",
+    );
+    await mkdir(path.join(rootPath, "file-linked"), { recursive: true });
+    await symlink(
+      await writeSkillTarget("file-linked"),
+      path.join(rootPath, "file-linked", "SKILL.md"),
+    );
+    const linkedRoot = path.join(tempRoot, "skills-linked");
+    await symlink(rootPath, linkedRoot, "dir");
+
+    expect(
+      await discoverRoot({ ...USER_SKILL_ROOT, shape: "skill", rootPath }),
+    ).toEqual([
+      ["entry-linked", true, path.join(rootPath, "entry-linked", "SKILL.md")],
+      ["file-linked", true, path.join(rootPath, "file-linked", "SKILL.md")],
+      ["plain", false, path.join(rootPath, "plain", "SKILL.md")],
+    ]);
+    expect(
+      (
+        await discoverRoot({
+          ...USER_SKILL_ROOT,
+          shape: "skill",
+          rootPath: linkedRoot,
+        })
+      ).map(([name, linked]) => [name, linked]),
+    ).toEqual([
+      ["entry-linked", true],
+      ["file-linked", true],
+      ["plain", true],
+    ]);
   });
 });
 

@@ -27,6 +27,11 @@ export const availableModelSchema = z.object({
 });
 export type AvailableModel = z.infer<typeof availableModelSchema>;
 
+export const providerModelCatalogScopeSchema = z.enum(["host", "workspace"]);
+export type ProviderModelCatalogScope = z.infer<
+  typeof providerModelCatalogScopeSchema
+>;
+
 const providerCapabilitiesSchema = z.object({
   supportsThreadArchive: z.boolean(),
   supportsThreadRename: z.boolean(),
@@ -40,6 +45,14 @@ const providerCapabilitiesSchema = z.object({
    */
   supportsSessionRewind: z.boolean(),
   permissionModes: z.array(permissionModeSchema).min(1),
+  /**
+   * How far one `model/list` answer travels: `"host"` when the bridge answers
+   * from account or agent state and ignores the workspace path, so bb probes
+   * once per machine; `"workspace"` when project configuration can change the
+   * answer. Declared by the provider's plugin — core never infers it from an
+   * id.
+   */
+  modelCatalogScope: providerModelCatalogScopeSchema,
 });
 export type ProviderCapabilities = z.infer<typeof providerCapabilitiesSchema>;
 
@@ -122,9 +135,6 @@ export const providerExtensionKindInfoSchema = z.object({
   item: z.boolean(),
   state: z.boolean(),
 });
-export type ProviderExtensionKindInfo = z.infer<
-  typeof providerExtensionKindInfoSchema
->;
 
 export const providerExtensionKindsSchema = z.record(
   extensionKindSchema,
@@ -136,25 +146,44 @@ export type ProviderExtensionKinds = z.infer<
 
 export const providerInfoSchema = z.object({
   id: z.string(),
+  /**
+   * The plugin that registered the provider (`bb.providers.register`). The
+   * owner of the provider's extension-kind namespace, and the bundle the
+   * app loads on the first thread of this provider.
+   */
+  pluginId: z.string().min(1),
   displayName: z.string(),
   /**
    * Declared grouping key shared by related providers (the ACP agents).
    * Absent when the provider declared none. Grouping only.
    */
   family: z.string().min(1).optional(),
+  /**
+   * The declared icon, projected by form. A plugin-relative asset path
+   * (`icon: "./icons/agent.svg"`) is served by the provider-logo route and
+   * arrives here as `logoUrl`; a named host glyph (`icon: "Zap"`) has no
+   * bytes to serve and arrives as `icon.glyph`, the same vocabulary an
+   * item presentation's `icon` uses. A declaration names at most one form,
+   * so at most one of the two is set; `icon` is absent when the declaration
+   * named a path or nothing. Clients draw a vendored brand mark first, then
+   * `logoUrl`, then `icon.glyph`, then the display name's initial.
+   */
+  icon: z.object({ glyph: z.string().min(1) }).optional(),
   logoUrl: z.string().min(1).nullable(),
-  /** Sessionless maintenance methods declared by the provider plugin. */
-  experimental_providerHealth: z.boolean(),
-  experimental_providerUsage: z.boolean(),
-  experimental_providerInstallation: z.boolean(),
+  /** Sessionless maintenance requests the provider's bridge implements. */
+  maintenance: z.object({
+    health: z.boolean(),
+    usage: z.boolean(),
+    installation: z.boolean(),
+  }),
   capabilities: providerCapabilitiesSchema,
   composerActions: z.array(providerComposerActionSchema),
   available: z.boolean(),
   // -------------------------------------------------------------------------
   // Target-state projection (docs/provider-plugin-api.md §1). Optional and
   // unfilled until WS2a projects them from the plugin declaration; absence
-  // means "the provider declared none", never a default. The `experimental_*`
-  // and `capabilities.supports*` fields above stay until WS2a stabilizes the
+  // means "the provider declared none", never a default. The
+  // `capabilities.supports*` fields above stay until WS2a stabilizes the
   // surface as one unit.
   // -------------------------------------------------------------------------
   strings: providerStringsSchema.optional(),
@@ -180,7 +209,15 @@ export type ProviderInfo = z.infer<typeof providerInfoSchema>;
  * - `rateLimited`: the provider throttled the request; the runtime schedules
  *   a retry.
  *
- * No consumer yet: WS4 (runtime cleanup) acts on these.
+ * Consumed by `sendCommand` in packages/agent-runtime/src/runtime.ts, which
+ * reads the hint off the bridge's rejection and acts on it (unarchive and
+ * retry, typed `auth_required` / `rate_limited` errors, bridge restart,
+ * rate-limit retry); `steerTurn` there claims `staleTurn`. The hints the
+ * runtime cannot fully act on itself (`authRequired`, `restartRecommended`,
+ * and a `rateLimited` that is terminal or ends the retry ladder), plus every
+ * hint raised as a notification, are also forwarded to the daemon through
+ * `onProviderRecovery`, which is where the health re-check after
+ * `authRequired` happens.
  */
 export const providerRecoveryKindValues = [
   "sessionArchived",

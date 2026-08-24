@@ -3,7 +3,7 @@ import { memo } from "react";
 import { Pressable, View } from "react-native";
 import { getThreadDisplayTitle } from "@/data/threads";
 import { useTheme } from "@/theme";
-import { Icon, Text, cn } from "@/ui";
+import { Icon, LONG_PRESS_DELAY_MS, Text, cn } from "@/ui";
 import {
   getCollapsedActivityIndicatorState,
   type SidebarEmptyRow,
@@ -113,7 +113,7 @@ export const SidebarThreadRowView = memo(function SidebarThreadRowView({
       accessibilityHint={subtitleText(subtitle)}
       onPress={() => onPress(row)}
       onLongPress={() => onLongPress(row)}
-      delayLongPress={350}
+      delayLongPress={LONG_PRESS_DELAY_MS}
       className="flex-row items-center gap-1 active:bg-state-hover"
       style={{
         minHeight: ROW_MIN_HEIGHT,
@@ -219,7 +219,7 @@ export const SidebarHeaderRowView = memo(function SidebarHeaderRowView({
       accessibilityState={{ expanded: !row.collapsed }}
       onPress={() => onToggleCollapsed(row)}
       onLongPress={() => onLongPress(row)}
-      delayLongPress={350}
+      delayLongPress={LONG_PRESS_DELAY_MS}
       className="flex-row items-center gap-1 active:bg-state-hover"
       style={{
         minHeight: HEADER_MIN_HEIGHT,

@@ -23,6 +23,9 @@ import {
   isInsideWorkSummary,
   isPastWorkRow,
   leadingIconForWorkRow,
+  leadingIconTintForWorkRow,
+  leadingPluginIconUrl,
+  resolvePluginIconUrl,
   toolArgEntries,
   workflowBodyKind,
   workflowPhaseStripState,
@@ -56,7 +59,6 @@ function toolRow(
     output: "",
     completedAt: 2_000,
     approvalStatus: null,
-    activityIntents: [],
     ...overrides,
   };
 }
@@ -152,20 +154,20 @@ describe("leadingIconForWorkRow", () => {
     ).toBe("FileText");
     expect(
       leadingIconForWorkRow(
-        toolRow("t", {
+        commandRow("c", "rg foo", {
           activityIntents: [
-            { type: "search", command: "rg", query: "foo", path: null },
+            { type: "search", command: "rg foo", query: "foo", path: null },
           ],
         }),
       ),
     ).toBe("Search");
     expect(
       leadingIconForWorkRow(
-        toolRow("t", {
+        commandRow("c", "cat /x/skills/deploy/SKILL.md", {
           activityIntents: [
             {
               type: "read",
-              command: "Read",
+              command: "cat /x/skills/deploy/SKILL.md",
               name: "SKILL.md",
               path: "/x/skills/deploy/SKILL.md",
             },
@@ -173,6 +175,7 @@ describe("leadingIconForWorkRow", () => {
         }),
       ),
     ).toBe("Zap");
+    expect(leadingIconForWorkRow(toolRow("t"))).toBe("Terminal");
     expect(leadingIconForWorkRow(workflowRow())).toBe("ListTodo");
     expect(leadingIconForWorkRow(workflowRow({ taskType: "local_bash" }))).toBe(
       "Terminal",
@@ -181,6 +184,202 @@ describe("leadingIconForWorkRow", () => {
       leadingIconForWorkRow(workflowRow({ taskType: "local_subagent" })),
     ).toBe("UserRoundPlus");
     expect(leadingIconForWorkRow(approvalRow({}))).toBe("Lock");
+  });
+});
+
+describe("presentation-driven glyph and tint", () => {
+  const presentation = {
+    label: { pending: "Stamping receipt", completed: "Stamped receipt" },
+    icon: { glyph: "Check" },
+    tint: { light: "#1d4ed8", dark: "#93c5fd" },
+  };
+
+  it("prefers the bridge's glyph when the host knows it, else the per-kind glyph", () => {
+    expect(leadingIconForWorkRow(toolRow("t", { presentation }))).toBe("Check");
+    expect(
+      leadingIconForWorkRow(
+        toolRow("t", {
+          presentation: { ...presentation, icon: { glyph: "NotAGlyph" } },
+        }),
+      ),
+    ).toBe("Terminal");
+    // A skill read keeps its Zap even with a presentation glyph.
+    expect(
+      leadingIconForWorkRow(
+        commandRow("c", "cat /x/skills/deploy/SKILL.md", {
+          presentation,
+          activityIntents: [
+            {
+              type: "read",
+              command: "cat /x/skills/deploy/SKILL.md",
+              name: "SKILL.md",
+              path: "/x/skills/deploy/SKILL.md",
+            },
+          ],
+        }),
+      ),
+    ).toBe("Zap");
+  });
+
+  it("resolves a parsed namespaced glyph for the approval banner: present, absent, and prototype-shaped names", () => {
+    const icons = {
+      receipt: "/api/v1/plugins/echo-provider/assets/icons/receipt.svg?h=abc",
+    };
+    const plugins = [{ id: "echo-provider", icons }];
+    const glyph = { pluginId: "echo-provider", name: "receipt" };
+    expect(resolvePluginIconUrl(glyph, plugins)).toBe(icons.receipt);
+    // Uninstalled, not loaded yet, another plugin, or the name undeclared:
+    // null, so the banner draws the host glyph or Terminal with no fetch.
+    expect(resolvePluginIconUrl(glyph, [])).toBeNull();
+    expect(resolvePluginIconUrl(glyph, undefined)).toBeNull();
+    expect(
+      resolvePluginIconUrl(glyph, [{ id: "other-plugin", icons }]),
+    ).toBeNull();
+    expect(
+      resolvePluginIconUrl(
+        { pluginId: "echo-provider", name: "stamp" },
+        plugins,
+      ),
+    ).toBeNull();
+    // The wire `icons` record is a plain object: a declared-name-shaped
+    // glyph that is an Object.prototype key must not resolve to a function.
+    for (const name of ["constructor", "toString", "__proto__"]) {
+      expect(
+        resolvePluginIconUrl({ pluginId: "echo-provider", name }, plugins),
+      ).toBeNull();
+    }
+  });
+
+  it("resolves a plugin-declared icon against the installed plugins, else falls back to the per-kind glyph", () => {
+    const namespaced = {
+      ...presentation,
+      icon: { glyph: "echo-provider/receipt" },
+    };
+    const plugins = [
+      {
+        id: "echo-provider",
+        icons: {
+          receipt:
+            "/api/v1/plugins/echo-provider/assets/icons/receipt.svg?h=abc",
+        },
+      },
+    ];
+    const row = toolRow("t", { presentation: namespaced });
+    expect(leadingPluginIconUrl(row, plugins)).toBe(
+      "/api/v1/plugins/echo-provider/assets/icons/receipt.svg?h=abc",
+    );
+    // The namespaced glyph is not a host glyph, so the per-kind glyph is
+    // what draws while the SVG loads and when it cannot be resolved.
+    expect(leadingIconForWorkRow(row)).toBe("Terminal");
+    // Renamed, undeclared, other plugin, uninstalled, or not loaded yet.
+    expect(
+      leadingPluginIconUrl(row, [{ id: "echo-provider", icons: {} }]),
+    ).toBeNull();
+    expect(
+      leadingPluginIconUrl(row, [{ id: "other-plugin", icons: plugins[0]!.icons }]),
+    ).toBeNull();
+    expect(leadingPluginIconUrl(row, [])).toBeNull();
+    expect(leadingPluginIconUrl(row, undefined)).toBeNull();
+    // A legal declared name that is also an Object.prototype key must not
+    // resolve to the prototype's function when the plugin did not declare it.
+    expect(
+      leadingPluginIconUrl(
+        toolRow("t", {
+          presentation: { ...namespaced, icon: { glyph: "echo-provider/constructor" } },
+        }),
+        plugins,
+      ),
+    ).toBeNull();
+    // A host glyph never resolves to a URL.
+    expect(leadingPluginIconUrl(toolRow("t", { presentation }), plugins)).toBeNull();
+    // A skill read keeps its Zap over a declared icon, as on the web.
+    expect(
+      leadingPluginIconUrl(
+        commandRow("c", "cat /x/skills/deploy/SKILL.md", {
+          presentation: namespaced,
+          activityIntents: [
+            {
+              type: "read",
+              command: "cat /x/skills/deploy/SKILL.md",
+              name: "SKILL.md",
+              path: "/x/skills/deploy/SKILL.md",
+            },
+          ],
+        }),
+        plugins,
+      ),
+    ).toBeNull();
+  });
+
+  it("picks the tint for the theme mode and refuses non-colour values", () => {
+    const row = toolRow("t", { presentation });
+    expect(leadingIconTintForWorkRow(row, "light")).toBe("#1d4ed8");
+    expect(leadingIconTintForWorkRow(row, "dark")).toBe("#93c5fd");
+    expect(leadingIconTintForWorkRow(toolRow("t"), "light")).toBeUndefined();
+    expect(
+      leadingIconTintForWorkRow(
+        toolRow("t", {
+          presentation: {
+            ...presentation,
+            tint: { light: "url(evil)", dark: "#fff" },
+          },
+        }),
+        "light",
+      ),
+    ).toBeUndefined();
+    expect(leadingIconTintForWorkRow(approvalRow({}), "light")).toBeUndefined();
+  });
+
+  it("refuses a colour the native parser cannot paint, per side", () => {
+    // The domain grammar accepts every CSS colour function because the web
+    // paints them through CSS; React Native's parser does not know
+    // `oklch()`, `lab()`, `color()` or a percentage alpha, and a value it
+    // rejects paints the glyph black. Each side falls back on its own.
+    const row = toolRow("t", {
+      presentation: {
+        ...presentation,
+        tint: { light: "oklch(0.6 0.15 250)", dark: "#fff" },
+      },
+    });
+    expect(leadingIconTintForWorkRow(row, "light")).toBeUndefined();
+    expect(leadingIconTintForWorkRow(row, "dark")).toBe("#fff");
+    for (const unpaintable of [
+      "lab(50% 20 -30)",
+      "color(display-p3 1 0 0)",
+      "rgb(0 0 0 / 50%)",
+      "hsl(220 80% 50% / 0.5)",
+    ]) {
+      expect(
+        leadingIconTintForWorkRow(
+          toolRow("t", {
+            presentation: {
+              ...presentation,
+              tint: { light: unpaintable, dark: unpaintable },
+            },
+          }),
+          "light",
+        ),
+        unpaintable,
+      ).toBeUndefined();
+    }
+    // The forms the parser does paint pass through unchanged.
+    for (const paintable of [
+      "rgb(29 78 216 / 0.5)",
+      "hsl(220, 80%, 50%)",
+      "rebeccapurple",
+    ]) {
+      expect(
+        leadingIconTintForWorkRow(
+          toolRow("t", {
+            presentation: {
+              ...presentation,
+              tint: { light: paintable, dark: paintable },
+            },
+          }),
+          "dark",
+        ),
+      ).toBe(paintable);
+    }
   });
 });
 

@@ -1,4 +1,7 @@
-import type { TimelineActivityIntent } from "@bb/server-contract";
+import type {
+  TimelineActivityIntent,
+  TimelineRowPresentation,
+} from "@bb/server-contract";
 import {
   assertNever,
   type ThreadTimelineViewRow,
@@ -88,12 +91,36 @@ function timelineRowBaseSignature(row: ThreadTimelineViewRow): string {
   ]);
 }
 
+/**
+ * The bridge presentation is persisted per item and only changes between an
+ * item's open and its close (a close's presentation wins), so the fields a
+ * title or icon reads from are enough to break memo equality.
+ */
+function presentationSignature(
+  presentation: TimelineRowPresentation | undefined,
+): string | null {
+  if (!presentation) return null;
+  return joinSignatureParts([
+    presentation.label.pending,
+    presentation.label.completed,
+    presentation.icon.glyph,
+    presentation.title ?? null,
+    presentation.detail ?? null,
+    presentation.suppress ?? null,
+    presentation.tint?.light ?? null,
+    presentation.tint?.dark ?? null,
+  ]);
+}
+
 function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
   const baseParts: TimelineRowSignaturePart[] = [
     timelineRowBaseSignature(row),
     row.status,
     row.workKind,
     row.inClosedStep,
+    row.workKind === "approval" || row.workKind === "question"
+      ? null
+      : presentationSignature(row.presentation),
   ];
 
   switch (row.workKind) {
@@ -115,7 +142,6 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.toolName,
         row.completedAt,
         row.approvalStatus,
-        activityIntentsSignature(row.activityIntents),
       ]);
     case "file-change":
       return joinSignatureParts([
@@ -151,11 +177,51 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
         row.path,
         row.completedAt,
       ]);
+    case "file-read":
+      return joinSignatureParts([
+        ...baseParts,
+        row.callId,
+        row.path,
+        row.cmd,
+        row.completedAt,
+      ]);
+    case "search":
+      return joinSignatureParts([
+        ...baseParts,
+        row.callId,
+        row.mode,
+        row.query,
+        row.path,
+        row.cmd,
+        row.completedAt,
+      ]);
+    case "plan-steps":
+      return joinSignatureParts([
+        ...baseParts,
+        row.callId,
+        row.explanation,
+        row.completedAt,
+        row.steps
+          .map((step) => joinSignatureParts([step.step, step.status ?? null]))
+          .join("\u001e"),
+      ]);
+    case "extension":
+      return joinSignatureParts([
+        ...baseParts,
+        row.callId,
+        row.extensionKind,
+        row.completedAt,
+        // The payload is opaque plugin JSON; a plugin renderer may read any
+        // of it, so the whole serialized value takes part.
+        JSON.stringify(row.payload),
+      ]);
     case "delegation":
       return joinSignatureParts([
         ...baseParts,
         row.callId,
         row.toolName,
+        row.childRef,
+        row.background,
         row.subagentType,
         row.description,
         row.completedAt,

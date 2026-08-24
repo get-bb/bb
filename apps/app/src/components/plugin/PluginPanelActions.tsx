@@ -17,6 +17,7 @@ import {
 } from "./file-opener-tabs";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { PluginReplacementSlot } from "./PluginReplacementSlot";
+import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { resolveReplacement } from "@/lib/plugin-slot-resolvers";
 
 /**
@@ -393,7 +394,8 @@ function FileOpenerTabContent({
           <opener.component
             path={file.path}
             source={file.source}
-            experimental_Original={BoundOriginal}
+            Original={BoundOriginal}
+            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

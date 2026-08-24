@@ -27,7 +27,7 @@ import {
   seedTurnStarted,
 } from "../helpers/seed.js";
 import { createTestAppHarness, withTestHarness } from "../helpers/test-app.js";
-import { ApiError } from "../../src/errors.js";
+import { AiServiceCallError } from "../../src/services/ai/ai-service-call.js";
 import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
 import { runEnvironmentProvisioningSweep } from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
@@ -65,6 +65,9 @@ vi.mock("@earendil-works/pi-ai/providers/all", () => ({
   builtinModels: () => ({
     complete: piAiMocks.complete,
     getModel: piAiMocks.getModel,
+    // No builtin provider ids: the `test/*` models these tests configure
+    // are neither server-direct nor plugin-served, so they reach getModel.
+    getProviders: () => [],
   }),
 }));
 
@@ -783,11 +786,10 @@ describe("generated managed branch names", () => {
     piAiMocks.getModel.mockReturnValue({ provider: "test" });
     piAiMocks.complete
       .mockRejectedValueOnce(
-        new ApiError(
-          502,
-          "codex_service_unavailable",
+        new AiServiceCallError(
+          "codex",
+          "service_unavailable",
           "Our servers are currently overloaded. Please try again later.",
-          false,
         ),
       )
       .mockImplementationOnce(
@@ -1279,11 +1281,10 @@ describe("generated managed branch names", () => {
     piAiMocks.getModel.mockReturnValue({ provider: "test" });
     piAiMocks.complete
       .mockRejectedValueOnce(
-        new ApiError(
-          502,
-          "codex_service_unavailable",
+        new AiServiceCallError(
+          "codex",
+          "service_unavailable",
           "Our servers are currently overloaded. Please try again later.",
-          false,
         ),
       )
       .mockResolvedValueOnce(

@@ -48,7 +48,6 @@
     "!dist/*.map",
     "host-daemon/dist/bb",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
-    "host-daemon/dist/bb-pi-bridge.mjs",
     "host-daemon/dist/bb-plugin-host-worker.mjs",
     "host-daemon/dist/bb-provider-bridge-worker.mjs",
     "host-daemon/dist/daemon-bundle.mjs",
@@ -67,10 +66,6 @@
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.84.0",
-    "@earendil-works/pi-ai": "0.84.0",
-    "@earendil-works/pi-coding-agent": "0.84.0",
-    "@earendil-works/pi-tui": "0.84.0",
     "@parcel/watcher": "2.5.6",
     "better-sqlite3": "12.10.0",
     "hono": "^4.7.0",

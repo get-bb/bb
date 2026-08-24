@@ -1,0 +1,14 @@
+[
+  {
+    "*": true,
+    "path": "/variants/**/childRef",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows gain `childRef` (the provider-native child id of a grammar v3 delegation item); legacy tool-call delegations carry null. Read-time projection only; the persisted events are unchanged."
+  },
+  {
+    "*": true,
+    "path": "/variants/**/background",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows gain `background` (a grammar v3 delegation that outlives its turn); legacy tool-call delegations carry false. Read-time projection only; the persisted events are unchanged."
+  }
+]

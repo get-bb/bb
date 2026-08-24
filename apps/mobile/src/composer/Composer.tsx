@@ -24,6 +24,7 @@ import {
   ActionSheet,
   Button,
   Icon,
+  LONG_PRESS_DELAY_MS,
   SheetPresenceContext,
   Spinner,
   useOverlayBounds,
@@ -625,7 +626,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                         ? () => submit("steer")
                         : undefined
                     }
-                    delayLongPress={350}
+                    delayLongPress={LONG_PRESS_DELAY_MS}
                     testID={`${testID}-submit`}
                     style={({ pressed }) => ({
                       width: 36,

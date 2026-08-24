@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import { promptTextInput } from "./test/prompt-input.js";
 import { UNSOLICITED_TURN_THREAD_ID_ENV } from "./test/bridges/unsolicited-turn-bridge.js";
 import {
@@ -19,9 +18,9 @@ import {
   waitForThreadTurnCompleted,
   waitForThreadTurnStarted,
   type CreateScriptedEchoLaunchOptions,
+  type LaunchBoundAgentRuntime,
   type ScriptedEchoRequestRecord,
 } from "./test/runtime-test-harness.js";
-import type { AgentRuntime } from "./types.js";
 
 interface CreateContractRuntimeArgs {
   additionalWorkspaceWriteRoots?: readonly string[];
@@ -34,13 +33,13 @@ interface CreateContractRuntimeArgs {
 
 interface ContractRuntime {
   record: ScriptedEchoRequestRecord;
-  runtime: AgentRuntime;
+  runtime: LaunchBoundAgentRuntime;
 }
 
 const missingProviderThreadId = "t-missing";
 const missingProviderThreadIdError =
   /No provider thread id available for t-missing/;
-const acpLaunchSpec: HostDaemonAcpLaunchSpec = {
+const acpLaunchSpec = {
   displayName: "Custom ACP",
   command: "custom-agent",
   args: ["serve"],
@@ -53,7 +52,7 @@ const codexEmptyRolloutRenameError =
   "failed to set thread name: rollout at /tmp/new-rollout.jsonl is empty";
 
 async function registerThreadWithoutProviderThreadId(
-  runtime: AgentRuntime,
+  runtime: LaunchBoundAgentRuntime,
 ): Promise<void> {
   await expect(
     runtime.resumeThread({
@@ -135,13 +134,18 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("passes acp launch specs to the provider for model list, start, and resume", async () => {
+  // A provider's own launch spec is declared bridge options: it reaches the
+  // bridge as `options.providerOptions`, like every other provider's statics.
+  it("passes a provider's declared launch spec on model list, start, and resume", async () => {
     const { record, runtime } = createContractRuntime();
+    const bridgeLaunch = createScriptedEchoLaunch({
+      providerOptions: { acpLaunchSpec },
+    });
 
     try {
-      await runtime.listModels({ providerId: "acp-custom", acpLaunchSpec });
+      await runtime.listModels({ providerId: "acp-custom", bridgeLaunch });
       await runtime.startThread({
-        acpLaunchSpec,
+        bridgeLaunch,
         environmentId: "env-1",
         threadId: "t-start",
         projectId: "p1",
@@ -149,7 +153,7 @@ describe("createAgentRuntime command contracts", () => {
         options: fullRuntimeOptions,
       });
       await runtime.resumeThread({
-        acpLaunchSpec,
+        bridgeLaunch,
         environmentId: "env-1",
         threadId: "t-resume",
         projectId: "p1",
@@ -185,14 +189,6 @@ describe("createAgentRuntime command contracts", () => {
     });
 
     try {
-      await expect(
-        runtime.archiveThread({
-          threadId: "t-archive-bridge",
-          providerId: "graduated",
-          providerThreadId: "provider-explicit",
-        }),
-      ).rejects.toThrow(/no provider bridge launch was supplied/);
-
       await runtime.archiveThread({
         bridgeLaunch,
         threadId: "t-archive-bridge",
@@ -230,27 +226,35 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("uses a new provider process cache entry when the acp launch spec changes", async () => {
+  // Two agents can share one bridge artifact, so the process key must
+  // separate them by their declared options — or the second borrows the
+  // first's agent.
+  it("uses a new provider process cache entry when the declared launch spec changes", async () => {
     const { record, runtime } = createContractRuntime();
 
     try {
       await runtime.listModels({
         providerId: "acp-custom",
-        acpLaunchSpec: {
-          ...acpLaunchSpec,
-          env: { CACHE_MARKER: "first" },
-        },
+        bridgeLaunch: createScriptedEchoLaunch({
+          providerOptions: {
+            acpLaunchSpec: { ...acpLaunchSpec, env: { CACHE_MARKER: "first" } },
+          },
+        }),
       });
       await runtime.listModels({
         providerId: "acp-custom",
-        acpLaunchSpec: {
-          ...acpLaunchSpec,
-          env: { CACHE_MARKER: "second" },
-        },
+        bridgeLaunch: createScriptedEchoLaunch({
+          providerOptions: {
+            acpLaunchSpec: {
+              ...acpLaunchSpec,
+              env: { CACHE_MARKER: "second" },
+            },
+          },
+        }),
       });
 
       const requests = record.read();
-      // Two handshakes: each launch spec got its own bridge process.
+      // Two handshakes: each declared launch spec got its own process.
       expect(
         requests.filter((entry) => entry.method === "initialize"),
       ).toHaveLength(2);
@@ -321,10 +325,8 @@ describe("createAgentRuntime command contracts", () => {
     }
   });
 
-  it("retries a Codex rename while its new rollout file is still empty", async () => {
-    const stderr: string[] = [];
+  it("does not retry a rename: the bridge owns the not-ready-rollout ladder", async () => {
     const { record, runtime } = createContractRuntime({
-      onStderr: (line) => stderr.push(line),
       launch: {
         scripted: {
           failMethods: [
@@ -346,53 +348,15 @@ describe("createAgentRuntime command contracts", () => {
         providerId: "codex",
         options: fullRuntimeOptions,
       });
-      await runtime.renameThread({ threadId: "t1", title: "New Title" });
 
-      const renameRequests = record
-        .read()
-        .filter((entry) => entry.method === "thread/name/set");
-      expect(renameRequests).toHaveLength(2);
-      expect(renameRequests.map((entry) => entry.params?.title)).toEqual([
-        "[bb] New Title",
-        "[bb] New Title",
-      ]);
-      expect(stderr).toContainEqual(
-        expect.stringContaining('retrying rename for thread "t1"'),
-      );
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
-  it("stops retrying a Codex rename once its rollout stays empty", async () => {
-    const { record, runtime } = createContractRuntime({
-      launch: {
-        scripted: {
-          failMethods: [
-            {
-              method: "thread/name/set",
-              message: codexEmptyRolloutRenameError,
-            },
-          ],
-        },
-      },
-    });
-
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-
+      // The codex bridge retries the empty-rollout window itself and answers
+      // the runtime once; a rejection that reaches the runtime is final.
       await expect(
         runtime.renameThread({ threadId: "t1", title: "New Title" }),
       ).rejects.toThrow(/rollout at .+ is empty/i);
       expect(
         record.read().filter((entry) => entry.method === "thread/name/set"),
-      ).toHaveLength(3);
+      ).toHaveLength(1);
     } finally {
       await runtime.shutdown();
     }
@@ -566,9 +530,12 @@ describe("createAgentRuntime command contracts", () => {
     await runtime.shutdown();
   });
 
-  it("accepts Codex duplicate archive and unarchive state errors", async () => {
-    // Archive/unarchive carry no session options, so the failures are
-    // process-level.
+  it("propagates a bridge's archive and unarchive rejections verbatim", async () => {
+    // The runtime once matched Codex's "no rollout found" texts to treat a
+    // duplicate archive or unarchive as success. The codex bridge owns that
+    // idempotency now, so a rejection that reaches the runtime is final and
+    // keeps the bridge's message. Archive/unarchive carry no session
+    // options, so the failures are process-level.
     const { record, runtime } = createContractRuntime({
       env: scriptedEchoProcessEnv({
         failMethods: [
@@ -586,21 +553,30 @@ describe("createAgentRuntime command contracts", () => {
     });
     const bridgeLaunch = createScriptedEchoLaunch();
 
-    await runtime.archiveThread({
-      bridgeLaunch,
-      threadId: "t-archive-idempotency",
-      providerId: "fake",
-      providerThreadId: "provider-explicit",
-    });
-    await runtime.unarchiveThread({
-      bridgeLaunch,
-      threadId: "t-archive-idempotency",
-      providerId: "fake",
-      providerThreadId: "provider-explicit",
-    });
-    expect(record.last("thread/archive")).toBeDefined();
-    expect(record.last("thread/unarchive")).toBeDefined();
-    await runtime.shutdown();
+    try {
+      await expect(
+        runtime.archiveThread({
+          bridgeLaunch,
+          threadId: "t-archive-rejected",
+          providerId: "fake",
+          providerThreadId: "provider-explicit",
+        }),
+      ).rejects.toThrow("no rollout found for thread id provider-explicit");
+      await expect(
+        runtime.unarchiveThread({
+          bridgeLaunch,
+          threadId: "t-archive-rejected",
+          providerId: "fake",
+          providerThreadId: "provider-explicit",
+        }),
+      ).rejects.toThrow(
+        "no archived rollout found for thread id provider-explicit",
+      );
+      expect(record.last("thread/archive")).toBeDefined();
+      expect(record.last("thread/unarchive")).toBeDefined();
+    } finally {
+      await runtime.shutdown();
+    }
   });
 
   function createArchivedSessionRuntime(

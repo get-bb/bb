@@ -10,6 +10,7 @@ import {
 import {
   threadEventScopeSchema,
   type ThreadEventScope,
+  getThreadEventScopeTurnId,
 } from "./thread-event-scope.js";
 import type { ThreadEvent, ThreadEventType } from "./provider-event.js";
 import type { TurnRequestTarget } from "./thread-events.js";
@@ -133,10 +134,10 @@ export function parseStoredThreadEvent(
   // Read-time conversion: a row persisted under a vocabulary that has since
   // moved (codex goals → the plugin's extension state) decodes into its
   // current shape here, so no consumer ever sees the legacy type.
-  const stored = convertLegacyStoredThreadEvent({
-    type: args.type,
-    data: args.data,
-  });
+  const stored = convertLegacyStoredThreadEvent(
+    { type: args.type, data: args.data },
+    { turnId: getThreadEventScopeTurnId(scope) ?? null },
+  );
   const eventData = storedTurnRequestTypeSet.has(stored.type)
     ? parseStoredTurnRequestEventData({ ...args, data: stored.data })
     : stored.data;

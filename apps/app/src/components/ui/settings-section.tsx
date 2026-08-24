@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { forwardRef, type HTMLAttributes, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface SettingsSectionProps {
@@ -62,29 +62,42 @@ export function SettingsRowList({ children }: SettingsRowListProps) {
   return <div className="divide-y divide-border">{children}</div>;
 }
 
-interface SettingsRowProps {
+interface SettingsRowProps extends Omit<
+  HTMLAttributes<HTMLDivElement>,
+  "children"
+> {
   children: ReactNode;
-  /** Extra classes for rows that need positioning, e.g. a stretched row link. */
-  className?: string;
 }
 
-export function SettingsRow({ children, className }: SettingsRowProps) {
-  return (
+export const SettingsRow = forwardRef<HTMLDivElement, SettingsRowProps>(
+  ({ children, className, ...props }, ref) => (
     <div
+      ref={ref}
       className={cn(
         "flex items-center gap-3 py-2.5 text-sm first:pt-0 last:pb-0",
         className,
       )}
+      {...props}
     >
       {children}
     </div>
-  );
-}
+  ),
+);
+SettingsRow.displayName = "SettingsRow";
+
+/**
+ * Where a setting's control sits relative to its label: beside it on wide
+ * viewports (`"inline"`, the row every toggle and picker uses) or below the
+ * label and description at full width (`"below"`, for a multi-line editor
+ * that needs the row's whole width).
+ */
+export type SettingsControlPlacement = "inline" | "below";
 
 interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: ReactNode;
+  controlPlacement?: SettingsControlPlacement;
   children: ReactNode;
 }
 
@@ -100,13 +113,17 @@ export function SettingsWithControl({
   label,
   labelBadge,
   description,
+  controlPlacement = "inline",
   children,
 }: SettingsWithControlProps) {
+  const inline = controlPlacement === "inline";
   return (
     <div
+      data-control-placement={controlPlacement}
       className={cn(
-        "flex flex-col gap-2.5 sm:flex-row sm:justify-between sm:gap-5",
-        description ? "sm:items-start" : "sm:items-center",
+        "flex flex-col gap-2.5",
+        inline && "sm:flex-row sm:justify-between sm:gap-5",
+        inline && (description ? "sm:items-start" : "sm:items-center"),
       )}
     >
       <div className="min-w-0 flex-1">
@@ -120,7 +137,13 @@ export function SettingsWithControl({
           </p>
         ) : null}
       </div>
-      <div className="shrink-0 sm:flex sm:justify-end">{children}</div>
+      <div
+        className={
+          inline ? "shrink-0 sm:flex sm:justify-end" : "w-full min-w-0"
+        }
+      >
+        {children}
+      </div>
     </div>
   );
 }

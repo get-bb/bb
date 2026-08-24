@@ -361,9 +361,9 @@ describe("FollowUpPromptBox", () => {
         stack={<></>}
         pluginComposerHost={{
           scope: { kind: "thread", threadId: "thr_test" },
-          draft,
           textEffectKey: "thread:thr_test",
           getCurrent: () => draft,
+          subscribeDraft: () => () => {},
           setDraft: vi.fn(),
           focus: vi.fn(),
         }}
@@ -430,9 +430,9 @@ describe("FollowUpPromptBox", () => {
         stack={<div data-testid="queued-messages">Queued messages</div>}
         pluginComposerHost={{
           scope: { kind: "thread", threadId: "thr_test" },
-          draft,
           textEffectKey: "thread:thr_test",
           getCurrent: () => draft,
+          subscribeDraft: () => () => {},
           setDraft: vi.fn(),
           focus: vi.fn(),
         }}
@@ -611,9 +611,9 @@ describe("FollowUpPromptBox", () => {
           isPrimaryComposer={isPrimaryComposer}
           pluginComposerHost={{
             scope,
-            draft,
             textEffectKey: "queued:queued_1",
             getCurrent: () => draft,
+            subscribeDraft: () => () => {},
             setDraft: vi.fn(),
             focus: vi.fn(),
           }}

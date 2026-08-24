@@ -129,19 +129,15 @@ export function useBottomAnchoredScroll(): BottomAnchorContextValue | null {
   return useContext(BottomAnchorContext);
 }
 
+// Reading `scrollHeight`/`clientHeight` forces synchronous layout (WebKit
+// especially), so only the cache-refresh paths may call this — never
+// per-scroll-event code. See `refreshMaxScrollOffset` in the component.
 function getMaxScrollOffset(element: HTMLElement) {
   return Math.max(0, element.scrollHeight - element.clientHeight);
 }
 
-function isScrolledNearBottom(element: HTMLElement) {
-  return (
-    getMaxScrollOffset(element) - element.scrollTop <=
-    BOTTOM_ANCHOR_THRESHOLD_PX
-  );
-}
-
-function scrollElementToBottom(element: HTMLElement) {
-  element.scrollTop = getMaxScrollOffset(element);
+function isScrolledNearBottom(maxScrollOffset: number, scrollTop: number) {
+  return maxScrollOffset - scrollTop <= BOTTOM_ANCHOR_THRESHOLD_PX;
 }
 
 function isElementFullyVisibleInScrollArea({
@@ -165,13 +161,6 @@ function getScrollOffsetToRevealElement({
   return Math.max(
     0,
     elementRect.top - scrollAreaRect.top + scrollArea.scrollTop,
-  );
-}
-
-function getRevealScrollOffsetClampedToMax(args: ElementVisibilityArgs) {
-  return Math.min(
-    getMaxScrollOffset(args.scrollArea),
-    getScrollOffsetToRevealElement(args),
   );
 }
 
@@ -315,6 +304,23 @@ export function BottomAnchoredScrollBody({
     trailingTimeout: number | null;
   }>({ lastWriteAt: 0, trailingTimeout: null });
   const userDetachedFromBottomRef = useRef(false);
+  // Cached `scrollHeight - clientHeight` of the scroll area. Reading those two
+  // properties forces synchronous layout in WebKit, which on an unvirtualized
+  // timeline (thousands of DOM nodes) stalls every scroll event. Mirroring
+  // useStickyBottomScroll, per-scroll-event handlers read only `scrollTop`
+  // plus this cache; it is refreshed where layout legitimately changes — the
+  // ResizeObserver (which watches both the scroll port and the content
+  // wrapper, so every size change lands there), the programmatic
+  // scroll/restore paths, which need fresh geometry anyway, and one fresh
+  // verification read on the attach->detach edge (see
+  // syncBottomStateFromScroll for the content-shrink race it covers).
+  const maxScrollOffsetRef = useRef(0);
+  // The cache is only authoritative once the ResizeObserver has delivered:
+  // without deliveries (no ResizeObserver in the environment, or a no-op
+  // polyfill that never fires) nothing keeps it fresh, so reads fall back to
+  // live geometry — the pre-cache behavior — instead of trusting a frozen
+  // value that would classify every position as at-bottom.
+  const resizeObserverHasDeliveredRef = useRef(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const initialScrollRestoreRowId = useMemo(() => {
     if (scrollAnchorThreadId === undefined) return null;
@@ -327,6 +333,22 @@ export function BottomAnchoredScrollBody({
   }, [scrollAnchorThreadId, store]);
 
   const getScrollElement = useCallback(() => scrollAreaRef.current, []);
+
+  const refreshMaxScrollOffset = useCallback((scrollArea: HTMLElement) => {
+    const maxScrollOffset = getMaxScrollOffset(scrollArea);
+    maxScrollOffsetRef.current = maxScrollOffset;
+    return maxScrollOffset;
+  }, []);
+
+  // Hot-path read: the cache once the ResizeObserver has delivered, a live
+  // read before that (and forever, when no observer will ever fire).
+  const readMaxScrollOffset = useCallback(
+    (scrollArea: HTMLElement) =>
+      resizeObserverHasDeliveredRef.current
+        ? maxScrollOffsetRef.current
+        : refreshMaxScrollOffset(scrollArea),
+    [refreshMaxScrollOffset],
+  );
 
   const cancelPendingScrollRestore = useCallback(() => {
     pendingScrollRestoreRef.current = null;
@@ -344,19 +366,25 @@ export function BottomAnchoredScrollBody({
   // once we're pinned again.
   //
   // CSS scroll anchoring (the trailing sentinel) keeps scrollTop pinned at
-  // sub-pixel precision during content growth/shrink. `scrollElementToBottom`
-  // sets `scrollTop = scrollHeight - clientHeight` — both integer-rounded
-  // Web API values — so calling it while we're already within sub-pixel
-  // range yanks scrollTop by ±1px against the browser's fractional value,
-  // producing visible jitter on every frame of a row expand/collapse.
-  // Restore only when anchoring has actually let us drift away from bottom.
+  // sub-pixel precision during content growth/shrink. Setting
+  // `scrollTop = scrollHeight - clientHeight` — both integer-rounded Web API
+  // values — while we're already within sub-pixel range yanks scrollTop by
+  // ±1px against the browser's fractional value, producing visible jitter on
+  // every frame of a row expand/collapse. Restore only when anchoring has
+  // actually let us drift away from bottom.
+  //
+  // This runs after observed size changes, so it deliberately reads fresh
+  // geometry — layout has genuinely changed — and refreshes the cache with it.
   const restoreBottomOnce = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea || !shouldStickToBottomRef.current) return false;
-    if (isScrolledNearBottom(scrollArea)) return false;
-    scrollElementToBottom(scrollArea);
+    const maxScrollOffset = refreshMaxScrollOffset(scrollArea);
+    if (isScrolledNearBottom(maxScrollOffset, scrollArea.scrollTop)) {
+      return false;
+    }
+    scrollArea.scrollTop = maxScrollOffset;
     return true;
-  }, []);
+  }, [refreshMaxScrollOffset]);
 
   const queueBottomRestore = useCallback(() => {
     if (!shouldStickToBottomRef.current) return;
@@ -398,10 +426,10 @@ export function BottomAnchoredScrollBody({
     shouldStickToBottomRef.current = true;
     setIsAtBottom(true);
     if (scrollArea) {
-      scrollElementToBottom(scrollArea);
+      scrollArea.scrollTop = refreshMaxScrollOffset(scrollArea);
     }
     queueBottomRestore();
-  }, [cancelPendingScrollRestore, queueBottomRestore]);
+  }, [cancelPendingScrollRestore, queueBottomRestore, refreshMaxScrollOffset]);
 
   const scrollElementIntoView = useCallback(
     ({ element, options }: ScrollElementIntoViewArgs) => {
@@ -428,12 +456,16 @@ export function BottomAnchoredScrollBody({
         return;
       }
 
-      scrollArea.scrollTop = getRevealScrollOffsetClampedToMax({
-        element,
-        scrollArea,
-      });
+      const maxScrollOffset = refreshMaxScrollOffset(scrollArea);
+      scrollArea.scrollTop = Math.min(
+        maxScrollOffset,
+        getScrollOffsetToRevealElement({ element, scrollArea }),
+      );
 
-      const targetIsAtBottom = isScrolledNearBottom(scrollArea);
+      const targetIsAtBottom = isScrolledNearBottom(
+        maxScrollOffset,
+        scrollArea.scrollTop,
+      );
       shouldStickToBottomRef.current = targetIsAtBottom;
       setIsAtBottom(targetIsAtBottom);
 
@@ -444,7 +476,7 @@ export function BottomAnchoredScrollBody({
 
       cancelQueuedRestore();
     },
-    [cancelQueuedRestore, queueBottomRestore],
+    [cancelQueuedRestore, queueBottomRestore, refreshMaxScrollOffset],
   );
 
   const captureScrollAnchor = useCallback(() => {
@@ -464,6 +496,9 @@ export function BottomAnchoredScrollBody({
     if (delta <= 0) return;
     scrollArea.scrollTop = anchor.scrollTop + delta;
     pendingPrependAnchorRef.current = null;
+    // Content height just changed under us; fold it into the cache now instead
+    // of waiting for the ResizeObserver delivery at the end of the frame.
+    refreshMaxScrollOffset(scrollArea);
   });
 
   const hasRecentUserScrollIntent = useCallback(() => {
@@ -483,7 +518,19 @@ export function BottomAnchoredScrollBody({
       if (scrollAnchorThreadId === undefined) return;
       const scrollArea = scrollAreaOverride ?? scrollAreaRef.current;
       if (!scrollArea) return;
-      const atBottomByGeometry = isScrolledNearBottom(scrollArea);
+      let atBottomByGeometry = isScrolledNearBottom(
+        readMaxScrollOffset(scrollArea),
+        scrollArea.scrollTop,
+      );
+      if (!atBottomByGeometry && shouldStickToBottomRef.current) {
+        // Same content-shrink edge as syncBottomStateFromScroll: while still
+        // attached, verify an off-bottom reading with fresh geometry before
+        // letting it demote the anchor to a mid-timeline row.
+        atBottomByGeometry = isScrolledNearBottom(
+          refreshMaxScrollOffset(scrollArea),
+          scrollArea.scrollTop,
+        );
+      }
       const recentUserIntent = hasRecentUserScrollIntent();
       const anchorAtom =
         threadTimelineScrollAnchorAtomFamily(scrollAnchorThreadId);
@@ -519,7 +566,13 @@ export function BottomAnchoredScrollBody({
         atBottom: false,
       });
     },
-    [hasRecentUserScrollIntent, scrollAnchorThreadId, store],
+    [
+      hasRecentUserScrollIntent,
+      readMaxScrollOffset,
+      refreshMaxScrollOffset,
+      scrollAnchorThreadId,
+      store,
+    ],
   );
 
   const captureScrollAnchorThrottled = useCallback(() => {
@@ -562,13 +615,13 @@ export function BottomAnchoredScrollBody({
         scrollArea,
       });
       const targetScrollTop = Math.min(
-        getMaxScrollOffset(scrollArea),
+        refreshMaxScrollOffset(scrollArea),
         revealOffset + anchor.offsetWithinRow,
       );
       scrollArea.scrollTop = targetScrollTop;
       return targetScrollTop;
     },
-    [cancelQueuedRestore],
+    [cancelQueuedRestore, refreshMaxScrollOffset],
   );
 
   const markUserScrollIntent = useCallback(() => {
@@ -579,13 +632,29 @@ export function BottomAnchoredScrollBody({
   const markWheelScrollIntent = useCallback(
     (event: WheelEvent) => {
       const scrollArea = scrollAreaRef.current;
-      if (event.deltaY > 0 && scrollArea && isScrolledNearBottom(scrollArea)) {
-        userScrollIntentUntilRef.current = 0;
-        return;
+      // Wheel events fire at scroll rate; run on the cached max offset and
+      // spend a fresh verification read only when a still-attached viewport
+      // reads as off-bottom (the content-shrink edge described in
+      // syncBottomStateFromScroll). While detached, wheeling stays cache-only.
+      if (event.deltaY > 0 && scrollArea) {
+        const nearBottom =
+          isScrolledNearBottom(
+            readMaxScrollOffset(scrollArea),
+            scrollArea.scrollTop,
+          ) ||
+          (shouldStickToBottomRef.current &&
+            isScrolledNearBottom(
+              refreshMaxScrollOffset(scrollArea),
+              scrollArea.scrollTop,
+            ));
+        if (nearBottom) {
+          userScrollIntentUntilRef.current = 0;
+          return;
+        }
       }
       markUserScrollIntent();
     },
-    [markUserScrollIntent],
+    [markUserScrollIntent, readMaxScrollOffset, refreshMaxScrollOffset],
   );
 
   const markTouchStartScrollIntent = useCallback(() => {
@@ -617,6 +686,19 @@ export function BottomAnchoredScrollBody({
     [markUserScrollIntent],
   );
 
+  // Resume following the bottom. Shared by the scroll handler (a scroll event
+  // landing near the bottom) and the resize path (a content shrink clamping a
+  // detached viewport onto the bottom).
+  const attachToBottom = useCallback(() => {
+    userDetachedFromBottomRef.current = false;
+    shouldStickToBottomRef.current = true;
+    userScrollIntentUntilRef.current = 0;
+    setIsAtBottom(true);
+    // A deliberate arrival at the bottom during the restore settle window means
+    // the user no longer wants the saved row; stop re-applying it.
+    pendingScrollRestoreRef.current = null;
+  }, []);
+
   const syncBottomStateFromScroll = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
@@ -637,14 +719,34 @@ export function BottomAnchoredScrollBody({
       return;
     }
 
-    if (isScrolledNearBottom(scrollArea)) {
-      userDetachedFromBottomRef.current = false;
-      shouldStickToBottomRef.current = true;
-      userScrollIntentUntilRef.current = 0;
-      setIsAtBottom(true);
-      // A deliberate scroll to the bottom during the restore settle window means
-      // the user no longer wants the saved row; stop re-applying it.
-      pendingScrollRestoreRef.current = null;
+    // Cached max offset: this runs on every scroll event of an unvirtualized
+    // timeline, where a scrollHeight/clientHeight read would force a full
+    // layout pass per event.
+    let nearBottom = isScrolledNearBottom(
+      readMaxScrollOffset(scrollArea),
+      scrollArea.scrollTop,
+    );
+    if (
+      !nearBottom &&
+      shouldStickToBottomRef.current &&
+      hasRecentUserScrollIntent()
+    ) {
+      // Attach -> detach edge. On a content-shrink frame this scroll event
+      // outruns the ResizeObserver refresh: the browser has already clamped
+      // scrollTop to the new, smaller maximum while the cache still holds the
+      // old one, so a still-pinned viewport reads as a user detach — with no
+      // recovery, because the bottom-restore is suppressed once
+      // stick-to-bottom is off (deterministic on iOS, e.g. tap-collapsing a
+      // long tool output while pinned). Spend one fresh read on this edge
+      // only to re-test; steady-state scrolling stays cache-only.
+      nearBottom = isScrolledNearBottom(
+        refreshMaxScrollOffset(scrollArea),
+        scrollArea.scrollTop,
+      );
+    }
+
+    if (nearBottom) {
+      attachToBottom();
       return;
     }
 
@@ -656,7 +758,13 @@ export function BottomAnchoredScrollBody({
     cancelQueuedRestore();
     // The user is scrolling on their own; don't yank them back to the anchor.
     pendingScrollRestoreRef.current = null;
-  }, [cancelQueuedRestore, hasRecentUserScrollIntent]);
+  }, [
+    attachToBottom,
+    cancelQueuedRestore,
+    hasRecentUserScrollIntent,
+    readMaxScrollOffset,
+    refreshMaxScrollOffset,
+  ]);
 
   const handleScroll = useCallback(() => {
     syncBottomStateFromScroll();
@@ -698,11 +806,47 @@ export function BottomAnchoredScrollBody({
   }, [applyScrollRestore, queueBottomRestore]);
 
   const handleScrollAreaResize = useCallback(() => {
+    const scrollArea = scrollAreaRef.current;
+    let shrankOntoBottomWhileDetached = false;
+    if (scrollArea) {
+      // The steady-state cache refresh: the observer watches both the scroll
+      // port and the content wrapper, so every legitimate
+      // scrollHeight/clientHeight change passes through here. The first
+      // delivery is also what makes the cache authoritative for hot-path
+      // reads (see resizeObserverHasDeliveredRef).
+      const previousMaxScrollOffset = maxScrollOffsetRef.current;
+      const cacheWasAuthoritative = resizeObserverHasDeliveredRef.current;
+      const maxScrollOffset = refreshMaxScrollOffset(scrollArea);
+      resizeObserverHasDeliveredRef.current = true;
+      shrankOntoBottomWhileDetached =
+        cacheWasAuthoritative &&
+        !shouldStickToBottomRef.current &&
+        maxScrollOffset < previousMaxScrollOffset &&
+        isScrolledNearBottom(maxScrollOffset, scrollArea.scrollTop);
+    }
     // While a restore is pending, the ResizeObserver is the settle signal; the
     // bottom-restore is suppressed (stick-to-bottom is false) anyway.
     if (advancePendingScrollRestore()) return;
+    if (shrankOntoBottomWhileDetached && scrollArea) {
+      // The detached mirror of the attach->detach edge in
+      // syncBottomStateFromScroll: a content shrink (collapsing a long tool
+      // output near the end) clamped a detached viewport onto the new,
+      // smaller maximum. The browser delivered that clamp's scroll event
+      // before this refresh, so the scroll handler classified it against the
+      // stale, larger cache and left the viewport detached. A live read used
+      // to re-attach on that very scroll event; do the same here, against
+      // fresh geometry, so streaming content keeps following the bottom.
+      attachToBottom();
+      writeScrollAnchor(scrollArea);
+    }
     queueBottomRestore();
-  }, [advancePendingScrollRestore, queueBottomRestore]);
+  }, [
+    advancePendingScrollRestore,
+    attachToBottom,
+    queueBottomRestore,
+    refreshMaxScrollOffset,
+    writeScrollAnchor,
+  ]);
 
   // Begin restoring the saved scroll position on mount, before the listener
   // effect's `queueBottomRestore()` runs (a useEffect, which runs after layout
@@ -752,9 +896,12 @@ export function BottomAnchoredScrollBody({
         window.clearTimeout(captureThrottle.trailingTimeout);
         captureThrottle.trailingTimeout = null;
       }
+      // One-shot unmount flush: the cache may lag the final layout by a frame
+      // and this write decides where the user comes back to, so read fresh.
+      refreshMaxScrollOffset(scrollArea);
       writeScrollAnchor(scrollArea);
     },
-    [writeScrollAnchor],
+    [refreshMaxScrollOffset, writeScrollAnchor],
   );
 
   useLayoutEffect(() => {

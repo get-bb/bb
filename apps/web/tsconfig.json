@@ -8,7 +8,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["@cloudflare/workers-types", "vite/client"],
     "composite": false,
-    "resolveJsonModule": true,
     "declaration": false,
     "declarationMap": false,
     "noUnusedLocals": false,

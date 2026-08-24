@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import type { Host } from "@bb/domain";
@@ -11,12 +11,35 @@ import type {
   UpdateInventory,
   UpdateInventoryMachine,
 } from "@/hooks/useUpdateInventory";
+import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 
 const useUpdateInventoryMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/useUpdateInventory", () => ({
   useUpdateInventory: useUpdateInventoryMock,
+}));
+
+// The marks come from the provider roster: each registered provider's
+// declared logo, served by the host.
+vi.mock("@/lib/sdk", async () => {
+  const { makeProviderInfo: provider } = await import(
+    "@/test/provider-info-fixture"
+  );
+  return {
+    sdk: {
+      providers: {
+        list: vi.fn(async () => [
+          provider({ id: "claude-code", displayName: "Claude Code" }),
+          provider({ id: "codex", displayName: "Codex" }),
+        ]),
+      },
+    },
+  };
+});
+
+vi.mock("@/lib/ws", () => ({
+  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
 afterEach(() => {
@@ -122,12 +145,14 @@ function renderBadge(inventory: Partial<UpdateInventory>) {
     hasAttention: false,
     ...inventory,
   });
+  const { wrapper } = createQueryClientTestHarness();
   return render(
     <MemoryRouter>
       <TooltipProvider>
         <SidebarUpdatesBadge />
       </TooltipProvider>
     </MemoryRouter>,
+    { wrapper },
   );
 }
 
@@ -193,7 +218,7 @@ describe("SidebarUpdatesBadge", () => {
     expect(screen.queryByTestId("sidebar-updates-badge-providers")).toBeNull();
   });
 
-  it("renders one mark per provider in a stable order when the same CLI is stale on several machines", () => {
+  it("renders one mark per provider in a stable order when the same CLI is stale on several machines", async () => {
     renderBadge({
       appUpdateAvailable: true,
       machines: [
@@ -217,7 +242,19 @@ describe("SidebarUpdatesBadge", () => {
     expect(providerChip.getAttribute("aria-label")).toBe(
       "Claude Code and Codex updates available",
     );
-    expect(providerChip.querySelectorAll("svg[viewBox]").length).toBe(3);
+    // One served logo per stale provider, drawn as a currentColor mask once
+    // the roster has loaded; the bb chip keeps its own inline mark.
+    await waitFor(() =>
+      expect(
+        providerChip.querySelectorAll("[data-provider-icon] [data-provider-logo]")
+          .length,
+      ).toBe(2),
+    );
+    expect(
+      [...providerChip.querySelectorAll("[data-provider-icon]")].map((node) =>
+        node.getAttribute("data-provider-icon"),
+      ),
+    ).toEqual(["claude-code", "codex"]);
     expect(screen.getByTestId("sidebar-updates-badge-bb")).toBeTruthy();
   });
 });

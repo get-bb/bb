@@ -6,15 +6,11 @@
  * spawn.
  */
 
-import { DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS } from "@bb/host-daemon-contract";
 import {
   createBridgeProtocolAdapter,
   type BridgeProtocolAdapter,
 } from "./bridge-protocol-adapter.js";
-import {
-  resolveBridgeWorkerProcessArgs,
-  resolveBundledBridgeModulePath,
-} from "./shared/bridge-path.js";
+import { resolveBridgeWorkerProcessArgs } from "./shared/bridge-path.js";
 import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
 
 // ---------------------------------------------------------------------------
@@ -22,64 +18,17 @@ import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
 // ---------------------------------------------------------------------------
 
 /**
- * Where each daemon-bundled bridge's entry lives, both in a packaged daemon
- * (`bridgeBundleDir`) and when running from source. Only Pi is bundled: its
- * agent tree cannot be inlined into a relocatable artifact.
- */
-const DAEMON_BUNDLED_BRIDGE_ENTRIES: Readonly<
-  Record<string, { bundleFileName: string; bridgeRelativePath: string }>
-> = {
-  pi: {
-    bundleFileName: "bb-pi-bridge.mjs",
-    bridgeRelativePath: "pi/bridge/bridge.js",
-  },
-};
-
-// The contract states which ids are daemon-bundled (the server sends
-// `source: {kind: "daemon-bundled", id}` only for those, and accepts their
-// declarations without an artifact); this table states where each of those
-// bridges actually lives. Any drift between the two is a bug.
-for (const bundledBridgeId of DAEMON_BUNDLED_PROVIDER_BRIDGE_IDS) {
-  if (!Object.hasOwn(DAEMON_BUNDLED_BRIDGE_ENTRIES, bundledBridgeId)) {
-    throw new Error(
-      `"${bundledBridgeId}" is declared daemon-bundled but this daemon ships no bridge entry for it.`,
-    );
-  }
-}
-
-function resolveBundledBridgeModule(
-  bundledBridgeId: string,
-  options: CreateBridgeAdapterOptions,
-): string {
-  const entry = DAEMON_BUNDLED_BRIDGE_ENTRIES[bundledBridgeId];
-  if (entry === undefined) {
-    throw new Error(
-      `"${bundledBridgeId}" is not a bridge this daemon bundles. Bundled: ${Object.keys(DAEMON_BUNDLED_BRIDGE_ENTRIES).join(", ")}.`,
-    );
-  }
-  return resolveBundledBridgeModulePath({
-    ...(options.bridgeBundleDir === undefined
-      ? {}
-      : { bridgeBundleDir: options.bridgeBundleDir }),
-    importMetaUrl: import.meta.url,
-    ...entry,
-  });
-}
-
-/**
- * A plugin bridge's provider-scoped statics: the environment-level extra write
- * roots and — for the ACP tier — the launch spec the bridge constructs its
- * agent from. Neither has a core field on the canonical wire, and the write
- * roots are a host-local fact the server cannot supply at all.
+ * A plugin bridge's provider-scoped statics: the provider's own declared
+ * bridge options (an ACP agent's launch spec rides there) plus the
+ * environment-level extra write roots, which are a host-local fact the server
+ * cannot supply at all.
  */
 function buildPluginStaticProviderOptions(
   options: CreateBridgeAdapterOptions,
 ): { staticProviderOptions?: Record<string, unknown> } {
   const additionalWorkspaceWriteRoots = options.additionalWorkspaceWriteRoots;
-  const acpLaunchSpec = options.acpLaunchSpec;
   const staticProviderOptions = {
-    ...options.bridgeLaunch?.providerOptions,
-    ...(acpLaunchSpec !== undefined ? { acpLaunchSpec } : {}),
+    ...options.bridgeLaunch.providerOptions,
     ...(additionalWorkspaceWriteRoots.length > 0
       ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
       : {}),
@@ -94,26 +43,15 @@ function buildPluginStaticProviderOptions(
  * Provider Bridge Protocol.
  *
  * Every provider is graduated, and every bridge-bound command carries the
- * server's `bridgeLaunch`, so there is one construction here and the only
- * branch is which binary to spawn: a hash-verified plugin artifact already
- * cached on this host, or a bridge inside the daemon's own bundle. The runtime
- * no longer infers that from the provider id.
+ * server's `bridgeLaunch`, so there is one construction here and the binary
+ * to spawn is always the plugin's hash-verified artifact, already cached on
+ * this host. The runtime infers nothing from the provider id.
  */
 export function createProviderForId(
   providerId: string,
-  options?: CreateBridgeAdapterOptions,
+  adapterOptions: CreateBridgeAdapterOptions,
 ): BridgeProtocolAdapter {
-  const adapterOptions: CreateBridgeAdapterOptions = options ?? {
-    additionalWorkspaceWriteRoots: [],
-  };
-  const bridgeLaunch = adapterOptions.bridgeLaunch;
-  if (bridgeLaunch === undefined) {
-    // Every bridge-bound command carries a `bridgeLaunch`, and the server
-    // refuses to build one without it.
-    throw new Error(
-      `Unsupported provider "${providerId}": no provider bridge launch was supplied.`,
-    );
-  }
+  const { bridgeLaunch } = adapterOptions;
   return createBridgeProtocolAdapter({
     id: providerId,
     // The provider's real declaration lives server-side; the launch spec
@@ -138,9 +76,7 @@ export function createProviderForId(
             ? {}
             : { bridgeBundleDir: adapterOptions.bridgeBundleDir }),
         }),
-        bridgeLaunch.source.kind === "artifact"
-          ? bridgeLaunch.source.artifactPath
-          : resolveBundledBridgeModule(bridgeLaunch.source.id, adapterOptions),
+        bridgeLaunch.source.artifactPath,
         bridgeLaunch.pluginId,
         bridgeLaunch.dataDir,
       ],

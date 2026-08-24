@@ -1,0 +1,212 @@
+{
+  "providerId": "acp-opencode",
+  "variant": "config-dir",
+  "workspace": {
+    "commands": [
+      {
+        "name": "custom-opencode-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "custom-opencode-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-claude-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-opencode-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-opencode-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "opencode-config-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "opencode-config-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "pkg-claude-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "pkg-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-opencode-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-opencode-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "custom-opencode-skill",
+        "description": "custom-opencode-skill skill",
+        "filePath": "<home>/opencode-custom/skills/custom-opencode-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "cwd-agents-skill",
+        "description": "cwd-agents-skill skill",
+        "filePath": "<root>/ws/packages/app/.agents/skills/cwd-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-claude-skill",
+        "description": "cwd-claude-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/cwd-claude-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-opencode-skill",
+        "description": "cwd-opencode-skill skill",
+        "filePath": "<root>/ws/packages/app/.opencode/skills/cwd-opencode-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-claude-skill",
+        "description": "home-claude-skill skill",
+        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "opencode-config-skill",
+        "description": "opencode-config-skill skill",
+        "filePath": "<root>/xdg/opencode/skills/opencode-config-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "pkg-claude-skill",
+        "description": "pkg-claude-skill skill",
+        "filePath": "<root>/ws/packages/.claude/skills/pkg-claude-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "ws-agents-skill",
+        "description": "ws-agents-skill skill",
+        "filePath": "<root>/ws/.agents/skills/ws-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "ws-opencode-skill",
+        "description": "ws-opencode-skill skill",
+        "filePath": "<root>/ws/.opencode/skills/ws-opencode-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "custom-opencode-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "custom-opencode-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "opencode-config-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "opencode-config-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "custom-opencode-skill",
+        "description": "custom-opencode-skill skill",
+        "filePath": "<home>/opencode-custom/skills/custom-opencode-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-claude-skill",
+        "description": "home-claude-skill skill",
+        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "opencode-config-skill",
+        "description": "opencode-config-skill skill",
+        "filePath": "<root>/xdg/opencode/skills/opencode-config-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  }
+}

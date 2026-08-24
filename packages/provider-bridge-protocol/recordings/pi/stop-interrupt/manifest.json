@@ -3,7 +3,7 @@
   "cell": "stop-interrupt",
   "threadId": "thr_57frtuarnu",
   "scope": "thread",
-  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (rpc)",
   "recordedAt": "2026-08-21",
   "description": "A turn interrupted by thread/stop, then a new turn on the resumed session.",
   "note": "",
@@ -11,7 +11,7 @@
   "lines": {
     "runtime→bridge": 5,
     "bridge→runtime": 19,
-    "provider→bridge": 33,
-    "bridge→provider": 3
+    "provider→bridge": 58,
+    "bridge→provider": 11
   }
 }

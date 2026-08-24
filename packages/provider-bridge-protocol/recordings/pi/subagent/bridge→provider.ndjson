@@ -1,1 +1,6 @@
-{"ts":1787277335070,"run":1787275055276,"seq":1194,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Delegate a task to a subagent if you have a delegation or task tool: read README.md and report its first line. If you have no such tool, say so in one line and then read the file yourself.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787347914508,"run":1787347884248,"seq":505,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347915026,"run":1787347884248,"seq":512,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Delegate a task to a subagent if you have a delegation or task tool: read README.md and report its first line. If you have no such tool, say so in one line and then read the file yourself.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347919057,"run":1787347884248,"seq":584,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1787347920198,"run":1787347884248,"seq":608,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":860,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-5\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":871,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}

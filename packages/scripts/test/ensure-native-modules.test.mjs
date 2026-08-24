@@ -1,4 +1,15 @@
 import { spawnSync } from "node:child_process";
+import {
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   ensureNativeModules,
@@ -10,7 +21,10 @@ const scriptUrl = new URL(
   import.meta.url,
 ).href;
 
-function createBetterSqliteRequire(initialError) {
+function createBetterSqliteRequire(
+  initialError,
+  packageJsonPath = "/tmp/fake-node-modules/better-sqlite3/package.json",
+) {
   const state = {
     constructorError: initialError,
     constructorCalls: 0,
@@ -35,7 +49,7 @@ function createBetterSqliteRequire(initialError) {
 
   requireModule.resolve = (request) => {
     if (request === "better-sqlite3/package.json") {
-      return "/tmp/fake-node-modules/better-sqlite3/package.json";
+      return packageJsonPath;
     }
 
     if (request === "prebuild-install/bin.js") {
@@ -120,6 +134,57 @@ describe("ensure-native-modules", () => {
     );
     expect(execFileSync).toHaveBeenCalledTimes(1);
     expect(fake.state.constructorCalls).toBe(2);
+  });
+
+  it("detaches a hardlinked native binary before prebuilt repair", () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), "bb-native-repair-"));
+    try {
+      const packageJsonPath = join(tempRoot, "better-sqlite3", "package.json");
+      const binaryPath = join(
+        dirname(packageJsonPath),
+        "build",
+        "Release",
+        "better_sqlite3.node",
+      );
+      const otherCheckoutBinaryPath = join(tempRoot, "other-checkout.node");
+      mkdirSync(dirname(binaryPath), { recursive: true });
+      writeFileSync(packageJsonPath, "{}");
+      writeFileSync(otherCheckoutBinaryPath, "abi-137");
+      linkSync(otherCheckoutBinaryPath, binaryPath);
+      expect(statSync(binaryPath).ino).toBe(
+        statSync(otherCheckoutBinaryPath).ino,
+      );
+
+      const abiError = new Error(
+        "The module was compiled against a different NODE_MODULE_VERSION",
+      );
+      const fake = createBetterSqliteRequire(abiError, packageJsonPath);
+      const execFileSync = vi.fn(() => {
+        writeFileSync(binaryPath, "abi-127");
+        fake.clearConstructorError();
+      });
+      const options = createEnsureOptions(fake.requireModule, execFileSync);
+      options.modules = [
+        {
+          name: "better-sqlite3",
+          resolveFrom: "packages/db/package.json",
+          binaryPath: "build/Release/better_sqlite3.node",
+        },
+      ];
+
+      expect(() => ensureNativeModules(options)).not.toThrow();
+
+      expect(readFileSync(binaryPath, "utf8")).toBe("abi-127");
+      expect(readFileSync(otherCheckoutBinaryPath, "utf8")).toBe("abi-137");
+      expect(statSync(binaryPath).ino).not.toBe(
+        statSync(otherCheckoutBinaryPath).ino,
+      );
+      expect(options.log).toHaveBeenCalledWith(
+        "[ensure-native-modules] Detached hardlinked better-sqlite3 binary before repair",
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it("accepts a prebuilt binary that loads after the installer exits non-zero", () => {

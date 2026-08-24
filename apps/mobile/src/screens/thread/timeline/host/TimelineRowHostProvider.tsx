@@ -1,4 +1,5 @@
 import type { PromptMentionResource, ThreadOriginKind } from "@bb/domain";
+import type { InstalledPlugin } from "@bb/server-contract";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
 import {
@@ -10,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { useProfileClient } from "@/app-shell/ProfilesProvider";
+import { usePluginList } from "@/data/plugins";
 import {
   useSenderThreadMetadataById,
   type SenderThreadMetadata,
@@ -42,9 +44,9 @@ const NO_MESSAGE_ACTION_HANDLERS: TimelineMessageActionHandlers = {};
  * Per-timeline services the row renderers reach through context instead of
  * props: the profile's server URL (attachment/image routes), the thread's
  * workspace root (relative image paths), its origin kind (fork seed icon),
- * the sender-thread metadata map, navigation to other threads, the single
- * image lightbox, and the long-press message action sheet. One provider per
- * thread detail screen.
+ * the sender-thread metadata map, the installed-plugin list (declared row
+ * icons), navigation to other threads, the single image lightbox, and the
+ * long-press message action sheet. One provider per thread detail screen.
  */
 interface TimelineRowHostValue {
   threadId: string;
@@ -52,6 +54,16 @@ interface TimelineRowHostValue {
   workspaceRootPath: string | undefined;
   threadOriginKind: ThreadOriginKind | null;
   senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>;
+  /**
+   * The installed-plugin list kept live for the whole timeline (one query
+   * observer and one realtime subscription, not one per mounted row); a
+   * work row's `"<pluginId>/<name>"` glyph resolves against it. Undefined
+   * until the first fetch lands, when every such row draws its per-kind
+   * glyph.
+   */
+  installedPlugins:
+    | readonly Pick<InstalledPlugin, "id" | "icons">[]
+    | undefined;
   /** Thread-mention resolver for markdown pills (title from the caches). */
   resolveThreadMention: (threadId: string) => PromptMentionResource | null;
   openThread: (threadId: string) => void;
@@ -111,6 +123,7 @@ export function TimelineRowHostProvider({
   const { serverUrl } = useProfileClient();
   const router = useRouter();
   const senderThreadMetadataById = useSenderThreadMetadataById();
+  const installedPlugins = usePluginList().data;
   // Local file links route by the thread's roots; the environment id decides
   // whether host-file reads are possible. Read from the cache only: the
   // thread screen owns the fetch, and the dev showcases have no real thread.
@@ -156,6 +169,7 @@ export function TimelineRowHostProvider({
       workspaceRootPath,
       threadOriginKind,
       senderThreadMetadataById,
+      installedPlugins,
       resolveThreadMention: (id) => {
         const title = senderThreadMetadataById.get(id)?.title ?? null;
         return title === null
@@ -170,6 +184,7 @@ export function TimelineRowHostProvider({
       onMarkdownLinkPress: localFileLinks.onMarkdownLinkPress,
     }),
     [
+      installedPlugins,
       localFileLinks.onMarkdownLinkPress,
       localFileLinks.openLocalFileLink,
       openThread,

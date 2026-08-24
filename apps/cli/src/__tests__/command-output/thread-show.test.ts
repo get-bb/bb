@@ -337,7 +337,10 @@ describe("bb thread show command output", () => {
     });
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const pullRequestGet = vi.fn(async () => ({ outcome: "available", pullRequest }));
+    const pullRequestGet = vi.fn(async () => ({
+      outcome: "available",
+      pullRequest,
+    }));
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,
@@ -427,7 +430,10 @@ describe("bb thread show command output", () => {
     const pullRequest = makePullRequest();
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
-    const pullRequestGet = vi.fn(async () => ({ outcome: "available", pullRequest }));
+    const pullRequestGet = vi.fn(async () => ({
+      outcome: "available",
+      pullRequest,
+    }));
     const timelineGet = fixtures.makeEmptyTimelineGetMock();
     stubServerApi({
       "v1.environments.:id.$get": environmentGet,

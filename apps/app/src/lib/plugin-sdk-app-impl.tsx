@@ -6,7 +6,7 @@ import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderMod
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
-import { ExperimentalUrlLink } from "@/components/plugin/ExperimentalUrlLink";
+import { PluginUrlLink } from "@/components/plugin/PluginUrlLink";
 import { ExperimentalFileLink } from "@/components/plugin/ExperimentalFileLink";
 import { MarkdownPreview } from "@/components/ui/markdown-preview";
 import type {
@@ -16,6 +16,7 @@ import type {
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { useThreadTimelineNavigation } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { definePluginApp } from "./plugin-app-definition";
+import { installDeprecatedAliases } from "./plugin-sdk-deprecated-aliases";
 import {
   useBbContext,
   useBbNavigate,
@@ -52,46 +53,52 @@ import { useAppNavigationHost } from "./app-navigation-host";
  * runtime shims in plugin-frontend.ts, so `import { toast } from "sonner"`
  * hits the host toaster without an SDK member.
  */
-export const pluginSdkAppImplementation = {
-  definePluginApp,
-  useBbContext,
-  useBbNavigate,
-  experimental_useAppPanel,
-  experimental_useFixedTabTarget,
-  useComposer,
-  useComposerView,
-  useRealtime,
-  useRealtimeConnectionState,
-  useRpc,
-  useSettings,
-  // The host-owned components in the SDK (plugin design: deliberate
-  // exception to §5.5) — stable product capabilities, not a UI kit.
-  ThreadChat: PluginThreadChat,
-  Markdown: PluginMarkdown,
-  experimental_FileLink: ExperimentalFileLink,
-  experimental_UrlLink: ExperimentalUrlLink,
-  // Experimental (see docs/api_to_audit.md): the create-side counterpart to
-  // ThreadChat.
-  experimental_NewThreadComposer: PluginNewThreadComposer,
-  // Experimental (see docs/api_to_audit.md): bb's compact execution picker
-  // exposed as one controlled, atomic value.
-  experimental_ProviderModelPicker: PluginProviderModelPicker,
-  experimental_PermissionModePicker: PluginPermissionModePicker,
-  // Experimental (see docs/api_to_audit.md): the host-owned code renderers.
-  // Both resolve any active plugin replacement, so first-party surfaces and
-  // plugins share one boundary.
-  experimental_SourceCode: PluginSourceCode,
-  experimental_Diff: PluginDiff,
-  // Experimental (see docs/api_to_audit.md): the sidebar thread-list data
-  // plane, for plugins that replace the list itself.
-  experimental_useSidebarThreads: useSidebarThreads,
-  experimental_useSidebarThreadActions: useSidebarThreadActions,
-  experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
-  experimental_useSidebarThreadSplit: useSidebarThreadSplit,
-  // Experimental (see docs/api_to_audit.md): the provider directory, so no
-  // plugin re-vendors provider names or icons.
-  experimental_useProviders: useProviders,
-} satisfies PluginSdkApp;
+export const pluginSdkAppImplementation = installDeprecatedAliases(
+  {
+    definePluginApp,
+    useBbContext,
+    useBbNavigate,
+    experimental_useAppPanel,
+    experimental_useFixedTabTarget,
+    useComposer,
+    useComposerView,
+    useRealtime,
+    useRealtimeConnectionState,
+    useRpc,
+    useSettings,
+    // The host-owned components in the SDK (plugin design: deliberate
+    // exception to §5.5) — stable product capabilities, not a UI kit.
+    ThreadChat: PluginThreadChat,
+    Markdown: PluginMarkdown,
+    experimental_FileLink: ExperimentalFileLink,
+    UrlLink: PluginUrlLink,
+    // Experimental (see docs/api_to_audit.md): the create-side counterpart to
+    // ThreadChat.
+    experimental_NewThreadComposer: PluginNewThreadComposer,
+    // Experimental (see docs/api_to_audit.md): bb's compact execution picker
+    // exposed as one controlled, atomic value.
+    experimental_ProviderModelPicker: PluginProviderModelPicker,
+    experimental_PermissionModePicker: PluginPermissionModePicker,
+    // Experimental (see docs/api_to_audit.md): the host-owned code renderers.
+    // Both resolve any active plugin replacement, so first-party surfaces and
+    // plugins share one boundary.
+    experimental_SourceCode: PluginSourceCode,
+    experimental_Diff: PluginDiff,
+    // Experimental (see docs/api_to_audit.md): the sidebar thread-list data
+    // plane, for plugins that replace the list itself.
+    experimental_useSidebarThreads: useSidebarThreads,
+    experimental_useSidebarThreadActions: useSidebarThreadActions,
+    experimental_useSidebarThreadPullRequest: useSidebarThreadPullRequest,
+    experimental_useSidebarThreadSplit: useSidebarThreadSplit,
+    // Experimental (see docs/api_to_audit.md): the provider directory, so no
+    // plugin re-vendors provider names or icons.
+    experimental_useProviders: useProviders,
+  } satisfies PluginSdkApp,
+  // The old spelling the facade exported before 0.4.16; bundles built
+  // against it destructure this name. Removal target: bb 0.42 (see
+  // plugin-sdk-deprecated-aliases.ts).
+  { experimental_UrlLink: "UrlLink" },
+);
 
 /**
  * The public chat-message markdown renderer: the host's MarkdownPreview with

@@ -36,7 +36,7 @@ import {
 } from "@bb/domain";
 import {
   timelineCommandWorkRowSchema,
-  type TimelineRow,
+  type TimelineCommandWorkRow,
 } from "@bb/server-contract";
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { z } from "zod";
@@ -70,29 +70,31 @@ type DeclarationPath =
 const REGISTRATION_FIELDS = {
   id: "id",
   displayName: "displayName",
-  family: "experimental_family",
+  family: "family",
   icon: "icon",
-  strings: "experimental_strings",
+  strings: "strings",
   signInHint: "strings.signInHint",
   expiredHint: "strings.expiredHint",
   installUrl: "strings.installUrl",
   brandPrefix: "strings.brandPrefix",
   planModeCopy: "strings.planModeCopy",
   iconTint: "strings.iconTint",
+  capabilities: "capabilities",
   permissionModes: "capabilities.permissionModes",
-  reasoningLevels: "experimental_reasoningLevels",
-  serviceTiers: "experimental_serviceTiers",
+  reasoningLevels: "reasoningLevels",
+  serviceTiers: "serviceTiers",
   fork: "capabilities.fork",
   supportsNativeUserQuestion: "capabilities.supportsNativeUserQuestion",
   supportsManualCompaction: "capabilities.supportsManualCompaction",
-  maintenance: {
-    gap: "WS-final (stabilization): folds capabilities.experimental_provider{Health,Usage,Installation} into one object when the experimental_ prefixes drop — declaring the same three facts twice during the transition would violate one-fact-one-place",
-  },
+  supportsThreadArchive: "capabilities.supportsThreadArchive",
+  supportsThreadRename: "capabilities.supportsThreadRename",
+  supportsServiceTier: "capabilities.supportsServiceTier",
+  maintenance: "maintenance",
   composerActions: "composerActions",
-  extensionKinds: "experimental_extensionKinds",
-  models: "experimental_models",
-  env: "experimental_env",
-  deriveProviderOptions: "experimental_deriveProviderOptions",
+  extensionKinds: "extensionKinds",
+  models: "models",
+  env: "env",
+  deriveProviderOptions: "deriveProviderOptions",
 } as const satisfies Record<string, DeclarationPath | Gap>;
 
 type DeclarationGapKeys = {
@@ -111,8 +113,11 @@ const HANDSHAKE_FIELDS = {
   sessionRestore: "sessionRestore",
   threadArchive: "threadArchive",
   threadRename: "threadRename",
+  threadGoalClear: "threadGoalClear",
+  fork: "fork",
   approvalEnforcedBy: "approvalEnforcedBy",
   steerMode: "steerMode",
+  skills: "skills",
 } as const satisfies Record<
   string,
   keyof z.infer<typeof bridgeCapabilitiesSchema> | Gap
@@ -167,10 +172,9 @@ const PRESENTATION_FIELDS = {
   pending: "label.pending",
   completed: "label.completed",
   icon: "icon",
+  // A host glyph or a plugin-declared icon by its namespaced glyph
+  // ("<pluginId>/<name>"); the one persisted field serves both.
   glyph: "icon.glyph",
-  asset: {
-    gap: "WS3 (projection + renderers): a durable, content-addressed asset icon; persisted presentation is glyph-only until then (item-presentation.ts)",
-  },
   title: "title",
   detail: "detail",
   suppress: "suppress",
@@ -180,24 +184,23 @@ const PRESENTATION_FIELDS = {
 } as const satisfies Record<string, PresentationPath | Gap>;
 
 /**
- * §5 `TimelineRow { kind, payload, presentation }` → the `TimelineRow` union
- * (type level) and a representative row schema (runtime).
+ * §5 `TimelineRow { kind, payload, presentation }` → a representative work
+ * row (type level and its schema at runtime).
  */
 const TIMELINE_ROW_FIELDS = {
   kind: "kind",
-  payload: { gap: "WS3 (projection): one folded row shape for every item" },
-  presentation: { gap: "WS3 (projection): presentation rides every row" },
-} as const satisfies Record<string, keyof TimelineRow | Gap>;
-type TimelineRowGapsNotLanded = Extract<
-  "payload" | "presentation",
-  keyof TimelineRow
->;
+  // Rows keep typed per-kind fields (a `file-read` row has `path`, a
+  // `search` row `mode`/`query`); only the `extension` row carries an opaque
+  // `payload`. The fold of every kind's body into one field is not landed.
+  payload: {
+    gap: "WS3 (projection): one folded `payload` for every kind; rows stay typed per kind and only extension rows carry `payload`",
+  },
+  presentation: "presentation",
+} as const satisfies Record<string, keyof TimelineCommandWorkRow | Gap>;
+type TimelineRowGapsNotLanded = Extract<"payload", keyof TimelineCommandWorkRow>;
 
-/** §5 `app.slots.timelineRenderer` → `PluginAppSlots`. */
-type TimelineRendererSlotNotLanded = Extract<
-  "timelineRenderer" | "experimental_timelineRenderer",
-  keyof PluginAppSlots
->;
+/** §5 `app.slots.timelineRenderer` → `PluginAppSlots` (experimental_ until audited). */
+type TimelineRendererSlot = PluginAppSlots["experimental_timelineRenderer"];
 
 // ---------------------------------------------------------------------------
 // Doc parsing
@@ -304,14 +307,14 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
     const headings = blocks.map((block) => block.split("\n")[0]?.trim());
     expect(headings).toEqual([
       "bb.providers.register({",
-      "export const providerBridge = defineProviderBridge({ handleLine, start, onClose })",
+      "export const experimental_providerBridge = experimental_defineProviderBridge({",
       "{",
       "{ model, serviceTier?, reasoningLevel, promptMode?, instructions,",
       "// provider/recovery",
       "{ childRef: string, label: string, status: ItemStatus,",
       "presentation: {",
       "TimelineRow { kind: string, payload, presentation }",
-      "app.slots.timelineRenderer({ kind, component })",
+      "app.slots.experimental_timelineRenderer({ kind, component })",
     ]);
   });
 
@@ -326,7 +329,7 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
   });
 
   it("§2 the bridge entry point is exported from @get-bb/plugin-sdk/provider-bridge", () => {
-    // The doc names it `defineProviderBridge`; the export carries the
+    // The doc names it with the prefix it still carries; the export keeps the
     // experimental_ prefix until the stabilization audit drops it.
     expect(typeof providerBridgeSdk.experimental_defineProviderBridge).toBe(
       "function",
@@ -415,11 +418,11 @@ describe("guardrail G10: docs/provider-plugin-api.md matches the contract", () =
     expectLandedPresent(PRESENTATION_FIELDS, presentationKeys, "presentation");
   });
 
-  it("§5 projection and renderer slot are still gaps owned by WS3", () => {
+  it("§5 presentation rides every work row and the renderer slot exists (WS3)", () => {
     const rowKeys = schemaKeys(timelineCommandWorkRowSchema);
     expectLandedPresent(TIMELINE_ROW_FIELDS, rowKeys, "TimelineRow");
     expectGapsNotLanded(TIMELINE_ROW_FIELDS, rowKeys, "TimelineRow");
     expectTypeOf<TimelineRowGapsNotLanded>().toBeNever();
-    expectTypeOf<TimelineRendererSlotNotLanded>().toBeNever();
+    expectTypeOf<TimelineRendererSlot>().toBeFunction();
   });
 });

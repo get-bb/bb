@@ -221,6 +221,22 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "timeline-renderers",
+        title: "Timeline row renderers",
+        summary:
+          "Renders the expanded body of timeline rows the plugin owns, while bb keeps the row header and lifecycle controls. With this, a plugin can:",
+        bullets: [
+          "Register a renderer for one of its extension item kinds, or for tool rows emitted by a provider it owns",
+          "Receive the normalized row, payload, presentation, thread context, and bb's built-in body as `Original`",
+          "Fall back to bb's declarative body automatically when the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginTimelineRendererRegistration",
+          "PluginTimelineRendererProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "content-scripts",
         title: "App-wide scripts",
         summary:

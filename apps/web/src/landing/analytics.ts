@@ -57,7 +57,8 @@ export function initAnalytics(): void {
   // Lazy import keeps posthog-js out of the landing page's main bundle.
   void import("posthog-js").then(({ default: posthog }) => {
     posthog.init(key, {
-      api_host: import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      api_host:
+        import.meta.env.VITE_POSTHOG_HOST ?? "https://us.i.posthog.com",
       autocapture: false,
       capture_pageview: true,
       capture_pageleave: true,

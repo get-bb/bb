@@ -7,14 +7,14 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -34,9 +34,9 @@ import type {
 } from "@bb/server-contract";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
-import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import {
   type PluginComposerHost,
+  useComposerHostDraftNotifier,
   usePublishPluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import {
@@ -98,6 +98,7 @@ import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { appToast } from "@/components/ui/app-toast";
 import {
+  emptyPromptDraftState,
   promptDraftToInput,
   type PromptDraftAttachment,
   type PromptDraftState,
@@ -328,6 +329,12 @@ function isInlineQueuedMessageEditSession(
   );
 }
 
+/**
+ * Fallback for host draft reads that outlive their editor session: the ref no
+ * longer holds the session, so there is no live draft to return.
+ */
+const ENDED_EDIT_SESSION_DRAFT = emptyPromptDraftState();
+
 /** Plugin composer-host accessors for the queued-message inline editor (see below). */
 function readInlineQueuedMessageDraft(
   editStateRef: RefObject<InlineQueuedMessageEditState | null>,
@@ -529,6 +536,14 @@ export function ThreadDetailPromptArea({
     inlineEditingQueuedMessageRef,
     commitInlineQueuedMessage,
   });
+  // subscribeDraft sources for the two state-backed editor hosts. The bottom
+  // composer's host subscribes through the prompt-draft store directly.
+  const subscribeInlineQueuedDraft = useComposerHostDraftNotifier(
+    inlineEditingQueuedMessage?.draft ?? null,
+  );
+  const subscribeSentMessageEditDraft = useComposerHostDraftNotifier(
+    sentMessageEdit?.draft ?? null,
+  );
   const updateSentMessageEditDraft = sentMessageEdit?.updateDraft;
   const addSentMessageEditAttachment = useCallback(
     (attachment: PromptDraftAttachment) => {
@@ -676,6 +691,7 @@ export function ThreadDetailPromptArea({
     supportsPermissionModeSelection,
     supportsServiceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     executionInputSources,
   } = useThreadCreationOptions({
     enabled: thread.archivedAt === null,
@@ -791,13 +807,16 @@ export function ThreadDetailPromptArea({
   const compactPromptPlaceholder = isStopRequested
     ? "Stopping thread..."
     : getCompactFollowUpPromptPlaceholder(runtimeDisplayStatus);
-  const normalPluginComposerHostBinding = useMemo<
-    Omit<PluginComposerHost, "draft">
-  >(
+  // Identity-stable across keystrokes: the published host is held by large
+  // non-draft subscribers (the secondary-content body, the hosted-panel
+  // registry), so a per-keystroke host identity re-rendered the whole thread
+  // shell per character. The live draft flows through getCurrent/subscribeDraft.
+  const normalPluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "thread", threadId: thread.id },
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
+      subscribeDraft: promptDraft.subscribe,
       setDraft: promptDraft.setDraft,
       focus: focusBottomPluginComposer,
     }),
@@ -806,15 +825,9 @@ export function ThreadDetailPromptArea({
       promptDraft.getCurrent,
       promptDraft.setDraft,
       promptDraft.storageKey,
+      promptDraft.subscribe,
       thread.id,
     ],
-  );
-  const normalPluginComposerHost = useMemo<PluginComposerHost>(
-    () => ({
-      ...normalPluginComposerHostBinding,
-      draft: currentPromptDraft,
-    }),
-    [currentPromptDraft, normalPluginComposerHostBinding],
   );
   const hasPromptDraftInput = currentPromptDraftInput.length > 0;
   const canSubmitModifierShortcut = canSubmitFollowUpShortcut({
@@ -1155,6 +1168,7 @@ export function ThreadDetailPromptArea({
         onChange: setServiceTier,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
+        fastLabel: serviceTierFastLabel,
       },
       reasoning: {
         value: reasoningLevel,
@@ -1187,6 +1201,7 @@ export function ThreadDetailPromptArea({
       setReasoningLevel,
       setServiceTier,
       supportsServiceTier,
+      serviceTierFastLabel,
     ],
   );
   const compactExecutionConfig = useMemo(() => {
@@ -1291,43 +1306,63 @@ export function ThreadDetailPromptArea({
     ),
     [clearThreadGoal.isPending, goal, handleClearGoal, isGoalExpanded],
   );
+  // Stable for the whole edit session (keyed on the session scalars, not the
+  // per-keystroke edit state), so publishing it does not churn the pane scope
+  // while the user types in the inline editor.
+  const inlineEditSessionId = inlineEditingQueuedMessage?.editSessionId ?? null;
+  const inlineEditQueuedMessageId =
+    inlineEditingQueuedMessage?.queuedMessageId ?? null;
+  const queuedMessagePluginComposerHost =
+    useMemo<PluginComposerHost | null>(() => {
+      if (inlineEditSessionId === null || inlineEditQueuedMessageId === null) {
+        return null;
+      }
+      const session = {
+        editSessionId: inlineEditSessionId,
+        queuedMessageId: inlineEditQueuedMessageId,
+      };
+      return {
+        scope: {
+          kind: "queued-message",
+          threadId: thread.id,
+          queuedMessageId: inlineEditQueuedMessageId,
+        },
+        textEffectKey: `queued-message:${thread.id}:${inlineEditQueuedMessageId}:${inlineEditSessionId}`,
+        getCurrent: () =>
+          readInlineQueuedMessageDraft(
+            inlineEditingQueuedMessageRef,
+            session,
+            ENDED_EDIT_SESSION_DRAFT,
+          ),
+        subscribeDraft: subscribeInlineQueuedDraft,
+        setDraft: (draft) =>
+          writeInlineQueuedMessageDraft(
+            inlineEditingQueuedMessageRef,
+            session,
+            draft,
+            commitInlineQueuedMessage,
+          ),
+        focus: focusInlinePluginComposer,
+      };
+    }, [
+      commitInlineQueuedMessage,
+      focusInlinePluginComposer,
+      inlineEditQueuedMessageId,
+      inlineEditSessionId,
+      inlineEditingQueuedMessageRef,
+      subscribeInlineQueuedDraft,
+      thread.id,
+    ]);
   const queuedMessageEditor = useMemo(() => {
     if (
       !inlineEditingQueuedMessage ||
       !inlineExecutionConfig ||
-      !inlinePermissionConfig
+      !inlinePermissionConfig ||
+      !queuedMessagePluginComposerHost
     ) {
       return null;
     }
-    const {
-      draft: initialDraft,
-      editSessionId,
-      queuedMessageId,
-    } = inlineEditingQueuedMessage;
-    const session = { editSessionId, queuedMessageId };
-    const pluginComposerHost: PluginComposerHost = {
-      scope: {
-        kind: "queued-message",
-        threadId: thread.id,
-        queuedMessageId,
-      },
-      textEffectKey: `queued-message:${thread.id}:${queuedMessageId}:${editSessionId}`,
-      draft: activeComposerDraft,
-      getCurrent: () =>
-        readInlineQueuedMessageDraft(
-          inlineEditingQueuedMessageRef,
-          session,
-          initialDraft,
-        ),
-      setDraft: (draft) =>
-        writeInlineQueuedMessageDraft(
-          inlineEditingQueuedMessageRef,
-          session,
-          draft,
-          commitInlineQueuedMessage,
-        ),
-      focus: focusInlinePluginComposer,
-    };
+    const { editSessionId, queuedMessageId } = inlineEditingQueuedMessage;
     const inlineEditor: QueuedMessageInlineEditor = {
       queuedMessageId,
       queuedMessageIndex: inlineEditingQueuedMessage.queuedMessageIndex,
@@ -1354,7 +1389,7 @@ export function ThreadDetailPromptArea({
         onChangeMessage: handleComposerMessageChange,
         onSelectHistoryEntry: setActiveComposerDraft,
         permission: inlinePermissionConfig,
-        pluginComposerHost,
+        pluginComposerHost: queuedMessagePluginComposerHost,
         promptActions,
         promptPlaceholder,
         submit: handleInlineComposerSubmit,
@@ -1365,21 +1400,18 @@ export function ThreadDetailPromptArea({
         collapseResetKey: `queued-message:${queuedMessageId}`,
       }),
     };
-    return { inlineEditor, pluginComposerHost };
+    return inlineEditor;
   }, [
     activeComposerDraft,
     activeComposerDraftInput.length,
-    commitInlineQueuedMessage,
     compactPromptPlaceholder,
     dismissInlineQueuedMessageEditor,
     editFocusNonce,
-    focusInlinePluginComposer,
     handleAttachInlineFiles,
     handleComposerMessageChange,
     handleInlineComposerSubmit,
     inlineAttachmentError,
     inlineEditingQueuedMessage,
-    inlineEditingQueuedMessageRef,
     inlineExecutionConfig,
     inlinePermissionConfig,
     isAttachingInlineFiles,
@@ -1388,17 +1420,56 @@ export function ThreadDetailPromptArea({
     promptActions,
     promptPlaceholder,
     queuedComposerTextEffects,
+    queuedMessagePluginComposerHost,
     removeActiveComposerAttachment,
     runtimeDisplayStatus,
     setActiveComposerDraft,
     thread.id,
     typeaheadConfig,
   ]);
+  // The published value only ever flips between two stable host identities
+  // (per thread / per edit session): keystrokes do not notify the pane scope.
+  // While the inline editor cannot render (execution/permission configs still
+  // loading), the bottom composer is what is on screen, so its host stays
+  // published.
   usePublishPluginComposerHost(
-    queuedMessageEditor?.pluginComposerHost ?? normalPluginComposerHost,
+    queuedMessageEditor
+      ? queuedMessagePluginComposerHost
+      : normalPluginComposerHost,
   );
+  // Stable per edit operation like every other host: the composer config
+  // around it legitimately rebuilds per keystroke, but context consumers of
+  // the host must not re-render on identity churn.
+  const sentMessageEditOperationId = sentMessageEdit?.operationId ?? null;
+  const sentMessagePluginComposerHost =
+    useMemo<PluginComposerHost | null>(() => {
+      if (sentMessageEditOperationId === null) {
+        return null;
+      }
+      const operationId = sentMessageEditOperationId;
+      return {
+        scope: { kind: "thread", threadId: thread.id },
+        textEffectKey: `sent-message:${thread.id}:${operationId}`,
+        getCurrent: () =>
+          readSentMessageEditDraft(
+            sentMessageEditRef,
+            operationId,
+            ENDED_EDIT_SESSION_DRAFT,
+          ),
+        subscribeDraft: subscribeSentMessageEditDraft,
+        setDraft: (nextDraft) =>
+          writeSentMessageEditDraft(sentMessageEditRef, operationId, nextDraft),
+        focus: focusInlinePluginComposer,
+      };
+    }, [
+      focusInlinePluginComposer,
+      sentMessageEditOperationId,
+      sentMessageEditRef,
+      subscribeSentMessageEditDraft,
+      thread.id,
+    ]);
   const sentMessageEditorPortal = useMemo(() => {
-    if (!sentMessageEdit?.hostElement) {
+    if (!sentMessageEdit?.hostElement || !sentMessagePluginComposerHost) {
       return null;
     }
     const { draft, hostElement, operationId } = sentMessageEdit;
@@ -1444,20 +1515,7 @@ export function ThreadDetailPromptArea({
           onSelectHistoryEntry: (nextDraft) =>
             sentMessageEdit.updateDraft(() => nextDraft),
           permission: bottomPermissionConfig,
-          pluginComposerHost: {
-            scope: { kind: "thread", threadId: thread.id },
-            textEffectKey: `sent-message:${thread.id}:${operationId}`,
-            draft,
-            getCurrent: () =>
-              readSentMessageEditDraft(sentMessageEditRef, operationId, draft),
-            setDraft: (nextDraft) =>
-              writeSentMessageEditDraft(
-                sentMessageEditRef,
-                operationId,
-                nextDraft,
-              ),
-            focus: focusInlinePluginComposer,
-          },
+          pluginComposerHost: sentMessagePluginComposerHost,
           promptActions,
           promptPlaceholder: "Edit message",
           submit: handleSentMessageEditSubmit,
@@ -1477,7 +1535,6 @@ export function ThreadDetailPromptArea({
     canSubmitSentMessageEdit,
     compactExecutionConfig,
     editFocusNonce,
-    focusInlinePluginComposer,
     handleAttachSentMessageFiles,
     handleSentMessageEditSubmit,
     isAttachingSentMessageFiles,
@@ -1487,33 +1544,21 @@ export function ThreadDetailPromptArea({
     sentMessageAttachmentError,
     sentMessageComposerTextEffects,
     sentMessageEdit,
-    sentMessageEditRef,
     sentMessageEditSubmitMode,
+    sentMessagePluginComposerHost,
     thread.id,
     typeaheadConfig,
   ]);
   const childPendingInteractionBanners = useMemo(
     () =>
-      childPendingInteractions.map((item) =>
-        isPluginPendingInteraction(item.interaction) ? (
-          <div key={item.interaction.id}>
-            <NavLink
-              to={item.href}
-              className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
-            >
-              From child thread: {item.childTitle}
-            </NavLink>
-            <PluginPendingInteractionComposer interaction={item.interaction} />
-          </div>
-        ) : (
-          <ThreadPendingInteractionBanner
-            key={item.interaction.id}
-            interaction={item.interaction}
-            sourceThread={{ href: item.href, title: item.childTitle }}
-            threadId={item.childThreadId}
-          />
-        ),
-      ),
+      childPendingInteractions.map((item) => (
+        <ThreadPendingInteractionBanner
+          key={item.interaction.id}
+          interaction={item.interaction}
+          sourceThread={{ href: item.href, title: item.childTitle }}
+          threadId={item.childThreadId}
+        />
+      )),
     [childPendingInteractions],
   );
   const promptStack = useMemo(
@@ -1588,7 +1633,7 @@ export function ThreadDetailPromptArea({
           <QueuedMessagesList
             queuedMessages={queuedMessages}
             resolveMentionLink={resolveMentionLink}
-            inlineEditor={queuedMessageEditor?.inlineEditor}
+            inlineEditor={queuedMessageEditor ?? undefined}
             sendDisabled={
               !(submitMode.kind === "ready" || submitMode.kind === "queue") ||
               runtimeDisplayStatus === "provisioning" ||
@@ -1663,11 +1708,7 @@ export function ThreadDetailPromptArea({
     if (!activePendingInteraction || shouldHideComposer) {
       return null;
     }
-    return isPluginPendingInteraction(activePendingInteraction) ? (
-      <PluginPendingInteractionComposer
-        interaction={activePendingInteraction}
-      />
-    ) : (
+    return (
       <ThreadPendingInteractionBanner
         interaction={activePendingInteraction}
         threadId={thread.id}

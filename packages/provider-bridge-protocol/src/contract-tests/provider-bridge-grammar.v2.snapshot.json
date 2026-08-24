@@ -287,7 +287,8 @@
     "fork": "default",
     "approvalEnforcedBy": "default",
     "grammarVersions": "default",
-    "steerMode": "default"
+    "steerMode": "default",
+    "skills": "default"
   },
   "recoveryNotification": {
     "threadId": "optional",

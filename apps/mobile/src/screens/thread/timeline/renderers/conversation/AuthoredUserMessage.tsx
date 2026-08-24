@@ -4,7 +4,7 @@ import { useCallback, useMemo } from "react";
 import { Pressable, View, type LayoutChangeEvent } from "react-native";
 import { Markdown, type MarkdownThreadMentions } from "@/markdown";
 import { nativeTypography } from "@/theme";
-import { Text } from "@/ui";
+import { LONG_PRESS_DELAY_MS, Text } from "@/ui";
 import {
   TIMELINE_ROW_HORIZONTAL_PADDING_PX,
   timelineRowLeftPadding,
@@ -135,7 +135,7 @@ export function AuthoredUserMessage({
         // reachable by screen readers and UI tests; long-press is a shortcut.
         accessible={false}
         onLongPress={onLongPress}
-        delayLongPress={350}
+        delayLongPress={LONG_PRESS_DELAY_MS}
         className="max-w-full rounded-xl border border-border-seam bg-surface-recessed px-3.5 py-2.5 active:opacity-90"
         testID="conversation-user-bubble"
       >
@@ -162,6 +162,7 @@ export function AuthoredUserMessage({
                   serverHostname={serverHostname}
                   onThreadPress={onThreadPress}
                   onFilePress={onFilePress}
+                  onLongPress={onLongPress}
                 />
               ) : (
                 <Text className="text-sm">{body.content}</Text>

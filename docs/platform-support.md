@@ -8,8 +8,10 @@
 - Linux persistent host
 - Windows via Ubuntu on WSL2
 
-Minimum runtime: Node.js 22.19. The floor comes from Pi, whose packages declare
-`engines.node: ">=22.19.0"`.
+Minimum runtime: Node.js 22.19. Pi no longer sets the floor: its bridge is a
+plugin and the `pi` CLI is user-installed like `codex` and `claude`, so the
+22.19 line is bb's own tested floor (`install-machine.sh` and the root
+`engines` gate on it). A lower floor needs its own test pass before it moves.
 
 Tested npm package runtimes:
 

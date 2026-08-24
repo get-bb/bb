@@ -7,6 +7,7 @@ import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { Logger } from "@bb/logger";
 import { RESERVED_AGENT_TOOL_NAMES } from "../../../src/services/plugins/plugin-api.js";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -69,6 +70,7 @@ describe("bb.agents.registerTool", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-tools-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -324,61 +326,6 @@ describe("bb.agents.registerTool", () => {
     ]);
   });
 
-  it("keeps experimental status labels with a registered native tool", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-readable-tool",
-      serverSource: "export default function plugin() {}",
-    });
-    await service.installPath(rootDir);
-    const api = service.getApi("readable-tool")!;
-
-    api.agents.registerTool({
-      name: "repository_context",
-      description: "Read project context",
-      experimental_statusLabels: {
-        pending: "Reading project overview",
-        completed: "Read project overview",
-      },
-      parameters: { type: "object" },
-      execute: () => "ok",
-    });
-
-    expect(service.findAgentTool("repository_context")?.record).toMatchObject({
-      experimentalStatusLabels: {
-        pending: "Reading project overview",
-        completed: "Read project overview",
-      },
-    });
-
-    expect(() =>
-      (api.agents.registerTool as (tool: unknown) => void)({
-        name: "invalid_status_labels",
-        description: "Invalid status-labels fixture",
-        experimental_statusLabels: { pending: "", completed: "Done" },
-        parameters: { type: "object" },
-        execute: () => "unused",
-      }),
-    ).toThrow(
-      'tool "invalid_status_labels" experimental_statusLabels must provide non-empty pending and completed strings',
-    );
-
-    // Labels ride on two stored events per call and share one timeline row.
-    expect(() =>
-      (api.agents.registerTool as (tool: unknown) => void)({
-        name: "oversized_status_labels",
-        description: "Oversized status-labels fixture",
-        experimental_statusLabels: {
-          pending: "x".repeat(81),
-          completed: "Done",
-        },
-        parameters: { type: "object" },
-        execute: () => "unused",
-      }),
-    ).toThrow(
-      'tool "oversized_status_labels" experimental_statusLabels exceed the 80-character limit',
-    );
-  });
-
   it("resolves one full row presentation per injected tool", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-presented-tools",
@@ -390,19 +337,12 @@ describe("bb.agents.registerTool", () => {
     api.agents.registerTool({
       name: "declared_tool",
       description: "Declares its whole presentation",
-      experimental_presentation: {
+      presentation: {
         label: { pending: "Looking things up", completed: "Looked things up" },
         icon: { glyph: "Search" },
         suppress: true,
         tint: { light: "#123456", dark: "#654321" },
       },
-      parameters: { type: "object" },
-      execute: () => "ok",
-    });
-    api.agents.registerTool({
-      name: "labelled_tool",
-      description: "Only status labels",
-      experimental_statusLabels: { pending: "Working", completed: "Worked" },
       parameters: { type: "object" },
       execute: () => "ok",
     });
@@ -422,12 +362,8 @@ describe("bb.agents.registerTool", () => {
       suppress: true,
       tint: { light: "#123456", dark: "#654321" },
     });
-    // Status labels still supply the label; the plugin's branding glyph
-    // ("Zap" in the fixture manifest) is the icon when the tool names none.
-    expect(byName.get("labelled_tool")?.presentation).toEqual({
-      label: { pending: "Working", completed: "Worked" },
-      icon: { glyph: "Zap" },
-    });
+    // The plugin's branding glyph ("Zap" in the fixture manifest) is the icon
+    // when the tool names none.
     expect(byName.get("plain_tool")?.presentation).toEqual({
       label: { pending: "Running plain_tool", completed: "Ran plain_tool" },
       icon: { glyph: "Zap" },
@@ -437,12 +373,12 @@ describe("bb.agents.registerTool", () => {
       (api.agents.registerTool as (tool: unknown) => void)({
         name: "bad_presentation",
         description: "Invalid presentation fixture",
-        experimental_presentation: { icon: { glyph: "" } },
+        presentation: { icon: { glyph: "" } },
         parameters: { type: "object" },
         execute: () => "unused",
       }),
     ).toThrow(
-      'tool "bad_presentation" experimental_presentation.icon must be { glyph: string }',
+      'tool "bad_presentation" presentation.icon must be { glyph: string }',
     );
   });
 
@@ -519,6 +455,122 @@ describe("bb.agents.registerTool", () => {
     expect(entry.statusDetail).toContain("built-in bb tool");
     expect(service.listAgentTools()).toEqual([]);
   });
+
+  it.each([
+    [
+      "experimental_presentation",
+      'registerTool: "experimental_presentation" was renamed to "presentation" in SDK 0.4.16 (tool "stale_tool")',
+    ],
+    [
+      "experimental_statusLabels",
+      'registerTool: "experimental_statusLabels" was folded into "presentation" (labels) in SDK 0.4.16 (tool "stale_tool")',
+    ],
+    [
+      "experimental_rowStyle",
+      'registerTool: tool "stale_tool" contains unknown field: experimental_rowStyle',
+    ],
+  ])(
+    "rejects a registration built against SDK <0.4.16 that carries %s",
+    async (field, message) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-stale-field",
+        serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.registerTool({
+            name: "stale_tool",
+            description: "Built against an SDK before 0.4.16",
+            ${field}: { pending: "Working", completed: "Worked" },
+            parameters: { type: "object" },
+            execute: () => "ok",
+          });
+        }
+      `,
+      });
+      const entry = await service.installPath(rootDir);
+      expect(entry.status).toBe("error");
+      expect(entry.statusDetail).toContain(message);
+      expect(service.listAgentTools()).toEqual([]);
+    },
+  );
+});
+
+describe("bb.agents.experimental_registerProvider (removed in SDK 0.4.16)", () => {
+  let db: DbConnection;
+  let workDir: string;
+  let service: PluginService;
+
+  beforeEach(async () => {
+    db = createConnection(":memory:");
+    migrate(db);
+    workDir = await mkdtemp(join(tmpdir(), "bb-plugin-old-provider-test-"));
+    service = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "0.9.0",
+      loadTimeoutMs: 2000,
+    });
+  });
+
+  afterEach(async () => {
+    await service.stop();
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  const REMOVED_MESSAGE =
+    "bb.agents.experimental_registerProvider was removed in SDK 0.4.16; use bb.providers.register";
+
+  it("fails the plugin at factory time with a message naming the replacement", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-old-provider",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.experimental_registerProvider({ id: "old" });
+        }
+      `,
+    });
+    const entry = await service.installPath(rootDir);
+    expect(entry.status).toBe("error");
+    expect(entry.statusDetail).toContain(REMOVED_MESSAGE);
+  });
+
+  it("is invisible to enumeration and leaves the rest of bb.agents working", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-current-agents",
+      serverSource: "export default function plugin() {}",
+    });
+    await service.installPath(rootDir);
+    const api = service.getApi("current-agents")!;
+
+    expect(() => Reflect.get(api.agents, "experimental_registerProvider")).toThrow(
+      REMOVED_MESSAGE,
+    );
+    expect(Object.keys(api.agents).sort()).toEqual([
+      "configure",
+      "contributeInstructions",
+      "registerTool",
+    ]);
+    expect(Object.keys({ ...api.agents })).not.toContain(
+      "experimental_registerProvider",
+    );
+
+    api.agents.registerTool({
+      name: "still_works",
+      description: "Registered after the removed getter was touched",
+      parameters: { type: "object" },
+      execute: () => "ok",
+    });
+    expect(service.listAgentTools().map((tool) => tool.tool.name)).toEqual([
+      "still_works",
+    ]);
+  });
 });
 
 describe("bb.agents.contributeInstructions", () => {
@@ -531,6 +583,7 @@ describe("bb.agents.contributeInstructions", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-instr-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {

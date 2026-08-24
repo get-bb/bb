@@ -579,6 +579,7 @@ export function NewThreadComposer({
     selectedProviderId,
     serviceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
     setPermissionMode,
     setProviderModelReasoning,
@@ -1014,21 +1015,23 @@ export function NewThreadComposer({
     () => promptDraftToInput(currentDraft),
     [currentDraft],
   );
+  // Identity-stable across keystrokes; the live draft flows through
+  // getCurrent/subscribeDraft (see PluginComposerHost).
   const pluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "new-thread", projectId },
-      draft: currentDraft,
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
+      subscribeDraft: promptDraft.subscribe,
       setDraft: promptDraft.setDraft,
       focus: () => promptBoxRef.current?.focusEnd(),
     }),
     [
-      currentDraft,
       projectId,
       promptDraft.getCurrent,
       promptDraft.setDraft,
       promptDraft.storageKey,
+      promptDraft.subscribe,
     ],
   );
 
@@ -1375,6 +1378,7 @@ export function NewThreadComposer({
               onChange: handleServiceTierChange,
               supported: supportsServiceTier,
               supportByProvider: serviceTierSupportByProvider,
+              fastLabel: serviceTierFastLabel,
             },
             reasoning: {
               value: reasoningLevel,
@@ -1451,6 +1455,7 @@ export function NewThreadComposer({
       textEffects,
       worktreeDisabledReason,
       worktreeUnavailable,
+      serviceTierFastLabel,
     ],
   );
 

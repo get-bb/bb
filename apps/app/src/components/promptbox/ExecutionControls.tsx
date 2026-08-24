@@ -38,6 +38,8 @@ interface ExecutionServiceTierConfig {
   onChange: (value: ServiceTier | undefined) => void;
   supported: boolean;
   supportByProvider?: Record<string, boolean>;
+  /** The provider's declared label for its fast tier; "Fast" when absent. */
+  fastLabel?: string;
 }
 
 interface ExecutionReasoningConfig {
@@ -123,6 +125,7 @@ export const ExecutionControls = memo(function ExecutionControls({
           }
           showFastModeToggle={serviceTier?.supported ?? false}
           serviceTierSupportByProvider={serviceTier?.supportByProvider}
+          fastModeLabel={serviceTier?.fastLabel}
           muted
           disabled={disabled}
           footerAction={footerAction}

@@ -13,7 +13,7 @@ type PreviewState =
 function PdfFileOpener({
   path,
   source,
-  experimental_Original: Original,
+  Original,
 }: PluginFileOpenerProps) {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [state, setState] = useState<PreviewState>({ status: "loading" });

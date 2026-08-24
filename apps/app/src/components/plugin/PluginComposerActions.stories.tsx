@@ -20,6 +20,7 @@ import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar";
 import { PromptBoxInternal } from "@/components/promptbox/PromptBoxInternal";
 import {
   PluginComposerHostProvider,
+  useComposerHostDraftNotifier,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import {
@@ -237,16 +238,17 @@ function ThreadRowStatusFixture() {
   });
   const draftRef = useRef(draft);
   draftRef.current = draft;
+  const subscribeDraft = useComposerHostDraftNotifier(draft);
   const composerHost = useMemo<PluginComposerHost>(
     () => ({
       scope: { kind: "thread", threadId: THREAD_ID },
-      draft,
       textEffectKey: `story:${THREAD_ID}`,
       getCurrent: () => draftRef.current,
+      subscribeDraft,
       setDraft,
       focus: () => {},
     }),
-    [draft],
+    [subscribeDraft],
   );
   const [queryClient] = useState(
     () =>

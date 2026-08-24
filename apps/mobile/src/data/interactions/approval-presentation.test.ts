@@ -45,6 +45,7 @@ describe("describeApprovalSubject", () => {
       title: "Plan ready",
       command: null,
       plan: "# Plan\n- step",
+      toolUse: null,
       detailLines: ["/repo/plan.md"],
     });
     expect(labelForApprovalDecision("allow_once", "plan")).toBe("Approve plan");
@@ -52,6 +53,41 @@ describe("describeApprovalSubject", () => {
     expect(labelForApprovalDecision("allow_for_session", "command")).toBe(
       "Allow for session",
     );
+  });
+});
+
+describe("describeApprovalSubject tool_use", () => {
+  it("describes the ask from the presentation alone, with no detail lines", () => {
+    const interaction = approvalInteraction({
+      id: "i3",
+      subject: {
+        kind: "tool_use",
+        itemId: "call_1",
+        tool: "mcp__github__create_issue",
+        presentation: {
+          label: { pending: "Creating issue", completed: "Created issue" },
+          icon: { glyph: "Globe" },
+          title: "get-bb/bb#42",
+          tint: { light: "#123456", dark: "#abcdef" },
+        },
+      },
+    });
+    if (interaction.payload.kind !== "approval") throw new Error("unexpected");
+    const subject = describeApprovalSubject(interaction, interaction.payload);
+    expect(subject).toEqual({
+      title: "Creating issue",
+      command: null,
+      plan: null,
+      toolUse: {
+        title: "Creating issue",
+        tool: "mcp__github__create_issue",
+        headline: "get-bb/bb#42",
+        detail: null,
+        icon: { glyph: "Globe" },
+        tint: { light: "#123456", dark: "#abcdef" },
+      },
+      detailLines: [],
+    });
   });
 });
 

@@ -140,11 +140,24 @@ async function copyBuiltinPlugin(args: {
       await readFile(path.join(args.sourceRoot, "package.json"), "utf8"),
     ),
   );
+  // Every asset the manifest declares ships; an asset a plugin names only in
+  // code (a `./icons/x.svg` provider icon in a declaration) is invisible
+  // here and is absent from the packaged plugin. A builtin provider declares
+  // its logos under `bb.branding.experimental_icons` and references them by
+  // namespaced glyph for that reason.
   const logo = packageJson.bb.branding.logo;
   const compactIcon = isPluginOwnedIconPath(packageJson.bb.branding.icon ?? "")
     ? packageJson.bb.branding.icon
     : undefined;
-  for (const asset of [compactIcon, logo?.light, logo?.dark]) {
+  const declaredIcons = Object.values(
+    packageJson.bb.branding.experimental_icons ?? {},
+  );
+  for (const asset of [
+    compactIcon,
+    logo?.light,
+    logo?.dark,
+    ...declaredIcons,
+  ]) {
     if (asset === undefined) continue;
     const sourcePath = path.resolve(args.sourceRoot, asset);
     const targetPath = path.resolve(targetDir, asset);
