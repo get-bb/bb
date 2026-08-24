@@ -383,6 +383,63 @@ describe("resolveSystemExecutionOptions", () => {
     });
   });
 
+  it("accepts grok and xai as aliases for the Grok Build ACP provider", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-execution-options-grok-alias",
+      });
+      const catalogModel = availableModelFixture({
+        model: "grok-4.6",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: (request) => {
+          if (request.command.type === "known_acp_agents.status") {
+            return {
+              ok: true,
+              result: {
+                agents: request.command.agents.map((agent) => ({
+                  ...agent,
+                  installed: agent.id === "acp-grok",
+                  executablePath:
+                    agent.id === "acp-grok" ? "/usr/local/bin/grok" : null,
+                })),
+              },
+            };
+          }
+          if (request.command.type === "provider.list_models") {
+            return {
+              ok: true,
+              result: {
+                models: [catalogModel],
+                selectedOnlyModels: [],
+              },
+            };
+          }
+          throw new Error(`Unexpected RPC command ${request.command.type}`);
+        },
+      });
+
+      for (const providerId of ["grok", "xai"] as const) {
+        const response = await resolveSystemExecutionOptions(harness.deps, {
+          hostId: host.id,
+          providerId,
+        });
+        expect(response.providers).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: "acp-grok",
+              displayName: "Grok Build",
+            }),
+          ]),
+        );
+        expect(response.models).toEqual([catalogModel]);
+        expect(response.modelLoadError).toBeNull();
+      }
+    });
+  });
+
   it("includes installed Hermes Agent ACP and sends its launch spec when loading models", async () => {
     await withTestHarness({}, async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {

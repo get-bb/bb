@@ -28,6 +28,7 @@ import {
   requestThreadProvision,
 } from "../services/threads/thread-provisioning.js";
 import { resolveIsolatedScratchTargetPath } from "../services/threads/worktree-paths.js";
+import { resolveRequestedProviderId } from "../services/system/requested-provider.js";
 
 export type WorkTogetherRoomHostTarget = Readonly<{
   bbHostId: string;
@@ -68,7 +69,12 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
 type LaunchFacts = DistributiveOmit<
   ReserveWorkTogetherRoomResourcesInput,
   "bbHostId" | "projectName" | "providerId" | "sourcePath"
->;
+> & {
+  /** Optional WT-selected agent backend. Omitted rooms keep the host default. */
+  providerId?: string;
+  /** Optional WT-selected model for the reserved primary thread. */
+  model?: string;
+};
 
 export type ProvisionWorkTogetherRoomResourcesInput = Readonly<{
   /** Immutable server-resolved identity; never deserialize this from a body. */
@@ -123,6 +129,20 @@ const BB_HOST_ID = /^host_[23456789abcdefghijkmnpqrstuvwxyz]{10}$/u;
 const PROVIDER_ID = /^[A-Za-z0-9._-]{1,64}$/u;
 const MAX_PROJECT_NAME_CODE_POINTS = 100;
 const MAX_SOURCE_PATH_BYTES = 4_096;
+
+function resolveLaunchProviderId(
+  launch: ProvisionWorkTogetherRoomResourcesInput["launch"],
+  hostProviderId: string,
+): string {
+  if (launch.providerId === undefined) {
+    return hostProviderId;
+  }
+  const providerId = resolveRequestedProviderId(launch.providerId);
+  if (!PROVIDER_ID.test(providerId)) {
+    throw new WorkTogetherRoomProvisioningUnavailableError();
+  }
+  return providerId;
+}
 
 function requireHostTarget(
   target: WorkTogetherRoomHostTarget | null,
@@ -270,6 +290,13 @@ function launchMatchesReservation(
     launch.candidateHostId !== reservation.candidateHostId ||
     launch.environmentTemplate !== reservation.environmentTemplate ||
     launch.workKind !== reservation.workKind
+  ) {
+    return false;
+  }
+  if (
+    launch.providerId !== undefined &&
+    resolveLaunchProviderId(launch, reservation.providerId ?? "") !==
+      reservation.providerId
   ) {
     return false;
   }
@@ -621,6 +648,10 @@ export function createWorkTogetherRoomResourceProvisioner(
             }),
           ),
         );
+        const providerId = resolveLaunchProviderId(
+          input.launch,
+          hostTarget.providerId,
+        );
         ensureConfiguredHost(deps, hostTarget);
         const repositoryTarget =
           input.launch.environmentTemplate === "isolated-scratch"
@@ -647,7 +678,7 @@ export function createWorkTogetherRoomResourceProvisioner(
             reservationInputFromLaunch(input.launch, {
               bbHostId: hostTarget.bbHostId,
               projectName,
-              providerId: hostTarget.providerId,
+              providerId,
               ...(repositoryTarget !== null
                 ? { sourcePath: repositoryTarget.sourcePath }
                 : {}),
@@ -671,7 +702,7 @@ export function createWorkTogetherRoomResourceProvisioner(
         target = {
           bbHostId: hostTarget.bbHostId,
           projectName,
-          providerId: hostTarget.providerId,
+          providerId,
           sourcePath,
         };
         reservation = persistReservationTarget(deps, reservation, target);
@@ -727,6 +758,9 @@ export function createWorkTogetherRoomResourceProvisioner(
             origin: "app",
             projectId: reservation.projectId,
             providerId: target.providerId,
+            ...(input.launch.model !== undefined
+              ? { model: input.launch.model }
+              : {}),
             startedOnBehalfOf: null,
             title: `Room ${reservation.bindingId.slice(0, 8)}`,
           },

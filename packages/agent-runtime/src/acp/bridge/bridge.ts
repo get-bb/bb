@@ -928,8 +928,12 @@ function isAuthRequiredModelListError(
       text.includes("CURSOR_AUTH_TOKEN") ||
       text.includes("auth token") ||
       text.includes("api key") ||
-      text.includes("login"))
-  );
+      text.includes("login") ||
+      text.includes("XAI_API_KEY") ||
+      text.includes("grok login"))
+  ) ||
+    /\b(?:not logged in|login required)\b/i.test(text) &&
+      /\b(?:grok|xai)\b/i.test(text);
 }
 
 /**

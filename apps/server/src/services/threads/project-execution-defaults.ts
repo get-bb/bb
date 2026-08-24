@@ -7,6 +7,7 @@ import type {
   ResolvedThreadExecutionOptions,
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
+import { resolveRequestedProviderId } from "../system/requested-provider.js";
 import type {
   ThreadCreateServiceRequest,
   ThreadCreateServiceRequestInput,
@@ -78,11 +79,15 @@ export function resolveProjectExecutionDefaultsForCreate(
   const storedDefaults = getProjectExecutionDefaults(deps.db, {
     projectId: args.projectId,
   });
-  const requestedProviderId = resolveRequestedCreateExecutionValue({
+  const requestedProviderIdRaw = resolveRequestedCreateExecutionValue({
     field: "providerId",
     sources: args.executionInputSources,
     value: args.providerId,
   });
+  const requestedProviderId =
+    requestedProviderIdRaw === undefined
+      ? undefined
+      : resolveRequestedProviderId(requestedProviderIdRaw);
   const requestedModel = resolveRequestedCreateExecutionValue({
     field: "model",
     sources: args.executionInputSources,

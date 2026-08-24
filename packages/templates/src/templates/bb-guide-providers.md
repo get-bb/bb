@@ -75,7 +75,11 @@ or forked provider sessions.
 Known ACP agents can appear automatically when their CLI is installed on the
 host. For example, opencode, omp, Grok Build's grok CLI, or Hermes' hermes CLI
 on PATH appears as provider acp-opencode, acp-omp, acp-grok, or
-acp-hermes-agent.
+acp-hermes-agent. Thread create and Work Together room launch also accept
+`grok` and `xai` as aliases for `acp-grok`. Connect Grok with
+`grok login --oauth` or `grok login --device-auth` (persists in
+`~/.grok/auth.json`), or set `XAI_API_KEY` on the host daemon. Auth failures
+surface as `auth_required`.
 
 bb indexes the native user and project skill roots for Codex, Claude Code, Pi,
 Cursor, OpenCode, omp, Grok Build, and Hermes Agent. This includes compatibility

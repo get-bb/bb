@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   createHostId,
   environments,
+  getThread,
   getWorkTogetherRoomResourceReservation,
   listEnvironments,
   listEvents,
@@ -218,6 +219,54 @@ describe("Work Together Room resource provisioner", () => {
       expect(listQueuedCommands(harness, "environment.provision")).toHaveLength(
         1,
       );
+    });
+  });
+
+  it("stores grok/xai launch aliases as acp-grok on the reserved thread", async () => {
+    await withTestHarness(async (harness) => {
+      const candidateHostId = randomUUID();
+      const providerRepositoryId = "77";
+      const { host } = seedHostSession(harness.deps, {
+        id: createHostId(),
+      });
+      const target = {
+        bbHostId: host.id,
+        dataDir: `/tmp/bb-host-data/${host.id}`,
+        projectName: "WT Grok Room",
+        providerId: "codex",
+        sourcePath: "/srv/work-together/grok-room",
+      } satisfies WorkTogetherRoomResourceTarget;
+      const provisioner = createWorkTogetherRoomResourceProvisioner(
+        harness.deps,
+        registryFor(candidateHostId, providerRepositoryId, target),
+      );
+      const exactLaunch = {
+        ...launch(candidateHostId, providerRepositoryId),
+        providerId: "grok",
+        model: "grok-4.6",
+      };
+      const first = await provisioner.provision({
+        principal: PRINCIPAL,
+        launch: exactLaunch,
+      });
+      const reservation = getWorkTogetherRoomResourceReservation(
+        harness.db,
+        exactLaunch.bindingId,
+      );
+      const thread = getThread(harness.db, first.primaryThreadId);
+      expect(reservation?.providerId).toBe("acp-grok");
+      expect(thread?.providerId).toBe("acp-grok");
+      const replay = await provisioner.provision({
+        principal: PRINCIPAL,
+        launch: exactLaunch,
+      });
+      expect(replay.primaryThreadId).toBe(first.primaryThreadId);
+      await expect(
+        provisioner.provision({
+          principal: PRINCIPAL,
+          launch: { ...exactLaunch, providerId: "codex" },
+        }),
+      ).rejects.toBeInstanceOf(WorkTogetherRoomProvisioningConflictError);
     });
   });
 

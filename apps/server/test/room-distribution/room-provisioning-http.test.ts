@@ -184,6 +184,29 @@ describe("Room provisioning HTTP adapter", () => {
     }
   });
 
+  it("accepts optional providerId and model on every V2 launch shape", async () => {
+    const test = fixture();
+    const scratch = {
+      workspaceId: BODY.workspaceId,
+      taskId: BODY.taskId,
+      cellId: BODY.cellId,
+      candidateHostId: BODY.candidateHostId,
+      workKind: "writing",
+      environmentTemplate: "isolated-scratch",
+      providerId: "grok",
+      model: "grok-4.6",
+    };
+    const response = await test.app.request(request(scratch));
+    expect(response.status).toBe(202);
+    expect(test.provision).toHaveBeenCalledWith({
+      principal: PRINCIPAL,
+      launch: { bindingId: BINDING_ID, ...scratch },
+    });
+    expect(
+      (await test.app.request(request({ ...scratch, providerId: "" }))).status,
+    ).toBe(400);
+  });
+
   it("maps stable ready/conflict/unavailable outcomes without leaking errors", async () => {
     const ready = fixture({
       result: {

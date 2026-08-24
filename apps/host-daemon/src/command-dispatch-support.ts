@@ -111,7 +111,7 @@ export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
 const ACP_AUTH_REQUIRED_PATTERN =
-  /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
+  /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login|grok login|XAI_API_KEY)|(?:not logged in|login required).*(?:grok|xAI|xai)|run ['`]?grok login/is;
 
 const defaultModelListRuntimes = new Map<string, AgentRuntime>();
 

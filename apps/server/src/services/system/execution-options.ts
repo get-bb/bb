@@ -35,6 +35,7 @@ import {
   listKnownAcpAgentExecutableQueries,
   type KnownAcpAgent,
 } from "./known-acp-agents.js";
+import { resolveRequestedProviderId } from "./requested-provider.js";
 
 export type SystemExecutionOptionsRequest = SystemExecutionOptionsQuery;
 
@@ -286,11 +287,12 @@ export async function resolveSystemProviderModels(
   deps: LoggedWorkSessionDeps,
   args: ResolveSystemProviderModelsArgs,
 ): Promise<ModelListResult> {
+  const providerId = resolveRequestedProviderId(args.providerId);
   const configuredProvider = listConfiguredSystemProviderInfos(
     deps.config.customAcpAgents,
     [],
-  ).find((provider) => provider.id === args.providerId);
-  const knownAcpAgent = findKnownAcpAgentForProviderId(args.providerId);
+  ).find((provider) => provider.id === providerId);
+  const knownAcpAgent = findKnownAcpAgentForProviderId(providerId);
   const provider =
     configuredProvider ??
     (knownAcpAgent === undefined
@@ -396,15 +398,19 @@ export async function resolveSystemExecutionOptions(
   deps: LoggedWorkSessionDeps,
   query: SystemExecutionOptionsRequest,
 ): Promise<SystemExecutionOptionsResponse> {
+  const requestedProviderId =
+    query.providerId === undefined
+      ? undefined
+      : resolveRequestedProviderId(query.providerId);
   const cwd =
     query.environmentId === undefined
       ? undefined
       : (requireEnvironment(deps.db, query.environmentId).path ?? undefined);
   const { hostId, hostLookupError, providersPromise } =
     resolveSystemProviderInfosPlan(deps, query);
-  const configuredRequestedProvider = query.providerId
+  const configuredRequestedProvider = requestedProviderId
     ? listConfiguredSystemProviderInfos(deps.config.customAcpAgents, []).find(
-        (provider) => provider.id === query.providerId,
+        (provider) => provider.id === requestedProviderId,
       )
     : undefined;
   const earlyModelResultPromise =
@@ -422,9 +428,9 @@ export async function resolveSystemExecutionOptions(
     await earlyModelResultPromise?.catch(() => undefined);
     throw error;
   }
-  providers = includeRequestedKnownAcpProvider(providers, query.providerId);
-  const requestedProvider = query.providerId
-    ? providers.find((provider) => provider.id === query.providerId)
+  providers = includeRequestedKnownAcpProvider(providers, requestedProviderId);
+  const requestedProvider = requestedProviderId
+    ? providers.find((provider) => provider.id === requestedProviderId)
     : undefined;
   const modelsProvider =
     earlyModelResultPromise !== null

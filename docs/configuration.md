@@ -273,7 +273,12 @@ be launched as `opencode acp`, and `acp-omp` when `omp` (oh-my-pi) is on PATH
 and can be launched as `omp acp`. It also exposes `acp-grok` when Grok Build's
 `grok` CLI is on PATH and can be launched as `grok agent stdio`, and
 `acp-hermes-agent` when Hermes' `hermes` CLI is on PATH and can be launched as
-`hermes acp`.
+`hermes acp`. Work Together room launch and thread create also accept the
+aliases `grok` and `xai` for `acp-grok`. Connect Grok on the host with
+`grok login --oauth` or headless `grok login --device-auth`; credentials persist
+in `~/.grok/auth.json`. Alternatively set `XAI_API_KEY` on the host-daemon
+process. Missing or expired Grok auth returns `auth_required`; a model the
+agent rejects returns `failed` / `invalid_request`.
 
 Register custom ACP agents by editing `customAcpAgents` in `~/.bb/config.json`.
 There is no `bb-app config set` or `unset` command for this list, matching the

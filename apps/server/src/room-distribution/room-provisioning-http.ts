@@ -51,6 +51,8 @@ const commonLaunchShape = {
   taskId: canonicalUuidSchema,
   cellId: canonicalUuidSchema,
   candidateHostId: canonicalUuidSchema,
+  providerId: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/u).optional(),
+  model: z.string().trim().min(1).max(256).optional(),
 };
 const repositoryLaunchShape = {
   repositorySnapshotId: canonicalUuidSchema,

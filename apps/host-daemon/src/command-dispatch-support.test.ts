@@ -119,6 +119,17 @@ describe("command dispatch support", () => {
         ),
       ),
     ).toBe("auth_required");
+    expect(
+      getErrorCode(new Error("Not logged in. Run `grok login` and retry.")),
+    ).toBe("auth_required");
+    expect(
+      getErrorCode(
+        new Error("Authentication required. Set XAI_API_KEY or run grok login."),
+      ),
+    ).toBe("auth_required");
+    expect(getErrorCode(new Error("model grok-4.6 is not available"))).toBe(
+      "command_failed",
+    );
   });
 
   it("classifies oversized file reads as expected RPC failures", () => {
