@@ -31,8 +31,9 @@ Error.stackTraceLimit = 50;
 
 const queryClient = createAppQueryClient({
   // While the realtime socket is connected, change events and the reconnect
-  // watermark own cache freshness; a focus refetch on top would re-request
-  // every active query on each phone unlock and app switch.
+  // watermark own cache freshness; a focus or browser-online refetch on top
+  // would re-request every active query on each phone unlock, app switch,
+  // and mobile-Safari `online` blip.
   shouldRefetchOnWindowFocus: () =>
     wsManager.getConnectionState() !== "connected",
 });

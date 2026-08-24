@@ -21,12 +21,25 @@ export const SERVER_SESSION_QUERY_POLICY = {
   staleTime: SERVER_SESSION_STALE_TIME_MS,
 } as const;
 
+/**
+ * Live values with no realtime change kind (provider usage limits): focus and
+ * reconnect are their only freshness sources, so the explicit `true`s
+ * deliberately bypass the app-level lost-realtime-coverage gate that
+ * `createAppQueryClient` applies to the defaults.
+ */
 export const FOCUS_OWNED_LIVE_QUERY_POLICY = {
   refetchOnReconnect: true,
   refetchOnWindowFocus: true,
   staleTime: FOCUS_OWNED_LIVE_STALE_TIME_MS,
 } as const;
 
+/**
+ * Explicit resume opt-in for queries whose realtime coverage has gaps: thread
+ * tabs are absent from the reconnect-watermark catch-up list, and the thread
+ * host file preview backs an open pane that must not keep stale bytes after
+ * an offline stretch. Deliberately bypasses the app-level
+ * lost-realtime-coverage gate (per-query options win over the defaults).
+ */
 export const RESUME_REFETCH_QUERY_POLICY = {
   refetchOnReconnect: true,
   refetchOnWindowFocus: true,

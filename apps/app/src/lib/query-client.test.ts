@@ -194,6 +194,87 @@ describe("createAppQueryClient", () => {
     queryClient.clear();
   });
 
+  it("keeps the default reconnect refetch when no gate is configured", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+      showMutationErrorToasts: false,
+    });
+    queryClient.mount();
+
+    const queryFn = vi.fn(() => Promise.resolve("data"));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["reconnect-ungated"],
+      queryFn,
+      staleTime: 0,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().data).toBe("data");
+    });
+
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+
+    unsubscribe();
+    queryClient.unmount();
+    queryClient.clear();
+  });
+
+  it("skips the default reconnect refetch while the gate reports realtime coverage", async () => {
+    let realtimeConnected = true;
+    const queryClient = createAppQueryClient({
+      defaultOptions: {
+        queries: {
+          retry: false,
+        },
+      },
+      shouldRefetchOnWindowFocus: () => !realtimeConnected,
+      showMutationErrorToasts: false,
+    });
+    queryClient.mount();
+
+    const queryFn = vi.fn(() => Promise.resolve("data"));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: ["reconnect-gated"],
+      queryFn,
+      // Instantly stale so a permitted reconnect refetch always fires.
+      staleTime: 0,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+
+    await vi.waitFor(() => {
+      expect(observer.getCurrentResult().data).toBe("data");
+    });
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    // Connected: realtime owns freshness, so the browser `online` blip that
+    // mobile Safari fires around suspensions must not refetch.
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+    await Promise.resolve();
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    // Coverage lost: the reconnect refetch is the freshness fallback again.
+    realtimeConnected = false;
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+    await vi.waitFor(() => {
+      expect(queryFn).toHaveBeenCalledTimes(2);
+    });
+
+    unsubscribe();
+    queryClient.unmount();
+    queryClient.clear();
+  });
+
   it("resumes a suspend-cancelled fetch that no focus refetch would restart", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: {
