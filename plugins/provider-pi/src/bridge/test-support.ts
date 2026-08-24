@@ -40,17 +40,13 @@ export const FULL_PERMISSION_OPTIONS = {
 const INITIALIZE_ID = 100;
 /** `startThread` numbers its requests from here, clear of any suite's own ids. */
 const FIRST_HARNESS_REQUEST_ID = 1_000_000;
-/** Longer than the kit's 15 s: every request here may cold-start a real child. */
 /**
- * How long a request may take before the harness calls it unanswered. A
- * construction the bridge retries (up to eight spawns through the
- * transient-auth window, each a node child that imports the extension) runs
- * several seconds per attempt on a starved CI runner, and the bridge's own
- * readiness budget per attempt is a minute: the harness must outlive what
- * the bridge is still legitimately waiting for, or it reports a response
- * that was on its way as missing.
+ * Most requests cold-start one real child and use this deadline. Tests that
+ * deliberately exhaust every transient-auth construction attempt can pass a
+ * longer deadline to `request`, so the harness does not report a response
+ * that is still legitimately on its way as missing.
  */
-const RESPONSE_DEADLINE_MS = 60_000;
+const DEFAULT_RESPONSE_DEADLINE_MS = 60_000;
 
 const threadDeltaParamsSchema = z.object({
   threadId: z.string(),
@@ -83,6 +79,7 @@ export interface FakePiBridgeHarness {
     id: BridgeJsonRpcId,
     method: string,
     params: BridgeJsonRpcObject,
+    responseDeadlineMs?: number,
   ): Promise<BridgeJsonRpcOutputMessage>;
   /**
    * `thread/start` on the workspace in full mode (`extra` overrides and
@@ -140,9 +137,14 @@ export async function startFakePiBridge(
     sessionDir,
     messages: harness.messages,
     takeMessages: harness.takeMessages,
-    async request(id, method, params) {
+    async request(
+      id,
+      method,
+      params,
+      responseDeadlineMs = DEFAULT_RESPONSE_DEADLINE_MS,
+    ) {
       harness.sendRequest(id, method, params);
-      const deadline = Date.now() + RESPONSE_DEADLINE_MS;
+      const deadline = Date.now() + responseDeadlineMs;
       while (Date.now() < deadline) {
         const response = harness.messages.find((message) => message.id === id);
         if (response !== undefined) return response;
@@ -168,7 +170,7 @@ export async function startFakePiBridge(
         .flatMap((params) => params.deltas);
     },
     async waitFor(predicate, what) {
-      const deadline = Date.now() + RESPONSE_DEADLINE_MS;
+      const deadline = Date.now() + DEFAULT_RESPONSE_DEADLINE_MS;
       while (Date.now() < deadline) {
         if (predicate()) return;
         await new Promise((resolve) => setTimeout(resolve, 10));

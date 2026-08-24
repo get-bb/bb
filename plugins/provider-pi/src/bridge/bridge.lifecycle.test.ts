@@ -22,6 +22,9 @@ import { FULL_PERMISSION_OPTIONS, type FakePiBridgeHarness, startFakePiBridge } 
  * records each spawn and exit, and the pid is probed afterwards.
  */
 
+/** Nine serial real-child constructions plus time to observe their exits. */
+const FAILED_CONSTRUCTION_RESPONSE_DEADLINE_MS = 90_000;
+const FAILED_CONSTRUCTION_TEST_TIMEOUT_MS = 120_000;
 
 let harness: FakePiBridgeHarness;
 
@@ -142,14 +145,14 @@ it("a failed construction leaves no child", async () => {
     cwd: harness.workspaceDir,
     instructionMode: "append",
     options: { ...FULL_PERMISSION_OPTIONS, model: "other-provider/no-such-model" },
-  });
+  }, FAILED_CONSTRUCTION_RESPONSE_DEADLINE_MS);
   expect(response.error).toMatchObject({
     message: expect.stringContaining('did not start with model "other-provider/no-such-model"'),
   });
   const log = harness.readProcessLog();
   expect(log.spawned.length).toBeGreaterThan(1);
   await expectEveryChildGone(log.spawned.length);
-}, 90_000);
+}, FAILED_CONSTRUCTION_TEST_TIMEOUT_MS);
 
 it("the fork helper child exits once the fork is done", async () => {
   // The fake's extension runs the real SessionManager fork, so the source
@@ -241,13 +244,13 @@ it("a child's tool and prompt files go with the child, for a released thread and
     cwd: harness.workspaceDir,
     instructionMode: "append",
     options: { ...FULL_PERMISSION_OPTIONS, instructions: "be brief", model: "other-provider/no-such-model" },
-  });
+  }, FAILED_CONSTRUCTION_RESPONSE_DEADLINE_MS);
   expect(failed.error).toBeDefined();
   const log = harness.readProcessLog();
   expect(log.spawned.length).toBeGreaterThan(2);
   await expectEveryChildGone(log.spawned.length);
   await expectScratchFilesGone();
-}, 60_000);
+}, FAILED_CONSTRUCTION_TEST_TIMEOUT_MS);
 
 it("closing the catalog ends its child", async () => {
   const models = await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
