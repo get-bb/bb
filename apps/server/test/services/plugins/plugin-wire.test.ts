@@ -25,6 +25,11 @@ const WIRE_SOURCE = `
       input: z.object({ channel: z.string(), payload: z.unknown() }),
       output: z.literal("published"),
     },
+    publishMany: {
+      input: z.object({ channel: z.string(), count: z.number() }),
+      output: z.literal("published-many"),
+    },
+    publishHuge: { input: z.record(z.string(), z.unknown()), output: z.null() },
     publishBad: { input: z.record(z.string(), z.unknown()), output: z.null() },
     invalidOutput: { input: z.null(), output: z.string() },
     bigintResult: { input: z.null(), output: z.any() },
@@ -93,6 +98,16 @@ const WIRE_SOURCE = `
       publish: async (input: any) => {
         bb.realtime.publish(input.channel, input.payload);
         return "published";
+      },
+      publishMany: async (input: any) => {
+        for (let index = 0; index < input.count; index += 1) {
+          bb.realtime.publish(input.channel, { index });
+        }
+        return "published-many";
+      },
+      publishHuge: async () => {
+        bb.realtime.publish("huge", "x".repeat(65 * 1024));
+        return null;
       },
       publishBad: async () => {
         bb.realtime.publish("bad", { n: BigInt(1) });
@@ -665,6 +680,52 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
         message: expect.stringContaining("not JSON-serializable"),
       },
     });
+  });
+
+  it("bb.realtime.publish rejects payloads over the 64KB cap", async () => {
+    const socket = createMockHubSocket();
+    harness.hub.subscribe(socket, { kind: "system" });
+
+    const response = await rpc(harness, "publishHuge", {});
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: {
+        code: "handler_error",
+        message: expect.stringContaining("64KB"),
+      },
+    });
+    expect(socket.messages).toHaveLength(0);
+  });
+
+  it("bb.realtime.publish drops signals over the per-plugin rate limit with one warning", async () => {
+    const socket = createMockHubSocket();
+    harness.hub.subscribe(socket, { kind: "system" });
+    const originalWarn = harness.deps.logger.warn;
+    const warn = vi.fn();
+    harness.deps.logger.warn = warn;
+    try {
+      // 40 synchronous publishes land inside one refill tick, so exactly the
+      // burst allowance goes out and the rest drop with a single warning.
+      const response = await rpc(harness, "publishMany", {
+        channel: "flood",
+        count: 40,
+      });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        result: "published-many",
+      });
+
+      expect(socket.messages).toHaveLength(20);
+      const rateLimitWarnings = warn.mock.calls.filter(([, message]) =>
+        String(message).includes("rate limit"),
+      );
+      expect(rateLimitWarnings).toHaveLength(1);
+      expect(rateLimitWarnings[0]?.[0]).toMatchObject({ pluginId: "wire" });
+    } finally {
+      harness.deps.logger.warn = originalWarn;
+    }
   });
 
   it("rpc resolves the handler after the body arrives, so a reload during the body read never runs a stale handler", async () => {

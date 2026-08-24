@@ -59,6 +59,13 @@ const THREAD_LIST_EVENTS_APPENDED_COALESCE_MS = 1_000;
 const LIST_RELEVANT_THREAD_EVENT_TYPES: ReadonlySet<ThreadEventType> =
   new Set<ThreadEventType>(["client/turn/requested", "turn/completed"]);
 
+/**
+ * The plugin-signal envelope minus the payload: `notifyPluginSignal` embeds
+ * the publish site's already-serialized payload verbatim, so only the fields
+ * it splices into the frame go through the outgoing schema.
+ */
+const pluginSignalEnvelopeSchema = pluginSignalSchema.omit({ payload: true });
+
 interface HubSocket {
   close(code?: number, reason?: string): void;
   raw?: { bufferedAmount: number };
@@ -895,20 +902,25 @@ export class NotificationHub implements DbNotifier {
    * every connected client. V1 broadcasts to all clients — per-channel
    * subscriptions arrive with the plugin frontend runtime. Returns how many
    * clients the signal reached.
+   *
+   * `serializedPayload` is the publish site's single JSON serialization of
+   * the payload, embedded verbatim in the wire frame so the fan-out never
+   * parses or re-stringifies it. The envelope fields still pass the strict
+   * outgoing schema.
    */
   notifyPluginSignal(
     pluginId: string,
     channel: string,
-    payload: unknown,
+    serializedPayload: string,
   ): number {
-    const message = JSON.stringify(
-      pluginSignalSchema.parse({
-        type: "plugin-signal",
-        pluginId,
-        channel,
-        payload,
-      }),
-    );
+    const envelope = pluginSignalEnvelopeSchema.parse({
+      type: "plugin-signal",
+      pluginId,
+      channel,
+    });
+    const message = `{"type":"plugin-signal","pluginId":${JSON.stringify(
+      envelope.pluginId,
+    )},"channel":${JSON.stringify(envelope.channel)},"payload":${serializedPayload}}`;
     return this.broadcastToAppSockets(message);
   }
 

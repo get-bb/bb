@@ -92,7 +92,7 @@ import type {
 import type { BbSdk, ThreadForkArgs, ThreadSpawnArgs } from "@bb/sdk";
 import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
-import { appendPluginLogLine } from "./plugin-log.js";
+import { appendPluginLogLine, disposePluginLogWriter } from "./plugin-log.js";
 import type { PluginHostArtifactSnapshot } from "./plugin-service-internal.js";
 import { readPluginSettingsValues } from "./plugin-settings.js";
 
@@ -430,6 +430,19 @@ function createStagedRegistrations<
   };
 }
 
+/**
+ * `bb.realtime.publish` broadcasts to every connected client with no
+ * per-channel subscription, so a runaway publisher multiplies across the
+ * whole socket fan-out. Interactive signals are a few per second; anything
+ * sustained above that is treated as a loop and dropped (signals are
+ * ephemeral by contract), warning once per window so the log names the
+ * plugin without flooding.
+ */
+const REALTIME_PUBLISH_MAX_PAYLOAD_BYTES = 64 * 1024;
+const REALTIME_PUBLISH_TOKENS_PER_SECOND = 10;
+const REALTIME_PUBLISH_BURST_TOKENS = 20;
+const REALTIME_PUBLISH_DROP_WARN_INTERVAL_MS = 10_000;
+
 export function createPluginApi(options: {
   pluginId: string;
   logger: ServerLogger;
@@ -439,8 +452,10 @@ export function createPluginApi(options: {
   getSdk: () => BbSdk | undefined;
   /** Undefined until the server is listening (bb.server is bind-gated too). */
   getLoopbackBaseUrl: () => string | undefined;
-  /** Broadcasts a plugin-signal WS message (hub.notifyPluginSignal). */
-  publishSignal: (channel: string, payload: unknown) => void;
+  /** Broadcasts a plugin-signal WS message (hub.notifyPluginSignal). The
+   * payload arrives pre-serialized — publish's one JSON.stringify — and is
+   * embedded verbatim in the wire frame. */
+  publishSignal: (channel: string, serializedPayload: string) => void;
   /** Marks the plugin needs-configuration in the loader's status table. */
   reportNeedsConfiguration: (message: string) => void;
   /** Returns the owning plugin id when another plugin already registered
@@ -554,6 +569,10 @@ export function createPluginApi(options: {
   const pendingAgentToolProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
+  // Flush buffered bb.log lines before this generation's resources go away:
+  // a pending flush timer must not outlive (and race) a plugin data-dir
+  // removal.
+  disposeHooks.push(() => disposePluginLogWriter(dataDir, pluginId));
   const settingsRecord: PluginApiHandle["settings"] = {
     descriptors: {},
     listeners: [],
@@ -866,16 +885,45 @@ export function createPluginApi(options: {
     },
   };
 
+  // Token bucket for realtime publishes; state lives with the handle, so a
+  // reload starts the plugin with a full burst again.
+  let realtimePublishTokens = REALTIME_PUBLISH_BURST_TOKENS;
+  let realtimePublishRefilledAt = Date.now();
+  let realtimePublishWarnedAt = 0;
+  function takeRealtimePublishToken(channel: string): boolean {
+    const now = Date.now();
+    realtimePublishTokens = Math.min(
+      REALTIME_PUBLISH_BURST_TOKENS,
+      realtimePublishTokens +
+        ((now - realtimePublishRefilledAt) / 1000) *
+          REALTIME_PUBLISH_TOKENS_PER_SECOND,
+    );
+    realtimePublishRefilledAt = now;
+    if (realtimePublishTokens >= 1) {
+      realtimePublishTokens -= 1;
+      return true;
+    }
+    if (now - realtimePublishWarnedAt >= REALTIME_PUBLISH_DROP_WARN_INTERVAL_MS) {
+      realtimePublishWarnedAt = now;
+      logger.warn(
+        { pluginId, channel },
+        "Dropping bb.realtime.publish signals over the per-plugin rate limit",
+      );
+    }
+    return false;
+  }
+
   const realtime: PluginRealtime = {
     publish(channel, payload) {
       assertLive();
       if (typeof channel !== "string" || channel.length === 0) {
         throw new Error("realtime channel must be a non-empty string");
       }
-      // JSON round-trip up front: enforces serializability with a clear
-      // error at the publish site and strips prototypes/getters before the
-      // payload crosses the WS boundary.
-      let normalized: unknown = null;
+      // One serialization up front: it enforces serializability with a clear
+      // error at the publish site AND produces the exact bytes that cross
+      // the WS boundary — the hub embeds this string verbatim instead of
+      // re-parsing and re-stringifying the payload per publish.
+      let payloadJson = "null";
       if (payload !== undefined) {
         let json: string | undefined;
         try {
@@ -888,9 +936,19 @@ export function createPluginApi(options: {
             `realtime payload for channel "${channel}" is not JSON-serializable`,
           );
         }
-        normalized = JSON.parse(json);
+        payloadJson = json;
       }
-      publishSignal(channel, normalized);
+      const payloadBytes = Buffer.byteLength(payloadJson, "utf8");
+      if (payloadBytes > REALTIME_PUBLISH_MAX_PAYLOAD_BYTES) {
+        throw new Error(
+          `realtime payload for channel "${channel}" is ${payloadBytes} bytes; ` +
+            `the limit is ${REALTIME_PUBLISH_MAX_PAYLOAD_BYTES} (64KB)`,
+        );
+      }
+      if (!takeRealtimePublishToken(channel)) {
+        return;
+      }
+      publishSignal(channel, payloadJson);
     },
   };
 

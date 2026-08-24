@@ -365,6 +365,19 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
   });
 
   it("bb.log writes JSONL to the plugin log file and the tail endpoint serves it", async () => {
+    // The tail endpoint flushes buffered lines (bb.log batches writes off the
+    // call path), so hit it before reading the raw file.
+    const response = await harness.app.request(
+      `${BASE}/api/v1/plugins/acme/logs?tail=1`,
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; lines: string[] };
+    expect(body.ok).toBe(true);
+    expect(body.lines).toHaveLength(1);
+    expect(JSON.parse(body.lines[0] ?? "")).toMatchObject({
+      message: "cli plugin loaded",
+    });
+
     const logFile = join(
       harness.config.dataDir,
       "plugins",
@@ -382,17 +395,6 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(parsed.level).toBe("info");
     expect(parsed.message).toBe("cli plugin loaded");
     expect(typeof parsed.ts).toBe("number");
-
-    const response = await harness.app.request(
-      `${BASE}/api/v1/plugins/acme/logs?tail=1`,
-    );
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { ok: boolean; lines: string[] };
-    expect(body.ok).toBe(true);
-    expect(body.lines).toHaveLength(1);
-    expect(JSON.parse(body.lines[0] ?? "")).toMatchObject({
-      message: "cli plugin loaded",
-    });
 
     const missing = await harness.app.request(
       `${BASE}/api/v1/plugins/nope/logs`,

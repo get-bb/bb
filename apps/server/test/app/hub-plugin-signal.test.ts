@@ -12,9 +12,13 @@ describe("NotificationHub.notifyPluginSignal", () => {
     hub.subscribe(first, { kind: "thread-detail", threadId: "thr_1" });
     hub.subscribe(second, { kind: "system" });
 
-    const delivered = hub.notifyPluginSignal("linear", "issues-updated", {
-      count: 42,
-    });
+    // The payload arrives pre-serialized (the publish site's single
+    // JSON.stringify) and is embedded verbatim in the wire frame.
+    const delivered = hub.notifyPluginSignal(
+      "linear",
+      "issues-updated",
+      JSON.stringify({ count: 42 }),
+    );
 
     expect(delivered).toBe(2);
     for (const socket of [first, second]) {

@@ -280,7 +280,7 @@ describe("NotificationHub", () => {
     };
     hub.registerClient(healthy);
     hub.registerClient(wedged);
-    const bigPayload = "x".repeat(1024 * 1024);
+    const bigPayload = JSON.stringify("x".repeat(1024 * 1024));
 
     for (let index = 0; index < 5; index += 1) {
       hub.notifyPluginSignal("plugin-1", "channel-1", bigPayload);
@@ -294,7 +294,11 @@ describe("NotificationHub", () => {
     expect(healthy.messages).toHaveLength(5);
 
     // The drop unregistered the socket: later broadcasts skip it entirely.
-    const delivered = hub.notifyPluginSignal("plugin-1", "channel-1", "after");
+    const delivered = hub.notifyPluginSignal(
+      "plugin-1",
+      "channel-1",
+      JSON.stringify("after"),
+    );
     expect(delivered).toBe(1);
     expect(wedged.closed).toHaveLength(1);
   });
