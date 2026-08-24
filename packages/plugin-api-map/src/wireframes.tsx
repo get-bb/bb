@@ -17,7 +17,13 @@
  * surfaces.ts: surfaces.test.ts asserts every surface in a visual group is
  * marked exactly once.
  */
-import { createContext, Fragment, useContext, type ReactNode } from "react";
+import {
+  createContext,
+  Fragment,
+  useContext,
+  useState,
+  type ReactNode,
+} from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { IconSvgElement } from "@hugeicons/react";
 import {
@@ -30,6 +36,7 @@ import {
   Folder01Icon,
   GitBranchIcon,
   InformationCircleIcon,
+  MessageAdd01Icon,
   Mic01Icon,
   MoreHorizontalIcon,
   PencilEdit01Icon,
@@ -142,6 +149,7 @@ function Mark({
   className,
   chipClassName,
   edge = false,
+  onActivate,
   children,
 }: {
   id: string;
@@ -162,6 +170,8 @@ function Mark({
    * coordinates on the gutter, not on the mark.
    */
   edge?: boolean;
+  /** Runs the fixture interaction represented by this marker. */
+  onActivate?: () => void;
   children?: ReactNode;
 }) {
   const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
@@ -177,20 +187,19 @@ function Mark({
   const dimmed = Boolean(spotlightId) && spotlightId !== id;
   return (
     <a
+      data-guide-region={id}
       href={`#surface-${id}`}
       aria-label={`${label} — jump to details`}
-      onClick={
-        onSelect
-          ? (event) => {
-              event.preventDefault();
-              // A marker inside another marked region (the provider glyph in
-              // the picker, the painted range in the draft) must open its own
-              // card, not the enclosing one's.
-              event.stopPropagation();
-              onSelect(id);
-            }
-          : undefined
-      }
+      onClick={(event) => {
+        onActivate?.();
+        if (!onSelect) return;
+        event.preventDefault();
+        // A marker inside another marked region (the provider glyph in the
+        // picker, the painted range in the draft) must open its own card, not
+        // the enclosing one's.
+        event.stopPropagation();
+        onSelect(id);
+      }}
       onMouseEnter={() => setActiveId(id)}
       onMouseLeave={() => setActiveId(null)}
       onFocus={() => setActiveId(id)}
@@ -515,7 +524,15 @@ export const ANATOMY_RENDERER_KEYS = {
   messageActionBar: Object.keys(MESSAGE_ACTION_RENDERERS),
 };
 
+export type AppShellRightPanelTab =
+  | "thread-panel"
+  | "file-opener"
+  | "code-renderers";
+
 export function AppShellWireframe() {
+  const [rightPanelTab, setRightPanelTab] =
+    useState<AppShellRightPanelTab>("thread-panel");
+
   return (
     // The padding is the annotation gutter: edge-hugging markers anchor to
     // this box and sit outside the frame, so they ring the diagram instead
@@ -533,14 +550,23 @@ export function AppShellWireframe() {
           mockup horizontally instead of losing the panel and its markers. */}
       <div className="overflow-x-auto">
         <div className="min-w-[720px]">
-          <AppShellWireframeBody />
+          <AppShellWireframeBody
+            rightPanelTab={rightPanelTab}
+            onRightPanelTabSelect={setRightPanelTab}
+          />
         </div>
       </div>
     </div>
   );
 }
 
-function AppShellWireframeBody() {
+function AppShellWireframeBody({
+  rightPanelTab,
+  onRightPanelTabSelect,
+}: {
+  rightPanelTab: AppShellRightPanelTab;
+  onRightPanelTabSelect: (tab: AppShellRightPanelTab) => void;
+}) {
   return (
     <WindowFrame className="relative">
       <RegionMark
@@ -649,40 +675,30 @@ function AppShellWireframeBody() {
                   ::your-directive
                 </span>
               </Mark>
-              <RegionMark
-                id="code-renderers"
-                label="A plugin renderer replacing bb's code or diff presentation"
-                className="block w-4/5 space-y-1.5 px-2.5 py-2"
-                chipClassName="-right-2 top-1/2 -translate-y-1/2"
-              >
+              <div className="space-y-1.5">
                 <div
                   aria-hidden
-                  data-guide-fixture="code-renderer"
-                  className="space-y-1.5"
+                  data-guide-fixture="message-action-selection-toolbar"
+                  className="inline-flex items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 text-2xs text-foreground shadow-md"
                 >
-                  <span className="flex gap-2">
-                    <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                      1
-                    </span>
-                    <span className="h-2 w-4/5 rounded-sm bg-muted/60" />
+                  <span className="flex items-center gap-1 rounded px-1.5 py-0.5">
+                    <MiniIcon icon={MessageAdd01Icon} className="size-3.5" />
+                    Add to chat
                   </span>
-                  <span className="flex gap-2">
-                    <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                      2
-                    </span>
-                    <span className="h-2 w-3/5 rounded-sm bg-muted/60" />
-                  </span>
-                  <span className="flex gap-2">
-                    <span className="w-3 text-right text-[8px] text-subtle-foreground">
-                      3
-                    </span>
-                    <span className="h-2 w-2/3 rounded-sm bg-muted/60" />
+                  <span className="mx-0.5 h-4 w-px bg-border" />
+                  <span className="flex items-center gap-1 rounded bg-state-hover px-1.5 py-0.5">
+                    <PluginGlyph className="size-3.5" />
+                    Your action
                   </span>
                 </div>
-              </RegionMark>
-              <p className="leading-relaxed">
-                Fixed by isolating the Stripe mock per test.
-              </p>
+                <p className="leading-relaxed">
+                  Fixed by isolating the{" "}
+                  <span className="rounded-sm bg-surface-selected px-0.5">
+                    Stripe mock
+                  </span>{" "}
+                  per test.
+                </p>
+              </div>
               {/* action bar, icons in anatomy-manifest order */}
               <Mark
                 id="message-actions"
@@ -723,69 +739,129 @@ function AppShellWireframeBody() {
           </div>
         </div>
 
-        {/* ── right panel (ThreadSecondaryPanel) ── */}
-        {/* Plain bg-sidebar, like the real ThreadSecondaryPanel — the real
-            panel is not the app's `.fixed.bg-sidebar` element, so it does
-            not get the themed sidebar overlay (grain, edge piping). */}
-        <div className="flex w-[248px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
-          {/* Toolbar, in ThreadSecondaryPanel's own order: the pinned Info
-              and Diff views as icon-only pills, then the strip of open-view
-              pills, then New tab — and, pushed to the far end, the hide
-              control. No separator rule: the real row has none. */}
-          <div className="flex h-10 items-center gap-1 border-b border-border-hairline px-2">
-            <span className="flex h-6 items-center rounded-md px-1.5">
-              <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
-            </span>
-            <span className="flex h-6 items-center rounded-md px-1.5">
-              <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
-            </span>
-            {/* An open view, pill-shaped like the rest of the strip. It keeps
-                its label off so the plugin's tab beside it stays readable at
-                the diagram's width; the real pill carries one. */}
-            <span className="flex h-6 items-center rounded-md px-1.5">
-              <MiniIcon icon={TerminalIcon} className="size-3.5" />
-            </span>
-            <Mark
-              id="thread-panel"
-              label="A plugin tab in the thread side panel"
-              className="flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md pl-1.5 pr-2"
-              // Out to the right, into the toolbar's empty stretch: over the
-              // tab it covered the label it was pointing at.
-              chipClassName="-right-7 top-0"
-            >
-              <PluginGlyph className="size-3.5" />
-              <span className="text-foreground">Your tab</span>
-            </Mark>
-            <MiniIcon icon={PlusSignIcon} className="size-3.5" />
-            <span className="flex-1" />
-            <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
-          </div>
-          {/* body: a plugin-owned file preview, separate from the source and
-              diff renderer shown in the timeline */}
-          <div className="m-2 flex-1 p-2.5">
-            <RegionMark
-              id="file-opener"
-              label="A plugin file viewer, opened for a matching extension"
-              className="p-1"
-              chipClassName="left-1/2 -top-4 -translate-x-1/2"
-            >
-              <div data-guide-fixture="file-viewer">
-                <div className="flex items-center gap-1.5 pb-2 text-foreground">
-                  <MiniIcon icon={File01Icon} className="size-3.5" />
-                  notes.md
-                  <PluginGlyph className="ml-auto size-3.5" />
-                </div>
-                <p className="pb-2 text-foreground">Checkout retry notes</p>
-                <p className="leading-relaxed text-subtle-foreground">
-                  Flakes cluster around shared test state. Reset each mock
-                  between cases before rerunning the suite.
-                </p>
-              </div>
-            </RegionMark>
-          </div>
-        </div>
+        <AppShellRightPanel
+          activeTab={rightPanelTab}
+          onTabSelect={onRightPanelTabSelect}
+        />
       </div>
     </WindowFrame>
+  );
+}
+
+/**
+ * The three annotated right-panel capabilities are tabs in the product. Each
+ * marker selects its tab before opening the corresponding Guide card, so the
+ * diagram and the explanation always describe the same visible body.
+ */
+export function AppShellRightPanel({
+  activeTab,
+  onTabSelect,
+}: {
+  activeTab: AppShellRightPanelTab;
+  onTabSelect: (tab: AppShellRightPanelTab) => void;
+}) {
+  const tabClass = (tab: AppShellRightPanelTab) =>
+    cn(
+      "flex h-6 shrink-0 items-center rounded-md",
+      activeTab === tab && "bg-state-hover",
+    );
+
+  return (
+    // Plain bg-sidebar, like the real ThreadSecondaryPanel — the real panel
+    // is not the app's `.fixed.bg-sidebar` element, so it does not receive
+    // the themed sidebar overlay.
+    <div className="flex w-[248px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
+      <div className="flex h-10 items-center gap-1 border-b border-border-hairline px-2">
+        <span className="flex h-6 items-center rounded-md px-1.5">
+          <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
+        </span>
+        <Mark
+          id="code-renderers"
+          label="Plugin code and diff renderers on bb's Diff tab"
+          className={cn(tabClass("code-renderers"), "px-1.5")}
+          chipClassName="left-1/2 -top-3 -translate-x-1/2"
+          onActivate={() => onTabSelect("code-renderers")}
+        >
+          <span data-guide-tab="code-renderers">
+            <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
+          </span>
+        </Mark>
+        <Mark
+          id="thread-panel"
+          label="A plugin tab in the thread side panel"
+          className={cn(
+            tabClass("thread-panel"),
+            "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
+          )}
+          chipClassName="left-1/2 -top-3 -translate-x-1/2"
+          onActivate={() => onTabSelect("thread-panel")}
+        >
+          <span data-guide-tab="thread-panel" className="contents">
+            <PluginGlyph className="size-3.5" />
+            <span className="text-foreground">Your tab</span>
+          </span>
+        </Mark>
+        <Mark
+          id="file-opener"
+          label="A plugin file viewer or editor tab"
+          className={cn(tabClass("file-opener"), "px-1.5")}
+          chipClassName="left-1/2 -bottom-3 -translate-x-1/2"
+          onActivate={() => onTabSelect("file-opener")}
+        >
+          <span data-guide-tab="file-opener">
+            <MiniIcon icon={File01Icon} className="size-3.5" />
+          </span>
+        </Mark>
+        <span className="flex-1" />
+        <MiniIcon icon={PlusSignIcon} className="size-3.5" />
+        <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
+      </div>
+      <div data-guide-tab-body={activeTab} className="m-2 flex-1 p-2.5">
+        {activeTab === "thread-panel" ? (
+          <div data-guide-fixture="thread-panel" className="space-y-2">
+            <div className="flex items-center gap-1.5 text-foreground">
+              <PluginGlyph className="size-3.5" />
+              Release checklist
+            </div>
+            <p className="leading-relaxed text-subtle-foreground">
+              Your plugin owns this tab and receives the thread it was opened
+              from.
+            </p>
+            <span className="block h-2 w-4/5 rounded-sm bg-muted/60" />
+            <span className="block h-2 w-3/5 rounded-sm bg-muted/60" />
+          </div>
+        ) : activeTab === "file-opener" ? (
+          <div data-guide-fixture="file-viewer">
+            <div className="flex items-center gap-1.5 pb-2 text-foreground">
+              <MiniIcon icon={File01Icon} className="size-3.5" />
+              notes.md
+              <PluginGlyph className="ml-auto size-3.5" />
+            </div>
+            <p className="pb-2 text-foreground">Checkout retry notes</p>
+            <p className="leading-relaxed text-subtle-foreground">
+              Flakes cluster around shared test state. Reset each mock between
+              cases before rerunning the suite.
+            </p>
+          </div>
+        ) : (
+          <div data-guide-fixture="diff-renderer" className="space-y-2">
+            <div className="flex items-center gap-1.5 text-foreground">
+              <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
+              checkout.test.ts
+              <PluginGlyph className="ml-auto size-3.5" />
+            </div>
+            <div className="space-y-1 font-mono text-2xs leading-tight">
+              <span className="block rounded-sm bg-danger/10 px-1.5 py-1 text-danger">
+                − sharedMock.reset()
+              </span>
+              <span className="block rounded-sm bg-success/10 px-1.5 py-1 text-success">
+                + mock.resetEach()
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1138,10 +1214,10 @@ export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
                       aria-hidden
                       // Placed like the real MentionMenu in a bottom-pinned
                       // composer: the prompt box's full width (-left-px /
-                      // -right-px, over its 1px border), directly above it
-                      // (bottom-full mb-2), and above every annotation —
-                      // z-20 is the real menu's own tier.
-                      className="pointer-events-none absolute -left-px -right-px bottom-full z-20 mb-2 overflow-hidden rounded-md border border-border bg-popover pb-1 shadow-md"
+                      // -right-px, over its 1px border) and above every
+                      // annotation. The extra gap keeps the menu clear of the
+                      // two badges over the draft line.
+                      className="pointer-events-none absolute -left-px -right-px bottom-full z-20 mb-5 overflow-hidden rounded-md border border-border bg-popover pb-1 shadow-md"
                     >
                       <span className="block px-3 pb-1 pt-1.5 text-xs text-muted-foreground">
                         Your plugin
