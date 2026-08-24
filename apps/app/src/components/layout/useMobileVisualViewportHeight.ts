@@ -135,9 +135,10 @@ export function useMobileVisualViewportHeight(
       }
       animationFrame = window.requestAnimationFrame(updateHeight);
     };
-    // For triggers that can resize the layout viewport itself: window resize,
-    // rotation, and an editor gaining focus (the keyboard that follows may
-    // resize the layout viewport on Android's resizes-content path).
+    // For triggers where the layout viewport may have changed: window resize,
+    // rotation, and an editor gaining focus — the pass that sizes the shell
+    // for the arriving keyboard must start from the real containing block,
+    // and these triggers are rare enough that the forced layout is fine.
     const scheduleContainingBlockUpdate = () => {
       shellContainingBlockHeightStale = true;
       scheduleUpdate();
