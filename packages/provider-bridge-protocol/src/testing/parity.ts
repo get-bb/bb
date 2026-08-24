@@ -291,7 +291,13 @@ export interface ReplayRecordingOptions {
   /**
    * The quiet period after which a request is sent even though the bridge
    * has emitted fewer lines than the recording had before it — a divergent
-   * bridge pays this once per request instead of stalling.
+   * bridge pays this once per request instead of stalling. Only a plan from
+   * the recorded lane can be short for that reason: a plan from the current
+   * lane (`planFromCurrentLane`) was written by this very bridge, so a
+   * shortfall there is latency, never divergence, and the request waits for
+   * its events up to `timeoutMs` instead — a starved bridge (a loaded CI
+   * runner) still has provider lines to read, and a request sent on quiet
+   * alone lands before them, at a point the recording never had.
    */
   orderTimeoutMs?: number;
   /** Quiet period after the last request before the bridge is closed. */
@@ -535,8 +541,9 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const grammar = new ThreadEventGrammar();
   const liveAssembler = options.createAssembler(providerId);
   const planAssembler = (options.createPlanAssembler ?? options.createAssembler)(providerId);
+  const exactPlan = options.planFromCurrentLane === true;
   const steps = planRuntimeSteps(
-    options.planFromCurrentLane === true ? withCurrentBridgeLane(recording) : recording,
+    exactPlan ? withCurrentBridgeLane(recording) : recording,
     planAssembler,
   );
 
@@ -697,15 +704,17 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
     // (the cursor set after the previous send), and the bridge must have
     // assembled as many events as the recording had before it. Events rather
     // than lines, so identity or metadata chatter cannot shift the point.
-    // Best effort for a divergent bridge — the wait ends once the bridge has
-    // been quiet for orderTimeoutMs — and never a stall.
+    // A plan from the current lane is exact for this bridge, so the wait is
+    // strict and a timeout is a stall. A plan from the recorded lane is best
+    // effort for a divergent bridge — the wait ends once the bridge has been
+    // quiet for orderTimeoutMs — and never a stall.
     await waitFor(
       `${step.eventsBefore} events before ${method}`,
       () =>
         events.length >= step.eventsBefore ||
-        Date.now() - lastOutputAt >= orderTimeoutMs,
+        (!exactPlan && Date.now() - lastOutputAt >= orderTimeoutMs),
       timeoutMs,
-      false,
+      exactPlan,
     );
     await waitFor(
       `the stream to drain before ${method}`,
