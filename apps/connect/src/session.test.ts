@@ -24,6 +24,7 @@ import {
   markMachineSeen,
   resolveLabel,
   verifyMachineCredentialDetails,
+  verifySessionCookie,
   verifySessionCookieDetails,
 } from "./session.js";
 import { refreshAccountSessionCookies } from "./account-session.js";
@@ -544,6 +545,118 @@ describe("account session refresh", () => {
       "session=renewed; Path=/; HttpOnly",
       "session-data=cached; Path=/; HttpOnly",
     ]);
+  });
+});
+
+/**
+ * Counts D1 round trips without mocking the database: every drizzle query
+ * starts with `db.select(...)`, so counting reads of the `select` property
+ * counts queries. Methods are bound to the real db so drizzle internals never
+ * re-enter the proxy.
+ */
+function countingDb(target: typeof db): {
+  db: typeof db;
+  counts: { select: number };
+} {
+  const counts = { select: 0 };
+  const proxied = new Proxy(target, {
+    get(t, prop) {
+      if (prop === "select") counts.select += 1;
+      const value = Reflect.get(t, prop);
+      return typeof value === "function" ? value.bind(t) : value;
+    },
+  });
+  return { db: proxied, counts };
+}
+
+describe("single-flight gate caches", () => {
+  it("collapses a cold burst of label lookups into one D1 round trip", async () => {
+    seedUser("acct-flight");
+    seedServer({
+      id: "srv-flight",
+      userId: "acct-flight",
+      name: "default",
+      subdomain: "flight-label",
+    });
+    const counted = countingDb(db);
+
+    const resolved = await Promise.all(
+      Array.from({ length: 6 }, () => resolveLabel("flight-label", counted.db)),
+    );
+
+    expect(counted.counts.select).toBe(1);
+    for (const label of resolved) {
+      expect(label).toMatchObject({ kind: "server", userId: "acct-flight" });
+    }
+  });
+
+  it("does not cache a failed lookup: the next request retries D1", async () => {
+    seedUser("acct-flight-retry");
+    seedServer({
+      id: "srv-flight-retry",
+      userId: "acct-flight-retry",
+      name: "default",
+      subdomain: "flight-retry",
+    });
+    let failNext = true;
+    const failingOnce = new Proxy(db, {
+      get(t, prop) {
+        if (prop === "select" && failNext) {
+          failNext = false;
+          throw new Error("d1 hiccup");
+        }
+        const value = Reflect.get(t, prop);
+        return typeof value === "function" ? value.bind(t) : value;
+      },
+    });
+
+    await expect(resolveLabel("flight-retry", failingOnce)).rejects.toThrow(
+      "d1 hiccup",
+    );
+    await expect(resolveLabel("flight-retry", failingOnce)).resolves.toMatchObject(
+      { kind: "server", userId: "acct-flight-retry" },
+    );
+  });
+
+  it("collapses a cold burst of session verifications into one D1 round trip", async () => {
+    seedUser("acct-cookie-flight");
+    const token = `sess_flight_${crypto.randomUUID()}`;
+    const secret = "flight-secret";
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sigBuf = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(token),
+    );
+    const sig = btoa(String.fromCharCode(...new Uint8Array(sigBuf)));
+    const cookieValue = `${token}.${sig}`;
+    db.insert(session)
+      .values({
+        id: `sess-${token}`,
+        token,
+        // Must be relative to wall clock: verifySessionCookie uses Date.now().
+        expiresAt: new Date(Date.now() + 60_000),
+        userId: "acct-cookie-flight",
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    const counted = countingDb(db);
+
+    const verified = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        verifySessionCookie(cookieValue, secret, counted.db),
+      ),
+    );
+
+    expect(counted.counts.select).toBe(1);
+    expect(verified).toEqual(Array.from({ length: 6 }, () => "acct-cookie-flight"));
   });
 });
 
