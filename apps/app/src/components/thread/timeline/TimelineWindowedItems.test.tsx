@@ -162,7 +162,7 @@ afterEach(() => {
 });
 
 describe("TimelineWindowedItems", () => {
-  it("seeds exact heights while the lazy windowing implementation loads", () => {
+  it("seeds exact heights for a bounded trailing region while the lazy windowing implementation loads", () => {
     const measurements = new Map<string, number>();
 
     render(
@@ -184,8 +184,12 @@ describe("TimelineWindowedItems", () => {
       { container: scrollElement },
     );
 
-    expect(measurements.get("row-0")).toBe(32);
+    // The fallback mounts and measures only the trailing bottom-anchor
+    // region, not all 100 loaded rows.
     expect(measurements.get("row-99")).toBe(32);
+    expect(measurements.get("row-40")).toBe(32);
+    expect(measurements.has("row-39")).toBe(false);
+    expect(measurements.size).toBe(60);
   });
 
   it("keeps the control path fully mounted when the experiment is off", () => {

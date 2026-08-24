@@ -8,6 +8,13 @@ import {
 
 const DEFAULT_WINDOWING_MIN_ITEM_COUNT = 20;
 const MAX_CONTROL_PATH_MEASUREMENTS = 2_000;
+/**
+ * Rows the Suspense fallback mounts while the windowed chunk downloads: the
+ * trailing bottom-anchor region a thread opens into. Mounting (and measuring)
+ * every loaded row made a cold first open pay a full-tree mount before the
+ * windowed remount.
+ */
+const FALLBACK_TRAILING_ITEM_COUNT = 60;
 const NOOP_ITEM_REF = () => {};
 
 export interface TimelineWindowingScrollRoot {
@@ -74,8 +81,12 @@ function TimelineWindowedItemsControl({
   renderItem,
   captureMeasurements = false,
 }: TimelineWindowedItemsProps & { captureMeasurements?: boolean }) {
-  return itemKeys.map((key, index) =>
-    renderItem(index, {
+  const firstRenderedIndex = captureMeasurements
+    ? Math.max(0, itemKeys.length - FALLBACK_TRAILING_ITEM_COUNT)
+    : 0;
+  return itemKeys.slice(firstRenderedIndex).map((key, renderedIndex) => {
+    const index = firstRenderedIndex + renderedIndex;
+    return renderItem(index, {
       isRealized: true,
       itemIndex: captureMeasurements ? index : undefined,
       itemRef: captureMeasurements
@@ -94,8 +105,8 @@ function TimelineWindowedItemsControl({
         : NOOP_ITEM_REF,
       itemStyle: undefined,
       windowingEnabled: false,
-    }),
-  );
+    });
+  });
 }
 
 /** Keep TanStack Virtual out of the route bundle until the experiment is on. */

@@ -89,6 +89,13 @@ const ProjectSettingsView = lazy(() =>
 const splitWorkspaceRouteModule = import("./views/SplitWorkspaceRoute");
 splitWorkspaceRouteModule.catch(() => {});
 const SplitWorkspaceRoute = lazy(() => splitWorkspaceRouteModule);
+// Same reasoning for the timeline windowing chunk: windowing defaults on for
+// compact viewports, and until the chunk lands the loader's Suspense fallback
+// mounts loaded rows without virtualization, so a first long-thread open on a
+// cold connection would pay boot parse → route chunk → windowed chunk in
+// series. Warming it here keeps it a separate chunk (nothing static imports
+// it) while React.lazy resolves from the module cache.
+import("./components/thread/timeline/TimelineWindowedItems").catch(() => {});
 
 export function LegacyAutomationDetailRedirect() {
   const location = useLocation();
