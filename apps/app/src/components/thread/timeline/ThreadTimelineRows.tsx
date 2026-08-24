@@ -2171,7 +2171,7 @@ function TimelineRowsList({
           itemKeys={itemKeys}
           measurements={measurements}
           minItemCount={
-            spacing === "top-level" ? (isCompactViewport ? 40 : 60) : 20
+            spacing === "top-level" ? (isCompactViewport ? 16 : 60) : 20
           }
           renderItem={(index, windowedState) => {
             const item = items[index];

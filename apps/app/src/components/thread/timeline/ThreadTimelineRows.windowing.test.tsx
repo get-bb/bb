@@ -243,6 +243,55 @@ describe("ThreadTimelineRows windowing experiment", () => {
     );
   });
 
+  it("windows a 20-row top-level timeline on a compact viewport", async () => {
+    const scrollElement = document.createElement("div");
+    scrollElement.setAttribute("data-test-main-scroll", "");
+    Object.defineProperty(scrollElement, "clientHeight", { value: 800 });
+    Object.defineProperty(scrollElement, "scrollHeight", { value: 2_000 });
+    const bottomAnchor: BottomAnchorContextValue = {
+      captureScrollAnchor: vi.fn(),
+      getScrollElement: () => scrollElement,
+      isAtBottom: false,
+      scrollElementIntoView: vi.fn(),
+      scrollElementIntoViewClampedToMaxScroll: vi.fn(),
+      scrollToBottom: vi.fn(),
+    };
+    const rows = Array.from({ length: 20 }, (_, index) =>
+      conversationRow({
+        id: `short-message-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        sourceSeqEnd: index + 1,
+        sourceSeqStart: index + 1,
+        text: `Short message ${index}`,
+      }),
+    );
+    const queryClient = new QueryClient();
+    const view = render(
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <BottomAnchorContext.Provider value={bottomAnchor}>
+            <CompactViewportOverrideProvider isCompactViewport>
+              <ThreadTimelineRows
+                timelineRows={rows}
+                timelineWindowingEnabled
+                threadRuntimeDisplayStatus="idle"
+                workspaceRootPath={undefined}
+              />
+            </CompactViewportOverrideProvider>
+          </BottomAnchorContext.Provider>
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+
+    // Phones window from 16 top-level rows; 20 rows stayed fully mounted
+    // under the old 40-row floor.
+    await waitFor(() =>
+      expect(
+        view.container.querySelector("[data-timeline-virtual-spacer]"),
+      ).not.toBeNull(),
+    );
+  });
+
   it("re-reads windowing scroll geometry when a row expands", async () => {
     const scrollElement = document.createElement("div");
     scrollElement.setAttribute("data-test-main-scroll", "");

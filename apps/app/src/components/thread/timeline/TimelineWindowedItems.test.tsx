@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   TimelineWindowedItems,
   type TimelineWindowedItemRenderState,
@@ -49,6 +50,7 @@ function renderWindowedItems(options?: {
   alwaysMountedKeys?: ReadonlySet<string>;
   clientHeight?: number;
   enabled?: boolean;
+  isCompactViewport?: boolean;
   measurements?: Map<string, number>;
 }) {
   const measurements = options?.measurements ?? new Map<string, number>();
@@ -84,18 +86,24 @@ function renderWindowedItems(options?: {
     </div>
   );
   const buildElement = (geometryRevision: number) => (
-    <TimelineWindowingGeometryRevisionContext.Provider value={geometryRevision}>
-      <TimelineWindowedItems
-        enabled={options?.enabled ?? true}
-        alwaysMountedKeys={options?.alwaysMountedKeys}
-        estimateItemHeight={estimateItemHeight}
-        gap={0}
-        getScrollElement={getScrollElement}
-        itemKeys={ITEM_KEYS}
-        measurements={measurements}
-        renderItem={renderItem}
-      />
-    </TimelineWindowingGeometryRevisionContext.Provider>
+    <CompactViewportOverrideProvider
+      isCompactViewport={options?.isCompactViewport ?? false}
+    >
+      <TimelineWindowingGeometryRevisionContext.Provider
+        value={geometryRevision}
+      >
+        <TimelineWindowedItems
+          enabled={options?.enabled ?? true}
+          alwaysMountedKeys={options?.alwaysMountedKeys}
+          estimateItemHeight={estimateItemHeight}
+          gap={0}
+          getScrollElement={getScrollElement}
+          itemKeys={ITEM_KEYS}
+          measurements={measurements}
+          renderItem={renderItem}
+        />
+      </TimelineWindowingGeometryRevisionContext.Provider>
+    </CompactViewportOverrideProvider>
   );
   let geometryRevision = 0;
   const view = render(buildElement(geometryRevision), {
@@ -115,9 +123,7 @@ function renderWindowedItems(options?: {
   };
 }
 
-beforeEach(() => {
-  itemHeights = new Map();
-  spacerOffsetTop = 0;
+function createScrollElement() {
   scrollElement = document.createElement("div");
   document.body.append(scrollElement);
   Object.defineProperty(scrollElement, "clientWidth", {
@@ -132,6 +138,12 @@ beforeEach(() => {
     configurable: true,
     value: 3_200,
   });
+}
+
+beforeEach(() => {
+  itemHeights = new Map();
+  spacerOffsetTop = 0;
+  createScrollElement();
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
       if (this === scrollElement) return rect(0, scrollElement.clientHeight);
@@ -285,6 +297,22 @@ describe("TimelineWindowedItems", () => {
     await waitFor(() =>
       expect(screen.getAllByTestId(/^content-/)).toHaveLength(100),
     );
+  });
+
+  it("retains fewer overscan rows on compact viewports", async () => {
+    renderWindowedItems();
+    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
+    const desktopWrappers = screen.getAllByTestId(/^wrapper-/).length;
+    cleanup();
+    createScrollElement();
+
+    renderWindowedItems({ isCompactViewport: true });
+    await waitFor(() => expect(screen.getByTestId("content-0")).toBeTruthy());
+    const compactWrappers = screen.getAllByTestId(/^wrapper-/).length;
+
+    // Same geometry, half the overscan (4 instead of 8). At the top only the
+    // trailing side contributes, so the difference is one side's worth.
+    expect(compactWrappers).toBe(desktopWrappers - 4);
   });
 
   it("re-reads scroll geometry only when a geometry trigger changes", async () => {

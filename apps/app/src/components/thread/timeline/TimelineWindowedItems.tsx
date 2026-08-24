@@ -14,6 +14,7 @@ import {
   type Range,
   type Virtualizer,
 } from "@tanstack/react-virtual";
+import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import {
   TimelineWindowingGeometryRevisionContext,
   type TimelineWindowedItemsProps,
@@ -23,6 +24,12 @@ export type { TimelineWindowedItemRenderState } from "./TimelineWindowedItemsLoa
 
 /** Rich rows retained on each side of the visible range. */
 const TIMELINE_WINDOW_OVERSCAN_ITEMS = 8;
+/**
+ * Compact viewports keep fewer: every retained rich row is walked by the
+ * style/layout passes phone interactions trigger (keyboard, composer growth,
+ * orientation), and a phone shows fewer rows per screen to begin with.
+ */
+const TIMELINE_WINDOW_OVERSCAN_ITEMS_COMPACT = 4;
 /** TanStack's scroll-idle boundary also drives rich-content realization. */
 const TIMELINE_WINDOW_IDLE_DELAY_MS = 300;
 /** Bound row-local interaction state retained across a long-lived session. */
@@ -99,6 +106,7 @@ export function TimelineWindowedItems({
 }: TimelineWindowedItemsProps) {
   const configured =
     enabled && itemKeys.length >= minItemCount && getScrollElement !== null;
+  const isCompactViewport = useIsCompactViewport();
   const geometryRevision = useContext(TimelineWindowingGeometryRevisionContext);
   const [scrollRootUsable, setScrollRootUsable] = useState(true);
   const [scrollMargin, setScrollMargin] = useState(0);
@@ -213,7 +221,9 @@ export function TimelineWindowedItems({
     isScrollingResetDelay: TIMELINE_WINDOW_IDLE_DELAY_MS,
     measureElement,
     onChange: handleVirtualizerChange,
-    overscan: TIMELINE_WINDOW_OVERSCAN_ITEMS,
+    overscan: isCompactViewport
+      ? TIMELINE_WINDOW_OVERSCAN_ITEMS_COMPACT
+      : TIMELINE_WINDOW_OVERSCAN_ITEMS,
     rangeExtractor,
     scrollMargin,
     useFlushSync: false,
