@@ -502,7 +502,14 @@ export default {
       request,
       cacheNamespace(routingKey, target),
       ctx,
-      () => stub.fetch(doRequest),
+      (init) => {
+        if (init === undefined) return stub.fetch(doRequest);
+        // Shell revalidation: the edge holds the last confirmed document, so
+        // ask the origin to confirm its ETag instead of resending the body.
+        const headers = new Headers(doRequest.headers);
+        headers.set("if-none-match", init.ifNoneMatch);
+        return stub.fetch(new Request(doRequest, { headers }));
+      },
     );
     let response = cached.response;
     // Tunnel down + a browser navigation → the styled offline page, using the
