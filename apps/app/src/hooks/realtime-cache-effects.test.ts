@@ -2082,6 +2082,56 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
+  it("throttles the metadata-less status fallback to one active refetch per second", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    const sidebarQueryFn = vi.fn(async () => ({
+      projects: [{ threads: [{ id: "thr_1", status: "idle" }] }],
+      personalProject: { threads: [] },
+    }));
+    const observer = new QueryObserver(queryClient, {
+      queryKey: sidebarNavigationKey,
+      queryFn: sidebarQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(1);
+
+    const emitBareStatusChange = () => {
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: { projectId: "project-1" },
+        changes: ["status-changed"],
+      });
+    };
+
+    // The first bare push after a quiet period still refetches immediately.
+    emitBareStatusChange();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+
+    // A second push inside the same second coalesces instead of fanning out…
+    await vi.advanceTimersByTimeAsync(100);
+    emitBareStatusChange();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(2);
+    // …while the row still goes stale immediately for the next mount.
+    expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
+      true,
+    );
+
+    // The coalesced change lands as one trailing refetch at the 1s boundary.
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
+
+    unsubscribe();
+    effects.dispose();
+  });
+
   it("refetches over a patched row when a bare status-changed arrives while visible", async () => {
     // Stop requests, command failures and host interruptions push the bare
     // kind. On the visible path status-changed never enters the debounce
