@@ -382,6 +382,42 @@ describe("ServerConnection", () => {
     }
   });
 
+  it("grants a fresh acknowledgement lease after a shorter heartbeat delay", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const { connection, logger, webSocket } = createConnectionFixture({
+      heartbeatIntervalMs: 5_000,
+      leaseTimeoutMs: 30_000,
+    });
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      vi.setSystemTime(35_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ gapMs: 35_000 }),
+        "Host daemon heartbeat timer delayed",
+      );
+      expect(socket.reconnect).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(socket.reconnect).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(socket.reconnect).toHaveBeenCalledWith(
+        1013,
+        "heartbeat-ack-timeout",
+      );
+    } finally {
+      await connection.shutdown();
+    }
+  });
+
   it("reconnects when server heartbeat acknowledgements stop", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
