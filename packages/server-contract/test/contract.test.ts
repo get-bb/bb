@@ -3,6 +3,8 @@ import {
   makeWorkspaceStatus,
 } from "@bb/test-helpers";
 import type { WorkspaceResolutionFailure } from "@bb/host-daemon-contract";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import * as contract from "../src/index.js";
 import {
@@ -1464,6 +1466,35 @@ describe("server-contract canonical schemas", () => {
 });
 
 describe("server-contract clients", () => {
+  // The browser app and @bb/sdk import createApiClient at boot. The route
+  // table in public-api.ts drags ~85 zod schemas into the boot chunk, so the
+  // client must reach PublicApiRoutes through a type-only import and nothing
+  // else from that module graph. Typecheck cannot tell `import type` from a
+  // value import here, so pin the source form.
+  it("keeps the api client off the route table's value import graph", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/api-client.ts", import.meta.url)),
+      "utf8",
+    );
+    const importLines = source.match(/^import\b[^;]*;/gm) ?? [];
+
+    expect(importLines).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^import type \{[^}]*\bPublicApiRoutes\b[^}]*\} from "\.\/public-api\.js";$/,
+        ),
+      ]),
+    );
+    for (const line of importLines) {
+      if (line.includes("./public-api.js")) {
+        expect(line).toMatch(/^import type /);
+      }
+      expect(line).not.toMatch(/["']\.\/api-types\.js["']/);
+      expect(line).not.toMatch(/["']@bb\/domain["']/);
+      expect(line).not.toMatch(/["']zod["']/);
+    }
+  });
+
   it("builds canonical public routes", () => {
     const publicClient = createPublicApiClient("http://localhost:3334");
 
