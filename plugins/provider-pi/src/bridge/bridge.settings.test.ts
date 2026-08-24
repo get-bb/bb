@@ -17,6 +17,13 @@ const OPTIONS = {
   reasoningLevel: "high",
 };
 
+/**
+ * The assertions cover four serial process constructions: start, resume,
+ * fork helper, and fork target. Match the conformance wrapper's process-test
+ * budget so CPU-starved CI can finish valid child startups.
+ */
+const SETTINGS_PROCESS_TEST_TIMEOUT_MS = 60_000;
+
 let harness: FakePiBridgeHarness;
 let commandLogPath: string;
 
@@ -94,4 +101,4 @@ it("pins model and thinking at spawn and never sends set_model or set_thinking_l
     .map((d) => d.size);
   expect(contextWindows.length).toBeGreaterThan(0);
   expect(new Set(contextWindows)).toEqual(new Set([32_000]));
-}, 30_000);
+}, SETTINGS_PROCESS_TEST_TIMEOUT_MS);
