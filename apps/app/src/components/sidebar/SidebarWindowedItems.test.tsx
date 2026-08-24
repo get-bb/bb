@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
+import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sidebarMocks = vi.hoisted(() => ({
@@ -28,6 +29,18 @@ import {
 } from "@/components/ui/sidebar.js";
 import { SidebarWindowedItems } from "./SidebarWindowedItems";
 
+// The hand-built container below has to carry the attribute the component
+// walks up to. Parse it out of the exported selector instead of spelling it
+// by hand, so a rename of `SIDEBAR_CONTENT_SELECTOR` in sidebar.tsx does not
+// fail the same-commit case against a component that still works.
+const selectorMatch = SIDEBAR_CONTENT_SELECTOR.match(/^\[([\w-]+)="(.+)"\]$/);
+if (!selectorMatch) {
+  throw new Error(
+    `Unparseable SIDEBAR_CONTENT_SELECTOR: ${SIDEBAR_CONTENT_SELECTOR}`,
+  );
+}
+const [, SIDEBAR_CONTENT_ATTR, SIDEBAR_CONTENT_VALUE] = selectorMatch;
+
 const VIEWPORT_RECT = new DOMRect(0, 0, 300, 500);
 
 // Rows sit 1000px down, well outside the 500px viewport plus its 240px margin.
@@ -38,7 +51,7 @@ const OFFSCREEN_ROW_RECT = new DOMRect(0, 1_000, 300, 30);
 // `render` as the container, so RTL `cleanup()` removes it.
 function mountSidebarContentContainer(clientHeight: number) {
   const container = document.createElement("div");
-  container.setAttribute("data-sidebar", "content");
+  container.setAttribute(SIDEBAR_CONTENT_ATTR, SIDEBAR_CONTENT_VALUE);
   Object.defineProperty(container, "clientHeight", {
     configurable: true,
     value: clientHeight,
@@ -82,10 +95,7 @@ beforeEach(() => {
 
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
-      if (
-        this === scrollElement ||
-        this.getAttribute("data-sidebar") === "content"
-      ) {
+      if (this === scrollElement || this.matches(SIDEBAR_CONTENT_SELECTOR)) {
         return VIEWPORT_RECT;
       }
       if (this.hasAttribute("data-sidebar-windowed-item")) {
@@ -135,11 +145,12 @@ describe("SidebarWindowedItems", () => {
     ).toHaveLength(3);
   });
 
-  // The same-commit walk only works while `SidebarContent` keeps its
-  // `data-sidebar="content"` attribute on the element its context ref points
+  // The same-commit walk only works while `SidebarContent` keeps the
+  // `SIDEBAR_CONTENT_SELECTOR` attribute on the element its context ref points
   // at, and while React still attaches that ref after this list's layout
   // effect. The hand-built container above asserts neither, so this case
-  // mounts the real `SidebarContent` around the list in one render.
+  // mounts the real `SidebarContent` around the list in one render and checks
+  // that the element the walk resolves is the one the ref lands on.
   it("windows rows under the real SidebarContent mounted in the same commit", () => {
     sidebarMocks.scrollElementRef = null;
     // jsdom reports 0 for every clientHeight, which is the promote-all
@@ -150,8 +161,9 @@ describe("SidebarWindowedItems", () => {
       },
     );
 
+    const contentRef = createRef<HTMLDivElement>();
     const { container } = render(
-      <SidebarContent>
+      <SidebarContent ref={contentRef}>
         <SidebarWindowedItems
           itemKeys={["first", "second", "third"]}
           estimateRows={() => 1}
@@ -167,6 +179,14 @@ describe("SidebarWindowedItems", () => {
 
     const scroller = container.querySelector(SIDEBAR_CONTENT_SELECTOR);
     expect(scroller).not.toBeNull();
+    // `setContentRef` writes one node to both the forwarded ref and the
+    // context ref, so this is the element the passive effect later uses as
+    // the IntersectionObserver root. Both spies above key off the selector,
+    // so without this check an attribute moved onto an inner wrapper still
+    // looks like a 500px scrollport here while in a browser that wrapper is
+    // content-sized: every row is realized, then the observer rooted at the
+    // real scroller demotes them again.
+    expect(scroller).toBe(contentRef.current);
     expect(
       scroller?.querySelectorAll("[data-sidebar-windowed-item]"),
     ).toHaveLength(3);
