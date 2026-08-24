@@ -2957,9 +2957,14 @@ describe("PromptBoxInternal mention triggers", () => {
         mentionSuggestions: [githubIssueSuggestion],
       });
 
-      fireEvent.click(
-        await screen.findByRole("button", { name: "Close suggestions" }),
-      );
+      const closeButton = await screen.findByRole("button", {
+        name: "Close suggestions",
+      });
+      expect(closeButton.classList).toContain("size-11");
+      expect(closeButton.parentElement?.classList).toContain("h-11");
+      expect(closeButton.parentElement?.classList).not.toContain("absolute");
+
+      fireEvent.click(closeButton);
 
       await waitFor(() =>
         expect(
