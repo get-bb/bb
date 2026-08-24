@@ -168,6 +168,17 @@ interface ThrottledActiveRefetchArgs {
 const WORK_STATUS_REFETCH_MIN_INTERVAL_MS = 1_000;
 
 /**
+ * A `status-changed` push without a row snapshot falls back to refetching the
+ * active thread lists. Bare pushes arrive in bursts — writers inside a
+ * transaction publish one per thread, and a host disconnect used to publish
+ * one per thread on the host — and every full list response is ~1 KB per
+ * unarchived thread, so the fallback refetch is throttled to one per second
+ * per query. Rows still go stale immediately; only the active refetch
+ * coalesces.
+ */
+const THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS = 1_000;
+
+/**
  * The trailing refetch is self-clocking: it fires as soon as the in-flight
  * fetch settles and any event arrived meanwhile. During a streaming turn events
  * always arrive, so with no floor the client requests a rebuild the instant the
@@ -831,6 +842,54 @@ function dirtyActiveThreadListQueries({
   return [sidebarNavigationQueryKey(), threadSearchQueryKeyPrefix()];
 }
 
+/**
+ * Same scope as {@link dirtyActiveThreadListQueries}, but the active refetches
+ * run through the throttle machinery: everything goes stale immediately (a
+ * remount refetches), while active list/sidebar/search observers refetch at
+ * most once per {@link THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS},
+ * with later changes coalescing into one trailing refetch and no fetch in
+ * flight ever cancelled. Archived pages keep their stale-only treatment.
+ */
+function dirtyActiveThreadListQueriesWithThrottledRefetch({
+  projectId,
+  queryClient,
+}: ThreadRealtimeDirtyContext): void {
+  const listQueryKeys = projectId
+    ? [
+        ...getCachedProjectThreadListInvalidationQueryKeys({
+          projectId,
+          queryClient,
+        }),
+        ...getCachedGlobalThreadListInvalidationQueryKeys({ queryClient }),
+      ]
+    : getCachedThreadListQueryKeys(queryClient);
+  for (const queryKey of listQueryKeys) {
+    if (isArchivedThreadListQueryKey(queryKey)) {
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey,
+        refetchType: "none",
+      });
+      continue;
+    }
+    invalidateQueryKeyWithThrottledActiveRefetch({
+      minIntervalMs: THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS,
+      queryClient,
+      queryKey,
+    });
+  }
+  for (const queryKey of [
+    sidebarNavigationQueryKey(),
+    threadSearchQueryKeyPrefix(),
+  ]) {
+    invalidateQueryKeyWithThrottledActiveRefetch({
+      minIntervalMs: THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS,
+      queryClient,
+      queryKey,
+    });
+  }
+}
+
 function dirtyThreadListQueriesForBackgroundActivity(
   context: ThreadRealtimeDirtyContext,
 ): QueryKey[] {
@@ -1108,7 +1167,8 @@ function patchThreadListPendingInteractionState({
  * patched in place. The alternative is what the fallback still does for
  * pushes without the row (older servers, writers inside a transaction that
  * cannot resolve the runtime): refetch every active thread list plus the
- * sidebar bootstrap, which is ~1 KB per unarchived thread, twice per turn.
+ * sidebar bootstrap, which is ~1 KB per unarchived thread — throttled to one
+ * active refetch per second so a burst of bare pushes coalesces.
  *
  * A list fetch already in flight read the database before this transition
  * and would overwrite the patch when it lands, so those queries are
@@ -1116,10 +1176,11 @@ function patchThreadListPendingInteractionState({
  */
 function patchThreadListStatusState(
   context: ThreadRealtimeDirtyContext,
-): QueryKey[] {
+): QueryKey[] | undefined {
   const { queryClient, statusChange, threadId } = context;
   if (!threadId || !statusChange) {
-    return dirtyActiveThreadListQueries(context);
+    dirtyActiveThreadListQueriesWithThrottledRefetch(context);
+    return undefined;
   }
   updateCachedThreadListStatusState(queryClient, threadId, statusChange);
   for (const queryKey of getFetchingThreadListQueryKeys(queryClient)) {
