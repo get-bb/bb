@@ -1192,6 +1192,42 @@ describe("applyPluginCss", () => {
     expect(links("hello")).toHaveLength(0);
   });
 
+  it("applies a URL that is republished after a flip-flop discarded its in-flight sheet", async () => {
+    vi.useFakeTimers();
+    retainPluginCss("hello");
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    links("hello")[0]?.dispatchEvent(new Event("load"));
+
+    // Live reload publishes bbb, then republishes aaa before bbb lands. The
+    // loaded aaa sheet is reused, so the in-flight bbb link stays pending and
+    // its load event must discard it without leaving a stale reference.
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    const inflight = links("hello")[1];
+    expect(inflight?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    inflight?.dispatchEvent(new Event("load"));
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=aaa",
+    ]);
+
+    // Redo: bbb must be fetched again beside the live aaa sheet, not skipped
+    // because the detached pending link still carries the bbb href.
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=aaa",
+      "/assets/app.css?h=bbb",
+    ]);
+    retainPluginCss("hello");
+    expect(links("hello")).toHaveLength(2);
+    links("hello")
+      .find((l) => l.getAttribute("href") === "/assets/app.css?h=bbb")
+      ?.dispatchEvent(new Event("load"));
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("removes the sheet at once and cancels the timer when the URL is cleared during the grace", async () => {
     vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");

@@ -105,6 +105,11 @@ function activateStylesheet(
   link.onload = () => {
     if (record.pendingStylesheet !== link || record.url !== url) {
       link.remove();
+      // Mirror onerror: a link discarded because the URL flipped back while it
+      // was in flight must not stay referenced. linkUrl() reads the href of a
+      // detached node too, so a stale reference makes every later activation
+      // of this URL early-return with the previous sheet still attached.
+      if (record.pendingStylesheet === link) record.pendingStylesheet = null;
       return;
     }
     // A sheet that lands inside the release grace (consumers === 0) is still
