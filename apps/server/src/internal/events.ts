@@ -37,6 +37,7 @@ import {
   isActivePruneTriggerThreadEventType,
   maybePruneActiveThreadEventHistory,
 } from "../services/system/event-pruning.js";
+import { runEventLoopWorkSync } from "../services/system/event-loop-work.js";
 import { queueChildThreadTurnNotificationBestEffort } from "../services/threads/child-thread-notifications.js";
 import { isParentNotifiableChildThread } from "../services/threads/thread-parent.js";
 import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
@@ -194,9 +195,22 @@ interface QueuedMessageAutoSendFollowUp {
   threadId: string;
 }
 
+/**
+ * Opportunistic event-history prune, deferred off the ingest response path.
+ * Pruning is output-preserving (see the timeline cache notes), so running it
+ * after the response — instead of inside the hottest handler — only changes
+ * when the redundant rows disappear, never what any read returns.
+ */
+interface ActiveThreadEventPruneFollowUp {
+  kind: "active-thread-event-prune";
+  latestPrunableSequence: number;
+  threadId: string;
+}
+
 type EventEffectFollowUp =
   | ParentTurnNotificationFollowUp
-  | QueuedMessageAutoSendFollowUp;
+  | QueuedMessageAutoSendFollowUp
+  | ActiveThreadEventPruneFollowUp;
 
 function isRootTurnStartedEvent(
   event: Extract<HostDaemonEventEnvelope["event"], { type: "turn/started" }>,
@@ -493,6 +507,16 @@ async function executeEventFollowUpBestEffort(
         await runQueuedMessageAutoSendForThread(deps, {
           threadId: followUp.threadId,
         });
+        return;
+      case "active-thread-event-prune":
+        // Synchronous better-sqlite3 work: the wrapper lets the stall
+        // monitor name the prune instead of blaming whatever ran next.
+        runEventLoopWorkSync(`event-prune ${followUp.threadId}`, () =>
+          maybePruneActiveThreadEventHistory(deps, {
+            latestPrunableSequence: followUp.latestPrunableSequence,
+            threadId: followUp.threadId,
+          }),
+        );
         return;
     }
   } catch (error) {
@@ -1023,7 +1047,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         events: postableEvents,
         insertedEventIndexes: appendResult.insertedInputIndexes,
       })) {
-        maybePruneActiveThreadEventHistory(deps, candidate);
+        followUps.push({ kind: "active-thread-event-prune", ...candidate });
       }
 
       deferEventFollowUpBatch(deps, followUps);

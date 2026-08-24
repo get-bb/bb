@@ -1,4 +1,5 @@
 import { performance } from "node:perf_hooks";
+import { and, eq, inArray, lte } from "drizzle-orm";
 import {
   getThread,
   getLatestThreadSequence,
@@ -7,6 +8,7 @@ import {
   pruneResolvedItemDeltas,
   pruneTokenUsageEventsBeforeSequence,
   pruneThreadEventsBeforeSequence,
+  events as storedEvents,
 } from "@bb/db";
 import type { ThreadEventType } from "@bb/domain";
 import { roundDurationMs } from "../lib/duration.js";
@@ -85,6 +87,18 @@ const GENERIC_AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   "turn/diff/updated",
 ] as const;
 
+/**
+ * Candidate types for `pruneResolvedItemDeltas`. Must stay a superset of the
+ * delta types that DELETE targets, or the probe below silently disables the
+ * prune for the missing type.
+ */
+const RESOLVED_ITEM_DELTA_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
+  "item/agentMessage/delta",
+  "item/commandExecution/outputDelta",
+  "item/reasoning/summaryTextDelta",
+  "item/reasoning/textDelta",
+] as const;
+
 const KEEP_RECENT_BY_MODE: Record<ThreadEventPruningMode, number> = {
   active: ACTIVE_THREAD_EVENT_KEEP_RECENT,
   idle: IDLE_THREAD_EVENT_KEEP_RECENT,
@@ -125,6 +139,49 @@ export function isActivePruneTriggerThreadEventType(
   return activePruneTriggerThreadEventTypeSet.has(eventType);
 }
 
+interface HasPrunableCandidateRowsArgs {
+  threadId: string;
+  types: readonly ThreadEventType[];
+  /** Omit for classes whose DELETE has no sequence bound. */
+  sequenceCutoff?: number;
+}
+
+/**
+ * LIMIT 1 necessary-condition probe for a prune class. The usage-row DELETEs
+ * walk every row of their type through a correlated-subquery CTE, and the
+ * resolved-delta/background-progress DELETEs walk their candidates with
+ * correlated EXISTS checks — even when the thread has no candidate rows at
+ * all, which is the common case for an active thread pruned every ~30s. This
+ * probe answers "could that DELETE possibly match?" with one covering seek on
+ * the (thread_id, type, sequence) index, so the no-op case skips the walk
+ * outright. A true result only means candidates exist; the DELETE still
+ * decides what is actually prunable.
+ */
+function hasPrunableCandidateRows(
+  db: AppDeps["db"],
+  args: HasPrunableCandidateRowsArgs,
+): boolean {
+  if (args.sequenceCutoff !== undefined && args.sequenceCutoff <= 0) {
+    return false;
+  }
+  return (
+    db
+      .select({ id: storedEvents.id })
+      .from(storedEvents)
+      .where(
+        and(
+          eq(storedEvents.threadId, args.threadId),
+          inArray(storedEvents.type, [...args.types]),
+          ...(args.sequenceCutoff === undefined
+            ? []
+            : [lte(storedEvents.sequence, args.sequenceCutoff)]),
+        ),
+      )
+      .limit(1)
+      .get() !== undefined
+  );
+}
+
 export function pruneThreadEventHistory(
   deps: Pick<AppDeps, "db">,
   args: PruneThreadEventHistoryArgs,
@@ -140,17 +197,31 @@ export function pruneThreadEventHistory(
   const sequenceCutoff = Math.max(0, latestSequence - keepRecent);
   const removedAgePrunableEvents =
     runThreadEventPruningStep("prune_context_window_usage", () =>
-      pruneContextWindowUsageEventsBeforeSequence(deps.db, {
+      hasPrunableCandidateRows(deps.db, {
         threadId: args.threadId,
+        types: ["thread/contextWindowUsage/updated"],
         sequenceCutoff,
-      }),
+      })
+        ? pruneContextWindowUsageEventsBeforeSequence(deps.db, {
+            threadId: args.threadId,
+            sequenceCutoff,
+          })
+        : 0,
     ) +
     runThreadEventPruningStep("prune_token_usage", () =>
-      pruneTokenUsageEventsBeforeSequence(deps.db, {
+      hasPrunableCandidateRows(deps.db, {
         threadId: args.threadId,
+        types: ["thread/tokenUsage/updated"],
         sequenceCutoff,
-      }),
+      })
+        ? pruneTokenUsageEventsBeforeSequence(deps.db, {
+            threadId: args.threadId,
+            sequenceCutoff,
+          })
+        : 0,
     ) +
+    // No probe: this DELETE is already a plain (thread_id, type, sequence)
+    // index-range scan, exactly what the probe would run.
     runThreadEventPruningStep("prune_generic_age_prunable_events", () =>
       pruneThreadEventsBeforeSequence(deps.db, {
         threadId: args.threadId,
@@ -161,16 +232,26 @@ export function pruneThreadEventHistory(
   const removedResolvedItemDeltas = runThreadEventPruningStep(
     "prune_resolved_item_deltas",
     () =>
-      pruneResolvedItemDeltas(deps.db, {
+      hasPrunableCandidateRows(deps.db, {
         threadId: args.threadId,
-      }),
+        types: RESOLVED_ITEM_DELTA_THREAD_EVENT_TYPES,
+      })
+        ? pruneResolvedItemDeltas(deps.db, {
+            threadId: args.threadId,
+          })
+        : 0,
   );
   const removedBackgroundTaskProgressEvents = runThreadEventPruningStep(
     "prune_background_task_progress",
     () =>
-      pruneBackgroundTaskProgressEvents(deps.db, {
+      hasPrunableCandidateRows(deps.db, {
         threadId: args.threadId,
-      }),
+        types: ["item/backgroundTask/progress"],
+      })
+        ? pruneBackgroundTaskProgressEvents(deps.db, {
+            threadId: args.threadId,
+          })
+        : 0,
   );
 
   return {

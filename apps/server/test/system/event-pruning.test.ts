@@ -1,5 +1,5 @@
 import { getThread, listEvents } from "@bb/db";
-import { turnScope } from "@bb/domain";
+import { threadScope, turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
 import { applyTurnCompletedEvent } from "../../src/internal/turn-completed-events.js";
@@ -130,6 +130,7 @@ function seedResolvedAssistantMessage(
   for (const sequence of args.deltaSequences) {
     seedStoredEvent(harness.deps, {
       threadId: args.threadId,
+      providerThreadId: "provider-thread-1",
       sequence,
       type: "item/agentMessage/delta",
       scope: turnScope(turnId),
@@ -144,6 +145,7 @@ function seedResolvedAssistantMessage(
 
   seedStoredEvent(harness.deps, {
     threadId: args.threadId,
+    providerThreadId: "provider-thread-1",
     sequence: args.completedSequence,
     type: "item/completed",
     scope: turnScope(turnId),
@@ -532,6 +534,7 @@ describe("thread event pruning", () => {
       for (const sequence of [1_004, 1_005]) {
         seedStoredEvent(harness.deps, {
           threadId: thread.id,
+          providerThreadId: "provider-thread-1",
           scope: turnScope("turn-active"),
           sequence,
           type: "item/agentMessage/delta",
@@ -580,6 +583,46 @@ describe("thread event pruning", () => {
       });
 
       expect(response.status).toBe(200);
+
+      // The prune is deferred off the response path: when the response
+      // settles, nothing has been removed yet.
+      expect(
+        listEventSequencesForType(harness, {
+          threadId: thread.id,
+          type: "thread/tokenUsage/updated",
+        }).at(0),
+      ).toBe(1);
+      expect(
+        listEventSequencesForType(harness, {
+          threadId: thread.id,
+          type: "item/agentMessage/delta",
+          itemId: "msg-completed",
+        }),
+      ).toEqual([1_001, 1_002]);
+
+      // Pruning is output-preserving, so a timeline read in the window
+      // between the append and the deferred prune must project exactly what
+      // a post-prune read projects.
+      const timelineOptions = {
+        eventBudget: 1_000_000,
+        includeProviderUnhandledOperations: true,
+        maxInlineOutputChars: null,
+        maxSeq: 0,
+        page: {
+          kind: "latest",
+          segmentLimit: Number.MAX_SAFE_INTEGER,
+        },
+      } as const;
+      const beforePrune = buildThreadTimeline(
+        harness.db,
+        thread,
+        timelineOptions,
+      );
+
+      // The deferred batch was scheduled with setImmediate during the
+      // request; one immediate turn later it has run.
+      await new Promise((resolve) => setImmediate(resolve));
+
       expect(
         listEventSequencesForType(harness, {
           threadId: thread.id,
@@ -600,6 +643,61 @@ describe("thread event pruning", () => {
           itemId: "msg-active",
         }),
       ).toEqual([1_004, 1_005]);
+
+      const afterPrune = buildThreadTimeline(
+        harness.db,
+        thread,
+        timelineOptions,
+      );
+      expect(afterPrune.rows).toEqual(beforePrune.rows);
+      expect(afterPrune.contextWindowUsage).toEqual(
+        beforePrune.contextWindowUsage,
+      );
+    });
+  });
+
+  it("prunes superseded background-task progress snapshots", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+
+      // Two snapshots for the same item: only the latest is load-bearing.
+      for (const sequence of [1, 2]) {
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          sequence,
+          type: "item/backgroundTask/progress",
+          scope: threadScope(),
+          itemId: "task-1",
+          itemKind: "backgroundTask",
+          data: {
+            item: { id: "task-1", type: "backgroundTask", status: "running" },
+          },
+        });
+      }
+
+      const result = pruneThreadEventHistory(harness.deps, {
+        mode: "idle",
+        threadId: thread.id,
+      });
+
+      expect(result.removedBackgroundTaskProgressEvents).toBe(1);
+      expect(
+        listEventSequencesForType(harness, {
+          threadId: thread.id,
+          type: "item/backgroundTask/progress",
+        }),
+      ).toEqual([2]);
     });
   });
 });
