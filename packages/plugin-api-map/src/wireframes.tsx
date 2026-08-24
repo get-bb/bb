@@ -437,12 +437,11 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
     </Mark>
   ),
   "thread-list": () => (
-    <Mark
+    <RegionMark
       id="thread-list"
       label="The thread list, replaceable by one plugin"
       className="mx-1.5 flex-1 px-1.5 py-1.5"
-      edge
-      chipClassName="left-1 top-[190px]"
+      chipClassName="-left-3 top-[68px]"
     >
       <span className="block px-2 pb-1 pt-1.5 text-xs text-subtle-foreground/75">
         Pinned
@@ -459,7 +458,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
             <Mark
               id="thread-row-status"
               label="A thread row status set by a plugin"
-              className="flex size-5 shrink-0 items-center justify-center"
+              className="z-[2] flex size-5 shrink-0 items-center justify-center"
               // Top-right of the glyph and clear of it; the sidebar's padding
               // still has room for the chip before the panel's edge.
               chipClassName="-right-4 -top-2"
@@ -486,7 +485,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
           <MiniIcon icon={ArrowRight01Icon} className="size-3.5" />
         </span>
       ))}
-    </Mark>
+    </RegionMark>
   ),
   footer: () => (
     <Mark

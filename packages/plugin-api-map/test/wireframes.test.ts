@@ -30,6 +30,22 @@ function renderWireframe(
 }
 
 describe("guide fixture boundaries", () => {
+  it("never nests one annotation link inside another", () => {
+    const markup = renderWireframe(createElement(AppShellWireframe));
+    let anchorDepth = 0;
+
+    for (const tag of markup.matchAll(/<a(?:\s[^>]*)?>|<\/a>/g)) {
+      if (tag[0].startsWith("</")) {
+        anchorDepth -= 1;
+      } else {
+        expect(anchorDepth).toBe(0);
+        anchorDepth += 1;
+      }
+    }
+
+    expect(anchorDepth).toBe(0);
+  });
+
   it("places the right-panel annotations on their respective tabs", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
 
