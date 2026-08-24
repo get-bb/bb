@@ -90,6 +90,16 @@ export interface CommandDispatchOptions {
     plan: ProviderInstallationCommand;
     env?: NodeJS.ProcessEnv;
   }) => ReadableStream<Uint8Array>;
+  /**
+   * Re-reads the login shell's environment into the runtime manager once its
+   * short refresh window has lapsed. The provider-CLI gate in front of thread
+   * start and rewind awaits this before it consults its memo, because a PATH
+   * change is what makes a remembered probe wrong and the manager only learns
+   * about one through this refresh. Daemon-internal: nothing on the wire
+   * changes. Omitted when the process has no login shell to re-read from, as
+   * in tests that seed the manager with a fixed env.
+   */
+  refreshShellEnv?: () => Promise<void>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;

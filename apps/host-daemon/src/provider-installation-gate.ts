@@ -22,9 +22,10 @@ export interface ProviderInstallationGateKeyArgs {
 /**
  * Memo for the provider-CLI version gate in front of thread start and rewind.
  * Concurrent starts for one key share the in-flight probe, and a supported
- * answer is served from memory until it expires. An unsupported answer and a
- * rejected probe are never stored, so a CLI that is too old is re-probed on
- * every attempt until it passes.
+ * answer is served from memory until it expires. A not-installed answer, an
+ * unsupported answer, and a rejected probe are never stored: a CLI that is
+ * missing or too old is re-probed on every attempt until it passes, so an
+ * install that arrives without a PATH change is seen on the next start.
  */
 export interface ProviderInstallationGate {
   clear(): void;
@@ -102,7 +103,15 @@ export function createProviderInstallationGate({
           // Expired neighbours are swept here rather than on a timer so the
           // map stays bounded without keeping the process alive.
           pruneExpired(settledAt);
-          if (!status.versionUnsupported && startedGeneration === generation) {
+          // Bridges report `versionUnsupported: false` for a CLI that is not
+          // installed at all, so `installed` has to be checked on its own:
+          // remembering "not installed" would let a too-old CLI installed in
+          // the meantime slip past the gate's actionable version error.
+          if (
+            status.installed &&
+            !status.versionUnsupported &&
+            startedGeneration === generation
+          ) {
             settledByKey.set(key, { status, expiresAt: settledAt + ttlMs });
           }
           return status;

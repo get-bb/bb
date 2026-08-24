@@ -109,6 +109,14 @@ async function requireSupportedProviderCliForThreadStart({
     command.type === "thread.rewind.prepare"
       ? ("thread_rewind" as const)
       : undefined;
+  // A changed PATH can resolve a different provider binary, and the runtime
+  // manager only learns about one through this refresh: it clears the gate
+  // and evicts idle runtimes so the thread launches against the new env. It
+  // has to run before the memo is consulted, since a hit would otherwise
+  // skip the probe that used to carry the refresh, and before the gate
+  // samples its generation, so the clear does not discard the fresh probe.
+  // The refresh's own short TTL keeps back-to-back starts free.
+  await options.refreshShellEnv?.();
   // The probe spawns the provider CLI several times, so a remembered
   // supported answer is served without touching the maintenance bridge or
   // re-verifying the bridge artifact.

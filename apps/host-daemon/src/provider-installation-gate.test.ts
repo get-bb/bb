@@ -74,6 +74,36 @@ describe("createProviderInstallationGate", () => {
     expect(probe).toHaveBeenCalledTimes(2);
   });
 
+  it("never remembers a not-installed status", async () => {
+    const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
+    // Bridges compute versionUnsupported as `installed && ...`, so a missing
+    // CLI arrives as versionUnsupported: false; it must still not be stored.
+    const notInstalled = status({
+      installed: false,
+      executablePath: null,
+      currentVersion: null,
+      npmGlobalPackageVersion: null,
+      installAction: {
+        kind: "install",
+        label: "Install",
+        command: "npm i -g @openai/codex",
+      },
+    });
+    const tooOld = status({
+      currentVersion: "0.135.0",
+      versionUnsupported: true,
+    });
+    const probe = vi
+      .fn<() => Promise<ProviderInstallationStatus>>()
+      .mockResolvedValueOnce(notInstalled)
+      .mockResolvedValueOnce(tooOld);
+
+    await expect(gate.run("codex", probe)).resolves.toEqual(notInstalled);
+    await expect(gate.run("codex", probe)).resolves.toEqual(tooOld);
+
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
   it("shares one in-flight probe between concurrent callers", async () => {
     const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
     const deferred = createDeferredPromise<ProviderInstallationStatus>();

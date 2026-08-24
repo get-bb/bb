@@ -800,6 +800,9 @@ export async function createHostDaemonApp(
         (runtime) => runtime.providerInstallationRun(args),
       );
     },
+    refreshShellEnv: async () => {
+      await refreshRuntimeShellEnv();
+    },
     resolveInteractiveRequest: async (request) => {
       interactiveRequestRegistry.resolve(request);
     },

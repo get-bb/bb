@@ -324,6 +324,7 @@ function supportedCodexInstallationStatus(): ProviderCliStatus {
  * provider-CLI version gate runs before the runtime sees the thread. */
 function createInstallationGatedThreadStart(
   threadId: string,
+  environmentId = "env-1",
 ): CommandOf<"thread.start"> {
   return {
     bridgeLaunch: {
@@ -334,7 +335,7 @@ function createInstallationGatedThreadStart(
       },
     },
     type: "thread.start",
-    environmentId: "env-1",
+    environmentId,
     threadId,
     workspaceContext: {
       workspacePath: WORKSPACE_PATH,
@@ -1738,11 +1739,24 @@ describe("dispatchCommand", () => {
     );
   });
 
-  it("re-probes after the base shell env changes", async () => {
+  it("re-probes and launches with the new PATH when the shell env refresh finds a change", async () => {
+    const oldPath = "/usr/bin:/bin";
+    const newPath = "/home/u/.local/bin:/usr/bin:/bin";
     const runtime = createRuntime();
+    const createdRuntimeShellPaths: (string | undefined)[] = [];
     const manager = new RuntimeManager({
-      createRuntime: () => runtime,
+      createRuntime: (runtimeOptions) => {
+        createdRuntimeShellPaths.push(runtimeOptions.shellEnv?.PATH);
+        return runtime;
+      },
       provisionWorkspace: async () => createWorkspace(),
+      shellEnv: { PATH: oldPath },
+    });
+    // The daemon only learns about a PATH change through this refresh, which
+    // re-reads the login shell and hands the result to the manager (app.ts).
+    let loginShellPath = oldPath;
+    const refreshShellEnv = vi.fn(async () => {
+      await manager.replaceBaseShellEnv({ PATH: loginShellPath });
     });
     const providerInstallationStatus = vi.fn(async () =>
       supportedCodexInstallationStatus(),
@@ -1750,26 +1764,114 @@ describe("dispatchCommand", () => {
     const options = makeDispatchOptions({
       runtimeManager: manager,
       providerInstallationStatus,
+      refreshShellEnv,
     });
 
     await dispatchCommand(
       createInstallationGatedThreadStart("thread-1"),
       options,
     );
-    await manager.replaceBaseShellEnv(manager.getShellEnv());
     await dispatchCommand(
       createInstallationGatedThreadStart("thread-2"),
       options,
     );
     expect(providerInstallationStatus).toHaveBeenCalledOnce();
 
-    // A different PATH can resolve a different provider binary.
-    await manager.replaceBaseShellEnv({ PATH: "/new/bin" });
+    // A vendor installer drops the binary in a new directory and adds it to
+    // the shell rc; the next start must see it even though the memo is warm.
+    loginShellPath = newPath;
     await dispatchCommand(
-      createInstallationGatedThreadStart("thread-3"),
+      createInstallationGatedThreadStart("thread-3", "env-2"),
       options,
     );
+
     expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    expect(manager.getShellEnv().PATH).toBe(newPath);
+    expect(createdRuntimeShellPaths).toEqual([oldPath, newPath]);
+    // Every gated start re-reads the shell, as it did before the memo
+    // existed; the refresh's own TTL is what keeps that cheap.
+    expect(refreshShellEnv).toHaveBeenCalledTimes(3);
+  });
+
+  it("remembers the first probe after a shell env change", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+      shellEnv: { PATH: "/old/bin" },
+    });
+    const refreshShellEnv = async () => {
+      await manager.replaceBaseShellEnv({ PATH: "/new/bin" });
+    };
+    // The production probe refreshes the shell env itself before asking the
+    // bridge (app.ts). Since the gate has already refreshed, that inner call
+    // finds nothing changed and must not clear the gate under its own probe.
+    const providerInstallationStatus = vi.fn(async () => {
+      await refreshShellEnv();
+      return supportedCodexInstallationStatus();
+    });
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+      refreshShellEnv,
+    });
+
+    await dispatchCommand(
+      createInstallationGatedThreadStart("thread-1"),
+      options,
+    );
+    await dispatchCommand(
+      createInstallationGatedThreadStart("thread-2"),
+      options,
+    );
+
+    expect(manager.getShellEnv().PATH).toBe("/new/bin");
+    expect(providerInstallationStatus).toHaveBeenCalledOnce();
+  });
+
+  it("does not remember a not-installed provider", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const providerInstallationStatus = vi
+      .fn<() => Promise<ProviderCliStatus>>()
+      // Bridges report a missing CLI with versionUnsupported: false.
+      .mockResolvedValueOnce({
+        ...supportedCodexInstallationStatus(),
+        installed: false,
+        executablePath: null,
+        currentVersion: null,
+        npmGlobalPackageVersion: null,
+        installAction: {
+          kind: "install",
+          label: "Install",
+          command: "npm i -g @openai/codex",
+        },
+      })
+      // An out-of-band install of a too-old CLI into a directory already on
+      // PATH changes no shell env, so only a fresh probe can catch it.
+      .mockResolvedValueOnce({
+        ...supportedCodexInstallationStatus(),
+        currentVersion: "0.135.0",
+        npmGlobalPackageVersion: "0.135.0",
+        versionUnsupported: true,
+      });
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-2"), options),
+    ).rejects.toMatchObject({ code: "provider_cli_unsupported_version" });
+
+    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    expect(runtime.startThread).toHaveBeenCalledOnce();
   });
 
   it("expires the remembered probe after the gate TTL", async () => {
