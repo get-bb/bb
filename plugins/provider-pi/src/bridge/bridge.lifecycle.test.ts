@@ -249,11 +249,14 @@ it("a child's tool and prompt files go with the child after release and failed c
   await expectScratchFilesGone();
 }, 60_000);
 
-it("closing the catalog ends its child", async () => {
+it("closing the catalog waits for its child to exit", async () => {
   const models = await harness.request((nextId += 1), "model/list", { cwd: harness.workspaceDir });
   expect(models.result).toMatchObject({ models: expect.any(Array) });
   await experimental_closeAllForTests();
-  await expectEveryChildGone(1);
+  const log = harness.readProcessLog();
+  expect(log.spawned).toHaveLength(1);
+  expect(log.exited).toContain(log.spawned[0]);
+  expect(log.spawned.some(isAlive)).toBe(false);
 }, 90_000);
 
 it("a child that ignores EOF and SIGTERM is SIGKILLed", async () => {

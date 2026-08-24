@@ -1027,7 +1027,7 @@ export function experimental_scratchDirForTests(): string {
  */
 export async function experimental_closeAllForTests(): Promise<void> {
   await closeThreadSessionsGracefully("Pi bridge test teardown");
-  closeAllPiCatalogs();
+  await closeAllPiCatalogs();
   resetPiInstallGateForTests();
   if (scratchDir !== null && scratchDirIsPrivate) {
     rmSync(scratchDir, { recursive: true, force: true });
@@ -1047,14 +1047,14 @@ export const experimental_providerBridge = experimental_defineProviderBridge({
   onClose: () => {
     void closeThreadSessionsGracefully("Pi bridge shutting down while tool call was pending")
       .finally(() => {
-        closeAllPiCatalogs();
+        void closeAllPiCatalogs();
         process.exit(0);
       });
   },
   onSigterm: () => {
     void closeThreadSessionsGracefully("Pi bridge terminated while tool call was pending")
       .finally(() => {
-        closeAllPiCatalogs();
+        void closeAllPiCatalogs();
         process.exit(0);
       });
   },

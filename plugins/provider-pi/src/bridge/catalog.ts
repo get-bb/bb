@@ -87,7 +87,7 @@ export interface PiCatalog {
   rawModels(): Promise<PiRpcModel[]>;
   /** The `get_state` smoke probe: pi booted, loaded the extension, answers. */
   probe(): Promise<Record<string, unknown>>;
-  close(): void;
+  close(): Promise<void>;
 }
 
 const catalogsByCwd = new Map<string, Promise<PiCatalog>>();
@@ -156,8 +156,13 @@ async function spawnCatalog(
     },
     rawModels: fetchRaw,
     probe,
-    close() {
-      child?.kill();
+    async close() {
+      const activeChild = child;
+      if (activeChild === null) {
+        return;
+      }
+      activeChild.kill();
+      await activeChild.waitForExit();
     },
   };
 }
@@ -215,15 +220,18 @@ export function getPiCatalog(
   return created;
 }
 
-export function closeAllPiCatalogs(): void {
+export async function closeAllPiCatalogs(): Promise<void> {
   for (const [, timer] of catalogIdleTimers) {
     clearTimeout(timer);
   }
   catalogIdleTimers.clear();
-  for (const [, catalog] of catalogsByCwd) {
-    void catalog.then((entry) => entry.close()).catch(() => undefined);
-  }
+  const catalogs = [...catalogsByCwd.values()];
   catalogsByCwd.clear();
+  await Promise.all(
+    catalogs.map((catalog) =>
+      catalog.then((entry) => entry.close()).catch(() => undefined),
+    ),
+  );
 }
 
 /**

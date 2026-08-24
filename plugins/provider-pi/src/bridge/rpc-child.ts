@@ -132,6 +132,7 @@ export class PiRpcChild {
   private stderrTail = "";
   private sawResponse = false;
   private exitInfo: PiRpcChildExitInfo | null = null;
+  private readonly settledExit: Promise<PiRpcChildExitInfo>;
   private readonly channelWriter: Writable | null;
   private readonly channelRecorder: ChannelRecorder | null;
   private killEscalation: ReturnType<typeof setTimeout> | null = null;
@@ -147,6 +148,10 @@ export class PiRpcChild {
   private stdoutDraining = false;
 
   constructor(private readonly args: SpawnPiRpcChildArgs) {
+    let resolveSettledExit: (info: PiRpcChildExitInfo) => void = () => undefined;
+    this.settledExit = new Promise((resolve) => {
+      resolveSettledExit = resolve;
+    });
     const launch = resolvePiLaunch(process.env);
     this.child = spawn(launch.command, [...launch.args, ...args.args], {
       cwd: args.cwd,
@@ -208,6 +213,7 @@ export class PiRpcChild {
         beforeFirstResponse: !this.sawResponse,
       };
       this.exitInfo = info;
+      resolveSettledExit(info);
       for (const [, pending] of this.pending) {
         if (pending.timer !== null) clearTimeout(pending.timer);
         pending.reject(new PiRpcChildExitedError(info));
@@ -231,6 +237,11 @@ export class PiRpcChild {
 
   get pid(): number | undefined {
     return this.child.pid;
+  }
+
+  /** Resolve after the operating system reports this child exited. */
+  waitForExit(): Promise<PiRpcChildExitInfo> {
+    return this.settledExit;
   }
 
   /** Send one RPC command and wait for its response (success or error). */
