@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment } from "react";
 import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import {
   assertNever,
@@ -15,6 +15,7 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
 import { RouteAnchor } from "@/components/ui/app-route-anchor.js";
+import { useSecondTick } from "@/hooks/useSecondTick";
 
 /**
  * Resolves a title's declared action to a click callback. Return `null` to
@@ -209,26 +210,20 @@ function renderSegment(
 }
 
 /**
- * Ticks the displayed elapsed time locally while the row is still active.
- * The truth is `startedAt` (the wall-clock when the work began); the App
- * derives `now - startedAt` and ticks once per second until the row reaches
- * a terminal status (at which point a static `completedAt - startedAt` is
- * shown by the caller instead). Stays empty until the elapsed time crosses
- * the visible threshold (>1s) to avoid sub-second flicker on row entry.
+ * Ticks the displayed elapsed time while the row is still active. The truth
+ * is `startedAt` (the wall-clock when the work began); the App derives
+ * `now - startedAt` from the shared 1 Hz ticker — one interval for every
+ * in-flight row on screen, paused while the document is hidden — until the
+ * row reaches a terminal status (at which point a static
+ * `completedAt - startedAt` is shown by the caller instead). Stays empty
+ * until the elapsed time crosses the visible threshold (>1s) to avoid
+ * sub-second flicker on row entry.
  */
 function LiveDurationText({ startedAt }: { startedAt: number }) {
-  const [tick, setTick] = useState(() => Date.now() - startedAt);
+  const elapsedMs = useSecondTick() - startedAt;
 
-  useEffect(() => {
-    setTick(Date.now() - startedAt);
-    const interval = window.setInterval(() => {
-      setTick(Date.now() - startedAt);
-    }, 1_000);
-    return () => window.clearInterval(interval);
-  }, [startedAt]);
-
-  if (tick <= 1_000) return null;
-  return <>{durationToCompactString(tick)}</>;
+  if (elapsedMs <= 1_000) return null;
+  return <>{durationToCompactString(elapsedMs)}</>;
 }
 
 function renderDecoration(

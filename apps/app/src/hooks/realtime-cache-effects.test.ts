@@ -42,6 +42,7 @@ import {
 import { pluginContributionsQueryKey } from "./queries/query-keys";
 import {
   createRealtimeCacheEffects,
+  resolveThreadInvalidationDebounce,
   type RealtimeCacheEffectsVisibility,
 } from "./realtime-cache-effects";
 import {
@@ -2561,6 +2562,71 @@ describe("createRealtimeCacheEffects", () => {
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
 
     effects.dispose();
+  });
+
+  it("keeps the fine-pointer cadence and widens it for coarse pointers", () => {
+    expect(resolveThreadInvalidationDebounce(false)).toEqual({
+      debounceMs: 50,
+      maxWaitMs: 200,
+    });
+    expect(resolveThreadInvalidationDebounce(true)).toEqual({
+      debounceMs: 150,
+      maxWaitMs: 400,
+    });
+  });
+
+  it("widens the thread invalidation debounce on coarse pointers", async () => {
+    vi.useFakeTimers();
+    // The pointer class is read from matchMedia once at module init, so the
+    // coarse branch needs a fresh module instance with a stubbed window.
+    // `location` rides along because the re-imported graph reaches the sdk
+    // module, which resolves its base URL from the window at init.
+    vi.stubGlobal("window", {
+      location: { origin: "http://localhost" },
+      matchMedia: (query: string) => ({
+        matches: query === "(pointer: coarse)",
+      }),
+    });
+    vi.resetModules();
+    try {
+      const coarseModule = await import("./realtime-cache-effects");
+      const queryClient = createAppQueryClient({
+        defaultOptions: {
+          queries: {
+            gcTime: Infinity,
+            retry: false,
+          },
+        },
+        showMutationErrorToasts: false,
+      });
+      const effects = coarseModule.createRealtimeCacheEffects({ queryClient });
+      const timelineKey = threadTimelineQueryKey("thr_1");
+      queryClient.setQueryData(timelineKey, { rows: [] });
+
+      effects.handleChanged({
+        type: "changed",
+        entity: "thread",
+        id: "thr_1",
+        metadata: {
+          eventTypes: ["item/agentMessage/delta"],
+          projectId: "project-1",
+        },
+        changes: ["events-appended"],
+      });
+
+      // The fine-pointer cadence would have flushed at 50 ms.
+      vi.advanceTimersByTime(50);
+      expect(queryClient.getQueryState(timelineKey)?.isInvalidated).not.toBe(
+        true,
+      );
+      vi.advanceTimersByTime(100);
+      expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+
+      effects.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
   });
 
   it("applies the reconnect watermark from the connected event", () => {
