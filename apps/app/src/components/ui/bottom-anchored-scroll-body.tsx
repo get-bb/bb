@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { useStore } from "jotai";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { PAGE_SHELL_CONTENT_STYLE } from "./page-shell-content-style.js";
 import { supportsScrollAnchoring } from "@/lib/scroll-anchoring-support";
 import {
@@ -91,6 +92,10 @@ const BOTTOM_RESTORE_SETTLE_FRAME_COUNT = 3;
 // Throttle continuous scroll-anchor capture so a fast scroll writes the atom at
 // most this often, plus a trailing write for the final resting position.
 const SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 100;
+// Coarse pointers only need restore-on-return fidelity — the resting position,
+// always carried by the trailing write — not 10 Hz mid-flick samples, each of
+// which costs rect reads while the browser is already busy scrolling.
+const COARSE_SCROLL_ANCHOR_CAPTURE_THROTTLE_MS = 250;
 // While a saved anchor's row hasn't hydrated yet, the ResizeObserver re-applies
 // the restore as content settles. Give up (fall back to bottom) after this many
 // observed re-applies so a deleted/never-arriving row can't hang at the top.
@@ -189,9 +194,9 @@ function getScrollAnchorRows(scrollArea: HTMLElement): NodeListOf<HTMLElement> {
 // reproduce a mid-row reading position.
 function getTopMostVisibleRow(
   scrollArea: HTMLElement,
+  rows: NodeListOf<HTMLElement>,
 ): TopMostVisibleRow | null {
   const scrollAreaTop = scrollArea.getBoundingClientRect().top;
-  const rows = getScrollAnchorRows(scrollArea);
   let low = 0;
   let high = rows.length - 1;
   let visibleRow: HTMLElement | null = null;
@@ -277,6 +282,7 @@ export function BottomAnchoredScrollBody({
   scrollAnchorThreadId,
 }: BottomAnchoredScrollBodyProps) {
   const store = useStore();
+  const isPointerCoarse = usePointerCoarse();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -333,6 +339,12 @@ export function BottomAnchoredScrollBody({
     scrollAreaClientHeight: number | null;
     scrollContentHeight: number | null;
   }>({ scrollAreaClientHeight: null, scrollContentHeight: null });
+  // The row NodeList behind scroll-anchor capture, so throttled samples don't
+  // repeat a querySelectorAll over the scroll subtree. Row-set changes surface
+  // as content size changes, so the ResizeObserver invalidates it; the
+  // connectivity check in getScrollAnchorRowsCached guards the windowed
+  // timeline, where a row swap at a window edge can keep the size constant.
+  const scrollAnchorRowsRef = useRef<NodeListOf<HTMLElement> | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const initialScrollRestoreRowId = useMemo(() => {
     if (scrollAnchorThreadId === undefined) return null;
@@ -551,6 +563,21 @@ export function BottomAnchoredScrollBody({
     );
   }, []);
 
+  const getScrollAnchorRowsCached = useCallback((scrollArea: HTMLElement) => {
+    const cached = scrollAnchorRowsRef.current;
+    if (
+      cached &&
+      (cached.length === 0 ||
+        (cached[0]?.isConnected === true &&
+          cached[cached.length - 1]?.isConnected === true))
+    ) {
+      return cached;
+    }
+    const rows = getScrollAnchorRows(scrollArea);
+    scrollAnchorRowsRef.current = rows;
+    return rows;
+  }, []);
+
   // Persist the current scroll position (top-most visible row + within-row
   // offset + atBottom) into the per-thread atom so returning to this thread
   // restores it. Continuous capture keeps the atom current while mounted; cleanup
@@ -600,7 +627,10 @@ export function BottomAnchoredScrollBody({
         });
         return;
       }
-      const topMostRow = getTopMostVisibleRow(scrollArea);
+      const topMostRow = getTopMostVisibleRow(
+        scrollArea,
+        getScrollAnchorRowsCached(scrollArea),
+      );
       // No rows yet: don't clobber a good anchor with an empty one.
       if (!topMostRow) return;
       store.set(anchorAtom, {
@@ -610,6 +640,7 @@ export function BottomAnchoredScrollBody({
       });
     },
     [
+      getScrollAnchorRowsCached,
       hasRecentUserScrollIntent,
       readMaxScrollOffset,
       refreshMaxScrollOffset,
@@ -618,12 +649,16 @@ export function BottomAnchoredScrollBody({
     ],
   );
 
+  const scrollAnchorCaptureThrottleMs = isPointerCoarse
+    ? COARSE_SCROLL_ANCHOR_CAPTURE_THROTTLE_MS
+    : SCROLL_ANCHOR_CAPTURE_THROTTLE_MS;
+
   const captureScrollAnchorThrottled = useCallback(() => {
     if (scrollAnchorThreadId === undefined) return;
     const throttle = scrollAnchorCaptureThrottleRef.current;
     const now = window.performance.now();
     const elapsed = now - throttle.lastWriteAt;
-    if (elapsed >= SCROLL_ANCHOR_CAPTURE_THROTTLE_MS) {
+    if (elapsed >= scrollAnchorCaptureThrottleMs) {
       throttle.lastWriteAt = now;
       writeScrollAnchor();
       return;
@@ -635,8 +670,8 @@ export function BottomAnchoredScrollBody({
       throttle.trailingTimeout = null;
       throttle.lastWriteAt = window.performance.now();
       writeScrollAnchor();
-    }, SCROLL_ANCHOR_CAPTURE_THROTTLE_MS - elapsed);
-  }, [scrollAnchorThreadId, writeScrollAnchor]);
+    }, scrollAnchorCaptureThrottleMs - elapsed);
+  }, [scrollAnchorCaptureThrottleMs, scrollAnchorThreadId, writeScrollAnchor]);
 
   // Bring the saved anchor row into view (plus its within-row offset). Returns
   // the resulting scrollTop when the row was found, or null when it isn't yet
@@ -851,6 +886,8 @@ export function BottomAnchoredScrollBody({
   const handleScrollAreaResize = useCallback(
     (entries: ResizeObserverEntry[]) => {
       const scrollArea = scrollAreaRef.current;
+      // Any observed size change may have mounted or unmounted timeline rows.
+      scrollAnchorRowsRef.current = null;
       let shrankOntoBottomWhileDetached = false;
       if (scrollArea) {
         // The steady-state cache refresh: the observer watches both the scroll
@@ -1006,6 +1043,12 @@ export function BottomAnchoredScrollBody({
       }, SCROLLBAR_IDLE_DELAY_MS);
       handleScroll();
     };
+    // The transient-scrollbar attribute only feeds the desktop-only
+    // ::-webkit-scrollbar rules; on coarse pointers (overlay scrollbars) the
+    // write would be a pure per-scroll-event style invalidation.
+    const handleScrollEvent = isPointerCoarse
+      ? handleScroll
+      : handleScrollWithTransientScrollbar;
 
     let resizeObserver: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
@@ -1014,7 +1057,7 @@ export function BottomAnchoredScrollBody({
       resizeObserver.observe(scrollContent);
     }
 
-    scrollArea.addEventListener("scroll", handleScrollWithTransientScrollbar, {
+    scrollArea.addEventListener("scroll", handleScrollEvent, {
       passive: true,
     });
     scrollArea.addEventListener("wheel", markWheelScrollIntent, {
@@ -1040,10 +1083,7 @@ export function BottomAnchoredScrollBody({
 
     return () => {
       resizeObserver?.disconnect();
-      scrollArea.removeEventListener(
-        "scroll",
-        handleScrollWithTransientScrollbar,
-      );
+      scrollArea.removeEventListener("scroll", handleScrollEvent);
       scrollArea.removeEventListener("wheel", markWheelScrollIntent);
       scrollArea.removeEventListener("touchstart", markTouchStartScrollIntent);
       scrollArea.removeEventListener("touchmove", markTouchMoveScrollIntent);
@@ -1062,6 +1102,7 @@ export function BottomAnchoredScrollBody({
     endPointerScrollIntent,
     handleScroll,
     handleScrollAreaResize,
+    isPointerCoarse,
     markKeyboardScrollIntent,
     markTouchMoveScrollIntent,
     markTouchStartScrollIntent,
