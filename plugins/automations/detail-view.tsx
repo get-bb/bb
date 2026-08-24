@@ -8,7 +8,7 @@ import type {
   AutomationRunStatus,
   AgentExecutionUpdate,
 } from "./src/rpc-types";
-import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/rpc-types";
+import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/limits";
 import {
   experimental_PermissionModePicker as PermissionModePicker,
   experimental_ProviderModelPicker as ProviderModelPicker,
