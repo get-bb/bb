@@ -15,7 +15,9 @@ import {
 } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeRegistrySkillProvenance } from "../../src/services/skills/registry-skill-provenance.js";
+import { providerHasNativeRootSurface } from "../../src/services/providers/native-roots.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import { declaredNativeRootSet } from "../helpers/provider-registry.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -88,6 +90,14 @@ function registerSkillRpc(
             skills: args.skillsByProvider?.[request.command.providerId] ?? [],
           },
         };
+      }
+      // A plugin that resolves native roots per host answers none here: the
+      // listing is about the skills the daemon reports, not the roots.
+      if (
+        request.command.type === "plugin.host.call" &&
+        request.command.method === "resolveNativeRoots"
+      ) {
+        return { ok: true, result: { output: { skills: [], commands: [] } } };
       }
       if (request.command.type === "host.delete_skill") {
         return {
@@ -1206,17 +1216,34 @@ describe("public project skills route", () => {
           registrySkillId: null,
         },
       ]);
-      // Queried once per command-surface provider, with the env workspace cwd.
+      // Queried once per provider whose registration has a native-root
+      // surface (declared roots or a resolving plugin), with the env
+      // workspace cwd and exactly the declared roots (the resolver answered
+      // none here).
       const listed = stub.requests
         .map((request) => request.command)
         .filter((command) => command.type === "host.list_skills");
-      expect(listed.map((command) => command.providerId).sort()).toEqual([
-        "acp-cursor",
-        "claude-code",
-        "codex",
-      ]);
+      const surfaced = harness.deps.providerRegistry
+        .list()
+        .filter(providerHasNativeRootSurface)
+        .map((registration) => registration.info.id)
+        .sort();
+      expect(surfaced).toEqual(
+        expect.arrayContaining(["acp-cursor", "claude-code", "codex", "pi"]),
+      );
+      expect(listed.map((command) => command.providerId).sort()).toEqual(
+        surfaced,
+      );
       for (const command of listed) {
-        expect(command).toMatchObject({ cwd: "/tmp/skills-env" });
+        expect(command).toEqual({
+          type: "host.list_skills",
+          providerId: command.providerId,
+          cwd: "/tmp/skills-env",
+          nativeRoots: declaredNativeRootSet(
+            harness.deps.providerRegistry,
+            command.providerId,
+          ),
+        });
       }
     });
   });

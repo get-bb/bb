@@ -1,5 +1,6 @@
 import {
   dynamicToolSchema,
+  initializeParamsSchema,
   instructionModeValues,
   permissionEscalationValues,
   reasoningLevelSchema,
@@ -13,8 +14,8 @@ import {
   turnSteerParamsSchema as canonicalTurnSteerParamsSchema,
   skillsConfigureParamsSchema,
   bridgeRequestEnvelopeSchema,
-  experimental_providerMaintenanceParamsSchema,
-  experimental_providerInstallationRunParamsSchema,
+  providerMaintenanceParamsSchema,
+  providerInstallationRunParamsSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import { claudePermissionModeSchema } from "../interactive-contract.js";
@@ -111,12 +112,7 @@ export const claudeTurnSteerParamsSchema = z.object({
 const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("initialize"),
-    params: z
-      .object({
-        protocolVersion: z.number().int().positive(),
-        client: z.object({ name: z.string(), version: z.string() }),
-      })
-      .passthrough(),
+    params: initializeParamsSchema,
   }),
   z.object({
     method: z.literal("model/list"),
@@ -124,19 +120,19 @@ const claudeCodeCommandSchema = z.discriminatedUnion("method", [
   }),
   z.object({
     method: z.literal("provider/health"),
-    params: experimental_providerMaintenanceParamsSchema,
+    params: providerMaintenanceParamsSchema,
   }),
   z.object({
     method: z.literal("provider/usage"),
-    params: experimental_providerMaintenanceParamsSchema,
+    params: providerMaintenanceParamsSchema,
   }),
   z.object({
     method: z.literal("provider/installation/status"),
-    params: experimental_providerMaintenanceParamsSchema,
+    params: providerMaintenanceParamsSchema,
   }),
   z.object({
     method: z.literal("provider/installation/run"),
-    params: experimental_providerInstallationRunParamsSchema,
+    params: providerInstallationRunParamsSchema,
   }),
   z.object({
     method: z.literal("thread/start"),

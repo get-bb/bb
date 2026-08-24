@@ -18,7 +18,7 @@ const PluginOwnerRendererContext = createContext<ReactNode>(null);
 /**
  * A module-stable component type whose content stays bound to the nearest
  * replacement instance. Live owner props flow through context instead of
- * changing the component identity plugins receive as `experimental_Original`.
+ * changing the component identity plugins receive as `Original`.
  */
 function PluginOwnerRenderer() {
   return useContext(PluginOwnerRendererContext);

@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   definePluginApp,
-  experimental_UrlLink as UrlLink,
+  UrlLink as UrlLink,
   useRealtime,
   useRpc,
 } from "@get-bb/plugin-sdk/app";

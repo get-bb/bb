@@ -558,5 +558,613 @@
     "path": "/0/children/3/toolName",
     "pr": "#2179",
     "reason": "Projection of the same change: the legacy tool row's toolName is the item's `tool` slot, now the native kind rather than the agent's title (the title is in the persisted presentation, which the presentation-driven projection will read)."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/3/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/activityIntents",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/approvalStatus",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/cmd",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/path",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/0/workKind",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/3/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/4/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/activityIntents",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/approvalStatus",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/cmd",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/path",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/5/workKind",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: a fileRead item projects to its own `file-read` row (path, cmd, presentation) instead of a tool row with a synthesized read intent; bundles derive the same intent from the row's fields."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/background",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `background` (a delegation that outlives its spawning turn)."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/childRef",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `childRef`, the provider-native child id of the grammar v3 delegation item."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/background",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `background` (a delegation that outlives its spawning turn)."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/childRef",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: delegation rows carry `childRef`, the provider-native child id of the grammar v3 delegation item."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/1/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/2/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/0/presentation",
+    "pr": "#2192",
+    "reason": "WS3 layer 1: every work row projected from a provider item carries the bridge's persisted presentation (label/icon/title/detail/suppress/tint); the old leg projected none onto rows."
+  },
+  {
+    "provider": "codex",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/",
+    "pr": "#2232",
+    "reason": "Layer 5 deleted core's tool-name suppression set; a bb-injected tool row hides only through the `suppress` the server resolves onto the tool definition. This immutable v2 recording's thread/start predates that field, so the replayed AskUserQuestion call renders as a generic tool row inside a turn (the old leg hid it by name) and the rows layer is not comparable by pointer. Re-record the cell to drop this entry."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-deny",
+    "layer": "events",
+    "path": "/*/item/exitCode",
+    "pr": "#2211",
+    "reason": "M1: an exit code is the agent's own (`rawOutput.exitCode`/`exit_code`), never synthesized from the ACP status. A tool call and a file change no longer close with a fabricated `exitCode: 0`, and a command that Cursor reported as `exitCode: 1` under an ACP status of `completed` now shows 1."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-deny",
+    "layer": "rows",
+    "path": "/*/children/*/exitCode",
+    "pr": "#2211",
+    "reason": "Projection of M1: the row shows the agent's exit code, or none when the agent reported none."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2211",
+    "reason": "M1: a command's aggregated output is the stdout/stderr the agent reported, not its whole rawOutput envelope rendered as JSON text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "events",
+    "path": "/*/item/exitCode",
+    "pr": "#2211",
+    "reason": "M1: an exit code is the agent's own (`rawOutput.exitCode`/`exit_code`), never synthesized from the ACP status. A tool call and a file change no longer close with a fabricated `exitCode: 0`, and a command that Cursor reported as `exitCode: 1` under an ACP status of `completed` now shows 1."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "rows",
+    "path": "/*/children/*/exitCode",
+    "pr": "#2211",
+    "reason": "Projection of M1: the row shows the agent's exit code, or none when the agent reported none."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2211",
+    "reason": "Projection of M1/M3: the row's output is the agent's real stdout/stderr (commands) or its rawOutput value (tools), not the rendered rawOutput envelope."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2211",
+    "reason": "M1: a command's aggregated output is the stdout/stderr the agent reported, not its whole rawOutput envelope rendered as JSON text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2211",
+    "reason": "Projection of M1/M3: the row's output is the agent's real stdout/stderr (commands) or its rawOutput value (tools), not the rendered rawOutput envelope."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2211",
+    "reason": "M1: a command's aggregated output is the stdout/stderr the agent reported, not its whole rawOutput envelope rendered as JSON text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/arguments",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawInput as `arguments`; the bridge parsed rawInput and then emitted nothing."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/exitCode",
+    "pr": "#2211",
+    "reason": "M1: an exit code is the agent's own (`rawOutput.exitCode`/`exit_code`), never synthesized from the ACP status. A tool call and a file change no longer close with a fabricated `exitCode: 0`, and a command that Cursor reported as `exitCode: 1` under an ACP status of `completed` now shows 1."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/result",
+    "pr": "#2211",
+    "reason": "M3: a generic ACP tool item carries the call's rawOutput as `result` \u2014 the JSON value (size-capped, data-URL scrubbed) instead of the close's rendered text."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/exitCode",
+    "pr": "#2211",
+    "reason": "Projection of M1: the row shows the agent's exit code, or none when the agent reported none."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2211",
+    "reason": "Projection of M1/M3: the row's output is the agent's real stdout/stderr (commands) or its rawOutput value (tools), not the rendered rawOutput envelope."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/status",
+    "pr": "#2211",
+    "reason": "Projection of M1: a command Cursor reported as `exitCode: 1` under an ACP status of `completed` now projects as an error row instead of a successful one."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/toolArgs",
+    "pr": "#2211",
+    "reason": "Projection of M3: the tool row renders the arguments the item now carries."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-allow",
+    "layer": "events",
+    "path": "/*/item/aggregatedOutput",
+    "pr": "#2234",
+    "reason": "M1 (#2234): a command that printed nothing shows no output. `touch approved.txt` reported {exitCode:0,stdout:\"\",stderr:\"\"}, and the empty stream join used to fall through to the rawOutput envelope rendered as JSON."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-allow",
+    "layer": "rows",
+    "path": "/*/children/*/output",
+    "pr": "#2234",
+    "reason": "M1 (#2234): a command that printed nothing shows no output. `touch approved.txt` reported {exitCode:0,stdout:\"\",stderr:\"\"}, and the empty stream join used to fall through to the rawOutput envelope rendered as JSON."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-allow",
+    "layer": "events",
+    "path": "/*/item/cwd",
+    "pr": "#1640",
+    "reason": "Stabilization S1 (migration design section 4; bridge protocol from #1640): an ACP command item carries the session's cwd; the pre-stabilization bridge fabricated `cwd: \"\"` for every Cursor command because Cursor's ACP tool call names no cwd. The re-recorded lanes pin the new value; the old leg still emits the empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-allow",
+    "layer": "rows",
+    "path": "/*/children/*/cwd",
+    "pr": "#1640",
+    "reason": "Projection of the same change: the command row's cwd is the session cwd the item now carries instead of the fabricated empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-deny",
+    "layer": "events",
+    "path": "/*/item/cwd",
+    "pr": "#1640",
+    "reason": "Stabilization S1 (migration design section 4; bridge protocol from #1640): an ACP command item carries the session's cwd; the pre-stabilization bridge fabricated `cwd: \"\"` for every Cursor command because Cursor's ACP tool call names no cwd. The re-recorded lanes pin the new value; the old leg still emits the empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "approval-deny",
+    "layer": "rows",
+    "path": "/*/children/*/cwd",
+    "pr": "#1640",
+    "reason": "Projection of the same change: the command row's cwd is the session cwd the item now carries instead of the fabricated empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "events",
+    "path": "/*/item/cwd",
+    "pr": "#1640",
+    "reason": "Stabilization S1 (migration design section 4; bridge protocol from #1640): an ACP command item carries the session's cwd; the pre-stabilization bridge fabricated `cwd: \"\"` for every Cursor command because Cursor's ACP tool call names no cwd. The re-recorded lanes pin the new value; the old leg still emits the empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "steer",
+    "layer": "rows",
+    "path": "/*/children/*/cwd",
+    "pr": "#1640",
+    "reason": "Projection of the same change: the command row's cwd is the session cwd the item now carries instead of the fabricated empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "stop-interrupt",
+    "layer": "events",
+    "path": "/*/item/cwd",
+    "pr": "#1640",
+    "reason": "Stabilization S1 (migration design section 4; bridge protocol from #1640): an ACP command item carries the session's cwd; the pre-stabilization bridge fabricated `cwd: \"\"` for every Cursor command because Cursor's ACP tool call names no cwd. The re-recorded lanes pin the new value; the old leg still emits the empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "stop-interrupt",
+    "layer": "rows",
+    "path": "/*/cwd",
+    "pr": "#1640",
+    "reason": "Projection of the same change: the command row's cwd is the session cwd the item now carries instead of the fabricated empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "events",
+    "path": "/*/item/cwd",
+    "pr": "#1640",
+    "reason": "Stabilization S1 (migration design section 4; bridge protocol from #1640): an ACP command item carries the session's cwd; the pre-stabilization bridge fabricated `cwd: \"\"` for every Cursor command because Cursor's ACP tool call names no cwd. The re-recorded lanes pin the new value; the old leg still emits the empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/*/children/*/cwd",
+    "pr": "#1640",
+    "reason": "Projection of the same change: the command row's cwd is the session cwd the item now carries instead of the fabricated empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "events",
+    "path": "/*/item/cwd",
+    "pr": "#1640",
+    "reason": "Stabilization S1 (migration design section 4; bridge protocol from #1640): an ACP command item carries the session's cwd; the pre-stabilization bridge fabricated `cwd: \"\"` for every Cursor command because Cursor's ACP tool call names no cwd. The re-recorded lanes pin the new value; the old leg still emits the empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/*/children/*/cwd",
+    "pr": "#1640",
+    "reason": "Projection of the same change: the command row's cwd is the session cwd the item now carries instead of the fabricated empty string."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/1/activityIntents",
+    "pr": "#2325",
+    "reason": "The old leg's projector keeps `activityIntents: []` on every tool row for older mobile builds; this checkout dropped the key (older mobile builds are not supported: the app ships with the server). The tool row is otherwise identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/1/activityIntents",
+    "pr": "#2325",
+    "reason": "The old leg's projector keeps `activityIntents: []` on every tool row for older mobile builds; this checkout dropped the key (older mobile builds are not supported: the app ships with the server). The tool row is otherwise identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "turn-tools",
+    "layer": "rows",
+    "path": "/0/children/3/activityIntents",
+    "pr": "#2325",
+    "reason": "The old leg's projector keeps `activityIntents: []` on every tool row for older mobile builds; this checkout dropped the key (older mobile builds are not supported: the app ships with the server). The tool row is otherwise identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "user-question",
+    "layer": "rows",
+    "path": "/0/children/1/activityIntents",
+    "pr": "#2325",
+    "reason": "The old leg's projector keeps `activityIntents: []` on every tool row for older mobile builds; this checkout dropped the key (older mobile builds are not supported: the app ships with the server). The tool row is otherwise identical."
+  },
+  {
+    "provider": "acp-cursor",
+    "cell": "web-search",
+    "layer": "rows",
+    "path": "/0/children/1/activityIntents",
+    "pr": "#2325",
+    "reason": "The old leg's projector keeps `activityIntents: []` on every tool row for older mobile builds; this checkout dropped the key (older mobile builds are not supported: the app ships with the server). The tool row is otherwise identical."
+  },
+  {
+    "provider": "claude-code",
+    "cell": "plan-mode",
+    "layer": "rows",
+    "path": "/0/children/4/activityIntents",
+    "pr": "#2325",
+    "reason": "The old leg's projector keeps `activityIntents: []` on every tool row for older mobile builds; this checkout dropped the key (older mobile builds are not supported: the app ships with the server). The tool row is otherwise identical."
+  },
+  {
+    "provider": "codex",
+    "cell": "subagent",
+    "layer": "rows",
+    "path": "/0/children/1/activityIntents",
+    "pr": "#2325",
+    "reason": "The old leg's projector keeps `activityIntents: []` on every tool row for older mobile builds; this checkout dropped the key (older mobile builds are not supported: the app ships with the server). The tool row is otherwise identical."
   }
 ]

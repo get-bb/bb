@@ -14,6 +14,8 @@ Prompt directives:
 - `ask_user` raises a user question and echoes the answer.
 - `call_tool:<name>` / `call_tool_unresolved:<name>` calls a dynamic tool
   with a resolved or an unresolved turn id and answers `Tool called: <name>`.
+- `bg_task` opens a background task that outlives the turn; `bg_task_done`
+  settles every task the thread left open.
 - Otherwise the turn answers `Response to: <prompt text>`.
 
 Session- and process-level behaviour (archived sessions, failing commands,

@@ -140,6 +140,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Close focused chat pane",
         "Close the focused chat pane when more than one is open.",
       ),
+      command(
+        "logs.openServerDaemon",
+        "Open server and daemon logs",
+        "Open the desktop log viewer for the bb server and host daemon.",
+      ),
     ],
   },
   {

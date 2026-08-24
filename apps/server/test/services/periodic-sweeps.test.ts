@@ -1,12 +1,25 @@
 import { eq } from "drizzle-orm";
-import { CLOSED_SESSION_ROW_RETENTION_MS, hostDaemonSessions } from "@bb/db";
+import {
+  CLOSED_SESSION_ROW_RETENTION_MS,
+  DESTROYED_ENVIRONMENT_TTL_MS,
+  environments,
+  hostDaemonSessions,
+} from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
+import {
+  resetEventLoopWorkForTests,
+  takeEventLoopWorkWindowSnapshot,
+} from "../../src/services/system/event-loop-work.js";
 import {
   type PeriodicSweepJob,
   runPeriodicSweepJobs,
   runPeriodicSweeps,
 } from "../../src/services/system/periodic-sweeps.js";
-import { seedHostSession } from "../helpers/seed.js";
+import {
+  seedEnvironment,
+  seedHostSession,
+  seedProjectWithSource,
+} from "../helpers/seed.js";
 import { testLogger, withTestHarness } from "../helpers/test-app.js";
 
 type ReleaseCallback = () => void;
@@ -66,6 +79,109 @@ describe("runPeriodicSweeps", () => {
         }),
         "Periodic sweep job failed",
       );
+    });
+  });
+
+  it("prunes expired destroyed environments one per event-loop turn", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const expiredAt = Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000;
+      for (const path of [
+        "/tmp/destroyed-a",
+        "/tmp/destroyed-b",
+        "/tmp/destroyed-c",
+      ]) {
+        const environment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path,
+          managed: true,
+          status: "destroyed",
+          workspaceProvisionType: "managed-worktree",
+        });
+        harness.db
+          .update(environments)
+          .set({ updatedAt: expiredAt })
+          .where(eq(environments.id, environment.id))
+          .run();
+      }
+      const countDestroyedEnvironments = () =>
+        harness.db
+          .select({ id: environments.id })
+          .from(environments)
+          .where(eq(environments.status, "destroyed"))
+          .all().length;
+
+      // Sample the table from the check phase until the sweep settles. A sweep
+      // that deletes the whole batch inside one macrotask can only ever be
+      // observed at 3 (before) or 0 (after); yielding between environments is
+      // what exposes the intermediate counts to other event-loop work.
+      const observedCounts: number[] = [];
+      let sweepSettled = false;
+      const probe = () => {
+        if (sweepSettled) {
+          return;
+        }
+        observedCounts.push(countDestroyedEnvironments());
+        setImmediate(probe);
+      };
+      setImmediate(probe);
+
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        pluginService: harness.pluginService,
+        pluginCatalogService: harness.pluginCatalogService,
+      };
+      await runPeriodicSweeps(deps);
+      sweepSettled = true;
+
+      expect(countDestroyedEnvironments()).toBe(0);
+      expect(observedCounts).toEqual(expect.arrayContaining([2, 1]));
+    });
+  });
+
+  it("attributes each destroyed-environment prune to a blocking work frame", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/destroyed-attributed",
+        managed: true,
+        status: "destroyed",
+        workspaceProvisionType: "managed-worktree",
+      });
+      harness.db
+        .update(environments)
+        .set({ updatedAt: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000 })
+        .where(eq(environments.id, environment.id))
+        .run();
+
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        pluginService: harness.pluginService,
+        pluginCatalogService: harness.pluginCatalogService,
+      };
+      // The stall monitor reports `slowestWork` only from blocking frames; the
+      // async sweep frame does not count, so a prune that runs bare inside it
+      // leaves the window with no attributable unit at all.
+      resetEventLoopWorkForTests();
+      try {
+        await runPeriodicSweeps(deps);
+        expect(takeEventLoopWorkWindowSnapshot().slowestWork).toBe(
+          "sweep:destroyed-environment-prune:delete",
+        );
+      } finally {
+        resetEventLoopWorkForTests();
+      }
     });
   });
 

@@ -739,10 +739,6 @@ export const events = sqliteTable(
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
     parentToolCallId: text("parent_tool_call_id"),
     data: text("data").notNull().default("{}"),
-    toolName: text("tool_name").generatedAlwaysAs(
-      sql`CASE WHEN json_valid(data) THEN json_extract(data, '$.item.tool') END`,
-      { mode: "virtual" },
-    ),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -751,19 +747,24 @@ export const events = sqliteTable(
       table.sequence,
     ),
     // Timeline in-turn pagination checks whether a delegated child above a
-    // candidate cut belongs to a tool call below it. Keep that parent probe on
-    // the small tool-call subset rather than walking the thread/sequence index
-    // and fetching scattered event payload rows.
-    index("events_tool_call_parent_lookup_idx")
-      .on(table.threadId, table.itemId, table.sequence)
-      .where(sql`${table.itemKind} = 'toolCall'`),
-    // The latest timeline page restores todo/task head state by tool name.
-    // Keep that lookup on a tiny generated-column index instead of parsing every
-    // tool-call payload in a long-running thread on every timeline refresh.
-    index("events_todo_tool_call_thread_tool_sequence_idx")
-      .on(table.threadId, table.toolName, table.sequence)
+    // candidate cut belongs to a delegating item below it, and parent
+    // closure fetches the parent's own rows. A delegating item is a tool
+    // call or a grammar v3 `delegation` item; keep that probe on their small
+    // subset rather than walking the thread/sequence index and fetching
+    // scattered event payload rows.
+    index("events_delegating_item_lookup_idx")
+      // `item_kind` trails so the parent probe's EXISTS stays a covering
+      // lookup: the kind predicate is answered from the index entry.
+      .on(table.threadId, table.itemId, table.sequence, table.itemKind)
+      .where(sql`${table.itemKind} IN ('toolCall', 'delegation')`),
+    // The latest timeline page restores the plan head state (the todo banner)
+    // from the newest planSteps snapshot, keyed by kind — never by a tool
+    // name. Persisted codex plan notifications convert to the same item at
+    // read time, so their type sits beside it.
+    index("events_plan_steps_thread_sequence_idx")
+      .on(table.threadId, table.sequence)
       .where(
-        sql`${table.itemKind} = 'toolCall' AND ${table.type} IN ('item/started', 'item/completed')`,
+        sql`(${table.itemKind} = 'planSteps' AND ${table.type} = 'item/completed') OR ${table.type} = 'turn/plan/updated'`,
       ),
     index("events_parent_tool_call_thread_parent_sequence_idx")
       .on(table.threadId, table.parentToolCallId, table.sequence)

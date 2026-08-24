@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { encodeClientTurnRequestIdNumber } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -100,6 +101,7 @@ describe("plugin skills tier", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-skills-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {

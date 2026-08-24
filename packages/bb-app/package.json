@@ -47,8 +47,8 @@
     "dist",
     "!dist/*.map",
     "host-daemon/dist/bb",
+    "host-daemon/dist/bb-chunks",
     "host-daemon/dist/bb-parcel-watcher-child.mjs",
-    "host-daemon/dist/bb-pi-bridge.mjs",
     "host-daemon/dist/bb-plugin-host-worker.mjs",
     "host-daemon/dist/bb-provider-bridge-worker.mjs",
     "host-daemon/dist/daemon-bundle.mjs",
@@ -62,15 +62,12 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "rimraf dist app host-daemon server tsconfig.tsbuildinfo",
+    "prepack": "node scripts/prune-bb-chunks.mjs",
     "smoke:tarball": "node scripts/smoke-tarball.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "0.84.0",
-    "@earendil-works/pi-ai": "0.84.0",
-    "@earendil-works/pi-coding-agent": "0.84.0",
-    "@earendil-works/pi-tui": "0.84.0",
     "@parcel/watcher": "2.5.6",
     "better-sqlite3": "12.10.0",
     "hono": "^4.7.0",

@@ -1,9 +1,22 @@
 import { z } from "zod";
-import { isPluginOwnedIconPath } from "@bb/domain/plugin-icon";
+import {
+  isNamespacedGlyph,
+  isPluginOwnedIconPath,
+  parseNamespacedGlyph,
+} from "@bb/domain/plugin-icon";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import { PROVIDER_FORK_VALUES } from "@bb/domain/provider-fork";
+import {
+  normalizeProviderNativeRoots,
+  providerNativeRootsInputSchema,
+  providerNativeRootsSchema,
+  type ProviderNativeRoots,
+} from "@bb/domain";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "../backend-contract.js";
 import type {
+  PluginAgentToolPresentation,
+  PluginAiServiceDeclaration,
+  PluginAiServiceKind,
   PluginCliExecutionResult,
   PluginCliOutputLimitError,
   PluginMentionTrigger,
@@ -12,6 +25,7 @@ import type {
   PluginProviderDeclaration,
   PluginProviderExtensionKindDeclaration,
   PluginProviderFallbackModel,
+  PluginProviderModelCatalogScope,
   PluginProviderOptionDescriptor,
   PluginProviderPermissionMode,
   PluginProviderReasoningLevel,
@@ -100,9 +114,23 @@ const settingDescriptorSchema = z.discriminatedUnion("type", [
       type: z.literal("string"),
       ...settingsBaseFields,
       secret: z.literal(true).optional(),
+      experimental_multiline: z.boolean().optional(),
       default: z.string().optional(),
     })
-    .strict(),
+    .strict()
+    // A secret is edited in a one-line password field and never echoed back,
+    // so a multi-line secret has no rendering; refuse the pair at define time.
+    .refine(
+      (descriptor) =>
+        !(
+          descriptor.secret === true &&
+          descriptor.experimental_multiline === true
+        ),
+      {
+        message: "a secret setting cannot be experimental_multiline",
+        path: ["experimental_multiline"],
+      },
+    ),
   z
     .object({
       type: z.literal("boolean"),
@@ -456,7 +484,7 @@ function validateProviderStrings(
 ): PluginProviderStrings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
-      `provider "${providerId}" experimental_strings must be an object`,
+      `provider "${providerId}" strings must be an object`,
     );
   }
   const record: Record<string, unknown> = Object.fromEntries(
@@ -465,7 +493,7 @@ function validateProviderStrings(
   const required = (field: "signInHint" | "expiredHint" | "installUrl") =>
     requireNonBlankString({
       providerId,
-      field: `experimental_strings.${field}`,
+      field: `strings.${field}`,
       value: record[field],
     });
   const optional = (field: "brandPrefix" | "planModeCopy") =>
@@ -473,7 +501,7 @@ function validateProviderStrings(
       ? undefined
       : requireNonBlankString({
           providerId,
-          field: `experimental_strings.${field}`,
+          field: `strings.${field}`,
           value: record[field],
         });
   let iconTint: PluginProviderStrings["iconTint"];
@@ -481,7 +509,7 @@ function validateProviderStrings(
     const tint = record.iconTint;
     if (typeof tint !== "object" || tint === null || Array.isArray(tint)) {
       throw new Error(
-        `provider "${providerId}" experimental_strings.iconTint must be { light, dark }`,
+        `provider "${providerId}" strings.iconTint must be { light, dark }`,
       );
     }
     const tintRecord: Record<string, unknown> = Object.fromEntries(
@@ -490,12 +518,12 @@ function validateProviderStrings(
     iconTint = Object.freeze({
       light: requireNonBlankString({
         providerId,
-        field: "experimental_strings.iconTint.light",
+        field: "strings.iconTint.light",
         value: tintRecord.light,
       }),
       dark: requireNonBlankString({
         providerId,
-        field: "experimental_strings.iconTint.dark",
+        field: "strings.iconTint.dark",
         value: tintRecord.dark,
       }),
     });
@@ -574,20 +602,20 @@ function validateProviderExtensionKinds(
 ): Readonly<Record<string, PluginProviderExtensionKindDeclaration>> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
-      `provider "${providerId}" experimental_extensionKinds must be an object keyed by kind name`,
+      `provider "${providerId}" extensionKinds must be an object keyed by kind name`,
     );
   }
   const entries = Object.entries(value);
   if (entries.length > PROVIDER_EXTENSION_KINDS_MAX) {
     throw new Error(
-      `provider "${providerId}" experimental_extensionKinds declares more than ${PROVIDER_EXTENSION_KINDS_MAX} kinds`,
+      `provider "${providerId}" extensionKinds declares more than ${PROVIDER_EXTENSION_KINDS_MAX} kinds`,
     );
   }
   const normalized: Record<string, PluginProviderExtensionKindDeclaration> = {};
   for (const [name, declaration] of entries) {
     if (!PROVIDER_EXTENSION_KIND_NAME_PATTERN.test(name)) {
       throw new Error(
-        `provider "${providerId}" experimental_extensionKinds name ${JSON.stringify(name)} must match ${PROVIDER_EXTENSION_KIND_NAME_PATTERN}`,
+        `provider "${providerId}" extensionKinds name ${JSON.stringify(name)} must match ${PROVIDER_EXTENSION_KIND_NAME_PATTERN}`,
       );
     }
     if (
@@ -596,24 +624,24 @@ function validateProviderExtensionKinds(
       Array.isArray(declaration)
     ) {
       throw new Error(
-        `provider "${providerId}" experimental_extensionKinds.${name} must be { item?, state? }`,
+        `provider "${providerId}" extensionKinds.${name} must be { item?, state? }`,
       );
     }
     const item = Reflect.get(declaration, "item");
     const state = Reflect.get(declaration, "state");
     if (item === undefined && state === undefined) {
       throw new Error(
-        `provider "${providerId}" experimental_extensionKinds.${name} must declare an item schema, a state schema, or both`,
+        `provider "${providerId}" extensionKinds.${name} must declare an item schema, a state schema, or both`,
       );
     }
     if (item !== undefined && !isStandardSchema(item)) {
       throw new Error(
-        `provider "${providerId}" experimental_extensionKinds.${name}.item must be a Standard Schema v1 validator`,
+        `provider "${providerId}" extensionKinds.${name}.item must be a Standard Schema v1 validator`,
       );
     }
     if (state !== undefined && !isStandardSchema(state)) {
       throw new Error(
-        `provider "${providerId}" experimental_extensionKinds.${name}.state must be a Standard Schema v1 validator`,
+        `provider "${providerId}" extensionKinds.${name}.state must be a Standard Schema v1 validator`,
       );
     }
     normalized[name] = Object.freeze({
@@ -634,30 +662,30 @@ function validateProviderEnvPassthrough(
 ): readonly string[] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
-      `provider "${providerId}" experimental_env must be { passthrough: [...] }`,
+      `provider "${providerId}" env must be { passthrough: [...] }`,
     );
   }
   const passthrough = Reflect.get(value, "passthrough");
   if (!Array.isArray(passthrough)) {
     throw new Error(
-      `provider "${providerId}" experimental_env.passthrough must be an array of variable names`,
+      `provider "${providerId}" env.passthrough must be an array of variable names`,
     );
   }
   if (passthrough.length > PROVIDER_ENV_PASSTHROUGH_MAX) {
     throw new Error(
-      `provider "${providerId}" experimental_env.passthrough names more than ${PROVIDER_ENV_PASSTHROUGH_MAX} variables`,
+      `provider "${providerId}" env.passthrough names more than ${PROVIDER_ENV_PASSTHROUGH_MAX} variables`,
     );
   }
   const seen = new Set<string>();
   for (const name of passthrough) {
     if (typeof name !== "string" || !PROVIDER_ENV_NAME_PATTERN.test(name)) {
       throw new Error(
-        `provider "${providerId}" experimental_env.passthrough entries must match ${PROVIDER_ENV_NAME_PATTERN}`,
+        `provider "${providerId}" env.passthrough entries must match ${PROVIDER_ENV_NAME_PATTERN}`,
       );
     }
     if (seen.has(name)) {
       throw new Error(
-        `provider "${providerId}" experimental_env.passthrough repeats ${JSON.stringify(name)}`,
+        `provider "${providerId}" env.passthrough repeats ${JSON.stringify(name)}`,
       );
     }
     seen.add(name);
@@ -665,30 +693,101 @@ function validateProviderEnvPassthrough(
   return Object.freeze([...seen]);
 }
 
+/**
+ * A provider's own skill or command roots: the declaration's input form
+ * (paths or paths with options) checked and normalized with the domain's own
+ * schemas, so this boundary and the wire schema the daemon parses accept
+ * exactly the same roots. Relative paths without dot segments, unique per
+ * side, at most 32 per side; `ancestors` only on `project`; a name prefix is
+ * a plugin-name-like token ending in ':'.
+ */
+function validateProviderNativeRoots(
+  providerId: string,
+  field: "experimental_nativeSkillRoots" | "experimental_nativeCommandRoots",
+  value: unknown,
+): ProviderNativeRoots {
+  const input = providerNativeRootsInputSchema.safeParse(value);
+  if (!input.success) {
+    const issue = input.error.issues[0];
+    const where = issue?.path.length ? `.${issue.path.join(".")}` : "";
+    throw new Error(
+      `provider "${providerId}" ${field}${where} ${issue?.message ?? "is invalid"}`,
+    );
+  }
+  const normalized = normalizeProviderNativeRoots(input.data);
+  const wire = providerNativeRootsSchema.safeParse(normalized);
+  if (!wire.success) {
+    const issue = wire.error.issues[0];
+    const where = issue?.path.length ? `.${issue.path.join(".")}` : "";
+    throw new Error(
+      `provider "${providerId}" ${field}${where} ${issue?.message ?? "is invalid"}`,
+    );
+  }
+  return Object.freeze({
+    user: Object.freeze(wire.data.user.map((root) => Object.freeze(root))),
+    project: Object.freeze(wire.data.project.map((root) => Object.freeze(root))),
+  }) as ProviderNativeRoots;
+}
+
+const PROVIDER_MODEL_CATALOG_SCOPES = [
+  "host",
+  "workspace",
+] as const satisfies readonly PluginProviderModelCatalogScope[];
+
+/**
+ * How far one `model/list` answer travels. Absent means `"workspace"`: a
+ * bridge bb knows nothing about may read the workspace path, and probing per
+ * workspace is the answer that can only cost a redundant probe.
+ */
+function validateProviderModelCatalogScope(
+  providerId: string,
+  value: unknown,
+): PluginProviderModelCatalogScope {
+  if (value === undefined) {
+    return "workspace";
+  }
+  if (
+    typeof value !== "string" ||
+    !(PROVIDER_MODEL_CATALOG_SCOPES as readonly string[]).includes(value)
+  ) {
+    throw new Error(
+      `provider "${providerId}" models.scope must be one of ${PROVIDER_MODEL_CATALOG_SCOPES.join(", ")}`,
+    );
+  }
+  return value as PluginProviderModelCatalogScope;
+}
+
+/**
+ * Returns undefined when the declaration carries `models` for a
+ * reason other than a fallback list — `scope` alone is a valid declaration.
+ */
 function validateProviderFallbackModels(
   providerId: string,
   value: unknown,
-): readonly PluginProviderFallbackModel[] {
+): readonly PluginProviderFallbackModel[] | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(
-      `provider "${providerId}" experimental_models must be { fallback: [...] }`,
+      `provider "${providerId}" models must be an object`,
     );
   }
   const fallback = Reflect.get(value, "fallback");
+  if (fallback === undefined) {
+    return undefined;
+  }
   if (!Array.isArray(fallback)) {
     throw new Error(
-      `provider "${providerId}" experimental_models.fallback must be an array`,
+      `provider "${providerId}" models.fallback must be an array`,
     );
   }
   if (fallback.length > PROVIDER_FALLBACK_MODELS_MAX) {
     throw new Error(
-      `provider "${providerId}" experimental_models.fallback lists more than ${PROVIDER_FALLBACK_MODELS_MAX} models`,
+      `provider "${providerId}" models.fallback lists more than ${PROVIDER_FALLBACK_MODELS_MAX} models`,
     );
   }
   const seen = new Set<string>();
   let defaults = 0;
   const normalized = fallback.map((entry, index): PluginProviderFallbackModel => {
-    const field = `experimental_models.fallback[${index}]`;
+    const field = `models.fallback[${index}]`;
     if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
       throw new Error(`provider "${providerId}" ${field} must be an object`);
     }
@@ -702,7 +801,7 @@ function validateProviderFallbackModels(
     });
     if (seen.has(id)) {
       throw new Error(
-        `provider "${providerId}" experimental_models.fallback id ${JSON.stringify(id)} is duplicated`,
+        `provider "${providerId}" models.fallback id ${JSON.stringify(id)} is duplicated`,
       );
     }
     seen.add(id);
@@ -792,10 +891,140 @@ function validateProviderFallbackModels(
   });
   if (normalized.length > 0 && defaults !== 1) {
     throw new Error(
-      `provider "${providerId}" experimental_models.fallback must mark exactly one model isDefault (found ${defaults})`,
+      `provider "${providerId}" models.fallback must mark exactly one model isDefault (found ${defaults})`,
     );
   }
   return Object.freeze(normalized);
+}
+
+const AI_SERVICE_KINDS = new Set<PluginAiServiceKind>(["inference", "voice"]);
+
+/**
+ * AI-service ids the server serves itself: `openai` transcription and the
+ * builtin inference providers (pi-ai 0.84). A plugin cannot register one —
+ * it would capture the user's prompts and audio. This list is the one source
+ * for both the fake host and production (`isServerDirectAiServiceId`);
+ * apps/server/test/services/plugins/plugin-ai-services.test.ts pins it to
+ * pi-ai's provider registry, so a pi-ai bump must move it in the same change.
+ */
+export const SERVER_DIRECT_AI_SERVICE_IDS: readonly string[] = Object.freeze([
+  "openai",
+  "amazon-bedrock", "ant-ling", "anthropic", "azure-openai-responses", "baseten",
+  "cerebras", "cloudflare-ai-gateway", "cloudflare-workers-ai", "deepseek",
+  "fireworks", "github-copilot", "google", "google-vertex", "groq", "huggingface",
+  "kimi-coding", "minimax", "minimax-cn", "mistral", "moonshotai", "moonshotai-cn",
+  "nvidia", "openai-codex", "opencode", "opencode-go", "openrouter",
+  "qwen-token-plan", "qwen-token-plan-cn", "radius", "together",
+  "vercel-ai-gateway", "xai", "xiaomi", "xiaomi-token-plan-ams",
+  "xiaomi-token-plan-cn", "xiaomi-token-plan-sgp", "zai", "zai-coding-cn",
+]);
+
+/**
+ * Validate one `bb.experimental_aiServices.register` declaration the same
+ * way in the production host and the fake host. Throws on the first problem;
+ * returns a normalized, frozen copy carrying only contract fields.
+ */
+export function validatePluginAiServiceDeclaration(
+  declaration: PluginAiServiceDeclaration,
+): PluginAiServiceDeclaration {
+  if (typeof declaration !== "object" || declaration === null) {
+    throw new Error("AI service declaration must be an object");
+  }
+  const id = declaration.id;
+  if (typeof id !== "string" || !PROVIDER_ID_PATTERN.test(id)) {
+    throw new Error(
+      `invalid AI service id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, and "-", starting with a letter or digit`,
+    );
+  }
+  const displayName =
+    typeof declaration.displayName === "string"
+      ? declaration.displayName.trim()
+      : "";
+  if (displayName.length === 0 || displayName.length > 64) {
+    throw new Error(
+      `AI service "${id}" displayName must be 1-64 characters`,
+    );
+  }
+  const kinds = declaration.kinds;
+  if (!Array.isArray(kinds) || kinds.length === 0) {
+    throw new Error(`AI service "${id}" must declare at least one kind`);
+  }
+  const seen = new Set<PluginAiServiceKind>();
+  for (const kind of kinds) {
+    if (typeof kind !== "string" || !AI_SERVICE_KINDS.has(kind as PluginAiServiceKind)) {
+      throw new Error(
+        `AI service "${id}" kind ${JSON.stringify(kind)} is not one of: ${[...AI_SERVICE_KINDS].join(", ")}`,
+      );
+    }
+    if (seen.has(kind as PluginAiServiceKind)) {
+      throw new Error(`AI service "${id}" declares kind "${kind}" twice`);
+    }
+    seen.add(kind as PluginAiServiceKind);
+  }
+  return Object.freeze({
+    id,
+    displayName,
+    kinds: Object.freeze([...seen]),
+  });
+}
+
+/**
+ * What an AI service binds to, decided at the
+ * `bb.experimental_aiServices.register` call: the plugin's built `bb.host`
+ * artifact, or — when the plugin declares an entry that failed to build —
+ * nothing yet, with the build problem. An unbound service is staged so the
+ * factory completes; the load then fails on that problem before the staged
+ * registrations flush, so the service never goes live, while a provider the
+ * same factory declared can still be retained as unavailable.
+ */
+export type AiServiceHostBinding<THostArtifact> =
+  | { readonly artifact: THostArtifact; readonly problem: null }
+  | { readonly artifact: null; readonly problem: string };
+
+/**
+ * The refusals a host makes at `bb.experimental_aiServices.register` before
+ * it stages the declaration: a reserved server-direct id, and a plugin with
+ * no `bb.host` entry for the service to run on. A plugin whose declared
+ * entry failed to build is not refused here: the service is staged unbound,
+ * carrying the build problem, so the load fails on that problem — the
+ * actionable one — after the factory instead of at this call, and a
+ * provider the same factory declares is listed as unavailable rather than
+ * lost. Returns what the service binds to. The production host and the fake
+ * host both call this, so they refuse identically;
+ * apps/server/test/services/plugins/plugin-ai-services.test.ts pins the
+ * messages.
+ */
+export function assertAiServiceRegistrable<THostArtifact>(args: {
+  id: string;
+  /** The plugin's built `bb.host` artifact, or null when it has none. */
+  hostArtifact: THostArtifact | null;
+  /** Why the artifact is missing when the plugin declared an entry that failed to build. */
+  hostArtifactProblem: string | null;
+}): AiServiceHostBinding<THostArtifact> {
+  if (SERVER_DIRECT_AI_SERVICE_IDS.includes(args.id)) {
+    throw new Error(
+      `AI service id "${args.id}" is reserved: the server serves it directly, so a plugin cannot register it`,
+    );
+  }
+  if (args.hostArtifact !== null) {
+    return { artifact: args.hostArtifact, problem: null };
+  }
+  if (args.hostArtifactProblem !== null) {
+    return { artifact: null, problem: args.hostArtifactProblem };
+  }
+  throw new Error(
+    `AI service "${args.id}" needs a bb.host entry to run on: this plugin declares none`,
+  );
+}
+
+/** The collision a second registration of a live AI-service id raises. */
+export function aiServiceAlreadyRegisteredMessage(id: string): string {
+  return `AI service "${id}" is already registered; a plugin cannot shadow an existing service.`;
+}
+
+/** The collision a second registration of a live provider id raises. */
+export function providerAlreadyRegisteredMessage(id: string): string {
+  return `Provider "${id}" is already registered; a plugin cannot shadow an existing provider.`;
 }
 
 /**
@@ -805,9 +1034,112 @@ function validateProviderFallbackModels(
  * declarations identically. Throws a descriptive error on the first problem;
  * returns a normalized, deeply frozen copy carrying only contract fields.
  */
+/**
+ * A declaration that has been through {@link validatePluginProviderDeclaration}.
+ *
+ * The validator fills the defaults it owns, so a consumer reads one explicit
+ * value rather than re-deciding what an absent field means. Only the fields
+ * the validator GUARANTEES are narrowed here; everything else keeps the
+ * author-facing shape.
+ */
+export type NormalizedPluginProviderDeclaration = Omit<
+  PluginProviderDeclaration,
+  | "experimental_nativeSkillRoots"
+  | "experimental_nativeCommandRoots"
+  | "experimental_resolvesNativeRoots"
+> & {
+  readonly experimental_nativeSkillRoots?: ProviderNativeRoots;
+  readonly experimental_nativeCommandRoots?: ProviderNativeRoots;
+  readonly experimental_resolvesNativeRoots: boolean;
+  readonly maintenance: {
+    readonly health: boolean;
+    readonly usage: boolean;
+    readonly installation: boolean;
+  };
+  readonly models: {
+    readonly fallback?: readonly PluginProviderFallbackModel[];
+    readonly scope: PluginProviderModelCatalogScope;
+  };
+};
+
+/**
+ * Declaration fields SDK 0.4.16 renamed when they stabilized (S2). A plugin
+ * built against an SDK before 0.4.16 still passes the old key; a validator
+ * that reads only the new one would drop the field without a word, so the
+ * old key is a registration error that names its replacement.
+ */
+const RENAMED_PROVIDER_DECLARATION_FIELDS: Readonly<Record<string, string>> =
+  Object.freeze({
+    experimental_family: "family",
+    experimental_strings: "strings",
+    experimental_serviceTiers: "serviceTiers",
+    experimental_reasoningLevels: "reasoningLevels",
+    experimental_extensionKinds: "extensionKinds",
+    experimental_models: "models",
+    experimental_env: "env",
+    experimental_deriveProviderOptions: "deriveProviderOptions",
+  });
+
+/** The `capabilities.*` booleans SDK 0.4.16 moved into `maintenance`. */
+const MOVED_PROVIDER_CAPABILITY_FIELDS: Readonly<Record<string, string>> =
+  Object.freeze({
+    experimental_providerHealth: "maintenance.health",
+    experimental_providerUsage: "maintenance.usage",
+    experimental_providerInstallation: "maintenance.installation",
+  });
+
+/**
+ * The `experimental_` declaration keys {@link validatePluginProviderDeclaration}
+ * still reads. Keep this in step with the reads below: a key listed here but
+ * never read is the silent drop this check exists to prevent.
+ */
+const READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS: ReadonlySet<string> =
+  new Set([
+    "experimental_bridgeOptions",
+    "experimental_visibility",
+    "experimental_nativeSkillRoots",
+    "experimental_nativeCommandRoots",
+    "experimental_resolvesNativeRoots",
+  ]);
+
+const RENAMED_PROVIDER_FIELDS_SDK_VERSION = "0.4.16";
+
+/**
+ * Reject every `experimental_`-prefixed own key of `value` that the validator
+ * does not read. A renamed or moved key gets a message that names the new
+ * key; any other prefixed key is unknown. `scope` prefixes the key in the
+ * message (`"capabilities."`) so the author can find it.
+ */
+function rejectStaleExperimentalFields(args: {
+  providerId: string;
+  value: object;
+  scope: string;
+  read: ReadonlySet<string>;
+  renamed: Readonly<Record<string, string>>;
+  verb: "renamed" | "moved";
+}): void {
+  for (const key of Object.keys(args.value)) {
+    if (!key.startsWith("experimental_") || args.read.has(key)) {
+      continue;
+    }
+    const replacement = Object.hasOwn(args.renamed, key)
+      ? args.renamed[key]
+      : undefined;
+    const field = `${args.scope}${key}`;
+    if (replacement === undefined) {
+      throw new Error(
+        `provider "${args.providerId}": unknown declaration field "${field}"`,
+      );
+    }
+    throw new Error(
+      `provider "${args.providerId}": "${field}" was ${args.verb} to "${replacement}" in SDK ${RENAMED_PROVIDER_FIELDS_SDK_VERSION}`,
+    );
+  }
+}
+
 export function validatePluginProviderDeclaration(
   declaration: PluginProviderDeclaration,
-): PluginProviderDeclaration {
+): NormalizedPluginProviderDeclaration {
   if (typeof declaration !== "object" || declaration === null) {
     throw new Error("provider declaration must be an object");
   }
@@ -817,13 +1149,25 @@ export function validatePluginProviderDeclaration(
       `invalid provider id ${JSON.stringify(id)} — use 2-64 lowercase letters, digits, and "-", starting with a letter or digit`,
     );
   }
-  const family = declaration.experimental_family;
+  // Before any other field: a plugin built against the pre-rename SDK gets
+  // the rename message, not a follow-on error about the field it could not
+  // set (an old `experimental_providerHealth: true` would otherwise fail the
+  // `experimental_visibility` check for a `maintenance.health` it never saw).
+  rejectStaleExperimentalFields({
+    providerId: id,
+    value: declaration,
+    scope: "",
+    read: READ_EXPERIMENTAL_PROVIDER_DECLARATION_FIELDS,
+    renamed: RENAMED_PROVIDER_DECLARATION_FIELDS,
+    verb: "renamed",
+  });
+  const family = declaration.family;
   if (
     family !== undefined &&
     (typeof family !== "string" || !PROVIDER_ID_PATTERN.test(family))
   ) {
     throw new Error(
-      `provider "${id}" experimental_family must use the provider id grammar (2-64 lowercase letters, digits, and "-")`,
+      `provider "${id}" family must use the provider id grammar (2-64 lowercase letters, digits, and "-")`,
     );
   }
   const displayName =
@@ -845,18 +1189,23 @@ export function validatePluginProviderDeclaration(
       declaration.icon.trim() === ""
     ) {
       throw new Error(
-        `provider "${id}" icon must be a non-blank string — a named host glyph ("Zap") or a plugin-relative path ("./icons/agent.svg")`,
+        `provider "${id}" icon must be a non-blank string — a named host glyph ("Zap"), a plugin-relative path ("./icons/agent.svg"), or a declared icon ("<pluginId>/<name>")`,
       );
     }
-    // Same grammar as `bb.branding.icon`: a leading "./" means a plugin-owned
-    // file and gets the escape rules; anything else names a host glyph. A
-    // path-shaped value without the "./" prefix is neither, and would
+    // The `bb.branding.icon` forms plus one: a leading "./" means a
+    // plugin-owned file and gets the escape rules; "<pluginId>/<name>" names
+    // an entry of the plugin's `bb.branding.experimental_icons` map (the host
+    // checks the plugin id and the name at registration, since only it holds
+    // the manifest; `bb.branding.icon` itself refuses this form); anything
+    // else names a host glyph. A path-shaped value that is neither would
     // otherwise be read as a glyph name that resolves to nothing.
     if (isPluginOwnedIconPath(declaration.icon)) {
       icon = validateProviderRelativePath(declaration.icon, `"${id}" icon`);
+    } else if (isNamespacedGlyph(declaration.icon)) {
+      icon = declaration.icon;
     } else if (/[/\\]/u.test(declaration.icon)) {
       throw new Error(
-        `provider "${id}" icon looks like a path but does not start with "./" — use "./icons/agent.svg" for a plugin file, or a bare host glyph name like "Zap"`,
+        `provider "${id}" icon looks like a path but does not start with "./" — use "./icons/agent.svg" for a plugin file, "<pluginId>/<name>" for a declared icon, or a bare host glyph name like "Zap"`,
       );
     } else {
       icon = declaration.icon;
@@ -866,30 +1215,32 @@ export function validatePluginProviderDeclaration(
   if (typeof capabilities !== "object" || capabilities === null) {
     throw new Error(`provider "${id}" capabilities must be an object`);
   }
-  // These fields were originally reported by the bridge handshake. Treat an
-  // omitted value from a plugin compiled against that older experimental API
-  // as false, then carry an explicit boolean everywhere inside bb.
-  const experimentalProviderHealth =
-    capabilities.experimental_providerHealth ?? false;
-  const experimentalProviderUsage =
-    capabilities.experimental_providerUsage ?? false;
-  const experimentalProviderInstallation =
-    capabilities.experimental_providerInstallation ?? false;
-  if (typeof experimentalProviderHealth !== "boolean") {
-    throw new Error(
-      `provider "${id}" capabilities.experimental_providerHealth must be a boolean`,
-    );
+  rejectStaleExperimentalFields({
+    providerId: id,
+    value: capabilities,
+    scope: "capabilities.",
+    read: new Set(),
+    renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
+    verb: "moved",
+  });
+  // Maintenance support: an omitted object or key means the bridge does not
+  // implement that request. Filled here once, then an explicit boolean
+  // everywhere inside bb.
+  const maintenance = declaration.maintenance ?? {};
+  if (typeof maintenance !== "object" || maintenance === null) {
+    throw new Error(`provider "${id}" maintenance must be an object`);
   }
-  if (typeof experimentalProviderUsage !== "boolean") {
-    throw new Error(
-      `provider "${id}" capabilities.experimental_providerUsage must be a boolean`,
-    );
+  for (const key of ["health", "usage", "installation"] as const) {
+    const value = maintenance[key];
+    if (value !== undefined && typeof value !== "boolean") {
+      throw new Error(`provider "${id}" maintenance.${key} must be a boolean`);
+    }
   }
-  if (typeof experimentalProviderInstallation !== "boolean") {
-    throw new Error(
-      `provider "${id}" capabilities.experimental_providerInstallation must be a boolean`,
-    );
-  }
+  const normalizedMaintenance = Object.freeze({
+    health: maintenance.health ?? false,
+    usage: maintenance.usage ?? false,
+    installation: maintenance.installation ?? false,
+  });
   const booleanCapabilityFields = [
     "supportsServiceTier",
     "supportsNativeUserQuestion",
@@ -912,9 +1263,6 @@ export function validatePluginProviderDeclaration(
     );
   }
   const normalizedCapabilities: PluginProviderCapabilities = Object.freeze({
-    experimental_providerHealth: experimentalProviderHealth,
-    experimental_providerUsage: experimentalProviderUsage,
-    experimental_providerInstallation: experimentalProviderInstallation,
     supportsServiceTier: capabilities.supportsServiceTier,
     supportsNativeUserQuestion: capabilities.supportsNativeUserQuestion,
     fork: capabilities.fork,
@@ -956,95 +1304,132 @@ export function validatePluginProviderDeclaration(
       `provider "${id}" experimental_visibility must be "always" or "installed"`,
     );
   }
-  if (
-    visibility === "installed" &&
-    !normalizedCapabilities.experimental_providerHealth
-  ) {
+  if (visibility === "installed" && !normalizedMaintenance.health) {
     throw new Error(
-      `provider "${id}" experimental_visibility "installed" requires experimental_providerHealth`,
+      `provider "${id}" experimental_visibility "installed" requires maintenance.health`,
     );
   }
   // Target-state declaration fields: validated and carried when present so
   // WS2a can project them, never silently dropped.
   const strings =
-    declaration.experimental_strings === undefined
+    declaration.strings === undefined
       ? undefined
-      : validateProviderStrings(id, declaration.experimental_strings);
+      : validateProviderStrings(id, declaration.strings);
   const serviceTiers =
-    declaration.experimental_serviceTiers === undefined
+    declaration.serviceTiers === undefined
       ? undefined
       : validateProviderOptionDescriptors({
           providerId: id,
-          field: "experimental_serviceTiers",
-          value: declaration.experimental_serviceTiers,
+          field: "serviceTiers",
+          value: declaration.serviceTiers,
         });
   const reasoningLevels =
-    declaration.experimental_reasoningLevels === undefined
+    declaration.reasoningLevels === undefined
       ? undefined
       : validateProviderOptionDescriptors({
           providerId: id,
-          field: "experimental_reasoningLevels",
-          value: declaration.experimental_reasoningLevels,
+          field: "reasoningLevels",
+          value: declaration.reasoningLevels,
         });
   const extensionKinds =
-    declaration.experimental_extensionKinds === undefined
+    declaration.extensionKinds === undefined
       ? undefined
       : validateProviderExtensionKinds(
           id,
-          declaration.experimental_extensionKinds,
+          declaration.extensionKinds,
         );
   const fallbackModels =
-    declaration.experimental_models === undefined
+    declaration.models === undefined
       ? undefined
-      : validateProviderFallbackModels(id, declaration.experimental_models);
+      : validateProviderFallbackModels(id, declaration.models);
+  // Filled in at the boundary rather than left absent: every consumer reads
+  // one value, and the default is a decision this validator owns.
+  const modelCatalogScope = validateProviderModelCatalogScope(
+    id,
+    declaration.models?.scope,
+  );
   const envPassthrough =
-    declaration.experimental_env === undefined
+    declaration.env === undefined
       ? undefined
-      : validateProviderEnvPassthrough(id, declaration.experimental_env);
-  const deriveProviderOptions = declaration.experimental_deriveProviderOptions;
+      : validateProviderEnvPassthrough(id, declaration.env);
+  const nativeSkillRoots =
+    declaration.experimental_nativeSkillRoots === undefined
+      ? undefined
+      : validateProviderNativeRoots(
+          id,
+          "experimental_nativeSkillRoots",
+          declaration.experimental_nativeSkillRoots,
+        );
+  const nativeCommandRoots =
+    declaration.experimental_nativeCommandRoots === undefined
+      ? undefined
+      : validateProviderNativeRoots(
+          id,
+          "experimental_nativeCommandRoots",
+          declaration.experimental_nativeCommandRoots,
+        );
+  const resolvesNativeRoots = declaration.experimental_resolvesNativeRoots;
+  if (
+    resolvesNativeRoots !== undefined &&
+    typeof resolvesNativeRoots !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" experimental_resolvesNativeRoots must be a boolean`,
+    );
+  }
+  const deriveProviderOptions = declaration.deriveProviderOptions;
   if (
     deriveProviderOptions !== undefined &&
     typeof deriveProviderOptions !== "function"
   ) {
     throw new Error(
-      `provider "${id}" experimental_deriveProviderOptions must be a function (context) => providerOptions`,
+      `provider "${id}" deriveProviderOptions must be a function (context) => providerOptions`,
     );
   }
   return Object.freeze({
     id,
     displayName,
-    ...(family === undefined ? {} : { experimental_family: family }),
+    ...(family === undefined ? {} : { family: family }),
     ...(icon === undefined ? {} : { icon }),
     ...(bridgeOptions === undefined
       ? {}
       : { experimental_bridgeOptions: bridgeOptions }),
     experimental_visibility: visibility,
+    maintenance: normalizedMaintenance,
     capabilities: normalizedCapabilities,
     composerActions,
-    ...(strings === undefined ? {} : { experimental_strings: strings }),
+    ...(strings === undefined ? {} : { strings: strings }),
     ...(serviceTiers === undefined
       ? {}
-      : { experimental_serviceTiers: serviceTiers }),
+      : { serviceTiers: serviceTiers }),
     ...(reasoningLevels === undefined
       ? {}
-      : { experimental_reasoningLevels: reasoningLevels }),
+      : { reasoningLevels: reasoningLevels }),
     ...(extensionKinds === undefined
       ? {}
-      : { experimental_extensionKinds: extensionKinds }),
-    ...(fallbackModels === undefined
-      ? {}
-      : { experimental_models: Object.freeze({ fallback: fallbackModels }) }),
+      : { extensionKinds: extensionKinds }),
+    models: Object.freeze({
+      ...(fallbackModels === undefined ? {} : { fallback: fallbackModels }),
+      scope: modelCatalogScope,
+    }),
     ...(envPassthrough === undefined
       ? {}
-      : { experimental_env: Object.freeze({ passthrough: envPassthrough }) }),
+      : { env: Object.freeze({ passthrough: envPassthrough }) }),
+    ...(nativeSkillRoots === undefined
+      ? {}
+      : { experimental_nativeSkillRoots: nativeSkillRoots }),
+    ...(nativeCommandRoots === undefined
+      ? {}
+      : { experimental_nativeCommandRoots: nativeCommandRoots }),
+    experimental_resolvesNativeRoots: resolvesNativeRoots ?? false,
     ...(deriveProviderOptions === undefined
       ? {}
-      : { experimental_deriveProviderOptions: deriveProviderOptions }),
+      : { deriveProviderOptions: deriveProviderOptions }),
   });
 }
 
 /**
- * Run a declaration's `experimental_deriveProviderOptions` hook for one
+ * Run a declaration's `deriveProviderOptions` hook for one
  * command and validate its result as a bounded, plain-JSON object — the same
  * rules as `experimental_bridgeOptions`, because the result rides the same
  * wire slot. Shared by the real host and the fake so a hook that works in
@@ -1053,16 +1438,16 @@ export function validatePluginProviderDeclaration(
 export function deriveValidatedProviderOptions(args: {
   declaration: PluginProviderDeclaration;
   context: Parameters<
-    NonNullable<PluginProviderDeclaration["experimental_deriveProviderOptions"]>
+    NonNullable<PluginProviderDeclaration["deriveProviderOptions"]>
   >[0];
 }): Readonly<Record<string, JsonValue>> {
-  const hook = args.declaration.experimental_deriveProviderOptions;
+  const hook = args.declaration.deriveProviderOptions;
   if (hook === undefined) return Object.freeze({});
   const result = hook(args.context);
   return normalizeProviderBridgeOptions(
     args.declaration.id,
     result,
-    "experimental_deriveProviderOptions result",
+    "deriveProviderOptions result",
   );
 }
 
@@ -1283,6 +1668,143 @@ export function assertNoRecursiveJsonSchemaReferences(
   visit(schema);
 }
 
+/**
+ * Registration fields SDK 0.4.16 renamed or folded away. A plugin compiled
+ * against an older SDK still passes them, and dropping them silently would
+ * change how its tool rows render, so each names its replacement.
+ */
+const RENAMED_AGENT_TOOL_FIELDS: ReadonlyMap<string, string> = new Map([
+  [
+    "experimental_presentation",
+    '"experimental_presentation" was renamed to "presentation" in SDK 0.4.16',
+  ],
+  [
+    "experimental_statusLabels",
+    '"experimental_statusLabels" was folded into "presentation" (labels) in SDK 0.4.16',
+  ],
+]);
+
+/**
+ * Reject the fields a registration never reads. Renamed fields get the
+ * message above; any other `experimental_` field is unknown (the same
+ * rule configure() output follows in the plugin service). The production
+ * host and the fake host both call this before parsing `presentation`, so
+ * a registration built against an older SDK fails a plugin's own unit test
+ * with the message bb would give it.
+ */
+export function rejectStaleAgentToolFields(
+  toolName: string,
+  tool: object,
+): void {
+  const unknownKeys: string[] = [];
+  for (const key of Object.keys(tool).sort()) {
+    const renamed = RENAMED_AGENT_TOOL_FIELDS.get(key);
+    if (renamed !== undefined) {
+      throw new Error(`registerTool: ${renamed} (tool "${toolName}")`);
+    }
+    if (key.startsWith("experimental_")) {
+      unknownKeys.push(key);
+    }
+  }
+  if (unknownKeys.length > 0) {
+    throw new Error(
+      `registerTool: tool "${toolName}" contains unknown field${unknownKeys.length === 1 ? "" : "s"}: ${unknownKeys.join(", ")}`,
+    );
+  }
+}
+
+/**
+ * The declared shape of `presentation`, copied field by field so
+ * a plugin's object cannot smuggle prototypes or extra markup into the
+ * persisted row. Labels share the status-label length cap. The production
+ * host and the fake host both call this, so a presentation that registers
+ * in a plugin unit test registers in bb, and one bb rejects is rejected
+ * with the same message.
+ */
+export function parsePluginAgentToolPresentation(
+  toolName: string,
+  value: unknown,
+): PluginAgentToolPresentation | null {
+  if (value === undefined) {
+    return null;
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `tool "${toolName}" presentation must be an object`,
+    );
+  }
+  const declared = value as Record<string, unknown>;
+  const presentation: PluginAgentToolPresentation = {};
+  if (declared.label !== undefined) {
+    const label = declared.label;
+    if (
+      typeof label !== "object" ||
+      label === null ||
+      typeof (label as { pending?: unknown }).pending !== "string" ||
+      typeof (label as { completed?: unknown }).completed !== "string"
+    ) {
+      throw new Error(
+        `tool "${toolName}" presentation.label must provide pending and completed strings`,
+      );
+    }
+    const { pending, completed } = label as {
+      pending: string;
+      completed: string;
+    };
+    if (
+      pending.trim().length === 0 ||
+      completed.trim().length === 0 ||
+      pending.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS ||
+      completed.length > PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS
+    ) {
+      throw new Error(
+        `tool "${toolName}" presentation.label strings must be non-empty and at most ${PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS} characters`,
+      );
+    }
+    presentation.label = { pending, completed };
+  }
+  if (declared.icon !== undefined) {
+    const icon = declared.icon;
+    if (
+      typeof icon !== "object" ||
+      icon === null ||
+      typeof (icon as { glyph?: unknown }).glyph !== "string" ||
+      (icon as { glyph: string }).glyph.trim().length === 0
+    ) {
+      throw new Error(
+        `tool "${toolName}" presentation.icon must be { glyph: string }`,
+      );
+    }
+    presentation.icon = { glyph: (icon as { glyph: string }).glyph };
+  }
+  if (declared.suppress !== undefined) {
+    if (typeof declared.suppress !== "boolean") {
+      throw new Error(
+        `tool "${toolName}" presentation.suppress must be a boolean`,
+      );
+    }
+    presentation.suppress = declared.suppress;
+  }
+  if (declared.tint !== undefined) {
+    const tint = declared.tint;
+    if (
+      typeof tint !== "object" ||
+      tint === null ||
+      typeof (tint as { light?: unknown }).light !== "string" ||
+      typeof (tint as { dark?: unknown }).dark !== "string"
+    ) {
+      throw new Error(
+        `tool "${toolName}" presentation.tint must provide light and dark strings`,
+      );
+    }
+    presentation.tint = {
+      light: (tint as { light: string }).light,
+      dark: (tint as { dark: string }).dark,
+    };
+  }
+  return presentation;
+}
+
 /** Compact issue summary from a (possibly foreign-instance) zod error. */
 export function summarizeParseIssues(error: unknown): string {
   const issues = (
@@ -1411,4 +1933,57 @@ function isResponseLike(value: unknown): value is Response {
     typeof candidate.arrayBuffer === "function" &&
     typeof candidate.clone === "function"
   );
+}
+
+/**
+ * The one rule for a namespaced glyph (`"<pluginId>/<name>"`) wherever a
+ * plugin may reference its own declared icons — a tool presentation at
+ * `bb.agents.registerTool`, a provider icon at `bb.providers.register`, and a
+ * row presentation at ingest: the plugin id must be the emitting plugin's
+ * and the name must be in its `bb.branding.experimental_icons` map. The
+ * server and the fake plugin host apply it from here, so a registration the
+ * fake accepts is one the server accepts.
+ *
+ * Returns the reason a glyph is refused, always naming the glyph and the
+ * plugin, or null when the glyph is acceptable. A host glyph (no `/`) is
+ * never refused here: whether the client can draw it is the client's call.
+ */
+export function undeclaredIconProblem(
+  pluginId: string,
+  declaredIconNames: ReadonlySet<string>,
+  glyph: string,
+): string | null {
+  const parsed = parseNamespacedGlyph(glyph);
+  if (parsed === null) {
+    return null;
+  }
+  if (parsed.pluginId !== pluginId || !declaredIconNames.has(parsed.name)) {
+    return `"${glyph}" is not an icon declared by plugin "${pluginId}"`;
+  }
+  return null;
+}
+
+/** `bb.providers.register` refusal for an icon {@link undeclaredIconProblem} rejects. */
+export function providerIconRefusalMessage(
+  providerId: string,
+  problem: string,
+): string {
+  return `provider "${providerId}" icon ${problem}`;
+}
+
+/** `bb.agents.registerTool` refusal for a glyph {@link undeclaredIconProblem} rejects. */
+export function agentToolIconRefusalMessage(
+  toolName: string,
+  problem: string,
+): string {
+  return `tool "${toolName}" presentation.icon ${problem}`;
+}
+
+/**
+ * `bb.providers.register` refusal for a plugin whose manifest declares no
+ * `bb.host` entry: a declaration is metadata, and the bridge it runs on is
+ * that entry.
+ */
+export function providerWithoutBridgeMessage(providerId: string): string {
+  return `provider "${providerId}" has no bridge to run on: this plugin declares no "bb.host" entry in its manifest`;
 }

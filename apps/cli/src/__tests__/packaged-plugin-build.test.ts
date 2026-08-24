@@ -1,9 +1,17 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
+import { readBbAppVersion } from "./bb-app-version.js";
 
 const execFileAsync = promisify(execFile);
 const testDir = dirname(fileURLToPath(import.meta.url));
@@ -26,9 +34,15 @@ describe("packaged CLI plugin build", () => {
     // resolve exactly as they do for dist/index.js. @get-bb/plugin-sdk is not a
     // CLI dependency, so import.meta.resolve in this bundle takes the
     // packaged fallback that the source-level plugin-build tests do not.
+    //
+    // Built with `--split` like the shipped CLI, so the code that resolves
+    // files relative to import.meta.url (the bb-app version lookup, the SDK
+    // declaration bundles, plugin-build's createRequire/import.meta.resolve)
+    // runs from a chunk directory one level deeper than the entry. A `.js`
+    // entry (apps/cli is ESM) keeps the chunks at cli-chunks/ next to it.
     const tempRoot = await mkdtemp(join(cliRoot, ".packaged-plugin-build-"));
     tempDirs.push(tempRoot);
-    const cliEntry = join(tempRoot, "cli.mjs");
+    const cliEntry = join(tempRoot, "cli.js");
     const pluginRoot = join(tempRoot, "plugin");
     await execFileAsync(
       process.execPath,
@@ -36,6 +50,7 @@ describe("packaged CLI plugin build", () => {
         resolve(workspaceRoot, "scripts", "build-node-entry.mjs"),
         "src/index.ts",
         cliEntry,
+        "--split",
         "--external",
         "esbuild",
         "--external",
@@ -89,6 +104,20 @@ describe("packaged CLI plugin build", () => {
       BB_CLI_REEXEC: "1",
     };
     delete childEnv.BB_CLI;
+    delete childEnv.BB_APP_VERSION;
+
+    // version.ts lands in a shared chunk and walks up from cli-chunks/ to the
+    // workspace's packages/bb-app/package.json; a single-file bundle or the
+    // tsx sources start that walk one directory higher and would not notice
+    // a lookup that stops short.
+    expect(await readdir(join(tempRoot, "cli-chunks"))).not.toHaveLength(0);
+    const { stdout: versionOutput } = await execFileAsync(
+      process.execPath,
+      [cliEntry, "--version"],
+      { cwd: workspaceRoot, env: childEnv },
+    );
+    expect(versionOutput.trim()).toBe(await readBbAppVersion());
+
     await execFileAsync(
       process.execPath,
       [cliEntry, "plugin", "build", pluginRoot],

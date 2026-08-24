@@ -56,6 +56,7 @@ const mocks = vi.hoisted(() => ({
     setDraft: vi.fn(),
     setTextAndMentions: vi.fn(),
     storageKey: "bb.promptbox.contents-proj_1-thr_1-3",
+    subscribe: vi.fn(() => () => {}),
     text: "",
   },
   queuedMessages: [] as ThreadQueuedMessage[],
@@ -206,7 +207,7 @@ vi.mock("@/components/promptbox/FollowUpPromptBox", async () => {
               type="button"
               onClick={() =>
                 pluginComposerHost.setDraft({
-                  ...pluginComposerHost.draft,
+                  ...pluginComposerHost.getCurrent(),
                   text: "Plugin-enhanced queued message",
                 })
               }
@@ -1628,7 +1629,9 @@ describe("ThreadDetailPromptArea", () => {
       screen
         .getAllByTestId("composer-stack-item")
         .map((item) => item.textContent),
-    ).toEqual(["Plan banner", "Goal banner", "Plugin pending interaction"]);
+      // The banner routes a plugin request to the plugin's slot itself
+      // (ThreadPendingInteractionBanner.test.tsx); the stack only orders it.
+    ).toEqual(["Plan banner", "Goal banner", "Pending interaction"]);
   });
 
   it("selects the provider fallback model for the next turn", () => {

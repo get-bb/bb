@@ -1,10 +1,20 @@
 // @vitest-environment jsdom
 
-import type { ComponentProps, ReactNode } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { useMemo, type ComponentProps, type ReactNode } from "react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import {
+  usePluginComposerHost,
+  usePluginComposerHostDraft,
+  usePublishPluginComposerHost,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import {
+  getPromptDraftAccessor,
+  usePromptDraftStorage,
+} from "@/hooks/usePromptDraftStorage";
 import { ThreadDetailSecondaryContent } from "./ThreadDetailSecondaryContent";
 import {
   DefaultPaneContextProvider,
@@ -141,6 +151,10 @@ vi.mock(
   },
 );
 
+const { timelinePaneRenders } = vi.hoisted(() => ({
+  timelinePaneRenders: vi.fn(),
+}));
+
 vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const React = await import("react");
   const actual = await importOriginal<typeof import("./ThreadTimelinePane")>();
@@ -148,8 +162,9 @@ vi.mock("./ThreadTimelinePane", async (importOriginal) => {
   const ThreadTimelinePane = ({
     footer,
     threadId,
-  }: ComponentProps<typeof actual.ThreadTimelinePane>) =>
-    React.createElement(
+  }: ComponentProps<typeof actual.ThreadTimelinePane>) => {
+    timelinePaneRenders();
+    return React.createElement(
       "div",
       {
         "data-testid": "thread-timeline-pane",
@@ -157,6 +172,7 @@ vi.mock("./ThreadTimelinePane", async (importOriginal) => {
       },
       footer,
     );
+  };
 
   return { ...actual, ThreadTimelinePane };
 });
@@ -171,6 +187,44 @@ const hostedPaneRegistration = {
     publishedHostedPanel = model;
   },
 };
+
+/**
+ * Mirrors ThreadDetailPromptArea's host construction over the real draft
+ * store: an identity-stable host publishing into the pane scope from the
+ * footer slot, plus an actual draft consumer, exactly where the composer
+ * sits in the app tree.
+ */
+function FooterComposerHostPublisher({ threadId }: { threadId: string }) {
+  const promptDraft = usePromptDraftStorage({
+    kind: "thread",
+    projectId: "proj-test",
+    threadId,
+  });
+  const host = useMemo<PluginComposerHost>(
+    () => ({
+      scope: { kind: "thread", threadId },
+      textEffectKey: promptDraft.storageKey,
+      getCurrent: promptDraft.getCurrent,
+      subscribeDraft: promptDraft.subscribe,
+      setDraft: promptDraft.setDraft,
+      focus: () => {},
+    }),
+    [
+      promptDraft.getCurrent,
+      promptDraft.setDraft,
+      promptDraft.storageKey,
+      promptDraft.subscribe,
+      threadId,
+    ],
+  );
+  usePublishPluginComposerHost(host);
+  return <FooterComposerDraftProbe />;
+}
+
+function FooterComposerDraftProbe() {
+  const draft = usePluginComposerHostDraft(usePluginComposerHost());
+  return <div data-testid="footer-composer-draft">{draft?.text ?? ""}</div>;
+}
 
 function makeThread(): ThreadDetailSecondaryContentProps["metadata"]["thread"] {
   return {
@@ -313,7 +367,9 @@ afterEach(() => {
   cleanup();
   publishedHostedPanel = null;
   secondaryPanelMockState.renderBrowserDeck = undefined;
+  timelinePaneRenders.mockClear();
   useThreadsMock.mockClear();
+  window.localStorage.clear();
 });
 
 // The secondary panel chunk loads lazily, so the panel appears one tick
@@ -422,6 +478,49 @@ describe("ThreadDetailSecondaryContent", () => {
     });
   });
 
+  it("keeps the panel subtree mounted when navigating between threads", async () => {
+    const props = createProps();
+    const { rerender } = render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    const sidePanel = await screen.findByTestId(
+      "inline-secondary-panel",
+      {},
+      { timeout: 5_000 },
+    );
+    const panelGroup = screen.getByTestId("panel-group");
+
+    const nextProps = createProps();
+    nextProps.timeline = {
+      ...nextProps.timeline,
+      threadId: "thread-2",
+    } as ThreadDetailSecondaryContentProps["timeline"];
+    rerender(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...nextProps} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    // Navigation swaps content identity but must not remount the physical
+    // panel host: same DOM nodes for the group and the realized side panel.
+    expect(screen.getByTestId("panel-group")).toBe(panelGroup);
+    expect(screen.getByTestId("inline-secondary-panel")).toBe(sidePanel);
+    expect(
+      screen.getByTestId("thread-timeline-pane").getAttribute("data-thread-id"),
+    ).toBe("thread-2");
+  });
+
   it("only requests the forks list while the secondary panel is open", () => {
     const props = createProps();
     const { rerender } = render(
@@ -460,5 +559,46 @@ describe("ThreadDetailSecondaryContent", () => {
     expect(useThreadsMock).toHaveBeenLastCalledWith(expect.anything(), {
       enabled: true,
     });
+  });
+
+  // Regression probe for the 19.6s mobile keystroke hang: the body holds the
+  // published composer host, so a per-keystroke host identity re-rendered
+  // SecondaryPanelLayout and the timeline pane per character.
+  it("does not re-render the timeline pane while the composer draft changes", async () => {
+    const props = createProps();
+    props.footer = <FooterComposerHostPublisher threadId="thread-1" />;
+    render(
+      <MemoryRouter>
+        <DefaultPaneContextProvider>
+          <CompactViewportOverrideProvider isCompactViewport={false}>
+            <ThreadDetailSecondaryContent {...props} />
+          </CompactViewportOverrideProvider>
+        </DefaultPaneContextProvider>
+      </MemoryRouter>,
+    );
+
+    // Let the lazy secondary panel and the host publication settle first.
+    await screen.findByTestId("inline-secondary-panel", {}, { timeout: 5_000 });
+    expect(screen.getByTestId("footer-composer-draft").textContent).toBe("");
+    const paneRendersAfterMount = timelinePaneRenders.mock.calls.length;
+
+    // Keystrokes hit the same store the composer writes through.
+    const accessor = getPromptDraftAccessor({
+      kind: "thread",
+      projectId: "proj-test",
+      threadId: "thread-1",
+    });
+    const typed = "why does typing hang";
+    for (let index = 1; index <= typed.length; index += 1) {
+      const text = typed.slice(0, index);
+      act(() => {
+        accessor.setDraft({ text, mentions: [], attachments: [] });
+      });
+      expect(screen.getByTestId("footer-composer-draft").textContent).toBe(
+        text,
+      );
+    }
+
+    expect(timelinePaneRenders.mock.calls.length).toBe(paneRendersAfterMount);
   });
 });

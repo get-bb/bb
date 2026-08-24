@@ -1,13 +1,6 @@
 import { fork, spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -52,11 +45,6 @@ const DEFAULT_HOST_DAEMON_LOCAL_BIND_HOST = "127.0.0.1";
 
 const scriptsDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptsDir, "..");
-const piConfigExtensionFixturePath = resolve(
-  scriptsDir,
-  "fixtures",
-  "pi-config-extension.ts",
-);
 const tempRoot = await mkdtemp(join(tmpdir(), "bb-app-tarball-"));
 const smokeProcessEnv = {
   BB_TELEMETRY: "false",
@@ -450,7 +438,7 @@ async function smokeBridgeModelList({
     "error" in modelListResponse &&
     isRecord(modelListResponse.error) &&
     typeof modelListResponse.error.message === "string" &&
-    /(?:Native CLI binary|Claude Code executable).*not found|could not find the (?:Claude Code|Codex) CLI/u.test(
+    /(?:Native CLI binary|Claude Code executable).*not found|could not find the (?:Claude Code|Codex|pi) CLI/iu.test(
       modelListResponse.error.message,
     );
   if (!allowUnavailableProvider || !unavailableProviderMessage) {
@@ -483,10 +471,22 @@ async function smokeProviderBridgeBundles(packageDir) {
     label: "Claude Code host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
-    bridgePath: join(packageDir, "host-daemon", "dist", "bb-pi-bridge.mjs"),
+    // Pi ships its bridge as a plugin artifact too (WS4 L6); the `pi` CLI is
+    // user-installed, so its explicit unavailable-provider response is a
+    // valid smoke outcome on a runner without it.
+    allowUnavailableProvider: true,
+    bridgePath: join(
+      packageDir,
+      "server",
+      "dist",
+      "builtin-plugins",
+      "provider-pi",
+      "dist",
+      "host.js",
+    ),
     packageDir,
     pluginId: "provider-pi",
-    label: "Pi bridge model/list",
+    label: "Pi host-artifact bridge model/list",
   });
   await smokeBridgeModelList({
     // ACP ships its bridge as a plugin artifact (graduation wave 5). With no
@@ -687,257 +687,6 @@ const SMOKE_EXECUTION_OPTIONS = {
   permissionEscalation: null,
 };
 
-async function smokePiUserConfiguration(packageDir) {
-  const testRoot = join(tempRoot, "pi-user-config");
-  const agentDir = join(testRoot, "agent");
-  const workspaceDir = join(testRoot, "workspace");
-  const maintenanceDir = join(testRoot, "provider-maintenance-workspace");
-  const projectConfigDir = join(workspaceDir, ".pi");
-  const extensionPath = join(testRoot, "configured-extension.ts");
-  const sessionMarkerPath = join(testRoot, "session-marker.json");
-  const toolMarkerPath = join(testRoot, "tool-marker.txt");
-  await mkdir(agentDir, { recursive: true });
-  await mkdir(projectConfigDir, { recursive: true });
-  await mkdir(maintenanceDir, { recursive: true });
-  // Pi keys trust decisions by canonical path. macOS temp paths can resolve
-  // through /private, so the raw mkdtemp path is not always the trust key.
-  const trustedWorkspaceDir = await realpath(workspaceDir);
-  await writeFile(
-    extensionPath,
-    await readFile(piConfigExtensionFixturePath, "utf8"),
-  );
-  await writeFile(
-    join(agentDir, "settings.json"),
-    JSON.stringify({ defaultProjectTrust: "ask" }, null, 2),
-  );
-  await writeFile(
-    join(agentDir, "trust.json"),
-    JSON.stringify({ [trustedWorkspaceDir]: true }, null, 2),
-  );
-  await writeFile(
-    join(projectConfigDir, "settings.json"),
-    JSON.stringify(
-      {
-        defaultModel: "bb-config-e2e-model",
-        defaultProvider: "bb-config-e2e",
-        defaultThinkingLevel: "high",
-        extensions: [extensionPath],
-      },
-      null,
-      2,
-    ),
-  );
-
-  const label = "Pi installed-package configuration E2E";
-  const bridgePath = join(
-    packageDir,
-    "host-daemon",
-    "dist",
-    "bb-pi-bridge.mjs",
-  );
-  const childProcess = spawn(
-    process.execPath,
-    [
-      join(packageDir, "host-daemon", "dist", "bb-provider-bridge-worker.mjs"),
-      bridgePath,
-      "provider-pi",
-      maintenanceDir,
-    ],
-    {
-      cwd: maintenanceDir,
-      env: {
-        ...process.env,
-        BB_PI_BRIDGE_SESSION_DIR: join(testRoot, "sessions"),
-        BB_PI_E2E_SESSION_MARKER: sessionMarkerPath,
-        BB_PI_E2E_TOOL_MARKER: toolMarkerPath,
-        PI_CODING_AGENT_DIR: agentDir,
-        PI_OFFLINE: "1",
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    },
-  );
-  const output = collectProcessOutput(childProcess);
-  const dynamicToolCalls = [];
-  const messages = collectJsonRpcMessages({
-    childProcess,
-    onMessage(message) {
-      if (!isRecord(message) || message.method !== "item/tool/call") {
-        return;
-      }
-      dynamicToolCalls.push(message);
-      childProcess.stdin.write(
-        `${JSON.stringify({
-          jsonrpc: "2.0",
-          id: message.id,
-          result: {
-            contentItems: [{ type: "inputText", text: "BB tool result" }],
-            success: true,
-          },
-        })}\n`,
-      );
-    },
-  });
-
-  try {
-    sendBridgeRequest(childProcess, 101, "initialize", {
-      protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      client: { name: "bb-app-smoke", version: "0.0.0" },
-    });
-    sendBridgeRequest(childProcess, 105, "model/list", { cwd: workspaceDir });
-    const modelListResponse = await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) => isRecord(message) && message.id === 105,
-    });
-    if (
-      !isRecord(modelListResponse.result) ||
-      !Array.isArray(modelListResponse.result.models) ||
-      !modelListResponse.result.models.some(
-        (model) =>
-          isRecord(model) && model.id === "bb-config-e2e/bb-config-e2e-model",
-      )
-    ) {
-      throw new Error(
-        `${label} did not add the extension provider to model/list: ${JSON.stringify(modelListResponse)}`,
-      );
-    }
-    sendBridgeRequest(childProcess, 102, "thread/start", {
-      cwd: workspaceDir,
-      dynamicTools: [
-        {
-          name: "bb_dynamic_tool",
-          description: "A tool provided by BB.",
-          inputSchema: {
-            type: "object",
-            properties: { value: { type: "string" } },
-            required: ["value"],
-          },
-        },
-      ],
-      instructionMode: "append",
-      options: SMOKE_EXECUTION_OPTIONS,
-      threadId: "pi-config-e2e-thread",
-    });
-    await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) => isRecord(message) && message.id === 102,
-    });
-
-    sendBridgeRequest(childProcess, 103, "turn/start", {
-      clientRequestId: SMOKE_CLIENT_REQUEST_ID,
-      input: [{ type: "text", text: "Run both configured tools." }],
-      options: SMOKE_EXECUTION_OPTIONS,
-      providerThreadId: "pi-config-e2e-thread",
-      threadId: "pi-config-e2e-thread",
-    });
-    // The turn must reach the "completed" terminal boundary: an interrupted
-    // or failed settlement would otherwise satisfy a bare boundary wait and
-    // hide a broken configuration.
-    await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) =>
-        threadDeltas(message).some(
-          (delta) =>
-            delta.kind === "turn.boundary" && delta.status === "completed",
-        ),
-    });
-
-    const errors = messages.filter(
-      (message) =>
-        isRecord(message) && ("error" in message || message.method === "error"),
-    );
-    if (errors.length > 0) {
-      throw new Error(`${label} emitted errors: ${JSON.stringify(errors)}`);
-    }
-    if (dynamicToolCalls.length !== 1) {
-      throw new Error(
-        `${label} expected one BB tool call, received ${dynamicToolCalls.length}`,
-      );
-    }
-    const dynamicToolCall = dynamicToolCalls[0];
-    if (
-      !isRecord(dynamicToolCall.params) ||
-      dynamicToolCall.params.tool !== "bb_dynamic_tool" ||
-      !isRecord(dynamicToolCall.params.arguments) ||
-      dynamicToolCall.params.arguments.value !== "BB tool input"
-    ) {
-      throw new Error(
-        `${label} received an invalid BB tool call: ${JSON.stringify(dynamicToolCall)}`,
-      );
-    }
-
-    // Neither tool is a pi command/file-change tool, so both settle as
-    // generic `tool` terminal shapes on their `item.close` deltas.
-    const completedToolNames = messages
-      .flatMap((message) => threadDeltas(message))
-      .filter(
-        (delta) =>
-          delta.kind === "item.close" &&
-          delta.status === "completed" &&
-          isRecord(delta.item) &&
-          delta.item.type === "tool",
-      )
-      .map((delta) => delta.item.tool);
-    if (
-      !completedToolNames.includes("configured_tool") ||
-      !completedToolNames.includes("bb_dynamic_tool")
-    ) {
-      throw new Error(
-        `${label} did not complete both tools: ${completedToolNames.join(", ")}`,
-      );
-    }
-
-    const sessionMarker = JSON.parse(await readFile(sessionMarkerPath, "utf8"));
-    if (
-      sessionMarker.provider !== "bb-config-e2e" ||
-      sessionMarker.model !== "bb-config-e2e-model" ||
-      sessionMarker.thinkingLevel !== "high"
-    ) {
-      throw new Error(
-        `${label} did not apply project settings: ${JSON.stringify(sessionMarker)}`,
-      );
-    }
-    const toolMarker = await readFile(toolMarkerPath, "utf8");
-    if (toolMarker !== "extension tool input") {
-      throw new Error(`${label} did not execute the configured extension tool`);
-    }
-
-    sendBridgeRequest(childProcess, 104, "thread/stop", {
-      activeTurnId: null,
-      intent: "release",
-      providerThreadId: "pi-config-e2e-thread",
-      threadId: "pi-config-e2e-thread",
-    });
-    await waitForBridgeMessage({
-      childProcess,
-      label,
-      messages,
-      output,
-      predicate: (message) => isRecord(message) && message.id === 104,
-    });
-  } finally {
-    childProcess.stdin.end();
-    if (childProcess.exitCode === null && childProcess.signalCode === null) {
-      const exited = await Promise.race([
-        waitForProcessExit(childProcess).then(() => true),
-        delay(PROCESS_STOP_TIMEOUT_MS).then(() => false),
-      ]);
-      if (!exited) {
-        childProcess.kill("SIGTERM");
-        await waitForProcessExit(childProcess);
-      }
-    }
-  }
-}
-
 async function smokeHelpCommands(tarballPath) {
   await runCommand({
     args: createNpxArgs(tarballPath, "bb-app", ["--help"]),
@@ -1078,7 +827,16 @@ async function smokeBuiltinPluginsRunning({ cliEnv, tarballPath }) {
     });
     const plugins = JSON.parse(stdout).plugins ?? [];
     const byId = new Map(plugins.map((plugin) => [plugin.id, plugin]));
-    const errored = plugins.filter((plugin) => plugin.status === "error");
+    // The server reports an enabled plugin that `loadAll` has not reached yet
+    // as status "error" with the detail "not loaded" (it has no runtime
+    // status at all). Plugins load one at a time after the server starts
+    // listening, so a poll that lands mid-load sees that transient state for
+    // every plugin still queued; only a plugin whose load actually failed
+    // carries the failure as its detail.
+    const errored = plugins.filter(
+      (plugin) =>
+        plugin.status === "error" && plugin.statusDetail !== "not loaded",
+    );
     if (errored.length > 0) {
       throw new Error(
         `Builtin plugins failed to load:\n${errored
@@ -1280,7 +1038,6 @@ try {
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
   await smokeProviderBridgeBundles(installedPackageDir);
   await smokePluginHostWorkerBundle(installedPackageDir);
-  await smokePiUserConfiguration(installedPackageDir);
   await smokeFullStack(tarballPath, sdkDir);
   await smokeDaemonJoin(tarballPath);
   process.stdout.write("bb-app tarball smoke passed\n");

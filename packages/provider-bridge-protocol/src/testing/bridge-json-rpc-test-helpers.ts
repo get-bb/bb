@@ -23,11 +23,18 @@ export interface BridgeJsonRpcOutputMessage {
 
 export interface CapturedBridgeJsonRpcOutput {
   messages: BridgeJsonRpcOutputMessage[];
+  /**
+   * Every message since the last call: the conformance transport's drain
+   * (`{ send: handleLine, takeMessages: output.takeMessages }`).
+   */
+  takeMessages(): BridgeJsonRpcOutputMessage[];
   restore(): void;
 }
 
 export interface BridgeJsonRpcTestHarness {
   messages: BridgeJsonRpcOutputMessage[];
+  /** Every message since the last call: the conformance transport's drain. */
+  takeMessages(): BridgeJsonRpcOutputMessage[];
   flushWork(): Promise<void>;
   hasResponse(id: BridgeJsonRpcId): boolean;
   restore(): void;
@@ -110,8 +117,14 @@ export function captureBridgeJsonRpcOutput(): CapturedBridgeJsonRpcOutput {
     return true;
   };
   process.stdout.write = capturingWrite;
+  let drained = 0;
   return {
     messages,
+    takeMessages() {
+      const fresh = messages.slice(drained);
+      drained = messages.length;
+      return fresh;
+    },
     restore() {
       if (process.stdout.write === capturingWrite) {
         process.stdout.write = originalWrite;
@@ -162,6 +175,7 @@ export function createBridgeJsonRpcTestHarness(
   const output = captureBridgeJsonRpcOutput();
   return {
     messages: output.messages,
+    takeMessages: output.takeMessages,
     flushWork: waitForNextBridgeTick,
     hasResponse(id: BridgeJsonRpcId): boolean {
       return bridgeJsonRpcResponseExists({ id, output });

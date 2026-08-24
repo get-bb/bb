@@ -15,12 +15,12 @@ import { registerSkillCommands } from "../commands/skill.js";
 import { registerStatusCommand } from "../commands/status.js";
 import { registerThemeCommands } from "../commands/theme.js";
 import { registerThreadCommands } from "../commands/thread/index.js";
+import { pluginProxyCandidate } from "../command-groups.js";
 import {
   describeUnreachableServer,
   fetchPluginCliContributions,
   findDisabledPluginForCommand,
   findPluginCliCommand,
-  pluginProxyCandidate,
   PLUGIN_CLI_HEADERS_TIMEOUT_MS,
   runPluginCliCommand,
   type PluginCliContributionEntry,

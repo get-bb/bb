@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   approvalPendingInteractionResolutionSchema,
+  interactionLifecycleSchema,
   pendingInteractionPermissionGrantApprovalSubjectSchema,
   pendingInteractionStatusSchema,
   userQuestionPendingInteractionPayloadSchema,
@@ -24,6 +25,11 @@ export const systemEventTypeValues = [
   "system/manager/user_message",
   "system/thread/interrupted",
   "system/operation",
+  "system/interaction/lifecycle",
+  // Legacy persisted per-shape interaction events; every status change now
+  // appends one `system/interaction/lifecycle`. Retained for read/decode
+  // only: `convertLegacyStoredThreadEvent` projects a stored row into the
+  // lifecycle event, so no consumer sees these types.
   "system/permissionGrant/lifecycle",
   "system/userQuestion/lifecycle",
   "system/thread-provisioning",
@@ -202,6 +208,15 @@ export const systemOperationEventDataSchema = z.object({
   message: z.string(),
   operationId: z.string(),
   metadata: z.record(z.string(), jsonValueSchema).optional(),
+});
+
+/**
+ * The one interaction-lifecycle event (docs/provider-plugin-api.md §4): one
+ * per status change of any interaction, carrying the interaction's
+ * lifecycle record — payload and resolution paired by kind.
+ */
+export const systemInteractionLifecycleEventDataSchema = z.object({
+  interaction: interactionLifecycleSchema,
 });
 
 export const systemPermissionGrantLifecycleEventDataSchema = z.object({

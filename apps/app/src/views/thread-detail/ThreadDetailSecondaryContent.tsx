@@ -125,6 +125,11 @@ function ThreadDetailSecondaryContentBody({
         open={isSecondaryPanelOpen}
         onToggle={onToggleSecondaryPanel}
         onClose={threadSecondaryPanelProps.onClose}
+        // The physical panel host survives thread-to-thread navigation; only
+        // content identity (resetKey) changes. Per-thread state below is safe:
+        // the timeline, composer and scroll anchors live under PageShell's own
+        // key={threadId} inside EmbeddedThreadChat.
+        panelGroupKey="thread-detail"
         resetKey={timeline.threadId}
         contentKey={timeline.threadId}
         drawerLabel="Thread details"

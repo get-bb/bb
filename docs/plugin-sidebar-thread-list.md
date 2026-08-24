@@ -79,7 +79,7 @@ interface PluginThreadListProps {
    * BB's thread list bound to this sidebar instance. Render it to delegate
    * conditionally without re-entering plugin replacement resolution.
    */
-  experimental_Original: ComponentType;
+  Original: ComponentType;
 }
 ```
 

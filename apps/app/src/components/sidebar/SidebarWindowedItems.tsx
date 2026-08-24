@@ -8,7 +8,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSidebarContentElementRef } from "@/components/ui/sidebar.js";
+import {
+  SIDEBAR_CONTENT_SELECTOR,
+  useSidebarContentElementRef,
+} from "@/components/ui/sidebar.js";
 import {
   encodeSidebarWindowedNavigationEntries,
   SIDEBAR_WINDOWED_NAV_ATTRIBUTE,
@@ -83,12 +86,10 @@ export function SidebarWindowedItems({
   // A sidebar can contain many short sibling lists. Rendering each short list
   // in full makes their aggregate offscreen subtree large, so every non-empty
   // list participates in the shared-scrollport window.
-  const windowingEnabled =
-    itemKeys.length > 0 && scrollElementRef !== null;
+  const windowingEnabled = itemKeys.length > 0 && scrollElementRef !== null;
 
-  const [realizedKeys, setRealizedKeys] = useState<ReadonlySet<string>>(
-    EMPTY_KEY_SET,
-  );
+  const [realizedKeys, setRealizedKeys] =
+    useState<ReadonlySet<string>>(EMPTY_KEY_SET);
   const measuredHeightsRef = useRef(new Map<string, MeasuredItemHeight>());
   const rowHeightRef = useRef(DEFAULT_ROW_HEIGHT_PX);
   const wrapperByKeyRef = useRef(new Map<string, HTMLDivElement>());
@@ -127,6 +128,23 @@ export function SidebarWindowedItems({
     }
     return callback;
   }, []);
+
+  // React attaches a host element's ref after its descendants' layout effects
+  // have run, so when this list commits in the same pass as `SidebarContent`
+  // (warm boot, direct thread-route load, mobile deferred realization) the
+  // context ref is still empty here. The wrapper divs are our own children,
+  // so their refs are already populated; walk up from one of them instead of
+  // falling into promote-all and demoting every row a moment later.
+  const resolveScrollElement = useCallback((): Element | null => {
+    const fromRef = scrollElementRef?.current ?? null;
+    if (fromRef) {
+      return fromRef;
+    }
+    const firstWrapper = wrapperByKeyRef.current.values().next();
+    return firstWrapper.done
+      ? null
+      : firstWrapper.value.closest(SIDEBAR_CONTENT_SELECTOR);
+  }, [scrollElementRef]);
 
   const recordMeasuredHeight = useCallback((key: string, height: number) => {
     if (height <= 0) {
@@ -170,7 +188,7 @@ export function SidebarWindowedItems({
       }
     }
 
-    const scrollElement = scrollElementRef?.current ?? null;
+    const scrollElement = resolveScrollElement();
     const promoteAll =
       !scrollElement ||
       scrollElement.clientHeight === 0 ||
@@ -217,7 +235,7 @@ export function SidebarWindowedItems({
     if (!windowingEnabled || typeof IntersectionObserver === "undefined") {
       return;
     }
-    const scrollElement = scrollElementRef?.current ?? null;
+    const scrollElement = resolveScrollElement();
     if (!scrollElement || scrollElement.clientHeight === 0) {
       return;
     }
@@ -266,7 +284,7 @@ export function SidebarWindowedItems({
       observerRef.current = null;
       observer.disconnect();
     };
-  }, [windowingEnabled, scrollElementRef, recordMeasuredHeight]);
+  }, [windowingEnabled, resolveScrollElement, recordMeasuredHeight]);
 
   if (!windowingEnabled) {
     return <>{itemKeys.map((_, index) => renderItem(index))}</>;
@@ -275,8 +293,7 @@ export function SidebarWindowedItems({
   return (
     <>
       {itemKeys.map((key, index) => {
-        const isRealized =
-          realizedKeys.has(key) || alwaysMountedKeys.has(key);
+        const isRealized = realizedKeys.has(key) || alwaysMountedKeys.has(key);
         const rows = Math.max(1, estimateRowsRef.current(index));
         rowsByKeyRef.current.set(key, rows);
         let placeholderHeight: number | undefined;

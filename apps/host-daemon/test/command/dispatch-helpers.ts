@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -15,10 +16,7 @@ import type {
   GitHostPullRequest,
   PromptInput,
 } from "@bb/domain";
-import type {
-  HostDaemonAcpLaunchSpec,
-  HostDaemonBridgeLaunch,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import type {
   HostWorkspace,
@@ -43,6 +41,41 @@ export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
   async () => {
     throw new Error("Unexpected project attachment fetch");
   };
+
+/**
+ * The provider maintenance callbacks for a test that never reaches that
+ * surface; a test that does supplies its own beside these. The shell-env
+ * refresh is the one member that does not throw: the provider-CLI gate
+ * awaits it on every gated thread start, and a test seeds the runtime
+ * manager with a fixed env, so there is nothing to re-read and a no-op is
+ * the faithful answer. A test that drives a PATH change supplies its own.
+ */
+export const unexpectedProviderMaintenance: Pick<
+  CommandDispatchOptions,
+  | "listModels"
+  | "providerHealth"
+  | "providerUsage"
+  | "providerInstallationStatus"
+  | "providerInstallationRun"
+  | "refreshShellEnv"
+> = {
+  listModels: async () => {
+    throw new Error("Unexpected provider.list_models call");
+  },
+  providerHealth: async () => {
+    throw new Error("Unexpected provider.health call");
+  },
+  providerUsage: async () => {
+    throw new Error("Unexpected provider.usage call");
+  },
+  providerInstallationStatus: async () => {
+    throw new Error("Unexpected provider.installation.status call");
+  },
+  providerInstallationRun: async () => {
+    throw new Error("Unexpected provider.installation.run call");
+  },
+  refreshShellEnv: async () => undefined,
+};
 
 type GitCommandArgs = string[];
 
@@ -91,7 +124,6 @@ interface FakeRuntimeState {
   ranTurnInput: PromptInput[] | undefined;
   ranTurnText: string | undefined;
   renamedTitle: string | undefined;
-  resumedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   resumedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   resumedEnvironmentId: string | undefined;
   resumedProviderThreadId: string | undefined;
@@ -99,7 +131,6 @@ interface FakeRuntimeState {
   runningProviders: string[];
   shutdownCount: number;
   startedDynamicTools: DynamicTool[] | undefined;
-  startedAcpLaunchSpec: HostDaemonAcpLaunchSpec | undefined;
   startedBridgeLaunch: AgentRuntimeBridgeLaunch | undefined;
   startedEnvironmentId: string | undefined;
   startedInput: PromptInput[] | undefined;
@@ -265,7 +296,6 @@ export function createFakeRuntime() {
     ranTurnInput: undefined,
     ranTurnText: undefined,
     renamedTitle: undefined,
-    resumedAcpLaunchSpec: undefined,
     resumedBridgeLaunch: undefined,
     resumedEnvironmentId: undefined,
     resumedProviderThreadId: undefined,
@@ -273,7 +303,6 @@ export function createFakeRuntime() {
     runningProviders: [],
     shutdownCount: 0,
     startedDynamicTools: undefined,
-    startedAcpLaunchSpec: undefined,
     startedBridgeLaunch: undefined,
     startedEnvironmentId: undefined,
     startedInput: undefined,
@@ -320,7 +349,6 @@ export function createFakeRuntime() {
   const runtime: AgentRuntime = {
     async ensureProvider() {},
     async startThread(args) {
-      state.startedAcpLaunchSpec = args.acpLaunchSpec;
       state.startedBridgeLaunch = args.bridgeLaunch;
       state.startedEnvironmentId = args.environmentId;
       state.startedThreadId = args.threadId;
@@ -344,7 +372,6 @@ export function createFakeRuntime() {
     },
     async discardThreadRewind() {},
     async resumeThread(args) {
-      state.resumedAcpLaunchSpec = args.acpLaunchSpec;
       state.resumedBridgeLaunch = args.bridgeLaunch;
       state.resumedEnvironmentId = args.environmentId;
       state.resumedThreadId = args.threadId;
@@ -495,10 +522,12 @@ export function createHarness(
       overrides: { dataDir?: string; threadStorageRootPath?: string } = {},
     ): CommandDispatchOptions {
       return {
-        dataDir: overrides.dataDir ?? "/tmp/bb-test-data",
+        dataDir: overrides.dataDir ?? DISPATCH_TEST_DATA_DIR,
         logger: silentLogger,
         eventSink: noopEventSink,
         fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath:
           overrides.threadStorageRootPath ?? "/tmp/bb-test-thread-storage",
@@ -513,10 +542,12 @@ export function makeDispatchOptions(
     Pick<CommandDispatchOptions, "runtimeManager">,
 ): CommandDispatchOptions {
   return {
-    dataDir: "/tmp/bb-test-data",
+    dataDir: DISPATCH_TEST_DATA_DIR,
     logger: silentLogger,
     eventSink: noopEventSink,
     fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+    fetchPluginHostArtifact: fetchDispatchTestArtifact,
+    ...unexpectedProviderMaintenance,
     threadStorageRootPath: "/tmp/bb-test-thread-storage",
     ...overrides,
   };
@@ -546,16 +577,33 @@ export async function cleanupTempDirs(): Promise<void> {
 /**
  * Every bridge-bound command now carries a `bridgeLaunch`. These tests
  * exercise dispatch and runtime plumbing rather than bridge delivery, so they
- * name the daemon's own bundled Pi bridge — no artifact fetch — with
+ * name a tiny fixed artifact the default dispatch options serve from memory
+ * (`DISPATCH_TEST_ARTIFACT_BYTES`, cached once per data dir) with
  * permissive capabilities, so no capability gate trips by accident.
  */
+export const DISPATCH_TEST_ARTIFACT_BYTES = Buffer.from(
+  "export const bridge = true;\n",
+);
+const DISPATCH_TEST_ARTIFACT_DIGEST = createHash("sha256")
+  .update(DISPATCH_TEST_ARTIFACT_BYTES)
+  .digest("hex");
+const DISPATCH_TEST_DATA_DIR = "/tmp/bb-test-data";
+
+/** Serves the fixed test artifact for any digest it is asked for. */
+export const fetchDispatchTestArtifact = async (): Promise<Uint8Array> =>
+  new Uint8Array(DISPATCH_TEST_ARTIFACT_BYTES);
+
 export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   pluginId: "provider-pi",
-  source: { kind: "daemon-bundled", id: "pi" },
+  source: {
+    kind: "artifact",
+    digest: DISPATCH_TEST_ARTIFACT_DIGEST,
+    byteLength: DISPATCH_TEST_ARTIFACT_BYTES.byteLength,
+  },
   providerOptions: {},
   envPassthrough: [],
   capabilities: {
-    experimental_providerInstallation: false,
+    providerInstallation: false,
     supportsServiceTier: true,
     permissionModes: ["accept-edits", "auto", "full"],
     supportsThreadArchive: true,
@@ -565,18 +613,34 @@ export const DISPATCH_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
 };
 
 /**
- * The same launch after {@link resolveRuntimeBridgeLaunch}, for tests that call
- * runtime entry points directly: a daemon-bundled source needs no fetch, but
- * the resolved shape additionally carries the plugin-scoped directory the
+ * The same launch after {@link resolveRuntimeBridgeLaunch} under a daemon
+ * data dir, for tests that call runtime entry points directly: the resolved
+ * shape carries the cached artifact path and the plugin-scoped directory the
  * bridge bootstrap hands its bridge.
  */
-export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
-  pluginId: "provider-pi",
-  // Where `resolveRuntimeBridgeLaunch` puts a bridge's plugin-scoped
-  // directory under the helpers' own data dir.
-  dataDir: "/tmp/bb-test-data/plugins/provider-pi/bridge-data",
-  source: { kind: "daemon-bundled", id: "pi" },
-  capabilities: DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
-  providerOptions: {},
-  envPassthrough: [],
-};
+export function dispatchTestRuntimeBridgeLaunch(
+  dataDir: string = DISPATCH_TEST_DATA_DIR,
+): AgentRuntimeBridgeLaunch {
+  return {
+    pluginId: "provider-pi",
+    dataDir: path.join(dataDir, "plugins", "provider-pi", "bridge-data"),
+    source: {
+      kind: "artifact",
+      digest: DISPATCH_TEST_ARTIFACT_DIGEST,
+      artifactPath: path.join(
+        dataDir,
+        "plugin-host-artifacts",
+        "provider-pi",
+        DISPATCH_TEST_ARTIFACT_DIGEST,
+        "host.mjs",
+      ),
+    },
+    capabilities: DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
+    providerOptions: {},
+    envPassthrough: [],
+  };
+}
+
+/** {@link dispatchTestRuntimeBridgeLaunch} under the helpers' default data dir. */
+export const DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch =
+  dispatchTestRuntimeBridgeLaunch();

@@ -128,16 +128,6 @@ interface BuildDetailedProjectionArgs {
   turnMessageDetail: BuildEventProjectionOptions["turnMessageDetail"];
 }
 
-const PROVIDER_THREAD_DELEGATION_TOOL_NAMES = new Set([
-  "spawnAgent",
-  "resumeAgent",
-]);
-const PROVIDER_THREAD_CHILD_INTERACTION_TOOL_NAMES = new Set([
-  "sendInput",
-  "wait",
-  "closeAgent",
-]);
-
 /**
  * Every workflow currently running in the thread, newest start first. A thread
  * can drive several workflows at once, so this is a list rather than a single
@@ -176,8 +166,12 @@ function isEventProjectionCallMessage(
   switch (message.kind) {
     case "command":
     case "delegation":
+    case "extension":
     case "file-edit":
+    case "file-read":
     case "image-view":
+    case "plan-steps":
+    case "search":
     case "tool-call":
     case "web-fetch":
     case "web-search":
@@ -459,67 +453,19 @@ function appendProjectedUserMessage(
   state.messages.push(projectedClientUser);
 }
 
-function getToolCallName(decoded: ThreadEvent): string | undefined {
-  if (
-    (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
-    decoded.item.type !== "toolCall"
-  ) {
-    return undefined;
-  }
-
-  return decoded.item.tool;
-}
-
-/** A grammar v3 `delegation` item lifecycle event (turn-scoped or background). */
-function isDelegationItemEvent(decoded: ThreadEvent): boolean {
-  return (
-    (decoded.type === "item/started" ||
-      decoded.type === "item/completed" ||
-      decoded.type === "item/delegation/completed") &&
+/**
+ * The provider-native child a `delegation` item names (grammar v3). That
+ * child's turns, which carry its provider thread id, map to this call. A
+ * generic tool call names no child: the persisted `parentToolCallId` on its
+ * children is the only link, never its name or arguments.
+ */
+function getDelegationChildRef(decoded: ThreadEvent): string | undefined {
+  return (decoded.type === "item/started" ||
+    decoded.type === "item/completed" ||
+    decoded.type === "item/delegation/progress" ||
+    decoded.type === "item/delegation/completed") &&
     decoded.item.type === "delegation"
-  );
-}
-
-function getToolCallReceiverThreadIds(decoded: ThreadEvent): string[] {
-  if (
-    (decoded.type === "item/started" ||
-      decoded.type === "item/completed" ||
-      decoded.type === "item/delegation/completed") &&
-    decoded.item.type === "delegation"
-  ) {
-    // The delegation names its child directly; that child's turns map to
-    // this call exactly as a spawnAgent receiver would.
-    return [decoded.item.childRef];
-  }
-  if (
-    (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
-    decoded.item.type !== "toolCall"
-  ) {
-    return [];
-  }
-
-  const receiverThreadIds = decoded.item.arguments?.receiverThreadIds;
-  if (!Array.isArray(receiverThreadIds)) {
-    return [];
-  }
-
-  return receiverThreadIds.filter(
-    (receiverThreadId): receiverThreadId is string =>
-      typeof receiverThreadId === "string" && receiverThreadId.length > 0,
-  );
-}
-
-function getToolCallSenderThreadId(decoded: ThreadEvent): string | undefined {
-  if (
-    (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
-    decoded.item.type !== "toolCall"
-  ) {
-    return undefined;
-  }
-
-  const senderThreadId = decoded.item.arguments?.senderThreadId;
-  return typeof senderThreadId === "string" && senderThreadId.length > 0
-    ? senderThreadId
+    ? decoded.item.childRef
     : undefined;
 }
 
@@ -910,9 +856,7 @@ function buildFlatProjectionData(
       eventParentToolCallId,
     );
     if (toolCallEvent) {
-      const toolCallName = getToolCallName(decoded);
-      const toolCallReceiverThreadIds = getToolCallReceiverThreadIds(decoded);
-      const toolCallSenderThreadId = getToolCallSenderThreadId(decoded);
+      const delegationChildRef = getDelegationChildRef(decoded);
       if (toolCallEvent.kind !== "output") {
         if (toolCallEvent.call.kind === "delegation" && eventTurnId) {
           state.delegationTurnIdsByCallId.set(
@@ -920,57 +864,22 @@ function buildFlatProjectionData(
             eventTurnId,
           );
         }
-        if (
-          !toolCallEvent.call.parentToolCallId &&
-          toolCallName &&
-          PROVIDER_THREAD_CHILD_INTERACTION_TOOL_NAMES.has(toolCallName)
-        ) {
-          const inferredParentToolCallId = toolCallReceiverThreadIds
-            .map((receiverThreadId) =>
-              state.delegationParentToolCallIdsByProviderThreadId.get(
-                receiverThreadId,
-              ),
-            )
-            .find(
-              (parentToolCallId): parentToolCallId is string =>
-                typeof parentToolCallId === "string" &&
-                parentToolCallId.length > 0,
-            );
-          if (inferredParentToolCallId) {
-            toolCallEvent.call.parentToolCallId = inferredParentToolCallId;
-          }
-        }
-        if (
-          (toolCallName &&
-            PROVIDER_THREAD_DELEGATION_TOOL_NAMES.has(toolCallName)) ||
-          isDelegationItemEvent(decoded)
-        ) {
+        if (delegationChildRef !== undefined) {
           if (
-            toolCallReceiverThreadIds.length === 0 ||
+            delegationChildRef === eventProviderThreadId ||
             state.delegatedTurnLinkCallIds.has(toolCallEvent.call.callId)
           ) {
+            // The child runs in the spawning provider thread (a follow-up
+            // turn of the same session): link the next turn started there.
             enqueuePendingDelegationTurnLink(
               state,
               eventProviderThreadId,
               eventTurnId,
               toolCallEvent.call.callId,
             );
-          }
-          for (const receiverThreadId of toolCallReceiverThreadIds) {
-            if (
-              receiverThreadId === eventProviderThreadId ||
-              receiverThreadId === toolCallSenderThreadId
-            ) {
-              enqueuePendingDelegationTurnLink(
-                state,
-                eventProviderThreadId,
-                eventTurnId,
-                toolCallEvent.call.callId,
-              );
-              continue;
-            }
+          } else {
             state.delegationParentToolCallIdsByProviderThreadId.set(
-              receiverThreadId,
+              delegationChildRef,
               toolCallEvent.call.callId,
             );
           }

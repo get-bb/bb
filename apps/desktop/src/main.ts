@@ -148,6 +148,7 @@ import {
   BB_DESKTOP_CLOSE_WINDOW_RESPONSE_CHANNEL,
   BB_DESKTOP_GET_WINDOW_STATE_CHANNEL,
   BB_DESKTOP_OPEN_NEW_TAB_CHANNEL,
+  BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
   BB_DESKTOP_WINDOW_STATE_CHANGED_CHANNEL,
   CLOSE_WINDOW_REQUEST_TIMEOUT_MS,
 } from "./desktop-window-command-ipc.js";
@@ -453,10 +454,19 @@ async function showAboutDialog(): Promise<void> {
 }
 
 function getCurrentDesktopInfo(): BbDesktopInfo | null {
-  return mergeDesktopUpdateInfo({
+  const info = mergeDesktopUpdateInfo({
     autoInfo: desktopAutoUpdateService?.getInfo() ?? null,
     feedInfo: desktopUpdateService?.getInfo() ?? null,
   });
+  if (info === null) {
+    return null;
+  }
+  // Log availability tracks the runtime, not the updater, so it is layered on
+  // here rather than inside the update merge. setCurrentRuntime re-pushes.
+  return {
+    ...info,
+    serverDaemonLogsAvailable: shouldEnableServerDaemonLogsMenu(),
+  };
 }
 
 function isRegisteredApplicationWindow(browserWindow: BrowserWindow): boolean {
@@ -839,6 +849,9 @@ function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   if (runtime?.ownership !== "spawned") {
     closeServerDaemonLogsWindow();
   }
+  // Ownership decides whether the logs are reachable, so the renderer's
+  // palette entry has to learn about the swap the same way the menu does.
+  sendDesktopInfoChanged();
 }
 
 function formatApiUrl(args: FetchSystemConfigArgs): string {
@@ -1641,6 +1654,11 @@ function registerDesktopUpdateIpc(): void {
   });
   ipcMain.handle(BB_DESKTOP_GET_WINDOW_STATE_CHANNEL, (event) => {
     return getSenderDesktopWindowState(event);
+  });
+  ipcMain.handle(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL, async () => {
+    // openServerDaemonLogs re-checks availability, so a renderer holding a
+    // stale info snapshot cannot force a viewer for an attached runtime.
+    await openServerDaemonLogs();
   });
   ipcMain.handle(BB_DESKTOP_CHECK_FOR_UPDATES_CHANNEL, async () => {
     await Promise.all([

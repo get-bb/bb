@@ -5,13 +5,23 @@ import {
 } from "@bb/domain";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { PickerOption } from "@/components/pickers/OptionPicker";
-import { REASONING_LABELS } from "@/lib/reasoning-labels";
+import {
+  reasoningLevelLabel,
+  type ReasoningLabelSource,
+} from "@/lib/reasoning-labels";
 
 interface ResolveModelCatalogSelectionArgs {
   models: readonly AvailableModel[];
   selectedOnlyModels: readonly AvailableModel[];
   selectedModel: string;
   preferredReasoningLevel?: ReasoningLevel;
+  /**
+   * The provider whose catalog this is, for its declared reasoning-level
+   * labels (docs/provider-plugin-api.md §1; the model catalog carries only
+   * ids). `undefined` when the provider is unknown: the fallback table labels
+   * the ladder.
+   */
+  provider: ReasoningLabelSource | undefined;
   catalogIsVerified: boolean;
   formatModelLabel: (displayName: string) => string;
 }
@@ -49,6 +59,7 @@ export function resolveModelCatalogSelection({
   selectedOnlyModels,
   selectedModel: rawSelectedModel,
   preferredReasoningLevel,
+  provider,
   catalogIsVerified,
   formatModelLabel,
 }: ResolveModelCatalogSelectionArgs): ResolvedModelCatalogSelection {
@@ -114,7 +125,7 @@ export function resolveModelCatalogSelection({
     seenReasoningLevels.add(effort.reasoningEffort);
     reasoningOptions.push({
       value: effort.reasoningEffort,
-      label: REASONING_LABELS[effort.reasoningEffort],
+      label: reasoningLevelLabel(effort.reasoningEffort, provider),
     });
   }
 

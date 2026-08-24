@@ -347,12 +347,14 @@ describe("resolveThreadDefaultPermissionMode", () => {
     ).toBe("full");
   });
 
+  // ACP agents declare accept-edits and full, so the Auto default a child
+  // thread would otherwise inherit resolves to full.
   it("uses full for ACP threads when the Auto default is unsupported", () => {
     expect(
       resolveThreadDefaultPermissionMode(registry, {
         thread: makeThread({
           parentThreadId: "thr-parent-1",
-          providerId: "acp-my-agent",
+          providerId: "acp-cursor",
         }),
       }),
     ).toBe("full");

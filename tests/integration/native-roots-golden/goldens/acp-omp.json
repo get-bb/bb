@@ -1,0 +1,674 @@
+{
+  "providerId": "acp-omp",
+  "variant": "default",
+  "workspace": {
+    "commands": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "cache-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-agent-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-claude-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-codex-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-omp-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-omp-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-opencode-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-opencode-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-pi-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-pi-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-child",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-skills-dir-plugin-child skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-root",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-skills-dir-plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-codex-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin-child skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "local-plugin:local-plugin-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "local-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "managed-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "omp-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "omp-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "omp-custom-project-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "omp-custom-project-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "omp-managed-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "omp-managed-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "opencode-config-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "opencode-config-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "pi-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "pi-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "pkg-pi-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "pkg-pi-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "project-plugin:project-plugin-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "project-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "tilde-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin single-file skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "user-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-omp-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-omp-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "description": "cache-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/cache-plugin/0123456789ab/skills/cache-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "cwd-agent-skill",
+        "description": "cwd-agent-skill skill",
+        "filePath": "<root>/ws/packages/app/.agent/skills/cwd-agent-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-agents-skill",
+        "description": "cwd-agents-skill skill",
+        "filePath": "<root>/ws/packages/app/.agents/skills/cwd-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-claude-skill",
+        "description": "cwd-claude-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/cwd-claude-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-codex-skill",
+        "description": "cwd-codex-skill skill",
+        "filePath": "<root>/ws/packages/app/.codex/skills/cwd-codex-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-omp-skill",
+        "description": "cwd-omp-skill skill",
+        "filePath": "<root>/ws/packages/app/.omp/skills/cwd-omp-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-opencode-skill",
+        "description": "cwd-opencode-skill skill",
+        "filePath": "<root>/ws/packages/app/.opencode/skills/cwd-opencode-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-pi-skill",
+        "description": "cwd-pi-skill skill",
+        "filePath": "<root>/ws/packages/app/.pi/skills/cwd-pi-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-child",
+        "description": "cwd-skills-dir-plugin-child skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/cwd-skills-dir-plugin/skills/cwd-skills-dir-plugin-child/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "cwd-skills-dir-plugin:cwd-skills-dir-plugin-root",
+        "description": "cwd-skills-dir-plugin root skill",
+        "filePath": "<root>/ws/packages/app/.claude/skills/cwd-skills-dir-plugin/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-agent-skill",
+        "description": "home-agent-skill skill",
+        "filePath": "<home>/.agent/skills/home-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-claude-skill",
+        "description": "home-claude-skill skill",
+        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-codex-skill",
+        "description": "home-codex-skill skill",
+        "filePath": "<home>/.codex/skills/home-codex-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "description": "home-skills-dir-plugin-child skill",
+        "filePath": "<home>/.claude/skills/home-skills-dir-plugin/skills/home-skills-dir-plugin-child/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "description": "home-skills-dir-plugin root skill",
+        "filePath": "<home>/.claude/skills/home-skills-dir-plugin/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "local-plugin:local-plugin-skill",
+        "description": "local-plugin-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/plugins/local-plugin/skills/local-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "description": "managed-plugin-skill skill",
+        "filePath": "<root>/managed-plugins/managed-plugin/skills/managed-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "omp-agent-skill",
+        "description": "omp-agent-skill skill",
+        "filePath": "<home>/.omp/agent/skills/omp-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "omp-custom-project-skill",
+        "description": "omp-custom-project-skill skill",
+        "filePath": "<root>/ws/omp-custom-project/omp-custom-project-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "omp-managed-skill",
+        "description": "omp-managed-skill skill",
+        "filePath": "<home>/.omp/agent/managed-skills/omp-managed-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "opencode-config-skill",
+        "description": "opencode-config-skill skill",
+        "filePath": "<home>/.config/opencode/skills/opencode-config-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "pi-agent-skill",
+        "description": "pi-agent-skill skill",
+        "filePath": "<home>/.pi/agent/skills/pi-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "pkg-pi-skill",
+        "description": "pkg-pi-skill skill",
+        "filePath": "<root>/ws/packages/.pi/skills/pkg-pi-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "project-plugin:project-plugin-skill",
+        "description": "project-plugin-skill skill",
+        "filePath": "<root>/ws/packages/app/.claude/plugins/cache/golden-market/project-plugin/1.0.0/skills/project-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "description": "tilde-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/tilde-plugin/1.0.0/skills/tilde-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "description": "User plugin root skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/user-plugin/1.0.0/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "description": "User plugin single-file skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/user-plugin/1.0.0/extra-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "description": "user-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/user-plugin/1.0.0/skills/user-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "ws-omp-skill",
+        "description": "ws-omp-skill skill",
+        "filePath": "<root>/ws/.omp/skills/ws-omp-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "cache-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-claude-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-claude-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-codex-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin-child skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-skills-dir-plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "managed-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "omp-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "omp-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "omp-custom-user-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "omp-custom-user-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "omp-managed-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "omp-managed-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "opencode-config-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "opencode-config-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "pi-agent-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "pi-agent-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "tilde-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "source": "skill",
+        "origin": "user",
+        "description": "User plugin single-file skill",
+        "argumentHint": null
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "user-plugin-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "cache-plugin:cache-plugin-skill",
+        "description": "cache-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/cache-plugin/0123456789ab/skills/cache-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-agent-skill",
+        "description": "home-agent-skill skill",
+        "filePath": "<home>/.agent/skills/home-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-claude-skill",
+        "description": "home-claude-skill skill",
+        "filePath": "<home>/.claude/skills/home-claude-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-codex-skill",
+        "description": "home-codex-skill skill",
+        "filePath": "<home>/.codex/skills/home-codex-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-child",
+        "description": "home-skills-dir-plugin-child skill",
+        "filePath": "<home>/.claude/skills/home-skills-dir-plugin/skills/home-skills-dir-plugin-child/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-skills-dir-plugin:home-skills-dir-plugin-root",
+        "description": "home-skills-dir-plugin root skill",
+        "filePath": "<home>/.claude/skills/home-skills-dir-plugin/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "managed-plugin:managed-plugin-skill",
+        "description": "managed-plugin-skill skill",
+        "filePath": "<root>/managed-plugins/managed-plugin/skills/managed-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "omp-agent-skill",
+        "description": "omp-agent-skill skill",
+        "filePath": "<home>/.omp/agent/skills/omp-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "omp-custom-user-skill",
+        "description": "omp-custom-user-skill skill",
+        "filePath": "<home>/omp-custom-user/omp-custom-user-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "omp-managed-skill",
+        "description": "omp-managed-skill skill",
+        "filePath": "<home>/.omp/agent/managed-skills/omp-managed-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "opencode-config-skill",
+        "description": "opencode-config-skill skill",
+        "filePath": "<home>/.config/opencode/skills/opencode-config-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "pi-agent-skill",
+        "description": "pi-agent-skill skill",
+        "filePath": "<home>/.pi/agent/skills/pi-agent-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "tilde-plugin:tilde-plugin-skill",
+        "description": "tilde-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/tilde-plugin/1.0.0/skills/tilde-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin",
+        "description": "User plugin root skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/user-plugin/1.0.0/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-extra",
+        "description": "User plugin single-file skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/user-plugin/1.0.0/extra-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "user-plugin:user-plugin-skill",
+        "description": "user-plugin-skill skill",
+        "filePath": "<home>/.claude/plugins/cache/golden-market/user-plugin/1.0.0/skills/user-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      }
+    ]
+  }
+}

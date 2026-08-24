@@ -140,7 +140,7 @@ export function resolveThreadExecutionOverrideUpdate(
  * Validates and persists the sticky thread-level execution override. Loads the
  * thread provider's active model catalog from the daemon to validate, then
  * stores the resolved values. The change takes effect on the next turn via
- * `resolveExecutionOptions` + the runtime's `reconfigureThreadIfNeeded`.
+ * `resolveExecutionOptions` + the runtime's `recordThreadExecutionOptions`.
  */
 export async function applyThreadExecutionOverride(
   deps: LoggedWorkSessionDeps,

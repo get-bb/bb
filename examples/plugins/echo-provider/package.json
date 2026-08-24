@@ -9,9 +9,12 @@
   },
   "bb": {
     "name": "Echo provider",
-    "description": "A complete third-party agent provider: declaration, bridge, and conformance test.",
+    "description": "The third-party canary: a complete agent provider that exercises every provider-plugin capability through the public SDK alone.",
     "branding": {
-      "icon": "Zap"
+      "icon": "Zap",
+      "experimental_icons": {
+        "receipt": "./icons/receipt.svg"
+      }
     },
     "server": "./server.ts",
     "host": "./host.ts"
@@ -24,13 +27,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@get-bb/plugin-sdk": "workspace:*"
+    "@get-bb/plugin-sdk": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typescript-7": "npm:typescript@^7.0.2",
-    "vitest": "^4.1.1",
-    "zod": "^4.3.6"
+    "vitest": "^4.1.1"
   }
 }

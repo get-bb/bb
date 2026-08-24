@@ -10,11 +10,6 @@ import {
 } from "@bb/host-daemon-contract";
 import semver from "semver";
 import {
-  defaultListModels,
-  defaultProviderHealth,
-  defaultProviderInstallationRun,
-  defaultProviderInstallationStatus,
-  defaultProviderUsage,
   ExpectedCommandDispatchError,
   resolveRuntimeBridgeLaunch,
   type CommandOf,
@@ -56,16 +51,12 @@ import {
 import { resolveInteractiveRequest } from "./command-handlers/interactive.js";
 import { pickHostFolder } from "./command-handlers/native-folder-picker.js";
 import {
-  completeCodexInference,
-  transcribeCodexVoice,
-} from "./codex-chatgpt-client.js";
-import {
   ProviderInstallationInProgressError,
   streamProviderInstallation,
 } from "./provider-installation.js";
 import type {
-  ExperimentalProviderInstallationStatus,
-  ExperimentalProviderInstallationVerification,
+  ProviderInstallationStatus,
+  ProviderInstallationVerification,
 } from "@bb/provider-bridge-protocol";
 import {
   discardThreadRewind,
@@ -191,8 +182,8 @@ function failProviderInstallationVerification(args: {
 }
 
 function installationVerificationPassed(
-  verification: ExperimentalProviderInstallationVerification,
-  status: ExperimentalProviderInstallationStatus,
+  verification: ProviderInstallationVerification,
+  status: ProviderInstallationStatus,
 ): boolean {
   switch (verification.kind) {
     case "installed":
@@ -235,14 +226,12 @@ async function runProviderInstallationOnHost(
     const maintenanceArgs = {
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     };
-    const run = await (
-      options.providerInstallationRun ?? defaultProviderInstallationRun
-    )({ ...maintenanceArgs, action: command.action });
+    const run = await options.providerInstallationRun({
+      ...maintenanceArgs,
+      action: command.action,
+    });
     if (!run.available) {
       return {
         events: [
@@ -265,10 +254,8 @@ async function runProviderInstallationOnHost(
     );
     if (events.some((event) => event.type === "completed" && event.success)) {
       try {
-        const status = await (
-          options.providerInstallationStatus ??
-          defaultProviderInstallationStatus
-        )(maintenanceArgs);
+        const status =
+          await options.providerInstallationStatus(maintenanceArgs);
         if (!installationVerificationPassed(run.verification, status)) {
           events = failProviderInstallationVerification({
             providerId: command.providerId,
@@ -494,8 +481,6 @@ const commandHandlers: CommandHandlerMap = {
     return {};
   },
   "interactive.resolve": resolveInteractiveRequest,
-  "codex.inference.complete": completeCodexInference,
-  "codex.voice.transcribe": transcribeCodexVoice,
   "environment.provision": provisionEnvironment,
   "project.clone": (command, options) =>
     cloneProject({
@@ -640,12 +625,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       command.bridgeLaunch,
       options,
     );
-    return (options.listModels ?? defaultListModels)({
+    return options.listModels({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     });
   },
@@ -654,12 +636,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       command.bridgeLaunch,
       options,
     );
-    return (options.providerHealth ?? defaultProviderHealth)({
+    return options.providerHealth({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     });
   },
@@ -668,12 +647,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       command.bridgeLaunch,
       options,
     );
-    return (options.providerUsage ?? defaultProviderUsage)({
+    return options.providerUsage({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       bridgeLaunch,
     });
   },
@@ -682,14 +658,9 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       command.bridgeLaunch,
       options,
     );
-    return (
-      options.providerInstallationStatus ?? defaultProviderInstallationStatus
-    )({
+    return options.providerInstallationStatus({
       providerId: command.providerId,
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
-      ...(command.acpLaunchSpec !== undefined
-        ? { acpLaunchSpec: command.acpLaunchSpec }
-        : {}),
       ...(command.requirement !== undefined
         ? { requirement: command.requirement }
         : {}),

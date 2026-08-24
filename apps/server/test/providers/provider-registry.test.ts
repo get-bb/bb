@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
+import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 
 const CURSOR_LIKE_INFO = {
+  pluginId: "provider-acp",
   available: true,
-  experimental_providerHealth: true,
-  experimental_providerUsage: true,
-  experimental_providerInstallation: false,
+  maintenance: { health: true, usage: true, installation: false },
   capabilities: {
     supportsThreadArchive: false,
     supportsThreadRename: false,
@@ -13,6 +13,7 @@ const CURSOR_LIKE_INFO = {
     supportsNativeUserQuestion: false,
     supportsFork: false,
     supportsSessionRewind: false,
+    modelCatalogScope: "workspace" as const,
     permissionModes: ["full" as const],
   },
   composerActions: [],
@@ -34,11 +35,11 @@ function registerProvider(
   installRank?: { bundledIndex: number | null; installedAt: number },
 ): { dispose(): void } {
   return registry.register({
-    bridgeOptions: {},
-    info: { ...CURSOR_LIKE_INFO, id },
-    serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-    pluginId,
-    visibility: "always",
+    ...minimalProviderRegistration({
+      pluginId,
+      info: { ...CURSOR_LIKE_INFO, id },
+      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+    }),
     ...(installRank === undefined ? {} : { installRank }),
   });
 }
@@ -46,22 +47,23 @@ function registerProvider(
 describe("provider registry policy accessors", () => {
   it("answers from the registration, not a core seed", () => {
     const registry = createProviderRegistryService();
-    registry.register({
-      bridgeOptions: {},
-      info: {
-        ...CURSOR_LIKE_INFO,
-        id: "codex",
-        capabilities: {
-          ...CURSOR_LIKE_INFO.capabilities,
-          supportsFork: true,
-          supportsSessionRewind: true,
-          permissionModes: ["accept-edits", "full"],
+    registry.register(
+      minimalProviderRegistration({
+        pluginId: "provider-codex",
+        info: {
+          ...CURSOR_LIKE_INFO,
+          id: "codex",
+          capabilities: {
+            ...CURSOR_LIKE_INFO.capabilities,
+            supportsFork: true,
+            supportsSessionRewind: true,
+            modelCatalogScope: "workspace",
+            permissionModes: ["accept-edits", "full"],
+          },
         },
-      },
-      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-      pluginId: "provider-codex",
-      visibility: "always",
-    });
+        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+      }),
+    );
     expect(registry.getServerCapabilities("codex")).toStrictEqual(
       MINIMAL_SERVER_CAPABILITIES,
     );
@@ -72,34 +74,16 @@ describe("provider registry policy accessors", () => {
     expect(registry.supportsFork("codex")).toBe(true);
   });
 
-  // The dynamic ACP tier is the one answer source that is not a registration:
-  // acp-* ids resolved from launch specs are never declared by a plugin.
-  it("falls back to the shared ACP tier for unregistered acp-* ids", () => {
+  // The ACP tier is gone: every ACP agent — bb's known list and the ones a
+  // user configures in the plugin's settings — is a registration like any
+  // other, so an unregistered acp-* id is simply unknown.
+  it("answers for an unregistered acp-* id exactly as for any unknown id", () => {
     const registry = createProviderRegistryService();
-    expect(registry.getServerCapabilities("acp-custom-agent")).not.toBeNull();
-    expect(
-      registry.getSupportedPermissionModes("acp-custom-agent"),
-    ).toStrictEqual(["accept-edits", "full"]);
-    expect(typeof registry.supportsFork("acp-custom-agent")).toBe("boolean");
-    // With no resolver wired the tier declares nothing, so an unresolvable
-    // acp-* id cannot claim a per-agent capability.
+    expect(registry.getServerCapabilities("acp-custom-agent")).toBeNull();
+    expect(registry.getSupportedPermissionModes("acp-custom-agent")).toBeNull();
+    expect(registry.supportsFork("acp-custom-agent")).toBe(false);
+    expect(registry.supportsSessionRewind("acp-custom-agent")).toBe(false);
     expect(registry.supportsManualCompaction("acp-opencode")).toBe(false);
-  });
-
-  // Manual compaction is per-agent, not per-tier: it used to be a hardcoded
-  // `["acp-opencode"]` set, and is now the resolved agent's own declaration.
-  it("reads acp compaction support from the resolved agent declaration", () => {
-    const declared = new Map([
-      ["acp-opencode", { supportsManualCompaction: true }],
-      ["acp-omp", { supportsManualCompaction: false }],
-    ]);
-    const registry = createProviderRegistryService({
-      resolveAcpAgentCapabilities: (providerId) =>
-        declared.get(providerId) ?? null,
-    });
-    expect(registry.supportsManualCompaction("acp-opencode")).toBe(true);
-    expect(registry.supportsManualCompaction("acp-omp")).toBe(false);
-    expect(registry.supportsManualCompaction("acp-custom-agent")).toBe(false);
   });
 
   it("answers null/false for unknown provider ids", () => {
@@ -115,16 +99,16 @@ describe("provider registry policy accessors", () => {
   // claiming a capability for a provider that no longer exists.
   it("stops claiming capabilities for a provider whose plugin is gone", () => {
     const registry = createProviderRegistryService();
-    const handle = registry.register({
-      bridgeOptions: {},
-      info: { ...CURSOR_LIKE_INFO, id: "codex" },
-      serverCapabilities: {
-        ...MINIMAL_SERVER_CAPABILITIES,
-        supportsManualCompaction: true,
-      },
-      pluginId: "provider-codex",
-      visibility: "always",
-    });
+    const handle = registry.register(
+      minimalProviderRegistration({
+        pluginId: "provider-codex",
+        info: { ...CURSOR_LIKE_INFO, id: "codex" },
+        serverCapabilities: {
+          ...MINIMAL_SERVER_CAPABILITIES,
+          supportsManualCompaction: true,
+        },
+      }),
+    );
     expect(registry.supportsManualCompaction("codex")).toBe(true);
 
     handle.dispose();
@@ -286,15 +270,15 @@ describe("provider registry", () => {
 
   it("adds and disposes plugin registrations", () => {
     const registry = createProviderRegistryService();
-    const handle = registry.register({
-      bridgeOptions: {},
-      info: CURSOR_LIKE_INFO,
-      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-      pluginId: "some-plugin",
-      visibility: "always",
-    });
+    const handle = registry.register(
+      minimalProviderRegistration({
+        pluginId: "some-plugin",
+        info: CURSOR_LIKE_INFO,
+        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+      }),
+    );
     expect(registry.get("plugin-provider")).toMatchObject({
-      source: { kind: "plugin", pluginId: "some-plugin" },
+      pluginId: "some-plugin",
     });
     expect(registry.list()).toHaveLength(1);
 
@@ -304,16 +288,16 @@ describe("provider registry", () => {
 
     // Disposing twice, or after a re-registration, must not remove a newer
     // registration for the same id.
-    const second = registry.register({
-      bridgeOptions: {},
-      info: CURSOR_LIKE_INFO,
-      serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
-      pluginId: "other-plugin",
-      visibility: "always",
-    });
+    const second = registry.register(
+      minimalProviderRegistration({
+        pluginId: "other-plugin",
+        info: CURSOR_LIKE_INFO,
+        serverCapabilities: MINIMAL_SERVER_CAPABILITIES,
+      }),
+    );
     handle.dispose();
     expect(registry.get("plugin-provider")).toMatchObject({
-      source: { kind: "plugin", pluginId: "other-plugin" },
+      pluginId: "other-plugin",
     });
     second.dispose();
   });
@@ -344,15 +328,25 @@ describe("provider registry", () => {
     expect(unrelatedProviderReady).toBe(true);
   });
 
-  it("uses the shared ACP tier registration to release dynamic ACP waits", async () => {
+  // Every ACP agent has its own registration now, so a wait is released by
+  // that agent's own registration and by nothing else. A sibling ACP provider
+  // used to release it, which meant a request could proceed against a
+  // provider that had not registered.
+  it("releases an ACP wait only on that agent's own registration", async () => {
     const registry = createProviderRegistryService({
       deferRegistrationsSettled: true,
     });
-    const ready = registry.whenProviderRegistered("acp-opencode");
+    let released = false;
+    const ready = registry.whenProviderRegistered("acp-opencode").then(() => {
+      released = true;
+    });
 
     registerProvider(registry, "acp-cursor", "provider-acp");
+    await Promise.resolve();
+    expect(released).toBe(false);
 
+    registerProvider(registry, "acp-opencode", "provider-acp");
     await ready;
-    expect(registry.get("acp-opencode")).toBeNull();
+    expect(registry.get("acp-opencode")).not.toBeNull();
   });
 });

@@ -8,6 +8,7 @@ import type {
   PluginFileOpenerSlot,
   PluginMessageDirectiveSlot,
   PluginPendingInteractionSlot,
+  PluginTimelineRendererSlot,
 } from "./plugin-slots";
 
 type ComposerAction = NonNullable<ComposerCustomization["actions"]>[number];
@@ -176,6 +177,40 @@ export function resolvePendingInteraction(
     registrations.find(
       (registration) =>
         registration.pluginId === pluginId && registration.id === rendererId,
+    ) ?? null
+  );
+}
+
+/**
+ * The plugin renderer for a timeline row, if one is registered.
+ *
+ * An extension row resolves by its kind: the store already guarantees the
+ * registering plugin owns the kind's namespace. A generic tool row resolves
+ * to the `"tool"` registration of the plugin that owns the thread's
+ * provider (`providerPluginId`, null when the provider's owner is unknown,
+ * in which case no plugin may claim the row).
+ */
+export function resolveTimelineRenderer(
+  registrations: readonly PluginTimelineRendererSlot[],
+  target:
+    | { kind: "extension"; extensionKind: string }
+    | { kind: "tool"; providerPluginId: string | null },
+): PluginTimelineRendererSlot | null {
+  if (target.kind === "extension") {
+    return (
+      registrations.find(
+        (registration) => registration.kind === target.extensionKind,
+      ) ?? null
+    );
+  }
+  if (target.providerPluginId === null) {
+    return null;
+  }
+  return (
+    registrations.find(
+      (registration) =>
+        registration.kind === "tool" &&
+        registration.pluginId === target.providerPluginId,
     ) ?? null
   );
 }

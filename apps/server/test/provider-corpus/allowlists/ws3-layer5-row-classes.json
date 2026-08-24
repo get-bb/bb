@@ -1,0 +1,133 @@
+[
+  {
+    "name": "legacy-plan-rows",
+    "reason": "#2232 (layer 5): persisted codex `turn/plan/updated` notifications decode into planSteps items at read time, so old codex threads show their plan snapshots (the window no longer excludes the event type).",
+    "match": {
+      "added": {
+        "kind": "work",
+        "workKind": "plan-steps"
+      }
+    }
+  },
+  {
+    "name": "unsuppressed-by-name",
+    "reason": "#2232 (layer 5): the tool-name suppression set (TodoWrite, TodoRead, ToolSearch, Task*, AskUserQuestion) is deleted; a persisted call without a bridge `presentation.suppress` renders like any other tool call.",
+    "match": {
+      "added": {
+        "kind": "work",
+        "workKind": "tool"
+      }
+    }
+  },
+  {
+    "name": "exploration-intent-by-name",
+    "reason": "#2232 (layer 5): the Read/Grep/Glob (and lowercase) name sets are deleted; a persisted bare tool call derives no read/search/list intent and titles from its name and arguments. Bridges emit fileRead/search items for new threads.",
+    "match": {
+      "changed": {
+        "kind": "work",
+        "workKind": "tool",
+        "fields": [
+          "activityIntents"
+        ]
+      }
+    }
+  },
+  {
+    "name": "delegation-from-children",
+    "reason": "#2232 (layer 5): the Agent/Task/spawnAgent/resumeAgent name set is deleted; a tool call that other rows name as their parentToolCallId becomes the delegation row structurally.",
+    "match": {
+      "reshaped": {
+        "from": {
+          "kind": "work",
+          "workKind": "tool"
+        },
+        "to": {
+          "kind": "work",
+          "workKind": "delegation"
+        }
+      }
+    }
+  },
+  {
+    "name": "delegation-rows-gain-v3-fields",
+    "reason": "#2192 (layer 1): every delegation row carries `childRef` and `background`; a persisted tool-call delegation has no child ref and is foreground, so both are null/false against the main baseline.",
+    "match": {
+      "changed": {
+        "kind": "work",
+        "workKind": "delegation",
+        "fields": [
+          "background",
+          "childRef"
+        ]
+      }
+    }
+  },
+  {
+    "name": "delegation-output-unstripped",
+    "reason": "#2232 (layer 5): core no longer strips `agentId:` / `<usage>` lines from a delegation's result by tool name; a persisted Agent result keeps those lines in the row's expanded output. The v3 delegation item carries a bridge-owned `summary` instead.",
+    "match": {
+      "changed": {
+        "kind": "work",
+        "workKind": "delegation",
+        "fields": [
+          "background",
+          "childRef",
+          "output"
+        ]
+      }
+    }
+  },
+  {
+    "name": "parented-rows-surface",
+    "reason": "#2232 (layer 5): a row whose parentToolCallId named a call outside the delegation name set (Claude task notifications under Monitor/TaskOutput) was dropped at the root; it now nests under that call, which the structural rule makes the delegation row.",
+    "match": {
+      "added": {
+        "kind": "work",
+        "workKind": "workflow",
+        "nested": true
+      }
+    }
+  },
+  {
+    "name": "turn-segments-rejoined",
+    "reason": "#2232 (layer 5): a call the name set used to hide (ToolSearch, TodoWrite) now renders between two assistant texts, so the second text is no longer a visible response that splits the turn; the text folds into the single turn segment.",
+    "match": {
+      "resegmented": {
+        "kind": "turn"
+      }
+    }
+  },
+  {
+    "name": "turn-segments-rejoined",
+    "reason": "#2232 (layer 5): the assistant text that used to split the turn moves from the root into the turn's children (see the resegmented turn).",
+    "match": {
+      "moved": {
+        "kind": "conversation",
+        "role": "assistant"
+      }
+    }
+  },
+  {
+    "name": "unsuppressed-by-name",
+    "reason": "#2232 (layer 5): a turn whose only work was name-hidden calls (TaskUpdate, ToolSearch) projected no turn row; with the name set gone the turn renders with those tool rows.",
+    "match": {
+      "added": {
+        "kind": "turn"
+      }
+    }
+  },
+  {
+    "name": "unsuppressed-by-name",
+    "reason": "#2232 (layer 5): a name-hidden call that ended in an error or interruption only got a row at its completion event; it now spans from its start event.",
+    "match": {
+      "changed": {
+        "kind": "work",
+        "workKind": "tool",
+        "fields": [
+          "sourceSeqStart",
+          "startedAt"
+        ]
+      }
+    }
+  }
+]

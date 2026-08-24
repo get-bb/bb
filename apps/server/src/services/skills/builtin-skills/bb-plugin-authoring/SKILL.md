@@ -88,15 +88,25 @@ The manifest is `package.json`:
   source of the plugin id.
 - `bb.branding` (required) — declare `bb.branding.icon` as either the plugin's
   canonical BB icon name, such as `Zap`, or a plugin-relative compact SVG path
-  such as `./assets/icon.svg`. BB validates and hash-serves path-shaped SVGs,
-  then renders them as CSS masks so their shape inherits the surrounding text
-  color; SVG colors are ignored. BB reuses this icon on roomy surfaces when no
-  logo override is declared. Add `logo.light` only for
+  such as `./assets/icon.svg`. A namespaced `"<pluginId>/<name>"` glyph is
+  refused here: that form is how tool presentations and provider declarations
+  name a declared icon, and the plugin's own mark points at its file directly.
+  BB validates path-shaped SVGs (well-formed XML with an `<svg>` root, no
+  doctype or processing instruction), hash-serves them, then renders them
+  as CSS masks so their shape inherits the surrounding text color; SVG
+  colors are ignored.
+  BB reuses this icon on roomy surfaces when no logo override is declared.
+  Add `logo.light` only for
   intentionally different rich/full-size identity artwork; optional
   `logo.dark` is preferred in dark mode. Logo paths are explicit
   plugin-relative `.svg`, `.png`, or `.webp` files: nulls, empty strings,
   missing/escaping files, unsupported extensions, and a dark logo without a
-  light logo fail the manifest. There is no root logo auto-detection. Logo-only
+  light logo fail the manifest. `bb plugin build` refuses an SVG logo that
+  carries a script vector (a `script`, `handler` or `listener` element, an
+  `on*` attribute, or a `javascript:` href) and takes any other tool export
+  as-is; install and load never refuse a logo, and every SVG BB serves
+  carries `nosniff` and a `default-src 'none'` CSP. There is
+  no root logo auto-detection. Logo-only
   manifests remain supported for compatibility, so at least an icon or light
   logo is required. BB uses a declared logo where space permits, such as roomy
   Settings rows and cards.
@@ -107,6 +117,35 @@ The manifest is `package.json`:
   should contain only the intended transparent glyph shape. Do not duplicate
   the same artwork across `icon` and `logo`; reserve logos for intentionally
   different branded artwork and provide a dark variant when needed.
+- `bb.branding.experimental_icons` (optional) — the plugin's own icon
+  vocabulary for timeline rows and provider marks: a map of declared name →
+  plugin-relative SVG, such as `{ "receipt": "./icons/receipt.svg" }`. Names
+  are lowercase letters, digits and `-` (≤ 48 characters, ≤ 64 entries);
+  each file is a `.svg` inside the plugin directory, at most 32 KiB, and
+  must pass a reject-only validator: no doctype or processing instruction;
+  no `script`, `handler`, `listener`, `iframe`, `foreignObject`, `image`,
+  `video`, `audio`, `a` or `style` element; no element outside the SVG
+  namespace; no `on*` attribute; no `href`/`xlink:href` that is not a
+  same-document `#` reference; no backslash (CSS escape) in any attribute
+  value; no `url()`, `src()`, `image()` or `image-set()` in any attribute
+  value unless it targets a same-document `#` reference; no SMIL
+  `attributeName` naming an `on*` handler or an `href`; no `xml:base`. Any
+  violation fails the plugin load with a message naming the icon.
+  Reference an entry by its namespaced glyph `"<pluginId>/<name>"` — in a
+  bridge's `presentation.icon`,
+  in `bb.agents.registerTool`'s `presentation.icon`, or as a
+  `bb.providers.register` `icon`. BB serves each file hashed from
+  `/api/v1/plugins/<id>/assets/icons/<name>.svg`, lists them on the
+  installed-plugin inventory as `icons`, and draws them as `currentColor`
+  masks (web) or tinted SVG views (mobile), so ship monochrome shapes. A
+  glyph naming another plugin or an undeclared name is refused at
+  registration and, for rows, at ingest (the row persists as
+  `provider/unhandled`); a `server: "bb"` tool row is checked against the
+  plugin that registered the tool, not the thread's provider plugin, so a
+  tool's declared icon survives on any provider's thread. Rows are never
+  rewritten when the map changes: a
+  row whose name is no longer declared, or whose plugin is uninstalled,
+  draws the per-kind fallback glyph.
 - `engines.bb` — optional semver range checked against the bb app version.
 - `engines.bbPluginSdk` — optional semver range for the plugin SDK surface
   (currently `0.4.3`; the scaffold writes `">=0.4.3"`). bb reads it as a floor,
@@ -353,6 +392,9 @@ in Extensions → Plugins and editable via `bb plugin config <id> set <key>
 const settings = bb.settings.define({
   apiKey: { type: "string", label: "API key", secret: true }, // 0600 file, never in db or frontend
   teamKey: { type: "string", label: "Team", default: "" },
+  // Multi-line editor (JSON, lists); the value is still a string the plugin
+  // parses itself. Cannot be combined with `secret`.
+  agents: { type: "string", label: "Agents", experimental_multiline: true, default: "[]" },
   mode: {
     type: "select",
     label: "Mode",
@@ -527,10 +569,19 @@ dependency graph, including type-only imports and relative paths that resolve
 into a private package. Keep shared contract types plugin-local and validate
 them at the RPC boundary.
 
-Keep `@get-bb/plugin-sdk` in exact `devDependencies`, not production
-dependencies. The host builder supplies its small runtime helpers and bundles
-them into the self-contained artifact, including for managed Git installs that
-omit dev dependencies. The daemon never resolves the SDK or private BB
+Where `@get-bb/plugin-sdk` goes in `package.json` depends on what the host
+entry imports. A host entry that uses only the root helpers
+(`experimental_defineHostEntry`, `defineRpcContract`,
+`PLUGIN_CLI_OUTPUT_MAX_BYTES`) keeps the SDK in exact `devDependencies`: the
+host builder stubs those helpers and bundles them into the self-contained
+artifact, including for managed Git installs, which run
+`npm install --omit=dev`. A host entry that imports
+`@get-bb/plugin-sdk/provider-bridge`, `@get-bb/plugin-sdk/ai-services`, or a
+published `@get-bb/plugin-sdk/host` contract such as
+`experimental_nativeRootsHostContract` is bundled from the plugin's own SDK
+install, so that plugin lists the SDK under `dependencies` (see
+"bb.providers.register — agent providers" below; every provider plugin in
+bb does this). Either way the daemon never resolves the SDK or private BB
 packages from the plugin at runtime.
 
 Pure JavaScript dependencies are bundled. For external tools, use
@@ -967,12 +1018,11 @@ bb.agents.registerTool({
   name: "docs_search", // [a-zA-Z0-9_-]+, unique ACROSS plugins
   description: "Search the bundled docs.",
   instructions: "Prefer docs_search over guessing conventions.", // optional, appended to thread instructions
-  // Optional experimental native timeline labels. Without these, BB shows
-  // its normal tool name and arguments. Errors/interruptions keep that
-  // standard rendering so the failing tool remains identifiable.
-  experimental_statusLabels: {
-    pending: "Searching bundled docs",
-    completed: "Searched bundled docs",
+  // Optional row presentation (grammar v3). Without it, BB shows its normal
+  // tool name and the plugin's branding glyph. Errors/interruptions keep
+  // that standard rendering so the failing tool remains identifiable.
+  presentation: {
+    label: { pending: "Searching bundled docs", completed: "Searched bundled docs" },
   },
   parameters: z.object({ query: z.string().min(1) }),
   async execute({ query }, { threadId, projectId, signal }) {
@@ -1006,13 +1056,19 @@ session start, not mid-session. Name collisions: within one factory execution
 duplicate registrations are rejected; across plugins the earlier plugin wins
 and yours is dropped with the reason in your status detail.
 
-`experimental_statusLabels` is optional and supplies static, concise labels
-keyed by BB's timeline row status (`pending`, `completed`). Each label is
-limited to 80 characters; a longer label rejects the registration. BB snapshots the
-labels into each plugin tool-call event; it is not a frontend bundle hook. A
-status with no label — error, interrupted, or awaiting approval — falls back
-to BB's standard `Running tool …` / `Ran tool …` wording, as does omitting the
-field entirely.
+`presentation` is optional: `label` supplies static, concise
+titles for the pending and completed states (each limited to 80 characters;
+a longer label rejects the registration), `icon` a host glyph name or one of
+this plugin's declared icons as `{ glyph: "<pluginId>/<name>" }` (see
+`bb.branding.experimental_icons`; another plugin's id or an undeclared name
+rejects the registration), `suppress` collapses low-value rows by default,
+and `tint` accents the row per theme. The server resolves one full presentation per tool and the
+provider bridge stamps it on every call's timeline row (the row's glyph is
+checked at ingest against this plugin's declared icons, whichever plugin
+provides the thread); it is not a frontend
+bundle hook. A state with no label — error, interrupted, or awaiting
+approval — falls back to BB's standard `Running tool …` / `Ran tool …`
+wording, as does omitting the field entirely.
 
 `contributeInstructions` is **synchronous** and runs on the thread-start
 path — keep it cheap. Prefer `skills/` for standing knowledge; use this
@@ -1052,22 +1108,72 @@ safety policy such as permission escalation is unchanged. The legacy
 `contributeInstructions` provider remains excluded from side chats, so use
 `configure` for side-chat-aware dynamic instructions.
 
+### bb.experimental_aiServices — helper inference and voice transcription
+
+bb's own AI services — the server-side helper completions behind thread
+titles and commit messages, and voice transcription — are served by plugins.
+Register a service in `server.ts` and implement the shared contract in the
+plugin's `bb.host` entry; the user selects it with `BB_INFERENCE` /
+`BB_TRANSCRIPTION` set to `<id>/<model>` (`bb settings ai-services` lists
+the options). Ids the server serves itself (`openai`, the builtin inference
+providers such as `anthropic`) are reserved and `register` refuses them; an
+id another loaded plugin already serves fails your plugin's load:
+
+```ts
+// server.ts
+bb.experimental_aiServices.register({
+  id: "acme",
+  displayName: "Acme AI",
+  kinds: ["inference", "voice"],
+});
+```
+
+```ts
+// host.ts
+import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
+import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";
+
+export default experimental_defineHostEntry({
+  contract: experimental_aiServicesHostContract,
+  handlers: {
+    "ai.inference.complete": async (input) => {
+      // input.serviceId, input.model, input.prompt, input.outputSchema (JSON Schema), input.timeoutMs
+      const value = await completeStructured(input);
+      return { ok: true, model: input.model, value };
+    },
+    "ai.voice.transcribe": async (input) => {
+      // input.audioBase64, input.mimeType, input.filename, input.prompt
+      return { ok: true, model: input.model, text: await transcribe(input) };
+    },
+  },
+});
+```
+
+Report failures in the result, not by throwing: `{ ok: false, code, message }`
+with `code` one of `timeout`, `rate_limited`, `service_unavailable`,
+`auth_required`, `request_failed`, `invalid_response`. Core retries and falls
+back to `BB_INFERENCE_FALLBACK` on the first three and surfaces the others.
+Every call carries `serviceId`, so one host entry may serve several
+registered ids. The registration needs a `bb.host` entry; without one the
+plugin fails to load. A host artifact may export a provider bridge
+(`experimental_providerBridge`) and default-export the host entry at the same
+time.
+
 ### bb.providers.register — agent providers
 
 A plugin can contribute a full agent provider: a picker entry whose threads
 run on a **provider bridge** the plugin ships. The working reference is
 `examples/plugins/echo-provider` — declaration, bridge, and conformance test
-in one small package. (`bb.agents.experimental_registerProvider` is the older
-name for the same call and still works.)
+in one small package.
 
 ```ts
 bb.providers.register({
   id: "echo-agent", // stable public id; thread rows persist it
   displayName: "Echo Agent", // 1-80 chars, shown in the picker
-  icon: "./icons/echo.svg", // optional; same grammar as bb.branding.icon
-  experimental_family: "echo", // optional grouping key for related providers
+  icon: "./icons/echo.svg", // optional; the bb.branding.icon forms plus a declared icon
+  family: "echo", // optional grouping key for related providers
   // Copy core surfaces render (usage banners, pickers, the guide).
-  experimental_strings: {
+  strings: {
     signInHint: "Run `echo-agent login` on the machine to sign in.",
     expiredHint:
       "Your Echo session expired. Run `echo-agent login`, then reload.",
@@ -1080,13 +1186,12 @@ bb.providers.register({
   experimental_bridgeOptions: { launch: { command: "echo-agent" } },
   // "installed" hides the row until provider/health finds the executable.
   experimental_visibility: "always", // default
+  // Sessionless maintenance support (each defaults to false) so bb can skip
+  // unsupported host probes and hide providers that never expose usage. A
+  // shared bridge that declares usage may still return no windows or
+  // supported: false for one id.
+  maintenance: { health: false, usage: false, installation: false },
   capabilities: {
-    // Sessionless support is declared here so bb can avoid unsupported host
-    // probes and hide providers that never expose usage. A shared bridge that
-    // declares usage may still return no windows or supported: false for one id.
-    experimental_providerHealth: false,
-    experimental_providerUsage: false,
-    experimental_providerInstallation: false,
     supportsServiceTier: false,
     supportsNativeUserQuestion: false,
     fork: "none", // "none" | "tip" | "checkpoint"
@@ -1098,21 +1203,25 @@ bb.providers.register({
   },
   // Labelled picker options; the coarse ladder above is labelled for you
   // when these are omitted. `model/list` is precise per model at runtime.
-  experimental_reasoningLevels: [{ id: "medium", label: "Medium" }],
-  experimental_serviceTiers: undefined, // e.g. [{ id: "fast", label: "Fast" }]
+  reasoningLevels: [{ id: "medium", label: "Medium" }],
+  serviceTiers: undefined, // e.g. [{ id: "fast", label: "Fast" }]
   composerActions: [], // skills typeahead is implicit; ["plan"] opts into plan mode
   // Cold-cache fallback models: shown only until the first model/list probe
   // completes, or when a probe fails transiently. Exactly one isDefault.
-  experimental_models: { fallback: [] },
+  // `scope` says how far one model/list answer travels: "host" when the
+  // bridge answers from account or agent state and ignores the workspace
+  // path (bb then probes once per machine), "workspace" (the default) when
+  // project configuration can change the answer.
+  models: { fallback: [], scope: "workspace" },
   // Daemon env vars the bridge may read. Provider processes are spawned with
   // inherited BB_* variables stripped; exactly these are forwarded.
-  experimental_env: { passthrough: ["BB_ECHO_AGENT_EXECUTABLE"] },
+  env: { passthrough: ["BB_ECHO_AGENT_EXECUTABLE"] },
   // Called by the server on EVERY session and turn command. The returned
   // JSON reaches the bridge as `options.providerOptions`; core never reads
   // it. This is where the provider's own knobs travel — read them from the
   // plugin's own `bb.settings.define` values in `ctx.settings` (secrets are
   // omitted). `ctx.promptMode` is "plan" when the prompt entered plan mode.
-  experimental_deriveProviderOptions(ctx) {
+  deriveProviderOptions(ctx) {
     return {
       verbose: ctx.settings.verbose === true,
       plan: ctx.promptMode === "plan",
@@ -1121,14 +1230,23 @@ bb.providers.register({
 });
 ```
 
-**The icon.** `icon` takes the same two shapes as `bb.branding.icon`: a named
-host glyph (`"Zap"`) or a plugin-relative SVG path (`"./icons/echo.svg"`). A
-path is served to clients as a `logoUrl` and drawn through `<img>`, so its
-`currentColor` cannot follow the bb theme; a glyph name carries no bytes, so
-there is no `logoUrl` at all. For a monochrome mark, ship an `app.tsx` too and
-register the same artwork with
-`app.slots.experimental_providerIcon({ providerId, icon })` — it renders
-inline and inherits the theme. Example:
+**The icon.** `icon` takes the two shapes of `bb.branding.icon` — a named
+host glyph (`"Zap"`) or a plugin-relative SVG path (`"./icons/echo.svg"`) —
+plus one `bb.branding.icon` itself refuses: one of the plugin's declared
+icons by its namespaced glyph (`"<pluginId>/<name>"`, an entry of
+`bb.branding.experimental_icons`; the plugin id must be this plugin's and
+the name declared, else the plugin fails to load). A path-shaped SVG is
+served as declared behind `nosniff` and a `default-src 'none'` CSP; it is
+not in the manifest, so `bb plugin build` cannot check it — keep it free of
+the script vectors the build refuses in a logo. A path or a declared
+icon is served to clients as a `logoUrl` and drawn as a `currentColor`
+mask, so a monochrome mark follows the bb theme (and the declared
+`strings.iconTint`) with no frontend bundle — this is how every provider bb
+ships gets its brand mark; core vendors none. A full-colour logo renders as a silhouette. A glyph name carries no
+bytes, so there is no `logoUrl` and clients draw the glyph from the shared
+icon set. A plugin that wants custom inline React for its mark can still
+register `app.slots.experimental_providerIcon({ providerId, icon })` from
+an `app.tsx`. Example:
 
 ```tsx
 // app.tsx
@@ -1149,6 +1267,14 @@ export default definePluginApp((app) => {
 
 (The four first-party provider plugins ship no `app.tsx`: bb vendors their
 marks itself, so an icon-only bundle would only add fetches at boot.)
+
+A provider plugin's `app.tsx` is deferred as a whole, never loaded at boot:
+everything it registers — this icon, a settings section, a nav panel, a
+palette action, a pending-interaction form — arrives on the first thread of
+one of its providers, when one of its forms is asked for, or when its own
+panel route is opened. Until then the served logo stands in for the icon and
+the other slots are absent. UI that must be there at boot belongs in a
+separate, non-provider plugin.
 
 Ids are flat and collision-rejected: the first live registration of an id
 wins and a later one from another plugin fails that plugin's load; no id is
@@ -1198,9 +1324,13 @@ also what lets your conformance test drive `handleLine` in-process.
 Everything a bridge compiles against is published at
 `@get-bb/plugin-sdk/provider-bridge` — protocol schemas including the
 `thread/delta` grammar, and the bridge kit — so add `@get-bb/plugin-sdk` to
-`dependencies` (not just `devDependencies`). A `bb.host` artifact cannot
-import bb's private `@bb/*` workspace packages; an installed plugin could
-not resolve them.
+`dependencies` (not just `devDependencies`): the host builder bundles that
+subpath from the plugin's own SDK install, and managed Git installs run
+`npm install --omit=dev`, so a devDependency-only SDK is absent when the
+artifact is built. This is the exception to the devDependency rule under
+"bb.hosts"; the echo example's `package.json` shows the shape. A `bb.host`
+artifact cannot import bb's private `@bb/*` workspace packages; an installed
+plugin could not resolve them.
 
 The bridge speaks the canonical Provider Bridge Protocol — line-delimited
 JSON-RPC 2.0 over stdio, documented in `docs/provider-bridge-protocol.md`.
@@ -1219,12 +1349,40 @@ keys, parent refs); the runtime's delta assembler — never the bridge —
 mints every bb turn and item id and constructs the canonical timeline
 events.
 
-**Conformance.** Ship a test that drives
-`@bb/provider-bridge-protocol/conformance` against your bridge in-process:
-export the bridge surface, wire `runBridgeConformance` with a
-transport whose `send` calls it and whose `takeMessages` drains captured
-stdout, and assert all eleven scenarios pass (see
-`examples/plugins/echo-provider/provider-bridge.conformance.test.ts`).
+**Conformance.** Ship a test that drives the published kit,
+`@get-bb/plugin-sdk/provider-bridge/testing`, against your bridge
+in-process: export the bridge surface, wire `experimental_runBridgeConformance`
+with your provider id and a transport whose `send` calls it and whose
+`takeMessages` drains captured stdout
+(`experimental_captureBridgeJsonRpcOutput().takeMessages`; the kit assembles
+your `thread/delta` batches itself, through the runtime's real assembler), and
+assert every scenario passes (see
+`examples/plugins/echo-provider/provider-bridge.conformance.test.ts`). The
+same kit assembles your deltas into canonical events, so a second test can
+assert what each row becomes
+(`examples/plugins/echo-provider/provider-bridge.stream.test.ts`). Never
+import a private `@bb/*` package from a plugin: an installed plugin cannot
+resolve it.
+
+**Recorded replay.** The same kit ships the regression oracle the first-party
+bridges use. Record a real session: start the host daemon with
+`BB_PROVIDER_BRIDGE_RECORD_DIR=<dir>` in its environment, run a thread on
+your provider, and bb writes `<dir>/<providerId>/<threadId>/<direction>.ndjson`
+(a bridge that spawns a CLI also calls `experimental_recordProviderChildIo`
+right after `spawn()`). Commit the lanes under your plugin, then replay them in
+a test: `experimental_resolveProviderBridgeLaunch({ modulePath, pluginId })`
+builds the bridge process exactly as the runtime spawns it,
+`experimental_replayRecording` drives the recorded runtime lane into it and
+answers its requests with the recorded answers, and
+`experimental_compareParity` diffs the assembled events against the
+recording's own (`experimental_assembleRecordedEvents`); `experimental_checkRecordedCellReplay`
+adds the recorded-cell conformance verdicts. A bridge with a provider child
+passes a `ReplayProviderProfile` whose `env` (or `rewriteRuntimeLine`) points
+the child at the kit's replay script. When a deliberate bridge change alters
+the stream, `experimental_rerecordCurrentBridgeLane` writes the new
+expectation beside the recording (`bridge→runtime.current.ndjson`); the
+recording itself is never rewritten. See
+`examples/plugins/echo-provider/provider-bridge.parity.test.ts`.
 
 **Delivery.** On install/reload the server builds `dist/host.js` and records
 its digest. Thread commands for the provider carry `{pluginId, digest}` to the
@@ -1295,7 +1453,7 @@ import {
   useBbContext,
   useBbNavigate,
   experimental_FileLink as FileLink,
-  experimental_UrlLink as UrlLink,
+  UrlLink as UrlLink,
   useComposer,
   useComposerView,
 } from "@get-bb/plugin-sdk/app";
@@ -1331,7 +1489,7 @@ export default definePluginApp((app) => {
     icon: "Columns",
     path: "board",
     component: Board,
-    experimental_fixedTabs: [
+    fixedTabs: [
       {
         panelId: "board",
         id: "navigation",
@@ -1467,7 +1625,7 @@ interface PluginThreadListProps {
   searchQuery: string;
   /** BB's bound thread list. Render it to delegate conditionally without
       re-entering plugin replacement resolution. */
-  experimental_Original: ComponentType;
+  Original: ComponentType;
 }
 ```
 
@@ -1640,7 +1798,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, experimental_fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
   BB automatically wraps every plugin page in the same host-owned App panel
   used by New thread and thread pages. The page component supplies only its
   main body; it must not mount a second panel layout or register Browser and
@@ -1662,7 +1820,7 @@ Slot props contracts (versioned, additive-only):
   back to the first one instead. Hydration closes an open panel when no durable
   tab survived.
 
-  `experimental_fixedTabs` declares ordered, non-closable page views in that
+  `fixedTabs` declares ordered, non-closable page views in that
   same host tab strip:
   `{ id, panelId, title, icon, component, layout?, experimental_target? }`.
   BB opens the
@@ -1770,7 +1928,7 @@ target? })`. Inside the fixed-tab component,
   (sync or async) are contained and logged,
   never breaking the sidebar. `title` is the tooltip + accessible label;
   `icon` is a BB icon-name hint (unknown names fall back to a generic bolt).
-- `fileOpener` → `{ path: string, source, experimental_Original }` — register as a viewer/editor
+- `fileOpener` → `{ path: string, source, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
   Matching files use the first applicable opener in deterministic slot order
   by default. Users can pin BB's preview or a specific opener per extension
@@ -1783,7 +1941,7 @@ target? })`. Inside the fixed-tab component,
   `{ kind: "workspace" | "host" | "thread-storage", threadId, environmentId,
 projectId }` (nullable fields) and `path` follows the source (workspace:
   worktree-relative; host: absolute; thread-storage: storage-relative).
-  `experimental_Original` is BB's preview bound to this file; render it to
+  `Original` is BB's preview bound to this file; render it to
   delegate conditionally without re-entering plugin replacement resolution.
   Applies only to live file content — git-ref snapshots and deleted files
   always use the built-in preview, and a removed/disabled opener degrades
@@ -1801,21 +1959,24 @@ projectId }` (nullable fields) and `path` follows the source (workspace:
   **Settings → Appearance** ("Source code" / "Diffs"), per client. There are no
   scope or extension filters on the registration, so conditional behavior
   belongs in the component. Source props:
-  `{ content, path, overflow, highlightedLines, experimental_Original }`;
+  `{ content, path, overflow, highlightedLines, Original }`;
   diff props:
   `{ patch, path, view, overflow, showLineNumbers, experimental_fullFileContents,
-experimental_Original }`. `experimental_fullFileContents` is either
+Original }`. `experimental_fullFileContents` is either
   `{ old: { path, content }, new: { path, content } }` or `null`; a replacement
   can use those complete UTF-8 sides to implement context expansion.
-  Every value is already resolved. Render `experimental_Original` (bb's
+  Every value is already resolved. Render `Original` (bb's
   renderer, bound to this call) to delegate without re-entering resolution —
   behind a plugin setting, by language, over a size threshold:
+  A bundle compiled against an SDK before 0.4.16 may still read
+  `experimental_Original`: every host passes the same component under that
+  name for one release (it warns once; removed in bb 0.42).
 
   ```tsx
   app.slots.experimental_diffRenderer({
     id: "compact",
     title: "Compact diffs",
-    component: ({ patch, path, experimental_Original: Original }) =>
+    component: ({ patch, path, Original }) =>
       patch.length > 20_000 ? (
         <Original />
       ) : (
@@ -1883,6 +2044,27 @@ openWorkspaceFile }` — register a leaf
   Errors from either callback are contained and logged, never breaking the
   palette. Write self-identifying titles ("Linear: open issue for this
   thread"): the palette matches the query against the title.
+- `experimental_timelineRenderer` → the expanded body of the timeline rows a
+  provider plugin owns. Registration: `{ kind, component }`, where `kind` is
+  one of the plugin's own extension item kinds (`"<pluginId>/<name>"`, as
+  declared in `bb.providers.register({ extensionKinds })`) or
+  `"tool"` for the generic tool items of the providers this plugin
+  registered. Core kinds (messages, commands, file changes, reads, searches,
+  delegations, plan steps) always use bb's renderers and are customized only
+  through the bridge's presentation. The component receives `row` (id,
+  threadId, turnId, kind, toolName, status, startedAt, completedAt),
+  `payload` (the extension item's validated payload, or `{ arguments,
+  output }` for a tool call), `presentation` (the bridge's label, icon,
+  title, detail, suppress and tint for the row; null only for a tool row
+  persisted before bridges attached one), `thread` (`{ id,
+  providerId }`) and `Original`, the host's declarative base for the body —
+  render `<Original />` to keep it beside your own content. The row header
+  (label, glyph, tint, headline) stays host-rendered; a glyph of the form
+  `"<pluginId>/<name>"` draws the plugin's declared icon
+  (`bb.branding.experimental_icons`) as a tinted mask, or the per-kind
+  glyph when the name is no longer declared. With no renderer registered,
+  the declarative base renders, so a row never goes blank; a crash in the
+  component is contained to that row.
 - `experimental_providerIcon` → the React component bb draws as one agent
   provider's icon. Registration: `{ providerId, icon }`, where `providerId` is
   the provider's id (`"codex"`, `"acp-cursor"`) — not the plugin id — and
@@ -1893,9 +2075,11 @@ openWorkspaceFile }` — register a leaf
   and is invisible on dark themes, so keep files for intentionally colored
   logos and register a component for anything that should follow the theme.
   A component beats the file logo for that provider; disabling the plugin
-  falls back to it. One registration per provider id per plugin; if two
-  plugins claim one provider id the host keeps the first by plugin id and
-  warns. See the `app.tsx` example under "The icon" above.
+  falls back to it, and so does every surface shown before the plugin's
+  deferred `app.tsx` has loaded (see "The icon" above for when that is).
+  One registration per provider id per plugin; if two plugins claim one
+  provider id the host keeps the first by plugin id and warns. See the
+  `app.tsx` example under "The icon" above.
 
 Host components:
 
@@ -2032,13 +2216,13 @@ className? }` —
   message content (e.g. a reply header) so it reads like the rest of the
   chat instead of a differently-styled bundled renderer. Renderer options
   beyond content/className stay host-internal.
-- `experimental_UrlLink` — a real anchor whose ordinary HTTP(S) activation
+- `UrlLink` — a real anchor whose ordinary HTTP(S) activation
   follows the current client's in-app/external-browser preference. It keeps
   internal BB routes in SPA history, preserves modifier clicks, copying,
   accessibility, and explicit anchor props, and leaves unsupported schemes and
   explicit targets to browser behavior. A `_blank` or named target preserves
   supplied `rel` tokens but adds `noopener noreferrer` unless `rel` explicitly
-  contains `opener`. Use `useBbNavigate().experimental_openUrl(url)` for
+  contains `opener`. Use `useBbNavigate().openUrl(url)` for
   buttons, menus, and effects; its boolean reports whether the current app
   accepted the intent, not whether a later OS launch completed.
 - `experimental_FileLink` — a real anchor for an explicit live file target:
@@ -2167,13 +2351,13 @@ Hooks:
 - `useBbContext()` → `{ projectId, threadId }` from the current route.
 - `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
 { subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openThreadPanel({ actionId, title?, params? }), experimental_openUrl(url) }`.
+openThreadPanel({ actionId, title?, params? }), openUrl(url) }`.
   `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
   composer draft and `focusPrompt: true` to focus it. The panel
   opener opens one of the current plugin's registered `threadPanelAction` tabs
   in the current thread surface and returns whether the host accepted it; it
   returns false on surfaces without a thread side panel.
-  `experimental_openUrl` owns HTTP(S) only and returns false for schemes BB
+  `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior.
 - `useComposer()` → programmatic access to the chat composer draft (the
   same one the built-in "Add to chat" affordances write to):

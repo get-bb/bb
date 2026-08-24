@@ -1,0 +1,86 @@
+{
+  "providerId": "acp-cursor",
+  "variant": "symlink-boundary",
+  "workspace": {
+    "commands": [
+      {
+        "name": "cwd-codex-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-cursor-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-cursor-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-cwd-cursor-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-cwd-cursor-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-repo-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-repo-agents-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "cwd-codex-skill",
+        "description": "cwd-codex-skill skill",
+        "filePath": "<root>/ws/packages/app/.codex/skills/cwd-codex-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "home-cursor-skill",
+        "description": "home-cursor-skill skill",
+        "filePath": "<home>/.cursor/skills/home-cursor-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "linked-cwd-cursor-skill",
+        "description": "linked-cwd-cursor-skill skill",
+        "filePath": "<root>/ws/packages/app/.cursor/skills/linked-cwd-cursor-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "linked-repo-agents-skill",
+        "description": "linked-repo-agents-skill skill",
+        "filePath": "<root>/ws/packages/app/.agents/skills/linked-repo-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "home-cursor-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-cursor-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "home-cursor-skill",
+        "description": "home-cursor-skill skill",
+        "filePath": "<home>/.cursor/skills/home-cursor-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  }
+}

@@ -118,39 +118,132 @@ describe("createAgentRuntime lifecycle", () => {
       }
     });
 
-    it("accepts a thread/start result without a providerThreadId and takes the identity from thread/identity", async () => {
-      const events: ThreadEvent[] = [];
+    it("fails session construction when the thread/start result carries no providerThreadId", async () => {
+      const record = createScriptedEchoRequestRecord();
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
-          onEvent: (event) => events.push(event),
+          env: record.env,
+          onEvent: () => {},
         },
-        // The result is `{ threadId }` only; the bridge's thread/identity
-        // notification is the sole carrier of the provider id.
+        // The result is `{ threadId }` only. The bridge still notifies
+        // thread/identity, but the result is the sole carrier the runtime
+        // reads: a bridge that omits the field there is non-conformant.
         launch: { scripted: { answerStartWithoutIdentity: true } },
       });
 
-      const { providerThreadId } = await runtime.startThread({
+      try {
+        await expect(
+          runtime.startThread({
+            environmentId: "env-1",
+            threadId: "t1",
+            projectId: "p1",
+            providerId: "fake",
+            options: fullRuntimeOptions,
+          }),
+        ).rejects.toThrow(
+          /Invalid JSON-RPC result for thread\/start: providerThreadId/,
+        );
+        // Nothing was adopted, and the bridge was told to let go of
+        // whatever it constructed.
+        expect(runtime.hasThread("t1")).toBe(false);
+        expect(runtime.getProviderSession("t1")).toBeNull();
+        expect(record.last("thread/stop")?.params).toMatchObject({
+          threadId: "t1",
+          intent: "release",
+        });
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("fails session construction when the thread/resume result carries no providerThreadId", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: () => {},
+        },
+        launch: { scripted: { answerStartWithoutIdentity: true } },
+      });
+
+      try {
+        await expect(
+          runtime.resumeThread({
+            environmentId: "env-1",
+            threadId: "t1",
+            projectId: "p1",
+            providerThreadId: "old-prov-123",
+            providerId: "fake",
+            options: fullRuntimeOptions,
+          }),
+        ).rejects.toThrow(
+          /Invalid JSON-RPC result for thread\/resume: providerThreadId/,
+        );
+        // The caller's identity does not stand in for the missing result:
+        // the thread is forgotten, and the bridge is told to release the
+        // session it opened under that identity.
+        expect(runtime.hasThread("t1")).toBe(false);
+        expect(runtime.getProviderSession("t1")).toBeNull();
+        expect(record.last("thread/stop")?.params).toMatchObject({
+          threadId: "t1",
+          providerThreadId: "old-prov-123",
+          intent: "release",
+        });
+      } finally {
+        await runtime.shutdown();
+      }
+    });
+
+    it("forgets a thread whose thread/resume request was rejected", async () => {
+      const record = createScriptedEchoRequestRecord();
+      const runtime = createScriptedEchoRuntime({
+        runtime: {
+          workspacePath: tmpDir,
+          env: record.env,
+          onEvent: () => {},
+        },
+        launch: {
+          scripted: {
+            failMethods: [
+              { method: "thread/resume", message: "resume refused", times: 1 },
+            ],
+          },
+        },
+      });
+      const resume = {
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
+        providerThreadId: "old-prov-123",
         providerId: "fake",
         options: fullRuntimeOptions,
-      });
+      };
 
-      expect(providerThreadId).toBe("prov-1");
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "thread/identity",
+      try {
+        await expect(runtime.resumeThread(resume)).rejects.toThrow(
+          "resume refused",
+        );
+        // A rejected resume leaves no live session behind it, so the thread
+        // is not kept registered under the caller's identity: the next
+        // command resumes it again instead of running a turn on a session
+        // the bridge never opened.
+        expect(runtime.hasThread("t1")).toBe(false);
+        expect(runtime.getProviderSession("t1")).toBeNull();
+        expect(record.last("thread/stop")?.params).toMatchObject({
           threadId: "t1",
-          providerThreadId: "prov-1",
-        }),
-      );
-      expect(runtime.getProviderSession("t1")).toEqual({
-        providerId: "fake",
-        providerThreadId: "prov-1",
-      });
-      await runtime.shutdown();
+          providerThreadId: "old-prov-123",
+          intent: "release",
+        });
+
+        await expect(runtime.resumeThread(resume)).resolves.toEqual({
+          providerThreadId: "old-prov-123",
+        });
+        expect(runtime.hasThread("t1")).toBe(true);
+      } finally {
+        await runtime.shutdown();
+      }
     });
 
     it("merges runtime shell env with per-thread context on start", async () => {
@@ -237,8 +330,8 @@ describe("createAgentRuntime lifecycle", () => {
           skillRoots: [
             {
               id: "bb-cli",
-              providerId: "codex",
-              skillDirectoryRootPath: skillRootPath,
+              path: skillRootPath,
+              skills: [{ name: "bb-cli", description: "Use the bb CLI." }],
             },
           ],
           onEvent: () => undefined,
@@ -254,7 +347,13 @@ describe("createAgentRuntime lifecycle", () => {
       });
 
       expect(record.last("skills/configure")?.params).toEqual({
-        roots: [{ id: "bb-cli", path: skillRootPath, skills: [] }],
+        roots: [
+          {
+            id: "bb-cli",
+            path: skillRootPath,
+            skills: [{ name: "bb-cli", description: "Use the bb CLI." }],
+          },
+        ],
       });
       const methods = recordedMethods(record);
       expect(methods.indexOf("skills/configure")).toBeGreaterThan(-1);
@@ -266,33 +365,31 @@ describe("createAgentRuntime lifecycle", () => {
       await runtime.shutdown();
     });
 
-    it("does not configure skill roots filtered out for the provider", async () => {
+    it("configures the same generic roots for every provider", async () => {
       const record = createScriptedEchoRequestRecord();
+      const skillRootPath = join(tmpDir, "skill-root");
       const runtime = createScriptedEchoRuntime({
         runtime: {
           workspacePath: tmpDir,
           env: record.env,
-          skillRoots: [
-            {
-              id: "bb-cli",
-              providerId: "pi",
-              skillDirectoryRootPath: join(tmpDir, "skill-root"),
-            },
-          ],
+          skillRoots: [{ id: "bb-cli", path: skillRootPath, skills: [] }],
           onEvent: () => undefined,
         },
       });
 
+      // No provider flavour: a root staged once reaches whichever provider
+      // runs in the environment, in the one shape.
       await runtime.startThread({
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
-        providerId: "codex",
+        providerId: "fake",
         options: fullRuntimeOptions,
       });
 
-      expect(recordedMethods(record)).toContain("thread/start");
-      expect(recordedMethods(record)).not.toContain("skills/configure");
+      expect(record.last("skills/configure")?.params).toEqual({
+        roots: [{ id: "bb-cli", path: skillRootPath, skills: [] }],
+      });
 
       await runtime.shutdown();
     });

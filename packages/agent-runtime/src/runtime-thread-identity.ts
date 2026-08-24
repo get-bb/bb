@@ -1,13 +1,7 @@
 import type { ThreadEvent } from "@bb/domain";
 import type { AgentRuntimeProviderSession } from "./types.js";
 
-interface PendingIdentityWaiter {
-  resolve: (providerThreadId: string | null) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
 export interface RuntimeProviderIdentityState {
-  identityWaiters: Map<string, PendingIdentityWaiter>;
   pendingIdentityThreadIds: string[];
   providerId: string;
   threadIds: Set<string>;
@@ -20,7 +14,14 @@ interface CreateRuntimeProviderIdentityStateArgs {
 interface RegisterThreadProviderArgs {
   providerId: string;
   providerState: RuntimeProviderIdentityState;
-  shouldWaitForProviderIdentity: boolean;
+  /**
+   * Queue the thread so a `thread/identity` notification that names no
+   * registered thread is attributed to it, oldest registration first. The
+   * provider identity the runtime adopts is the one on the thread/start,
+   * thread/resume or thread/fork result; the notification only records it
+   * ahead of (or again after) that result.
+   */
+  expectsIdentityNotification: boolean;
   threadId: string;
 }
 
@@ -33,12 +34,6 @@ interface RecordProviderThreadIdentityArgs {
 interface ResolveBbThreadIdForProviderThreadArgs {
   providerState: RuntimeProviderIdentityState;
   providerThreadId: string | undefined;
-}
-
-interface WaitForProviderThreadIdentityArgs {
-  providerState: RuntimeProviderIdentityState;
-  threadId: string;
-  timeoutMs: number;
 }
 
 interface ForgetThreadArgs {
@@ -66,7 +61,6 @@ export class RuntimeThreadIdentityRegistry {
     args: CreateRuntimeProviderIdentityStateArgs,
   ): RuntimeProviderIdentityState {
     return {
-      identityWaiters: new Map(),
       pendingIdentityThreadIds: [],
       providerId: args.providerId,
       threadIds: new Set(),
@@ -76,7 +70,7 @@ export class RuntimeThreadIdentityRegistry {
   registerThreadProvider(args: RegisterThreadProviderArgs): void {
     this.threadToProvider.set(args.threadId, args.providerId);
     args.providerState.threadIds.add(args.threadId);
-    if (args.shouldWaitForProviderIdentity) {
+    if (args.expectsIdentityNotification) {
       args.providerState.pendingIdentityThreadIds.push(args.threadId);
     }
   }
@@ -104,33 +98,6 @@ export class RuntimeThreadIdentityRegistry {
 
   recordProviderThreadIdentity(args: RecordProviderThreadIdentityArgs): void {
     this.threadToProviderThread.set(args.threadId, args.providerThreadId);
-    const waiter = args.providerState.identityWaiters.get(args.threadId);
-    if (!waiter) {
-      return;
-    }
-    clearTimeout(waiter.timeout);
-    args.providerState.identityWaiters.delete(args.threadId);
-    waiter.resolve(args.providerThreadId);
-  }
-
-  waitForProviderThreadIdentity(
-    args: WaitForProviderThreadIdentityArgs,
-  ): Promise<string | null> {
-    const existing = this.threadToProviderThread.get(args.threadId);
-    if (existing) {
-      return Promise.resolve(existing);
-    }
-
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        args.providerState.identityWaiters.delete(args.threadId);
-        resolve(null);
-      }, args.timeoutMs);
-      args.providerState.identityWaiters.set(args.threadId, {
-        resolve,
-        timeout,
-      });
-    });
   }
 
   resolveBbThreadIdForProviderThread(
@@ -225,10 +192,9 @@ export class RuntimeThreadIdentityRegistry {
 
   /**
    * Fully detaches one thread from a still-running provider process: clears
-   * the identity maps, drops the thread from the provider's bookkeeping, and
-   * resolves any pending identity waiter with `null`. Used when a thread ends
-   * its residency (stop/archive) while the provider process keeps serving
-   * other threads.
+   * the identity maps and drops the thread from the provider's bookkeeping.
+   * Used when a thread ends its residency (stop/archive) while the provider
+   * process keeps serving other threads.
    */
   forgetThread(args: ForgetThreadArgs): void {
     args.providerState.threadIds.delete(args.threadId);
@@ -236,23 +202,7 @@ export class RuntimeThreadIdentityRegistry {
       args.providerState.pendingIdentityThreadIds.filter(
         (pendingThreadId) => pendingThreadId !== args.threadId,
       );
-    const waiter = args.providerState.identityWaiters.get(args.threadId);
-    if (waiter) {
-      clearTimeout(waiter.timeout);
-      args.providerState.identityWaiters.delete(args.threadId);
-      waiter.resolve(null);
-    }
     this.clearThread(args.threadId);
-  }
-
-  resolvePendingIdentityWaiters(
-    providerState: RuntimeProviderIdentityState,
-  ): void {
-    for (const [threadId, waiter] of providerState.identityWaiters) {
-      clearTimeout(waiter.timeout);
-      providerState.identityWaiters.delete(threadId);
-      waiter.resolve(null);
-    }
   }
 }
 

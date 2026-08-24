@@ -55,6 +55,7 @@ export function getEventProviderThreadId(
     case "system/manager/user_message":
     case "system/thread/interrupted":
     case "system/operation":
+    case "system/interaction/lifecycle":
     case "system/permissionGrant/lifecycle":
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":
@@ -113,6 +114,7 @@ export function getEventParentToolCallId(
     case "system/manager/user_message":
     case "system/thread/interrupted":
     case "system/operation":
+    case "system/interaction/lifecycle":
     case "system/permissionGrant/lifecycle":
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":

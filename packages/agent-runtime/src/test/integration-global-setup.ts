@@ -11,75 +11,28 @@
 import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { buildPluginHost, resolvePluginBuildToolchain } from "@bb/plugin-build";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
-import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
-import type {
-  BbPluginApi,
-  PluginProviderDeclaration,
-} from "@get-bb/plugin-sdk";
+import type { NormalizedPluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  captureFirstPartyProviderDeclarations,
+  firstPartyPluginRootDir,
+} from "./first-party-provider-declarations.js";
 import {
   INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH,
   type IntegrationProviderBridgeManifest,
 } from "./integration-provider-bridges.js";
 
 /**
- * Every first-party provider plugin that ships a bridge artifact. Pi is
- * separate: its bridge stays in the daemon bundle (its agent tree cannot be
- * inlined into a relocatable artifact), so it has no `bb.providerBridge` and
- * its launch names the bundled bridge instead of an artifact.
+ * Every first-party provider plugin; each ships its bridge as a `bb.host`
+ * artifact.
  */
 const PROVIDER_BRIDGE_PLUGIN_IDS = [
   "provider-codex",
   "provider-claude-code",
   "provider-acp",
+  "provider-pi",
 ] as const;
-
-/** Plugins whose bridge the daemon bundles, keyed by bundled bridge id. */
-const DAEMON_BUNDLED_BRIDGE_PLUGIN_IDS: Readonly<Record<string, string>> = {
-  pi: "provider-pi",
-};
-
-function pluginRootDir(pluginId: string): string {
-  // No trailing slash: the plugin build's directory-escape checks compare
-  // against `rootDir + "/"`.
-  return fileURLToPath(
-    new URL(`../../../../plugins/${pluginId}`, import.meta.url),
-  );
-}
-
-/**
- * The provider declaration its plugin registers, captured by invoking the
- * server entrypoint against a stub — the same thing the plugin runtime does,
- * so the capabilities on the wire cannot drift from the declaration.
- */
-async function loadDeclarations(
-  pluginId: string,
-): Promise<PluginProviderDeclaration[]> {
-  const moduleUrl = new URL(
-    `../../../../plugins/${pluginId}/server.ts`,
-    import.meta.url,
-  ).href;
-  const loaded: unknown = await import(/* @vite-ignore */ moduleUrl);
-  const entry = (loaded as { default?: unknown }).default;
-  if (typeof entry !== "function") {
-    throw new Error(`${pluginId} has no default plugin export`);
-  }
-  const captured: PluginProviderDeclaration[] = [];
-  const register = (declaration: PluginProviderDeclaration): void => {
-    captured.push(declaration);
-  };
-  const bb = {
-    providers: { register },
-    agents: { experimental_registerProvider: register },
-  } as unknown as BbPluginApi;
-  (entry as (bb: BbPluginApi) => void)(bb);
-  if (captured.length === 0) {
-    throw new Error(`${pluginId} registered no provider declaration`);
-  }
-  return captured.map(validatePluginProviderDeclaration);
-}
 
 /**
  * The same five execution capabilities the server puts on the wire (see
@@ -87,12 +40,11 @@ async function loadDeclarations(
  * declaration from.
  */
 function wireCapabilities(
-  declaration: PluginProviderDeclaration,
+  declaration: NormalizedPluginProviderDeclaration,
 ): IntegrationProviderBridgeManifest[string]["capabilities"] {
   const { capabilities } = declaration;
   return {
-    experimental_providerInstallation:
-      capabilities.experimental_providerInstallation,
+    providerInstallation: declaration.maintenance?.installation ?? false,
     supportsServiceTier: capabilities.supportsServiceTier,
     permissionModes: [...capabilities.permissionModes],
     supportsThreadArchive: capabilities.supportsThreadArchive,
@@ -108,9 +60,9 @@ export async function setup(): Promise<void> {
   );
   const manifest: IntegrationProviderBridgeManifest = {};
   for (const pluginId of PROVIDER_BRIDGE_PLUGIN_IDS) {
-    const rootDir = pluginRootDir(pluginId);
+    const rootDir = firstPartyPluginRootDir(pluginId);
     const [declarations, build] = await Promise.all([
-      loadDeclarations(pluginId),
+      captureFirstPartyProviderDeclarations(pluginId),
       buildPluginHost(rootDir, "0.0.0-integration", toolchain),
     ]);
     const dataDir = await ensurePluginProcessDataDir({
@@ -130,30 +82,10 @@ export async function setup(): Promise<void> {
           artifactPath: build.jsPath,
         },
         providerOptions: declaration.experimental_bridgeOptions ?? {},
-        envPassthrough: [...(declaration.experimental_env?.passthrough ?? [])],
+        envPassthrough: [...(declaration.env?.passthrough ?? [])],
         capabilities: wireCapabilities(declaration),
       };
     }
-  }
-  for (const [bundledBridgeId, pluginId] of Object.entries(
-    DAEMON_BUNDLED_BRIDGE_PLUGIN_IDS,
-  )) {
-    const [declaration] = await loadDeclarations(pluginId);
-    if (declaration === undefined) {
-      throw new Error(`${pluginId} registered no provider declaration`);
-    }
-    manifest[declaration.id] = {
-      pluginId,
-      dataDir: await ensurePluginProcessDataDir({
-        daemonDataDir: bridgeDataRoot,
-        pluginId,
-        kind: "bridge-data",
-      }),
-      source: { kind: "daemon-bundled", id: bundledBridgeId },
-      providerOptions: declaration.experimental_bridgeOptions ?? {},
-      envPassthrough: [...(declaration.experimental_env?.passthrough ?? [])],
-      capabilities: wireCapabilities(declaration),
-    };
   }
   await writeFile(
     INTEGRATION_PROVIDER_BRIDGE_MANIFEST_PATH,

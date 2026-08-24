@@ -1,6 +1,7 @@
 import type { TimelineTitle } from "@bb/thread-view";
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
+import { ServerSvgIcon } from "@/screens/plugins/ServerSvgIcon";
 import { useTheme } from "@/theme";
 import { Icon, type IconName } from "@/ui";
 import {
@@ -51,6 +52,14 @@ interface ExpandableRowHeaderProps {
   /** Replaces the generic title renderer for a specialized header. */
   titleContent?: ReactNode;
   leadingIcon?: IconName;
+  /**
+   * A plugin-declared icon resolved from the installed-plugin list, drawn
+   * as a tinted remote SVG; `leadingIcon` stays the glyph shown while it
+   * loads and when the fetch fails.
+   */
+  leadingIconUrl?: string;
+  /** Accent for the leading glyph (a bridge's tint); defaults to muted. */
+  leadingIconColor?: string;
   expandable: boolean;
   expanded: boolean;
   onToggle: () => void;
@@ -79,6 +88,8 @@ export function ExpandableRowHeader({
   title,
   titleContent,
   leadingIcon,
+  leadingIconUrl,
+  leadingIconColor,
   expandable,
   expanded,
   onToggle,
@@ -92,6 +103,7 @@ export function ExpandableRowHeader({
   const { tokens } = useTheme();
   const handlePress = expandable ? onToggle : onPress;
   const pressable = handlePress !== undefined;
+  const iconColor = leadingIconColor ?? tokens.mutedForeground;
   return (
     <Pressable
       // A custom title (e.g. the tappable source-thread chip) keeps its own
@@ -110,11 +122,18 @@ export function ExpandableRowHeader({
         className="min-w-0 flex-1 flex-row items-center gap-1.5"
         style={dimmed ? { opacity: PAST_ROW_DIM_OPACITY } : undefined}
       >
-        {leadingIcon ? (
+        {leadingIcon && leadingIconUrl !== undefined ? (
+          <ServerSvgIcon
+            path={leadingIconUrl}
+            fallbackIcon={leadingIcon}
+            size={ROW_LEADING_ICON_SIZE}
+            color={iconColor}
+          />
+        ) : leadingIcon ? (
           <Icon
             name={leadingIcon}
             size={ROW_LEADING_ICON_SIZE}
-            color={tokens.mutedForeground}
+            color={iconColor}
           />
         ) : null}
         <View className="min-w-0 flex-1">

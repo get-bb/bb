@@ -285,4 +285,12 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     ...mainWithoutModal,
     desktopOnly: true,
   }),
+  // A diagnostics action, so it ships unbound: discoverable in the palette,
+  // assignable in Settings → Keyboard. macOS-only because that is where the
+  // desktop shell offers the log viewer.
+  unassignedBinding("logs.openServerDaemon", {
+    all: ["mainSurface", "macPlatform"],
+    desktopOnly: true,
+    none: ["modalOpen"],
+  }),
 ];

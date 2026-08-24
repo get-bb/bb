@@ -1,40 +1,31 @@
-import { claudeTaskToolNameValues } from "@bb/domain";
 import type { ThreadEvent } from "@bb/domain";
 
-const SUPPRESSED_TIMELINE_TOOL_NAMES = new Set([
-  ...claudeTaskToolNameValues,
-  "TodoRead",
-  "TodoWrite",
-  "ToolSearch",
-  // AskUserQuestion is fully represented by its dedicated user-question
-  // lifecycle row. Keeping the generic tool-call row too produces a confusing
-  // duplicate ("Running tool: AskUserQuestion …" plus "Waiting for approval"
-  // alongside the question's own "Waiting for answer" row).
-  "AskUserQuestion",
-]);
-
 /**
- * A low-value tool call row: one the bridge marked `suppress` in its
- * presentation (grammar v3 — the bridge owns its tools' presentation), or,
- * for events persisted before presentation existed, one of the legacy names
- * above. Failed and interrupted calls always render.
+ * A low-value item row the timeline drops: one the bridge marked `suppress`
+ * in its presentation (grammar v3 — the bridge owns its items' presentation;
+ * a planSteps snapshot still feeds the todo banner because that extraction
+ * reads the events, not the rows). Failed and interrupted items always
+ * render. Core keeps no list of tool names to hide: an item persisted
+ * before presentation existed renders.
  */
 export function shouldSuppressLowValueToolCall(decoded: ThreadEvent): boolean {
-  if (
-    (decoded.type !== "item/started" && decoded.type !== "item/completed") ||
-    decoded.item.type !== "toolCall"
-  ) {
+  if (decoded.type !== "item/started" && decoded.type !== "item/completed") {
     return false;
   }
-
-  if (
-    decoded.item.presentation?.suppress !== true &&
-    !SUPPRESSED_TIMELINE_TOOL_NAMES.has(decoded.item.tool)
-  ) {
-    return false;
+  const item = decoded.item;
+  switch (item.type) {
+    case "toolCall":
+    case "fileRead":
+    case "search":
+    case "planSteps":
+    case "extension":
+    case "delegation":
+    case "fileChange":
+      if (item.presentation?.suppress !== true) {
+        return false;
+      }
+      return item.status === "pending" || item.status === "completed";
+    default:
+      return false;
   }
-
-  return (
-    decoded.item.status === "pending" || decoded.item.status === "completed"
-  );
 }

@@ -19,6 +19,7 @@ import {
   readTerminalOutputLines,
   type ActiveThinking,
   type Thread,
+  type ThreadEventItemPresentation,
   type ThreadTimelineActivePromptMode,
   type ThreadTimelineGoal,
   type ThreadTimelineModelFallback,
@@ -365,6 +366,7 @@ function buildWorkflowWorkRow(
     summary: message.summary,
     error: message.error,
     completedAt: message.completedAt,
+    ...rowPresentation(message),
   };
 }
 
@@ -400,6 +402,16 @@ function toConversationAttachments(
     localImagePaths: attachments.localImagePaths ?? [],
     localFilePaths: attachments.localFilePaths ?? [],
   };
+}
+
+/**
+ * The bridge's presentation, spread onto a row only when the item had one so
+ * pre-presentation rows keep an absent field rather than an `undefined` key.
+ */
+function rowPresentation(message: {
+  presentation?: ThreadEventItemPresentation;
+}): { presentation?: ThreadEventItemPresentation } {
+  return message.presentation ? { presentation: message.presentation } : {};
 }
 
 function convertActivityIntent(
@@ -599,6 +611,7 @@ function convertMessage(
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
           activityIntents: message.parsedIntents.map(convertActivityIntent),
+          ...rowPresentation(message),
         },
       ];
     case "tool-call":
@@ -611,13 +624,10 @@ function convertMessage(
           callId: message.callId,
           toolName: message.toolName,
           toolArgs: message.toolArgs,
-          ...(message.statusLabels
-            ? { statusLabels: message.statusLabels }
-            : {}),
           output: message.output,
           completedAt: message.completedAt,
           approvalStatus: message.approvalStatus,
-          activityIntents: message.parsedIntents.map(convertActivityIntent),
+          ...rowPresentation(message),
         },
       ];
     case "file-edit":
@@ -652,6 +662,7 @@ function convertMessage(
           stdout: message.stdout ?? null,
           stderr: message.stderr ?? null,
           approvalStatus: message.approvalStatus,
+          ...rowPresentation(message),
         };
       });
     case "web-search":
@@ -664,6 +675,7 @@ function convertMessage(
           callId: message.callId,
           queries: message.queries,
           completedAt: message.completedAt,
+          ...rowPresentation(message),
         },
       ];
     case "web-fetch":
@@ -678,6 +690,7 @@ function convertMessage(
           prompt: message.prompt,
           pattern: message.pattern,
           completedAt: message.completedAt,
+          ...rowPresentation(message),
         },
       ];
     case "image-view":
@@ -690,6 +703,65 @@ function convertMessage(
           callId: message.callId,
           path: message.path,
           completedAt: message.completedAt,
+          ...rowPresentation(message),
+        },
+      ];
+    case "file-read":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "file-read",
+          status: message.status,
+          callId: message.callId,
+          path: message.path,
+          cmd: message.cmd,
+          completedAt: message.completedAt,
+          ...rowPresentation(message),
+        },
+      ];
+    case "search":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "search",
+          status: message.status,
+          callId: message.callId,
+          mode: message.mode,
+          query: message.query,
+          path: message.path,
+          cmd: message.cmd,
+          completedAt: message.completedAt,
+          ...rowPresentation(message),
+        },
+      ];
+    case "plan-steps":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "plan-steps",
+          status: message.status,
+          callId: message.callId,
+          steps: message.steps,
+          explanation: message.explanation,
+          completedAt: message.completedAt,
+          ...rowPresentation(message),
+        },
+      ];
+    case "extension":
+      return [
+        {
+          ...buildTimelineRowBase(message, options.rowIdPrefix),
+          kind: "work",
+          workKind: "extension",
+          status: message.status,
+          callId: message.callId,
+          extensionKind: message.extensionKind,
+          payload: message.payload,
+          completedAt: message.completedAt,
+          presentation: message.presentation,
         },
       ];
     case "delegation": {
@@ -702,6 +774,8 @@ function convertMessage(
           status: message.status,
           callId: message.callId,
           toolName: message.toolName,
+          childRef: message.childRef,
+          background: message.background,
           subagentType: message.subagentType ?? null,
           description: message.description ?? null,
           output: message.output,
@@ -713,6 +787,7 @@ function convertMessage(
               workspaceRoot: options.workspaceRoot,
             }),
           ),
+          ...rowPresentation(message),
         },
       ];
     }

@@ -29,11 +29,24 @@ import {
   normalizeJson,
   readAllowlist,
   resolveSnapshotMode,
+  resolveSnapshotRowsDir,
   unifiedJsonDiff,
   type JsonDiff,
   type JsonValue,
   type LoadedCorpusThread,
 } from "./corpus-harness.js";
+import {
+  classifyRowSnapshotDiff,
+  createRowDiffReport,
+  describeRowChange,
+  formatRowDiffReport,
+  idleRowDiffClasses,
+  mergeRowDiffReport,
+  readRowDiffClasses,
+  resolveRowDiffClassesPath,
+  type RowDiffClass,
+  type RowSnapshotVariants,
+} from "./row-diff-classes.js";
 
 const PER_THREAD_TIMEOUT_MS = 5 * 60_000;
 const PRINTED_DIFF_THREAD_LIMIT = 3;
@@ -93,11 +106,10 @@ function buildRowSnapshot(
  * resolved file under the rows root even if that validation ever loosens.
  */
 function snapshotFilePath(
-  snapshotsDir: string,
+  rowsRoot: string,
   provider: string,
   threadId: string,
 ): string {
-  const rowsRoot = path.resolve(snapshotsDir, "rows");
   const filePath = path.resolve(rowsRoot, provider, `${threadId}.json`);
   if (!filePath.startsWith(`${rowsRoot}${path.sep}`)) {
     throw new Error(
@@ -120,14 +132,26 @@ function formatDiffs(diffs: readonly JsonDiff[], limit: number): string {
 const available = corpusAvailable();
 const mode = resolveSnapshotMode();
 const corpusThreads = available ? listCorpusThreads() : [];
+/**
+ * With BB_PROVIDER_CORPUS_ROW_CLASSES set, compare mode matches rows by
+ * identity and requires every change to fall into a named class from that
+ * file, instead of allowlisting JSON pointers. A projection change that adds
+ * or removes rows shifts every later pointer; the class file is the only
+ * way to prove such a change is exactly what the PR intended.
+ */
+const rowClassesPath = resolveRowDiffClassesPath();
 
 describe.skipIf(!available)("provider corpus row snapshots", () => {
   // The describe body still runs at collection time when the suite is skipped,
   // so everything here must tolerate a missing corpus.
   const corpusDir = resolveProviderCorpusDir() ?? "";
   const snapshotsDir = path.join(corpusDir, "snapshots");
+  const rowsDir = resolveSnapshotRowsDir(snapshotsDir);
   const allowlist = available ? readAllowlist(snapshotsDir) : [];
   const usedAllowlistEntries = new Set<number>();
+  const rowClasses: RowDiffClass[] =
+    available && rowClassesPath !== null ? readRowDiffClasses(rowClassesPath) : [];
+  const rowClassReport = createRowDiffReport();
   let registry: ProviderRegistryService | null = null;
   const totals = {
     bytes: 0,
@@ -159,7 +183,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
         totals.threads += 1;
         totals.rows += built.rows;
         totals.bytes += Buffer.byteLength(serialized);
-        const filePath = snapshotFilePath(snapshotsDir, provider, threadId);
+        const filePath = snapshotFilePath(rowsDir, provider, threadId);
 
         if (mode === "write") {
           // A baseline must not depend on the wall clock or on iteration
@@ -182,6 +206,40 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
         const expected = normalizeJson(
           JSON.parse(fs.readFileSync(filePath, "utf8")),
         );
+        if (rowClassesPath !== null) {
+          const report = createRowDiffReport();
+          const changes = classifyRowSnapshotDiff(
+            `${provider}/${threadId}`,
+            expected as RowSnapshotVariants,
+            built.snapshot as RowSnapshotVariants,
+            rowClasses,
+            report,
+          );
+          mergeRowDiffReport(rowClassReport, report);
+          totals.allowedDiffs += changes - report.unclassified.length;
+          if (report.unclassified.length > 0) {
+            totals.diffThreads.push(threadId);
+            if (totals.printedDiffThreads < PRINTED_DIFF_THREAD_LIMIT) {
+              totals.printedDiffThreads += 1;
+              console.log(
+                [
+                  `Row changes for ${threadId} (${provider}) outside every class in ${rowClassesPath}:`,
+                  ...report.unclassified
+                    .slice(0, 20)
+                    .map(
+                      (change) =>
+                        `  ${describeRowChange(change)} ${JSON.stringify(change).slice(0, 400)}`,
+                    ),
+                ].join("\n"),
+              );
+            }
+            const first = report.unclassified[0];
+            throw new Error(
+              `${threadId} (${provider}) has ${report.unclassified.length} row change(s) no class claims; first: ${first ? describeRowChange(first) : "?"}`,
+            );
+          }
+          return;
+        }
         const diffs = diffJson(expected, built.snapshot);
         const matched = applyAllowlist(
           allowlist,
@@ -209,7 +267,7 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
             );
           }
           throw new Error(
-            `${threadId} (${provider}) has ${matched.unallowed.length} row diff(s) not covered by snapshots/allowlist.json; first: ${matched.unallowed[0]?.pointer}`,
+            `${threadId} (${provider}) has ${matched.unallowed.length} row diff(s) not covered by the allowlist; first: ${matched.unallowed[0]?.pointer}`,
           );
         }
       } finally {
@@ -242,6 +300,16 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
           wallMs,
           diffThreads: totals.diffThreads,
           allowedDiffs: totals.allowedDiffs,
+          ...(rowClassesPath === null
+            ? {}
+            : {
+                rowClassesFile: rowClassesPath,
+                rowClasses: Object.fromEntries(rowClassReport.claims),
+                containerBoundsBy: Object.fromEntries(
+                  rowClassReport.containerBoundsBy,
+                ),
+                unclassified: rowClassReport.unclassified.length,
+              }),
         },
         null,
         2,
@@ -254,6 +322,21 @@ describe.skipIf(!available)("provider corpus row snapshots", () => {
       console.log(
         `Row snapshot diffs in ${totals.diffThreads.length} thread(s): ${totals.diffThreads.join(", ")}`,
       );
+    }
+    if (rowClassesPath !== null) {
+      // stdout, like the summary line: the console is silenced on success
+      // and the class counts are the run's evidence.
+      process.stdout.write(
+        `Row change classes (${rowClassesPath}):\n${formatRowDiffReport(rowClasses, rowClassReport)}\n`,
+      );
+      // A filtered run (`-t thr_…`) leaves most classes legitimately idle.
+      if (totals.threads === corpusThreads.length) {
+        expect(
+          idleRowDiffClasses(rowClasses, rowClassReport),
+          "every class in the row-classes file must claim at least one change",
+        ).toEqual([]);
+      }
+      return;
     }
     const usedEntries = allowlist.filter((_, index) =>
       usedAllowlistEntries.has(index),

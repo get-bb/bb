@@ -797,10 +797,13 @@ describe("background task timeline projection", () => {
       { includeNestedRows: false, turnMessageDetail: "summary" },
     );
 
+    // The requested model lived in the spawning Agent call's arguments, which
+    // core no longer reads by tool name; the v3 delegation carries it in its
+    // presentation detail, so the structured field stays null either way.
     expect(timeline.activeBackgroundCommands).toMatchObject([
       {
         description: "Inspect the mobile banner",
-        model: "haiku",
+        model: null,
         taskType: "local_agent",
       },
     ]);
@@ -847,7 +850,7 @@ describe("background task timeline projection", () => {
     expect(timeline.activeBackgroundCommands).toMatchObject([
       {
         itemId: "task:agent-restart#2",
-        model: "haiku",
+        model: null,
         status: "pending",
         taskType: "local_agent",
       },
@@ -902,7 +905,7 @@ describe("background task timeline projection", () => {
     expect(timeline.activeBackgroundCommands).toMatchObject([
       {
         itemId: "abc-i9",
-        model: "haiku",
+        model: null,
         status: "pending",
         taskType: "local_agent",
       },
@@ -958,7 +961,7 @@ describe("background task timeline projection", () => {
         (row) => row.itemId === "task:agent-restart#2",
       ),
     ).toMatchObject({
-      model: "haiku",
+      model: null,
       status: "completed",
       taskType: "local_agent",
     });

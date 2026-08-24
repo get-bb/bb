@@ -28,6 +28,11 @@ import {
   type ThreadEventTurnStatus,
   type JsonRpcMessage,
   type ProviderRuntimeEvent,
+  experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
+  experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
+  experimental_toolPresentation as toolPresentation,
+  experimental_webFetchPresentation as webFetchPresentation,
+  experimental_webSearchPresentation as webSearchPresentation,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   codexBridgeEnvelopeSchema,
@@ -45,18 +50,13 @@ import {
 } from "./schemas.js";
 import {
   AGENT_MESSAGE_PRESENTATION,
-  COMPACTION_PRESENTATION,
   PLAN_PRESENTATION,
-  REASONING_PRESENTATION,
   collabAgentPresentation,
   commandPresentation,
-  dynamicToolPresentation,
   fileChangePresentation,
   imageViewPresentation,
   mcpToolPresentation,
   planStepsPresentation,
-  webFetchPresentation,
-  webSearchPresentation,
 } from "./presentation.js";
 import {
   CODEX_GOAL_EXTENSION_KIND,
@@ -614,7 +614,7 @@ function normalizeCodexWebItemShape(
       }
       return {
         shape: { type: "webSearch", queries },
-        presentation: webSearchPresentation(queries),
+        presentation: webSearchPresentation(queries[0]),
       };
     }
     case "openPage": {
@@ -820,7 +820,7 @@ function translateCodexItemShape(
             : { durationMs: parsedItem.durationMs }),
         },
         presentation:
-          injected?.presentation ?? dynamicToolPresentation(parsedItem.tool),
+          injected?.presentation ?? toolPresentation(parsedItem.tool),
         ...toolStatusFields(parsedItem.status),
       };
     }

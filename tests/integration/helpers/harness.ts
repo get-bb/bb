@@ -18,10 +18,13 @@ import { createHostDaemonClient } from "@bb/host-daemon-contract";
 import { initDb } from "../../../apps/server/src/db.js";
 import { createLifecycleDedupers } from "../../../apps/server/src/lifecycle-dedupers.js";
 import { createApp } from "../../../apps/server/src/server.js";
+import { createAiServiceRegistry } from "../../../apps/server/src/services/ai/ai-service-registry.js";
 import { PendingInteractionLifecycle } from "../../../apps/server/src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../../apps/server/src/services/machine-auth.js";
-import { createProviderRegistryService } from "../../../apps/server/src/services/providers/provider-registry.js";
-import { resolveAcpAgentCapabilitiesForProviderId } from "../../../apps/server/src/services/system/acp-launch-spec.js";
+import {
+  createProviderRegistryService,
+  type ProviderRegistryService,
+} from "../../../apps/server/src/services/providers/provider-registry.js";
 import {
   recordFirstPartyProviderBridgeArtifacts,
   registerFakeProviders,
@@ -34,6 +37,7 @@ import {
 import { SkillTreeRegistry } from "../../../apps/server/src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../../apps/server/src/services/plugins/plugin-host-artifact-registry.js";
 import { createAppVersionService } from "../../../apps/server/src/services/system/app-version.js";
+import { createProviderNativeRootsCache } from "../../../apps/server/src/services/providers/native-roots.js";
 import { createBbAppManagedConfigReloader } from "../../../apps/server/src/services/system/bb-app-managed-config.js";
 import { createNoopTelemetryService } from "../../../apps/server/src/services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "../../../apps/server/src/services/terminals/terminal-session-lifecycle.js";
@@ -78,6 +82,12 @@ export interface RunningTestServer {
   db: DbConnection;
   hub: NotificationHub;
   machineAuth: Awaited<ReturnType<typeof createMachineAuthService>>;
+  /**
+   * Providers come only from plugin registrations. A test that needs a
+   * user-configured agent registers it here, exactly as the owning plugin
+   * would from its own settings.
+   */
+  providerRegistry: ProviderRegistryService;
 }
 
 export interface IntegrationHarness {
@@ -219,7 +229,6 @@ async function startIntegrationServer(
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-dev",
     builtinSkillsRootPath,
-    customAcpAgents: [],
     customModels: [],
     dataDir: serverDataDir,
     featureFlags: defaultFeatureFlags,
@@ -264,10 +273,7 @@ async function startIntegrationServer(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
-  const providerRegistry = createProviderRegistryService({
-    resolveAcpAgentCapabilities: (providerId) =>
-      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
-  });
+  const providerRegistry = createProviderRegistryService({});
   // Providers come only from plugin declarations. This harness runs no plugin
   // service, so it registers the first-party declarations directly, exactly as
   // their plugins would.
@@ -278,12 +284,11 @@ async function startIntegrationServer(
   // a `bridgeLaunch`, and the daemon runs that artifact through the real
   // bridge-protocol adapter exactly as it would a product provider's.
   await registerFakeProviders(providerRegistry, pluginHostArtifacts);
-  // Every first-party bridge except Pi's ships as a plugin artifact, and the
-  // daemon has no bridge for those providers without one on the wire. The
-  // dynamic ACP tier depends on it most: `acp-<slug>` ids are never
-  // registered, so the ACP plugin's artifact is the only thing that launches
-  // a configured agent.
+  // Every first-party bridge ships as a plugin artifact (pi's included), and
+  // the daemon has no bridge for a provider without one on the wire: the
+  // plugin's artifact is the only thing that launches it.
   await recordFirstPartyProviderBridgeArtifacts(pluginHostArtifacts);
+  const aiServices = createAiServiceRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -293,6 +298,7 @@ async function startIntegrationServer(
     machineAuth,
     providerRegistry,
     pluginHostArtifacts,
+    aiServices,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -306,7 +312,9 @@ async function startIntegrationServer(
     appVersion,
     bbAppManagedConfig,
     providerRegistry,
+    providerNativeRoots: createProviderNativeRootsCache(),
     pluginHostArtifacts,
+    aiServices,
     config,
     db,
     hub,
@@ -353,6 +361,7 @@ async function startIntegrationServer(
     db,
     hub,
     machineAuth,
+    providerRegistry,
     async close(): Promise<void> {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => {

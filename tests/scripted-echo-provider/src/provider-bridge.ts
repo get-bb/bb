@@ -21,6 +21,14 @@
  * - `fail_turn:<text>` / `prestart_fail:<text>` — raise a provider error
  *   carrying the text (underscores read as spaces) and settle the turn as
  *   failed, after or before the turn opens.
+ * - `recover:<kind>` — send an unsolicited `provider/recovery` notification
+ *   of that kind (`retryable: false`) for the thread right after the plan's
+ *   deltas: after the terminal delta of a failed or completed turn, after
+ *   `turn.open` for a held turn. `recover_now:<kind>` sends it right after
+ *   `turn.open` instead, while the turn is still running.
+ * - `bg_task` — open a `backgroundTask` item in the turn and leave it open
+ *   after the turn settles (a workflow that outlives its turn);
+ *   `bg_task_done` settles every task the thread left open.
  * - otherwise the turn answers `Response to: <prompt text>`.
  *
  * Process- and session-level behaviour (archived sessions, failing commands,
@@ -48,6 +56,7 @@ import {
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_GRAMMAR_V3,
   THREAD_DELTA_NOTIFICATION_METHOD,
+  createBridgeIo,
   initializeParamsSchema,
   modelListParamsSchema,
   skillsConfigureParamsSchema,
@@ -63,6 +72,9 @@ import {
   turnStartParamsSchema,
   turnSteerParamsSchema,
   experimental_defineProviderBridge,
+  providerRecoveryKindSchema,
+  runBridgeRequest,
+  type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { appendFileSync } from "node:fs";
 import { z } from "zod";
@@ -93,9 +105,17 @@ export const scriptedEchoOptionsSchema = z
   .object({
     /** Every session construction answers after this many ms. */
     startDelayMs: z.number().int().nonnegative().optional(),
-    /** `thread/start` answers `{ providerThreadId: <the bb thread id> }`. */
-    identityFromThreadId: z.boolean().optional(),
-    /** Answer thread/start with `{ threadId }` instead of an identity. */
+    /**
+     * Open the turn, play its deltas and settle it first, and answer the
+     * `turn/start` request only after this many ms — so a recovery hint the
+     * turn raises reaches the runtime while its turn/start is still in
+     * flight, whatever the read batching.
+     */
+    turnStartResponseDelayMs: z.number().int().nonnegative().optional(),
+    /**
+     * Answer thread/start, thread/resume and thread/fork with `{ threadId }`
+     * instead of an identity.
+     */
     answerStartWithoutIdentity: z.boolean().optional(),
     /**
      * Reject resume/fork/turn.start/turn.steer with the codex-shaped
@@ -119,8 +139,9 @@ export const scriptedEchoOptionsSchema = z
      * Answer these methods with a JSON-RPC error carrying this message and
      * `code` (default -32000; e.g. NO_ACTIVE_TURN to reject a steer the way a
      * provider with no live turn does). With `times`, only the first that
-     * many calls of the method fail (counted per process) and later ones are
-     * handled normally — a transient failure.
+     * many calls of the method fail (counted per process); later calls fall
+     * through to the next entry for the method, or are handled normally — a
+     * transient failure.
      */
     failMethods: z
       .array(
@@ -129,6 +150,16 @@ export const scriptedEchoOptionsSchema = z
           message: z.string(),
           code: z.number().int().optional(),
           times: z.number().int().positive().optional(),
+          /**
+           * Attach a typed recovery hint to the rejection
+           * (`error.data.recovery`, the message is the entry's message).
+           */
+          recovery: z
+            .object({
+              kind: providerRecoveryKindSchema,
+              retryable: z.boolean(),
+            })
+            .optional(),
         }),
       )
       .optional(),
@@ -152,6 +183,12 @@ export const scriptedEchoOptionsSchema = z
      * with its provider-thread identity.
      */
     toolCallThreadIdHint: z.string().min(1).optional(),
+    /**
+     * The bb thread id the bridge puts on its unsolicited `provider/recovery`
+     * notifications instead of the session's own — a provider hinting about
+     * a thread its process does not host.
+     */
+    recoveryThreadIdHint: z.string().min(1).optional(),
     /**
      * The `approvalEnforcedBy` the handshake reports (default `runtime`).
      * Process-level only (`SCRIPTED_ECHO_OPTIONS`): `initialize` carries no
@@ -269,8 +306,15 @@ type PendingReply =
 const sessions = new Map<string, Session>();
 const pendingReplies = new Map<JsonRpcId, PendingReply>();
 const unarchivedSessionIds = new Set<string>();
-/** How many times each method has failed under a bounded `failMethods` entry. */
-const scriptedFailureCounts = new Map<ScriptedMethod, number>();
+/** Sessions `thread/archive` archived at runtime (until `thread/unarchive`). */
+const archivedSessionIds = new Set<string>();
+/** How many times each `failMethods` entry (by index) has fired. */
+const scriptedFailureCounts = new Map<number, number>();
+/** `bg_task` items still open per bb thread id, until `bg_task_done`. */
+const openBackgroundTasks = new Map<
+  string,
+  { providerItemId: string; familyId: string }[]
+>();
 let discardFailed = false;
 let providerThreadCounter = 0;
 let outboundRequestCounter = 0;
@@ -279,32 +323,36 @@ let outboundRequestCounter = 0;
 // Wire helpers
 // ---------------------------------------------------------------------------
 
-function writeMessage(message: Record<string, unknown>): void {
-  process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
-}
+/** A message this bridge writes on its own: a notification or a request. */
+type OutboundMessage = { jsonrpc: "2.0" } & Record<string, unknown>;
 
-function respondResult(id: JsonRpcId, result: unknown): void {
-  writeMessage({ id, result });
-}
-
-function respondError(
-  id: JsonRpcId,
-  code: number,
-  message: string,
-  data?: unknown,
-): void {
-  writeMessage({
-    id,
-    error: { code, message, ...(data !== undefined ? { data } : {}) },
-  });
-}
+/**
+ * The single stdout writer — protocol traffic only, never stray logs. The
+ * kit's `sendResult`/`sendError` answer requests; `send` carries the rest.
+ */
+const io = createBridgeIo<OutboundMessage>();
 
 function notify(method: string, params: Record<string, unknown>): void {
-  writeMessage({ method, params });
+  io.send({ jsonrpc: "2.0", method, params });
 }
 
 function emitDeltas(threadId: string, deltas: ThreadDelta[]): void {
   notify(THREAD_DELTA_NOTIFICATION_METHOD, { threadId, deltas });
+}
+
+function emitRecoveryHint(
+  threadId: string,
+  kind: ProviderRecoveryHint["kind"] | null,
+): void {
+  if (kind === null) {
+    return;
+  }
+  notify(BRIDGE_NOTIFICATION_METHODS.providerRecovery, {
+    threadId: sessions.get(threadId)?.options.recoveryThreadIdHint ?? threadId,
+    kind,
+    message: `scripted ${kind}`,
+    retryable: false,
+  });
 }
 
 function sendRequest(
@@ -313,7 +361,7 @@ function sendRequest(
 ): JsonRpcId {
   outboundRequestCounter += 1;
   const id = `scripted-${outboundRequestCounter}`;
-  writeMessage({ id, method, params });
+  io.send({ jsonrpc: "2.0", id, method, params });
   return id;
 }
 
@@ -350,6 +398,14 @@ interface TurnPlan {
    * error before the turn opens (a turnless, thread-scoped error).
    */
   failure: { text: string; beforeTurn: boolean } | null;
+  /** `recover:<kind>`: an unsolicited recovery hint after the plan's deltas. */
+  recoverKind: ProviderRecoveryHint["kind"] | null;
+  /** `recover_now:<kind>`: the hint right after `turn.open`, mid-turn. */
+  recoverNowKind: ProviderRecoveryHint["kind"] | null;
+  /** `bg_task`: open a background task the turn's settlement leaves open. */
+  backgroundTask: boolean;
+  /** `bg_task_done`: settle every background task the thread left open. */
+  settleBackgroundTasks: boolean;
 }
 
 function promptText(input: readonly PromptInput[]): string {
@@ -379,7 +435,19 @@ function parseTurnPlan(inputText: string): TurnPlan {
     inputText,
   );
   const failureText = prestartFailMatch?.[1] ?? failMatch?.[1];
+  const recoverMatch = /(?:^|\s)recover:([^\s]+)(?:\s|$)/u.exec(inputText);
+  const recoverKind = providerRecoveryKindSchema.safeParse(recoverMatch?.[1]);
+  const recoverNowMatch = /(?:^|\s)recover_now:([^\s]+)(?:\s|$)/u.exec(
+    inputText,
+  );
+  const recoverNowKind = providerRecoveryKindSchema.safeParse(
+    recoverNowMatch?.[1],
+  );
   return {
+    recoverKind: recoverKind.success ? recoverKind.data : null,
+    recoverNowKind: recoverNowKind.success ? recoverNowKind.data : null,
+    backgroundTask: /(?:^|\s)bg_task(?:\s|$)/u.test(inputText),
+    settleBackgroundTasks: /(?:^|\s)bg_task_done(?:\s|$)/u.test(inputText),
     approvalKind,
     delayMs: delayMatch?.[1] === undefined ? 0 : Number(delayMatch[1]),
     questionRequested: questionMatch !== null,
@@ -543,16 +611,72 @@ function completeTurn(
   emitDeltas(session.threadId, deltas);
 }
 
+/**
+ * `bg_task`: a background task opened inside the turn, the way claude opens a
+ * workflow. Nothing settles it — not the turn's own boundary — until a later
+ * `bg_task_done`, so a thread can be idle while the process still holds its
+ * live work.
+ */
+function openBackgroundTask(session: Session, providerTurnId: string): void {
+  const providerItemId = `bg-${session.turnCount}`;
+  const familyId = `bg-family-${session.threadId}-${session.turnCount}`;
+  emitDeltas(session.threadId, [
+    {
+      kind: "item.open",
+      key: { providerItemId },
+      item: {
+        type: "backgroundTask",
+        familyId,
+        taskType: "workflow",
+        description: "scripted background task",
+        status: "pending",
+        taskStatus: "running",
+        skipTranscript: false,
+      },
+      providerTurnId,
+    },
+  ]);
+  const open = openBackgroundTasks.get(session.threadId) ?? [];
+  open.push({ providerItemId, familyId });
+  openBackgroundTasks.set(session.threadId, open);
+  logProcessStep(`bg_task/open:${process.pid}:${session.threadId}`);
+}
+
+/** `bg_task_done`: the thread's open background tasks settle as completed. */
+function settleBackgroundTasks(session: Session): void {
+  const open = openBackgroundTasks.get(session.threadId) ?? [];
+  openBackgroundTasks.delete(session.threadId);
+  emitDeltas(
+    session.threadId,
+    open.map((task) => ({
+      kind: "item.close",
+      key: { providerItemId: task.providerItemId },
+      status: "completed",
+      item: {
+        type: "backgroundTask",
+        familyId: task.familyId,
+        taskType: "workflow",
+        description: "scripted background task",
+        status: "completed",
+        taskStatus: "completed",
+        skipTranscript: false,
+      },
+    })),
+  );
+}
+
 function scheduleCompletion(
   session: Session,
   responseText: string,
   delayMs: number,
+  recoverKind: ProviderRecoveryHint["kind"] | null = null,
 ): void {
   if (session.activeTurn === null) {
     return;
   }
   session.activeTurn.timer = setTimeout(() => {
     completeTurn(session, "completed", responseText);
+    emitRecoveryHint(session.threadId, recoverKind);
   }, delayMs);
 }
 
@@ -581,6 +705,7 @@ function beginTurn(args: {
         settlesTurn: true,
       },
     ]);
+    emitRecoveryHint(session.threadId, plan.recoverKind);
     return;
   }
   session.turnCount += 1;
@@ -605,8 +730,16 @@ function beginTurn(args: {
     });
   }
   emitDeltas(session.threadId, deltas);
+  emitRecoveryHint(session.threadId, plan.recoverNowKind);
+  if (plan.backgroundTask) {
+    openBackgroundTask(session, providerTurnId);
+  }
+  if (plan.settleBackgroundTasks) {
+    settleBackgroundTasks(session);
+  }
 
   if (plan.holdTurn) {
+    emitRecoveryHint(session.threadId, plan.recoverKind);
     return;
   }
   if (plan.failure !== null) {
@@ -621,6 +754,7 @@ function beginTurn(args: {
         providerTurnId,
       },
     ]);
+    emitRecoveryHint(session.threadId, plan.recoverKind);
     return;
   }
 
@@ -649,7 +783,8 @@ function beginTurn(args: {
   if (plan.questionRequested) {
     outboundRequestCounter += 1;
     const requestId = `scripted-${outboundRequestCounter}`;
-    writeMessage({
+    io.send({
+      jsonrpc: "2.0",
       id: requestId,
       method: BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
       params: {
@@ -685,7 +820,7 @@ function beginTurn(args: {
     });
     return;
   }
-  scheduleCompletion(session, plan.responseText, plan.delayMs);
+  scheduleCompletion(session, plan.responseText, plan.delayMs, plan.recoverKind);
 }
 
 // ---------------------------------------------------------------------------
@@ -801,20 +936,31 @@ function archivedSessionError(providerThreadId: string): string {
 
 /**
  * The archived-session gate: a fork reads its source session, everything
- * else acts on the thread's own session.
+ * else acts on the thread's own session. A session is archived when the
+ * `archivedSession` script says so from the start (until the first
+ * `thread/unarchive`) or when `thread/archive` archived it at runtime.
  */
 function rejectIfArchived(
   id: JsonRpcId,
   options: ScriptedEchoOptions,
   providerThreadId: string,
 ): boolean {
-  if (
-    options.archivedSession !== true ||
-    unarchivedSessionIds.has(providerThreadId)
-  ) {
+  const scriptedArchived =
+    options.archivedSession === true &&
+    !unarchivedSessionIds.has(providerThreadId);
+  if (!scriptedArchived && !archivedSessionIds.has(providerThreadId)) {
     return false;
   }
-  respondError(id, -32000, archivedSessionError(providerThreadId));
+  const message = archivedSessionError(providerThreadId);
+  // The codex shape: the text for the user-visible failure, the typed hint
+  // on the error for the runtime's unarchive-and-retry action.
+  io.sendError(id, -32000, message, {
+    recovery: {
+      kind: "sessionArchived",
+      message,
+      retryable: true,
+    } satisfies ProviderRecoveryHint,
+  });
   if (options.exitAfterArchivedError === true) {
     exitProcess();
   }
@@ -846,13 +992,7 @@ function openSession(args: {
   return session;
 }
 
-function mintProviderThreadId(
-  options: ScriptedEchoOptions,
-  threadId: string,
-): string {
-  if (options.identityFromThreadId === true) {
-    return threadId;
-  }
+function mintProviderThreadId(options: ScriptedEchoOptions): string {
   providerThreadCounter += 1;
   return options.identifyProcess === true
     ? `prov-${process.pid}-${providerThreadCounter}`
@@ -886,12 +1026,16 @@ function afterStartDelay(options: ScriptedEchoOptions, run: () => void): void {
 type RequestHandler = (id: JsonRpcId, params: unknown) => void;
 
 function invalidParams(id: JsonRpcId, method: string, issues: unknown): void {
-  respondError(
+  // The issues ride `error.data` as the validator produced them.
+  io.send({
+    jsonrpc: "2.0",
     id,
-    BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
-    `Invalid params for ${method}`,
-    issues,
-  );
+    error: {
+      code: BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+      message: `Invalid params for ${method}`,
+      data: issues,
+    },
+  });
 }
 
 const MODEL_LIST = {
@@ -918,7 +1062,7 @@ const handlers: Record<string, RequestHandler> = {
       invalidParams(id, BRIDGE_REQUEST_METHODS.initialize, parsed.error.issues);
       return;
     }
-    respondResult(id, {
+    io.sendResult(id, {
       protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
       capabilities: {
         sessionRestore: true,
@@ -929,6 +1073,7 @@ const handlers: Record<string, RequestHandler> = {
         approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
         grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
         steerMode: "inject",
+        skills: { configure: true },
       },
     });
   },
@@ -939,11 +1084,11 @@ const handlers: Record<string, RequestHandler> = {
       invalidParams(id, BRIDGE_REQUEST_METHODS.modelList, parsed.error.issues);
       return;
     }
-    respondResult(id, MODEL_LIST);
+    io.sendResult(id, MODEL_LIST);
   },
 
-  [BRIDGE_REQUEST_METHODS.experimentalProviderHealth]: (id) => {
-    respondResult(id, {
+  [BRIDGE_REQUEST_METHODS.providerHealth]: (id) => {
+    io.sendResult(id, {
       supported: true,
       health: {
         status: "ready",
@@ -959,15 +1104,15 @@ const handlers: Record<string, RequestHandler> = {
     });
   },
 
-  [BRIDGE_REQUEST_METHODS.experimentalProviderUsage]: (id) => {
-    respondResult(id, {
+  [BRIDGE_REQUEST_METHODS.providerUsage]: (id) => {
+    io.sendResult(id, {
       supported: true,
       usage: { status: "ok", accountEmail: null, planLabel: null, windows: [] },
     });
   },
 
-  [BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus]: (id) => {
-    respondResult(id, {
+  [BRIDGE_REQUEST_METHODS.providerInstallationStatus]: (id) => {
+    io.sendResult(id, {
       executableName: "fake-provider",
       executablePath: "/fake/bin/fake-provider",
       installed: true,
@@ -983,8 +1128,8 @@ const handlers: Record<string, RequestHandler> = {
     });
   },
 
-  [BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun]: (id) => {
-    respondResult(id, {
+  [BRIDGE_REQUEST_METHODS.providerInstallationRun]: (id) => {
+    io.sendResult(id, {
       available: false,
       message: "Fake provider installation is unavailable",
     });
@@ -1000,7 +1145,7 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
-    respondResult(id, {});
+    io.sendResult(id, {});
   },
 
   [BRIDGE_REQUEST_METHODS.threadStart]: (id, params) => {
@@ -1017,11 +1162,11 @@ const handlers: Record<string, RequestHandler> = {
     afterStartDelay(options, () => {
       const session = openSession({
         threadId: parsed.data.threadId,
-        providerThreadId: mintProviderThreadId(options, parsed.data.threadId),
+        providerThreadId: mintProviderThreadId(options),
         options,
       });
       logProcessStep(`thread/start:${process.pid}:${parsed.data.threadId}`);
-      respondResult(id, identityResult(session));
+      io.sendResult(id, identityResult(session));
       if (parsed.data.input !== undefined && parsed.data.input.length > 0) {
         beginTurn({ session, input: parsed.data.input });
       }
@@ -1051,7 +1196,7 @@ const handlers: Record<string, RequestHandler> = {
       logProcessStep(
         `thread/resume:${process.pid}:${parsed.data.threadId}:${parsed.data.providerThreadId}`,
       );
-      respondResult(id, identityResult(session));
+      io.sendResult(id, identityResult(session));
     });
   },
 
@@ -1068,10 +1213,10 @@ const handlers: Record<string, RequestHandler> = {
     afterStartDelay(options, () => {
       const session = openSession({
         threadId: parsed.data.threadId,
-        providerThreadId: mintProviderThreadId(options, parsed.data.threadId),
+        providerThreadId: mintProviderThreadId(options),
         options,
       });
-      respondResult(id, identityResult(session));
+      io.sendResult(id, identityResult(session));
     });
   },
 
@@ -1083,7 +1228,7 @@ const handlers: Record<string, RequestHandler> = {
     }
     const session = sessions.get(parsed.data.threadId);
     if (session === undefined) {
-      respondError(id, -32000, `Unknown thread: ${parsed.data.threadId}`);
+      io.sendError(id, -32000, `Unknown thread: ${parsed.data.threadId}`);
       return;
     }
     session.options = scriptedOptionsFor(parsed.data.options.providerOptions);
@@ -1093,15 +1238,20 @@ const handlers: Record<string, RequestHandler> = {
     logProcessStep(
       `turn/start:${process.pid}:${parsed.data.threadId}:${promptText(parsed.data.input)}`,
     );
-    respondResult(id, {});
-    if (session.options.swallowTurnStart === true) {
-      return;
+    const responseDelayMs = session.options.turnStartResponseDelayMs;
+    if (responseDelayMs === undefined) {
+      io.sendResult(id, {});
     }
-    beginTurn({
-      session,
-      input: parsed.data.input,
-      clientRequestId: parsed.data.clientRequestId,
-    });
+    if (session.options.swallowTurnStart !== true) {
+      beginTurn({
+        session,
+        input: parsed.data.input,
+        clientRequestId: parsed.data.clientRequestId,
+      });
+    }
+    if (responseDelayMs !== undefined) {
+      setTimeout(() => io.sendResult(id, {}), responseDelayMs);
+    }
   },
 
   [BRIDGE_REQUEST_METHODS.turnSteer]: (id, params) => {
@@ -1112,7 +1262,7 @@ const handlers: Record<string, RequestHandler> = {
     }
     const session = sessions.get(parsed.data.threadId);
     if (session === undefined) {
-      respondError(id, -32000, `Unknown thread: ${parsed.data.threadId}`);
+      io.sendError(id, -32000, `Unknown thread: ${parsed.data.threadId}`);
       return;
     }
     const options = scriptedOptionsFor(parsed.data.options.providerOptions);
@@ -1120,11 +1270,14 @@ const handlers: Record<string, RequestHandler> = {
       return;
     }
     if (session.activeTurn === null) {
-      respondError(
-        id,
-        BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-        `No active turn to steer (expected ${parsed.data.expectedTurnId})`,
-      );
+      const message = `No active turn to steer (expected ${parsed.data.expectedTurnId})`;
+      io.sendError(id, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+        recovery: {
+          kind: "staleTurn",
+          message,
+          retryable: false,
+        } satisfies ProviderRecoveryHint,
+      });
       return;
     }
     // The steer is acknowledged into the live turn; the echo answers the
@@ -1136,7 +1289,7 @@ const handlers: Record<string, RequestHandler> = {
         providerTurnId: session.activeTurn.providerTurnId,
       },
     ]);
-    respondResult(id, {});
+    io.sendResult(id, {});
   },
 
   [BRIDGE_REQUEST_METHODS.threadStop]: (id, params) => {
@@ -1149,7 +1302,7 @@ const handlers: Record<string, RequestHandler> = {
     logProcessStep(`thread/stop:${process.pid}:${parsed.data.threadId}`);
     const stopOptions = session?.options ?? processOptions;
     if (stopOptions.failStopForThreadIds?.includes(parsed.data.threadId)) {
-      respondError(id, -32000, `stop refused for ${parsed.data.threadId}`);
+      io.sendError(id, -32000, `stop refused for ${parsed.data.threadId}`);
       return;
     }
     if (
@@ -1157,12 +1310,15 @@ const handlers: Record<string, RequestHandler> = {
       parsed.data.intent === "interrupt" &&
       session.activeTurn !== null
     ) {
+      // The boundary goes out before the answer: the runtime detaches the
+      // thread once thread/stop is answered.
       completeTurn(session, "interrupted", "");
     }
-    if (parsed.data.intent === "release") {
-      sessions.delete(parsed.data.threadId);
-    }
-    respondResult(id, {});
+    // Protocol rule: after thread/stop (either intent) the bridge holds
+    // nothing for the thread.
+    sessions.delete(parsed.data.threadId);
+    openBackgroundTasks.delete(parsed.data.threadId);
+    io.sendResult(id, {});
   },
 
   [BRIDGE_REQUEST_METHODS.threadDiscard]: (id, params) => {
@@ -1179,11 +1335,11 @@ const handlers: Record<string, RequestHandler> = {
     const options = session?.options ?? processOptions;
     if (options.discardFailsOnce === true && !discardFailed) {
       discardFailed = true;
-      respondError(id, -32000, "discard is temporarily unavailable");
+      io.sendError(id, -32000, "discard is temporarily unavailable");
       return;
     }
     sessions.delete(parsed.data.threadId);
-    respondResult(id, {});
+    io.sendResult(id, {});
   },
 
   [BRIDGE_REQUEST_METHODS.threadArchive]: (id, params) => {
@@ -1196,7 +1352,8 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
-    respondResult(id, {});
+    archivedSessionIds.add(parsed.data.providerThreadId);
+    io.sendResult(id, {});
   },
 
   [BRIDGE_REQUEST_METHODS.threadUnarchive]: (id, params) => {
@@ -1212,11 +1369,12 @@ const handlers: Record<string, RequestHandler> = {
     const session = sessions.get(parsed.data.threadId);
     const options = session?.options ?? processOptions;
     if (options.unarchiveFails === true) {
-      respondError(id, -32000, "unarchive is unavailable");
+      io.sendError(id, -32000, "unarchive is unavailable");
       return;
     }
     unarchivedSessionIds.add(parsed.data.providerThreadId);
-    respondResult(id, {});
+    archivedSessionIds.delete(parsed.data.providerThreadId);
+    io.sendResult(id, {});
   },
 
   [BRIDGE_REQUEST_METHODS.threadNameSet]: (id, params) => {
@@ -1229,7 +1387,7 @@ const handlers: Record<string, RequestHandler> = {
       );
       return;
     }
-    respondResult(id, {});
+    io.sendResult(id, {});
     if (sessions.has(parsed.data.threadId)) {
       emitDeltas(parsed.data.threadId, [
         { kind: "thread.name", name: parsed.data.title },
@@ -1265,10 +1423,10 @@ const handlers: Record<string, RequestHandler> = {
     if (options.goalClearNotifyDelayMs === undefined) {
       // The cleared signal precedes the answer, as codex persists it.
       notifyCleared();
-      respondResult(id, answer);
+      io.sendResult(id, answer);
       return;
     }
-    respondResult(id, answer);
+    io.sendResult(id, answer);
     setTimeout(notifyCleared, options.goalClearNotifyDelayMs);
   },
 };
@@ -1302,21 +1460,42 @@ function applyScriptedMethodPolicy(
     exitProcess();
   }
   if (options.unsupportedMethods?.includes(scripted.data)) {
-    respondError(
+    io.sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
       `Method not found: ${method}`,
     );
     return "handled";
   }
-  const failure = options.failMethods?.find(
-    (entry) => entry.method === scripted.data,
+  // Entries for one method apply in order: a bounded entry (`times`) hands
+  // over to the next once exhausted, so a script can spell a sequence such
+  // as "rate limited once, then auth required".
+  const failureIndex = (options.failMethods ?? []).findIndex(
+    (entry, index) =>
+      entry.method === scripted.data &&
+      (entry.times === undefined ||
+        (scriptedFailureCounts.get(index) ?? 0) < entry.times),
   );
+  const failure =
+    failureIndex === -1 ? undefined : options.failMethods?.[failureIndex];
   if (failure !== undefined) {
-    const failedSoFar = scriptedFailureCounts.get(scripted.data) ?? 0;
-    if (failure.times === undefined || failedSoFar < failure.times) {
-      scriptedFailureCounts.set(scripted.data, failedSoFar + 1);
-      respondError(id, failure.code ?? -32000, failure.message);
+    const failedSoFar = scriptedFailureCounts.get(failureIndex) ?? 0;
+    {
+      scriptedFailureCounts.set(failureIndex, failedSoFar + 1);
+      io.sendError(
+        id,
+        failure.code ?? -32000,
+        failure.message,
+        failure.recovery === undefined
+          ? undefined
+          : {
+              recovery: {
+                kind: failure.recovery.kind,
+                message: failure.message,
+                retryable: failure.recovery.retryable,
+              } satisfies ProviderRecoveryHint,
+            },
+      );
       return "handled";
     }
   }
@@ -1387,14 +1566,22 @@ export function handleLine(line: string): void {
   }
   const handler = handlers[method];
   if (handler === undefined) {
-    respondError(
+    io.sendError(
       id,
       BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
       `Method not found: ${method}`,
     );
     return;
   }
-  handler(id, params);
+  // A handler that throws answers an error instead of taking the bridge
+  // down; a thrown `experimental_BridgeRecoveryError` answers with its typed
+  // hint as `error.data.recovery`. The handlers are synchronous, so the
+  // answer is on the wire before a scripted exit below.
+  runBridgeRequest({
+    request: { id, method, params },
+    sendError: io.sendError,
+    handleRequest: async (request) => handler(request.id, request.params),
+  });
   if (options.exitAfter === method) {
     exitProcess();
   }

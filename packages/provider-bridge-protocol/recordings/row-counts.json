@@ -241,7 +241,7 @@
   },
   "codex/user-question": {
     "events": 18,
-    "rows": 1,
+    "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
@@ -252,7 +252,7 @@
     "grammarDrops": 0
   },
   "pi/compaction": {
-    "events": 66,
+    "events": 38,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
@@ -276,7 +276,7 @@
     "grammarDrops": 0
   },
   "pi/steer": {
-    "events": 66,
+    "events": 38,
     "rows": 3,
     "unhandled": 2,
     "grammarDrops": 0
@@ -288,20 +288,20 @@
     "grammarDrops": 0
   },
   "pi/subagent": {
-    "events": 41,
+    "events": 39,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "pi/turn-tools": {
-    "events": 38,
+    "events": 18,
     "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },
   "pi/user-question": {
     "events": 11,
-    "rows": 1,
+    "rows": 2,
     "unhandled": 0,
     "grammarDrops": 0
   },

@@ -24,8 +24,15 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  Worker,
+  isMainThread,
+  parentPort,
+  workerData,
+} from "node:worker_threads";
 import { rollup } from "rollup";
 import { dts } from "rollup-plugin-dts";
 
@@ -34,8 +41,18 @@ import { normalizeBundledDts } from "./normalize-bundled-dts.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const pkgRoot = path.resolve(here, "..");
 const pkgsDir = path.resolve(pkgRoot, "..");
-const publicApiModule = path.join(pkgsDir, "server-contract/src/public-api.ts");
-const publicApiStub = path.join(here, "public-api-stub.d.ts");
+// Server-contract modules whose real declarations are not portable into a
+// flattened .d.ts, each redirected to a loose stub (the stub headers say why).
+const STUBBED_MODULES = new Map([
+  [
+    path.join(pkgsDir, "server-contract/src/public-api.ts"),
+    path.join(here, "public-api-stub.d.ts"),
+  ],
+  [
+    path.join(pkgsDir, "server-contract/src/api-client.ts"),
+    path.join(here, "api-client-stub.d.ts"),
+  ],
+]);
 const outDir = path.join(pkgRoot, "bundled-types");
 const outputs = {
   "bb-plugin-sdk.d.ts": path.join(pkgRoot, "src/index.ts"),
@@ -44,9 +61,14 @@ const outputs = {
     pkgRoot,
     "src/provider-bridge.ts",
   ),
+  "bb-plugin-sdk-ai-services.d.ts": path.join(pkgRoot, "src/ai-services.ts"),
   "bb-plugin-sdk-provider-bridge-testing.d.ts": path.join(
     pkgRoot,
     "src/provider-bridge-testing.ts",
+  ),
+  "bb-plugin-sdk-provider-bridge-acp.d.ts": path.join(
+    pkgRoot,
+    "src/provider-bridge-acp.ts",
   ),
   "bb-plugin-sdk-host.d.ts": path.join(pkgRoot, "src/host.ts"),
   "bb-plugin-sdk-internal-composer-customization-validation.d.ts": path.join(
@@ -107,16 +129,18 @@ function resolveBbSource(id) {
 const inlineWorkspace = {
   name: "inline-bb-workspace",
   resolveId(id, importer) {
-    // Redirect server-contract's non-portable route table to the loose stub,
-    // whether imported by bare specifier or by its own barrel's relative path.
+    // Redirect server-contract's non-portable modules to their loose stubs,
+    // whether imported by bare specifier or by a sibling's relative path.
     if (importer) {
       const asTs = path.resolve(
         path.dirname(importer),
         id.replace(/\.js$/, ".ts"),
       );
-      if (asTs === publicApiModule) return publicApiStub;
+      const stub = STUBBED_MODULES.get(asTs);
+      if (stub) return stub;
     }
-    if (id === publicApiModule) return publicApiStub;
+    const stub = STUBBED_MODULES.get(id);
+    if (stub) return stub;
     return resolveBbSource(id);
   },
 };
@@ -147,23 +171,68 @@ const HEADER = [
   "// and read the real source: https://github.com/get-bb/bb",
 ].join("\n");
 
-const generated = {};
-for (const [fileName, entry] of Object.entries(outputs)) {
-  generated[fileName] = normalizeBundledDts(
-    `${HEADER}\n\n${await bundle(entry)}`,
+function generateBundle(entry) {
+  return bundle(entry).then((code) =>
+    normalizeBundledDts(`${HEADER}\n\n${code}`),
   );
 }
 
-mkdirSync(outDir, { recursive: true });
+// Each bundle builds its own TypeScript program, which is CPU-bound and
+// single-threaded inside rollup-plugin-dts; the six large entries take 2–7s
+// apiece. They are independent, so this file re-runs itself as a worker per
+// entry, as many at a time as there are cores, and the serial ~27s becomes
+// roughly the longest single bundle.
+if (!isMainThread) {
+  parentPort.postMessage(await generateBundle(workerData.entry));
+} else {
+  await main();
+}
 
-for (const [fileName, content] of Object.entries(generated)) {
-  const target = path.join(outDir, fileName);
-  const current = existsSync(target) ? readFileSync(target, "utf8") : null;
-  if (current === content) {
-    console.log(`Unchanged ${path.relative(pkgRoot, target)}`);
-  } else {
-    writeAtomically(target, content);
-    console.log(`Wrote ${path.relative(pkgRoot, target)}`);
+async function main() {
+  const generated = {};
+  const queue = Object.entries(outputs);
+  const workers = Math.min(queue.length, availableParallelism());
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        const [fileName, entry] = next;
+        generated[fileName] = await generateInWorker(entry);
+      }
+    }),
+  );
+  // Keep the declared order so a diff of the outputs stays readable.
+  writeOutputs(
+    Object.fromEntries(
+      Object.keys(outputs).map((fileName) => [fileName, generated[fileName]]),
+    ),
+  );
+}
+
+function generateInWorker(entry) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL(import.meta.url), {
+      workerData: { entry },
+    });
+    worker.once("message", resolve);
+    worker.once("error", reject);
+    worker.once("exit", (code) => {
+      if (code !== 0) reject(new Error(`bundle worker exited with ${code}`));
+    });
+  });
+}
+
+function writeOutputs(generated) {
+  mkdirSync(outDir, { recursive: true });
+
+  for (const [fileName, content] of Object.entries(generated)) {
+    const target = path.join(outDir, fileName);
+    const current = existsSync(target) ? readFileSync(target, "utf8") : null;
+    if (current === content) {
+      console.log(`Unchanged ${path.relative(pkgRoot, target)}`);
+    } else {
+      writeAtomically(target, content);
+      console.log(`Wrote ${path.relative(pkgRoot, target)}`);
+    }
   }
 }
 

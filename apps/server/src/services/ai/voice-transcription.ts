@@ -6,10 +6,10 @@ import {
 } from "@bb/config/inference-model";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { runLiveCommandAndWait } from "../hosts/live-command-wait.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
+import { AiServiceCallError } from "./ai-service-call.js";
+import type { AiServiceRegistration } from "./ai-service-registry.js";
 import {
   INFERENCE_POLICY,
   inferenceCompleteWithFallback,
@@ -25,6 +25,11 @@ type OptionalJsonValue = JsonValue | null | undefined;
 
 const OPENAI_TRANSCRIPTION_PROVIDER = "openai";
 const VOICE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024;
+/**
+ * A plugin-served transcription travels as base64 inside one host RPC call,
+ * whose JSON payload is capped at 8 MiB; this is the audio size that fits.
+ */
+const AI_SERVICE_VOICE_MAX_BYTES = 5 * 1024 * 1024;
 const voiceTranscriptionSchema = Type.Object({ text: Type.String() });
 
 function parseTranscriptionModel(model: string): ProviderModelInfo {
@@ -34,9 +39,15 @@ function parseTranscriptionModel(model: string): ProviderModelInfo {
   });
 }
 
-function isCodexVoiceTranscriptionAvailable(
+function voiceService(
   deps: LoggedWorkSessionDeps,
-): boolean {
+  modelInfo: ProviderModelInfo,
+): AiServiceRegistration | null {
+  const service = deps.aiServices.get(modelInfo.provider);
+  return service !== null && service.kinds.includes("voice") ? service : null;
+}
+
+function isPrimaryHostConnected(deps: LoggedWorkSessionDeps): boolean {
   try {
     requireConnectedPrimaryHostId(deps);
     return true;
@@ -49,11 +60,12 @@ export function resolveVoiceTranscriptionEnabled(
   deps: LoggedWorkSessionDeps,
 ): boolean {
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
-  if (backsHostDaemonAiServices(modelInfo.provider)) {
-    return isCodexVoiceTranscriptionAvailable(deps);
-  }
+  // Server-direct first, the same order `transcribeVoiceInput` routes in.
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {
     return deps.config.openAiApiKey.length > 0;
+  }
+  if (voiceService(deps, modelInfo) !== null) {
+    return isPrimaryHostConnected(deps);
   }
   return false;
 }
@@ -115,11 +127,19 @@ function buildTranscriptionUnavailableError(): ApiError {
   );
 }
 
-async function transcribeWithCodexHostDaemon(
+async function transcribeWithAiService(
   deps: LoggedWorkSessionDeps,
+  service: AiServiceRegistration,
   modelInfo: ProviderModelInfo,
   args: TranscribeVoiceInputArgs,
 ): Promise<string> {
+  if (args.file.size > AI_SERVICE_VOICE_MAX_BYTES) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      `Audio file exceeds the ${AI_SERVICE_VOICE_MAX_BYTES / (1024 * 1024)}MB limit for plugin-served transcription`,
+    );
+  }
   const hostId = requireConnectedPrimaryHostId(deps);
   const audioBase64 = Buffer.from(await args.file.arrayBuffer()).toString(
     "base64",
@@ -130,11 +150,9 @@ async function transcribeWithCodexHostDaemon(
     ...INFERENCE_POLICY.voiceTranscription,
     complete: async (model, attemptPrompt, timeoutMs) => {
       const attemptModel = parseTranscriptionModel(model);
-      const result = await runLiveCommandAndWait(deps, {
-        hostId,
-        timeoutMs: timeoutMs + INFERENCE_POLICY.hostRpcGraceMs,
-        command: {
-          type: "codex.voice.transcribe",
+      const result = await service.transcribeVoice(
+        {
+          serviceId: service.id,
           model: attemptModel.modelId,
           audioBase64,
           mimeType: args.file.type || "application/octet-stream",
@@ -142,7 +160,11 @@ async function transcribeWithCodexHostDaemon(
           prompt: trimPrompt(attemptPrompt),
           timeoutMs,
         },
-      });
+        { hostId, timeoutMs: timeoutMs + INFERENCE_POLICY.hostRpcGraceMs },
+      );
+      if (!result.ok) {
+        throw new AiServiceCallError(service.id, result.code, result.message);
+      }
       return { text: result.text };
     },
     fallbackModel: transcriptionModel,
@@ -158,16 +180,14 @@ async function transcribeWithCodexHostDaemon(
     throw buildTranscriptionUnavailableError();
   }
   if (
-    transcription instanceof ApiError &&
-    (transcription.body.code === "command_timeout" ||
-      transcription.body.code === "codex_request_timeout")
+    (transcription instanceof AiServiceCallError && transcription.code === "timeout") ||
+    (transcription instanceof ApiError && transcription.body.code === "command_timeout")
   ) {
     throw buildTranscriptionTimeoutError();
   }
   if (
-    transcription instanceof ApiError &&
-    (transcription.body.code === "codex_rate_limited" ||
-      transcription.body.code === "codex_service_unavailable")
+    transcription instanceof AiServiceCallError &&
+    (transcription.code === "rate_limited" || transcription.code === "service_unavailable")
   ) {
     throw buildTranscriptionUnavailableError();
   }
@@ -255,16 +275,18 @@ export async function transcribeVoiceInput(
   }
 
   const modelInfo = parseTranscriptionModel(deps.config.transcriptionModel);
-  if (backsHostDaemonAiServices(modelInfo.provider)) {
-    return transcribeWithCodexHostDaemon(deps, modelInfo, args);
-  }
+  // Server-direct first: a plugin cannot take over `openai/*` traffic.
   if (modelInfo.provider === OPENAI_TRANSCRIPTION_PROVIDER) {
     return transcribeWithOpenAi(deps, modelInfo, args);
+  }
+  const service = voiceService(deps, modelInfo);
+  if (service !== null) {
+    return transcribeWithAiService(deps, service, modelInfo, args);
   }
 
   throw new ApiError(
     501,
     "not_configured",
-    `Voice transcription provider "${modelInfo.provider}" is not supported`,
+    `No loaded plugin registers AI service "${modelInfo.provider}" for voice transcription`,
   );
 }

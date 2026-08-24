@@ -14,21 +14,21 @@ import {
   type DeltaPresentation,
   type ThreadEventPlanStep,
   bashArgsSchema,
+  experimental_fileReadPresentation as fileReadPresentation,
+  experimental_searchPresentation as searchPresentation,
+  experimental_toolPresentation as toolPresentation,
+  experimental_webFetchPresentation as webFetchPresentation,
+  experimental_webSearchPresentation as webSearchPresentation,
   toOptionalRecord,
   toOptionalString,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
 import {
-  bbToolPresentation,
   builtinToolPresentation,
   commandPresentation,
   delegationPresentation,
   fileChangePresentation,
-  fileReadPresentation,
   mcpToolPresentation,
-  searchPresentation,
-  webFetchPresentation,
-  webSearchPresentation,
   type ClaudeFileChangeVerb,
 } from "./presentation.js";
 import {
@@ -378,7 +378,7 @@ function bbTool(
       server: BB_TOOL_SERVER,
       ...(toolArguments ? { args: toolArguments } : {}),
     },
-    presentation: injected?.presentation ?? bbToolPresentation(tool),
+    presentation: injected?.presentation ?? toolPresentation(tool),
   };
 }
 
@@ -503,14 +503,20 @@ export function classifyClaudeToolUse(args: {
 /**
  * A tool result whose call the translator never saw (the turn opened before
  * the bridge attached, or the open was lost): the best-effort terminal shape
- * from the name alone.
+ * from the name alone. A Bash result reads as a command only when the
+ * session cwd is known — bb fabricates no `commandExecution { cwd: "" }`
+ * (design §4); otherwise it stays a generic tool item.
  */
 export function classifyClaudeToolResultFallback(
   toolName: string | undefined,
+  sessionCwd: string | undefined,
 ): ClaudeClassifiedTool {
   if (toolName === "Bash") {
+    if (sessionCwd === undefined || sessionCwd.length === 0) {
+      return genericTool(toolName, {});
+    }
     return {
-      shape: { type: "command", command: "", cwd: "" },
+      shape: { type: "command", command: "", cwd: sessionCwd },
       presentation: commandPresentation({ command: "", background: false }),
     };
   }

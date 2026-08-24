@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useState,
+  type CSSProperties,
   type FocusEvent,
   type KeyboardEvent,
   type MouseEvent,
@@ -16,6 +17,7 @@ import {
 } from "../../ui/disclosure.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { PluginCompactIconMask } from "../../plugin/PluginIcon.js";
 import {
   TIMELINE_ROW_HEADER_CONTENT_CLASS_NAME,
   timelineRowHeaderClassName,
@@ -44,6 +46,15 @@ interface ExpandableTimelineRowProps {
   expandable?: boolean;
   horizontalPadding?: TimelineRowHorizontalPadding;
   leadingIcon?: IconName;
+  /**
+   * A plugin-declared icon resolved from the inventory, drawn as a
+   * currentColor mask in place of `leadingIcon`. Resolved by the caller so
+   * an icon that is not found falls back to the glyph before any mask URL is
+   * emitted (a mask that 404s renders nothing).
+   */
+  leadingIconUrl?: string;
+  /** Inline style for the leading icon (a bridge's per-theme tint). */
+  leadingIconStyle?: CSSProperties;
   /** Extra classes on the header summary line only (not the expanded body). */
   summaryClassName?: string;
   onTitleAction?: TimelineTitleActionResolver;
@@ -84,6 +95,8 @@ function ExpandableTimelineRowComponent({
   forceExpanded = false,
   horizontalPadding = "default",
   leadingIcon,
+  leadingIconUrl,
+  leadingIconStyle,
   onTitleAction,
   renderBody,
   resolveSegmentLinkHref,
@@ -203,10 +216,17 @@ function ExpandableTimelineRowComponent({
             summaryClassName,
           )}
         >
-          {leadingIcon ? (
+          {leadingIconUrl !== undefined ? (
+            <PluginCompactIconMask
+              url={leadingIconUrl}
+              className="size-3.5 text-muted-foreground"
+              style={leadingIconStyle}
+            />
+          ) : leadingIcon ? (
             <Icon
               name={leadingIcon}
               className="size-3.5 shrink-0 text-muted-foreground"
+              style={leadingIconStyle}
               aria-hidden
             />
           ) : null}

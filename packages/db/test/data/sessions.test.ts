@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   closeSession,
@@ -13,10 +11,10 @@ import {
 } from "../../src/data/sessions.js";
 import { getHost, upsertHost } from "../../src/data/hosts.js";
 import { hostDaemonSessions } from "../../src/schema.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",

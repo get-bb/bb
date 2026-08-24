@@ -105,7 +105,7 @@ message agents, or inspect projects, providers, and environments.
   actions apply in browser and desktop clients, and desktop menu accelerators
   use the same resolved bindings. For details, read
   `references/app-settings.md`.
-- Use `bb settings show`, `bb settings general`, `bb settings experiment`,
+- Use `bb settings show`, `bb settings ai-services`, `bb settings general`, `bb settings experiment`,
   `bb settings keyboard`, `bb settings usage`, and `bb settings version` to
   inspect or change these server-backed values from agents. Pass
   `bb settings usage --machine <id-or-name>` to read provider limits from a
@@ -343,20 +343,19 @@ environment pull-request show <id>`. Diff commands require an explicit target
 - Cursor ACP threads discover project skills from `.cursor/skills`. This root
   can link to `.agents/skills`. `bb skill list` shows linked Cursor skills under
   `cursor-project` and keeps them read-only.
-- Custom ACP agents can be registered in the app data-dir `config.json` under
-  `customAcpAgents`. The user supplies a slug `id`; bb exposes it as provider
-  id `acp-<id>`. Custom config wins if it uses the same provider id as a known
-  ACP agent, so overriding `acp-opencode` uses `"id": "opencode"`. This list
-  has no set/unset CLI surface, so edit the JSON and run `bb-app config refresh`
-  or restart bb. The configured command is local code execution and only works
-  with a co-located daemon. Optional `logo` accepts an SVG, PNG, or WebP path;
-  relative paths resolve from the bb data dir. Custom ACP agents can use
-  `modelCli` for CLI model listing/selection, `reasoningCli` for launch-time
-  reasoning flags, and `nativeReasoning` for ACP `session/set_config_option`
-  reasoning. Optional
-  `nativeSkillRoots.user` paths resolve from the target
-  host home directory. Optional `nativeSkillRoots.project` paths resolve from
-  the selected workspace. The composer lists skills from these roots.
+- Custom ACP agents live in the ACP providers plugin's `customAgents` setting,
+  a JSON array: `bb plugin config provider-acp set customAgents '[{"id":"amp",
+  "displayName":"Amp","command":"amp","args":["acp"]}]'`. The user supplies a
+  slug `id`; bb exposes it as provider id `acp-<id>`, which is permanent.
+  `cursor` is reserved; `opencode`, `omp`, `grok` and `hermes-agent` are not,
+  so an entry with one of those ids replaces the shipped agent. The plugin
+  re-registers as soon as the setting changes. The configured command is local code execution and only works with a
+  co-located daemon. Optional per-agent fields: `args`, `env`, `cwd`,
+  `modelCli`, `reasoningCli`, `nativeReasoning`, `nativeSkillRoots`
+  (`{"user": [...], "project": [...]}` relative paths), `permissionCli`,
+  `supportsManualCompaction`, and `dialect` (`cursor` or `grok`). The old
+  `customAcpAgents` array in `config.json` is deprecated; bb reads it and warns
+  until 0.41.
 - Top-level `customModels` in the same `config.json` registers extra picker
   models. `providerId` accepts a built-in provider id or any `acp-*` provider
   id. The provider must still accept the id: `claude-code` and `codex` accept
@@ -671,10 +670,13 @@ add <key-or-comment-id> --file <path>` (task key = task-level; comment ID
   own tool list, and only for providers without a native equivalent: Claude
   Code threads keep using Claude's built-in `AskUserQuestion`, so the plugin
   withholds its copy there.
-- Answering is UI-only. `bb thread interactions list <thread-id>` shows the
-  request as kind `plugin`, but `bb thread interactions answer` resolves
-  provider questions only, so a pending plugin question cannot be answered
-  from the CLI.
+- `bb thread interactions list <thread-id>` shows the request as kind
+  `plugin`; `bb thread interactions answer` resolves provider questions
+  only. Answer a plugin form — a plugin's own request, or a request the agent
+  raised through a provider (kind `<pluginId>/<name>`) — with
+  `bb thread interactions respond <interaction-id> [thread-id] --value '<json>'`;
+  `bb thread interactions show <interaction-id>` prints the form's data so
+  you can shape the value.
 
 ## Workflows
 

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import {
   Alert02Icon,
@@ -6,6 +7,7 @@ import {
   ArrowDown01Icon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  BotIcon,
   BubbleChatAddIcon,
   BubbleChatIcon,
   Bug01Icon,
@@ -108,6 +110,7 @@ const CORE_ICON_MAP = {
   AlertCircle: AlertCircleIcon,
   AlertTriangle: Alert02Icon,
   Archive: Archive03Icon,
+  Bot: BotIcon,
   Bug: Bug01Icon,
   Check: Tick02Icon,
   ChevronDown: ArrowDown01Icon,
@@ -195,6 +198,8 @@ const EMPTY_ICON: IconSvgElement = [];
 export interface IconProps {
   name: IconName;
   className?: string;
+  /** Inline style for data-driven accents (a bridge's per-theme tint). */
+  style?: CSSProperties;
   "aria-hidden"?: boolean | "true" | "false";
   "aria-label"?: string;
 }
@@ -202,6 +207,7 @@ export interface IconProps {
 export function Icon({
   name,
   className,
+  style,
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: IconProps) {
@@ -211,6 +217,7 @@ export function Icon({
       <HugeiconsIcon
         icon={coreIcon}
         className={cn(className)}
+        style={style}
         aria-hidden={ariaHidden}
         aria-label={ariaLabel}
         data-icon={name}
@@ -221,6 +228,7 @@ export function Icon({
     <ExtendedIcon
       name={name}
       className={className}
+      style={style}
       aria-hidden={ariaHidden}
       aria-label={ariaLabel}
     />
@@ -235,6 +243,7 @@ export function Icon({
 function ExtendedIcon({
   name,
   className,
+  style,
   "aria-hidden": ariaHidden,
   "aria-label": ariaLabel,
 }: IconProps) {
@@ -256,6 +265,7 @@ function ExtendedIcon({
     <HugeiconsIcon
       icon={icon ?? EMPTY_ICON}
       className={cn(className)}
+      style={style}
       aria-hidden={ariaHidden}
       aria-label={ariaLabel}
       data-icon={name}

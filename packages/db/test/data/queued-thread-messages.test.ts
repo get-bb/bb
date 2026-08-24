@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PromptInput } from "@bb/domain";
-import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   claimNextQueuedThreadMessageGroup,
@@ -21,6 +19,7 @@ import {
 import { createProject } from "../../src/data/projects.js";
 import { createThread } from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function textInput(text: string): PromptInput[] {
   return [{ type: "text", text, mentions: [] }];
@@ -30,8 +29,7 @@ const defaultInput = textInput("hello");
 const altInput = textInput("world");
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",

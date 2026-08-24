@@ -1,15 +1,8 @@
-import {
-  createAgentRuntime,
-  fingerprintAcpLaunchSpec,
-  bridgeLaunchProcessKey,
-  type AgentRuntime,
-  type AgentRuntimeBridgeLaunch,
-} from "@bb/agent-runtime";
+import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
 import type {
   HostDaemonCommand,
-  HostDaemonAcpLaunchSpec,
   ProviderHealthResult,
   ProviderUsageResult,
   HostDaemonBridgeLaunch,
@@ -19,9 +12,9 @@ import type {
   WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import type {
-  ExperimentalProviderInstallationCommand,
-  ExperimentalProviderInstallationRunResult,
-  ExperimentalProviderInstallationStatus,
+  ProviderInstallationCommand,
+  ProviderInstallationRunResult,
+  ProviderInstallationStatus,
 } from "@bb/provider-bridge-protocol";
 import { getPersonalWorkspaceRoot } from "@bb/host-workspace";
 import { ensurePluginProcessDataDir } from "@bb/process-utils";
@@ -62,46 +55,51 @@ export interface CommandDispatchOptions {
   runtimeManager: RuntimeManager;
   terminalManager?: Pick<TerminalManager, "closeEnvironmentTerminals">;
   eventSink: EventSink;
-  listModels?: (args: {
+  listModels: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<{
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
-  providerHealth?: (args: {
+  providerHealth: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ProviderHealthResult>;
-  providerUsage?: (args: {
+  providerUsage: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
   }) => Promise<ProviderUsageResult>;
-  providerInstallationStatus?: (args: {
+  providerInstallationStatus: (args: {
     providerId: string;
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
     requirement?: "thread_rewind";
-  }) => Promise<ExperimentalProviderInstallationStatus>;
-  providerInstallationRun?: (args: {
+  }) => Promise<ProviderInstallationStatus>;
+  providerInstallationRun: (args: {
     providerId: string;
     action: "install" | "update";
-    acpLaunchSpec?: HostDaemonAcpLaunchSpec;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
-  }) => Promise<ExperimentalProviderInstallationRunResult>;
+  }) => Promise<ProviderInstallationRunResult>;
   streamProviderInstallation?: (args: {
     providerId: string;
-    plan: ExperimentalProviderInstallationCommand;
+    plan: ProviderInstallationCommand;
     env?: NodeJS.ProcessEnv;
   }) => ReadableStream<Uint8Array>;
+  /**
+   * Re-reads the login shell's environment into the runtime manager once its
+   * short refresh window has lapsed, which is where a PATH change clears the
+   * provider-CLI gate and evicts idle runtimes. The gate in front of thread
+   * start and rewind awaits this before it consults its memo, because a PATH
+   * change is what makes a remembered probe wrong and the manager only learns
+   * about one through this refresh. Daemon-internal: nothing on the wire
+   * changes.
+   */
+  refreshShellEnv: () => Promise<void>;
   resolveInteractiveRequest?: (
     request: InteractiveResolveCommandInput,
   ) => Promise<void>;
@@ -146,15 +144,12 @@ export function isExpectedOnlineRpcFailureError(error: unknown): boolean {
 
 const MISSING_EXECUTABLE_PATTERN = /\bENOENT\b/;
 const SPAWN_PATTERN = /\bspawn\b/;
-const ACP_AUTH_REQUIRED_PATTERN =
-  /ACP agent is (?:installed but )?not authenticated|Authentication required.*(?:agent login|CURSOR_API_KEY|CURSOR_AUTH_TOKEN|api key|auth token|login)/is;
 
 /**
- * Turn a wire `bridgeLaunch` into the runtime shape. An `artifact` source is
- * resolved to a verified local path (downloading + hash-verifying if needed);
- * a `daemon-bundled` source names a bridge inside this daemon's own bundle and
- * needs no fetch. The source travels through, so the runtime routes on the
- * server's explicit answer rather than re-deriving it from the provider id.
+ * Turn a wire `bridgeLaunch` into the runtime shape: the artifact source is
+ * resolved to a verified local path (downloading + hash-verifying if needed).
+ * The source travels through, so the runtime routes on the server's explicit
+ * answer rather than re-deriving it from the provider id.
  */
 export async function resolveRuntimeBridgeLaunch(
   bridgeLaunch: HostDaemonBridgeLaunch,
@@ -171,24 +166,14 @@ export async function resolveRuntimeBridgeLaunch(
   };
   const providerOptions = { ...bridgeLaunch.providerOptions };
   const envPassthrough = [...bridgeLaunch.envPassthrough];
-  // Every bridge, artifact or bundled, is scoped to the plugin that ships it:
-  // it gets that plugin's own persistent directory, the same one the plugin's
-  // host worker would get, under its own `bridge-data` kind.
+  // Every bridge is scoped to the plugin that ships it: it gets that plugin's
+  // own persistent directory, the same one the plugin's host worker would
+  // get, under its own `bridge-data` kind.
   const dataDir = await ensurePluginProcessDataDir({
     daemonDataDir: options.dataDir,
     pluginId: bridgeLaunch.pluginId,
     kind: "bridge-data",
   });
-  if (bridgeLaunch.source.kind === "daemon-bundled") {
-    return {
-      pluginId: bridgeLaunch.pluginId,
-      dataDir,
-      source: { ...bridgeLaunch.source },
-      capabilities,
-      providerOptions,
-      envPassthrough,
-    };
-  }
   if (options.fetchPluginHostArtifact === undefined) {
     throw new CommandDispatchError(
       "provider_bridge_unavailable",
@@ -217,100 +202,6 @@ export async function resolveRuntimeBridgeLaunch(
   };
 }
 
-const defaultProviderMaintenanceRuntimes = new Map<string, AgentRuntime>();
-
-export async function shutdownDefaultProviderMaintenanceRuntimes(): Promise<void> {
-  const runtimes = [...defaultProviderMaintenanceRuntimes.values()];
-  defaultProviderMaintenanceRuntimes.clear();
-  await Promise.all(runtimes.map((runtime) => runtime.shutdown()));
-}
-
-export async function defaultListModels(args: {
-  providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch: AgentRuntimeBridgeLaunch;
-}): Promise<{
-  models: AvailableModel[];
-  selectedOnlyModels: AvailableModel[];
-}> {
-  const runtime = defaultProviderMaintenanceRuntime(args);
-  try {
-    return await runtime.listModels(args);
-  } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.startsWith("Unsupported provider")
-    ) {
-      throw new CommandDispatchError("unknown_provider", error.message);
-    }
-    throw error;
-  }
-}
-
-function defaultProviderMaintenanceRuntime(args: {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch: AgentRuntimeBridgeLaunch;
-}): AgentRuntime {
-  const runtimeKey =
-    `#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}` +
-    (args.acpLaunchSpec !== undefined
-      ? `#acp:${fingerprintAcpLaunchSpec(args.acpLaunchSpec)}`
-      : "");
-  let runtime = defaultProviderMaintenanceRuntimes.get(runtimeKey);
-  if (!runtime) {
-    runtime = createAgentRuntime({
-      workspacePath: process.cwd(),
-      onEvent: () => {},
-      onToolCall: async () => ({
-        contentItems: [],
-        success: true,
-      }),
-    });
-    defaultProviderMaintenanceRuntimes.set(runtimeKey, runtime);
-  }
-  return runtime;
-}
-
-export async function defaultProviderHealth(args: {
-  providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch: AgentRuntimeBridgeLaunch;
-  cwd?: string;
-}): Promise<ProviderHealthResult> {
-  return await defaultProviderMaintenanceRuntime(args).providerHealth(args);
-}
-
-export async function defaultProviderUsage(args: {
-  providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch: AgentRuntimeBridgeLaunch;
-  cwd?: string;
-}): Promise<ProviderUsageResult> {
-  return await defaultProviderMaintenanceRuntime(args).providerUsage(args);
-}
-
-export async function defaultProviderInstallationStatus(args: {
-  providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch: AgentRuntimeBridgeLaunch;
-  cwd?: string;
-  requirement?: "thread_rewind";
-}): Promise<ExperimentalProviderInstallationStatus> {
-  const runtime = defaultProviderMaintenanceRuntime(args);
-  return await runtime.providerInstallationStatus(args);
-}
-
-export async function defaultProviderInstallationRun(args: {
-  providerId: string;
-  action: "install" | "update";
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch: AgentRuntimeBridgeLaunch;
-  cwd?: string;
-}): Promise<ExperimentalProviderInstallationRunResult> {
-  const runtime = defaultProviderMaintenanceRuntime(args);
-  return await runtime.providerInstallationRun(args);
-}
-
 export function getErrorCode(error: unknown): string {
   if (error instanceof CommandDispatchError) {
     return error.code;
@@ -327,9 +218,6 @@ export function getErrorCode(error: unknown): string {
   }
   if (isMessageOnlySpawnMissingExecutableError(error)) {
     return "missing_executable";
-  }
-  if (isMessageOnlyAcpAuthRequiredError(error)) {
-    return "auth_required";
   }
   return "command_failed";
 }
@@ -356,12 +244,6 @@ function isMessageOnlySpawnMissingExecutableError(error: unknown): boolean {
   return (
     MISSING_EXECUTABLE_PATTERN.test(error.message) &&
     SPAWN_PATTERN.test(error.message)
-  );
-}
-
-function isMessageOnlyAcpAuthRequiredError(error: unknown): boolean {
-  return (
-    error instanceof Error && ACP_AUTH_REQUIRED_PATTERN.test(error.message)
   );
 }
 

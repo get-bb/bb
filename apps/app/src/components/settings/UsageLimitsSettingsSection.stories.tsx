@@ -136,12 +136,11 @@ const HOSTS: Host[] = [
 function provider(id: string, displayName: string): ProviderInfo {
   return {
     id,
+    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
     available: true,
-    experimental_providerHealth: true,
-    experimental_providerUsage: true,
-    experimental_providerInstallation: false,
+    maintenance: { health: true, usage: true, installation: false },
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -149,6 +148,7 @@ function provider(id: string, displayName: string): ProviderInfo {
       supportsNativeUserQuestion: false,
       supportsFork: false,
       supportsSessionRewind: false,
+      modelCatalogScope: "workspace",
       permissionModes: ["full"],
     },
     composerActions: [],

@@ -1,21 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultAppSettings } from "@bb/domain";
 import {
-  createConnection,
   getAppKeybindingOverrides,
   getAppSettings,
-  migrate,
   setAppKeybindingOverrides,
   setAppSettings,
   type DbConnection,
 } from "../../src/index.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 describe("app settings data", () => {
   let db: DbConnection;
 
   beforeEach(() => {
-    db = createConnection(":memory:");
-    migrate(db);
+    db = createMigratedConnection();
   });
 
   afterEach(() => {

@@ -142,6 +142,8 @@ vi.mock("@/hooks/queries/host-queries", () => ({
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemProviderStates: () => ({ data: undefined, isPending: false }),
+  // No roster in this suite's cache, which is the cold-cache answer.
+  useKnownProviderModelCatalogScope: () => undefined,
   useHostProviderCliStatus: () => ({ data: undefined }),
   useSystemConfig: () => ({ data: { primaryHostId: "host_1" } }),
   useSystemExecutionOptions: () => ({

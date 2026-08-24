@@ -1,6 +1,10 @@
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryKey } from "@tanstack/react-query";
-import type { PermissionMode, ProviderInfo } from "@bb/domain";
+import type {
+  PermissionMode,
+  ProviderInfo,
+  ProviderModelCatalogScope,
+} from "@bb/domain";
 import { SYSTEM_EXECUTION_OPTIONS_QUERY_KEY } from "@/hooks/queries/query-keys";
 import { permissionModeValues } from "@bb/domain";
 import { toRecord } from "@bb/core-ui";
@@ -30,6 +34,8 @@ import {
 } from "@/lib/provider-list-cache";
 import { useSystemRealtimeSubscription } from "@/hooks/useRealtimeSubscription";
 import {
+  allSystemExecutionOptionsQueryKeyPrefix,
+  allSystemProvidersQueryKeyPrefix,
   hostProviderCliStatusQueryKey,
   systemCliSkillsQueryKey,
   systemConfigQueryKey,
@@ -213,6 +219,55 @@ function shouldRetrySystemExecutionOptions(
   }
 
   return true;
+}
+
+/**
+ * The declared model-catalog scope for one provider, read from any roster
+ * already in the cache — the provider list and the execution-options response
+ * both carry `ProviderInfo`, and either answers.
+ *
+ * This exists for the one caller that must know the scope BEFORE it can pick
+ * a query key: routing an execution-options read by host or by environment.
+ * A subscription cannot answer that, because the query it would subscribe to
+ * is the one being routed. Until some roster has landed the answer is
+ * undefined and the caller routes by environment, so the first read of a cold
+ * cache goes to the environment and later reads settle on the host — one
+ * redundant probe per session, never a catalog from the wrong workspace.
+ * Reading the execution-options cache is what makes that settle at all: a
+ * surface that only ever calls this hook's caller populates no provider list.
+ *
+ * Every render that can change the answer is a render one of those rosters
+ * caused, so the peek stays current without a subscription of its own.
+ */
+export function useKnownProviderModelCatalogScope(
+  providerId: string,
+): ProviderModelCatalogScope | undefined {
+  const queryClient = useQueryClient();
+  if (providerId.length === 0) {
+    return undefined;
+  }
+  const scopeIn = (
+    providers: readonly ProviderInfo[] | undefined,
+  ): ProviderModelCatalogScope | undefined =>
+    providers?.find((provider) => provider.id === providerId)?.capabilities
+      .modelCatalogScope;
+  for (const [, options] of queryClient.getQueriesData<{
+    providers: ProviderInfo[];
+  }>({ queryKey: allSystemExecutionOptionsQueryKeyPrefix() })) {
+    const scope = scopeIn(options?.providers);
+    if (scope !== undefined) {
+      return scope;
+    }
+  }
+  for (const [, providers] of queryClient.getQueriesData<ProviderInfo[]>({
+    queryKey: allSystemProvidersQueryKeyPrefix(),
+  })) {
+    const scope = scopeIn(providers);
+    if (scope !== undefined) {
+      return scope;
+    }
+  }
+  return undefined;
 }
 
 /**

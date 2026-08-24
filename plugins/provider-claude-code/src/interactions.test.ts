@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { providerInteractionOutcomeSchema } from "@bb/domain";
 import type {
   PendingInteractionResolution,
   UserQuestionPendingInteractionPayload,
@@ -637,19 +638,19 @@ describe("claude-code interactive requests", () => {
     },
   );
 
-  it("rejects Claude AskUserQuestion responses whose resolution kind does not match", () => {
+  it("cannot pair an AskUserQuestion payload with an approval decision: the wire parse rejects it", () => {
     const resolution: PendingInteractionResolution = {
       decision: "deny",
     };
 
-    expect(() =>
-      buildClaudeInteractiveResponse({
+    // The bridge parses the resolution together with the payload it kept;
+    // the pair never reaches the response builder.
+    expect(
+      providerInteractionOutcomeSchema.safeParse({
         payload: createClaudeUserQuestionPayload(),
         resolution,
-      }),
-    ).toThrow(
-      "Claude Code interactive response kind does not match the request payload",
-    );
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects Claude AskUserQuestion response payloads without returnable options", () => {

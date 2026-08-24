@@ -44,6 +44,7 @@ function candidate(
 ): PluginFrontendCandidate {
   return {
     pluginId,
+    providerIds: [],
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=${hash}`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=${hash}`,
@@ -112,8 +113,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(
-      async (_url: string): Promise<unknown> => pluginModule("hello"),
+    importModule: vi.fn(async (_url: string): Promise<unknown> =>
+      pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
@@ -123,6 +124,7 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     beginSlotBatch: () => () => {},
     warn: vi.fn(),
     routePluginId: () => null,
+    wantedProviderPluginIds: () => new Set<string>(),
     mountTimeoutMs: undefined as number | undefined,
   };
 }
@@ -193,6 +195,7 @@ describe("reconcilePluginFrontends", () => {
       beginSlotBatch: () => () => {},
       warn: vi.fn(),
       routePluginId: () => null,
+      wantedProviderPluginIds: () => new Set<string>(),
     };
 
     await reconcilePluginFrontends(state, deps); // boot
@@ -1010,6 +1013,7 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
+    vi.useRealTimers();
   });
 
   function links(pluginId: string): HTMLLinkElement[] {
@@ -1076,6 +1080,7 @@ describe("applyPluginCss", () => {
   });
 
   it("preloads inactive CSS and removes the sheet only after its final consumer releases", async () => {
+    vi.useFakeTimers();
     applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(preloads("hello")).toHaveLength(1);
     expect(preloads("hello")[0]?.fetchPriority).toBe("low");
@@ -1088,14 +1093,185 @@ describe("applyPluginCss", () => {
     expect(links("hello")).toHaveLength(1);
 
     releaseFirst();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(links("hello")).toHaveLength(1);
     releaseSecond();
-    await Promise.resolve();
+    // The final release waits out a grace window before it detaches the sheet.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(links("hello")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello")).toHaveLength(0);
+  });
+
+  it("keeps the same sheet when a consumer retains within the grace window", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const releaseFirst = retainPluginCss("hello");
+    const first = links("hello")[0];
+    expect(first).toBeDefined();
+    first?.dispatchEvent(new Event("load"));
+
+    // Thread-to-thread navigation: the old composer releases and the new one
+    // retains a moment later. The sheet must never leave the document.
+    releaseFirst();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(links("hello")[0]).toBe(first);
+    const releaseSecond = retainPluginCss("hello");
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(links("hello")).toHaveLength(1);
+    expect(links("hello")[0]).toBe(first);
+    expect(preloads("hello")).toHaveLength(0);
+
+    releaseSecond();
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(links("hello")).toHaveLength(0);
   });
 
+  it("reattaches the sheet when its load completes during the grace and a consumer retains", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const releaseFirst = retainPluginCss("hello");
+    const first = links("hello")[0];
+    expect(first).toBeDefined();
+
+    // The composer releases while its sheet is still in flight, the response
+    // lands inside the grace, and the next composer retains. The loaded sheet
+    // must be adopted rather than discarded, or the stale pending reference
+    // blocks every later activation while a consumer is mounted.
+    releaseFirst();
+    await vi.advanceTimersByTimeAsync(200);
+    first?.dispatchEvent(new Event("load"));
+    expect(links("hello")[0]).toBe(first);
+    await vi.advanceTimersByTimeAsync(300);
+    const releaseSecond = retainPluginCss("hello");
+    expect(links("hello")).toHaveLength(1);
+    expect(links("hello")[0]).toBe(first);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(links("hello")).toHaveLength(1);
+    expect(preloads("hello")).toHaveLength(0);
+
+    releaseSecond();
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+  });
+
+  it("adopts a changed URL that finishes loading during the grace and reuses it on retain", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const releaseFirst = retainPluginCss("hello");
+    links("hello")[0]?.dispatchEvent(new Event("load"));
+
+    // Live reload publishes a new URL while mounted; the consumer releases
+    // before it lands, it lands inside the grace, then a new consumer retains.
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    const fresh = links("hello")[1];
+    expect(fresh?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
+    releaseFirst();
+    await vi.advanceTimersByTimeAsync(200);
+    fresh?.dispatchEvent(new Event("load"));
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    await vi.advanceTimersByTimeAsync(300);
+    const releaseSecond = retainPluginCss("hello");
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    expect(links("hello")[0]).toBe(fresh);
+    expect(preloads("hello")).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    releaseSecond();
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+  });
+
+  it("applies a URL that is republished after a flip-flop discarded its in-flight sheet", async () => {
+    vi.useFakeTimers();
+    retainPluginCss("hello");
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    links("hello")[0]?.dispatchEvent(new Event("load"));
+
+    // Live reload publishes bbb, then republishes aaa before bbb lands. The
+    // loaded aaa sheet is reused, so the in-flight bbb link stays pending and
+    // its load event must discard it without leaving a stale reference.
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    const inflight = links("hello")[1];
+    expect(inflight?.getAttribute("href")).toBe("/assets/app.css?h=bbb");
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    inflight?.dispatchEvent(new Event("load"));
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=aaa",
+    ]);
+
+    // Redo: bbb must be fetched again beside the live aaa sheet, not skipped
+    // because the detached pending link still carries the bbb href.
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=aaa",
+      "/assets/app.css?h=bbb",
+    ]);
+    retainPluginCss("hello");
+    expect(links("hello")).toHaveLength(2);
+    links("hello")
+      .find((l) => l.getAttribute("href") === "/assets/app.css?h=bbb")
+      ?.dispatchEvent(new Event("load"));
+    expect(links("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("removes the sheet at once and cancels the timer when the URL is cleared during the grace", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const release = retainPluginCss("hello");
+    expect(links("hello")).toHaveLength(1);
+
+    release();
+    expect(vi.getTimerCount()).toBe(1);
+    applyPluginCss("hello", null);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello")).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello")).toHaveLength(0);
+  });
+
+  it("swaps to one preload of the new URL when it changes during the grace", async () => {
+    vi.useFakeTimers();
+    applyPluginCss("hello", "/assets/app.css?h=aaa");
+    preloads("hello")[0]?.dispatchEvent(new Event("load"));
+    const release = retainPluginCss("hello");
+    links("hello")[0]?.dispatchEvent(new Event("load"));
+    expect(links("hello")).toHaveLength(1);
+
+    release();
+    applyPluginCss("hello", "/assets/app.css?h=bbb");
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1_500);
+    expect(links("hello")).toHaveLength(0);
+    expect(preloads("hello").map((l) => l.getAttribute("href"))).toEqual([
+      "/assets/app.css?h=bbb",
+    ]);
+  });
+
   it("never ties app-wide bb.themes palette CSS to plugin UI mounts", async () => {
+    vi.useFakeTimers();
     const paletteCss = ":root { --canvas: rebeccapurple; }";
     applyAppThemeCss(paletteCss);
     const palette = document.getElementById("bb-app-theme");
@@ -1109,7 +1285,7 @@ describe("applyPluginCss", () => {
 
     const release = retainPluginCss("palette-owner");
     release();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1_500);
     expect(links("palette-owner")).toHaveLength(0);
     expect(document.getElementById("bb-app-theme")).toBe(palette);
     expect(palette?.textContent).toBe(paletteCss);

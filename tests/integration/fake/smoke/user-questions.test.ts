@@ -1,9 +1,6 @@
 import {
-  isUserQuestionPendingInteractionPayload,
-  type PendingInteraction,
+  isUserQuestionPendingInteraction,
   type PendingInteractionResolution,
-  type ProviderPendingInteraction,
-  type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import type { TimelineQuestionWorkRow, TimelineRow } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
@@ -24,16 +21,6 @@ import {
   createReadyThread,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
-
-interface UserQuestionInteraction extends ProviderPendingInteraction {
-  payload: UserQuestionPendingInteractionPayload;
-}
-
-function isUserQuestionInteraction(
-  interaction: PendingInteraction,
-): interaction is UserQuestionInteraction {
-  return isUserQuestionPendingInteractionPayload(interaction.payload);
-}
 
 function isQuestionWorkRow(row: TimelineRow): row is TimelineQuestionWorkRow {
   return row.kind === "work" && row.workKind === "question";
@@ -75,12 +62,12 @@ describe.sequential("fake provider user-question integration", () => {
       await waitForEventType(
         harness.api,
         thread.id,
-        "system/userQuestion/lifecycle",
+        "system/interaction/lifecycle",
         TURN_TIMEOUT_MS,
       );
 
       const interactions = await listThreadInteractions(harness.api, thread.id);
-      const interaction = interactions.find(isUserQuestionInteraction);
+      const interaction = interactions.find(isUserQuestionPendingInteraction);
       if (!interaction) {
         throw new Error("Expected a pending user-question interaction");
       }

@@ -1,32 +1,42 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { z } from "zod";
 
 const BB_APP_VERSION_FALLBACK = "0.0.0-dev";
 const PARENT_LOOKUP_MAX_DEPTH = 8;
-
-const bbAppPackageJsonSchema = z
-  .object({
-    name: z.string(),
-    version: z.string().min(1),
-  })
-  .passthrough();
 
 interface ResolveBbAppVersionArgs {
   env: NodeJS.ProcessEnv;
   fromDir: string;
 }
 
+interface BbAppPackageJson {
+  name: string;
+  version: string;
+}
+
+// A hand-written guard rather than a zod schema: this module runs on every
+// `bb` invocation, including `bb --version`, and must not pull zod into the
+// startup graph just to read two fields of a package.json.
+function isBbAppPackageJson(value: unknown): value is BbAppPackageJson {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    "version" in value &&
+    typeof value.version === "string" &&
+    value.version.length > 0
+  );
+}
+
 function readBbAppVersionAt(packageJsonPath: string): string | null {
   try {
-    const result = bbAppPackageJsonSchema.safeParse(
-      JSON.parse(readFileSync(packageJsonPath, "utf8")),
-    );
-    if (!result.success || result.data.name !== "bb-app") {
+    const parsed: unknown = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    if (!isBbAppPackageJson(parsed) || parsed.name !== "bb-app") {
       return null;
     }
-    return result.data.version;
+    return parsed.version;
   } catch {
     return null;
   }
@@ -59,7 +69,9 @@ export function resolveBbAppVersion(args: ResolveBbAppVersionArgs): string {
       "bb-app",
       "package.json",
     );
-    const workspaceCandidateVersion = readBbAppVersionAt(workspaceCandidatePath);
+    const workspaceCandidateVersion = readBbAppVersionAt(
+      workspaceCandidatePath,
+    );
     if (workspaceCandidateVersion !== null) {
       return workspaceCandidateVersion;
     }

@@ -1,4 +1,9 @@
 import path from "node:path";
+import {
+  EMPTY_PROVIDER_NATIVE_ROOTS,
+  EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+  normalizeProviderNativeRoots,
+} from "@bb/domain";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
 import type { SkillSummary } from "@bb/server-contract";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -77,7 +82,14 @@ export async function resolveSharedSkills(
       type: "host.list_skills",
       providerId: "bb-shared",
       cwd: args.cwd,
-      nativeSkillRoots: roots,
+      // Shared roots are plain paths in the server config (no per-root
+      // options, no commands, no plugin to resolve more): they ride the
+      // wire as the skill side of an otherwise empty root set.
+      nativeRoots: {
+        skills: normalizeProviderNativeRoots(roots),
+        commands: EMPTY_PROVIDER_NATIVE_ROOTS,
+        resolved: EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+      },
     },
   });
   const resolved: Array<NonNullable<ReturnType<typeof toSharedSkill>>> = [];

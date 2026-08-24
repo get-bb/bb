@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createConnection, migrate, type DbConnection } from "@bb/db";
 import { type PromptInput } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -629,6 +630,7 @@ describe("mention search time box", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-mention-timeout-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -708,6 +710,7 @@ describe("mention resolve time box", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-resolve-timeout-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {

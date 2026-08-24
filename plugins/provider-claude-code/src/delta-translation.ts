@@ -54,6 +54,8 @@ import {
   toOptionalRecord,
   type ClientTurnRequestId,
   type ProviderRawEvent,
+  experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
+  experimental_planStepsPresentation as planStepsPresentation,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   claudeApiRetryMessageSchema,
@@ -76,10 +78,6 @@ import {
   type ClaudeResultMessage,
 } from "./schemas.js";
 import { buildClaudeProviderErrorInfo } from "./error-info.js";
-import {
-  COMPACTION_PRESENTATION,
-  planStepsPresentation,
-} from "./presentation.js";
 import {
   foldClaudeTaskToolResult,
   type ClaudeTaskPlanState,
@@ -524,7 +522,18 @@ function createThreadState(): ClaudeThreadDialectState {
 // Translator factory
 // ---------------------------------------------------------------------------
 
-export function createClaudeDeltaTranslator() {
+export interface ClaudeDeltaTranslatorOptions {
+  /**
+   * The session's working directory: the cwd of a Bash result whose call
+   * the translator never saw. One translator lives per session, so one cwd.
+   */
+  cwd?: string | undefined;
+}
+
+export function createClaudeDeltaTranslator(
+  options: ClaudeDeltaTranslatorOptions = {},
+) {
+  const sessionCwd = options.cwd;
   const statesByThreadId = new Map<string, ClaudeThreadDialectState>();
   /**
    * The bb-injected tools of the session, by bare name. A call to
@@ -1125,7 +1134,9 @@ export function createClaudeDeltaTranslator() {
         : extractResultText(result.content);
       const resultToolName =
         startedShape?.type === "tool" ? startedShape.tool : result.toolName;
-      const base = started ?? classifyClaudeToolResultFallback(result.toolName);
+      const base =
+        started ??
+        classifyClaudeToolResultFallback(result.toolName, sessionCwd);
       const status = result.isError ? "failed" : "completed";
       deltas.push({
         kind: "item.close",

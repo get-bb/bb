@@ -8,7 +8,7 @@ const app = await loadPluginApp(() => import("./app"));
 describe("GitHub app navigation", () => {
   it("opens issue details in the URL-backed page instead of a fixed tab", async () => {
     const panel = app.navPanels[0]!;
-    expect(panel.experimental_fixedTabs).toBeUndefined();
+    expect(panel.fixedTabs).toBeUndefined();
 
     const slot = renderSlot(
       panel,

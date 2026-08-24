@@ -17,7 +17,11 @@ function PromptStage({ children }: PromptStageProps) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
-function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
+// The common fields; each story pairs its own payload with its resolution.
+function basePendingInteraction(): Omit<
+  ProviderPendingInteraction,
+  "payload" | "resolution"
+> {
   return {
     id: "pi_question_demo",
     threadId: "thr_qfk8ksbxkk",
@@ -26,7 +30,6 @@ function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
     providerThreadId: "provider-thread-demo",
     providerRequestId: "request-demo",
     status: "pending",
-    resolution: null,
     statusReason: null,
     createdAt: 1,
     resolvedAt: null,
@@ -35,6 +38,7 @@ function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
 
 const singleQuestion: PendingInteraction = {
   ...basePendingInteraction(),
+  resolution: null,
   payload: {
     kind: "user_question",
     questions: [
@@ -63,6 +67,7 @@ const singleQuestion: PendingInteraction = {
 
 const multiQuestion: PendingInteraction = {
   ...basePendingInteraction(),
+  resolution: null,
   id: "pi_question_multi_demo",
   payload: {
     kind: "user_question",

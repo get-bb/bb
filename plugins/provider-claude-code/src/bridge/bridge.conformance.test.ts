@@ -8,15 +8,10 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import {
   experimental_captureBridgeJsonRpcOutput as captureBridgeJsonRpcOutput,
-  experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
   experimental_formatConformanceReport as formatConformanceReport,
   experimental_runBridgeConformance as runBridgeConformance,
-  experimental_toConformanceMessages as toConformanceMessages,
 } from "@get-bb/plugin-sdk/provider-bridge/testing";
-import type {
-  BridgeConformanceTransport,
-  CapturedBridgeJsonRpcOutput,
-} from "@get-bb/plugin-sdk/provider-bridge/testing";
+import type { CapturedBridgeJsonRpcOutput } from "@get-bb/plugin-sdk/provider-bridge/testing";
 
 /**
  * The claude-code bridge's conformance run: drives the bridge through the
@@ -46,8 +41,6 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
 }));
 
 import { handleLine } from "./bridge.js";
-
-const CONFORMANCE_THREAD_ID = "thr_conformance_1";
 
 /** The prompt the kit's turn/settles-without-activity scenario sends. */
 const ZERO_WORK_PROMPT_TEXT = "/clear";
@@ -197,56 +190,26 @@ beforeEach(() => {
   queryMock.mockImplementation((call: ScriptedClaudeQueryCall) =>
     createScriptedClaudeQuery(call),
   );
+  // The bridge declares `fork: "checkpoint"`, so the kit forks the lifecycle
+  // session at its tip: the SDK's forkSession answers with the new session
+  // id and the bridge resumes it through the same scripted query.
+  forkSessionMock.mockImplementation((sessionId: string) =>
+    Promise.resolve({ sessionId: `${sessionId}-fork` }),
+  );
   output = captureBridgeJsonRpcOutput();
 });
 
-afterEach(async () => {
-  // Reap the session the kit leaves behind (its last scenario resumes and
-  // runs a turn) so no SDK session state outlives the test.
-  const cleanupId = 990_001;
-  handleLine(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: cleanupId,
-      method: "thread/stop",
-      params: {
-        threadId: CONFORMANCE_THREAD_ID,
-        providerThreadId: "conformance-cleanup",
-        intent: "release",
-        activeTurnId: null,
-      },
-    }),
-  );
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (output.messages.some((message) => message.id === cleanupId)) {
-      break;
-    }
-    await new Promise((resolveTick) => setTimeout(resolveTick, 20));
-  }
+afterEach(() => {
+  // The kit releases its session at the end of the run, so no SDK session
+  // state outlives the test.
   output.restore();
   rmSync(workspaceDir, { recursive: true, force: true });
 });
 
 it("passes the canonical protocol suite against the scripted claude session", async () => {
-  let drained = 0;
-  // The conformance kit's grammar checks run over canonical ThreadEvents;
-  // the claude bridge emits thread/delta. Run deltas through a real assembler
-  // (the runtime adapter's exact translation, held stateful across the whole
-  // run) and hand the kit its assembled-event notifications.
-  const collector = createBridgeDeltaEventCollector("claude-code");
-  const transport: BridgeConformanceTransport = {
-    send: (line) => handleLine(line),
-    takeMessages: () => {
-      const fresh = output.messages.slice(drained);
-      drained = output.messages.length;
-      return fresh.flatMap((message) =>
-        toConformanceMessages(message, collector),
-      );
-    },
-  };
-
   const report = await runBridgeConformance({
-    transport,
+    transport: { send: handleLine, takeMessages: output.takeMessages },
+    providerId: "claude-code",
     session: {
       cwd: workspaceDir,
       promptInput: [{ type: "text", text: "say hello", mentions: [] }],
@@ -273,12 +236,15 @@ it("passes the canonical protocol suite against the scripted claude session", as
     "rpc/non-json-ignored": "pass",
     "rpc/response-not-request": "pass",
     "handshake/initialize": "pass",
+    "skills/configure-declared": "pass",
     "session/start-identity": "pass",
     "turn/lifecycle": "pass",
     "events/schema-valid": "pass",
     "item/opens-before-delta": "pass",
     "stop/release-not-interrupted": "pass",
+    "session/resume-identity": "pass",
     "session/resume-id-uniqueness": "pass",
+    "session/fork-identity": "pass",
     "turn/settles-without-activity": "pass",
   });
 

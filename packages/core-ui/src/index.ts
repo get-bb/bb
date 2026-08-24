@@ -16,5 +16,13 @@ export {
   formatPendingInteractionSummary,
   formatPendingInteractionUserQuestionOptionLabel,
 } from "./pending-interaction-presentation.js";
+export {
+  describePendingInteractionToolUse,
+  formatPendingInteractionToolUseDetailLines,
+} from "./pending-interaction-tool-use.js";
+export type {
+  PendingInteractionToolUseAsk,
+  ToolUseApprovalPendingInteractionPayload,
+} from "./pending-interaction-tool-use.js";
 
 export { extractErrorMessage, toRecord } from "./unknown-helpers.js";

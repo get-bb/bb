@@ -1,5 +1,6 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { codexExtensionKinds } from "./src/extension-kinds.js";
+import { CODEX_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
 
 /**
  * First-party Codex provider plugin. The declaration is the only source of
@@ -10,6 +11,15 @@ import { codexExtensionKinds } from "./src/extension-kinds.js";
  * bag derived below — core carries none of them.
  */
 export default function plugin(bb: BbPluginApi) {
+  // The ChatGPT-backed helper inference and voice transcription: served from
+  // this plugin's host entry, chosen by the user with `BB_INFERENCE` /
+  // `BB_TRANSCRIPTION` = `codex/<model>`. Core carries no Codex client.
+  bb.experimental_aiServices.register({
+    id: "codex",
+    displayName: "Codex (ChatGPT account or API key)",
+    kinds: ["inference", "voice"],
+  });
+
   bb.settings.define({
     memoryEnabled: {
       type: "boolean",
@@ -31,16 +41,24 @@ export default function plugin(bb: BbPluginApi) {
     id: "codex",
     displayName: "Codex",
     icon: "./icons/codex.svg",
-    experimental_strings: {
+    strings: {
       signInHint: "Run `codex` on the machine to sign in.",
       expiredHint: "Your Codex session expired. Run `codex`, then reload.",
       installUrl: "https://developers.openai.com/codex/cli",
       brandPrefix: "GPT-",
     },
+    // Codex answers `model/list` from account state and ignores the workspace
+    // path, so one probe per machine serves every workspace on it.
+    models: { scope: "host" },
+    // Where Codex keeps its own skills, so bb can list them beside its own and
+    // offer them in the composer: the static workspace and home roots, plus
+    // the flag that makes bb ask this plugin's host entry for the host-only
+    // ones (`$CODEX_HOME/skills`, its `.system` directory, and every enabled
+    // codex plugin's skills), since `CODEX_HOME` can move them and plugin
+    // installs differ per machine. See `src/native-roots.ts`.
+    ...CODEX_NATIVE_ROOTS_DECLARATION,
+    maintenance: { health: true, usage: true, installation: true },
     capabilities: {
-      experimental_providerHealth: true,
-      experimental_providerUsage: true,
-      experimental_providerInstallation: true,
       supportsServiceTier: true,
       supportsNativeUserQuestion: false,
       fork: "checkpoint",
@@ -50,7 +68,7 @@ export default function plugin(bb: BbPluginApi) {
       permissionModes: ["accept-edits", "auto", "full"],
       reasoningLevels: ["low", "medium", "high", "xhigh", "max", "ultra"],
     },
-    experimental_reasoningLevels: [
+    reasoningLevels: [
       { id: "low", label: "Low" },
       { id: "medium", label: "Medium" },
       { id: "high", label: "High" },
@@ -62,12 +80,12 @@ export default function plugin(bb: BbPluginApi) {
         description: "Max effort plus automatic task delegation.",
       },
     ],
-    experimental_serviceTiers: [
+    serviceTiers: [
       { id: "default", label: "Default" },
       { id: "fast", label: "Fast" },
     ],
     composerActions: ["plan", "goal"],
-    experimental_deriveProviderOptions(context) {
+    deriveProviderOptions(context) {
       return {
         memoryEnabled: context.settings.memoryEnabled !== false,
         providerSubagentsEnabled: context.settings.subagentsDisabled !== true,
@@ -76,6 +94,6 @@ export default function plugin(bb: BbPluginApi) {
     // Codex goals (thread state) and the macOS permission profile (an item
     // beside an approval) are codex's own vocabulary, validated at ingest
     // against these schemas.
-    experimental_extensionKinds: codexExtensionKinds,
+    extensionKinds: codexExtensionKinds,
   });
 }

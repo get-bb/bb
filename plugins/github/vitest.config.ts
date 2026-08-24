@@ -1,5 +1,8 @@
 import path from "node:path";
-import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
+import {
+  defineWorkspaceTestConfig,
+  sharedWorkerProjects,
+} from "../../vitest.shared.js";
 
 export default defineWorkspaceTestConfig({
   resolve: {
@@ -9,8 +12,12 @@ export default defineWorkspaceTestConfig({
   },
   test: {
     silent: "passed-only",
-    name: "bb-plugin-github",
-    include: ["**/*.test.{ts,tsx}"],
-    exclude: ["node_modules/**"],
+    projects: sharedWorkerProjects({
+      pkgDir: import.meta.dirname,
+      aliases: { "@": path.resolve(import.meta.dirname, ".") },
+      name: "bb-plugin-github",
+      include: ["**/*.test.{ts,tsx}"],
+      exclude: ["node_modules/**"],
+    }),
   },
 });

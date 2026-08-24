@@ -3,17 +3,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ThreadEvent } from "@bb/domain";
-import type { AgentRuntime } from "./types.js";
 import {
   createScriptedEchoRuntime,
   fullRuntimeOptions,
   wait,
+  type LaunchBoundAgentRuntime,
 } from "./test/runtime-test-harness.js";
 import { promptTextInput } from "./test/prompt-input.js";
 
 describe("turn-start watchdog", () => {
   let tmpDir: string;
-  let runtime: AgentRuntime | null = null;
+  let runtime: LaunchBoundAgentRuntime | null = null;
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), "bb-runtime-watchdog-"));

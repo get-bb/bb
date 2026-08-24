@@ -5,17 +5,26 @@
  * daemon's assembler copies the bridge's payload onto the canonical
  * `extension` item or `thread/extensionState/updated` event without reading
  * it. The plugin that owns the kind declared a Standard Schema for it
- * (`experimental_extensionKinds` on its provider declaration), and this is
+ * (`extensionKinds` on its provider declaration), and this is
  * the one place that schema is enforced — before the event is persisted, so
  * nothing a client renders or a plugin reads back came from a payload its
  * plugin did not vouch for.
  *
- * A payload that fails — undeclared kind, schema miss, validator error, or
- * oversized — is not dropped silently: the event is replaced by a
- * `provider/unhandled` carrying the original kind and payload, the same
- * visible fate as any provider traffic core cannot classify (guardrail G11
- * counts it). The batch keeps its shape, so sequencing and the accepted-event
- * response are unaffected.
+ * The kind is also checked against who emitted it. Clients resolve a kind's
+ * renderer by the kind alone, so a bridge that emitted another plugin's kind
+ * would persist a row rendered as that plugin's UI. The thread's provider
+ * names the plugin that emitted the row (its live registration's
+ * `pluginId`), and it must be the plugin the kind names — the same rule a
+ * namespaced presentation glyph is held to (`presentation-icons.ts`). A
+ * thread whose provider has no live registration has nothing to vouch for
+ * its rows, so every extension kind on it is refused.
+ *
+ * A payload that fails — foreign kind, undeclared kind, schema miss,
+ * validator error, or oversized — is not dropped silently: the event is
+ * replaced by a `provider/unhandled` carrying the original kind and payload,
+ * the same visible fate as any provider traffic core cannot classify
+ * (guardrail G11 counts it). The batch keeps its shape, so sequencing and the
+ * accepted-event response are unaffected.
  */
 import { getThread } from "@bb/db";
 import type { ExtensionKind, JsonValue, ThreadEvent } from "@bb/domain";
@@ -128,10 +137,41 @@ async function validateAgainstSchema(
   return { ok: true };
 }
 
+/**
+ * The reason the kind may not appear on this thread at all, or null.
+ * `providerId` is the thread's provider (null for an unknown thread); its
+ * live registration names the plugin that emitted the row.
+ */
+function extensionOwnershipProblem(
+  deps: ExtensionPayloadValidationDeps,
+  site: ExtensionPayloadSite,
+  providerId: string | null,
+): string | null {
+  const { pluginId } = parseExtensionKind(site.kind);
+  const registration =
+    providerId === null ? null : deps.providerRegistry.get(providerId);
+  if (registration === null) {
+    const provider =
+      providerId === null
+        ? "the thread's provider"
+        : `the thread's provider "${providerId}"`;
+    return `extension kind "${site.kind}" names plugin "${pluginId}", but ${provider} has no live registration to check it against`;
+  }
+  if (registration.pluginId !== pluginId) {
+    return `extension kind "${site.kind}" is owned by plugin "${pluginId}", but the thread's provider "${providerId}" is registered by plugin "${registration.pluginId}"`;
+  }
+  return null;
+}
+
 async function validateSite(
   deps: ExtensionPayloadValidationDeps,
   site: ExtensionPayloadSite,
+  providerId: string | null,
 ): Promise<ValidationOutcome> {
+  const ownership = extensionOwnershipProblem(deps, site, providerId);
+  if (ownership !== null) {
+    return { ok: false, reason: ownership };
+  }
   const declared = deps.providerRegistry.getExtensionKindSchemas(site.kind);
   const schema = declared?.[site.surface];
   if (schema === undefined) {
@@ -161,18 +201,15 @@ async function validateSite(
  * where the original would have.
  */
 function toUnhandledEvent(
-  deps: ExtensionPayloadValidationDeps,
   site: ExtensionPayloadSite,
+  providerId: string | null,
   reason: string,
 ): ThreadEvent {
-  const providerId =
-    getThread(deps.db, site.threadId)?.providerId ??
-    parseExtensionKind(site.kind).pluginId;
   return {
     type: "provider/unhandled",
     threadId: site.threadId,
     providerThreadId: site.providerThreadId,
-    providerId,
+    providerId: providerId ?? parseExtensionKind(site.kind).pluginId,
     rawType: `extension/${site.surface}:${site.kind}`,
     rawEvent: {
       jsonrpc: "2.0",
@@ -200,7 +237,10 @@ export async function validateExtensionPayloads(
       if (site === null) {
         return envelope;
       }
-      const outcome = await validateSite(deps, site);
+      // One thread lookup per site: the provider id decides which plugin the
+      // kind is checked against and what a replacement is counted under.
+      const providerId = getThread(deps.db, site.threadId)?.providerId ?? null;
+      const outcome = await validateSite(deps, site, providerId);
       if (outcome.ok) {
         return envelope;
       }
@@ -216,7 +256,7 @@ export async function validateExtensionPayloads(
       );
       return {
         ...envelope,
-        event: toUnhandledEvent(deps, site, outcome.reason),
+        event: toUnhandledEvent(site, providerId, outcome.reason),
       };
     }),
   );

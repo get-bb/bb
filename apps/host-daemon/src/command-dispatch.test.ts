@@ -16,8 +16,11 @@ import {
 } from "./command-dispatch.js";
 import {
   DISPATCH_TEST_BRIDGE_LAUNCH,
-  DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+  dispatchTestRuntimeBridgeLaunch,
+  makeDispatchOptions,
   silentLogger,
+  fetchDispatchTestArtifact,
+  unexpectedProviderMaintenance,
 } from "../test/command/dispatch-helpers.js";
 import type { CommandOf } from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
@@ -317,6 +320,48 @@ function supportedCodexInstallationStatus(): ProviderCliStatus {
   };
 }
 
+/** A thread start whose bridge declares installation management, so the
+ * provider-CLI version gate runs before the runtime sees the thread. */
+function createInstallationGatedThreadStart(
+  threadId: string,
+  environmentId = "env-1",
+): CommandOf<"thread.start"> {
+  return {
+    bridgeLaunch: {
+      ...DISPATCH_TEST_BRIDGE_LAUNCH,
+      capabilities: {
+        ...DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
+        providerInstallation: true,
+      },
+    },
+    type: "thread.start",
+    environmentId,
+    threadId,
+    workspaceContext: {
+      workspacePath: WORKSPACE_PATH,
+      workspaceProvisionType: "unmanaged",
+    },
+    projectId: "proj_1",
+    providerId: "codex",
+    requestId: `creq_${threadId}`,
+    input: [{ type: "text", text: "hello", mentions: [] }],
+    options: {
+      model: "gpt-5",
+      serviceTier: "default",
+      reasoningLevel: "medium",
+      providerOptions: {},
+      permissionMode: "full",
+      permissionScope: "full",
+      approvalReviewer: null,
+      permissionEscalation: null,
+    },
+    instructions: "Be concise.",
+    dynamicTools: [],
+    injectedSkillSources: [],
+    instructionMode: "append",
+  };
+}
+
 async function runSuccessfulClaudeCodeUpdateVerification(args: {
   before: ProviderCliStatus;
   after: ProviderCliStatus;
@@ -359,6 +404,8 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerInstallationStatus,
       providerInstallationRun: async () => ({
         available: true,
@@ -416,6 +463,7 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -459,6 +507,7 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -492,6 +541,7 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -526,6 +576,7 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          ...unexpectedProviderMaintenance,
           runtimeManager: manager,
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
@@ -568,6 +619,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     }).then((result) => {
@@ -617,6 +670,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -654,6 +709,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -691,6 +748,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -747,6 +806,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -827,6 +888,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -886,6 +949,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -916,6 +981,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     };
@@ -979,6 +1046,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       },
@@ -1011,6 +1080,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
@@ -1043,6 +1114,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1079,6 +1152,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1125,6 +1200,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1195,6 +1272,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
       }),
@@ -1226,6 +1305,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -1245,7 +1326,7 @@ describe("dispatchCommand", () => {
         ...DISPATCH_TEST_BRIDGE_LAUNCH,
         capabilities: {
           ...DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
-          experimental_providerInstallation: true,
+          providerInstallation: true,
         },
       },
       type: "thread.start",
@@ -1306,6 +1387,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus: async () => unsupportedCodexStatus,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1365,6 +1448,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerInstallationStatus,
       runtimeManager: manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1386,7 +1471,7 @@ describe("dispatchCommand", () => {
         ...DISPATCH_TEST_BRIDGE_LAUNCH,
         capabilities: {
           ...DISPATCH_TEST_BRIDGE_LAUNCH.capabilities,
-          experimental_providerInstallation: true,
+          providerInstallation: true,
         },
       },
       type: "thread.rewind.prepare",
@@ -1444,6 +1529,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus,
         runtimeManager: manager,
         threadStorageRootPath: "/tmp/bb-thread-storage",
@@ -1460,6 +1547,10 @@ describe("dispatchCommand", () => {
         threadId: "thread-1",
       }),
     );
+    // The gate remembers the supported answer above; a bb-run install or
+    // update invalidates it, which is what lets the downgraded status below
+    // reach the rewind.
+    await manager.invalidateProviderMaintenanceRuntime();
     await expect(
       dispatchCommand(
         { ...command, leaseId: "lease-old-codex" },
@@ -1473,6 +1564,8 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          fetchPluginHostArtifact: fetchDispatchTestArtifact,
+          ...unexpectedProviderMaintenance,
           providerInstallationStatus: async () => ({
             ...supportedCodexStatus,
             currentVersion: "0.140.0",
@@ -1505,6 +1598,8 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          fetchPluginHostArtifact: fetchDispatchTestArtifact,
+          ...unexpectedProviderMaintenance,
           runtimeManager: manager,
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
@@ -1513,6 +1608,305 @@ describe("dispatchCommand", () => {
     expect(runtime.discardThreadRewind).toHaveBeenCalledWith({
       leaseId: "lease-1",
     });
+  });
+
+  it("reuses a supported installation probe across thread starts", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const providerInstallationStatus = vi.fn(async () =>
+      supportedCodexInstallationStatus(),
+    );
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-2"), options),
+    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
+
+    expect(providerInstallationStatus).toHaveBeenCalledOnce();
+    expect(runtime.startThread).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares one in-flight probe between concurrent thread starts", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const probe = createDeferredPromise<ProviderCliStatus>();
+    const providerInstallationStatus = vi.fn(() => probe.promise);
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+
+    const starts = Promise.all([
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+      dispatchCommand(createInstallationGatedThreadStart("thread-2"), options),
+    ]);
+    await vi.waitFor(() =>
+      expect(providerInstallationStatus).toHaveBeenCalledOnce(),
+    );
+    probe.resolve(supportedCodexInstallationStatus());
+
+    await expect(starts).resolves.toEqual([
+      { providerThreadId: "provider-thread-1" },
+      { providerThreadId: "provider-thread-1" },
+    ]);
+    expect(providerInstallationStatus).toHaveBeenCalledOnce();
+    expect(runtime.startThread).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not remember an unsupported installation", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const providerInstallationStatus = vi
+      .fn<() => Promise<ProviderCliStatus>>()
+      .mockResolvedValueOnce({
+        ...supportedCodexInstallationStatus(),
+        currentVersion: "0.135.0",
+        npmGlobalPackageVersion: "0.135.0",
+        versionUnsupported: true,
+      })
+      .mockResolvedValue(supportedCodexInstallationStatus());
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+    ).rejects.toMatchObject({ code: "provider_cli_unsupported_version" });
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
+
+    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    expect(runtime.startThread).toHaveBeenCalledOnce();
+  });
+
+  it("keys the rewind requirement separately from thread start", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const providerInstallationStatus = vi.fn(async () =>
+      supportedCodexInstallationStatus(),
+    );
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+    const start = createInstallationGatedThreadStart("thread-1");
+    const rewind: CommandOf<"thread.rewind.prepare"> = {
+      bridgeLaunch: start.bridgeLaunch,
+      type: "thread.rewind.prepare",
+      environmentId: start.environmentId,
+      threadId: start.threadId,
+      workspaceContext: start.workspaceContext,
+      projectId: start.projectId,
+      providerId: start.providerId,
+      leaseId: "lease-1",
+      sourceProviderThreadId: "provider-source-1",
+      retainThroughProviderCheckpoint: "turn-before-edit",
+      options: start.options,
+      instructions: start.instructions,
+      dynamicTools: start.dynamicTools,
+      injectedSkillSources: start.injectedSkillSources,
+      instructionMode: start.instructionMode,
+    };
+
+    await dispatchCommand(start, options);
+    await expect(dispatchCommand(rewind, options)).resolves.toEqual({
+      providerThreadId: "provider-thread-rewind-1",
+    });
+
+    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    expect(providerInstallationStatus).toHaveBeenLastCalledWith(
+      expect.objectContaining({ requirement: "thread_rewind" }),
+    );
+  });
+
+  it("re-probes and launches with the new PATH when the shell env refresh finds a change", async () => {
+    const oldPath = "/usr/bin:/bin";
+    const newPath = "/home/u/.local/bin:/usr/bin:/bin";
+    const runtime = createRuntime();
+    const createdRuntimeShellPaths: (string | undefined)[] = [];
+    const manager = new RuntimeManager({
+      createRuntime: (runtimeOptions) => {
+        createdRuntimeShellPaths.push(runtimeOptions.shellEnv?.PATH);
+        return runtime;
+      },
+      provisionWorkspace: async () => createWorkspace(),
+      shellEnv: { PATH: oldPath },
+    });
+    // The daemon only learns about a PATH change through this refresh, which
+    // re-reads the login shell and hands the result to the manager (app.ts).
+    let loginShellPath = oldPath;
+    const refreshShellEnv = vi.fn(async () => {
+      await manager.replaceBaseShellEnv({ PATH: loginShellPath });
+    });
+    const providerInstallationStatus = vi.fn(async () =>
+      supportedCodexInstallationStatus(),
+    );
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+      refreshShellEnv,
+    });
+
+    await dispatchCommand(
+      createInstallationGatedThreadStart("thread-1"),
+      options,
+    );
+    await dispatchCommand(
+      createInstallationGatedThreadStart("thread-2"),
+      options,
+    );
+    expect(providerInstallationStatus).toHaveBeenCalledOnce();
+
+    // A vendor installer drops the binary in a new directory and adds it to
+    // the shell rc; the next start must see it even though the memo is warm.
+    loginShellPath = newPath;
+    await dispatchCommand(
+      createInstallationGatedThreadStart("thread-3", "env-2"),
+      options,
+    );
+
+    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    expect(manager.getShellEnv().PATH).toBe(newPath);
+    expect(createdRuntimeShellPaths).toEqual([oldPath, newPath]);
+    // Every gated start re-reads the shell, as it did before the memo
+    // existed; the refresh's own TTL is what keeps that cheap.
+    expect(refreshShellEnv).toHaveBeenCalledTimes(3);
+  });
+
+  it("remembers the first probe after a shell env change", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+      shellEnv: { PATH: "/old/bin" },
+    });
+    const refreshShellEnv = async () => {
+      await manager.replaceBaseShellEnv({ PATH: "/new/bin" });
+    };
+    // The production probe refreshes the shell env itself before asking the
+    // bridge (app.ts). Since the gate has already refreshed, that inner call
+    // finds nothing changed and must not clear the gate under its own probe.
+    const providerInstallationStatus = vi.fn(async () => {
+      await refreshShellEnv();
+      return supportedCodexInstallationStatus();
+    });
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+      refreshShellEnv,
+    });
+
+    await dispatchCommand(
+      createInstallationGatedThreadStart("thread-1"),
+      options,
+    );
+    await dispatchCommand(
+      createInstallationGatedThreadStart("thread-2"),
+      options,
+    );
+
+    expect(manager.getShellEnv().PATH).toBe("/new/bin");
+    expect(providerInstallationStatus).toHaveBeenCalledOnce();
+  });
+
+  it("does not remember a not-installed provider that enforces a minimum version", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    const providerInstallationStatus = vi
+      .fn<() => Promise<ProviderCliStatus>>()
+      // Bridges report a missing CLI with versionUnsupported: false; codex
+      // reports a minimum version, so the next probe can still reject.
+      .mockResolvedValueOnce({
+        ...supportedCodexInstallationStatus(),
+        installed: false,
+        executablePath: null,
+        currentVersion: null,
+        npmGlobalPackageVersion: null,
+        installAction: {
+          kind: "install",
+          label: "Install",
+          command: "npm i -g @openai/codex",
+        },
+      })
+      // An out-of-band install of a too-old CLI into a directory already on
+      // PATH changes no shell env, so only a fresh probe can catch it.
+      .mockResolvedValueOnce({
+        ...supportedCodexInstallationStatus(),
+        currentVersion: "0.135.0",
+        npmGlobalPackageVersion: "0.135.0",
+        versionUnsupported: true,
+      });
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+    ).resolves.toEqual({ providerThreadId: "provider-thread-1" });
+    await expect(
+      dispatchCommand(createInstallationGatedThreadStart("thread-2"), options),
+    ).rejects.toMatchObject({ code: "provider_cli_unsupported_version" });
+
+    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    expect(runtime.startThread).toHaveBeenCalledOnce();
+  });
+
+  it("expires the remembered probe after the gate TTL", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const runtime = createRuntime();
+      const manager = new RuntimeManager({
+        createRuntime: () => runtime,
+        provisionWorkspace: async () => createWorkspace(),
+        providerInstallationGateTtlMs: 100,
+      });
+      const providerInstallationStatus = vi.fn(async () =>
+        supportedCodexInstallationStatus(),
+      );
+      const options = makeDispatchOptions({
+        runtimeManager: manager,
+        providerInstallationStatus,
+      });
+
+      const probedAt = Date.now();
+      await dispatchCommand(
+        createInstallationGatedThreadStart("thread-1"),
+        options,
+      );
+      vi.setSystemTime(probedAt + 101);
+      await dispatchCommand(
+        createInstallationGatedThreadStart("thread-2"),
+        options,
+      );
+
+      expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("invalidates the provider maintenance runtime after a verified provider update", async () => {
@@ -1563,6 +1957,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: manager,
       providerInstallationRun: async () => ({
         available: true,
@@ -1660,6 +2056,8 @@ describe("dispatchCommand", () => {
           fetchProjectAttachment: async () => {
             throw new Error("Unexpected project attachment fetch");
           },
+          fetchPluginHostArtifact: fetchDispatchTestArtifact,
+          ...unexpectedProviderMaintenance,
           providerInstallationRun: async () => ({
             available: true,
             command: {
@@ -1719,6 +2117,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus,
         providerInstallationRun: async () => ({
           available: true,
@@ -1803,6 +2203,8 @@ describe("dispatchCommand", () => {
         fetchProjectAttachment: async () => {
           throw new Error("Unexpected project attachment fetch");
         },
+        fetchPluginHostArtifact: fetchDispatchTestArtifact,
+        ...unexpectedProviderMaintenance,
         providerInstallationStatus,
         providerInstallationRun: async () => ({
           available: false,
@@ -1920,6 +2322,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerInstallationStatus: async () =>
         supportedCodexInstallationStatus(),
       runtimeManager: fixture.manager,
@@ -1988,6 +2392,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       runtimeManager: fixture.manager,
       threadStorageRootPath: "/tmp/bb-thread-storage",
     });
@@ -2019,6 +2425,8 @@ describe("dispatchCommand", () => {
       fetchProjectAttachment: async () => {
         throw new Error("Unexpected project attachment fetch");
       },
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       providerHealth,
       providerUsage,
       runtimeManager: manager,
@@ -2050,11 +2458,11 @@ describe("dispatchCommand", () => {
     expect(providerHealth).toHaveBeenCalledWith({
       providerId: "pi",
       cwd: "/tmp/workspace",
-      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
     });
     expect(providerUsage).toHaveBeenCalledWith({
       providerId: "pi",
-      bridgeLaunch: DISPATCH_TEST_RUNTIME_BRIDGE_LAUNCH,
+      bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
     });
   });
 });

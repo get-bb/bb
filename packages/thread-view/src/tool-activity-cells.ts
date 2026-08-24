@@ -1,8 +1,12 @@
 import type {
   EventProjectionCommandMessage,
   EventProjectionDelegationMessage,
+  EventProjectionExtensionMessage,
+  EventProjectionFileReadMessage,
   EventProjectionImageViewMessage,
   EventProjectionMessage,
+  EventProjectionPlanStepsMessage,
+  EventProjectionSearchMessage,
   EventProjectionToolCallMessage,
   EventProjectionWebFetchMessage,
   EventProjectionWebSearchMessage,
@@ -12,10 +16,18 @@ export type ViewProviderExecutionMessage =
   | EventProjectionCommandMessage
   | EventProjectionToolCallMessage
   | EventProjectionDelegationMessage;
+/**
+ * The begin/end item family (see web-activity-lifecycle.ts): web research,
+ * the v3 exploration kinds, plan snapshots and plugin extension items.
+ */
 export type ViewWebActivityMessage =
   | EventProjectionWebSearchMessage
   | EventProjectionWebFetchMessage
-  | EventProjectionImageViewMessage;
+  | EventProjectionImageViewMessage
+  | EventProjectionFileReadMessage
+  | EventProjectionSearchMessage
+  | EventProjectionPlanStepsMessage
+  | EventProjectionExtensionMessage;
 export type ToolActivityCell =
   | ViewProviderExecutionMessage
   | ViewWebActivityMessage;
@@ -65,7 +77,11 @@ export function isWebActivityMessage(
   return (
     cell?.kind === "web-search" ||
     cell?.kind === "web-fetch" ||
-    cell?.kind === "image-view"
+    cell?.kind === "image-view" ||
+    cell?.kind === "file-read" ||
+    cell?.kind === "search" ||
+    cell?.kind === "plan-steps" ||
+    cell?.kind === "extension"
   );
 }
 

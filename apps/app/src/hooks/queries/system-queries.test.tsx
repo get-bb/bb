@@ -83,12 +83,11 @@ describe("useSystemProviderInfo", () => {
   it("uses capabilities already loaded by the composer while the provider roster loads", async () => {
     const provider: ProviderInfo = {
       id: "codex",
+      pluginId: "provider-codex",
       displayName: "Codex",
       logoUrl: null,
       available: true,
-      experimental_providerHealth: false,
-      experimental_providerUsage: false,
-      experimental_providerInstallation: false,
+      maintenance: { health: false, usage: false, installation: false },
       composerActions: [],
       capabilities: {
         supportsThreadArchive: true,
@@ -97,6 +96,7 @@ describe("useSystemProviderInfo", () => {
         supportsNativeUserQuestion: false,
         supportsFork: true,
         supportsSessionRewind: true,
+        modelCatalogScope: "workspace",
         permissionModes: ["accept-edits", "auto", "full"],
       },
     };
@@ -132,12 +132,11 @@ describe("useSystemProviderInfo", () => {
     const providers: ProviderInfo[] = [
       {
         id: "codex",
+        pluginId: "provider-codex",
         displayName: "Codex",
         logoUrl: null,
         available: true,
-        experimental_providerHealth: false,
-        experimental_providerUsage: false,
-        experimental_providerInstallation: false,
+        maintenance: { health: false, usage: false, installation: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -146,6 +145,7 @@ describe("useSystemProviderInfo", () => {
           supportsNativeUserQuestion: false,
           supportsFork: true,
           supportsSessionRewind: true,
+          modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
       },
@@ -231,12 +231,11 @@ describe("useSystemExecutionOptions", () => {
     const providers: ProviderInfo[] = [
       {
         id: "codex",
+        pluginId: "provider-codex",
         displayName: "Codex",
         logoUrl: null,
         available: true,
-        experimental_providerHealth: true,
-        experimental_providerUsage: true,
-        experimental_providerInstallation: false,
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -245,17 +244,17 @@ describe("useSystemExecutionOptions", () => {
           supportsNativeUserQuestion: false,
           supportsFork: true,
           supportsSessionRewind: true,
+          modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
       },
       {
         id: "acp-opencode",
+        pluginId: "provider-acp-opencode",
         displayName: "OpenCode",
         logoUrl: null,
         available: true,
-        experimental_providerHealth: true,
-        experimental_providerUsage: true,
-        experimental_providerInstallation: false,
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: false,
@@ -264,6 +263,7 @@ describe("useSystemExecutionOptions", () => {
           supportsNativeUserQuestion: false,
           supportsFork: false,
           supportsSessionRewind: false,
+          modelCatalogScope: "workspace",
           permissionModes: ["full"],
         },
       },
@@ -352,12 +352,11 @@ describe("useSystemExecutionOptions", () => {
   /** The built-in roster a host reports alongside its catalog. */
   const BUILT_IN_PROVIDERS: ProviderInfo[] = ["codex", "pi"].map((id) => ({
     id,
+    pluginId: `provider-${id}`,
     displayName: id,
     logoUrl: null,
     available: true,
-    experimental_providerHealth: true,
-    experimental_providerUsage: true,
-    experimental_providerInstallation: false,
+    maintenance: { health: true, usage: true, installation: false },
     composerActions: [],
     capabilities: {
       supportsThreadArchive: false,
@@ -366,6 +365,7 @@ describe("useSystemExecutionOptions", () => {
       supportsNativeUserQuestion: false,
       supportsFork: true,
       supportsSessionRewind: true,
+      modelCatalogScope: "workspace",
       permissionModes: ["accept-edits", "auto", "full"],
     },
   }));
@@ -423,11 +423,10 @@ describe("useSystemExecutionOptions", () => {
   it("replays the host's provider list so a custom provider paints as itself", async () => {
     const customProvider = {
       id: "acp:my-agent",
+      pluginId: "provider-acp:my-agent",
       displayName: "My agent",
       logoUrl: null,
-      experimental_providerHealth: true,
-      experimental_providerUsage: true,
-      experimental_providerInstallation: false,
+      maintenance: { health: true, usage: true, installation: false },
       capabilities: CODEX_CATALOG.providers[0]!.capabilities,
       composerActions: [],
       available: true,

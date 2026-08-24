@@ -56,6 +56,7 @@
 
 - Only write high quality tests that verify where there could be potential bugs. Avoid testing trivial getters/setters, framework wiring, or other code that is unlikely to break.
 - Pipe slow test output to a file, then read the file. Example: `pnpm exec turbo run test --filter=@bb/integration-tests --force > /tmp/test-out.txt 2>&1`.
+- Package `vitest.config.ts` files build their `projects` with `sharedWorkerProjects` from `vitest.shared.ts`. It runs node-environment test files in shared workers (`isolate: false`) and gives a file its own worker when it runs in a DOM environment (`jsdom`) or when the file, or a test helper it imports, mutates worker-global state (`vi.mock`, `vi.stubGlobal`, `process.env`, `globalThis.*` assignments, `Object.defineProperty` on a global). Re-importing the module graph per file was 80–90% of the big suites' CPU. Restore what a test changes anyway; the scan is a safety net, not a license.
 
 ## GitHub Issues And Pull Requests
 

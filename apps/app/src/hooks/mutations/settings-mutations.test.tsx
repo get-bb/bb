@@ -4,8 +4,6 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
   defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
   type AppKeybindingOverrides,
   type AppKeybindings,
 } from "@bb/domain";
@@ -17,9 +15,11 @@ import {
 } from "@/lib/model-catalog-cache";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
+  systemProvidersQueryKey,
   threadTimelineQueryKey,
   threadTimelineTurnSummaryDetailsQueryKey,
 } from "../queries/query-keys";
@@ -56,24 +56,10 @@ const defaultKeybindings: AppKeybindings = [
 ];
 
 function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
+  return makeSystemConfig({
     keybindings: defaultKeybindings,
     defaultKeybindings,
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    localHelperPorts: [],
-    serverUrl: "http://localhost:38886",
-    primaryHostId: null,
-    primaryHostPlatform: null,
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
+  });
 }
 
 afterEach(() => {
@@ -98,10 +84,12 @@ describe("general settings mutation", () => {
       hostId: "host-1",
       providerId: "claude-code",
     });
+    const providersKey = systemProvidersQueryKey();
     queryClient.setQueryData(configKey, systemConfig());
     queryClient.setQueryData(timelineKey, {});
     queryClient.setQueryData(summaryKey, {});
     queryClient.setQueryData(executionOptionsKey, { models: ["cached"] });
+    queryClient.setQueryData(providersKey, [{ id: "claude-code" }]);
     const nextSettings = {
       ...defaultAppSettings,
       showUnhandledProviderEvents: true,
@@ -125,6 +113,27 @@ describe("general settings mutation", () => {
     expect(queryClient.getQueryData(executionOptionsKey)).toEqual({
       models: ["cached"],
     });
+    expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(false);
+  });
+
+  it("refreshes the provider directory after its picker order changes", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    const providersKey = systemProvidersQueryKey();
+    queryClient.setQueryData(systemConfigQueryKey(), systemConfig());
+    queryClient.setQueryData(providersKey, [{ id: "alpha" }, { id: "beta" }]);
+    const nextSettings = {
+      ...defaultAppSettings,
+      providerOrder: ["beta", "alpha"],
+    };
+    vi.mocked(sdk.system.updateGeneralSettings).mockResolvedValue(nextSettings);
+    const { result } = renderHook(() => useUpdateGeneralSettings(), {
+      wrapper,
+    });
+
+    act(() => result.current.mutate(nextSettings));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
   });
 
   // A stale catalog can still name a model the server now hides, both in the

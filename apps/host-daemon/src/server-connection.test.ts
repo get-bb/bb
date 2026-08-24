@@ -460,13 +460,10 @@ describe("ServerConnection", () => {
           type: "host-rpc.request",
           requestId: "invalid-transcription",
           command: {
-            type: "codex.voice.transcribe",
-            model: "gpt-4o-mini-transcribe",
-            audioBase64: "",
-            mimeType: "audio/webm",
-            filename: "prompt.webm",
-            prompt: null,
-            timeoutMs: 10_000,
+            type: "thread.stop",
+            intent: "interrupt",
+            environmentId: "",
+            threadId: "",
           },
         }),
       });
@@ -475,7 +472,7 @@ describe("ServerConnection", () => {
         JSON.stringify({
           type: "host-rpc.response",
           requestId: "invalid-transcription",
-          commandType: "codex.voice.transcribe",
+          commandType: "thread.stop",
           ok: false,
           errorCode: "invalid_command",
           errorMessage: "Invalid host RPC command",
@@ -485,7 +482,7 @@ describe("ServerConnection", () => {
       expect(setSession).not.toHaveBeenLastCalledWith(null);
       expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
-          commandType: "codex.voice.transcribe",
+          commandType: "thread.stop",
           requestId: "invalid-transcription",
         }),
         "Rejected invalid host RPC command",

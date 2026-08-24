@@ -106,27 +106,12 @@ const correctnessChild03: TimelineRow = {
   startedAt: 1778174307811,
   createdAt: 1778174307811,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01XfjG4aRkJFecL7GnEc3vLH",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    limit: 150,
-  },
-  output:
-    '1\timport type { ChildProcess } from "node:child_process";\n2\timport type {\n3\t  AgentRuntimeExecutionOptions,\n4\t  AgentRuntimeOptions,\n5\t} from "./types.js";\n6\timport type {\n7\t  PendingInteractionCreate,\n8\t  PendingInteractionPayload,\n9\t  PendingInteractionResolution,\n10\t  ToolCallRequest,\n11\t} from "... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174307811,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const correctnessChild04: TimelineRow = {
@@ -138,26 +123,12 @@ const correctnessChild04: TimelineRow = {
   startedAt: 1778174307811,
   createdAt: 1778174307811,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_015zVQkMM47412gCpawWXUEP",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.ts",
-  },
-  output:
-    '1\timport { z } from "zod";\n2\timport type { DecodedToolCallRequest } from "../provider-adapter.js";\n3\t\n4\tconst normalizedToolCallRequestSchema = z.object({\n5\t  providerThreadId: z.string().min(1),\n6\t  threadId: z.string().min(1).optional(),\n7\t  // Canonical bridge wire form: required string when know... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.ts",
+  cmd: null,
   completedAt: 1778174307811,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "provider-tool-call-contract.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.ts",
-    },
-  ],
 };
 
 const correctnessChild05: TimelineRow = {
@@ -169,27 +140,12 @@ const correctnessChild05: TimelineRow = {
   startedAt: 1778174307811,
   createdAt: 1778174307811,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_019jw4CN4WEd6ERQZEgRN7Pm",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/domain/src/provider-types.ts",
-    limit: 100,
-  },
-  output:
-    '1\timport { z } from "zod";\n2\timport { permissionModeSchema, reasoningLevelSchema } from "./shared-types.js";\n3\t\n4\texport const modelReasoningEffortSchema = z.object({\n5\t  reasoningEffort: reasoningLevelSchema,\n6\t  description: z.string(),\n7\t});\n8\texport type ModelReasoningEffort = z.infer<typeof mod... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/domain/src/provider-types.ts",
+  cmd: null,
   completedAt: 1778174307811,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "provider-types.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/domain/src/provider-types.ts",
-    },
-  ],
 };
 
 const correctnessChild06: TimelineRow = {
@@ -233,27 +189,14 @@ const correctnessChild07: TimelineRow = {
   startedAt: 1778174307811,
   createdAt: 1778174307811,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_01FrXbRuAHubcQSJfSP5xYAx",
-  toolName: "Grep",
-  toolArgs: {
-    pattern: "getActiveTurnId",
-    path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
-    output_mode: "content",
-  },
-  output:
-    "packages/agent-runtime/src/runtime.tool-calls.test.ts:201:        getActiveTurnId: () => undefined,\npackages/agent-runtime/src/runtime-turn-state.ts:15:  getActiveTurnId(threadId: string): string | undefined {\npackages/agent-runtime/src/runtime-turn-state.test.ts:31:    expect(state.getActiveTurnId(... [truncated]",
+  mode: "content",
+  query: "getActiveTurnId",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
+  cmd: null,
   completedAt: 1778174307811,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "search",
-      command: "Grep",
-      query: "getActiveTurnId",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
-    },
-  ],
 };
 
 const correctnessChild08: TimelineRow = {
@@ -265,27 +208,12 @@ const correctnessChild08: TimelineRow = {
   startedAt: 1778174307811,
   createdAt: 1778174307849,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01RzyDhxnqDW48wDAib6jNKg",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.ts",
-    limit: 200,
-  },
-  output:
-    '1\timport type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";\n2\timport type {\n3\t  AdapterCommand,\n4\t  ProviderAdapterFactory,\n5\t  ProviderCommandPlan,\n6\t  ProviderRequestCommandPlan,\n7\t} from "./provider-adapter.j... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.ts",
+  cmd: null,
   completedAt: 1778174307849,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.ts",
-    },
-  ],
 };
 
 const correctnessChild09: TimelineRow = {
@@ -297,26 +225,12 @@ const correctnessChild09: TimelineRow = {
   startedAt: 1778174320113,
   createdAt: 1778174320113,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01R1yNfRG8iq6y6VFhZV5vuk",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-turn-state.ts",
-  },
-  output:
-    '1\timport type { ThreadEvent } from "@bb/domain";\n2\timport { requireThreadEventScopeTurnId } from "@bb/domain";\n3\t\n4\texport class RuntimeTurnState {\n5\t  private readonly activeTurnIdByThreadId = new Map<string, string>();\n6\t\n7\t  clear(): void {\n8\t    this.activeTurnIdByThreadId.clear();\n9\t  }\n10\t\n11\t... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-turn-state.ts",
+  cmd: null,
   completedAt: 1778174320113,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-turn-state.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-turn-state.ts",
-    },
-  ],
 };
 
 const correctnessChild10: TimelineRow = {
@@ -328,28 +242,12 @@ const correctnessChild10: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01MzvBB9Xz6AYAUDuHK9ei9v",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-    offset: 195,
-    limit: 100,
-  },
-  output:
-    '195\t    } satisfies JsonRpcMessage;\n196\t\n197\t    try {\n198\t      handleRuntimeProviderRequest({\n199\t        getActiveTurnId: () => undefined,\n200\t        getThreadExecutionOptions: () => undefined,\n201\t        onInteractiveRequest: async () => ({\n202\t          decision: "deny",\n... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime.tool-calls.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-    },
-  ],
 };
 
 const correctnessChild11: TimelineRow = {
@@ -393,28 +291,14 @@ const correctnessChild12: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_01TG4xEfDo7RCyJd5znxaxBU",
-  toolName: "Grep",
-  toolArgs: {
-    pattern: "without a turn id",
-    path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
-    output_mode: "content",
-    context: 5,
-  },
-  output:
-    '/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts-223-      expect(parsed.parsed).toMatchObject({\npackages/agent-runtime/src/runtime.tool-calls.test.ts-224-        jsonrpc: "2.0",\npackages/agent-runtime/src/runtime.tool-calls.test.ts-225-       ... [truncated]',
+  mode: "content",
+  query: "without a turn id",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "search",
-      command: "Grep",
-      query: "without a turn id",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
-    },
-  ],
 };
 
 const correctnessChild13: TimelineRow = {
@@ -426,28 +310,12 @@ const correctnessChild13: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01MXGm4YpNuPruFS8ypKHpgJ",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: 147,
-    limit: 80,
-  },
-  output:
-    '147\t  const resolvedTurnId = resolveRuntimeProviderRequestTurnId({\n148\t    ...args,\n149\t    requestKind: "tool call",\n150\t    resolvedThreadId,\n151\t    turnId: toolCallReq.turnId,\n152\t  });\n153\t  if (resolvedTurnId === null) {\n154\t    return true;\n155\t  }\n156\t\n157\t  const scopedToolCallReq: ToolCall... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const correctnessChild14: TimelineRow = {
@@ -459,27 +327,12 @@ const correctnessChild14: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "error",
   callId: "toolu_011nVJrg2Fu5oQhZCPraot5z",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: "[88, 111]",
-  },
-  output:
-    "<tool_use_error>InputValidationError: Read failed due to the following issue:\nThe parameter `offset` type is expected as `number` but provided as `string`</tool_use_error>",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const correctnessChild15: TimelineRow = {
@@ -491,28 +344,12 @@ const correctnessChild15: TimelineRow = {
   startedAt: 1778174321398,
   createdAt: 1778174321398,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01RT7BtsquuXF1nZgsoAVpTh",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: 88,
-    limit: 25,
-  },
-  output:
-    "88\tfunction normalizeProviderRequestTurnId(turnId: string | null): string | null {\n89\t  return turnId && turnId.length > 0 ? turnId : null;\n90\t}\n91\t\n92\tfunction resolveRuntimeProviderRequestTurnId(\n93\t  args: ResolveRuntimeProviderRequestTurnIdArgs,\n94\t): string | null {\n95\t  const explicitTurnId = ... [truncated]",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174321398,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const correctnessChild16: TimelineRow = {
@@ -524,28 +361,12 @@ const correctnessChild16: TimelineRow = {
   startedAt: 1778174322765,
   createdAt: 1778174322765,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01Xh9vSHvDVNbbya5BwTNJnq",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: 260,
-    limit: 60,
-  },
-  output:
-    '260\t  }\n261\t  const buildInteractiveResponse =\n262\t    args.providerProcess.adapter.buildInteractiveResponse;\n263\t  const resolvedTurnId = resolveRuntimeProviderRequestTurnId({\n264\t    ...args,\n265\t    requestKind: "interactive request",\n266\t    resolvedThreadId,\n267\t    turnId: interactiveReq.turnI... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174322765,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const correctnessChild17: TimelineRow = {
@@ -557,26 +378,12 @@ const correctnessChild17: TimelineRow = {
   startedAt: 1778174324388,
   createdAt: 1778174324388,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01Pwrk89FbvmiHknCqNte62x",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
-  },
-  output:
-    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
+  cmd: null,
   completedAt: 1778174324388,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "CODE_REVIEW.md",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
-    },
-  ],
 };
 
 const correctnessChild18: TimelineRow = {
@@ -588,26 +395,12 @@ const correctnessChild18: TimelineRow = {
   startedAt: 1778174326400,
   createdAt: 1778174326400,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_017GFMs55ESo9nU3A2fAqP94",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.test.ts",
-  },
-  output:
-    '1\timport { describe, expect, it } from "vitest";\n2\timport {\n3\t  decodeNativeProviderToolCallRequest,\n4\t  decodeNormalizedProviderToolCallRequest,\n5\t} from "./provider-tool-call-contract.js";\n6\t\n7\tdescribe("provider-tool-call-contract", () => {\n8\t  it("preserves optional BB thread hints on normalized... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.test.ts",
+  cmd: null,
   completedAt: 1778174326400,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "provider-tool-call-contract.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.test.ts",
-    },
-  ],
 };
 const completedDelegation: TimelineRow = {
   id: "thr_cfpiech9ui:delegation:toolu_01LKp2KK7kaTCi5vi15VZYvw",
@@ -619,6 +412,8 @@ const completedDelegation: TimelineRow = {
   createdAt: 1778174341060,
   kind: "work",
   workKind: "delegation",
+  childRef: null,
+  background: false,
   status: "completed",
   callId: "toolu_01LKp2KK7kaTCi5vi15VZYvw",
   toolName: "Agent",
@@ -688,26 +483,12 @@ const maintainabilityChild02: TimelineRow = {
   startedAt: 1778174324109,
   createdAt: 1778174324519,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01JWtVVgmGTPtFxDyL42Zcse",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/domain/src/provider-types.ts",
-  },
-  output:
-    '1\timport { z } from "zod";\n2\timport { permissionModeSchema, reasoningLevelSchema } from "./shared-types.js";\n3\t\n4\texport const modelReasoningEffortSchema = z.object({\n5\t  reasoningEffort: reasoningLevelSchema,\n6\t  description: z.string(),\n7\t});\n8\texport type ModelReasoningEffort = z.infer<typeof mod... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/domain/src/provider-types.ts",
+  cmd: null,
   completedAt: 1778174324519,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "provider-types.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/domain/src/provider-types.ts",
-    },
-  ],
 };
 
 const maintainabilityChild03: TimelineRow = {
@@ -927,28 +708,14 @@ const maintainabilityChild11: TimelineRow = {
   startedAt: 1778174331549,
   createdAt: 1778174331743,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_0137uMvmuTBfBDNC6GTuFegF",
-  toolName: "Grep",
-  toolArgs: {
-    pattern: "getActiveTurnId|activeTurnId",
-    path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages",
-    type: "ts",
-    output_mode: "files_with_matches",
-  },
-  output:
-    "Found 15 files\npackages/agent-runtime/src/runtime.tool-calls.test.ts\npackages/agent-runtime/src/test/fake-adapter.ts\npackages/agent-runtime/src/runtime-provider-requests.ts\npackages/agent-runtime/src/runtime.ts\npackages/agent-runtime/src/provider-adapter.ts\npackages/db/test/data/events.test.ts\npacka... [truncated]",
+  mode: "content",
+  query: "getActiveTurnId|activeTurnId",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages",
+  cmd: null,
   completedAt: 1778174331743,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "search",
-      command: "Grep",
-      query: "getActiveTurnId|activeTurnId",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages",
-    },
-  ],
 };
 
 const maintainabilityChild12: TimelineRow = {
@@ -960,27 +727,12 @@ const maintainabilityChild12: TimelineRow = {
   startedAt: 1778174331956,
   createdAt: 1778174331956,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01AewZ2V8UKq8x2zGUpmYTJc",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    limit: 120,
-  },
-  output:
-    '1\timport type { ChildProcess } from "node:child_process";\n2\timport type {\n3\t  AgentRuntimeExecutionOptions,\n4\t  AgentRuntimeOptions,\n5\t} from "./types.js";\n6\timport type {\n7\t  PendingInteractionCreate,\n8\t  PendingInteractionPayload,\n9\t  PendingInteractionResolution,\n10\t  ToolCallRequest,\n11\t} from "... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174331956,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const maintainabilityChild13: TimelineRow = {
@@ -992,26 +744,12 @@ const maintainabilityChild13: TimelineRow = {
   startedAt: 1778174332201,
   createdAt: 1778174332201,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01RrkCGuMaJRJnq1UEaUhZra",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.ts",
-  },
-  output:
-    '1\timport { z } from "zod";\n2\timport type { DecodedToolCallRequest } from "../provider-adapter.js";\n3\t\n4\tconst normalizedToolCallRequestSchema = z.object({\n5\t  providerThreadId: z.string().min(1),\n6\t  threadId: z.string().min(1).optional(),\n7\t  // Canonical bridge wire form: required string when know... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.ts",
+  cmd: null,
   completedAt: 1778174332201,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "provider-tool-call-contract.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.ts",
-    },
-  ],
 };
 
 const maintainabilityChild14: TimelineRow = {
@@ -1023,27 +761,12 @@ const maintainabilityChild14: TimelineRow = {
   startedAt: 1778174334394,
   createdAt: 1778174334659,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_018jZNMCkMxNfkUUKKTL83jg",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-turn-state.ts",
-    limit: 80,
-  },
-  output:
-    '1\timport type { ThreadEvent } from "@bb/domain";\n2\timport { requireThreadEventScopeTurnId } from "@bb/domain";\n3\t\n4\texport class RuntimeTurnState {\n5\t  private readonly activeTurnIdByThreadId = new Map<string, string>();\n6\t\n7\t  clear(): void {\n8\t    this.activeTurnIdByThreadId.clear();\n9\t  }\n10\t\n11\t... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-turn-state.ts",
+  cmd: null,
   completedAt: 1778174334659,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-turn-state.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-turn-state.ts",
-    },
-  ],
 };
 
 const maintainabilityChild15: TimelineRow = {
@@ -1055,29 +778,14 @@ const maintainabilityChild15: TimelineRow = {
   startedAt: 1778174335009,
   createdAt: 1778174335009,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_01L2NPQTYQ1TPJ3V8BDiEMNM",
-  toolName: "Grep",
-  toolArgs: {
-    pattern: "normalizeProviderRequestTurnId|normalizeDecodedTurnId",
-    path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages",
-    type: "ts",
-    output_mode: "content",
-    context: 2,
-  },
-  output:
-    "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts-86-}\n/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts-87-\npackages/agent-runtime/src/runtime-provider-requests.ts:88:function normalize... [truncated]",
+  mode: "content",
+  query: "normalizeProviderRequestTurnId|normalizeDecodedTurnId",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages",
+  cmd: null,
   completedAt: 1778174335009,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "search",
-      command: "Grep",
-      query: "normalizeProviderRequestTurnId|normalizeDecodedTurnId",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages",
-    },
-  ],
 };
 
 const maintainabilityChild16: TimelineRow = {
@@ -1089,27 +797,12 @@ const maintainabilityChild16: TimelineRow = {
   startedAt: 1778174337162,
   createdAt: 1778174337233,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_013HiJs8nJhPy9B8FK1qdvtR",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
-    limit: 200,
-  },
-  output:
-    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
+  cmd: null,
   completedAt: 1778174337233,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "CODE_REVIEW.md",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
-    },
-  ],
 };
 
 const maintainabilityChild17: TimelineRow = {
@@ -1121,27 +814,12 @@ const maintainabilityChild17: TimelineRow = {
   startedAt: 1778174337304,
   createdAt: 1778174337304,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "error",
   callId: "toolu_01DiyVs3dWcvgcadf3u5T5TD",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/AGENTS.md",
-    limit: 150,
-  },
-  output:
-    "File does not exist. Note: your current working directory is /Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb.",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/AGENTS.md",
+  cmd: null,
   completedAt: 1778174337304,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "AGENTS.md",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/AGENTS.md",
-    },
-  ],
 };
 
 const maintainabilityChild18: TimelineRow = {
@@ -1153,23 +831,14 @@ const maintainabilityChild18: TimelineRow = {
   startedAt: 1778174338751,
   createdAt: 1778174339096,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_01WgmbhKxwK7GBBxWdZCFwSh",
-  toolName: "Glob",
-  toolArgs: {
-    pattern: "**/AGENTS.md",
-  },
-  output: "AGENTS.md",
+  mode: "path",
+  query: "**/AGENTS.md",
+  path: null,
+  cmd: null,
   completedAt: 1778174339096,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "list_files",
-      command: "Glob",
-      path: null,
-    },
-  ],
 };
 
 const maintainabilityChild19: TimelineRow = {
@@ -1181,28 +850,12 @@ const maintainabilityChild19: TimelineRow = {
   startedAt: 1778174339267,
   createdAt: 1778174339267,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01BKymQzXAXtFPNnCzgo9wgK",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-    limit: 100,
-    offset: 0,
-  },
-  output:
-    '0\timport { spawn, type ChildProcess } from "node:child_process";\n1\timport { mkdtempSync, rmSync } from "node:fs";\n2\timport { tmpdir } from "node:os";\n3\timport { join } from "node:path";\n4\timport { afterEach, beforeEach, describe, expect, it, vi } from "vitest";\n5\timport type { ThreadEvent, ToolCallR... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
+  cmd: null,
   completedAt: 1778174339267,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime.tool-calls.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-    },
-  ],
 };
 
 const maintainabilityChild20: TimelineRow = {
@@ -1214,26 +867,12 @@ const maintainabilityChild20: TimelineRow = {
   startedAt: 1778174340928,
   createdAt: 1778174340928,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01LdKey3EgtP3UvJSKba7xZD",
-  toolName: "Read",
-  toolArgs: {
-    file_path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/AGENTS.md",
-    limit: 250,
-  },
-  output:
-    "1\t# Codebase Guidelines\n2\t\n3\t## Type Safety\n4\t\n5\t- No `unknown`, no `as X` casts unless the type is genuinely unknowable (e.g., freeform tool input). Our boundaries validate and parse; everything inside the system is strongly typed.\n6\t- Never inline types in function signatures. Define them in the a... [truncated]",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/AGENTS.md",
+  cmd: null,
   completedAt: 1778174340928,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "AGENTS.md",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/AGENTS.md",
-    },
-  ],
 };
 
 const maintainabilityChild21: TimelineRow = {
@@ -1245,27 +884,12 @@ const maintainabilityChild21: TimelineRow = {
   startedAt: 1778174343133,
   createdAt: 1778174343741,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01TVs6USWf18cG7TjeeCZePk",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/provider-adapter.ts",
-    limit: 100,
-  },
-  output:
-    "1\timport type {\n2\t  AvailableModel,\n3\t  ClientTurnRequestId,\n4\t  DynamicTool,\n5\t  InstructionMode,\n6\t  PendingInteractionPayload,\n7\t  PendingInteractionResolution,\n8\t  PromptInput,\n9\t  ProviderCapabilities,\n10\t  ReasoningLevel,\n11\t  RuntimePermissionPolicy,\n12\t  ServiceTier,\n13\t  ThreadEvent,\n14\t} f... [truncated]",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/provider-adapter.ts",
+  cmd: null,
   completedAt: 1778174343741,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "provider-adapter.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/provider-adapter.ts",
-    },
-  ],
 };
 
 const maintainabilityChild22: TimelineRow = {
@@ -1309,6 +933,8 @@ const runningDelegation: TimelineRow = {
   createdAt: Date.now(),
   kind: "work",
   workKind: "delegation",
+  childRef: null,
+  background: false,
   status: "pending",
   callId: "toolu_012rpTKMPCmiRnZnYXLA5Vy9",
   toolName: "Agent",
@@ -1403,26 +1029,12 @@ const testQualityChild03: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_017R2qfR7Ew5FtjAkHxindVG",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.claude/projects/-Users-michael--bb-dev-worktrees-env-stt3jzymfp-bb/84f9bb6d-8a5e-4eba-af26-c530415265b1/tool-results/brm54bnvm.txt",
-  },
-  output:
-    "1\tdiff --git a/apps/host-daemon/src/app.ts b/apps/host-daemon/src/app.ts\n2\tindex ce9f52897..76bae1dd6 100644\n3\t--- a/apps/host-daemon/src/app.ts\n4\t+++ b/apps/host-daemon/src/app.ts\n5\t@@ -325,6 +325,12 @@ export async function createHostDaemonApp(\n6\t     await eventBuffer.flushRequired();\n7\t   }\n8\t \n... [truncated]",
+  path: "/Users/michael/.claude/projects/-Users-michael--bb-dev-worktrees-env-stt3jzymfp-bb/84f9bb6d-8a5e-4eba-af26-c530415265b1/tool-results/brm54bnvm.txt",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "brm54bnvm.txt",
-      path: "/Users/michael/.claude/projects/-Users-michael--bb-dev-worktrees-env-stt3jzymfp-bb/84f9bb6d-8a5e-4eba-af26-c530415265b1/tool-results/brm54bnvm.txt",
-    },
-  ],
 };
 
 const testQualityChild04: TimelineRow = {
@@ -1434,28 +1046,12 @@ const testQualityChild04: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_0126Lp4nhkfV2L27g1WRVDTK",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: 356,
-    limit: 50,
-  },
-  output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const testQualityChild05: TimelineRow = {
@@ -1467,28 +1063,12 @@ const testQualityChild05: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01S9M2AYPpp49BXjbJK1HP8s",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: 356,
-    limit: 30,
-  },
-  output:
-    '356\t  void args\n357\t    .onInteractiveRequest(scopedInteractiveReq)\n358\t    .then((resolution) => {\n359\t      const result = buildInteractiveResponse({\n360\t        request: resolvedInteractiveReq,\n361\t        resolution,\n362\t      });\n363\t      sendJsonRpcResult({\n364\t        child: args.pro... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const testQualityChild06: TimelineRow = {
@@ -1532,28 +1112,12 @@ const testQualityChild07: TimelineRow = {
   startedAt: 1778174320120,
   createdAt: 1778174320120,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01Eiv3DJQp4wX5Sxm1iygUzs",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: 360,
-    limit: 30,
-  },
-  output:
-    '360\t        kind: "interactive-result",\n361\t        capturedAt: Date.now(),\n362\t        providerId,\n363\t        requestCaptureId: captureId,\n364\t        requestId: scopedInteractiveReq.providerRequestId,\n365\t        success: true,\n366\t        resolution,\n367\t      });\n368\t      const result = buildI... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174320120,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const testQualityChild08: TimelineRow = {
@@ -1565,28 +1129,12 @@ const testQualityChild08: TimelineRow = {
   startedAt: 1778174321234,
   createdAt: 1778174321234,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01MCxco7vLc7G3hF7ZiGD4qw",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    offset: 1,
-    limit: 450,
-  },
-  output:
-    '1\timport type { ChildProcess } from "node:child_process";\n2\timport type {\n3\t  AgentRuntimeExecutionOptions,\n4\t  AgentRuntimeOptions,\n5\t} from "./types.js";\n6\timport type {\n7\t  PendingInteractionCreate,\n8\t  PendingInteractionPayload,\n9\t  PendingInteractionResolution,\n10\t  ToolCallRequest,\n11\t} from "... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174321234,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime-provider-requests.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const testQualityChild09: TimelineRow = {
@@ -1598,28 +1146,12 @@ const testQualityChild09: TimelineRow = {
   startedAt: 1778174326775,
   createdAt: 1778174326775,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01JchQ7TkFdQdGrBRWSbncWT",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-    offset: 546,
-    limit: 100,
-  },
-  output:
-    "<system-reminder>Warning: the file exists but is shorter than the provided offset (546). The file has 432 lines.</system-reminder>",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
+  cmd: null,
   completedAt: 1778174326775,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime.tool-calls.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-    },
-  ],
 };
 
 const testQualityChild10: TimelineRow = {
@@ -1631,26 +1163,12 @@ const testQualityChild10: TimelineRow = {
   startedAt: 1778174328806,
   createdAt: 1778174328806,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01E2asMizztDz5CyN14dMhpN",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-  },
-  output:
-    '1\timport { spawn, type ChildProcess } from "node:child_process";\n2\timport { mkdtempSync, rmSync } from "node:fs";\n3\timport { tmpdir } from "node:os";\n4\timport { join } from "node:path";\n5\timport { afterEach, beforeEach, describe, expect, it, vi } from "vitest";\n6\timport type { ThreadEvent, ToolCallR... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
+  cmd: null,
   completedAt: 1778174328806,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime.tool-calls.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.tool-calls.test.ts",
-    },
-  ],
 };
 
 const testQualityChild11: TimelineRow = {
@@ -1662,26 +1180,12 @@ const testQualityChild11: TimelineRow = {
   startedAt: 1778174330819,
   createdAt: 1778174330819,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01J4gkAxEfdC64X11afYxem8",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.test.ts",
-  },
-  output:
-    '1\timport { describe, expect, it } from "vitest";\n2\timport {\n3\t  decodeNativeProviderToolCallRequest,\n4\t  decodeNormalizedProviderToolCallRequest,\n5\t} from "./provider-tool-call-contract.js";\n6\t\n7\tdescribe("provider-tool-call-contract", () => {\n8\t  it("preserves optional BB thread hints on normalized... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.test.ts",
+  cmd: null,
   completedAt: 1778174330819,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "provider-tool-call-contract.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/shared/provider-tool-call-contract.test.ts",
-    },
-  ],
 };
 
 const testQualityChild12: TimelineRow = {
@@ -1693,28 +1197,12 @@ const testQualityChild12: TimelineRow = {
   startedAt: 1778174333366,
   createdAt: 1778174333366,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_014pEj9Xye9WvvNVqGmvkmqu",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/server/test/internal/internal-events-tool-calls.test.ts",
-    offset: 534,
-    limit: 100,
-  },
-  output:
-    '534\t    }\n535\t  });\n536\t\n537\t  it("rejects empty tool call turn ids at the internal contract boundary", async () => {\n538\t    const harness = await createTestAppHarness();\n539\t    try {\n540\t      const { host, session } = seedHostSession(harness.deps);\n541\t      const { project } = seedProjectWithSo... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/server/test/internal/internal-events-tool-calls.test.ts",
+  cmd: null,
   completedAt: 1778174333366,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "internal-events-tool-calls.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/server/test/internal/internal-events-tool-calls.test.ts",
-    },
-  ],
 };
 
 const testQualityChild13: TimelineRow = {
@@ -1726,28 +1214,12 @@ const testQualityChild13: TimelineRow = {
   startedAt: 1778174335699,
   createdAt: 1778174335699,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "error",
   callId: "toolu_01SKjRPqYQFmCEzaGSh6FfJa",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
-    offset: "[135, 210]",
-    limit: 100,
-  },
-  output:
-    "<tool_use_error>InputValidationError: Read failed due to the following issue:\nThe parameter `offset` type is expected as `number` but provided as `string`</tool_use_error>",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
+  cmd: null,
   completedAt: 1778174335699,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "daemon.integration.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
-    },
-  ],
 };
 
 const testQualityChild14: TimelineRow = {
@@ -1759,28 +1231,12 @@ const testQualityChild14: TimelineRow = {
   startedAt: 1778174336890,
   createdAt: 1778174336890,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01C7q5NApoZD4cMZ7RRFHHDw",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
-    offset: 135,
-    limit: 100,
-  },
-  output:
-    '135\t        parsed.success &&\n136\t        parsed.data.threadId === args.threadId &&\n137\t        parsed.data.type === args.eventType\n138\t      );\n139\t    });\n140\t  } catch (error) {\n141\t    if (error instanceof Error && error.message.includes("no such table")) {\n142\t      return false;\n143\t    }\n144\t... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
+  cmd: null,
   completedAt: 1778174336890,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "daemon.integration.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
-    },
-  ],
 };
 
 const testQualityChild15: TimelineRow = {
@@ -1792,28 +1248,12 @@ const testQualityChild15: TimelineRow = {
   startedAt: 1778174339071,
   createdAt: 1778174339071,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01ArcrJfbandowa85ykUZhcq",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
-    offset: 1000,
-    limit: 150,
-  },
-  output:
-    '1000\t      try {\n1001\t        harness.server.queueCommand({\n1002\t          ...createStandardThreadStartCommand({\n1003\t            environmentId: "env-a",\n1004\t            threadId: "thread-a",\n1005\t            workspacePath: harness.envAPath,\n1006\t            projectId: "project-1",\n1007\t           ... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
+  cmd: null,
   completedAt: 1778174339071,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "daemon.integration.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/apps/host-daemon/test/integration/daemon.integration.test.ts",
-    },
-  ],
 };
 
 const testQualityChild16: TimelineRow = {
@@ -1825,26 +1265,12 @@ const testQualityChild16: TimelineRow = {
   startedAt: 1778174340928,
   createdAt: 1778174340950,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01HkrwxKJMBAw7578K5uBkMz",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/tests/integration/fake/smoke/tool-calls.test.ts",
-  },
-  output:
-    '1\timport { getThreadEventScopeTurnId } from "@bb/domain";\n2\timport { describe, expect, it } from "vitest";\n3\timport { getThreadEvents, sendTextMessage } from "../../helpers/api.js";\n4\timport {\n5\t  waitForEventType,\n6\t  waitForThreadStatus,\n7\t} from "../../helpers/assertions.js";\n8\timport { withHarne... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/tests/integration/fake/smoke/tool-calls.test.ts",
+  cmd: null,
   completedAt: 1778174340950,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "tool-calls.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/tests/integration/fake/smoke/tool-calls.test.ts",
-    },
-  ],
 };
 
 const testQualityChild17: TimelineRow = {
@@ -1856,28 +1282,12 @@ const testQualityChild17: TimelineRow = {
   startedAt: 1778174342822,
   createdAt: 1778174342822,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "error",
   callId: "toolu_01Dr58Ys2UuPG5exzsGw6spz",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.interactive-requests.test.ts",
-    offset: "[130, 210]",
-    limit: 100,
-  },
-  output:
-    "<tool_use_error>InputValidationError: Read failed due to the following issue:\nThe parameter `offset` type is expected as `number` but provided as `string`</tool_use_error>",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.interactive-requests.test.ts",
+  cmd: null,
   completedAt: 1778174342822,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime.interactive-requests.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.interactive-requests.test.ts",
-    },
-  ],
 };
 
 const testQualityChild18: TimelineRow = {
@@ -1889,28 +1299,12 @@ const testQualityChild18: TimelineRow = {
   startedAt: 1778174344194,
   createdAt: 1778174344194,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01K5G3ZkQ3niia6HV2kf3t2p",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.interactive-requests.test.ts",
-    offset: 130,
-    limit: 100,
-  },
-  output:
-    '130\t      "utf8",\n131\t    );\n132\t\n133\t    const requests: Array<{\n134\t      threadId: string;\n135\t      providerThreadId: string;\n136\t      turnId: string;\n137\t    }> = [];\n138\t    const events: ThreadEvent[] = [];\n139\t    const runtime = createAgentRuntimeWithAdapters({\n140\t      workspacePath: tmp... [truncated]',
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.interactive-requests.test.ts",
+  cmd: null,
   completedAt: 1778174344194,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "runtime.interactive-requests.test.ts",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime.interactive-requests.test.ts",
-    },
-  ],
 };
 
 const testQualityChild19: TimelineRow = {
@@ -1922,25 +1316,14 @@ const testQualityChild19: TimelineRow = {
   startedAt: 1778174346469,
   createdAt: 1778174346469,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_01AjtqHb4fLvVQYx48h6NkMb",
-  toolName: "Grep",
-  toolArgs: {
-    pattern: "resolveThreadId.*null|resolveThreadId.*return.*false",
-    path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
-  },
-  output: "No files found",
+  mode: "content",
+  query: "resolveThreadId.*null|resolveThreadId.*return.*false",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
+  cmd: null,
   completedAt: 1778174346469,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "search",
-      command: "Grep",
-      query: "resolveThreadId.*null|resolveThreadId.*return.*false",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src",
-    },
-  ],
 };
 
 const testQualityChild20: TimelineRow = {
@@ -1952,27 +1335,14 @@ const testQualityChild20: TimelineRow = {
   startedAt: 1778174348304,
   createdAt: 1778174348304,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_017wGU2FfUB77iS9G9E4LL6P",
-  toolName: "Grep",
-  toolArgs: {
-    pattern: "normalizeProviderRequestTurnId|getActiveTurnId|sendJsonRpcError",
-    path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    output_mode: "content",
-  },
-  output:
-    "17:  sendJsonRpcError,\n50:  getActiveTurnId: (threadId: string) => string | undefined;\n88:function normalizeProviderRequestTurnId(turnId: string | null): string | null {\n95:  const explicitTurnId = normalizeProviderRequestTurnId(args.turnId);\n100:  const activeTurnId = args.getActiveTurnId(args.reso... [truncated]",
+  mode: "content",
+  query: "normalizeProviderRequestTurnId|getActiveTurnId|sendJsonRpcError",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
+  cmd: null,
   completedAt: 1778174348304,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "search",
-      command: "Grep",
-      query: "normalizeProviderRequestTurnId|getActiveTurnId|sendJsonRpcError",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/packages/agent-runtime/src/runtime-provider-requests.ts",
-    },
-  ],
 };
 
 const testQualityChild21: TimelineRow = {
@@ -1984,23 +1354,14 @@ const testQualityChild21: TimelineRow = {
   startedAt: 1778174349615,
   createdAt: 1778174349701,
   kind: "work",
-  workKind: "tool",
+  workKind: "search",
   status: "completed",
   callId: "toolu_01TEYARUSSsvYkRn3edf2a1g",
-  toolName: "Glob",
-  toolArgs: {
-    pattern: "CODE_REVIEW.md",
-  },
-  output: "docs/CODE_REVIEW.md",
+  mode: "path",
+  query: "CODE_REVIEW.md",
+  path: null,
+  cmd: null,
   completedAt: 1778174349701,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "list_files",
-      command: "Glob",
-      path: null,
-    },
-  ],
 };
 
 const testQualityChild22: TimelineRow = {
@@ -2012,28 +1373,12 @@ const testQualityChild22: TimelineRow = {
   startedAt: 1778174351117,
   createdAt: 1778174351117,
   kind: "work",
-  workKind: "tool",
+  workKind: "file-read",
   status: "completed",
   callId: "toolu_01T4hVAKKBqVzJ9kHS9pc93G",
-  toolName: "Read",
-  toolArgs: {
-    file_path:
-      "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
-    offset: 1,
-    limit: 150,
-  },
-  output:
-    "1\t# Code Review Guide\n2\t\n3\tUse this guide to find defects without expanding scope. The best review usually asks: what will break, and what is the smallest correction?\n4\t\n5\t## Scope\n6\t\n7\t- Stay inside the changed behavior.\n8\t- Expand only to prove a concrete correctness... [truncated]",
+  path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
+  cmd: null,
   completedAt: 1778174351117,
-  approvalStatus: null,
-  activityIntents: [
-    {
-      type: "read",
-      command: "Read",
-      name: "CODE_REVIEW.md",
-      path: "/Users/michael/.bb-dev/worktrees/env_stt3jzymfp/bb/docs/CODE_REVIEW.md",
-    },
-  ],
 };
 const errorDelegation: TimelineRow = {
   id: "thr_cfpiech9ui:delegation:toolu_01VfaFeGbfjGckpp9LZNpd5a",
@@ -2045,6 +1390,8 @@ const errorDelegation: TimelineRow = {
   createdAt: 1778174370069,
   kind: "work",
   workKind: "delegation",
+  childRef: null,
+  background: false,
   status: "error",
   callId: "toolu_01VfaFeGbfjGckpp9LZNpd5a",
   toolName: "Agent",
@@ -2096,6 +1443,8 @@ const interruptedDelegation: TimelineRow = {
   createdAt: 1778174341060,
   kind: "work",
   workKind: "delegation",
+  childRef: null,
+  background: false,
   status: "interrupted",
   callId: "toolu_01LKp2KK7kaTCi5vi15VZYvw-interrupted",
   toolName: "Agent",

@@ -1,6 +1,10 @@
 import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
+import type {
+  ProviderNativeRootInput,
+  ProviderNativeRootsInputLike,
+} from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
 import type { ThreadResponse } from "@bb/server-contract";
@@ -53,6 +57,11 @@ export type PluginSettingDescriptor =
       description?: string;
       /** Stored in a 0600 file under <dataDir>/plugins/<id>/secrets/, never in the db or sent to the frontend. */
       secret?: true;
+      /**
+       * Render as a multi-line text field; for JSON or lists. Secrets cannot
+       * be multi-line.
+       */
+      experimental_multiline?: boolean;
       default?: string;
     }
   | { type: "boolean"; label: string; description?: string; default?: boolean }
@@ -366,11 +375,10 @@ export interface PluginAgentToolContext {
 }
 
 /**
- * Native timeline labels for a plugin tool, keyed by BB's own timeline row
- * status. This is experimental: BB may refine its presentation contract
- * before the field is stabilized.
+ * The row title of a plugin tool call while it is pending and once it
+ * settled. Each label is capped at 80 characters and rendered as plain text.
  */
-export interface PluginAgentToolExperimentalStatusLabels {
+export interface PluginAgentToolLabels {
   /** Label shown while the tool call is pending. */
   pending: string;
   /** Label shown after the tool call completes successfully. */
@@ -380,14 +388,20 @@ export interface PluginAgentToolExperimentalStatusLabels {
 /**
  * How calls to a native plugin tool read as a timeline row (grammar v3). Every
  * field is optional at registration: the server fills what the plugin leaves
- * out (the `experimental_statusLabels` pair as the label, then a generic
- * label; the plugin's branding glyph, then `Toolbox`) and hands one complete
- * presentation to the provider bridge with the tool definition.
+ * out (a generic `Running <name>` / `Ran <name>` label; the plugin's branding
+ * glyph, then `Toolbox`) and hands one complete presentation to the provider
+ * bridge with the tool definition.
  */
 export interface PluginAgentToolPresentation {
   /** Row title while the call is pending and once it settled. */
-  label?: PluginAgentToolExperimentalStatusLabels;
-  /** A named host glyph (`{ glyph: "Workflow" }`). */
+  label?: PluginAgentToolLabels;
+  /**
+   * A named host glyph (`{ glyph: "Workflow" }`), or one of this plugin's
+   * own declared icons by its namespaced glyph (`{ glyph: "<pluginId>/<name>" }`,
+   * an entry of the manifest's `bb.branding.experimental_icons` map). A
+   * namespaced glyph that names another plugin or an undeclared name rejects
+   * the tool registration.
+   */
   icon?: { glyph: string };
   /** Low-value rows clients collapse by default (a question a dedicated
    * interaction row already shows, a bookkeeping call). */
@@ -409,18 +423,12 @@ export interface PluginAgentToolRegistrationBase {
    */
   instructions?: string;
   /**
-   * Optional native timeline labels. When omitted, BB shows the standard
-   * tool name and arguments (for example, `Ran tool search_docs …`). Labels
-   * apply only while the call is pending and after successful completion;
-   * approval, error, and interruption states keep BB's standard rendering.
+   * How calls to this tool read as a timeline row (grammar v3). When omitted,
+   * BB shows the standard tool name (`Running <name>` / `Ran <name>`) and the
+   * plugin's branding glyph. Approval, error, and interruption states keep
+   * BB's standard rendering. See docs/api_to_audit.md.
    */
-  experimental_statusLabels?: PluginAgentToolExperimentalStatusLabels;
-  /**
-   * How calls to this tool read as a timeline row (grammar v3). Supersedes
-   * `experimental_statusLabels`, which still supplies the label when this
-   * field omits one. See docs/api_to_audit.md.
-   */
-  experimental_presentation?: PluginAgentToolPresentation;
+  presentation?: PluginAgentToolPresentation;
 }
 
 /** Stable, plain-data context resolved by the server for one agent session. */
@@ -548,17 +556,6 @@ export type PluginProviderComposerAction = "plan" | "goal";
  * starting the bridge first.
  */
 export interface PluginProviderCapabilities {
-  /** The provider bridge implements the sessionless `provider/health`
-   * request. This is host-local readiness, not a network health check. */
-  experimental_providerHealth: boolean;
-  /** The provider exposes subscription usage through the sessionless
-   * `provider/usage` request. False means callers skip the request and usage
-   * settings omit the provider. A shared bridge that declares true may still
-   * report usage unavailable for one provider id or return no windows. */
-  experimental_providerUsage: boolean;
-  /** The provider bridge implements `provider/installation/status` and
-   * `provider/installation/run` for host-local installation management. */
-  experimental_providerInstallation: boolean;
   /** The provider accepts a fast/priority service-tier choice — shows the
    * service-tier toggle in the picker. */
   supportsServiceTier: boolean;
@@ -639,7 +636,7 @@ export interface PluginProviderExtensionKindDeclaration {
 
 /**
  * Per-command context handed to
- * {@link PluginProviderDeclaration.experimental_deriveProviderOptions}. The
+ * {@link PluginProviderDeclaration.deriveProviderOptions}. The
  * server builds one for every session and turn command it dispatches on a
  * thread of this provider.
  */
@@ -666,6 +663,9 @@ export interface PluginProviderOptionsContext {
   settings: Readonly<Record<string, PluginSettingValue | undefined>>;
 }
 
+/** See {@link PluginProviderDeclaration.models}. */
+export type PluginProviderModelCatalogScope = "host" | "workspace";
+
 /**
  * One cold-cache fallback model. The provider's live `model/list` result is
  * the only real model source; this list stands in only while no probe has
@@ -689,6 +689,29 @@ export interface PluginProviderFallbackModel {
 }
 
 /**
+ * Which sessionless maintenance requests a provider bridge implements. The
+ * server skips the requests a provider does not declare, and clients omit
+ * the matching surfaces, without starting the bridge first.
+ */
+export interface PluginProviderMaintenance {
+  /** `provider/health`: host-local readiness, never a network health check. */
+  health?: boolean;
+  /** `provider/usage`: subscription usage windows. False means usage settings
+   * omit the provider. A shared bridge that declares true may still report
+   * usage unavailable for one provider id or return no windows. */
+  usage?: boolean;
+  /** `provider/installation/status` and `provider/installation/run`:
+   * host-local installation management. */
+  installation?: boolean;
+}
+
+/** One provider-native root as a plugin declares it: a path, or a path with options. */
+export type PluginProviderNativeRootEntry = ProviderNativeRootInput;
+
+/** Provider-native roots as a plugin declares them, one list per side. */
+export type PluginProviderNativeRoots = ProviderNativeRootsInputLike;
+
+/**
  * One provider this plugin contributes to BB's provider registry.
  *
  * Ids are stable public identifiers — thread rows and routes reference them —
@@ -698,10 +721,14 @@ export interface PluginProviderFallbackModel {
  * reload, like every other plugin surface.
  *
  * A declaration owns the provider's static metadata and bridge options. The
- * executable implementation is the plugin's own provider bridge, named by
- * `bb.providerBridge` in the manifest and built into the artifact BB ships to
- * hosts — declaring a provider without one is refused, because the picker
- * entry would exist and no turn on it could ever run.
+ * executable implementation is the plugin's own provider bridge: the
+ * `experimental_providerBridge` export of the `bb.host` artifact the manifest
+ * names (`PROVIDER_BRIDGE_EXPORT_NAME` in the bridge kit), built into the
+ * artifact BB ships to hosts. Declaring a provider in a plugin with no
+ * `bb.host` entry is refused, because the picker entry would exist and no
+ * turn on it could ever run; a `bb.host` entry whose artifact failed to
+ * build still stages the declaration so the provider is listed as
+ * unavailable.
  */
 export interface PluginProviderDeclaration {
   /** Stable provider id: 2–64 characters of lowercase letters, digits, and
@@ -715,11 +742,15 @@ export interface PluginProviderDeclaration {
    * family — the ACP agents, for example — so clients can group them without
    * parsing a prefix out of the id. Grouping only: no policy keys on it.
    */
-  experimental_family?: string;
+  family?: string;
   /**
-   * Optional picker icon, in the same grammar as `bb.branding.icon`: either a
-   * named host glyph (`"Zap"`) or a plugin-relative path starting with `"./"`
-   * (`"./icons/agent.svg"`). Paths follow the manifest entry-path escape rules
+   * Optional picker icon: a named host glyph (`"Zap"`) or a plugin-relative
+   * path starting with `"./"` (`"./icons/agent.svg"`) — the two forms
+   * `bb.branding.icon` takes — or, unlike `bb.branding.icon`, one of this
+   * plugin's declared icons by its namespaced glyph (`"<pluginId>/<name>"`,
+   * an entry of the manifest's `bb.branding.experimental_icons` map; the
+   * plugin id must be this plugin's and the name must be declared, else the
+   * plugin fails to load). Paths follow the manifest entry-path escape rules
    * — no leading "/", no ".." segments, no backslashes.
    */
   icon?: string;
@@ -736,6 +767,11 @@ export interface PluginProviderDeclaration {
    * bridge reports it installed. Defaults to `"always"`.
    */
   experimental_visibility?: "always" | "installed";
+  /**
+   * The sessionless maintenance requests the provider's bridge implements
+   * (docs/provider-plugin-api.md §1). Each defaults to false when omitted.
+   */
+  maintenance?: PluginProviderMaintenance;
   /** Pre-session capability facts (see the declaration tests on
    * {@link PluginProviderCapabilities}). */
   capabilities: PluginProviderCapabilities;
@@ -749,19 +785,19 @@ export interface PluginProviderDeclaration {
   // See docs/api_to_audit.md for what to audit before stabilizing.
   // -------------------------------------------------------------------------
   /** Provider copy for core surfaces ({@link PluginProviderStrings}). */
-  experimental_strings?: PluginProviderStrings;
+  strings?: PluginProviderStrings;
   /** Service tiers this provider accepts, as picker options. Non-empty when
    * present, unique ids. The coarse `capabilities.supportsServiceTier` stays
    * until WS2a stabilizes. */
-  experimental_serviceTiers?: readonly PluginProviderOptionDescriptor[];
+  serviceTiers?: readonly PluginProviderOptionDescriptor[];
   /** Reasoning levels as picker options with labels, beside the coarse
    * `capabilities.reasoningLevels` ladder (ids only). Non-empty when present,
    * unique ids. WS2a merges the two. */
-  experimental_reasoningLevels?: readonly PluginProviderOptionDescriptor[];
+  reasoningLevels?: readonly PluginProviderOptionDescriptor[];
   /** Extension kinds this provider's bridge may emit, keyed by local name
    * (`[a-z0-9-]+`). The server validates extension payloads against these
    * schemas at ingest and persists a `provider/unhandled` on a miss. */
-  experimental_extensionKinds?: Readonly<
+  extensionKinds?: Readonly<
     Record<string, PluginProviderExtensionKindDeclaration>
   >;
   /**
@@ -770,8 +806,25 @@ export interface PluginProviderDeclaration {
    * transiently; the live `model/list` result always replaces them. Ids must
    * be unique and exactly one entry must be the default.
    */
-  experimental_models?: {
-    fallback: readonly PluginProviderFallbackModel[];
+  models?: {
+    /**
+     * Optional: a provider that only declares a catalog `scope` needs no
+     * fallback list, and an omitted list reads as no fallbacks at all.
+     */
+    fallback?: readonly PluginProviderFallbackModel[];
+    /**
+     * How far one `model/list` answer travels. `"host"` means the catalog is
+     * the same everywhere on a machine — the bridge answers from account or
+     * agent state and ignores the workspace path — so bb probes once per host
+     * and reuses the answer for every environment on it. `"workspace"` (the
+     * default) means project configuration can change the answer, so bb
+     * probes per workspace and sends the path.
+     *
+     * Declaring `"host"` wrongly is a stale catalog in a workspace that
+     * configured its own models; declaring `"workspace"` wrongly costs a
+     * redundant probe. The default is therefore the safe one.
+     */
+    scope?: PluginProviderModelCatalogScope;
   };
   /**
    * Daemon environment variables this provider's bridge may read. Provider
@@ -780,9 +833,38 @@ export interface PluginProviderDeclaration {
    * and the daemon forwards exactly those variables. Names are
    * `[A-Z_][A-Z0-9_]*`, at most 32.
    */
-  experimental_env?: {
+  env?: {
     passthrough: readonly string[];
   };
+  /**
+   * Directories this provider's agent reads its own skills from, relative to
+   * the target host's home directory (`user`) or to the workspace
+   * (`project`). An agent with skills of its own — an ACP agent pointed at
+   * `.cursor/skills`, say — names them here so bb can list them beside its
+   * own; core never guesses a provider's skill layout. Paths are relative
+   * and may not contain dot segments; each side holds at most 32 roots. One
+   * declaration is global, so a directory only one host can name (an agent's
+   * settings-configured skills directory, say) is not declared here but
+   * resolved on that host (`experimental_resolvesNativeRoots`).
+   */
+  experimental_nativeSkillRoots?: PluginProviderNativeRoots;
+  /**
+   * Directories this provider's agent reads its own slash commands from —
+   * flat directories of `*.md` prompt files (`.claude/commands`, say) — in
+   * the same two-sided shape as `experimental_nativeSkillRoots`. bb offers
+   * them in the composer beside the agent's skills.
+   */
+  experimental_nativeCommandRoots?: PluginProviderNativeRoots;
+  /**
+   * This plugin's `bb.host` entry implements
+   * `experimental_nativeRootsHostContract` (`@get-bb/plugin-sdk/host`): core
+   * calls `resolveNativeRoots({ cwd })` on the workspace host when it lists
+   * commands or skills, and scans what comes back beside the declared roots.
+   * This is where a provider's host-only knowledge goes — a config-moved
+   * directory, an installed vendor plugin, a config-file entry — including
+   * project-scoped entries, which a global declaration cannot carry.
+   */
+  experimental_resolvesNativeRoots?: boolean;
   /**
    * Derive this provider's opaque per-command options. Called synchronously
    * by the server for every session and turn command on a thread of this
@@ -795,7 +877,7 @@ export interface PluginProviderDeclaration {
    * a buggy hook cannot silently run a turn with default knobs. Must be fast:
    * it sits on the turn-submit path.
    */
-  experimental_deriveProviderOptions?: (
+  deriveProviderOptions?: (
     context: PluginProviderOptionsContext,
   ) => Readonly<Record<string, JsonValue>>;
 }
@@ -871,15 +953,6 @@ export interface PluginAgents {
   contributeInstructions(
     provider: (ctx: { threadId: string; projectId: string }) => string | null,
   ): void;
-  /**
-   * The original registration entry point, kept as an alias of
-   * {@link PluginProviders.register} (`bb.providers.register`) so plugins
-   * compiled against it keep loading. New code registers through
-   * `bb.providers`; this alias goes when the surface stabilizes.
-   */
-  experimental_registerProvider(declaration: PluginProviderDeclaration): {
-    dispose(): void;
-  };
 }
 
 /**
@@ -1000,6 +1073,57 @@ export interface PluginServerApi {
    * reading it from handlers, services, and timers.
    */
   readonly loopbackBaseUrl: string;
+
+  /**
+   * This server's data directory — the one holding `config.json`, `bb.db` and
+   * `plugins/<id>/`. A plugin cannot compute it: a dev server derives it from
+   * its repo root and instance id, so a plugin that guesses `~/.bb` reads the
+   * production file while the dev server reads another one.
+   *
+   * For reading bb-managed files a plugin is migrating away from. A plugin's
+   * OWN storage is `bb.storage`, which is scoped for it; this is deliberately
+   * not a place to write.
+   */
+  readonly experimental_dataDir: string;
+}
+
+// ---------------------------------------------------------------------------
+// AI services.
+// ---------------------------------------------------------------------------
+
+/**
+ * What a plugin's AI service does. `inference` answers bb's server-side helper
+ * completions (thread titles, commit messages: a prompt and a JSON Schema in,
+ * a structured value out); `voice` transcribes recorded speech.
+ */
+export type PluginAiServiceKind = "inference" | "voice";
+
+/**
+ * An AI service a plugin offers from its `bb.host` entry, which implements
+ * `experimental_aiServicesHostContract` (`@get-bb/plugin-sdk/ai-services`).
+ * The user selects it with `BB_INFERENCE` / `BB_TRANSCRIPTION` set to
+ * `<id>/<model>`; core calls the plugin's host entry on the primary host with
+ * the `id` on every request, so one entry can serve several services.
+ */
+export interface PluginAiServiceDeclaration {
+  /** The `<serviceId>` segment of the user's setting; stable, lowercase. */
+  readonly id: string;
+  /** Shown beside the id wherever the setting's options are listed. */
+  readonly displayName: string;
+  /** Which kinds this service answers; a kind it lacks is not offered. */
+  readonly kinds: readonly PluginAiServiceKind[];
+}
+
+export interface PluginAiServices {
+  /**
+   * Register an AI service. Call during the factory; the registration lands
+   * when the plugin load commits and is removed on reload or disable. The
+   * plugin must declare a `bb.host` entry; registering without one fails the
+   * load. A declared entry that fails to build fails the load on the build
+   * error after the factory, with any provider the factory declared listed
+   * as unavailable. Throws on an id another live plugin already serves.
+   */
+  register(declaration: PluginAiServiceDeclaration): { dispose(): void };
 }
 
 // ---------------------------------------------------------------------------
@@ -1094,6 +1218,11 @@ export interface BbPluginApi {
   readonly server: PluginServerApi;
   /** Server-to-daemon host control-plane declarations. */
   readonly hosts: PluginHosts;
+  /**
+   * AI services this plugin serves from its `bb.host` entry (helper
+   * inference, voice transcription). See `@get-bb/plugin-sdk/ai-services`.
+   */
+  readonly experimental_aiServices: PluginAiServices;
   /**
    * The full BB SDK, bound to this server over loopback (design §4.1).
    * Bind-gated: reading this before the host binds the SDK throws. The real

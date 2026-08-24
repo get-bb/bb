@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import { deleteProject, createProject } from "../../src/data/projects.js";
 import {
@@ -8,10 +6,10 @@ import {
   upsertProjectExecutionDefaults,
 } from "../../src/data/project-execution-defaults.js";
 import { upsertHost } from "../../src/data/hosts.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "defaults-host",
     type: "persistent",

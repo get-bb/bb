@@ -8,11 +8,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import type { Host } from "@bb/domain";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import type {
   ProviderCliKey,
@@ -23,6 +18,8 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
+import { makeProviderInfo } from "@/test/provider-info-fixture";
 import { MachineSettingsView } from "./MachineSettingsView";
 
 vi.mock("@/lib/sdk", () => ({
@@ -34,6 +31,7 @@ vi.mock("@/lib/sdk", () => ({
       retryUpdate: vi.fn(),
       update: vi.fn(),
     },
+    providers: { list: vi.fn() },
     system: { config: vi.fn(), version: vi.fn() },
   },
 }));
@@ -72,24 +70,10 @@ function host(overrides: Partial<Host> = {}): Host {
 }
 
 function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
-    keybindings: [],
-    defaultKeybindings: [],
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    localHelperPorts: [],
-    serverUrl: "http://localhost:38886",
+  return makeSystemConfig({
     primaryHostId: "host_primary",
     primaryHostPlatform: "darwin",
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
+  });
 }
 
 function providerCliStatus(
@@ -146,6 +130,12 @@ function stubSupportingFetches(): void {
   vi.mocked(sdk.hosts.providerCliStatus).mockResolvedValue(
     providerCliStatusResponse(),
   );
+  // The provider roster: each provider's declared logo is its mark.
+  vi.mocked(sdk.providers.list).mockResolvedValue([
+    makeProviderInfo({ id: "codex", displayName: "Codex" }),
+    makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
+    makeProviderInfo({ id: "acp-cursor", displayName: "Cursor" }),
+  ]);
   vi.stubGlobal(
     "fetch",
     vi.fn(async () =>
@@ -216,9 +206,12 @@ describe("MachineSettingsView", () => {
         .closest("section")
         ?.querySelector("[data-icon]"),
     ).toBeNull();
-    expect(
-      document.querySelector('[data-provider-icon="codex"]'),
-    ).not.toBeNull();
+    // The marks arrive with the provider roster (served logos as masks).
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-provider-icon="codex"] [data-provider-logo]'),
+      ).not.toBeNull(),
+    );
     expect(
       document.querySelector('[data-provider-icon="claude-code"]'),
     ).not.toBeNull();

@@ -4,13 +4,11 @@ import type {
   CommandExecutionUpdate,
   DelegationExecutionUpdate,
   ExecutionOutputUpdate,
-  ToolCallExecutionUpdate,
 } from "../src/exec-lifecycle.js";
 import type {
   EventProjectionCommandMessage,
   EventProjectionDelegationMessage,
   EventProjectionMessage,
-  EventProjectionToolCallMessage,
   EventProjectionToolParsedIntent,
 } from "../src/event-projection-types.js";
 import {
@@ -40,12 +38,6 @@ interface ApplyCommandOutputArgs extends CommandOutputArgs {
   appendOutput: boolean;
   replaceOutput: boolean;
   seq: number;
-}
-
-interface ToolCallUpdateArgs {
-  output?: string;
-  parsedIntents?: EventProjectionToolParsedIntent[];
-  status: NonNullable<ToolCallExecutionUpdate["status"]>;
 }
 
 interface DelegationUpdateArgs {
@@ -89,23 +81,6 @@ function commandUpdate({
   };
 }
 
-function toolCallUpdate({
-  output,
-  parsedIntents,
-  status,
-}: ToolCallUpdateArgs): ToolCallExecutionUpdate {
-  return {
-    kind: "tool-call",
-    callId: "tool-1",
-    toolName: "Read",
-    toolArgs: null,
-    status,
-    completedAt: null,
-    ...(output !== undefined ? { output } : {}),
-    ...(parsedIntents !== undefined ? { parsedIntents } : {}),
-  };
-}
-
 function delegationUpdate({
   completedAt = null,
   output,
@@ -137,12 +112,6 @@ function isCommandMessage(
   return message.kind === "command";
 }
 
-function isToolCallMessage(
-  message: EventProjectionMessage,
-): message is EventProjectionToolCallMessage {
-  return message.kind === "tool-call";
-}
-
 function isDelegationMessage(
   message: EventProjectionMessage,
 ): message is EventProjectionDelegationMessage {
@@ -167,12 +136,6 @@ function commandMessages(
   state: ToolActivityProjectionState,
 ): EventProjectionCommandMessage[] {
   return state.messages.filter(isCommandMessage);
-}
-
-function toolCallMessages(
-  state: ToolActivityProjectionState,
-): EventProjectionToolCallMessage[] {
-  return state.messages.filter(isToolCallMessage);
 }
 
 function delegationMessages(
@@ -308,47 +271,6 @@ describe("tool activity projection", () => {
         parsedIntents: [],
       },
     ]);
-  });
-
-  it("keeps semantic tool-call intents when a later update is less specific", () => {
-    const state = createProjectionState();
-    const semanticIntent: EventProjectionToolParsedIntent = {
-      type: "read",
-      cmd: "Read src/app.ts",
-      name: "Read",
-      path: "src/app.ts",
-    };
-    const unknownIntent: EventProjectionToolParsedIntent = {
-      type: "unknown",
-      cmd: "Read",
-    };
-
-    onExecBegin(
-      state,
-      eventMeta(1),
-      "thread-1",
-      "turn-1",
-      toolCallUpdate({
-        output: "started\n",
-        parsedIntents: [semanticIntent],
-        status: "pending",
-      }),
-    );
-    onExecEnd(
-      state,
-      eventMeta(2),
-      "thread-1",
-      "turn-1",
-      toolCallUpdate({
-        output: "done\n",
-        parsedIntents: [unknownIntent],
-        status: "completed",
-      }),
-    );
-
-    expect(
-      toolCallMessages(state).map((message) => message.parsedIntents),
-    ).toEqual([[semanticIntent]]);
   });
 
   it("uses latest non-null duration from terminal command updates", () => {

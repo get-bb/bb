@@ -125,32 +125,28 @@ function seedThreadWithEarlyHeadState(
           timeUsedSeconds: 45,
         }),
       });
+      // The plan snapshot is a grammar v3 planSteps item (the bridge folds
+      // TodoWrite / update_plan into it); the head-state backfill finds it by
+      // kind through the plan-steps index, never by a tool name.
       events.push({
         threadId: thread.id,
         sequence: (sequence += 1),
         type: "item/completed",
         scope: turnScope(turnId),
         providerThreadId,
-        itemId: "todo-1",
-        itemKind: "toolCall",
+        itemId: "plan-1",
+        itemKind: "planSteps",
         parentToolCallId: null,
         data: JSON.stringify({
+          providerThreadId,
           item: {
-            type: "toolCall",
-            id: "todo-1",
-            tool: "TodoWrite",
-            arguments: {
-              todos: [
-                {
-                  content: "Ship the thing",
-                  status: "in_progress",
-                  activeForm: "Shipping the thing",
-                },
-                { content: "Write the docs", status: "pending" },
-              ],
-            },
+            type: "planSteps",
+            id: "plan-1",
+            steps: [
+              { step: "Shipping the thing", status: "active" },
+              { step: "Write the docs", status: "pending" },
+            ],
             status: "completed",
-            result: "ok",
           },
         }),
       });

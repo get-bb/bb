@@ -5,7 +5,7 @@
 // markdown). Everything is built as React elements — img attributes are
 // extracted and whitelisted, so no HTML is ever injected.
 import { cn } from "@bb/shared-ui/lib/utils";
-import { experimental_UrlLink as UrlLink } from "@get-bb/plugin-sdk/app";
+import { UrlLink as UrlLink } from "@get-bb/plugin-sdk/app";
 
 const INLINE_PATTERN =
   // Image forms first: `![…](…)` must win over the link pattern (which

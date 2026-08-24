@@ -684,6 +684,11 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 }
 
 function dropEventToolNameColumn(db: DbConnection): void {
+  // A rewind before 0104 leaves neither the generated tool-name column nor
+  // the kind-based indexes 0107 replaced it with, so 0104 → 0107 replay from
+  // the same starting point a real database had.
+  db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
+  db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
   // Generated columns are omitted from table_info but included in table_xinfo.
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")
@@ -4060,16 +4065,16 @@ describe("migrate", () => {
       expect(eventIndexNames).toEqual([
         "events_background_task_thread_type_item_sequence_idx",
         "events_completed_item_truncation_idx",
+        "events_delegating_item_lookup_idx",
         "events_environment_idx",
         "events_item_lifecycle_thread_item_sequence_idx",
         "events_parent_tool_call_thread_parent_sequence_idx",
+        "events_plan_steps_thread_sequence_idx",
         "events_thread_sequence_idx",
         "events_thread_state_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
         "events_thread_type_sequence_idx",
-        "events_todo_tool_call_thread_tool_sequence_idx",
-        "events_tool_call_parent_lookup_idx",
       ]);
 
       const migrationCreatedAts = db.$client

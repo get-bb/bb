@@ -7,21 +7,15 @@ import {
 } from "./runtime-thread-identity.js";
 
 describe("RuntimeThreadIdentityRegistry", () => {
-  it("records provider ownership and resolves provider thread identities", async () => {
+  it("records provider ownership and resolves provider thread identities", () => {
     const registry = new RuntimeThreadIdentityRegistry();
     const providerState = registry.createProviderState({ providerId: "codex" });
 
     registry.registerThreadProvider({
       providerId: "codex",
       providerState,
-      shouldWaitForProviderIdentity: true,
+      expectsIdentityNotification: true,
       threadId: "thread-1",
-    });
-
-    const identityPromise = registry.waitForProviderThreadIdentity({
-      providerState,
-      threadId: "thread-1",
-      timeoutMs: 5_000,
     });
     registry.recordProviderThreadIdentity({
       providerState,
@@ -29,7 +23,6 @@ describe("RuntimeThreadIdentityRegistry", () => {
       providerThreadId: "provider-thread-1",
     });
 
-    await expect(identityPromise).resolves.toBe("provider-thread-1");
     expect(registry.resolveProviderForThread("thread-1")).toBe("codex");
     expect(registry.getProviderThreadId("thread-1")).toBe("provider-thread-1");
     expect(
@@ -46,13 +39,13 @@ describe("RuntimeThreadIdentityRegistry", () => {
     registry.registerThreadProvider({
       providerId: "codex",
       providerState,
-      shouldWaitForProviderIdentity: false,
+      expectsIdentityNotification: false,
       threadId: "thread-1",
     });
     registry.registerThreadProvider({
       providerId: "codex",
       providerState,
-      shouldWaitForProviderIdentity: false,
+      expectsIdentityNotification: false,
       threadId: "thread-2",
     });
     registry.recordProviderThreadIdentity({
@@ -96,7 +89,7 @@ describe("RuntimeThreadIdentityRegistry", () => {
     registry.registerThreadProvider({
       providerId: "claude-code",
       providerState: singleThreadState,
-      shouldWaitForProviderIdentity: false,
+      expectsIdentityNotification: false,
       threadId: "thread-3",
     });
     expect(
@@ -117,26 +110,6 @@ describe("RuntimeThreadIdentityRegistry", () => {
         eventThreadId: "thread-1",
       }),
     ).toBeUndefined();
-  });
-
-  it("resolves pending identity waiters to null when the provider exits", async () => {
-    const registry = new RuntimeThreadIdentityRegistry();
-    const providerState = registry.createProviderState({ providerId: "codex" });
-    registry.registerThreadProvider({
-      providerId: "codex",
-      providerState,
-      shouldWaitForProviderIdentity: true,
-      threadId: "thread-1",
-    });
-
-    const identityPromise = registry.waitForProviderThreadIdentity({
-      providerState,
-      threadId: "thread-1",
-      timeoutMs: 5_000,
-    });
-    registry.resolvePendingIdentityWaiters(providerState);
-
-    await expect(identityPromise).resolves.toBeNull();
   });
 
   it("stamps projected events with the resolved bb thread id", () => {

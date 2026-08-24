@@ -51,7 +51,10 @@ export type HostRpcHandlerResult =
     };
 
 export interface RegisterHostRpcResponderArgs {
-  handle: (request: HostDaemonOnlineRpcRequestMessage) => HostRpcHandlerResult;
+  /** A returned promise answers when it settles, as a slow host would. */
+  handle: (
+    request: HostDaemonOnlineRpcRequestMessage,
+  ) => HostRpcHandlerResult | Promise<HostRpcHandlerResult>;
   hostId: string;
   sessionId: string;
   restoreCommandCaptureAfterResponse?: boolean;
@@ -150,23 +153,43 @@ export function registerHostRpcResponder(
         throw new Error(`Unexpected daemon websocket message ${message.type}`);
       }
       requests.push(message);
-      const response = (() => {
+      const respond = (
+        build: () => HostDaemonOnlineRpcResponseMessage,
+      ): void => {
+        let response: HostDaemonOnlineRpcResponseMessage;
         try {
-          return buildHostRpcResponse(message, args.handle(message));
+          response = build();
         } catch (error) {
-          return buildTestFailureResponse(message, error);
+          response = buildTestFailureResponse(message, error);
         }
-      })();
-      harness.hub.recordHostOnlineRpcResponse({
-        message: response,
-        sessionId: args.sessionId,
-      });
-      if (args.restoreCommandCaptureAfterResponse) {
-        registerTestHostRpcCapture(harness, {
-          hostId: args.hostId,
+        harness.hub.recordHostOnlineRpcResponse({
+          message: response,
           sessionId: args.sessionId,
         });
+        if (args.restoreCommandCaptureAfterResponse) {
+          registerTestHostRpcCapture(harness, {
+            hostId: args.hostId,
+            sessionId: args.sessionId,
+          });
+        }
+      };
+      let handled: HostRpcHandlerResult | Promise<HostRpcHandlerResult>;
+      try {
+        handled = args.handle(message);
+      } catch (error) {
+        respond(() => buildTestFailureResponse(message, error));
+        return;
       }
+      if (handled instanceof Promise) {
+        void handled.then(
+          (result) => respond(() => buildHostRpcResponse(message, result)),
+          (error: unknown) =>
+            respond(() => buildTestFailureResponse(message, error)),
+        );
+        return;
+      }
+      const result = handled;
+      respond(() => buildHostRpcResponse(message, result));
     },
   };
   harness.hub.registerDaemon(args.sessionId, args.hostId, socket);

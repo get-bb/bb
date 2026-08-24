@@ -164,12 +164,10 @@ describe.sequential("fake provider smoke lifecycle integration", () => {
         expect(parentRuntimeCommand.instructions).not.toContain("manager");
         expect(childRuntimeCommand.instructions).not.toContain("manager");
 
-        // Skill roots are not asserted here: the runtime types them by
-        // first-party provider id (`AgentRuntimeSkillRoot.providerId`), so a
-        // provider outside that set — the scripted echo provider, or any
-        // third-party plugin — is configured with none. The skill-root
-        // contract moves to the provider declaration with the registry
-        // workstream; until then `runtime-skill-roots.test.ts` pins it.
+        // Skill roots are not asserted here: this harness stages no injected
+        // skill sources, so the runtime configures none. The generic root
+        // shape every provider receives is pinned in
+        // `bridge-protocol-adapter.test.ts` and `injected-skills.test.ts`.
       });
     } finally {
       await record.dispose();

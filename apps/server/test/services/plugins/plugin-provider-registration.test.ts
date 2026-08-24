@@ -58,10 +58,8 @@ const REGISTER_PROVIDER_SOURCE = (id: string): string => `
       id: ${JSON.stringify(id)},
       displayName: "My Remote Agent",
       icon: "./icons/agent.svg",
+      maintenance: { health: true, usage: true, installation: false },
       capabilities: {
-        experimental_providerHealth: true,
-        experimental_providerUsage: true,
-      experimental_providerInstallation: false,
         supportsServiceTier: true,
         supportsNativeUserQuestion: true,
         fork: "tip",
@@ -103,15 +101,13 @@ describe("bb.providers.register (server)", () => {
 
       const registration = harness.deps.providerRegistry.get("my-remote-agent");
       expect(registration).toMatchObject({
-        source: { kind: "plugin", pluginId: entry.id },
+        pluginId: entry.id,
         info: {
           id: "my-remote-agent",
           displayName: "My Remote Agent",
           available: true,
           logoUrl: "/api/v1/system/providers/my-remote-agent/logo",
-          experimental_providerHealth: true,
-          experimental_providerUsage: true,
-          experimental_providerInstallation: false,
+          maintenance: { health: true, usage: true, installation: false },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
@@ -248,12 +244,68 @@ describe("bb.providers.register (server)", () => {
 
       const reloaded = harness.deps.providerRegistry.get("reload-agent");
       expect(reloaded).toMatchObject({
-        source: { kind: "plugin", pluginId: entry.id },
+        pluginId: entry.id,
       });
       const listed = harness.deps.providerRegistry
         .list()
         .filter((candidate) => candidate.info.id === "reload-agent");
       expect(listed).toHaveLength(1);
+    });
+  });
+
+  it("serves a path-shaped icon through the provider logo route with untrusted-image headers", async () => {
+    await withTestHarness(async (harness) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-marked-agent",
+        serverSource: REGISTER_PROVIDER_SOURCE("marked-agent"),
+      });
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"><style>.a{fill:#f00}</style><path class="a" d="M0 0h4v4z"/></svg>`;
+      await mkdir(join(rootDir, "icons"), { recursive: true });
+      await writeFile(join(rootDir, "icons", "agent.svg"), svg);
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status, entry.statusDetail ?? "").toBe("running");
+
+      const logo = await harness.app.request(
+        "http://127.0.0.1:3334/api/v1/system/providers/marked-agent/logo",
+      );
+      expect(logo.status).toBe(200);
+      expect(logo.headers.get("content-type")).toBe("image/svg+xml");
+      expect(logo.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(logo.headers.get("content-security-policy")).toBe(
+        "default-src 'none'; style-src 'unsafe-inline'",
+      );
+      expect(logo.headers.get("cache-control")).toBe("no-store");
+      expect(await logo.text()).toBe(svg);
+    });
+  });
+
+  // A path-shaped icon is named only in code, so nothing parses it at the
+  // register call or at load: the provider logo route serves the file as
+  // declared, and its headers (nosniff, default-src 'none') keep an event
+  // handler or a script from running when the document is opened directly.
+  it("serves a path-shaped icon as declared even when it carries an event handler", async () => {
+    await withTestHarness(async (harness) => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-scripted-agent",
+        serverSource: REGISTER_PROVIDER_SOURCE("scripted-agent"),
+      });
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg"><path onload="x()" d="M0 0"/></svg>`;
+      await mkdir(join(rootDir, "icons"), { recursive: true });
+      await writeFile(join(rootDir, "icons", "agent.svg"), svg);
+      const entry = await harness.pluginService.installPath(rootDir);
+      expect(entry.status, entry.statusDetail ?? "").toBe("running");
+      expect(harness.deps.providerRegistry.get("scripted-agent")).not.toBeNull();
+
+      const logo = await harness.app.request(
+        "http://127.0.0.1:3334/api/v1/system/providers/scripted-agent/logo",
+      );
+      expect(logo.status).toBe(200);
+      expect(logo.headers.get("content-type")).toBe("image/svg+xml");
+      expect(logo.headers.get("x-content-type-options")).toBe("nosniff");
+      expect(logo.headers.get("content-security-policy")).toBe(
+        "default-src 'none'; style-src 'unsafe-inline'",
+      );
+      expect(await logo.text()).toBe(svg);
     });
   });
 
@@ -296,10 +348,9 @@ describe("bb.providers.register (server)", () => {
       );
       // The incumbent registration is untouched and the failed plugin
       // contributed nothing.
-      expect(harness.deps.providerRegistry.get("codex")?.source).toEqual({
-        kind: "plugin",
-        pluginId: "provider-codex",
-      });
+      expect(harness.deps.providerRegistry.get("codex")?.pluginId).toBe(
+        "provider-codex",
+      );
       const providers = await listSystemProviderInfos(harness.deps, {});
       expect(
         providers.filter((provider) => provider.id === "codex"),

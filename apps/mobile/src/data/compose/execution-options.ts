@@ -27,6 +27,8 @@ export interface ProviderPickerOption {
   value: string;
   label: string;
   logoUrl: string | null;
+  /** The host glyph the provider declared, when it shipped no logo file. */
+  glyph: string | null;
   available: boolean;
 }
 
@@ -87,6 +89,7 @@ export function buildProviderOptions(
     value: provider.id,
     label: provider.displayName,
     logoUrl: provider.logoUrl,
+    glyph: provider.icon?.glyph ?? null,
     available: provider.available,
   }));
 }

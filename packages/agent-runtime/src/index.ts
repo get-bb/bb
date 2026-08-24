@@ -1,17 +1,10 @@
-export { createAgentRuntime } from "./runtime.js";
-export {
-  fingerprintAcpLaunchSpec,
-  bridgeLaunchProcessKey,
-} from "./acp-launch-spec-fingerprint.js";
+export { AgentRuntimeRecoveryError, createAgentRuntime } from "./runtime.js";
+export { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 export type {
   AgentRuntime,
-  AgentRuntimeAcpSkillRoot,
   AgentRuntimeBridgeLaunch,
-  AgentRuntimeClaudeCodeSkillRoot,
-  AgentRuntimeCodexSkillRoot,
   AgentRuntimeExecutionOptions,
   AgentRuntimeOptions,
-  AgentRuntimePiSkillRoot,
   AgentRuntimeProcessExitInfo,
   AgentRuntimeProviderSession,
   AgentRuntimeSkillRoot,

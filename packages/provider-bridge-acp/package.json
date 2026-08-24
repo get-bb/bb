@@ -1,0 +1,36 @@
+{
+  "name": "@bb/provider-bridge-acp",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./launch-spec": {
+      "source": "./src/launch-spec.ts",
+      "types": "./src/launch-spec.ts",
+      "default": "./src/launch-spec.ts"
+    }
+  },
+  "types": "./src/index.ts",
+  "scripts": {
+    "clean": "rimraf dist tsconfig.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@bb/domain": "workspace:*",
+    "@bb/provider-bridge-protocol": "workspace:*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@bb/tsconfig": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "vitest": "^4.1.1"
+  }
+}

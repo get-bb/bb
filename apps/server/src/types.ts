@@ -1,7 +1,4 @@
-import type {
-  CustomAcpAgent,
-  CustomProviderModel,
-} from "@bb/config/bb-app-managed-config";
+import type { CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import type { DbConnection } from "@bb/db";
 import type { FeatureFlags, ProviderNativeSkillRoots } from "@bb/domain";
 import type { Logger } from "@bb/logger";
@@ -18,14 +15,15 @@ import type { WorkspaceReadCaches } from "./services/environments/workspace-read
 import type { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 import type { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 import type { ProviderRegistryService } from "./services/providers/provider-registry.js";
+import type { AiServiceRegistry } from "./services/ai/ai-service-registry.js";
 import type { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artifact-registry.js";
+import type { ProviderNativeRootsCache } from "./services/providers/native-roots.js";
 
 export type ServerLogger = Pick<Logger, "debug" | "error" | "info" | "warn">;
 
 export interface ServerRuntimeConfig {
   appVersion: string;
   builtinSkillsRootPath: string;
-  customAcpAgents: CustomAcpAgent[];
   customModels: CustomProviderModel[];
   dataDir: string;
   featureFlags: FeatureFlags;
@@ -67,6 +65,9 @@ export interface AppDeps {
   pendingInteractions: PendingInteractionLifecycle;
   providerRegistry: ProviderRegistryService;
   pluginHostArtifacts: PluginHostArtifactRegistry;
+  /** Plugin-resolved native roots per (plugin, provider, host, cwd). */
+  providerNativeRoots: ProviderNativeRootsCache;
+  aiServices: AiServiceRegistry;
   skillTreeRegistry: SkillTreeRegistry;
   telemetry: TelemetryService;
   terminalSessions: TerminalSessionLifecycle;
@@ -89,6 +90,7 @@ export type WorkSessionDeps = Pick<
   | "machineAuth"
   | "providerRegistry"
   | "pluginHostArtifacts"
+  | "aiServices"
   | "skillTreeRegistry"
   | "telemetry"
 >;

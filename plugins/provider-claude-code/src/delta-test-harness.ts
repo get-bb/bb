@@ -68,7 +68,9 @@ interface ClaudeDeltaHarness {
 }
 
 export function createClaudeDeltaHarness(): ClaudeDeltaHarness {
-  const translator = createClaudeDeltaTranslator();
+  // Every production session has a cwd: a Bash result whose call was never
+  // seen still reads as a command run there.
+  const translator = createClaudeDeltaTranslator({ cwd: "/workspace" });
   const assembler = createDeltaAssembler({
     providerId: "claude-code",
     entropyPrefix: CLAUDE_TEST_ENTROPY,

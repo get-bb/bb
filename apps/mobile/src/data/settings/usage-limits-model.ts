@@ -26,7 +26,7 @@ export function usageProviderConfigs(
   providers: readonly ProviderInfo[],
 ): UsageProviderConfig[] {
   return providers
-    .filter((provider) => provider.experimental_providerUsage)
+    .filter((provider) => provider.maintenance.usage)
     .map((provider) => ({
       providerId: provider.id,
       name: provider.displayName,

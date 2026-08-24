@@ -1,13 +1,15 @@
 import { Buffer } from "node:buffer";
-import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
+import type {
+  ExperimentalAiVoiceTranscribeInput,
+  ExperimentalAiVoiceTranscribeOutput,
+} from "@get-bb/plugin-sdk/ai-services";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
-import { transcribeVoiceInput } from "../../src/services/ai/voice-transcription.js";
 import {
-  registerHostRpcResponder,
-  type HostRpcResponder,
-  type RegisterHostRpcResponderArgs,
-} from "../helpers/host-rpc.js";
+  resolveVoiceTranscriptionEnabled,
+  transcribeVoiceInput,
+} from "../../src/services/ai/voice-transcription.js";
+import { registerFakeAiService, type FakeAiServiceCall } from "../helpers/ai-services.js";
 import { seedHostSession } from "../helpers/seed.js";
 import {
   createTestAppHarness,
@@ -18,20 +20,11 @@ type FetchInput = Parameters<typeof fetch>[0];
 type FetchInit = Parameters<typeof fetch>[1];
 type FetchResult = ReturnType<typeof fetch>;
 
-type CodexVoiceTranscribeCommand = Extract<
-  HostDaemonOnlineRpcRequestMessage["command"],
-  { type: "codex.voice.transcribe" }
->;
-
-interface CodexTranscriptionHarness {
+interface ServiceTranscriptionHarness {
   app: TestAppHarness["app"];
   cleanup: TestAppHarness["cleanup"];
   deps: TestAppHarness["deps"];
-  requests: HostRpcResponder["requests"];
-}
-
-interface CreateCodexTranscriptionHarnessArgs {
-  handle: RegisterHostRpcResponderArgs["handle"];
+  calls: FakeAiServiceCall<ExperimentalAiVoiceTranscribeInput>[];
 }
 
 function voiceFile(): File {
@@ -44,34 +37,25 @@ function emptyVoiceFile(): File {
   return new File([], "prompt.webm", { type: "audio/webm" });
 }
 
-function requireCodexVoiceTranscribeCommand(
-  request: HostDaemonOnlineRpcRequestMessage,
-): CodexVoiceTranscribeCommand {
-  const command = request.command;
-  if (command.type !== "codex.voice.transcribe") {
-    throw new Error(`Unexpected command ${command.type}`);
-  }
-  return command;
-}
-
-async function createCodexTranscriptionHarness({
-  handle,
-}: CreateCodexTranscriptionHarnessArgs): Promise<CodexTranscriptionHarness> {
+/** A plugin-served `codex` voice service answering from `transcribe`. */
+async function createServiceTranscriptionHarness(
+  transcribe: (
+    input: ExperimentalAiVoiceTranscribeInput,
+  ) => ExperimentalAiVoiceTranscribeOutput,
+): Promise<ServiceTranscriptionHarness> {
   const harness = await createTestAppHarness({
     inferenceFallbackModel: "codex/gpt-5.4-mini",
     transcriptionModel: "codex/gpt-transcribe",
   });
-  const { host, session } = seedHostSession(harness.deps);
-  const responder = registerHostRpcResponder(harness, {
-    hostId: host.id,
-    sessionId: session.id,
-    handle,
+  seedHostSession(harness.deps);
+  const fake = registerFakeAiService(harness.deps.aiServices, {
+    transcribeVoice: transcribe,
   });
   return {
     app: harness.app,
     cleanup: harness.cleanup,
     deps: harness.deps,
-    requests: responder.requests,
+    calls: fake.voiceCalls,
   };
 }
 
@@ -91,11 +75,9 @@ function expectRetryableApiError(
 }
 
 describe("voice transcription", () => {
-  it("rejects empty audio before sending a host RPC command", async () => {
-    const harness = await createCodexTranscriptionHarness({
-      handle() {
-        throw new Error("Empty audio must not reach the host daemon");
-      },
+  it("rejects empty audio before calling the service", async () => {
+    const harness = await createServiceTranscriptionHarness(() => {
+      throw new Error("Empty audio must not reach the service");
     });
     try {
       const form = new FormData();
@@ -110,66 +92,125 @@ describe("voice transcription", () => {
         code: "invalid_request",
         message: "Audio file must not be empty",
       });
-      expect(harness.requests).toHaveLength(0);
+      expect(harness.calls).toHaveLength(0);
     } finally {
       await harness.cleanup();
     }
   });
 
-  it("retries with the transcription model after Codex service unavailability", async () => {
-    let requestCount = 0;
-    const harness = await createCodexTranscriptionHarness({
-      handle(request) {
-        const command = requireCodexVoiceTranscribeCommand(request);
-        requestCount += 1;
-        if (requestCount === 1) {
-          return {
-            ok: false,
-            errorCode: "codex_service_unavailable",
-            errorMessage: "Codex transcription service unavailable",
-          };
-        }
-        return {
-          ok: true,
-          result: {
-            model: command.model,
-            text: "hello world",
-          },
-        };
+  it("reports openai/* enablement from the API key even when a service registered the openai id", async () => {
+    const harness = await createTestAppHarness({
+      transcriptionModel: "openai/gpt-4o-transcribe",
+      openAiApiKey: "",
+    });
+    try {
+      seedHostSession(harness.deps);
+      registerFakeAiService(harness.deps.aiServices, { id: "openai" });
+      // Server-direct rule wins: no key, not enabled — a registered
+      // `openai` service never stands in for OpenAI.
+      expect(resolveVoiceTranscriptionEnabled(harness.deps)).toBe(false);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("rejects audio above the plugin-served cap before calling the service", async () => {
+    const harness = await createServiceTranscriptionHarness(() => {
+      throw new Error("Oversized audio must not reach the service");
+    });
+    try {
+      const file = new File([Buffer.alloc(5 * 1024 * 1024 + 1)], "long.webm", {
+        type: "audio/webm",
+      });
+      const error = await transcribeVoiceInput(harness.deps, { file }).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        status: 400,
+        body: {
+          code: "invalid_request",
+          message: "Audio file exceeds the 5MB limit for plugin-served transcription",
+        },
+      });
+      expect(harness.calls).toHaveLength(0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("sends openai/* to OpenAI directly even when a service registered the openai id", async () => {
+    const harness = await createTestAppHarness({
+      transcriptionModel: "openai/gpt-4o-transcribe",
+    });
+    seedHostSession(harness.deps);
+    const fake = registerFakeAiService(harness.deps.aiServices, {
+      id: "openai",
+      transcribeVoice: () => {
+        throw new Error("A registered openai service must not receive audio");
       },
+    });
+    const fetchStub = vi.fn(
+      async (_input: FetchInput, _init?: FetchInit): FetchResult =>
+        new Response(JSON.stringify({ text: "hello openai" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchStub);
+    try {
+      await expect(
+        transcribeVoiceInput(harness.deps, { file: voiceFile() }),
+      ).resolves.toBe("hello openai");
+      expect(fetchStub).toHaveBeenCalledTimes(1);
+      expect(fake.voiceCalls).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+      await harness.cleanup();
+    }
+  });
+
+  it("retries with the transcription model after service unavailability", async () => {
+    let requestCount = 0;
+    const harness = await createServiceTranscriptionHarness((input) => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return {
+          ok: false,
+          code: "service_unavailable",
+          message: "Codex transcription service unavailable",
+        };
+      }
+      return { ok: true, model: input.model, text: "hello world" };
     });
     try {
       await expect(
         transcribeVoiceInput(harness.deps, { file: voiceFile() }),
       ).resolves.toBe("hello world");
-      expect(harness.requests).toHaveLength(2);
-      expect(harness.requests[0]?.command).toMatchObject({
+      expect(harness.calls).toHaveLength(2);
+      expect(harness.calls[0]?.input).toMatchObject({
+        serviceId: "codex",
         model: "gpt-transcribe",
         timeoutMs: 10_000,
-        type: "codex.voice.transcribe",
+        mimeType: "audio/webm",
+        filename: "prompt.webm",
       });
-      expect(harness.requests[1]?.command).toMatchObject({
+      expect(harness.calls[1]?.input).toMatchObject({
         model: "gpt-transcribe",
         timeoutMs: 10_000,
-        type: "codex.voice.transcribe",
       });
     } finally {
       await harness.cleanup();
     }
   });
 
-  it("returns retryable unavailable after exhausting Codex rate limit retries", async () => {
-    const harness = await createCodexTranscriptionHarness({
-      handle(request) {
-        requireCodexVoiceTranscribeCommand(request);
-        return {
-          ok: false,
-          errorCode: "codex_rate_limited",
-          errorMessage:
-            "Codex transcription request failed with HTTP 429: Transcription is temporarily unavailable. Please try again later.",
-        };
-      },
-    });
+  it("returns retryable unavailable after exhausting rate limit retries", async () => {
+    const harness = await createServiceTranscriptionHarness(() => ({
+      ok: false,
+      code: "rate_limited",
+      message:
+        "Codex transcription request failed with HTTP 429: Transcription is temporarily unavailable. Please try again later.",
+    }));
     try {
       let thrown: unknown = null;
       try {
@@ -182,23 +223,18 @@ describe("voice transcription", () => {
         code: "transcription_unavailable",
         status: 503,
       });
-      expect(harness.requests).toHaveLength(2);
+      expect(harness.calls).toHaveLength(2);
     } finally {
       await harness.cleanup();
     }
   });
 
-  it("returns retryable timeout after exhausting Codex timeout retries", async () => {
-    const harness = await createCodexTranscriptionHarness({
-      handle(request) {
-        requireCodexVoiceTranscribeCommand(request);
-        return {
-          ok: false,
-          errorCode: "command_timeout",
-          errorMessage: "Timed out waiting for command result",
-        };
-      },
-    });
+  it("returns retryable timeout after exhausting timeout retries", async () => {
+    const harness = await createServiceTranscriptionHarness(() => ({
+      ok: false,
+      code: "timeout",
+      message: "Timed out waiting for the transcription",
+    }));
     try {
       let thrown: unknown = null;
       try {
@@ -211,35 +247,29 @@ describe("voice transcription", () => {
         code: "transcription_timeout",
         status: 504,
       });
-      expect(harness.requests).toHaveLength(2);
+      expect(harness.calls).toHaveLength(2);
     } finally {
       await harness.cleanup();
     }
   });
 
-  it("does not retry non-retryable Codex auth failures", async () => {
-    const harness = await createCodexTranscriptionHarness({
-      handle(request) {
-        requireCodexVoiceTranscribeCommand(request);
-        return {
-          ok: false,
-          errorCode: "codex_auth_failed",
-          errorMessage:
-            "Codex transcription request failed with HTTP 401: Unauthorized",
-        };
-      },
-    });
+  it("does not retry non-retryable auth failures", async () => {
+    const harness = await createServiceTranscriptionHarness(() => ({
+      ok: false,
+      code: "auth_required",
+      message: "Codex transcription request failed with HTTP 401: Unauthorized",
+    }));
     try {
       await expect(
         transcribeVoiceInput(harness.deps, { file: voiceFile() }),
       ).rejects.toMatchObject({
         body: {
-          code: "codex_auth_failed",
+          code: "ai_service_auth_required",
           retryable: false,
         },
         status: 502,
       });
-      expect(harness.requests).toHaveLength(1);
+      expect(harness.calls).toHaveLength(1);
     } finally {
       await harness.cleanup();
     }

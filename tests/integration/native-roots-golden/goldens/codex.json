@@ -1,0 +1,296 @@
+{
+  "providerId": "codex",
+  "variant": "default",
+  "workspace": {
+    "commands": [
+      {
+        "name": "codex-plugin:codex-plugin",
+        "source": "skill",
+        "origin": "user",
+        "description": "Codex plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "codex-plugin:codex-plugin-extra",
+        "source": "skill",
+        "origin": "user",
+        "description": "Codex plugin single-file skill",
+        "argumentHint": null
+      },
+      {
+        "name": "codex-plugin:codex-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "codex-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "cwd-codex-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "cwd-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-codex-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "linked-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "pkg-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "pkg-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "system-codex-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "system-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "unlisted-plugin:unlisted-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "unlisted-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-agents-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "codex-plugin:codex-plugin",
+        "description": "Codex plugin root skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/codex-plugin/1.0.0/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "codex-plugin:codex-plugin-extra",
+        "description": "Codex plugin single-file skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/codex-plugin/1.0.0/extra-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "codex-plugin:codex-plugin-skill",
+        "description": "codex-plugin-skill skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/codex-plugin/1.0.0/skills/codex-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "cwd-agents-skill",
+        "description": "cwd-agents-skill skill",
+        "filePath": "<root>/ws/packages/app/.agents/skills/cwd-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "cwd-codex-skill",
+        "description": "cwd-codex-skill skill",
+        "filePath": "<root>/ws/packages/app/.codex/skills/cwd-codex-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-codex-skill",
+        "description": "home-codex-skill skill",
+        "filePath": "<home>/.codex/skills/home-codex-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "linked-agents-skill",
+        "description": "linked-agents-skill skill",
+        "filePath": "<home>/.agents/skills/linked-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": true
+      },
+      {
+        "name": "pkg-agents-skill",
+        "description": "pkg-agents-skill skill",
+        "filePath": "<root>/ws/packages/.agents/skills/pkg-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      },
+      {
+        "name": "system-codex-skill",
+        "description": "system-codex-skill skill",
+        "filePath": "<home>/.codex/skills/.system/system-codex-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "unlisted-plugin:unlisted-plugin-skill",
+        "description": "unlisted-plugin-skill skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/unlisted-plugin/1.0.0/skills/unlisted-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "ws-agents-skill",
+        "description": "ws-agents-skill skill",
+        "filePath": "<root>/ws/.agents/skills/ws-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "codex-plugin:codex-plugin",
+        "source": "skill",
+        "origin": "user",
+        "description": "Codex plugin root skill",
+        "argumentHint": null
+      },
+      {
+        "name": "codex-plugin:codex-plugin-extra",
+        "source": "skill",
+        "origin": "user",
+        "description": "Codex plugin single-file skill",
+        "argumentHint": null
+      },
+      {
+        "name": "codex-plugin:codex-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "codex-plugin-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "home-codex-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "home-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-agents-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "linked-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "system-codex-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "system-codex-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "unlisted-plugin:unlisted-plugin-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "unlisted-plugin-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "codex-plugin:codex-plugin",
+        "description": "Codex plugin root skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/codex-plugin/1.0.0/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "codex-plugin:codex-plugin-extra",
+        "description": "Codex plugin single-file skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/codex-plugin/1.0.0/extra-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "codex-plugin:codex-plugin-skill",
+        "description": "codex-plugin-skill skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/codex-plugin/1.0.0/skills/codex-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      },
+      {
+        "name": "home-agents-skill",
+        "description": "home-agents-skill skill",
+        "filePath": "<home>/.agents/skills/home-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "home-codex-skill",
+        "description": "home-codex-skill skill",
+        "filePath": "<home>/.codex/skills/home-codex-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "linked-agents-skill",
+        "description": "linked-agents-skill skill",
+        "filePath": "<home>/.agents/skills/linked-agents-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": true
+      },
+      {
+        "name": "system-codex-skill",
+        "description": "system-codex-skill skill",
+        "filePath": "<home>/.codex/skills/.system/system-codex-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "unlisted-plugin:unlisted-plugin-skill",
+        "description": "unlisted-plugin-skill skill",
+        "filePath": "<home>/.codex/plugins/cache/golden-market/unlisted-plugin/1.0.0/skills/unlisted-plugin-skill/SKILL.md",
+        "rootKind": "plugin",
+        "linked": false
+      }
+    ]
+  }
+}

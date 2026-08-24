@@ -14,6 +14,8 @@ import { createMachineAuthService } from "./services/machine-auth.js";
 import { resolveBuiltinSkillsRootPath } from "./services/skills/builtin-skills-copy.js";
 import { SkillTreeRegistry } from "./services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "./services/plugins/plugin-host-artifact-registry.js";
+import { createProviderNativeRootsCache } from "./services/providers/native-roots.js";
+import { createAiServiceRegistry } from "./services/ai/ai-service-registry.js";
 import { createAppVersionService } from "./services/system/app-version.js";
 import { createBbAppManagedConfigReloader } from "./services/system/bb-app-managed-config.js";
 import { startEventLoopStallMonitor } from "./services/system/event-loop-stall-monitor.js";
@@ -22,7 +24,6 @@ import {
   runStartupRecoverySweep,
 } from "./services/system/periodic-sweeps.js";
 import { createProviderRegistryService } from "./services/providers/provider-registry.js";
-import { resolveAcpAgentCapabilitiesForProviderId } from "./services/system/acp-launch-spec.js";
 import { createTelemetryService } from "./services/system/telemetry.js";
 import { TerminalSessionLifecycle } from "./services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "./lifecycle-dedupers.js";
@@ -72,7 +73,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     appVersion: serverConfig.BB_APP_VERSION,
     builtinSkillsRootPath: resolveBuiltinSkillsRootPath(),
     marketplaceUrl: serverConfig.BB_MARKETPLACE_URL,
-    customAcpAgents: [],
     customModels: [],
     dataDir: serverConfig.BB_DATA_DIR,
     featureFlags: serverConfig.featureFlags,
@@ -88,17 +88,10 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     transcriptionModel: serverConfig.BB_TRANSCRIPTION,
   };
 
-  // Reads `runtimeConfig.customAcpAgents` on every call so a `bb-app config
-  // refresh` (which replaces the array in place) is picked up immediately.
   const providerRegistry = createProviderRegistryService({
     // Providers arrive with plugin startup, which runs after the listener is
     // up; provider-routed work waits for it instead of failing on boot.
     deferRegistrationsSettled: true,
-    resolveAcpAgentCapabilities: (providerId) =>
-      resolveAcpAgentCapabilitiesForProviderId(
-        { config: runtimeConfig },
-        providerId,
-      ),
     // Picker order and the default provider are the user's settings.
     readUserProviderPreferences: () => {
       const settings = getAppSettings(db);
@@ -149,6 +142,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   await machineAuth.ensureReady();
   const skillTreeRegistry = new SkillTreeRegistry();
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
+  const providerNativeRoots = createProviderNativeRootsCache();
+  const aiServices = createAiServiceRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config: runtimeConfig,
     db,
@@ -158,6 +153,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     machineAuth,
     providerRegistry,
     pluginHostArtifacts,
+    aiServices,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -187,6 +183,8 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
       pendingInteractions,
       providerRegistry,
       pluginHostArtifacts,
+      providerNativeRoots,
+      aiServices,
       skillTreeRegistry,
       telemetry,
       terminalSessions,
@@ -208,6 +206,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     pendingInteractions,
     providerRegistry,
     pluginHostArtifacts,
+    aiServices,
     skillTreeRegistry,
     pluginSchedules: pluginService,
     telemetry,

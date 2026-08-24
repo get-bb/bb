@@ -232,17 +232,15 @@ function RunningCommandStreaming({ restartKey }: { restartKey: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Variant 3 — exploring bundle. New `Read`/`Grep` tool rows append one at a
+// Variant 3 — exploring bundle. New file-read / search rows append one at a
 // time. Once two or more land in the trailing run, the projection groups
 // them under an "exploration" bundle-summary that shimmers active-latest.
 // ---------------------------------------------------------------------------
 
 interface ExplorationStep {
   callId: string;
-  toolName: "Read" | "Grep" | "Glob";
-  toolArgs: Record<string, string | number>;
   intent:
-    | { type: "read"; name: string; path: string }
+    | { type: "read"; path: string }
     | { type: "search"; query: string; path: string }
     | { type: "list_files"; path: string };
 }
@@ -250,33 +248,20 @@ interface ExplorationStep {
 const EXPLORATION_STEPS: readonly ExplorationStep[] = [
   {
     callId: "stream_read_assist",
-    toolName: "Read",
-    toolArgs: {
-      file_path: "packages/core-ui/src/assistant-stream-projection.ts",
-    },
     intent: {
       type: "read",
-      name: "assistant-stream-projection.ts",
       path: "packages/core-ui/src/assistant-stream-projection.ts",
     },
   },
   {
     callId: "stream_read_index",
-    toolName: "Read",
-    toolArgs: { file_path: "packages/core-ui/src/index.ts" },
     intent: {
       type: "read",
-      name: "index.ts",
       path: "packages/core-ui/src/index.ts",
     },
   },
   {
     callId: "stream_grep_finalized",
-    toolName: "Grep",
-    toolArgs: {
-      pattern: "finalizedReasoningMessageKeys",
-      path: "packages/core-ui/src",
-    },
     intent: {
       type: "search",
       query: "finalizedReasoningMessageKeys",
@@ -285,24 +270,17 @@ const EXPLORATION_STEPS: readonly ExplorationStep[] = [
   },
   {
     callId: "stream_glob_tests",
-    toolName: "Glob",
-    toolArgs: { pattern: "packages/core-ui/test/*.test.ts" },
     intent: { type: "list_files", path: "packages/core-ui/test" },
   },
   {
     callId: "stream_read_to_view",
-    toolName: "Read",
-    toolArgs: { file_path: "packages/core-ui/src/to-view-messages.ts" },
     intent: {
       type: "read",
-      name: "to-view-messages.ts",
       path: "packages/core-ui/src/to-view-messages.ts",
     },
   },
   {
     callId: "stream_grep_active_thinking",
-    toolName: "Grep",
-    toolArgs: { pattern: "activeThinking", path: "packages/core-ui/src" },
     intent: {
       type: "search",
       query: "activeThinking",
@@ -311,18 +289,13 @@ const EXPLORATION_STEPS: readonly ExplorationStep[] = [
   },
   {
     callId: "stream_read_timeline_view",
-    toolName: "Read",
-    toolArgs: { file_path: "packages/thread-view/src/timeline-view.ts" },
     intent: {
       type: "read",
-      name: "timeline-view.ts",
       path: "packages/thread-view/src/timeline-view.ts",
     },
   },
   {
     callId: "stream_grep_closed_turn_ids",
-    toolName: "Grep",
-    toolArgs: { pattern: "closedTurnIds", path: "packages/core-ui/src" },
     intent: {
       type: "search",
       query: "closedTurnIds",
@@ -331,38 +304,24 @@ const EXPLORATION_STEPS: readonly ExplorationStep[] = [
   },
   {
     callId: "stream_read_build_thread_timeline",
-    toolName: "Read",
-    toolArgs: {
-      file_path: "packages/thread-view/src/build-thread-timeline.ts",
-    },
     intent: {
       type: "read",
-      name: "build-thread-timeline.ts",
       path: "packages/thread-view/src/build-thread-timeline.ts",
     },
   },
   {
     callId: "stream_glob_thread_view_tests",
-    toolName: "Glob",
-    toolArgs: { pattern: "packages/thread-view/test/*.test.ts" },
     intent: { type: "list_files", path: "packages/thread-view/test" },
   },
   {
     callId: "stream_read_format_timeline_text",
-    toolName: "Read",
-    toolArgs: {
-      file_path: "packages/thread-view/src/format-timeline-text.ts",
-    },
     intent: {
       type: "read",
-      name: "format-timeline-text.ts",
       path: "packages/thread-view/src/format-timeline-text.ts",
     },
   },
   {
     callId: "stream_grep_open_step",
-    toolName: "Grep",
-    toolArgs: { pattern: "openStep", path: "packages/thread-view/src" },
     intent: {
       type: "search",
       query: "openStep",
@@ -371,20 +330,13 @@ const EXPLORATION_STEPS: readonly ExplorationStep[] = [
   },
   {
     callId: "stream_read_completed_turn_grouping",
-    toolName: "Read",
-    toolArgs: {
-      file_path: "packages/thread-view/src/completed-turn-grouping.ts",
-    },
     intent: {
       type: "read",
-      name: "completed-turn-grouping.ts",
       path: "packages/thread-view/src/completed-turn-grouping.ts",
     },
   },
   {
     callId: "stream_grep_step_summary",
-    toolName: "Grep",
-    toolArgs: { pattern: "step-summary", path: "packages/thread-view/src" },
     intent: {
       type: "search",
       query: "step-summary",
@@ -394,7 +346,7 @@ const EXPLORATION_STEPS: readonly ExplorationStep[] = [
 ];
 
 function exploringRow(step: ExplorationStep, seq: number): TimelineRow {
-  return {
+  const base = {
     id: `streaming-exploring:${step.callId}`,
     threadId: THREAD_ID,
     turnId: TURN_ID,
@@ -402,37 +354,32 @@ function exploringRow(step: ExplorationStep, seq: number): TimelineRow {
     sourceSeqEnd: seq,
     startedAt: seq,
     createdAt: seq,
-    kind: "work",
-    workKind: "tool",
-    status: "completed",
+    kind: "work" as const,
+    status: "completed" as const,
     callId: step.callId,
-    toolName: step.toolName,
-    toolArgs: step.toolArgs,
-    output: "",
+    cmd: null,
     completedAt: seq,
-    approvalStatus: null,
-    activityIntents: [
-      step.intent.type === "read"
-        ? {
-            type: "read",
-            command: step.toolName,
-            name: step.intent.name,
-            path: step.intent.path,
-          }
-        : step.intent.type === "search"
-          ? {
-              type: "search",
-              command: step.toolName,
-              query: step.intent.query,
-              path: step.intent.path,
-            }
-          : {
-              type: "list_files",
-              command: step.toolName,
-              path: step.intent.path,
-            },
-    ],
   };
+  switch (step.intent.type) {
+    case "read":
+      return { ...base, workKind: "file-read", path: step.intent.path };
+    case "search":
+      return {
+        ...base,
+        workKind: "search",
+        mode: "content",
+        query: step.intent.query,
+        path: step.intent.path,
+      };
+    case "list_files":
+      return {
+        ...base,
+        workKind: "search",
+        mode: "list",
+        query: "",
+        path: step.intent.path,
+      };
+  }
 }
 
 function ExploringBundleStreaming({ restartKey }: { restartKey: number }) {

@@ -34,3 +34,9 @@ export {
   type FakeSdkOverrides,
 } from "./fake-sdk.js";
 export { makeThreadResponse } from "./fixtures.js";
+export {
+  scanPublicSdkOnly as experimental_scanPublicSdkOnly,
+  type PublicSdkOnlyScan,
+  type PublicSdkOnlyScanOptions,
+  type PublicSdkOnlyViolation,
+} from "./public-sdk-only.js";

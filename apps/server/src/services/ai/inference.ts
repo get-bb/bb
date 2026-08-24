@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { SERVER_DIRECT_AI_SERVICE_IDS } from "@get-bb/plugin-sdk/internal/host-policy";
 import { jsonObjectSchema, type JsonObject, type JsonValue } from "@bb/domain";
 import {
   parseProviderModelConfig,
@@ -9,13 +10,15 @@ import type { Static, TSchema, Tool, ToolCall } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { runLiveCommandAndWait } from "../hosts/live-command-wait.js";
 import { requireConnectedPrimaryHostId } from "../hosts/primary-host.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
-import { backsHostDaemonAiServices } from "./host-daemon-ai-provider.js";
+import {
+  AI_SERVICE_ERROR_CODES,
+  AiServiceCallError,
+  isTransientAiServiceError,
+} from "./ai-service-call.js";
 
 type BaseInferenceDeps = Pick<AppDeps, "config" | "logger">;
-type InferenceCompleteDeps = LoggedWorkSessionDeps;
 
 type InferenceModels = ReturnType<typeof builtinModels>;
 
@@ -27,6 +30,19 @@ let inferenceModelsInstance: InferenceModels | undefined;
 function getInferenceModels(): InferenceModels {
   inferenceModelsInstance ??= builtinModels();
   return inferenceModelsInstance;
+}
+
+/**
+ * Ids the server serves itself: `openai` transcription and every builtin
+ * inference provider. They route server-direct before the registry is
+ * consulted, and a plugin cannot register them — otherwise a marketplace
+ * plugin declaring `{ id: "openai" }` would receive the user's audio and
+ * prompts. The SDK's static list is the one source: the fake host enforces
+ * it, and plugin-ai-services.test.ts pins it to pi-ai's live provider
+ * registry plus `openai`, so a pi-ai bump must move the list with it.
+ */
+export function isServerDirectAiServiceId(id: string): boolean {
+  return SERVER_DIRECT_AI_SERVICE_IDS.includes(id);
 }
 
 function getInferenceModel(
@@ -118,22 +134,9 @@ function parseInferenceSchema(schema: TSchema): JsonObject {
   return jsonObjectSchema.parse(schema);
 }
 
-function shouldTreatAsInferenceTimeout(error: Error): boolean {
-  return (
-    error instanceof ApiError &&
-    (error.body.code === "command_timeout" ||
-      error.body.code === "codex_request_timeout")
-  );
-}
-
 function isTransientInferenceError(error: Error): boolean {
   return (
-    error instanceof InferenceTimeoutError ||
-    (error instanceof ApiError &&
-      (error.body.code === "codex_rate_limited" ||
-        error.body.code === "codex_service_unavailable" ||
-        error.body.code === "codex_request_timeout" ||
-        error.body.code === "command_timeout"))
+    error instanceof InferenceTimeoutError || isTransientAiServiceError(error)
   );
 }
 
@@ -159,7 +162,7 @@ interface InferenceCompleteWithFallbackArgs<T extends TSchema> {
  * after a transient failure.
  */
 export async function inferenceCompleteWithFallback<T extends TSchema>(
-  deps: InferenceCompleteDeps,
+  deps: LoggedWorkSessionDeps,
   args: InferenceCompleteWithFallbackArgs<T>,
 ): Promise<Static<T> | null> {
   const startedAt = Date.now();
@@ -215,7 +218,12 @@ export async function inferenceCompleteWithFallback<T extends TSchema>(
         deps.logger.info(
           {
             attempt,
-            errorCode: err instanceof ApiError ? err.body.code : "timeout",
+            errorCode:
+              err instanceof ApiError
+                ? err.body.code
+                : err instanceof AiServiceCallError
+                  ? AI_SERVICE_ERROR_CODES[err.code]
+                  : "timeout",
             fallbackModel,
             maxAttempts,
             model,
@@ -261,40 +269,48 @@ export async function inferenceCompleteWithFallback<T extends TSchema>(
   throw new Error("Inference fallback loop completed without an outcome");
 }
 
-async function completeWithCodexHostDaemon<T extends TSchema>(
-  deps: InferenceCompleteDeps,
+/**
+ * Helper inference through the plugin that registered the configured
+ * service id, on the primary host. Transport failures (no host, RPC error)
+ * surface as the host layer's ApiErrors; a service's own failure rides the
+ * result and becomes an `AiServiceCallError` (timeouts become the inference
+ * timeout the retry policy already understands).
+ */
+async function completeWithAiService<T extends TSchema>(
+  deps: LoggedWorkSessionDeps,
   modelInfo: ProviderModelInfo,
   args: InferenceCompleteArgs<T>,
 ): Promise<Static<T> | null> {
+  const service = deps.aiServices.get(modelInfo.provider);
+  if (service === null || !service.kinds.includes("inference")) {
+    throw new ApiError(
+      501,
+      "not_configured",
+      `No loaded plugin registers AI service "${modelInfo.provider}" for inference`,
+    );
+  }
   const hostId = requireConnectedPrimaryHostId(deps);
   const timeoutMs = args.timeoutMs ?? DEFAULT_INFERENCE_TIMEOUT_MS;
-  try {
-    const result = await runLiveCommandAndWait(deps, {
-      hostId,
-      timeoutMs: timeoutMs + INFERENCE_POLICY.hostRpcGraceMs,
-      command: {
-        type: "codex.inference.complete",
-        model: modelInfo.modelId,
-        // Helper inference is limited to short titles and commit subjects;
-        // preserve the previous no-reasoning latency and cost profile.
-        reasoningEffort: "none",
-        prompt: args.prompt,
-        outputSchema: parseInferenceSchema(args.schema),
-        timeoutMs,
-      },
-    });
-
-    return validateStructuredResult(args.schema, result.value);
-  } catch (error) {
-    const err =
-      error instanceof Error
-        ? error
-        : new Error("Non-Error thrown during Codex inference");
-    if (shouldTreatAsInferenceTimeout(err)) {
+  const result = await service.completeInference(
+    {
+      serviceId: service.id,
+      model: modelInfo.modelId,
+      // Helper inference is limited to short titles and commit subjects;
+      // preserve the previous no-reasoning latency and cost profile.
+      reasoningEffort: "none",
+      prompt: args.prompt,
+      outputSchema: parseInferenceSchema(args.schema),
+      timeoutMs,
+    },
+    { hostId, timeoutMs: timeoutMs + INFERENCE_POLICY.hostRpcGraceMs },
+  );
+  if (!result.ok) {
+    if (result.code === "timeout") {
       throw new InferenceTimeoutError({ timeoutMs });
     }
-    throw err;
+    throw new AiServiceCallError(service.id, result.code, result.message);
   }
+  return validateStructuredResult(args.schema, jsonObjectSchema.parse(result.value));
 }
 
 /**
@@ -305,7 +321,7 @@ async function completeWithCodexHostDaemon<T extends TSchema>(
  * model is not configured or does not produce a valid tool call.
  */
 export async function inferenceComplete<T extends TSchema>(
-  deps: InferenceCompleteDeps,
+  deps: LoggedWorkSessionDeps,
   args: InferenceCompleteArgs<T>,
 ): Promise<Static<T> | null> {
   const configuredModel = args.model ?? deps.config.inferenceModel;
@@ -314,8 +330,13 @@ export async function inferenceComplete<T extends TSchema>(
       args.model === undefined ? "BB_INFERENCE" : "inference model override",
     value: configuredModel,
   });
-  if (backsHostDaemonAiServices(modelInfo.provider)) {
-    return completeWithCodexHostDaemon(deps, modelInfo, args);
+  // Server-direct providers first; the registry only serves ids the server
+  // does not serve itself.
+  if (
+    !isServerDirectAiServiceId(modelInfo.provider) &&
+    deps.aiServices.get(modelInfo.provider) !== null
+  ) {
+    return completeWithAiService(deps, modelInfo, args);
   }
 
   const model = getInferenceModel(deps, modelInfo);

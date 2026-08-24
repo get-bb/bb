@@ -143,6 +143,15 @@ export function invalidateSystemConfig({ queryClient }: QueryClientArg): void {
   queryClient.invalidateQueries({ queryKey: systemConfigQueryKey() });
 }
 
+/** Refresh the provider directory after its effective order can change. */
+export function invalidateSystemProviders({
+  queryClient,
+}: QueryClientArg): Promise<void> {
+  return queryClient.invalidateQueries({
+    queryKey: allSystemProvidersQueryKeyPrefix(),
+  });
+}
+
 /** Refresh provider/model catalogs after a provider CLI install or update. */
 export function invalidateSystemExecutionOptions({
   hostId,

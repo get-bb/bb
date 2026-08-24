@@ -15,11 +15,11 @@ function provider(
 ): ProviderInfo {
   return {
     ...info,
+    // Demo fixtures: the first-party plugin ids follow `provider-<id>`.
+    pluginId: `provider-${info.id}`,
     available: true,
     logoUrl: `/api/v1/system/providers/${info.id}/logo`,
-    experimental_providerHealth: false,
-    experimental_providerUsage: false,
-    experimental_providerInstallation: false,
+    maintenance: { health: false, usage: false, installation: false },
   };
 }
 
@@ -41,6 +41,7 @@ export const PROVIDERS: readonly ProviderInfo[] = [
       permissionModes: ["accept-edits", "auto", "full"],
       supportsFork: true,
       supportsSessionRewind: true,
+      modelCatalogScope: "workspace",
     },
     composerActions: [
       SKILLS_ACTION,
@@ -62,6 +63,7 @@ export const PROVIDERS: readonly ProviderInfo[] = [
       permissionModes: ["accept-edits", "auto", "full"],
       supportsFork: true,
       supportsSessionRewind: true,
+      modelCatalogScope: "workspace",
     },
     composerActions: [SKILLS_ACTION, PLAN_ACTION],
   }),
@@ -76,6 +78,7 @@ export const PROVIDERS: readonly ProviderInfo[] = [
       permissionModes: ["full"],
       supportsFork: true,
       supportsSessionRewind: true,
+      modelCatalogScope: "workspace",
     },
     composerActions: [SKILLS_ACTION],
   }),

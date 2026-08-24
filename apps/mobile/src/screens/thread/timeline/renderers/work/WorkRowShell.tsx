@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 import { View } from "react-native";
+import { activityIntentTitleGlyph } from "@bb/thread-view";
 import { useTheme } from "@/theme";
 import { Icon } from "@/ui";
+import { useTimelineRowHost } from "../../host/TimelineRowHostProvider";
 import type { TimelineRowRendererItem } from "../../renderers";
 import type { TimelineWorkRowKind } from "../../rows";
 import { TimelineTitleView } from "../../TimelineTitleView";
@@ -14,8 +16,9 @@ import { PAST_ROW_DIM_OPACITY } from "../shared/row-dim";
 import {
   compactActivityIntentTitles,
   isPastWorkRow,
-  leadingIconForActivityIntentTitle,
   leadingIconForWorkRow,
+  leadingIconTintForWorkRow,
+  leadingPluginIconUrl,
 } from "./work-row-model";
 
 /** Icon size of the leading glyph (web `size-3.5`). */
@@ -47,7 +50,7 @@ interface WorkRowShellProps {
  * with the work-kind leading glyph, the past-row dim on the summary content
  * only (the caret keeps full strength so completed/active rows line up), and
  * the body while expanded. Inside a step/bundle summary an exploration
- * command/tool row renders one flat line per activity intent instead (web
+ * command row renders one flat line per activity intent instead (web
  * compact-activity-intents), which is never expandable.
  */
 export function WorkRowShell({
@@ -61,11 +64,15 @@ export function WorkRowShell({
   children,
   accessibilityLabel,
 }: WorkRowShellProps) {
-  const { tokens } = useTheme();
+  const { tokens, mode } = useTheme();
+  // The installed-plugin list the timeline host keeps live; a row's
+  // "<pluginId>/<name>" glyph resolves against it (or falls back).
+  const { installedPlugins } = useTimelineRowHost();
   const row = item.row;
   const dim = isPastWorkRow(row);
   const compactTitles = compactActivityIntentTitles(row, item.parentKind);
   const rowTestID = `timeline-row-${item.kind}`;
+  const leadingIconUrl = leadingPluginIconUrl(row, installedPlugins);
 
   if (compactTitles !== null) {
     const contentStyle = dim ? { opacity: PAST_ROW_DIM_OPACITY } : undefined;
@@ -79,7 +86,7 @@ export function WorkRowShell({
             testID="timeline-activity-intent"
           >
             <Icon
-              name={leadingIconForActivityIntentTitle(entry)}
+              name={activityIntentTitleGlyph(entry)}
               size={WORK_ROW_ICON_SIZE}
               color={tokens.mutedForeground}
             />
@@ -97,6 +104,8 @@ export function WorkRowShell({
       <ExpandableRowHeader
         title={item.title}
         leadingIcon={leadingIconForWorkRow(row)}
+        {...(leadingIconUrl === null ? {} : { leadingIconUrl })}
+        leadingIconColor={leadingIconTintForWorkRow(row, mode)}
         expandable={expandable}
         expanded={expanded}
         onToggle={onToggle}

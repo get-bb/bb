@@ -23,6 +23,7 @@ import {
 import { upsertHost } from "../../src/data/hosts.js";
 import { createProject } from "../../src/data/projects.js";
 import { createThread, markThreadDeleted } from "../../src/data/threads.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 const TEST_INCREMENTAL_VACUUM_MAX_PAGES = 128;
 
@@ -49,8 +50,7 @@ const TEST_DEFERRED_LEGACY_TABLE_NAMES = [
 ];
 
 function setup() {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "maintenance-host",
     type: "persistent",

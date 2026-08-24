@@ -8,7 +8,6 @@ import {
   type PromptInput,
 } from "@bb/domain";
 import { createConnection } from "../../src/connection.js";
-import { migrate } from "../../src/migrate.js";
 import { noopNotifier } from "../../src/notifier.js";
 import {
   appendStoredThreadEvent,
@@ -24,6 +23,7 @@ import {
   updateThread,
   upsertThreadSearchSegments,
 } from "../../src/data/threads.js";
+import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 interface SetupResult {
   db: ReturnType<typeof createConnection>;
@@ -31,8 +31,7 @@ interface SetupResult {
 }
 
 function setup(): SetupResult {
-  const db = createConnection(":memory:");
-  migrate(db);
+  const db = createMigratedConnection();
   const host = upsertHost(db, noopNotifier, {
     name: "test-host",
     type: "persistent",

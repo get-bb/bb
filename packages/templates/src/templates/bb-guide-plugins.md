@@ -490,7 +490,12 @@ private `@bb/*` workspace packages; the host build rejects direct, transitive,
 type-only, and relative imports that resolve into those packages.
 Keep the SDK in exact devDependencies: the builder supplies and bundles its
 small host runtime, so managed installs and remote workers do not resolve an
-SDK package at runtime.
+SDK package at runtime. That covers the bare `@get-bb/plugin-sdk` import. An
+SDK subpath (`@get-bb/plugin-sdk/host`, `/provider-bridge`,
+`/provider-bridge/acp`, `/ai-services`) imported from server or host code is
+bundled from the plugin's own installed SDK, so a plugin that imports one
+needs the SDK as a real dependency; the build names the missing install
+rather than shipping an import bb cannot serve.
 Path installs always load server.ts from source, so `bb plugin dev`/reload see
 edits immediately.
 
@@ -535,7 +540,7 @@ useRpc, useRealtime, useRealtimeConnectionState (the shared realtime socket's
 connecting/connected/reconnecting lifecycle; reconcile on later connected
 transitions, not the initial connection), useSettings (secrets excluded),
 useBbContext,
-useBbNavigate (including experimental_openUrl(url), which applies the current
+useBbNavigate (including openUrl(url), which applies the current
 client's in-app/external-browser preference, plus
 experimental_openFilePreview({ target, location }) and
 experimental_openFileExternally({ target, location }) for explicit live
@@ -555,7 +560,7 @@ shadcn model): `bb plugin new --app` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
 running BB via the pinned ref in components.json). Product capabilities are
-the exception: experimental_UrlLink renders a real anchor whose ordinary
+the exception: UrlLink renders a real anchor whose ordinary
 HTTP(S) activation uses the same client preference as first-party links while
 leaving app routes, modifiers, copying, unsupported schemes, and explicit
 targets browser-owned. A `_blank` or named target preserves your `rel` tokens
@@ -573,7 +578,7 @@ the target provider's verified defaults and capabilities resolve. Its optional
 `routing` targets a host or existing environment; `disabled` renders the same
 selection summary read-only. Tasks presets and Automations use this component
 instead of plugin-owned catalog RPCs.
-Every `experimental_fixedTabs` registration must include `panelId` equal to its
+Every `fixedTabs` registration must include `panelId` equal to its
 containing nav panel's `id`; it is also an owner-scoped reference. Add
 `experimental_target: { validate }` for a typed JSON-safe transient target,
 select it with `experimental_useAppPanel().openFixedTab({ surface: { kind:
@@ -652,8 +657,13 @@ Zap. Roomy surfaces reuse the same icon when no logo override is declared.
 
 Add `bb.branding.logo.light` only for intentionally different rich/full-size
 identity artwork; optional `bb.branding.logo.dark` is preferred in dark mode.
-Logo paths must be plugin-relative `.svg`, `.png`, or `.webp` files. Root logo
-files are not auto-detected, and a dark logo requires a light logo. Logo-only
+Logo paths must be plugin-relative `.svg`, `.png`, or `.webp` files.
+`bb plugin build` refuses an SVG logo that carries a script vector (a
+`script`, `handler` or `listener` element, an `on*` attribute, or a
+`javascript:` href) and takes any other tool export as-is; install and load
+never refuse a logo, and every SVG bb serves carries `nosniff` and a
+`default-src 'none'` CSP. Root logo files are not auto-detected, and a dark
+logo requires a light logo. Logo-only
 manifests remain supported for compatibility, so at least an icon or light logo
 is required. Do not duplicate the same artwork across fields. BB rejects nulls,
 empty strings, missing or escaping assets, and unsupported extensions. Reload

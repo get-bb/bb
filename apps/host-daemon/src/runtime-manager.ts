@@ -41,6 +41,11 @@ import {
   type InjectedSkillsLogger,
 } from "./injected-skills.js";
 import { reconnectProvisionArgs } from "./workspace-provision-target.js";
+import {
+  createProviderInstallationGate,
+  PROVIDER_INSTALLATION_GATE_TTL_MS,
+  type ProviderInstallationGate,
+} from "./provider-installation-gate.js";
 import type { FetchSkillTree } from "./skill-trees.js";
 import { userExecutableProcessOptions } from "./user-executable-env.js";
 
@@ -203,6 +208,7 @@ export interface RuntimeManagerOptions {
   provisionWorkspace?: (
     options: ProvisionWorkspaceArgs,
   ) => Promise<HostWorkspace>;
+  providerInstallationGateTtlMs?: number;
   providerMaintenanceIdleTimeoutMs?: number;
   shellEnv?: AgentRuntimeOptions["shellEnv"];
   onEvent?: (args: { environmentId: string; event: ThreadEvent }) => void;
@@ -309,6 +315,13 @@ export class RuntimeManager {
   private baseShellEnv;
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
+  /**
+   * The catalog an entry still being created will run on. A catalog swap in
+   * another environment prunes staging dirs by the catalogs in use, and an
+   * entry inside `createEntry` is not in `entries` yet — without this its
+   * staged root could be removed from under it.
+   */
+  private readonly pendingCatalogHashes = new Map<string, string>();
   private readonly pendingEnvironmentProvisions = new Map<
     string,
     PendingEnvironmentProvision
@@ -333,6 +346,14 @@ export class RuntimeManager {
   private providerMaintenanceActiveRequests = 0;
   private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
     null;
+  /**
+   * Remembers a supported provider-CLI probe so thread start and rewind do
+   * not pay the bridge's version check every time. Lives here because the
+   * events that make a remembered answer stale (a bb-run install, a shell
+   * environment change) are the ones this manager already observes; the 60 s
+   * idle teardown of the maintenance runtime is not one of them.
+   */
+  readonly providerInstallationGate: ProviderInstallationGate;
   private stopWatchingDataDirSkillsRoot: StopWatching = STOP_WATCHING;
 
   constructor(private readonly options: RuntimeManagerOptions = {}) {
@@ -340,6 +361,11 @@ export class RuntimeManager {
     this.hostWatcher = options.hostWatcher;
     this.provisionWorkspace = options.provisionWorkspace ?? provisionWorkspace;
     this.baseShellEnv = { ...(options.shellEnv ?? {}) };
+    this.providerInstallationGate = createProviderInstallationGate({
+      ttlMs:
+        options.providerInstallationGateTtlMs ??
+        PROVIDER_INSTALLATION_GATE_TTL_MS,
+    });
     this.ensureDataDirSkillsWatcher();
   }
 
@@ -638,6 +664,9 @@ export class RuntimeManager {
     }
 
     this.baseShellEnv = { ...shellEnv };
+    // A new PATH can resolve a different provider binary, so the remembered
+    // version check no longer describes what a thread would run.
+    this.providerInstallationGate.clear();
     await this.shutdownProviderMaintenanceRuntime();
     await this.evictIdleRuntimeEntries();
   }
@@ -735,6 +764,7 @@ export class RuntimeManager {
         dataDir: this.options.dataDir,
         keepCatalogHashes: [
           ...pendingCatalogHashes,
+          ...this.pendingCatalogHashes.values(),
           ...[...this.entries.values()].flatMap((entry) =>
             entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
           ),
@@ -835,6 +865,7 @@ export class RuntimeManager {
    * down" and are expected to retry; callers refetch after invalidation.
    */
   async invalidateProviderMaintenanceRuntime(): Promise<void> {
+    this.providerInstallationGate.clear();
     try {
       await this.shutdownProviderMaintenanceRuntime();
     } catch (error) {
@@ -1027,6 +1058,7 @@ export class RuntimeManager {
       })
       .finally(() => {
         this.pendingEntries.delete(args.environmentId);
+        this.pendingCatalogHashes.delete(args.environmentId);
         this.clearPendingEnvironmentProvision(
           args.environmentId,
           pendingProvision,
@@ -1034,6 +1066,12 @@ export class RuntimeManager {
       });
     pendingProvision.done = creation;
     this.pendingEntries.set(args.environmentId, creation);
+    if (skillConfig !== null) {
+      this.pendingCatalogHashes.set(
+        args.environmentId,
+        skillConfig.catalogHash,
+      );
+    }
 
     return creation;
   }
@@ -1463,8 +1501,13 @@ export class RuntimeManager {
       onInteractiveRequest: this.options.onInteractiveRequest,
       onStderr: this.options.onStderr,
       onProviderRecovery: (hint) => {
-        // Parse-and-forward only: the recovery actions land with the runtime
-        // cleanup workstream. Logged so a hint is never silently consumed.
+        // The runtime has already acted on the kind (unarchive-and-retry,
+        // typed auth_required rejection, bridge restart, stale-steer drop,
+        // rate-limit ladder end: a rateLimited rejection arrives here only
+        // when it is terminal or ended the retry ladder). Provider health is
+        // pulled on demand by the server, so there is no host-side cache to
+        // invalidate here; the hint is logged so it is never silently
+        // consumed.
         this.options.logger?.debug(
           {
             environmentId: args.environmentId,

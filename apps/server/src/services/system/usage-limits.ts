@@ -10,7 +10,6 @@ import {
   assertUsableHostId,
   requirePrimaryHostId,
 } from "../hosts/primary-host.js";
-import { resolveAcpLaunchSpecForProviderId } from "./acp-launch-spec.js";
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
@@ -36,13 +35,9 @@ export async function getProviderUsageLimits(
   const entries = await mapProviderMaintenanceRequests(
     providers,
     async (provider): Promise<[string, ProviderUsage] | null> => {
-      if (!provider.experimental_providerUsage) return null;
+      if (!provider.maintenance.usage) return null;
       const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, provider.id);
       if (bridgeLaunch === null) return null;
-      const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-        deps,
-        provider.id,
-      );
       try {
         const result = await callHostRetryableOnlineRpc(deps, {
           hostId,
@@ -51,7 +46,6 @@ export async function getProviderUsageLimits(
             type: "provider.usage",
             providerId: provider.id,
             bridgeLaunch,
-            ...(acpLaunchSpec === undefined ? {} : { acpLaunchSpec }),
           },
         });
         return result.supported ? [provider.id, result.usage] : null;
