@@ -50,7 +50,7 @@ import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
-import { runEventLoopWork } from "./event-loop-work.js";
+import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
@@ -522,15 +522,25 @@ async function runDestroyedEnvironmentPruneSweep(
   // back-to-back could stall the loop longer than the backlog this sweep was
   // bounded to avoid. The `running` guard in runPeriodicSweepJob keeps the next
   // tick from overlapping while this one is parked on setImmediate.
+  //
+  // Each prune runs in its own blocking frame: the enclosing async
+  // `sweep:destroyed-environment-prune` frame is non-blocking, and the stall
+  // monitor only credits blocking frames as `slowestWork`, so without this a
+  // single large cascade that crosses the stall threshold would be logged
+  // against whatever unrelated sync unit ran in the same window.
   for (
     let pruned = 0;
     pruned < DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE;
     pruned += 1
   ) {
-    const { deleted } = pruneDestroyedEnvironments(deps.db, deps.hub, {
-      updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
-      limit: 1,
-    });
+    const { deleted } = runEventLoopWorkSync(
+      "sweep:destroyed-environment-prune:delete",
+      () =>
+        pruneDestroyedEnvironments(deps.db, deps.hub, {
+          updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+          limit: 1,
+        }),
+    );
     if (deleted === 0) {
       break;
     }

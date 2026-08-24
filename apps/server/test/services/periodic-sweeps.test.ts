@@ -7,6 +7,10 @@ import {
 } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import {
+  resetEventLoopWorkForTests,
+  takeEventLoopWorkWindowSnapshot,
+} from "../../src/services/system/event-loop-work.js";
+import {
   type PeriodicSweepJob,
   runPeriodicSweepJobs,
   runPeriodicSweeps,
@@ -137,6 +141,47 @@ describe("runPeriodicSweeps", () => {
 
       expect(countDestroyedEnvironments()).toBe(0);
       expect(observedCounts).toEqual(expect.arrayContaining([2, 1]));
+    });
+  });
+
+  it("attributes each destroyed-environment prune to a blocking work frame", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/tmp/destroyed-attributed",
+        managed: true,
+        status: "destroyed",
+        workspaceProvisionType: "managed-worktree",
+      });
+      harness.db
+        .update(environments)
+        .set({ updatedAt: Date.now() - DESTROYED_ENVIRONMENT_TTL_MS - 60_000 })
+        .where(eq(environments.id, environment.id))
+        .run();
+
+      const deps = {
+        ...harness.deps,
+        pluginSchedules: harness.pluginService,
+        pluginService: harness.pluginService,
+        pluginCatalogService: harness.pluginCatalogService,
+      };
+      // The stall monitor reports `slowestWork` only from blocking frames; the
+      // async sweep frame does not count, so a prune that runs bare inside it
+      // leaves the window with no attributable unit at all.
+      resetEventLoopWorkForTests();
+      try {
+        await runPeriodicSweeps(deps);
+        expect(takeEventLoopWorkWindowSnapshot().slowestWork).toBe(
+          "sweep:destroyed-environment-prune:delete",
+        );
+      } finally {
+        resetEventLoopWorkForTests();
+      }
     });
   });
 
