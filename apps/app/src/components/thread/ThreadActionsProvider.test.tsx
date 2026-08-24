@@ -13,12 +13,14 @@ import {
 } from "./ThreadActionsProvider";
 
 const mocks = vi.hoisted(() => ({
+  archiveConfirm: vi.fn(),
   closePanesForThreads: vi.fn(),
   dialogOnClose: vi.fn(),
   dialogOnOpen: vi.fn(),
   dialogOnOpenChange: vi.fn(),
   mutation: vi.fn(),
   navigate: vi.fn(),
+  workingArchiveThreadCount: vi.fn(() => 0),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -41,6 +43,27 @@ vi.mock("@/components/dialogs/ThreadDeleteDialog", () => ({
 vi.mock("@/components/dialogs/ThreadRenameDialog", () => ({
   ThreadRenameDialog: () => null,
 }));
+
+vi.mock("@/components/dialogs/ThreadArchiveDialog", () => ({
+  ThreadArchiveDialog: ({
+    onArchive,
+  }: {
+    onArchive: (target: unknown) => void;
+  }) => {
+    mocks.archiveConfirm.mockImplementation(onArchive);
+    return null;
+  },
+}));
+
+vi.mock(
+  "@/hooks/cache-owners/thread-archive-cache",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/hooks/cache-owners/thread-archive-cache")
+    >()),
+    getCachedWorkingArchiveThreadCount: mocks.workingArchiveThreadCount,
+  }),
+);
 
 vi.mock("@/components/ui/app-toast", () => ({
   appToast: {
@@ -153,6 +176,7 @@ beforeEach(() => {
     focusedRoute: null,
     removedAny: false,
   });
+  mocks.workingArchiveThreadCount.mockReturnValue(0);
 });
 
 afterEach(() => {
@@ -161,6 +185,38 @@ afterEach(() => {
 });
 
 describe("ThreadActionsProvider archive feedback", () => {
+  it("asks for confirmation instead of archiving when cached work is active", () => {
+    const thread = makeThread();
+    mocks.workingArchiveThreadCount.mockReturnValue(1);
+    renderProvider(<ArchiveButton thread={thread} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+
+    expect(mocks.dialogOnOpen).toHaveBeenCalledWith({
+      thread,
+      workingThreadCount: 1,
+    });
+    expect(sdk.threads.archiveAll).not.toHaveBeenCalled();
+  });
+
+  it("archives exactly once after active-work confirmation", async () => {
+    const thread = makeThread();
+    const target = { thread, workingThreadCount: 2 };
+    mocks.workingArchiveThreadCount.mockReturnValue(2);
+    renderProvider(<ArchiveButton thread={thread} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }));
+    mocks.archiveConfirm(target);
+
+    await vi.waitFor(() => {
+      expect(sdk.threads.archiveAll).toHaveBeenCalledTimes(1);
+    });
+    expect(sdk.threads.archiveAll).toHaveBeenCalledWith({
+      threadId: thread.id,
+    });
+    expect(mocks.dialogOnClose).toHaveBeenCalledTimes(1);
+  });
+
   it("shows one archive toast whose Undo restores the parent and children", async () => {
     renderProvider(<ArchiveButton thread={makeThread()} />);
 

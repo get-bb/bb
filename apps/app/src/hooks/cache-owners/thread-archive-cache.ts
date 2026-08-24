@@ -1,5 +1,13 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+import {
+  hasActiveBackgroundAgentActivity,
+  hasActiveBackgroundCommandActivity,
+  hasActiveGoalActivity,
+  hasActivePlanModeActivity,
+  hasActiveWorkflowActivity,
+  isRuntimeBusyThread,
+} from "@bb/client-core";
 import { threadQueryKey, threadsQueryKey } from "../queries/query-keys";
 import {
   applyToCachedSidebarNavigationThreads,
@@ -58,6 +66,51 @@ export function getCachedLiveThreadIdsMatching({
     }
   }
   return Array.from(threadIds);
+}
+
+/**
+ * Counts cached live threads in an archive cascade that currently have working
+ * activity. This stays synchronous so idle archives never wait on preflight.
+ */
+export function getCachedWorkingArchiveThreadCount({
+  queryClient,
+  threadId,
+}: {
+  queryClient: QueryClient;
+  threadId: string;
+}): number {
+  const workingThreadIds = new Set<string>();
+  const collectMatchingThread = (thread: ThreadListEntry) => {
+    if (
+      thread.archivedAt !== null ||
+      (thread.id !== threadId && thread.parentThreadId !== threadId)
+    ) {
+      return;
+    }
+    if (
+      isRuntimeBusyThread(thread) ||
+      hasActiveWorkflowActivity(thread) ||
+      hasActiveBackgroundAgentActivity(thread) ||
+      hasActiveBackgroundCommandActivity(thread) ||
+      hasActivePlanModeActivity(thread) ||
+      hasActiveGoalActivity(thread)
+    ) {
+      workingThreadIds.add(thread.id);
+    }
+  };
+
+  for (const { data } of getCachedThreadLists(queryClient, {
+    queryKey: threadsQueryKey(),
+  })) {
+    for (const thread of iterateThreadListCacheEntries(data)) {
+      collectMatchingThread(thread);
+    }
+  }
+  for (const thread of getCachedSidebarNavigationThreads(queryClient)) {
+    collectMatchingThread(thread);
+  }
+
+  return workingThreadIds.size;
 }
 
 export function getCachedThreadSnapshots({
