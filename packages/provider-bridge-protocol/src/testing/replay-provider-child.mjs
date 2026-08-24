@@ -2,10 +2,10 @@
 /**
  * A fake provider child that replays a bridge recording's provider lanes.
  *
- *   node replay-provider-child.mjs --recording <dir> --dialect <json-rpc|claude-cli> --state <dir>
+ *   node replay-provider-child.mjs --recording <dir> --dialect <json-rpc|claude-cli|pi-rpc> --state <dir>
  *
  * The bridge under test spawns this instead of the real CLI (`codex
- * app-server`, an ACP agent, the `claude` binary). It plays the recorded
+ * app-server`, an ACP agent, the `claude` binary, `pi --mode rpc`). It plays the recorded
  * `provider→bridge` lines back on stdout, gated on the bridge's own writes:
  * the recording's `bridge→provider` entries are *expectations*, and the script
  * does not advance past one until the live bridge has written a matching line
@@ -33,9 +33,10 @@
  * STALL_MS is answered with a generic success, and a child past the end of its
  * segment answers everything generically. Both are logged on stderr.
  */
-import { existsSync, mkdirSync, readFileSync, rmdirSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, rmdirSync } from "node:fs";
+import { Socket } from "node:net";
+import { StringDecoder } from "node:string_decoder";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 
 const STALL_MS = 5_000;
 /**
@@ -80,7 +81,7 @@ function parseArgs(argv) {
     }
   }
   if (!args.recording || !args.dialect || !args.state) {
-    throw new Error("usage: --recording <dir> --dialect <json-rpc|claude-cli> --state <dir>");
+    throw new Error("usage: --recording <dir> --dialect <json-rpc|claude-cli|pi-rpc> --state <dir>");
   }
   return args;
 }
@@ -152,6 +153,70 @@ const DIALECTS = {
         type: "control_response",
         response: { subtype: "success", request_id: id, response: {} },
       };
+    },
+  },
+  /**
+   * `pi --mode rpc`: commands carry `{ id, type }`, responses are
+   * `{ id, type: "response", command, success }`, and every other line is a
+   * raw AgentSessionEvent (or an `extension_ui_request`). The bb extension's
+   * channel (fd 3 child → bridge, fd 4 bridge → child) is recorded on the
+   * same lanes wrapped as `{ bbChannel: <message> }`; this dialect routes
+   * those back onto the channel fds.
+   */
+  "pi-rpc": {
+    channel: {
+      key: "bbChannel",
+      childToBridgeFd: 3,
+      bridgeToChildFd: 4,
+    },
+    classify(message) {
+      const channel = message.bbChannel;
+      if (typeof channel === "object" && channel !== null) {
+        // The extension mints tool-call ids; the bridge mints request ids
+        // (`cr-N`), disjoint from its stdin ids (`bb-N`).
+        if (channel.kind === "tool-call" || channel.kind === "request") {
+          return {
+            kind: "request",
+            id: channel.id,
+            key: `channel:${channel.kind}${channel.method ? `:${channel.method}` : ""}`,
+            channel: true,
+          };
+        }
+        if (channel.kind === "tool-result" || channel.kind === "reply") {
+          return { kind: "response", id: channel.id, key: "channel:response", channel: true };
+        }
+        return { kind: "notification", key: `channel:${channel.kind ?? "?"}`, channel: true };
+      }
+      if (message.type === "response") {
+        return { kind: "response", id: message.id, key: "response" };
+      }
+      if (typeof message.type === "string" && typeof message.id === "string") {
+        return { kind: "request", id: message.id, key: message.type };
+      }
+      return { kind: "notification", key: `event:${message.type ?? "?"}` };
+    },
+    isInitialize(classified) {
+      // Every pi child the bridge spawns (session, catalog, fork helper)
+      // opens with `get_state`, and the bridge numbers its requests per
+      // child from `bb-1`; later `get_state` probes (compaction guard, steer
+      // settlement) carry higher ids and do not start a segment.
+      return (
+        classified.kind === "request" &&
+        classified.key === "get_state" &&
+        classified.id === "bb-1"
+      );
+    },
+    withResponseId(message, id) {
+      if (typeof message.bbChannel === "object" && message.bbChannel !== null) {
+        return { ...message, bbChannel: { ...message.bbChannel, id } };
+      }
+      return { ...message, id };
+    },
+    genericResponse(id, classified) {
+      if (classified?.channel) {
+        return { bbChannel: { kind: "reply", id, result: {} } };
+      }
+      return { id, type: "response", command: "?", success: true, data: {} };
     },
   },
 };
@@ -264,11 +329,38 @@ function hookCallbackIdMap(recordedInitialize, liveInitialize) {
   return map;
 }
 
+/** `\n`-terminated lines (CR stripped); never readline, which also splits on U+2028/U+2029. */
+function readNewlineDelimitedLines(input, onLine) {
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  input.on("data", (chunk) => {
+    const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+    let start = 0;
+    for (;;) {
+      const index = text.indexOf("\n", start);
+      if (index === -1) {
+        pending += text.slice(start);
+        return;
+      }
+      const line = pending + text.slice(start, index);
+      pending = "";
+      start = index + 1;
+      onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+    }
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Player
 // ---------------------------------------------------------------------------
 
 function main() {
+  // A bridge's install gate may probe `<cli> --version` through the replay
+  // command; answer like a CLI instead of claiming a segment and waiting.
+  if (process.argv.includes("--version")) {
+    process.stdout.write("0.0.0-replay\n");
+    return;
+  }
   const args = parseArgs(process.argv.slice(2));
   const dialect = DIALECTS[args.dialect];
   if (!dialect) throw new Error(`unknown dialect ${args.dialect}`);
@@ -299,7 +391,13 @@ function main() {
   let lookaheadTimer = null;
   let emitTimer = null;
 
+  const channel = dialect.channel ?? null;
+  const channelOut = channel ? createWriteStream(null, { fd: channel.childToBridgeFd }) : null;
   function emit(message) {
+    if (channel && typeof message[channel.key] === "object" && message[channel.key] !== null) {
+      channelOut.write(`${JSON.stringify(message[channel.key])}\n`);
+      return;
+    }
     process.stdout.write(`${JSON.stringify(message)}\n`);
   }
 
@@ -459,7 +557,7 @@ function main() {
   function answerGenerically(live, reason) {
     if (live.classified.kind === "request") {
       log(`${reason}: answering ${live.classified.key} (${String(live.classified.id)}) generically`);
-      emit(dialect.genericResponse(live.classified.id));
+      emit(dialect.genericResponse(live.classified.id, live.classified));
     } else {
       log(`${reason}: dropping unmatched ${live.classified.kind} ${live.classified.key}`);
     }
@@ -502,10 +600,7 @@ function main() {
     }
   }
 
-  const lines = createInterface({ input: process.stdin, terminal: false });
-  lines.on("line", (line) => {
-    const message = parseLine(line);
-    if (message === null) return;
+  function onLiveMessage(message) {
     const live = { message, classified: dialect.classify(message) };
     if (
       !sawSessionDefiningRequest &&
@@ -524,10 +619,29 @@ function main() {
     pendingLive.push(live);
     advance();
     armStall();
+  }
+
+  // Newline-only framing, like the bridges' own readers: a recorded line
+  // with U+2028/U+2029 inside a JSON string must replay as one line.
+  readNewlineDelimitedLines(process.stdin, (line) => {
+    const message = parseLine(line);
+    if (message !== null) onLiveMessage(message);
   });
-  lines.on("close", () => {
+  process.stdin.on("end", () => {
     process.exit(0);
   });
+  if (channel) {
+    // The bridge's channel writes (tool results, fork requests) arrive on
+    // their own fd; wrap them the way the recorder did so they match. A
+    // net.Socket reads the pipe non-blockingly, as the real extension does.
+    const channelIn = new Socket({ fd: channel.bridgeToChildFd, readable: true, writable: false });
+    channelIn.on("error", () => {});
+    channelIn.unref();
+    readNewlineDelimitedLines(channelIn, (line) => {
+      const message = parseLine(line);
+      if (message !== null) onLiveMessage({ [channel.key]: message });
+    });
+  }
   process.on("SIGTERM", () => process.exit(0));
 
   advance();

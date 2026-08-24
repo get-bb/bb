@@ -9,33 +9,31 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useComposedRefs } from "@radix-ui/react-compose-refs";
 import { useLocation } from "react-router-dom";
-import {
-  isBackgroundAgentTaskType,
-  isBackgroundCommandTaskType,
-} from "@bb/domain";
 import type {
   PromptInput,
   ThreadOriginKind,
   ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import type {
-  TimelineActivityIntent,
   TimelineParentChange,
   TimelineRow,
   TimelineSystemOperationKind,
 } from "@bb/server-contract";
 import type { ThreadChatMessageReference } from "@get-bb/plugin-sdk";
 import {
+  activityIntentTitleGlyph,
   assertNever,
   buildTimelineActivityIntentTitles,
   buildTimelineRowTitle,
   buildTimelineViewRows,
   createTimelineViewRowsCache,
   findActiveLatestBundleId,
-  primaryTimelineActivityIntent,
+  workRowGlyph,
+  workRowPluginGlyph,
+  workRowPresentation,
   type BuildTimelineRowTitleOptions,
   type BuildTimelineViewRowsOptions,
   type ThreadTimelineViewRow,
@@ -85,6 +83,14 @@ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 import { Button } from "@bb/shared-ui/button";
 import { AutoHeightContainer } from "../../ui/height-transition.js";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
+import { isIconName, presentationTintStyle } from "./presentation-display.js";
+import { PluginCompactIconMask } from "../../plugin/PluginIcon.js";
+import { usePluginIconUrl } from "@/lib/plugin-logos";
+import {
+  PluginTimelineRendererBody,
+  isPluginRenderableWorkRow,
+  usePluginTimelineRenderer,
+} from "./PluginTimelineRendererBody.js";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   TimelineScrollRestoreRowIdContext,
@@ -459,7 +465,6 @@ const TimelineSearchExpansionContext =
   createContext<ReadonlySet<string>>(EMPTY_ROW_ID_SET);
 const TimelineWindowingEnabledContext = createContext(false);
 const TIMELINE_TERMINAL_EXPANSION_RETENTION = 24;
-const SKILL_FILE_NAME = "SKILL.md";
 
 function useTimelineRendererStaticContext(): TimelineRendererStaticContextValue {
   const context = useContext(TimelineRendererStaticContext);
@@ -709,10 +714,10 @@ function useTimelineViewRowsCache(): GetTimelineViewRows {
 
 function shouldRenderCompactActivityIntentRows(
   row: ThreadTimelineViewRow,
-): row is Extract<TimelineViewWorkRow, { workKind: "command" | "tool" }> {
+): row is Extract<TimelineViewWorkRow, { workKind: "command" }> {
   return (
     row.kind === "work" &&
-    (row.workKind === "command" || row.workKind === "tool") &&
+    row.workKind === "command" &&
     row.approvalStatus === null
   );
 }
@@ -1417,7 +1422,7 @@ function TimelineExpandableBody({
         );
       }
       return (
-        <WorkRowBody
+        <WorkRowBodyWithPluginRenderer
           row={row}
           resolveImageViewSrc={resolveImageViewSrc}
           workspaceRootPath={workspaceRootPath}
@@ -1435,6 +1440,40 @@ function TimelineExpandableBody({
     default:
       return assertNever(row);
   }
+}
+
+/**
+ * The expanded body of a non-delegation work row: the plugin renderer the
+ * thread's provider plugin registered for this row's kind, else the core
+ * body. Resolved per row so a late-loading provider bundle upgrades the
+ * body in place.
+ */
+function WorkRowBodyWithPluginRenderer({
+  row,
+  resolveImageViewSrc,
+  workspaceRootPath,
+}: {
+  row: TimelineViewWorkRow;
+  resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
+  workspaceRootPath: string | undefined;
+}) {
+  const slot = usePluginTimelineRenderer(row);
+  const original = useCallback(
+    () => (
+      <WorkRowBody
+        row={row}
+        resolveImageViewSrc={resolveImageViewSrc}
+        workspaceRootPath={workspaceRootPath}
+      />
+    ),
+    [resolveImageViewSrc, row, workspaceRootPath],
+  );
+  if (slot !== null && isPluginRenderableWorkRow(row)) {
+    return (
+      <PluginTimelineRendererBody row={row} slot={slot} original={original} />
+    );
+  }
+  return original();
 }
 
 function TurnRowBody({
@@ -1607,28 +1646,10 @@ export function pastRowDimClassName({
 }
 
 /**
- * Per-intent glyph for an exploration row, shared by the bundled compact-intent
- * listing and the unbundled standalone row so the icon for a given intent kind
- * (search / read / list_files) is identical in both surfaces.
- */
-function explorationIntentIcon(
-  intentType: "read" | "list_files" | "search",
-): IconName {
-  switch (intentType) {
-    case "search":
-      return "Search";
-    case "read":
-      return "FileText";
-    case "list_files":
-      return "Folder";
-    default:
-      return assertNever(intentType);
-  }
-}
-
-/**
  * A leading glyph for every tool-call (work) row, keyed by its kind so the eye
- * can tell edits from explores from commands at a glance.
+ * can tell edits from explores from commands at a glance. The table lives in
+ * @bb/thread-view (shared with mobile); this host only narrows the bridge's
+ * glyph against its own icon registry.
  */
 function leadingIconForWorkRow(
   row: ThreadTimelineViewRow,
@@ -1636,50 +1657,7 @@ function leadingIconForWorkRow(
   if (row.kind !== "work") {
     return undefined;
   }
-  if ("activityIntents" in row && row.activityIntents.some(isSkillReadIntent)) {
-    return "Zap";
-  }
-  // A command/tool row that carries a single exploration intent renders as a
-  // flat, non-expandable row, so the per-intent search/read/folder glyph must
-  // come from here (not the bundled compact-intent path) — otherwise it would
-  // fall through to the generic Terminal icon.
-  if (row.workKind === "command" || row.workKind === "tool") {
-    const intent = primaryTimelineActivityIntent(row);
-    if (intent !== null && intent.type !== "unknown") {
-      return explorationIntentIcon(intent.type);
-    }
-  }
-  switch (row.workKind) {
-    case "file-change":
-      return "EditFile";
-    case "command":
-      return "Terminal";
-    case "tool":
-      return "Terminal";
-    case "web-search":
-      return "Search";
-    case "web-fetch":
-      return "Globe";
-    case "image-view":
-      return "File";
-    case "delegation":
-      return "UserRoundPlus";
-    case "workflow":
-      // Background tasks reuse the workflow row shape but read by task type.
-      if (isBackgroundCommandTaskType(row.taskType)) {
-        return "Terminal";
-      }
-      if (isBackgroundAgentTaskType(row.taskType)) {
-        return "UserRoundPlus";
-      }
-      return "ListTodo";
-    case "approval":
-      return "Lock";
-    case "question":
-      return "CircleQuestion";
-    default:
-      return undefined;
-  }
+  return workRowGlyph(row, isIconName);
 }
 
 /**
@@ -1732,21 +1710,29 @@ function leadingIconForRow(row: ThreadTimelineViewRow): IconName | undefined {
   return leadingIconForWorkRow(row) ?? leadingIconForSystemRow(row);
 }
 
-function isSkillReadIntent(intent: TimelineActivityIntent): boolean {
-  if (intent.type !== "read") {
-    return false;
+/** The bridge's tint for the leading glyph; undefined keeps the row colour. */
+function leadingIconStyleForRow(
+  row: ThreadTimelineViewRow,
+): CSSProperties | undefined {
+  if (row.kind !== "work") {
+    return undefined;
   }
-  const target = (intent.path ?? intent.name).replaceAll("\\", "/");
-  return target.split("/").pop() === SKILL_FILE_NAME;
+  return presentationTintStyle(workRowPresentation(row));
 }
 
-function leadingIconForActivityIntentTitle(
-  entry: TimelineActivityIntentTitle,
-): IconName {
-  if (isSkillReadIntent(entry.intent)) {
-    return "Zap";
-  }
-  return explorationIntentIcon(entry.intentType);
+/**
+ * The plugin-declared icon a work row names (`"<pluginId>/<name>"`),
+ * resolved against the plugin inventory: the SVG URL when the plugin still
+ * declares it, else undefined so the per-kind glyph from
+ * {@link leadingIconForRow} draws. Resolution precedes the mask on purpose —
+ * a mask whose URL fails renders nothing, not the fallback.
+ */
+function useLeadingIconUrlForRow(
+  row: ThreadTimelineViewRow,
+): string | undefined {
+  return usePluginIconUrl(
+    row.kind === "work" ? workRowPluginGlyph(row) : undefined,
+  );
 }
 
 function TimelineRowView({
@@ -1766,6 +1752,13 @@ function TimelineRowView({
     row,
     scopeActive,
   });
+  // A plugin renderer gives a row a body the core rule does not know about
+  // (an extension row without a detail, a tool row a provider plugin
+  // renders), so such a row is expandable even when the core body is empty.
+  const pluginRendererSlot = usePluginTimelineRenderer(
+    row.kind === "work" ? row : null,
+  );
+  const staticLeadingIconUrl = useLeadingIconUrlForRow(row);
 
   if (row.kind === "conversation") {
     return (
@@ -1791,7 +1784,7 @@ function TimelineRowView({
           >
             <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
               <Icon
-                name={leadingIconForActivityIntentTitle(entry)}
+                name={activityIntentTitleGlyph(entry)}
                 className="size-3.5 shrink-0 text-muted-foreground"
                 aria-hidden
               />
@@ -1807,8 +1800,9 @@ function TimelineRowView({
     );
   }
 
-  if (!isRowExpandable(row)) {
+  if (!isRowExpandable(row) && pluginRendererSlot === null) {
     const staticLeadingIcon = leadingIconForRow(row);
+    const staticLeadingIconStyle = leadingIconStyleForRow(row);
     return (
       <TimelineStaticRow
         horizontalPadding={horizontalPadding}
@@ -1819,10 +1813,17 @@ function TimelineRowView({
         })}
       >
         <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
-          {staticLeadingIcon ? (
+          {staticLeadingIconUrl !== undefined ? (
+            <PluginCompactIconMask
+              url={staticLeadingIconUrl}
+              className="size-3.5 text-muted-foreground"
+              style={staticLeadingIconStyle}
+            />
+          ) : staticLeadingIcon ? (
             <Icon
               name={staticLeadingIcon}
               className="size-3.5 shrink-0 text-muted-foreground"
+              style={staticLeadingIconStyle}
               aria-hidden
             />
           ) : null}
@@ -1889,6 +1890,8 @@ function TimelineExpandableRowView({
   );
 
   const leadingIcon = leadingIconForRow(row);
+  const leadingIconUrl = useLeadingIconUrlForRow(row);
+  const leadingIconStyle = leadingIconStyleForRow(row);
 
   return (
     <ExpandableTimelineRow
@@ -1903,6 +1906,8 @@ function TimelineExpandableRowView({
       })}
       horizontalPadding={horizontalPadding}
       leadingIcon={leadingIcon}
+      leadingIconUrl={leadingIconUrl}
+      leadingIconStyle={leadingIconStyle}
       autoExpanded={
         liveAutoExpandedRowIds.has(row.id) ||
         initialAutoExpandedRowIds.has(row.id)

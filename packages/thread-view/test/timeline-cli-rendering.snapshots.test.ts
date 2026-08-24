@@ -1179,14 +1179,11 @@ describe("timeline CLI rendering snapshots", () => {
     });
     const timeline = renderIdleTimeline([
       event.turnStarted(),
-      event.toolCallCompleted({
+      event.delegationCompleted({
         itemId: "delegation-1",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Review the branch",
-          receiverThreadIds: ["child-provider"],
-        },
-        result: "Child result",
+        childRef: "child-provider",
+        label: "Review the branch",
+        summary: "Child result",
       }),
       event.commandCompleted({
         providerThreadId: "child-provider",
@@ -1242,38 +1239,28 @@ describe("timeline CLI rendering snapshots", () => {
     });
     const timeline = renderIdleTimeline([
       event.turnStarted(),
-      event.toolCallStarted({
+      // A same-provider child (the delegation's child runs in the spawning
+      // provider thread): the next turn started there is the child's.
+      event.delegationStarted({
         itemId: "delegation-1",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Review architecture",
-          receiverThreadIds: [],
-        },
+        childRef: "root-provider",
+        label: "Review architecture",
       }),
-      event.toolCallCompleted({
+      event.delegationCompleted({
         itemId: "delegation-1",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Review architecture",
-          receiverThreadIds: ["receiver-1"],
-        },
+        childRef: "root-provider",
+        label: "Review architecture",
       }),
-      event.toolCallStarted({
+      event.delegationStarted({
         itemId: "delegation-2",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Review UI",
-          receiverThreadIds: [],
-        },
+        childRef: "root-provider",
+        label: "Review UI",
       }),
       event.turnStarted({ turnId: "child-turn-1" }),
-      event.toolCallCompleted({
+      event.delegationCompleted({
         itemId: "delegation-2",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Review UI",
-          receiverThreadIds: ["receiver-2"],
-        },
+        childRef: "root-provider",
+        label: "Review UI",
       }),
       event.turnStarted({ turnId: "child-turn-2" }),
       event.commandCompleted({
@@ -1448,13 +1435,10 @@ describe("timeline CLI rendering snapshots", () => {
     });
     const timeline = renderActiveTimeline([
       event.turnStarted(),
-      event.toolCallStarted({
+      event.delegationStarted({
         itemId: "delegation-1",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Review with a child provider thread",
-          receiverThreadIds: ["child-provider"],
-        },
+        childRef: "child-provider",
+        label: "Review with a child provider thread",
       }),
       event.commandStarted({
         providerThreadId: "child-provider",
@@ -1911,13 +1895,10 @@ describe("timeline CLI rendering snapshots", () => {
     });
     const timeline = renderActiveTimeline([
       event.turnStarted(),
-      event.toolCallStarted({
+      event.delegationStarted({
         itemId: "delegation-1",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Keep reviewing",
-          receiverThreadIds: [],
-        },
+        childRef: "root-provider",
+        label: "Keep reviewing",
       }),
       event.turnStarted({ turnId: "child-turn-1" }),
       event.commandStarted({
@@ -2105,13 +2086,10 @@ describe("timeline CLI rendering snapshots", () => {
     });
     const timeline = renderActiveTimeline([
       event.turnStarted(),
-      event.toolCallStarted({
+      event.delegationStarted({
         itemId: "delegation-1",
-        tool: "spawnAgent",
-        arguments: {
-          prompt: "Investigate the timeline",
-          receiverThreadIds: ["child-provider"],
-        },
+        childRef: "child-provider",
+        label: "Investigate the timeline",
       }),
       event.commandCompleted({
         providerThreadId: "child-provider",
@@ -2358,7 +2336,11 @@ describe("timeline CLI rendering snapshots", () => {
     expect(timeline.text).toMatchInlineSnapshot(`""`);
   });
 
-  it("shows web search, file edit, and assistant output without task updates", () => {
+  it("projects a persisted codex plan notification as a plan-steps row beside the work", () => {
+    // `turn/plan/updated` used to be excluded from every window and dropped
+    // by the projection. It now decodes into a `planSteps` item at read time
+    // (legacy-thread-events.ts), so an old codex thread shows its plan and
+    // the todo banner reads it.
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const timeline = renderActiveTimeline([
       event.turnStarted(),
@@ -2391,21 +2373,35 @@ describe("timeline CLI rendering snapshots", () => {
     ]);
 
     expect(messageKinds(timeline.messages)).toEqual([
+      "plan-steps",
       "web-search",
       "file-edit",
       "assistant-text",
     ]);
-    expect(timeline.text).toMatchInlineSnapshot(`
-      "── Researched 1 search query, edited 1 file ────────────────
-        ── Ran web search: React suspense docs
-        ── Edited /repo/packages/core-ui/src/timeline.ts +1 -1
-          @@ -1 +1 @@
-          -before
-          +after
-
-      ── Assistant ───────────────────────────────────────────────
-      I patched the projection and verified it."
-    `);
+    const planRow = flattenTimelineRows(timeline.rows).find(
+      (row) => row.kind === "work" && row.workKind === "plan-steps",
+    );
+    expect(planRow).toMatchObject({
+      kind: "work",
+      workKind: "plan-steps",
+      status: "completed",
+      steps: [
+        { step: "Read the route", status: "completed" },
+        { step: "Patch the projection", status: "active" },
+        { step: "Run focused tests", status: "pending" },
+      ],
+    });
+    expect(planRow).not.toHaveProperty("presentation");
+    expect(timeline.pendingTodos?.items.map((item) => item.text)).toEqual([
+      "Read the route",
+      "Patch the projection",
+      "Run focused tests",
+    ]);
+    expect(timeline.text).toContain("Updated plan Patch the projection");
+    expect(timeline.text).toContain("Ran web search: React suspense docs");
+    expect(timeline.text).toContain(
+      "Edited /repo/packages/core-ui/src/timeline.ts +1 -1",
+    );
   });
 
   it("summarizes completed web search and fetch rows without expanding result text", () => {

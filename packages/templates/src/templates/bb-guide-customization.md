@@ -94,11 +94,17 @@ lists (pickers, `bb provider models`, and the SDK) during a screen share. The
 entries stay in the config file.
 
   bb settings show
+  bb settings ai-services
   bb settings general <key> <value>
   bb settings experiment <key> <value>
   bb settings usage [--machine <id-or-name>]
   bb settings version [--force]
   bb settings reload
+
+`bb settings ai-services` shows the helper-inference and voice-transcription
+settings (`BB_INFERENCE`, `BB_INFERENCE_FALLBACK`, `BB_TRANSCRIPTION`, set with
+`bb-app config`) and the plugin-registered AI services they may name as
+`<service>/<model>`.
 
 `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`. Boolean preferences take `true`, `false`, `on`, or `off`,

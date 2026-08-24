@@ -293,6 +293,7 @@ describe("pending interaction lifecycle", () => {
         logger,
         machineAuth: harness.deps.machineAuth,
         providerRegistry: harness.deps.providerRegistry,
+        aiServices: harness.deps.aiServices,
         pluginHostArtifacts: harness.deps.pluginHostArtifacts,
         skillTreeRegistry: harness.deps.skillTreeRegistry,
         telemetry: harness.deps.telemetry,
@@ -1109,6 +1110,387 @@ describe("pending interaction lifecycle", () => {
     });
   });
 
+  it("appends one interaction lifecycle event per status change, paired with the resolution, for every kind", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-lifecycle-event",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      const lifecycleEvents = () =>
+        harness.db
+          .select()
+          .from(eventTable)
+          .where(eq(eventTable.threadId, thread.id))
+          .all()
+          .filter((row) => row.type === "system/interaction/lifecycle")
+          .map((row) => ({
+            scope:
+              row.scopeKind === "turn"
+                ? { kind: "turn", turnId: row.turnId }
+                : { kind: "thread" },
+            interaction: JSON.parse(row.data).interaction,
+          }));
+
+      // A permission grant: pending, then resolved with its decision.
+      const grant = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-lifecycle",
+          providerId: "codex",
+          providerThreadId: "provider-thread-lifecycle",
+          providerRequestId: "request-lifecycle-grant",
+          payload: createPermissionGrantApprovalPayload({
+            itemId: "item-grant",
+          }),
+        },
+      );
+      if (grant.outcome === "rejected") {
+        throw new Error(`Expected registration to succeed: ${grant.reason}`);
+      }
+      const resolution = createAllowForSessionResolution({
+        network: null,
+        fileSystem: null,
+      });
+      harness.deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: grant.interaction.id,
+        resolution,
+      });
+      harness.deps.pendingInteractions.completeResolvingInteraction({
+        interactionId: grant.interaction.id,
+        resolution,
+      });
+
+      expect(lifecycleEvents()).toEqual([
+        {
+          scope: { kind: "turn", turnId: "turn-lifecycle" },
+          interaction: expect.objectContaining({
+            id: grant.interaction.id,
+            status: "pending",
+            statusReason: null,
+            origin: {
+              kind: "provider",
+              providerId: "codex",
+              providerRequestId: "request-lifecycle-grant",
+            },
+            payload: {
+              kind: "approval",
+              reason: "Grant permission",
+              subject: expect.objectContaining({
+                kind: "permission_grant",
+                itemId: "item-grant",
+              }),
+            },
+            resolution: null,
+          }),
+        },
+        {
+          scope: { kind: "turn", turnId: "turn-lifecycle" },
+          interaction: expect.objectContaining({
+            id: grant.interaction.id,
+            status: "resolving",
+            resolution,
+          }),
+        },
+        {
+          scope: { kind: "turn", turnId: "turn-lifecycle" },
+          interaction: expect.objectContaining({
+            id: grant.interaction.id,
+            status: "resolved",
+            resolution,
+          }),
+        },
+      ]);
+      // The record keeps the ask, never the live options.
+      expect(lifecycleEvents()[0]?.interaction.payload).not.toHaveProperty(
+        "availableDecisions",
+      );
+
+      // A plugin request rides the same event, thread-scoped, without its data.
+      const pending = requestPluginInteraction(harness.deps, {
+        threadId: thread.id,
+        name: "SENTINEL_FIELD",
+      });
+      const [pluginInteraction] =
+        harness.deps.pendingInteractions.listPendingThreadInteractions(
+          thread.id,
+        );
+      harness.deps.pendingInteractions.respondToPluginInteraction({
+        threadId: thread.id,
+        interactionId: pluginInteraction!.id,
+        value: { values: { API_KEY: "x" } },
+      });
+      await pending;
+      const pluginEvents = lifecycleEvents().filter(
+        (event) => event.interaction.id === pluginInteraction!.id,
+      );
+      expect(pluginEvents.map((event) => event.interaction.status)).toEqual([
+        "pending",
+        "resolved",
+      ]);
+      expect(pluginEvents[0]).toEqual({
+        scope: { kind: "thread" },
+        interaction: {
+          id: pluginInteraction!.id,
+          status: "pending",
+          statusReason: null,
+          origin: {
+            kind: "plugin",
+            pluginId: "secrets",
+            rendererId: "secret-request",
+          },
+          payload: { kind: "plugin", title: "Add secrets" },
+          resolution: null,
+        },
+      });
+      expect(JSON.stringify(pluginEvents)).not.toContain("SENTINEL_FIELD");
+      expect(pluginEvents[1]?.interaction.resolution).toEqual({
+        kind: "plugin_submitted",
+      });
+    });
+  });
+
+  // A command approval's item write follows its lifecycle record in the same
+  // sequence and carries the interaction's turn, environment and provider
+  // thread — on the plain append path (registration) and the transactional
+  // one (completion) alike. `resolving` is transient and writes no item.
+  it("writes a command approval's lifecycle record before its item at every status that touches the item", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-item-order",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+      });
+      // The registration also opens the turn; only the interaction's own
+      // writes are under test.
+      const writes = () =>
+        harness.db
+          .select()
+          .from(eventTable)
+          .where(eq(eventTable.threadId, thread.id))
+          .orderBy(eventTable.sequence)
+          .all()
+          .filter(
+            (row) =>
+              row.type === "system/interaction/lifecycle" ||
+              row.type.startsWith("item/"),
+          )
+          .map((row) => ({
+            type: row.type,
+            turnId: row.turnId,
+            environmentId: row.environmentId,
+            providerThreadId: row.providerThreadId,
+          }));
+      const lifecycle = {
+        type: "system/interaction/lifecycle",
+        turnId: "turn-item-order",
+        environmentId: environment.id,
+        providerThreadId: null,
+      };
+      const item = (type: "item/started" | "item/completed") => ({
+        type,
+        turnId: "turn-item-order",
+        environmentId: environment.id,
+        providerThreadId: "provider-thread-item-order",
+      });
+
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        {
+          threadId: thread.id,
+          turnId: "turn-item-order",
+          providerId: "codex",
+          providerThreadId: "provider-thread-item-order",
+          providerRequestId: "request-item-order",
+          payload: createCommandApprovalPayload({ itemId: "item-order" }),
+        },
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(`Expected registration to succeed: ${created.reason}`);
+      }
+      expect(writes()).toEqual([lifecycle, item("item/started")]);
+
+      const resolution = createDenyResolution();
+      harness.deps.pendingInteractions.resolvePendingInteraction({
+        threadId: thread.id,
+        interactionId: created.interaction.id,
+        resolution,
+      });
+      expect(writes().slice(2)).toEqual([lifecycle]);
+
+      harness.deps.pendingInteractions.completeResolvingInteraction({
+        interactionId: created.interaction.id,
+        resolution,
+      });
+      expect(writes().slice(3)).toEqual([lifecycle, item("item/completed")]);
+    });
+  });
+
+  it("carries a provider's plugin-defined request to the plugin form and its answer back as a request answer", async () => {
+    await withTestHarness(async (harness) => {
+      const { host } = seedHostSession(harness.deps, {
+        id: "host-pending-interaction-plugin-request",
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        providerId: "acp-cursor",
+      });
+
+      const request = {
+        threadId: thread.id,
+        turnId: "turn-plugin-request",
+        providerId: "acp-cursor",
+        providerThreadId: "provider-thread-plugin-request",
+        providerRequestId: "request-plugin-request",
+        payload: {
+          kind: "secrets/secret-request" as const,
+          title: "Add a token",
+          data: { fields: ["SENTINEL_TOKEN"] },
+        },
+      };
+      // Only a loaded plugin can render the form: the bridge sees the refusal.
+      expect(
+        registerPendingInteraction(
+          harness.deps,
+          harness.deps.pendingInteractions,
+          request,
+        ),
+      ).toEqual({
+        outcome: "rejected",
+        reason: expect.stringContaining('Plugin "secrets" is not loaded'),
+      });
+      harness.deps.pendingInteractions.setPluginDirectory({
+        isLoaded: (pluginId) => pluginId === "secrets",
+      });
+      const created = registerPendingInteraction(
+        harness.deps,
+        harness.deps.pendingInteractions,
+        request,
+      );
+      if (created.outcome === "rejected") {
+        throw new Error(`Expected registration to succeed: ${created.reason}`);
+      }
+
+      // The answer is capped like the form's data, on either answer path.
+      const oversized = { blob: "x".repeat(64 * 1024) };
+      expect(() =>
+        harness.deps.pendingInteractions.respondToInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          value: oversized,
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          status: 413,
+          message: "Interaction response exceeds 64 KiB",
+        }),
+      );
+      expect(() =>
+        harness.deps.pendingInteractions.resolvePendingInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          resolution: { kind: "request_answer", value: oversized },
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          status: 413,
+          message: "Interaction response exceeds 64 KiB",
+        }),
+      );
+
+      // Neither an approval decision nor a cancel fits a provider's request.
+      expect(() =>
+        harness.deps.pendingInteractions.resolvePendingInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          resolution: createDenyResolution(),
+        }),
+      ).toThrow("Only a request answer can resolve a plugin request");
+      expect(() =>
+        harness.deps.pendingInteractions.cancelPluginInteraction({
+          threadId: thread.id,
+          interactionId: created.interaction.id,
+          reason: "user",
+        }),
+      ).toThrow("stop the turn instead");
+
+      // The form's value travels to the bridge as the request answer.
+      const answer = { kind: "request_answer", value: { TOKEN: "sentinel-x" } };
+      const responding = harness.deps.pendingInteractions.respondToInteraction({
+        threadId: thread.id,
+        interactionId: created.interaction.id,
+        value: { TOKEN: "sentinel-x" },
+      });
+      expect(responding).toMatchObject({
+        id: created.interaction.id,
+        status: "resolving",
+        resolution: answer,
+      });
+      const completed =
+        harness.deps.pendingInteractions.completeResolvingInteraction({
+          interactionId: created.interaction.id,
+          resolution: {
+            kind: "request_answer",
+            value: { TOKEN: "sentinel-x" },
+          },
+        });
+      expect(completed).toMatchObject({
+        status: "resolved",
+        resolution: answer,
+      });
+
+      // The lifecycle record keeps the ask and the fact of an answer only.
+      const lifecycle = harness.db
+        .select()
+        .from(eventTable)
+        .where(eq(eventTable.threadId, thread.id))
+        .all()
+        .filter((row) => row.type === "system/interaction/lifecycle")
+        .map((row) => JSON.parse(row.data).interaction);
+      expect(lifecycle.map((record) => record.status)).toEqual([
+        "pending",
+        "resolving",
+        "resolved",
+      ]);
+      expect(lifecycle[2]).toMatchObject({
+        payload: { kind: "secrets/secret-request", title: "Add a token" },
+        resolution: { kind: "request_answer" },
+      });
+      expect(JSON.stringify(lifecycle)).not.toContain("SENTINEL_TOKEN");
+      expect(JSON.stringify(lifecycle)).not.toContain("sentinel-x");
+    });
+  });
+
   it("allows command approvals to grant explicit session permissions for session decisions", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
@@ -1583,6 +1965,7 @@ describe("pending interaction lifecycle", () => {
         logger: harness.deps.logger,
         machineAuth: harness.deps.machineAuth,
         providerRegistry: harness.deps.providerRegistry,
+        aiServices: harness.deps.aiServices,
         pluginHostArtifacts: harness.deps.pluginHostArtifacts,
         skillTreeRegistry: harness.deps.skillTreeRegistry,
         telemetry: harness.deps.telemetry,

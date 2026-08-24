@@ -8,6 +8,7 @@ import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   derivePluginId,
   formatPluginThemeId,
+  isNamespacedGlyph,
   isPluginOwnedIconPath,
   type DeclaredCodeTheme,
   type DynamicTool,
@@ -286,6 +287,17 @@ export interface PluginService {
   getBrandingAsset(
     id: string,
     variant: PluginBrandingAssetVariant,
+  ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
+  /**
+   * Immutable byte snapshot of one declared icon
+   * (`bb.branding.experimental_icons[name]`), backing
+   * GET /plugins/:id/assets/icons/<name>.svg. Identity-backed like the
+   * branding assets: served for a disabled plugin, gone after uninstall.
+   * Undefined for an unknown plugin or name.
+   */
+  getIconAsset(
+    id: string,
+    name: string,
   ): { bytes: Uint8Array; contentType: string; hash: string } | undefined;
   /** Active generations a reconnecting daemon uses to retire stale workers. */
   listHostArtifactGenerations(): Array<{
@@ -1120,34 +1132,35 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
   });
 
   /**
-   * The live native-tool view: loaded plugins in id order, registration
-   * order within a plugin, deduped first-wins (defensive — registration
-   * already blocks cross-plugin collisions and reserved names).
-   */
-  /**
    * The one full presentation a bb-injected tool carries to the bridge
-   * (grammar v3): the plugin's declaration first, then its status labels for
-   * the label, then a generic label; the plugin's branding glyph, then
-   * `Toolbox`. Resolved here, once, so the wire never carries a hole a
-   * bridge would have to fill with a tool-name table of its own.
+   * (grammar v3). Label: the plugin's declared `presentation.label`, else
+   * `Running <name>` / `Ran <name>`. Icon: the declared glyph, else the
+   * plugin's branding icon when it is a host glyph name — not a plugin-owned
+   * asset path, and not a namespaced `"<pluginId>/<name>"` reference (the
+   * manifest schema refuses that shape for `bb.branding.icon`; were one to
+   * reach here, ingest would check the glyph against the tool's plugin and
+   * replace every call row with `provider/unhandled`) — else `Toolbox`.
+   * Resolved here, once, so the wire never carries a hole a bridge would
+   * have to fill with a tool-name table of its own.
    */
   function resolveAgentToolPresentation(
     pluginId: string,
     record: PluginAgentToolRecord,
   ): ThreadEventItemPresentation {
-    const declared = record.experimentalPresentation;
+    const declared = record.presentation;
     const brandingIcon = loaded.get(pluginId)?.manifest.branding.icon;
     const glyph =
       declared?.icon?.glyph ??
-      (brandingIcon !== undefined && !isPluginOwnedIconPath(brandingIcon)
+      (brandingIcon !== undefined &&
+      !isPluginOwnedIconPath(brandingIcon) &&
+      !isNamespacedGlyph(brandingIcon)
         ? brandingIcon
         : GENERIC_AGENT_TOOL_GLYPH);
     return {
-      label: declared?.label ??
-        record.experimentalStatusLabels ?? {
-          pending: `Running ${record.name}`,
-          completed: `Ran ${record.name}`,
-        },
+      label: declared?.label ?? {
+        pending: `Running ${record.name}`,
+        completed: `Ran ${record.name}`,
+      },
       icon: { glyph },
       ...(declared?.suppress === undefined
         ? {}
@@ -1169,6 +1182,11 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     };
   }
 
+  /**
+   * The live native-tool view: loaded plugins in id order, registration
+   * order within a plugin, deduped first-wins (defensive — registration
+   * already blocks cross-plugin collisions and reserved names).
+   */
   function collectAgentTools(): Array<{
     pluginId: string;
     record: PluginAgentToolRecord;
@@ -1470,6 +1488,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             (loadedPlugin !== undefined
               ? brandingAssets.get(row.id)?.logoDark?.url
               : identity?.brandingAssets.logoDark?.url) ?? null,
+          providerIds:
+            loadedPlugin?.handle
+              .listProviderDeclarations()
+              .map((declaration) => declaration.id) ?? [],
+          // Declared icons ride the identity like the compact icon, so a
+          // row referencing "<pluginId>/<name>" resolves while the plugin is
+          // disabled and stops resolving only once it is uninstalled.
+          icons: Object.fromEntries(
+            [
+              ...((loadedPlugin !== undefined
+                ? brandingAssets.get(row.id)?.icons
+                : identity?.brandingAssets.icons) ?? []),
+            ].map(([name, asset]) => [name, asset.url]),
+          ),
         };
       });
   }
@@ -1891,6 +1923,22 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
       };
     },
 
+    getIconAsset(id, name) {
+      // Declared icons are identity too: a row persisted with
+      // "<pluginId>/<name>" keeps rendering while the plugin is disabled,
+      // and 404s only once the plugin is uninstalled (identities.delete).
+      const set = loaded.has(id)
+        ? brandingAssets.get(id)
+        : identities.get(id)?.brandingAssets;
+      const asset = set?.icons.get(name);
+      if (!asset) return undefined;
+      return {
+        bytes: asset.bytes,
+        contentType: asset.contentType,
+        hash: asset.hash,
+      };
+    },
+
     listHostArtifactGenerations() {
       return [...hostArtifacts.entries()]
         .filter(([id]) => loaded.has(id))
@@ -1995,6 +2043,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             );
           }
         }
+        deps.onSettingsChanged?.(id);
         // Effective values changed: broadcast so every open page's settings
         // queries (plugin-sdk useSettings included) refetch instead of
         // serving the pre-save snapshot until stale time.

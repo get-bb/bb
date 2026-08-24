@@ -4,6 +4,7 @@ import type {
   TimelineApprovalWorkRow,
   TimelineCommandWorkRow,
   TimelineFileChangeWorkRow,
+  TimelineFileReadWorkRow,
   TimelineImageViewWorkRow,
   TimelineParentChange,
   TimelineRowBase,
@@ -125,14 +126,24 @@ function toolRow(): TimelineToolWorkRow {
     workKind: "tool",
     status: "completed",
     callId: "tool-call-1",
-    toolName: "Read",
-    toolArgs: {
-      file_path: "/repo/src/app.ts",
-    },
+    toolName: "LookupTool",
+    toolArgs: { query: "select:TodoWrite" },
     output: "",
     completedAt: 2_101,
     approvalStatus: null,
-    activityIntents: [readIntent("/repo/src/app.ts")],
+  };
+}
+
+function fileReadRow(path: string): TimelineFileReadWorkRow {
+  return {
+    ...baseRow("file-read-1"),
+    kind: "work",
+    workKind: "file-read",
+    status: "completed",
+    callId: "file-read-call-1",
+    path,
+    cmd: null,
+    completedAt: 2_101,
   };
 }
 
@@ -269,6 +280,8 @@ function delegationRow(): TimelineViewDelegationWorkRow {
     status: "completed",
     callId: "delegation-call-1",
     toolName: "spawnAgent",
+    childRef: null,
+    background: false,
     subagentType: "general-purpose-review-agent-with-a-long-name",
     description: "Review correctness + plan adherence",
     output: "",
@@ -476,10 +489,7 @@ describe("buildTimelineRowTitle", () => {
     const title = buildTimelineRowTitle(
       {
         ...toolRow(),
-        activityIntents: [],
         status: "interrupted",
-        toolArgs: { query: "select:TodoWrite" },
-        toolName: "LookupTool",
         completedAt: 3_001,
       },
       DEFAULT_OPTIONS,
@@ -498,78 +508,17 @@ describe("buildTimelineRowTitle", () => {
     ]);
   });
 
-  it("uses native plugin status labels while preserving the generic fallback", () => {
-    const completed = buildTimelineRowTitle(
-      {
-        ...toolRow(),
-        statusLabels: {
-          pending: "Reading project overview",
-          completed: "Read project overview",
-        },
-      },
-      DEFAULT_OPTIONS,
-    );
-    const pending = buildTimelineRowTitle(
-      {
-        ...toolRow(),
-        status: "pending",
-        completedAt: null,
-        statusLabels: {
-          pending: "Reading project overview",
-          completed: "Read project overview",
-        },
-      },
-      DEFAULT_OPTIONS,
-    );
-
-    expect(completed.plain).toBe("Read project overview (2s)");
-    expect(pending.plain).toBe("Reading project overview");
+  it("titles a generic tool row from its name and arguments, not from a label table", () => {
     expect(
       buildTimelineRowTitle(
         {
           ...toolRow(),
-          activityIntents: [],
           toolName: "repository_context",
           toolArgs: null,
         },
         DEFAULT_OPTIONS,
       ).plain,
     ).toBe("Ran tool repository_context (2s)");
-  });
-
-  // The labels deliberately cover only pending and completed. Every other
-  // state must fall back to the tool's own identity, or a failing plugin tool
-  // would render as a success sentence and the failure would be unreadable.
-  it("ignores plugin status labels outside pending and completed", () => {
-    const statusLabels = {
-      pending: "Reading project overview",
-      completed: "Read project overview",
-    };
-    const render = (overrides: Partial<ReturnType<typeof toolRow>>): string =>
-      buildTimelineRowTitle(
-        {
-          ...toolRow(),
-          activityIntents: [],
-          toolName: "repository_context",
-          toolArgs: null,
-          statusLabels,
-          ...overrides,
-        },
-        DEFAULT_OPTIONS,
-      ).plain;
-
-    expect(render({ status: "error" })).toContain("repository_context");
-    expect(render({ status: "error" })).not.toContain("Read project overview");
-    expect(render({ status: "interrupted" })).toContain("repository_context");
-    expect(render({ status: "interrupted" })).not.toContain(
-      "Read project overview",
-    );
-    expect(
-      render({ status: "pending", approvalStatus: "waiting_for_approval" }),
-    ).not.toContain("Reading project overview");
-    expect(
-      render({ status: "pending", approvalStatus: "denied" }),
-    ).not.toContain("Reading project overview");
   });
 
   it("can render completed work leaves with muted summary title treatment", () => {
@@ -599,6 +548,17 @@ describe("buildTimelineRowTitle", () => {
       } satisfies TimelineCommandWorkRow,
     },
     {
+      // A command with one parsed intent titles by the intent's verb; this
+      // is the only row kind that reaches the denied branch of that path.
+      expectedPlain: "Permission denied: Read /repo/src/app.ts",
+      row: {
+        ...commandRow(),
+        command: "cat /repo/src/app.ts",
+        activityIntents: [readIntent("/repo/src/app.ts")],
+        approvalStatus: "denied",
+      } satisfies TimelineCommandWorkRow,
+    },
+    {
       expectedPlain: "Permission denied: src/existing-file.ts +1 -1",
       row: {
         ...editedFileRow(),
@@ -606,7 +566,8 @@ describe("buildTimelineRowTitle", () => {
       } satisfies TimelineFileChangeWorkRow,
     },
     {
-      expectedPlain: "Permission denied: Read /repo/src/app.ts",
+      expectedPlain:
+        "Permission denied: LookupTool { query: select:TodoWrite } (2s)",
       row: {
         ...toolRow(),
         approvalStatus: "denied",
@@ -1071,9 +1032,9 @@ describe("buildTimelineRowTitle", () => {
 
   it("renders failed exploration intents using the intent verb", () => {
     const row = {
-      ...toolRow(),
+      ...fileReadRow("/repo/src/app.ts"),
       status: "error",
-    } satisfies TimelineToolWorkRow;
+    } satisfies TimelineFileReadWorkRow;
 
     const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
 
@@ -1569,7 +1530,7 @@ describe("buildTimelineRowTitle", () => {
       ...workSummaryRow(
         [
           {
-            ...toolRow(),
+            ...fileReadRow("/repo/src/app.ts"),
             status: "pending",
           },
           {
@@ -1597,7 +1558,6 @@ describe("buildTimelineRowTitle", () => {
         [
           {
             ...toolRow(),
-            activityIntents: [],
             toolName: "UnknownTool",
             toolArgs: null,
             status: "pending",
@@ -1643,13 +1603,11 @@ describe("buildTimelineRowTitle", () => {
   it("includes the skill name when compacting SKILL.md read titles", () => {
     const skillPath =
       "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/skills/control-in-app-browser/SKILL.md";
-    const row = {
-      ...toolRow(),
-      toolArgs: { file_path: skillPath },
-      activityIntents: [readIntent(skillPath)],
-    } satisfies TimelineToolWorkRow;
 
-    const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
+    const title = buildTimelineRowTitle(
+      fileReadRow(skillPath),
+      DEFAULT_OPTIONS,
+    );
 
     expect(title.segments.map((segment) => segment.text)).toEqual([
       "Read",
@@ -1661,13 +1619,11 @@ describe("buildTimelineRowTitle", () => {
   it("uses the plugin name when compacting plugin-root SKILL.md read titles", () => {
     const skillPath =
       "/Users/brsbl/.codex/plugins/cache/openai-bundled/browser/26.608.12217/SKILL.md";
-    const row = {
-      ...toolRow(),
-      toolArgs: { file_path: skillPath },
-      activityIntents: [readIntent(skillPath)],
-    } satisfies TimelineToolWorkRow;
 
-    const title = buildTimelineRowTitle(row, DEFAULT_OPTIONS);
+    const title = buildTimelineRowTitle(
+      fileReadRow(skillPath),
+      DEFAULT_OPTIONS,
+    );
 
     expect(title.segments.map((segment) => segment.text)).toEqual([
       "Read",

@@ -27,7 +27,7 @@ const { querySnapshotStorageKey, resetQuerySnapshotStateForTest } =
   await import("./query-snapshot.js");
 
 const tasksRegistration = app.navPanels[0]!;
-const navigationView = tasksRegistration.experimental_fixedTabs?.[0]!;
+const navigationView = tasksRegistration.fixedTabs?.[0]!;
 const navigationRegistration = {
   ...tasksRegistration,
   component: navigationView.component,
@@ -263,7 +263,7 @@ describe("task pager", () => {
 
 describe("tasks app shell", () => {
   it("registers navigation as a BB-owned fixed panel tab", () => {
-    expect(tasksRegistration.experimental_fixedTabs).toMatchObject([
+    expect(tasksRegistration.fixedTabs).toMatchObject([
       {
         id: "navigation",
         title: "Navigation",

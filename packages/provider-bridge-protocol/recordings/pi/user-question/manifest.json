@@ -3,7 +3,7 @@
   "cell": "user-question",
   "threadId": "thr_nuckyjq7hs",
   "scope": "thread",
-  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (rpc)",
   "recordedAt": "2026-08-21",
   "description": "The agent asks the user a question and continues with the answer.",
   "note": "",
@@ -11,7 +11,7 @@
   "lines": {
     "runtime→bridge": 3,
     "bridge→runtime": 14,
-    "provider→bridge": 72,
-    "bridge→provider": 1
+    "provider→bridge": 81,
+    "bridge→provider": 7
   }
 }

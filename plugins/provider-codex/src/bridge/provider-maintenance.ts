@@ -1,307 +1,69 @@
-import { execFile } from "node:child_process";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
-import type {
-  ExperimentalProviderHealthResult,
-  ExperimentalProviderInstallationRunResult,
-  ExperimentalProviderInstallationStatus,
-  ExperimentalProviderUsage,
-  ExperimentalProviderUsageResult,
-  ExperimentalProviderUsageWindow,
+import {
+  type ProviderHealthResult,
+  type ProviderInstallationRunResult,
+  type ProviderInstallationStatus,
+  type ProviderUsage,
+  type ProviderUsageResult,
+  type ProviderUsageWindow,
+  experimental_clampPercent as clampPercent,
+  experimental_commandOutput as commandOutput,
+  experimental_compareVersions as compareVersions,
+  experimental_formatCommand as formatCommand,
+  experimental_installationVerification as installationVerification,
+  experimental_npmGlobalInstallCommand as npmGlobalInstallCommand,
+  experimental_npmGlobalInstallSource as npmGlobalInstallSource,
+  experimental_npmLatestVersion as npmLatestVersion,
+  experimental_probeNpmGlobalPackage as probeNpmGlobalPackage,
+  experimental_readCliVersion as readCliVersion,
+  experimental_resolveExecutablePath as resolveExecutablePath,
+  experimental_versionFrom as versionFrom,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { fetchChatGpt } from "../ai/chatgpt-fetch.js";
+import {
+  readCodexAuthFile,
+  type CodexAuthCredentials,
+} from "../ai/codex-auth.js";
 
-const execFileAsync = promisify(execFile);
 const CODEX_MINIMUM_SUPPORTED_VERSION = "0.136.0";
 const CODEX_REWIND_MINIMUM_SUPPORTED_VERSION = "0.143.0";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
-const CHATGPT_AUTH_CLAIM_PATH = "https://api.openai.com/auth";
-const COMMAND_TIMEOUT_MS = 5_000;
 const USAGE_FETCH_TIMEOUT_MS = 15_000;
-const INSTALLATION_CHECK_TIMEOUT_MS = 15_000;
 const CODEX_NPM_PACKAGE = "@openai/codex";
-const ALLOWED_CLOUDFLARE_COOKIE_NAMES = new Set([
-  "__cf_bm",
-  "__cflb",
-  "__cfruid",
-  "__cfseq",
-  "__cfwaitingroom",
-  "_cfuvid",
-  "cf_clearance",
-  "cf_ob_info",
-  "cf_use_ob",
-]);
-const cloudflareCookiesByName = new Map<string, string>();
 
-type JsonRecord = Record<string, unknown>;
-
-interface CodexChatGptCredentials {
-  type: "chatgpt";
-  accessToken: string;
-  accountId: string;
-  accountEmail: string | null;
-  expired: boolean;
-  isFedrampAccount: boolean;
+function fetchCodexUsage(headers: Headers): Promise<Response> {
+  return fetchChatGpt({
+    url: CODEX_USAGE_URL,
+    init: (cloudflareHeaders) => {
+      const requestHeaders = new Headers(headers);
+      for (const [key, value] of cloudflareHeaders) {
+        requestHeaders.set(key, value);
+      }
+      return {
+        headers: requestHeaders,
+        signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS),
+      };
+    },
+  });
 }
 
-interface CodexApiKeyCredentials {
-  type: "apiKey";
-}
-
-type CodexCredentials = CodexChatGptCredentials | CodexApiKeyCredentials;
-
-function asRecord(value: unknown): JsonRecord | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : null;
-}
-
-function nonEmptyString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
-function decodeJwtPayload(token: string): JsonRecord | null {
-  const encoded = token.split(".")[1];
-  if (!encoded) return null;
-  try {
-    return asRecord(JSON.parse(Buffer.from(encoded, "base64url").toString()));
-  } catch {
-    return null;
+/**
+ * The credential read behind health and usage: no `auth.json`, or one that
+ * holds no usable login, reads as "not logged in"; a file that cannot be
+ * read or parsed is the error the probe reports as-is.
+ */
+async function readCredentials(): Promise<CodexAuthCredentials | null> {
+  const auth = await readCodexAuthFile();
+  switch (auth.state) {
+    case "ok":
+      return auth.credentials;
+    case "missing":
+    case "unusable":
+      return null;
+    case "unreadable":
+    case "malformed":
+      throw auth.error;
   }
-}
-
-function chatGptClaims(token: string): JsonRecord | null {
-  return asRecord(decodeJwtPayload(token)?.[CHATGPT_AUTH_CLAIM_PATH]);
-}
-
-function accountEmail(token: string): string | null {
-  const payload = decodeJwtPayload(token);
-  const profile = asRecord(payload?.["https://api.openai.com/profile"]);
-  return nonEmptyString(payload?.email) ?? nonEmptyString(profile?.email);
-}
-
-function tokenExpired(token: string): boolean {
-  const exp = decodeJwtPayload(token)?.exp;
-  return typeof exp === "number" && Date.now() >= exp * 1000;
-}
-
-function storeCloudflareCookies(headers: Headers): void {
-  const setCookie = headers.get("set-cookie");
-  if (!setCookie) return;
-  for (const cookie of setCookie.split(/,(?=\s*[^;,=\s]+=[^;,]*)/u)) {
-    const [nameValue] = cookie.trim().split(";", 1);
-    const [rawName] = nameValue?.split("=", 1) ?? [];
-    const name = rawName?.trim();
-    if (
-      !name ||
-      (!ALLOWED_CLOUDFLARE_COOKIE_NAMES.has(name) &&
-        !name.startsWith("cf_chl_"))
-    ) {
-      continue;
-    }
-    cloudflareCookiesByName.set(name, nameValue.trim());
-  }
-}
-
-async function fetchCodexUsage(headers: Headers): Promise<Response> {
-  const doFetch = async () => {
-    const requestHeaders = new Headers(headers);
-    if (cloudflareCookiesByName.size > 0) {
-      requestHeaders.set(
-        "Cookie",
-        [...cloudflareCookiesByName.values()].join("; "),
-      );
-    }
-    const response = await fetch(CODEX_USAGE_URL, {
-      headers: requestHeaders,
-      signal: AbortSignal.timeout(USAGE_FETCH_TIMEOUT_MS),
-    });
-    storeCloudflareCookies(response.headers);
-    return response;
-  };
-  const response = await doFetch();
-  return response.status === 403 &&
-    response.headers.get("cf-mitigated")?.toLowerCase() === "challenge"
-    ? doFetch()
-    : response;
-}
-
-function codexHome(): string {
-  return process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
-}
-
-async function readCredentials(): Promise<CodexCredentials | null> {
-  let parsed: JsonRecord;
-  try {
-    parsed =
-      asRecord(
-        JSON.parse(
-          await fs.readFile(path.join(codexHome(), "auth.json"), "utf8"),
-        ),
-      ) ?? {};
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
-  const authMode = nonEmptyString(parsed.auth_mode);
-  if (
-    authMode === "apikey" ||
-    authMode === "apiKey" ||
-    (authMode === null && nonEmptyString(parsed.OPENAI_API_KEY) !== null)
-  ) {
-    return nonEmptyString(parsed.OPENAI_API_KEY) === null
-      ? null
-      : { type: "apiKey" };
-  }
-  const tokens = asRecord(parsed.tokens);
-  const accessToken = nonEmptyString(tokens?.access_token);
-  if (!tokens || !accessToken) return null;
-  const claims = chatGptClaims(accessToken);
-  const idToken = nonEmptyString(tokens.id_token);
-  const idTokenClaims =
-    idToken === null ? asRecord(tokens.id_token) : chatGptClaims(idToken);
-  const accountId =
-    nonEmptyString(tokens.account_id) ??
-    nonEmptyString(claims?.chatgpt_account_id) ??
-    nonEmptyString(idTokenClaims?.chatgpt_account_id);
-  if (!accountId) return null;
-  return {
-    type: "chatgpt",
-    accessToken,
-    accountId,
-    accountEmail:
-      accountEmail(accessToken) ?? (idToken ? accountEmail(idToken) : null),
-    expired: tokenExpired(accessToken),
-    isFedrampAccount:
-      claims?.chatgpt_account_is_fedramp === true ||
-      idTokenClaims?.chatgpt_account_is_fedramp === true,
-  };
-}
-
-async function executablePath(command: string): Promise<string | null> {
-  try {
-    const lookup = process.platform === "win32" ? "where" : "which";
-    const { stdout } = await execFileAsync(lookup, [command], {
-      timeout: COMMAND_TIMEOUT_MS,
-    });
-    return (
-      stdout
-        .split(/\r?\n/u)
-        .find((line) => line.trim())
-        ?.trim() ?? null
-    );
-  } catch {
-    return null;
-  }
-}
-
-async function installedVersion(): Promise<string | null> {
-  try {
-    const { stdout, stderr } = await execFileAsync("codex", ["--version"], {
-      timeout: COMMAND_TIMEOUT_MS,
-    });
-    return (
-      `${stdout}\n${stderr}`.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/u)?.[0] ??
-      null
-    );
-  } catch {
-    return null;
-  }
-}
-
-function compareVersions(left: string, right: string): number {
-  const parse = (value: string) => {
-    const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/u);
-    return match === null
-      ? { core: [0, 0, 0], prerelease: null }
-      : {
-          core: [Number(match[1]), Number(match[2]), Number(match[3])],
-          prerelease: match[4] ?? null,
-        };
-  };
-  const a = parse(left);
-  const b = parse(right);
-  for (let index = 0; index < 3; index += 1) {
-    const delta = (a.core[index] ?? 0) - (b.core[index] ?? 0);
-    if (delta !== 0) return delta;
-  }
-  if (a.prerelease === null && b.prerelease !== null) return 1;
-  if (a.prerelease !== null && b.prerelease === null) return -1;
-  if (a.prerelease !== null && b.prerelease !== null) {
-    return a.prerelease.localeCompare(b.prerelease);
-  }
-  return 0;
-}
-
-function npmCommand(): string {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
-}
-
-function formatCommand(command: string, args: readonly string[]): string {
-  return [command, ...args]
-    .map((part) =>
-      /^[A-Za-z0-9_./:@+-]+$/u.test(part)
-        ? part
-        : `'${part.replace(/'/gu, "'\\''")}'`,
-    )
-    .join(" ");
-}
-
-async function commandOutput(
-  command: string,
-  args: readonly string[],
-): Promise<string | null> {
-  try {
-    const { stdout, stderr } = await execFileAsync(command, [...args], {
-      timeout: INSTALLATION_CHECK_TIMEOUT_MS,
-    });
-    return `${stdout}\n${stderr}`.trim();
-  } catch {
-    return null;
-  }
-}
-
-function firstLine(value: string | null): string | null {
-  return (
-    value
-      ?.split(/\r?\n/u)
-      .map((line) => line.trim())
-      .find(Boolean) ?? null
-  );
-}
-
-function versionFrom(value: string | null): string | null {
-  return (
-    value?.match(/\bv?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\b/u)?.[1] ?? null
-  );
-}
-
-function npmGlobalPackageVersion(value: string | null): string | null {
-  if (value === null) return null;
-  try {
-    const parsed = z
-      .object({
-        dependencies: z
-          .record(z.string(), z.object({ version: z.string().min(1) }))
-          .default({}),
-      })
-      .safeParse(JSON.parse(value));
-    return parsed.success
-      ? (parsed.data.dependencies[CODEX_NPM_PACKAGE]?.version ?? null)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function pathIsInside(child: string, parent: string): boolean {
-  const relativePath = path.relative(path.resolve(parent), path.resolve(child));
-  return (
-    relativePath === "" ||
-    (!relativePath.startsWith("..") && !path.isAbsolute(relativePath))
-  );
 }
 
 function minimumSupportedVersionForRequirement(
@@ -312,48 +74,34 @@ function minimumSupportedVersionForRequirement(
     : CODEX_MINIMUM_SUPPORTED_VERSION;
 }
 
+/** Codex updates itself; only a missing install goes through npm. */
+function codexUpdateCommand(): {
+  command: string;
+  args: string[];
+  displayCommand: string;
+} {
+  const args = ["update"];
+  return {
+    command: "codex",
+    args,
+    displayCommand: formatCommand("codex", args),
+  };
+}
+
 export async function getCodexProviderInstallationStatus(
   requirement?: "thread_rewind",
-): Promise<ExperimentalProviderInstallationStatus> {
+): Promise<ProviderInstallationStatus> {
   const minimumSupportedVersion =
     minimumSupportedVersionForRequirement(requirement);
-  const npm = npmCommand();
-  const [
-    resolvedExecutable,
-    versionOutput,
-    latestOutput,
-    prefixOutput,
-    listOutput,
-  ] = await Promise.all([
-    executablePath("codex"),
-    commandOutput("codex", ["--version"]),
-    commandOutput(npm, ["view", CODEX_NPM_PACKAGE, "version"]),
-    commandOutput(npm, ["prefix", "-g"]),
-    commandOutput(npm, [
-      "list",
-      "-g",
-      CODEX_NPM_PACKAGE,
-      "--depth=0",
-      "--json",
-    ]),
-  ]);
+  const [resolvedExecutable, versionOutput, latestVersion, npmGlobal] =
+    await Promise.all([
+      resolveExecutablePath("codex"),
+      commandOutput("codex", ["--version"]),
+      npmLatestVersion(CODEX_NPM_PACKAGE),
+      probeNpmGlobalPackage(CODEX_NPM_PACKAGE),
+    ]);
   const installed = resolvedExecutable !== null || versionOutput !== null;
   const currentVersion = versionFrom(versionOutput);
-  const latestVersion = versionFrom(latestOutput);
-  const npmPrefix = firstLine(prefixOutput);
-  const npmBin =
-    npmPrefix === null
-      ? null
-      : process.platform === "win32"
-        ? npmPrefix
-        : path.join(npmPrefix, "bin");
-  const installSource = !installed
-    ? "notInstalled"
-    : resolvedExecutable !== null &&
-        npmBin !== null &&
-        pathIsInside(resolvedExecutable, npmBin)
-      ? "npmGlobal"
-      : "external";
   const needsUpdate =
     installed &&
     currentVersion !== null &&
@@ -369,29 +117,31 @@ export async function getCodexProviderInstallationStatus(
     : needsUpdate || versionUnsupported
       ? "update"
       : null;
-  const actionArgs =
-    actionKind === "install"
-      ? ["install", "-g", `${CODEX_NPM_PACKAGE}@latest`]
-      : ["update"];
-  const actionCommand = actionKind === "install" ? npm : "codex";
 
   return {
     executableName: "codex",
     executablePath: resolvedExecutable,
     installed,
-    installSource,
+    installSource: npmGlobalInstallSource({
+      installed,
+      executablePath: resolvedExecutable,
+      npmBin: npmGlobal.npmBin,
+    }),
     currentVersion,
     latestVersion,
     minimumSupportedVersion,
     npmPackageName: CODEX_NPM_PACKAGE,
-    npmGlobalPackageVersion: npmGlobalPackageVersion(listOutput),
+    npmGlobalPackageVersion: npmGlobal.npmGlobalPackageVersion,
     installAction:
       actionKind === null
         ? null
         : {
             kind: actionKind,
             label: actionKind === "install" ? "Install" : "Update",
-            command: formatCommand(actionCommand, actionArgs),
+            command:
+              actionKind === "install"
+                ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE).displayCommand
+                : codexUpdateCommand().displayCommand,
           },
     needsUpdate,
     versionUnsupported,
@@ -400,38 +150,28 @@ export async function getCodexProviderInstallationStatus(
 
 export async function getCodexProviderInstallationRun(
   action: "install" | "update",
-): Promise<ExperimentalProviderInstallationRunResult> {
+): Promise<ProviderInstallationRunResult> {
   const status = await getCodexProviderInstallationStatus();
   return buildCodexProviderInstallationRun(status, action);
 }
 
 function buildCodexProviderInstallationRun(
-  status: ExperimentalProviderInstallationStatus,
+  status: ProviderInstallationStatus,
   action: "install" | "update",
-): ExperimentalProviderInstallationRunResult {
+): ProviderInstallationRunResult {
   if (status.installAction?.kind !== action) {
     return {
       available: false,
       message: `Codex ${action} is no longer available on this host.`,
     };
   }
-  const command = action === "install" ? npmCommand() : "codex";
-  const args =
-    action === "install"
-      ? ["install", "-g", `${CODEX_NPM_PACKAGE}@latest`]
-      : ["update"];
   return {
     available: true,
-    command: { command, args, displayCommand: formatCommand(command, args) },
-    verification:
+    command:
       action === "install"
-        ? { kind: "installed" }
-        : status.latestVersion !== null
-          ? { kind: "version_at_least", version: status.latestVersion }
-          : {
-              kind: "version_changed",
-              previousVersion: status.currentVersion ?? "unknown",
-            },
+        ? npmGlobalInstallCommand(CODEX_NPM_PACKAGE)
+        : codexUpdateCommand(),
+    verification: installationVerification(status, action),
   };
 }
 
@@ -448,7 +188,7 @@ function healthResult(
     installedVersion?: string | null;
     statusMessage?: string | null;
   } = {},
-): ExperimentalProviderHealthResult {
+): ProviderHealthResult {
   return {
     supported: true,
     health: {
@@ -465,11 +205,11 @@ function healthResult(
   };
 }
 
-export async function getCodexProviderHealth(): Promise<ExperimentalProviderHealthResult> {
-  if ((await executablePath("codex")) === null) {
+export async function getCodexProviderHealth(): Promise<ProviderHealthResult> {
+  if ((await resolveExecutablePath("codex")) === null) {
     return healthResult("not_installed");
   }
-  const version = await installedVersion();
+  const version = await readCliVersion("codex");
   if (
     version !== null &&
     compareVersions(version, CODEX_MINIMUM_SUPPORTED_VERSION) < 0
@@ -516,17 +256,10 @@ const codexUsageResponseSchema = z.object({
     .nullish(),
 });
 
-function clampPercent(value: number): number {
-  return Math.min(
-    100,
-    Math.max(0, Math.round(Number.isFinite(value) ? value : 0)),
-  );
-}
-
 function usageWindow(
   value: z.infer<typeof codexUsageWindowSchema> | null | undefined,
   fallbackLabel: string,
-): ExperimentalProviderUsageWindow | null {
+): ProviderUsageWindow | null {
   if (!value) return null;
   return {
     label:
@@ -558,7 +291,7 @@ function planLabel(plan: string | null | undefined): string | null {
 function normalizeUsage(
   raw: unknown,
   email: string | null,
-): ExperimentalProviderUsage {
+): ProviderUsage {
   const parsed = codexUsageResponseSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -572,7 +305,7 @@ function normalizeUsage(
     usageWindow(parsed.data.rate_limit?.primary_window, "Current session"),
     usageWindow(parsed.data.rate_limit?.secondary_window, "Weekly limit"),
   ].filter(
-    (window): window is ExperimentalProviderUsageWindow => window !== null,
+    (window): window is ProviderUsageWindow => window !== null,
   );
   return {
     status: "ok",
@@ -582,11 +315,11 @@ function normalizeUsage(
   };
 }
 
-export async function getCodexProviderUsage(): Promise<ExperimentalProviderUsageResult> {
-  if ((await executablePath("codex")) === null) {
+export async function getCodexProviderUsage(): Promise<ProviderUsageResult> {
+  if ((await resolveExecutablePath("codex")) === null) {
     return { supported: true, usage: { status: "not_installed" } };
   }
-  let credentials: CodexCredentials | null;
+  let credentials: CodexAuthCredentials | null;
   try {
     credentials = await readCredentials();
   } catch (error) {
@@ -661,7 +394,6 @@ export async function getCodexProviderUsage(): Promise<ExperimentalProviderUsage
 
 export const __testing = {
   buildProviderInstallationRun: buildCodexProviderInstallationRun,
-  compareVersions,
   minimumSupportedVersionForRequirement,
   normalizeUsage,
 };

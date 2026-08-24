@@ -30,7 +30,7 @@ export default function plugin(bb: BbPluginApi) {
     description: TOOL_DESCRIPTION,
     // The question is fully represented by its interaction row; the tool
     // row beside it would read as a duplicate, so clients collapse it.
-    experimental_presentation: {
+    presentation: {
       label: { pending: "Asking a question", completed: "Asked a question" },
       icon: { glyph: "MessageQuestion" },
       suppress: true,

@@ -1069,6 +1069,59 @@ describe("ThreadTimelineRows actions", () => {
     expect(parentRow?.classList.contains("bb-search-flash")).toBe(false);
   });
 
+  it("cancels the follow-up search reveals when the rows unmount", () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(window, "requestAnimationFrame").mockImplementation(
+        (callback) => {
+          callback(performance.now());
+          return 1;
+        },
+      );
+      vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+      Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+        configurable: true,
+        value: vi.fn(),
+      });
+
+      const view = renderWithRouter(
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              id: "match",
+              role: "assistant",
+              text: "Answer containing the search result.",
+              sourceSeqStart: 12,
+              sourceSeqEnd: 12,
+              threadId: "thr_main",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+          workspaceRootPath={undefined}
+        />,
+        [
+          {
+            pathname: "/thread",
+            state: { searchMessageSeq: 12, searchThreadId: "thr_main" },
+          },
+        ],
+      );
+      view.unmount();
+
+      // The 320 ms and 800 ms follow-up reveals were pending at unmount. The
+      // test worker tears the document down right after the last test, so a
+      // reveal that survives unmount fires against a missing `document`.
+      const querySelector = vi.spyOn(document, "querySelector");
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(querySelector).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("loads older timeline rows before scrolling to an older sidebar search match", async () => {
     const onLoadOlderRows = vi.fn();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

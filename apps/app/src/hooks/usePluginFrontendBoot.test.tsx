@@ -8,6 +8,10 @@ import {
   usePluginFrontendsSettled,
 } from "@/lib/plugin-frontend-boot-state";
 import {
+  getWantedProviderPluginIds,
+  resetProviderPluginFrontendGateForTest,
+} from "@/lib/plugin-frontend-provider-gate";
+import {
   markRouteContentPainted,
   resetRouteContentPaintForTest,
 } from "@/lib/route-content-paint";
@@ -44,6 +48,7 @@ afterEach(() => {
   vi.useRealTimers();
   mocks.bootPluginFrontends.mockClear();
   resetPluginFrontendBootStateForTest();
+  resetProviderPluginFrontendGateForTest();
 });
 
 describe("usePluginFrontendBoot", () => {
@@ -79,6 +84,20 @@ describe("usePluginFrontendBoot", () => {
     renderHook(() => usePluginFrontendBoot());
     await flushMicrotasks();
     expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
+  });
+
+  it("wants the route's plugin before booting, so a provider plugin's own panel loads", async () => {
+    // A provider plugin's bundle is otherwise deferred until a thread of its
+    // provider opens; a deep link to its panel would report the panel missing.
+    let wantedAtBoot: string[] = [];
+    mocks.bootPluginFrontends.mockImplementation(async () => {
+      wantedAtBoot = [...getWantedProviderPluginIds()];
+    });
+    window.history.replaceState(null, "", "/plugins/acme-provider/console");
+    renderHook(() => usePluginFrontendBoot());
+    await flushMicrotasks();
+    expect(mocks.bootPluginFrontends).toHaveBeenCalledTimes(1);
+    expect(wantedAtBoot).toEqual(["acme-provider"]);
   });
 
   it("does nothing until system config resolves", async () => {

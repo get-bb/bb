@@ -62,6 +62,7 @@ import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
+import { deprecatedAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
@@ -307,6 +308,15 @@ export function useBbContext(): BbContext {
   );
 }
 
+/**
+ * `BbNavigate` plus the one-release alias for the renamed `openUrl`, for
+ * plugins built against an SDK before 0.4.16. Removal target: bb 0.42 (see
+ * plugin-sdk-deprecated-aliases.ts).
+ */
+interface BbNavigateWithDeprecatedAliases extends BbNavigate {
+  experimental_openUrl: BbNavigate["openUrl"];
+}
+
 export function useBbNavigate(): BbNavigate {
   const pluginId = usePluginId();
   const location = useLocation();
@@ -370,7 +380,7 @@ export function useBbNavigate(): BbNavigate {
     (options) => openThreadPanelHandler?.({ ...options, pluginId }) ?? false,
     [openThreadPanelHandler, pluginId],
   );
-  const experimental_openUrl = useCallback<BbNavigate["experimental_openUrl"]>(
+  const openUrl = useCallback<BbNavigate["openUrl"]>(
     (url) => appNavigation.openUrl({ url }),
     [appNavigation],
   );
@@ -394,7 +404,7 @@ export function useBbNavigate(): BbNavigate {
     },
     [appNavigation],
   );
-  return useMemo(
+  return useMemo<BbNavigateWithDeprecatedAliases>(
     () => ({
       toThread,
       toProject,
@@ -403,7 +413,12 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
-      experimental_openUrl,
+      openUrl,
+      experimental_openUrl: deprecatedAlias(
+        "experimental_openUrl",
+        "openUrl",
+        openUrl,
+      ),
     }),
     [
       toThread,
@@ -413,7 +428,7 @@ export function useBbNavigate(): BbNavigate {
       openThreadPanel,
       experimental_openFileExternally,
       experimental_openFilePreview,
-      experimental_openUrl,
+      openUrl,
     ],
   );
 }

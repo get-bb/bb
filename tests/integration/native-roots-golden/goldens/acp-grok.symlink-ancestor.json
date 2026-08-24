@@ -1,0 +1,100 @@
+{
+  "providerId": "acp-grok",
+  "variant": "symlink-ancestor",
+  "workspace": {
+    "commands": [
+      {
+        "name": "grok-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "grok-home-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-pkg-agents-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-pkg-agents-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-pkg-cursor-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-pkg-cursor-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "linked-pkg-grok-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "linked-pkg-grok-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "ws-grok-skill",
+        "source": "skill",
+        "origin": "project",
+        "description": "ws-grok-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "grok-home-skill",
+        "description": "grok-home-skill skill",
+        "filePath": "<home>/.grok/skills/grok-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "linked-pkg-agents-skill",
+        "description": "linked-pkg-agents-skill skill",
+        "filePath": "<root>/ws/packages/.agents/skills/linked-pkg-agents-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "linked-pkg-cursor-skill",
+        "description": "linked-pkg-cursor-skill skill",
+        "filePath": "<root>/ws/packages/.cursor/skills/linked-pkg-cursor-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "linked-pkg-grok-skill",
+        "description": "linked-pkg-grok-skill skill",
+        "filePath": "<root>/ws/packages/.grok/skills/linked-pkg-grok-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": true
+      },
+      {
+        "name": "ws-grok-skill",
+        "description": "ws-grok-skill skill",
+        "filePath": "<root>/ws/.grok/skills/ws-grok-skill/SKILL.md",
+        "rootKind": "provider-project",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "grok-home-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "grok-home-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "grok-home-skill",
+        "description": "grok-home-skill skill",
+        "filePath": "<home>/.grok/skills/grok-home-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  }
+}

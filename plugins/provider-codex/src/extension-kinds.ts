@@ -79,7 +79,7 @@ export type CodexMacOsPermissionItem = z.infer<
   typeof codexMacOsPermissionItemSchema
 >;
 
-/** What the codex provider declares (`experimental_extensionKinds`). */
+/** What the codex provider declares (`extensionKinds`). */
 export const codexExtensionKinds = {
   goal: { state: codexGoalStateSchema },
   "macos-permission": { item: codexMacOsPermissionItemSchema },

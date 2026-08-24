@@ -350,6 +350,24 @@ describe("public thread banner actions", () => {
     });
   });
 
+  it("refuses to clear a Goal on a thread that has none, whatever its provider", async () => {
+    // No provider gate: a Goal is provider extension state, so the only
+    // question is whether this thread has one. The 409 code is unchanged
+    // from the old provider check; the message names the real reason.
+    await withTestHarness(async (harness) => {
+      const fixture = seedBannerFixture(harness, { status: "idle" });
+      const response = await harness.app.request(
+        `/api/v1/threads/${fixture.threadId}/goal/clear`,
+        { method: "POST" },
+      );
+      expect(response.status).toBe(409);
+      expect(await readJson(response)).toMatchObject({
+        code: "invalid_request",
+        message: "No active Goal to clear",
+      });
+    });
+  });
+
   it("persists a successful Goal clear and returns zero after refetch", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedBannerFixture(harness, { status: "idle" });

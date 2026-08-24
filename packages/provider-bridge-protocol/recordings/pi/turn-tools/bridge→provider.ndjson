@@ -1,1 +1,8 @@
-{"ts":1787275056164,"run":1787275055276,"seq":10,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Read math.js, then add a `subtract(a, b)` function to it by editing the file, then run `node -e \\\"import(\\\\\\\"./math.js\\\\\\\").then(m => console.log(m.subtract(5, 3)))\\\"` in the shell and reply with the printed number only.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787347884446,"run":1787347884248,"seq":4,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347885001,"run":1787347884248,"seq":11,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Read math.js, then add a `subtract(a, b)` function to it by editing the file, then run `node -e \\\"import(\\\\\\\"./math.js\\\\\\\").then(m => console.log(m.subtract(5, 3)))\\\"` in the shell and reply with the printed number only.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347886794,"run":1787347884248,"seq":38,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1787347889472,"run":1787347884248,"seq":127,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1787347891454,"run":1787347884248,"seq":177,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
+{"ts":1787347892578,"run":1787347884248,"seq":187,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-6\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":856,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-7\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":867,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}

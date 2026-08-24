@@ -303,6 +303,52 @@ describe("bbAppManagedConfigSchema", () => {
     }
   });
 
+  it("refuses the removed `absolute` side by name on sharedSkillRoots and on a custom ACP agent", () => {
+    const shared = bbAppManagedConfigSchema.safeParse({
+      sharedSkillRoots: { user: [".agents/skills"], project: [], absolute: [] },
+    });
+    expect(shared.success).toBe(false);
+    if (!shared.success) {
+      expect(
+        shared.error.issues.map((issue) => [issue.path, issue.message]),
+      ).toEqual([[["sharedSkillRoots"], 'Unrecognized key: "absolute"']]);
+    }
+    expect(() =>
+      parseBbAppManagedConfig({
+        sharedSkillRoots: { user: [], project: [], absolute: ["/srv/skills"] },
+      }),
+    ).toThrow(/Unrecognized key/u);
+
+    const warnings: Record<string, unknown>[] = [];
+    const parsed = parseBbAppManagedConfig(
+      {
+        customAcpAgents: [
+          {
+            id: "amp",
+            displayName: "Amp",
+            command: "amp-acp",
+            nativeSkillRoots: {
+              user: [".amp/skills"],
+              absolute: ["/srv/skills"],
+            },
+          },
+        ],
+      },
+      {
+        logger: {
+          warn(fields): void {
+            warnings.push(fields);
+          },
+        },
+      },
+    );
+    expect(parsed.customAcpAgents).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.index).toBe(0);
+    // The warning carries the ZodError's JSON-formatted message.
+    expect(warnings[0]?.error).toMatch(/Unrecognized key: \\"absolute\\"/u);
+  });
+
   it("rejects custom ACP reasoningCli defaults outside supported levels", () => {
     expect(
       bbAppManagedConfigSchema.safeParse({

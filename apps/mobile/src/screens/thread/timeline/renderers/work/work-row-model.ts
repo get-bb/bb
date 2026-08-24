@@ -1,17 +1,19 @@
+import normalizeColor from "@react-native/normalize-colors";
 import { formatPendingInteractionUserQuestionOptionLabel } from "@bb/core-ui";
 import {
-  isBackgroundAgentTaskType,
-  isBackgroundCommandTaskType,
+  isPresentationTintColor,
   isSettledWorkflowAgentState,
+  parseNamespacedGlyph,
   type BackgroundTaskStatus,
   type BackgroundTaskUsage,
   type JsonValue,
+  type ThreadEventItemPresentationTint,
   type WorkflowAgentSnapshot,
   type WorkflowPhaseSnapshot,
   type WorkflowProgressSnapshot,
 } from "@bb/domain";
 import type {
-  TimelineActivityIntent,
+  InstalledPlugin,
   TimelineApprovalWorkRow,
   TimelineCommandWorkRow,
   TimelineQuestionWorkRow,
@@ -21,11 +23,13 @@ import type {
 import {
   assertNever,
   buildTimelineActivityIntentTitles,
-  primaryTimelineActivityIntent,
+  workRowGlyph,
+  workRowPluginGlyph,
+  workRowPresentation,
   type TimelineActivityIntentTitle,
   type TimelineViewWorkRow,
 } from "@bb/thread-view";
-import type { IconName } from "@/ui/icon-map";
+import { isIconName, type IconName } from "@/ui/icon-map";
 import type { TimelineRowKind } from "../../rows";
 
 /**
@@ -38,75 +42,85 @@ import type { TimelineRowKind } from "../../rows";
 // Leading glyph + past-row dim
 // ---------------------------------------------------------------------------
 
-const SKILL_FILE_NAME = "SKILL.md";
-
-function isSkillReadIntent(intent: TimelineActivityIntent): boolean {
-  if (intent.type !== "read") return false;
-  const target = (intent.path ?? intent.name).replaceAll("\\", "/");
-  return target.split("/").pop() === SKILL_FILE_NAME;
-}
-
-function explorationIntentIcon(
-  intentType: "read" | "list_files" | "search",
-): IconName {
-  switch (intentType) {
-    case "search":
-      return "Search";
-    case "read":
-      return "FileText";
-    case "list_files":
-      return "Folder";
-    default:
-      return assertNever(intentType);
-  }
-}
-
-export function leadingIconForActivityIntentTitle(
-  entry: TimelineActivityIntentTitle,
-): IconName {
-  if (isSkillReadIntent(entry.intent)) return "Zap";
-  return explorationIntentIcon(entry.intentType);
+/**
+ * The bridge's accent for the row's leading glyph in the current theme mode
+ * (`presentation.tint`), or undefined for the neutral row colour.
+ */
+export function leadingIconTintForWorkRow(
+  row: TimelineViewWorkRow,
+  mode: "light" | "dark",
+): string | undefined {
+  return presentationTintColor(workRowPresentation(row)?.tint, mode);
 }
 
 /**
- * A leading glyph for every work row, keyed by kind so edits, explores and
- * commands read apart at a glance (web `leadingIconForWorkRow`).
+ * The bridge's accent colour for the current theme mode when it passes the
+ * colour grammar and React Native can paint it, else undefined. Shared by
+ * every surface that paints a presentation glyph (the work row, the tool-use
+ * approval banner).
+ *
+ * The domain grammar accepts every CSS colour function (`oklch()`, `lab()`,
+ * `color()`, percentage alpha) because the web paints them through CSS; the
+ * native colour parser behind react-native-svg and the icon tint does not,
+ * and a value it rejects paints the glyph black with no warning. Such a tint
+ * falls back to the neutral row colour here, like an unknown glyph.
+ */
+export function presentationTintColor(
+  tint: ThreadEventItemPresentationTint | null | undefined,
+  mode: "light" | "dark",
+): string | undefined {
+  if (tint === undefined || tint === null) return undefined;
+  const value = tint[mode].trim();
+  return isPresentationTintColor(value) && normalizeColor(value) !== null
+    ? value
+    : undefined;
+}
+
+/**
+ * A leading glyph for every work row: the bridge's glyph when the host knows
+ * it, else keyed by kind so edits, explores and commands read apart at a
+ * glance. The table is shared with the web through @bb/thread-view; this
+ * host only narrows the bridge's glyph against its own icon registry.
  */
 export function leadingIconForWorkRow(row: TimelineViewWorkRow): IconName {
-  if ("activityIntents" in row && row.activityIntents.some(isSkillReadIntent)) {
-    return "Zap";
-  }
-  if (row.workKind === "command" || row.workKind === "tool") {
-    const intent = primaryTimelineActivityIntent(row);
-    if (intent !== null && intent.type !== "unknown") {
-      return explorationIntentIcon(intent.type);
-    }
-  }
-  switch (row.workKind) {
-    case "file-change":
-      return "EditFile";
-    case "command":
-    case "tool":
-      return "Terminal";
-    case "web-search":
-      return "Search";
-    case "web-fetch":
-      return "Globe";
-    case "image-view":
-      return "File";
-    case "delegation":
-      return "UserRoundPlus";
-    case "workflow":
-      if (isBackgroundCommandTaskType(row.taskType)) return "Terminal";
-      if (isBackgroundAgentTaskType(row.taskType)) return "UserRoundPlus";
-      return "ListTodo";
-    case "approval":
-      return "Lock";
-    case "question":
-      return "CircleQuestion";
-    default:
-      return assertNever(row);
-  }
+  return workRowGlyph(row, isIconName);
+}
+
+/**
+ * The plugin-declared icon a work row names (`"<pluginId>/<name>"`), resolved
+ * against the installed-plugin list: the SVG URL when that plugin still
+ * declares the name, else null so {@link leadingIconForWorkRow}'s per-kind
+ * glyph draws. Pure — the renderer feeds it the list the timeline host keeps
+ * live (one `usePluginList()` per timeline), and the declarative base never
+ * blocks on the fetch the URL starts.
+ */
+export function leadingPluginIconUrl(
+  row: TimelineViewWorkRow,
+  plugins: readonly Pick<InstalledPlugin, "id" | "icons">[] | undefined,
+): string | null {
+  const glyph = workRowPluginGlyph(row);
+  const parsed = glyph === undefined ? null : parseNamespacedGlyph(glyph);
+  if (parsed === null) return null;
+  return resolvePluginIconUrl(parsed, plugins);
+}
+
+/**
+ * The URL behind one parsed namespaced glyph, for the surfaces that hold
+ * the glyph rather than a row (the tool-use approval banner).
+ */
+export function resolvePluginIconUrl(
+  glyph: { pluginId: string; name: string },
+  plugins: readonly Pick<InstalledPlugin, "id" | "icons">[] | undefined,
+): string | null {
+  const plugin = plugins?.find((entry) => entry.id === glyph.pluginId);
+  if (plugin === undefined) return null;
+  // `icons` is a plain record off the wire: a declared-name-shaped glyph
+  // such as "constructor" must not resolve through Object.prototype to a
+  // function whose source would become a URL.
+  const url = Object.hasOwn(plugin.icons, glyph.name)
+    ? plugin.icons[glyph.name]
+    : undefined;
+  return url ?? null;
 }
 
 /**
@@ -133,8 +147,8 @@ export function isInsideWorkSummary(
 }
 
 /**
- * Inside a summary, an exploration command/tool row (no approval) renders as
- * one flat line per intent instead of its single title (web
+ * Inside a summary, an exploration command row (no approval) renders as one
+ * flat line per intent instead of its single title (web
  * `compact-activity-intents`). Null when the row keeps its regular title.
  */
 export function compactActivityIntentTitles(
@@ -142,7 +156,7 @@ export function compactActivityIntentTitles(
   parentKind: TimelineRowKind | null,
 ): TimelineActivityIntentTitle[] | null {
   if (!isInsideWorkSummary(parentKind)) return null;
-  if (row.workKind !== "command" && row.workKind !== "tool") return null;
+  if (row.workKind !== "command") return null;
   if (row.approvalStatus !== null) return null;
   const titles = buildTimelineActivityIntentTitles(row);
   return titles.length > 0 ? titles : null;

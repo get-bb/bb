@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import semver from "semver";
 import { PLUGIN_SDK_MAJOR } from "@bb/domain";
-import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
+import {
+  assertValidPluginCompactIconSvg,
+  assertValidPluginIconSvg,
+} from "@bb/plugin-build";
 
 interface PluginArtifactMeta {
   sdkMajor: number;
@@ -86,7 +89,7 @@ const BRANDING_ASSET_CONTENT_TYPES: Record<string, string> = {
 export type PluginBrandingAssetVariant = "icon" | "logo" | "logo-dark";
 
 /** Immutable byte snapshot backing one GET /plugins/:id/assets/<variant>. */
-interface PluginBrandingAssetSnapshot {
+export interface PluginBrandingAssetSnapshot {
   /** App-relative asset URL, content-hash query included. */
   url: string;
   /** The exact bytes used to compute `hash`; never re-read from source. */
@@ -101,11 +104,25 @@ export interface PluginBrandingAssetSet {
   compactIcon: PluginBrandingAssetSnapshot | null;
   logo: PluginBrandingAssetSnapshot | null;
   logoDark: PluginBrandingAssetSnapshot | null;
+  /**
+   * `bb.branding.experimental_icons`, declared name → snapshot served by
+   * GET /plugins/:id/assets/icons/<name>.svg. Empty when the plugin declares
+   * none.
+   */
+  icons: ReadonlyMap<string, PluginBrandingAssetSnapshot>;
+}
+
+function brandingAssetHash(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 
 /**
  * Read and hash one explicitly declared branding asset. Manifest parsing has
- * already validated that the path is a readable supported asset.
+ * already validated that the path is a readable supported asset. The compact
+ * icon is validated again here because this is the snapshot the route
+ * serves, and the file may have changed between the two reads (a dev-loop
+ * edit); a logo is snapshotted as declared, whatever markup it carries — the
+ * route's headers keep it inert.
  */
 async function loadPluginBrandingAsset(
   pluginId: string,
@@ -122,11 +139,34 @@ async function loadPluginBrandingAsset(
     .toLowerCase();
   const contentType = BRANDING_ASSET_CONTENT_TYPES[extension];
   if (contentType === undefined) return null;
-  const hash = createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+  const hash = brandingAssetHash(bytes);
   return {
     url: `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/${variant}?h=${hash}`,
     bytes,
     contentType,
+    hash,
+  };
+}
+
+/**
+ * Read and hash one declared icon (`bb.branding.experimental_icons`). The
+ * manifest reader validated the bytes at load; they are validated again here
+ * because this is the snapshot the route serves, and the file may have
+ * changed between the two reads (a dev-loop edit). Reject-only, like the
+ * manifest: the hash is over the shipped bytes.
+ */
+async function loadPluginIconAsset(
+  pluginId: string,
+  name: string,
+  path: string,
+): Promise<PluginBrandingAssetSnapshot> {
+  const bytes = await readFile(path);
+  assertValidPluginIconSvg(bytes, `bb.branding.experimental_icons["${name}"]`);
+  const hash = brandingAssetHash(bytes);
+  return {
+    url: `/api/v1/plugins/${encodeURIComponent(pluginId)}/assets/icons/${encodeURIComponent(name)}.svg?h=${hash}`,
+    bytes,
+    contentType: "image/svg+xml",
     hash,
   };
 }
@@ -138,9 +178,14 @@ export async function loadPluginBrandingAssets(
     branding: {
       compactIconPath?: string;
       logo?: { lightPath: string; darkPath?: string };
+      icons: ReadonlyMap<string, string>;
     };
   },
 ): Promise<PluginBrandingAssetSet> {
+  const icons = new Map<string, PluginBrandingAssetSnapshot>();
+  for (const [name, path] of manifest.branding.icons) {
+    icons.set(name, await loadPluginIconAsset(pluginId, name, path));
+  }
   return {
     compactIcon: await loadPluginBrandingAsset(
       pluginId,
@@ -157,6 +202,7 @@ export async function loadPluginBrandingAssets(
       manifest.branding.logo?.darkPath,
       "logo-dark",
     ),
+    icons,
   };
 }
 

@@ -47,13 +47,13 @@ import {
 } from "../services/lib/error-log-fields.js";
 import { applyLoggedThreadLifecycleEvent } from "../services/threads/lifecycle-outcome.js";
 import { applyTurnCompletedEvent } from "./turn-completed-events.js";
-import { findPluginAgentTool } from "../services/plugins/plugin-agent-contributions.js";
 import {
   getInactiveSessionLogFields,
   requireAuthenticatedDaemonSession,
 } from "./session-state.js";
 import { getAuthenticatedDaemon } from "./auth.js";
 import { validateExtensionPayloads } from "./extension-payloads.js";
+import { validatePresentationIcons } from "./presentation-icons.js";
 
 interface ToStoredEventArgs {
   envelope: HostDaemonEventEnvelope;
@@ -217,6 +217,7 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "system/manager/user_message":
     case "system/thread/interrupted":
     case "system/operation":
+    case "system/interaction/lifecycle":
     case "system/permissionGrant/lifecycle":
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":
@@ -281,39 +282,6 @@ function toStoredEvent(args: ToStoredEventArgs): AppendDaemonEventInput {
     type,
     ...deriveStoredEventItemFields(envelope.event),
     data: JSON.stringify(data),
-  };
-}
-
-/**
- * Plugin status labels are server-owned presentation metadata: providers do
- * not know about them, and old daemon clients therefore need no protocol
- * change. Persist the snapshot on both lifecycle events so historical rows
- * remain readable if a plugin later reloads or disappears.
- */
-function withPluginToolStatusLabels(
-  envelope: HostDaemonEventEnvelope,
-): HostDaemonEventEnvelope {
-  const event = envelope.event;
-  if (
-    (event.type !== "item/started" && event.type !== "item/completed") ||
-    event.item.type !== "toolCall" ||
-    event.item.server !== undefined
-  ) {
-    return envelope;
-  }
-  const statusLabels = findPluginAgentTool(event.item.tool)?.record
-    .experimentalStatusLabels;
-  if (statusLabels === null || statusLabels === undefined) return envelope;
-
-  return {
-    ...envelope,
-    event: {
-      ...event,
-      item: {
-        ...event.item,
-        statusLabels,
-      },
-    },
   };
 }
 
@@ -861,6 +829,56 @@ function resolvePostableEventBatchEntries(
   };
 }
 
+interface DroppedLifecycleEvent {
+  eventIndex: number;
+  eventType: string;
+  interactionId: string;
+  threadId: string;
+}
+
+/** The interaction id a lifecycle event names, by event type. */
+function lifecycleInteractionId(
+  event: HostDaemonEventEnvelope["event"],
+): string | null {
+  switch (event.type) {
+    case "system/interaction/lifecycle":
+      return event.interaction.id;
+    case "system/permissionGrant/lifecycle":
+    case "system/userQuestion/lifecycle":
+      return event.interactionId;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Drop every interaction lifecycle record a daemon posts. The server is the
+ * only author of these records: it appends one on each status change of an
+ * interaction it registered, so nothing a daemon sends is a legitimate one.
+ * Every other entry passes through untouched.
+ */
+function dropInteractionLifecycleEvents(entries: PostableEventBatchEntry[]): {
+  entries: PostableEventBatchEntry[];
+  droppedLifecycleEvents: DroppedLifecycleEvent[];
+} {
+  const kept: PostableEventBatchEntry[] = [];
+  const droppedLifecycleEvents: DroppedLifecycleEvent[] = [];
+  for (const entry of entries) {
+    const interactionId = lifecycleInteractionId(entry.envelope.event);
+    if (interactionId === null) {
+      kept.push(entry);
+      continue;
+    }
+    droppedLifecycleEvents.push({
+      eventIndex: entry.eventIndex,
+      eventType: entry.envelope.event.type,
+      interactionId,
+      threadId: entry.envelope.threadId,
+    });
+  }
+  return { entries: kept, droppedLifecycleEvents };
+}
+
 export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
   const { post } = typedRoutes<HostDaemonInternalSchema>(app, {
     onValidationError: (msg) => new ApiError(400, "invalid_request", msg),
@@ -894,13 +912,30 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         throw error;
       }
       const events = ungroupHostDaemonEvents(payload.eventGroups);
-      const { entries, rejectedEvents } = resolvePostableEventBatchEntries(
-        deps,
-        {
+      const { entries: ownedEntries, rejectedEvents } =
+        resolvePostableEventBatchEntries(deps, {
           hostId: session.hostId,
           events,
-        },
-      );
+        });
+      // An interaction lifecycle record is the server's own account of an
+      // interaction it registered, written by the server when the interaction
+      // is created and each time it settles. No daemon or bridge produces one,
+      // and a daemon-posted record naming a real pending interaction would
+      // render it as granted or answered — with whatever content the record
+      // carries — while the row stays pending. So every such record is
+      // dropped here and logged, never stored, whatever interaction it names.
+      const { entries, droppedLifecycleEvents } =
+        dropInteractionLifecycleEvents(ownedEntries);
+      if (droppedLifecycleEvents.length > 0) {
+        deps.logger.warn(
+          {
+            hostId: session.hostId,
+            sessionId: session.id,
+            droppedEvents: droppedLifecycleEvents,
+          },
+          "Dropped daemon-posted interaction lifecycle events; the server is their only author",
+        );
+      }
       if (rejectedEvents.length > 0) {
         deps.logger.warn(
           {
@@ -913,10 +948,14 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
       }
       // Extension payloads are validated against the owning plugin's declared
       // schema before anything else reads them; a miss becomes a visible
-      // provider/unhandled in the same batch slot.
-      const validatedEnvelopes = await validateExtensionPayloads(
+      // provider/unhandled in the same batch slot. Namespaced presentation
+      // glyphs get the same pass against the plugin's declared icons.
+      const validatedEnvelopes = validatePresentationIcons(
         deps,
-        entries.map((entry) => entry.envelope),
+        await validateExtensionPayloads(
+          deps,
+          entries.map((entry) => entry.envelope),
+        ),
       );
       const labelledEntries = entries.map((entry, index) => {
         const validated = validatedEnvelopes[index];
@@ -925,7 +964,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
         }
         return {
           ...entry,
-          envelope: withPluginToolStatusLabels(validated),
+          envelope: validated,
         };
       });
       const eventInputs = labelledEntries.map((entry) => {

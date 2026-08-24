@@ -27,10 +27,8 @@ import {
   type ProviderUsageQueryState,
 } from "@/hooks/queries/system-queries";
 import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
-import {
-  getProviderIconColorClass,
-  getProviderIconInfo,
-} from "@/lib/provider-icon";
+import { getProviderIconInfo } from "@/lib/provider-icon";
+import { ProviderIconMark } from "./ProviderIconMark";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 interface ProviderConfig {
@@ -38,6 +36,11 @@ interface ProviderConfig {
   providerId: string;
   signInHint: string;
   expiredHint: string;
+  /** The declared `strings`, kept for the icon tint. */
+  strings: ProviderInfo["strings"];
+  /** The roster entry: the declared mark (logo, glyph, family). Absent for a
+   * provider the usage response names but the roster no longer lists. */
+  provider: ProviderInfo | undefined;
 }
 
 /**
@@ -46,12 +49,14 @@ interface ProviderConfig {
  */
 function providerConfig(
   providerId: string,
-  info: Pick<ProviderInfo, "displayName" | "strings"> | undefined,
+  info: ProviderInfo | undefined,
 ): ProviderConfig {
   const name = info?.displayName ?? providerId;
   return {
     providerId,
     name,
+    strings: info?.strings,
+    provider: info,
     signInHint:
       info?.strings?.signInHint ?? `Sign in to ${name}, then reload usage.`,
     expiredHint:
@@ -230,7 +235,10 @@ function ProviderUsageBlock({
 }: ProviderUsageBlockProps) {
   const planLabel = usage?.status === "ok" ? usage.planLabel : null;
   const accountEmail = usage?.status === "ok" ? usage.accountEmail : null;
-  const iconInfo = getProviderIconInfo(config.providerId);
+  const iconInfo = getProviderIconInfo(
+    config.providerId,
+    config.provider ?? null,
+  );
   const ProviderIcon = iconInfo?.icon;
   const headingId = useId();
   const showsUsageWindows =
@@ -245,11 +253,10 @@ function ProviderUsageBlock({
         <div className="flex min-w-0 flex-1 items-start gap-2.5">
           {ProviderIcon ? (
             <span aria-hidden="true" className="mt-0.5 shrink-0">
-              <ProviderIcon
-                className={cn(
-                  "size-4",
-                  getProviderIconColorClass(config.providerId),
-                )}
+              <ProviderIconMark
+                provider={{ id: config.providerId, strings: config.strings }}
+                icon={ProviderIcon}
+                className="size-4"
               />
             </span>
           ) : null}
@@ -372,7 +379,7 @@ export function UsageLimitsSettingsSectionContent({
   const reportedProviderIds = Object.keys(usage);
   const orderedProviderIds = [
     ...providers
-      .filter((provider) => provider.experimental_providerUsage)
+      .filter((provider) => provider.maintenance.usage)
       .map((provider) => provider.id),
     ...reportedProviderIds.filter(
       (providerId) => !providerById.has(providerId),

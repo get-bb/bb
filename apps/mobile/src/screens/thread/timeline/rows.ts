@@ -49,6 +49,10 @@ export const TIMELINE_ROW_KINDS: readonly TimelineRowKind[] = [
   "work:web-search",
   "work:web-fetch",
   "work:image-view",
+  "work:file-read",
+  "work:search",
+  "work:plan-steps",
+  "work:extension",
   "work:approval",
   "work:question",
   "work:delegation",
@@ -75,6 +79,10 @@ interface TimelineRowByKind {
   "work:web-search": TimelineViewWorkRowOfKind<"web-search">;
   "work:web-fetch": TimelineViewWorkRowOfKind<"web-fetch">;
   "work:image-view": TimelineViewWorkRowOfKind<"image-view">;
+  "work:file-read": TimelineViewWorkRowOfKind<"file-read">;
+  "work:search": TimelineViewWorkRowOfKind<"search">;
+  "work:plan-steps": TimelineViewWorkRowOfKind<"plan-steps">;
+  "work:extension": TimelineViewWorkRowOfKind<"extension">;
   "work:approval": TimelineViewWorkRowOfKind<"approval">;
   "work:question": TimelineViewWorkRowOfKind<"question">;
   "work:delegation": TimelineViewWorkRowOfKind<"delegation">;

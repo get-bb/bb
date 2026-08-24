@@ -114,19 +114,6 @@ interface BuildSkillRootsArgs {
   trees: readonly CollectedSkillTree[];
 }
 
-interface PluginManifestAuthor {
-  name: string;
-}
-
-interface ClaudePluginManifest {
-  $schema: string;
-  name: string;
-  version: string;
-  description: string;
-  author: PluginManifestAuthor;
-  skills: string[];
-}
-
 interface CatalogSkillEntry {
   description: string;
   name: string;
@@ -452,21 +439,6 @@ export async function copyInjectedSkillSource(
   });
 }
 
-function createClaudePluginManifest(
-  skillNames: readonly string[],
-): ClaudePluginManifest {
-  return {
-    $schema: "https://anthropic.com/claude-code/plugin.schema.json",
-    name: "bb-global-skills",
-    version: "0.1.0",
-    description: "Global skills staged by bb.",
-    author: {
-      name: "bb",
-    },
-    skills: skillNames.map((skillName) => `./skills/${skillName}`),
-  };
-}
-
 function createCatalogFile(args: CreateCatalogFileArgs): CatalogFile {
   return {
     catalogHash: args.catalogHash,
@@ -502,23 +474,14 @@ async function writeStageRoot(args: WriteStageRootArgs): Promise<string> {
   );
   await fs.rm(tempRootPath, { recursive: true, force: true });
   await fs.mkdir(path.join(tempRootPath, "skills"), { recursive: true });
-  await fs.mkdir(path.join(tempRootPath, ".claude-plugin"), {
-    recursive: true,
-  });
 
   try {
-    const skillNames = args.trees.map((tree) => tree.source.name);
     for (const tree of args.trees) {
       await copyCollectedTree({
         skillDirectoryPath: path.join(tempRootPath, "skills", tree.source.name),
         tree,
       });
     }
-    await fs.writeFile(
-      path.join(tempRootPath, ".claude-plugin", "plugin.json"),
-      `${JSON.stringify(createClaudePluginManifest(skillNames), null, 2)}\n`,
-      "utf8",
-    );
     await fs.writeFile(
       path.join(tempRootPath, "catalog.json"),
       `${JSON.stringify(
@@ -565,31 +528,21 @@ async function writeStageRootOnce(args: WriteStageRootArgs): Promise<string> {
   return write;
 }
 
+/**
+ * One root for every provider: the staged `skills/` directory, one
+ * subdirectory per skill (`<path>/<name>/SKILL.md`), plus the skill list.
+ * Each bridge maps it to its provider's own layout (a codex extra root, a
+ * claude local plugin it assembles itself, a pi skill path, an ACP prompt
+ * listing); the daemon stages no provider-native manifest.
+ */
 function buildSkillRoots(args: BuildSkillRootsArgs): AgentRuntimeSkillRoot[] {
-  const skillDirectoryRootPath = path.join(args.stageRootPath, "skills");
   return [
     {
-      id: `global-skills:${args.catalogHash}:codex`,
-      providerId: "codex",
-      skillDirectoryRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:claude-code`,
-      providerId: "claude-code",
-      localPluginPath: args.stageRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:pi`,
-      providerId: "pi",
-      skillDirectoryRootPath,
-    },
-    {
-      id: `global-skills:${args.catalogHash}:acp`,
-      providerId: "acp",
-      skillDirectoryRootPath,
+      id: `global-skills:${args.catalogHash}`,
+      path: path.join(args.stageRootPath, "skills"),
       skills: args.trees.map((tree) => ({
-        description: tree.source.description,
         name: tree.source.name,
+        description: tree.source.description,
       })),
     },
   ];

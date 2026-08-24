@@ -1,3 +1,11 @@
-{"ts":1787275084746,"run":1787275055276,"seq":340,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Count from 1 to 40 out loud, one number per message line, and run `sleep 2` in the shell between every number. Do not stop early.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
-{"ts":1787275113817,"run":1787275055276,"seq":507,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Stop counting now. Instead, tell me the current git branch name and finish.\",\"streamingBehavior\":\"steer\",\"imageCount\":0}}"}
-{"ts":1787279502751,"run":1787275055276,"seq":1491,"dir":"bridge→provider","line":"{\"method\":\"compact\"}"}
+{"ts":1787347892585,"run":1787347884248,"seq":196,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347893111,"run":1787347884248,"seq":203,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Count from 1 to 40 out loud, one number per message line, and run `sleep 2` in the shell between every number. Do not stop early.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347897700,"run":1787347884248,"seq":238,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Stop counting now. Instead, tell me the current git branch name and finish.\",\"streamingBehavior\":\"steer\",\"id\":\"bb-3\"}"}
+{"ts":1787347898711,"run":1787347884248,"seq":253,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1787347900555,"run":1787347884248,"seq":288,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
+{"ts":1787347901690,"run":1787347884248,"seq":307,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-6\"}"}
+{"ts":1787347931339,"run":1787347884248,"seq":843,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-7\"}"}
+{"ts":1787347931339,"run":1787347884248,"seq":846,"dir":"bridge→provider","line":"{\"type\":\"compact\",\"id\":\"bb-8\"}"}
+{"ts":1787347931341,"run":1787347884248,"seq":851,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-9\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":857,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-10\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":865,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}

@@ -2901,6 +2901,7 @@ describe("PromptBoxInternal mention triggers", () => {
             compactIconUrl: null,
             logoUrl: "/api/v1/plugins/github/assets/logo?h=abc",
             logoDarkUrl: null,
+            icons: new Map(),
           },
         ],
       ]),

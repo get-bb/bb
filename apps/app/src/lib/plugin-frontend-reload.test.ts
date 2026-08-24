@@ -44,6 +44,7 @@ function candidate(
 ): PluginFrontendCandidate {
   return {
     pluginId,
+    providerIds: [],
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=${hash}`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=${hash}`,
@@ -123,6 +124,7 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     beginSlotBatch: () => () => {},
     warn: vi.fn(),
     routePluginId: () => null,
+    wantedProviderPluginIds: () => new Set<string>(),
     mountTimeoutMs: undefined as number | undefined,
   };
 }
@@ -193,6 +195,7 @@ describe("reconcilePluginFrontends", () => {
       beginSlotBatch: () => () => {},
       warn: vi.fn(),
       routePluginId: () => null,
+      wantedProviderPluginIds: () => new Set<string>(),
     };
 
     await reconcilePluginFrontends(state, deps); // boot

@@ -2185,7 +2185,7 @@ export default definePluginApp((app) => {
     icon: "FileText",
     path: "docs",
     component: NotesPanel,
-    experimental_fixedTabs: [
+    fixedTabs: [
       {
         panelId: "docs",
         id: "navigation",

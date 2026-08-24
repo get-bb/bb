@@ -1,5 +1,4 @@
 import path from "node:path";
-import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
   getLatestThreadSequence,
@@ -85,15 +84,9 @@ import { parseFileListLimit } from "../file-list-query.js";
 import { parseSafeRelativeRoutePath } from "../relative-route-path.js";
 
 function resolveThreadProviderDisplayName(
-  deps: Pick<AppDeps, "config" | "providerRegistry">,
+  deps: Pick<AppDeps, "providerRegistry">,
   providerId: string,
 ): string | undefined {
-  const customAcpAgent = deps.config.customAcpAgents.find(
-    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
-  );
-  if (customAcpAgent) {
-    return customAcpAgent.displayName;
-  }
   return deps.providerRegistry.get(providerId)?.info.displayName;
 }
 

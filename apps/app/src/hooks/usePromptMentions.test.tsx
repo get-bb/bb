@@ -1,41 +1,15 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import type { SystemConfigResponse } from "@bb/server-contract";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { usePromptMentions } from "./usePromptMentions";
 
 vi.mock("@/lib/sdk", () => ({
   sdk: { system: { config: vi.fn() } },
 }));
-
-function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
-    keybindings: [],
-    defaultKeybindings: [],
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    localHelperPorts: [],
-    serverUrl: "http://localhost:38886",
-    primaryHostId: null,
-    primaryHostPlatform: null,
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
-}
 
 function responseJson(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -58,7 +32,7 @@ afterEach(() => {
 
 describe("usePromptMentions", () => {
   it("shows loading for a non-at plugin trigger while the query is debouncing", async () => {
-    vi.mocked(sdk.system.config).mockResolvedValue(systemConfig());
+    vi.mocked(sdk.system.config).mockResolvedValue(makeSystemConfig());
     const fetchMock = vi.fn((input: RequestInfo | URL) => {
       const url = urlForFetchInput(input);
       if (url === "/api/v1/plugins/contributions") {

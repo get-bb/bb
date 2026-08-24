@@ -90,7 +90,15 @@ describe("issue #1662: plugin install against a pre-0.38.0 server", () => {
     const { sdk, bodies } = createLegacyServerSdk();
     await expect(
       sdk.plugins.install({ source: "path:/tmp/my-plugin" }),
-    ).resolves.toEqual({ ...legacyInstalledPlugin, publisherLabel: null });
+    ).resolves.toEqual({
+      ...legacyInstalledPlugin,
+      publisherLabel: null,
+      // Absent from a pre-0.39 response: tolerated on the SDK's response
+      // schema only, so the request body above stays `{ source }`.
+      providerIds: [],
+      // Likewise for the declared-icon map, added later still.
+      icons: {},
+    });
     expect(bodies).toEqual([{ source: "path:/tmp/my-plugin" }]);
   });
 

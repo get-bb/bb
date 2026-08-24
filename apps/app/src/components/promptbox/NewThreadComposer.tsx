@@ -578,6 +578,7 @@ export function NewThreadComposer({
     selectedProviderId,
     serviceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     setEnvironmentSelectionValue: setCreationEnvironmentSelectionValue,
     setPermissionMode,
     setProviderModelReasoning,
@@ -1373,6 +1374,7 @@ export function NewThreadComposer({
               onChange: handleServiceTierChange,
               supported: supportsServiceTier,
               supportByProvider: serviceTierSupportByProvider,
+              fastLabel: serviceTierFastLabel,
             },
             reasoning: {
               value: reasoningLevel,
@@ -1449,6 +1451,7 @@ export function NewThreadComposer({
       textEffects,
       worktreeDisabledReason,
       worktreeUnavailable,
+      serviceTierFastLabel,
     ],
   );
 

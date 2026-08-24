@@ -14,6 +14,7 @@ import {
 function candidate(pluginId: string, jsBytes: number): PluginFrontendCandidate {
   return {
     pluginId,
+    providerIds: [],
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=h`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=h`,
@@ -68,6 +69,7 @@ function makeDeps(
     removeRegistrations: vi.fn(),
     warn: vi.fn(),
     routePluginId: () => null,
+    wantedProviderPluginIds: () => new Set<string>(),
     beginSlotBatch: () => () => {},
     ...overrides,
   };

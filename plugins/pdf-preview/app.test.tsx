@@ -45,7 +45,7 @@ describe("PDF file opener", () => {
     const slot = renderSlot(app.fileOpeners[0]!, {
       path: "reports/quarter one.pdf",
       source,
-      experimental_Original: () => <div>Built-in preview</div>,
+      Original: () => <div>Built-in preview</div>,
     });
 
     const frame = await waitFor(() => {
@@ -82,7 +82,7 @@ describe("PDF file opener", () => {
     const slot = renderSlot(app.fileOpeners[0]!, {
       path: "spoofed.pdf",
       source,
-      experimental_Original: () => null,
+      Original: () => null,
     });
 
     expect((await slot.findByRole("alert")).textContent).toMatch(

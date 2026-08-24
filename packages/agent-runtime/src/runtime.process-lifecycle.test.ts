@@ -27,7 +27,6 @@ import {
   scriptedEchoProcessEnv,
   waitForRuntimeState,
   waitForThreadAgentMessageText,
-  waitForThreadTurnCompleted,
   waitForThreadTurnStarted,
   withBridgeLaunch,
   type ScriptedEchoLaunchScript,
@@ -54,6 +53,13 @@ interface CreateProviderProcessManagerArgs {
 
 /** The codex thread-process tests share this launch: pid-stamped identities. */
 const CODEX_SCRIPT: ScriptedEchoLaunchScript = { identifyProcess: true };
+
+/**
+ * The launch the process-manager tests hand to `ensureProvider`. The manager
+ * only forwards it to the adapter factory, and these tests inject their own
+ * adapter (`createManagerAdapter`), so one shared launch serves every key.
+ */
+const MANAGER_BRIDGE_LAUNCH = createScriptedEchoLaunch();
 
 describe("createAgentRuntime process lifecycle", () => {
   let tmpDir: string;
@@ -135,10 +141,6 @@ describe("createAgentRuntime process lifecycle", () => {
         }
       },
       onProcessExit: args.onProcessExit,
-      onProviderIdentityWaitersInterrupted: (providerProcess) =>
-        identityRegistry.resolvePendingIdentityWaiters(
-          providerProcess.identity,
-        ),
       onProviderThreadDetached: (threadId) =>
         identityRegistry.clearThread(threadId),
       onStderr: args.onStderr,
@@ -156,7 +158,11 @@ describe("createAgentRuntime process lifecycle", () => {
     manager: RuntimeProviderProcessManager,
   ): Promise<void> {
     await expect(
-      manager.ensureProvider({ processKey: "fake", providerId: "fake" }),
+      manager.ensureProvider({
+        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+        processKey: "fake",
+        providerId: "fake",
+      }),
     ).rejects.toThrow(/exited during startup|exited/i);
   }
 
@@ -232,6 +238,7 @@ describe("createAgentRuntime process lifecycle", () => {
     const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
     const freshKey = "fake#bridge:bbbbbbbbbbbbbbbb";
     await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
       processKey: staleKey,
       providerId: "fake",
     });
@@ -241,6 +248,7 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
       processKey: freshKey,
       providerId: "fake",
     });
@@ -270,6 +278,7 @@ describe("createAgentRuntime process lifecycle", () => {
 
     const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
     await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
       processKey: staleKey,
       providerId: "fake",
     });
@@ -280,6 +289,7 @@ describe("createAgentRuntime process lifecycle", () => {
     staleProcess.identity.threadIds.add("thread-live");
 
     await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
       processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
       providerId: "fake",
     });
@@ -305,7 +315,11 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     const staleKey = "fake#bridge:aaaaaaaaaaaaaaaa";
-    await manager.ensureProvider({ processKey: staleKey, providerId: "fake" });
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: staleKey,
+      providerId: "fake",
+    });
     const staleProcess = manager.requireProviderProcess({
       processKey: staleKey,
       providerId: "fake",
@@ -313,6 +327,7 @@ describe("createAgentRuntime process lifecycle", () => {
     staleProcess.identity.threadIds.add("thread-live");
 
     await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
       processKey: "fake#bridge:bbbbbbbbbbbbbbbb",
       providerId: "fake",
     });
@@ -337,6 +352,7 @@ describe("createAgentRuntime process lifecycle", () => {
 
     const currentKey = "fake#bridge:aaaaaaaaaaaaaaaa";
     await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
       processKey: currentKey,
       providerId: "fake",
     });
@@ -513,7 +529,11 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     const [exitedPid] = startedPids(startsLog);
 
-    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake",
+      providerId: "fake",
+    });
     const replacementProvider = manager.requireProviderProcess({
       processKey: "fake",
       providerId: "fake",
@@ -555,9 +575,21 @@ describe("createAgentRuntime process lifecycle", () => {
     // Every caller waits on the same exit finalization, so each one resumes
     // needing to re-check whether a peer already spawned the replacement.
     await Promise.all([
-      manager.ensureProvider({ processKey: "fake", providerId: "fake" }),
-      manager.ensureProvider({ processKey: "fake", providerId: "fake" }),
-      manager.ensureProvider({ processKey: "fake", providerId: "fake" }),
+      manager.ensureProvider({
+        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+        processKey: "fake",
+        providerId: "fake",
+      }),
+      manager.ensureProvider({
+        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+        processKey: "fake",
+        providerId: "fake",
+      }),
+      manager.ensureProvider({
+        bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+        processKey: "fake",
+        providerId: "fake",
+      }),
     ]);
 
     const replacementProvider = manager.requireProviderProcess({
@@ -580,9 +612,13 @@ describe("createAgentRuntime process lifecycle", () => {
     const writeMarker = join(tmpDir, "stale-descendant-output.wrote");
     // The descendant keeps holding both inherited pipes past the assertions
     // below, so the pipes can only be closed by the grace-deadline cleanup
-    // rather than by the descendant itself exiting and letting them EOF.
+    // rather than by the descendant itself exiting and letting them EOF. It
+    // ignores the SIGTERM the unexpected-exit sweep sends its process group,
+    // the way a stuck grandchild would, so the cut-off is what protects the
+    // replacement's stream.
     const delayedWriter = `const fs = require("node:fs");
       const writeMarker = ${JSON.stringify(writeMarker)};
+      process.on("SIGTERM", () => {});
       setTimeout(() => {
         fs.writeFileSync(writeMarker, "wrote");
         process.stdout.write("stale-from-old-provider\\n");
@@ -614,7 +650,11 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     const [exitedPid] = startedPids(startsLog);
 
-    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake",
+      providerId: "fake",
+    });
     const replacementProvider = manager.requireProviderProcess({
       processKey: "fake",
       providerId: "fake",
@@ -657,7 +697,11 @@ describe("createAgentRuntime process lifecycle", () => {
       workspacePath: tmpDir,
     });
 
-    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake",
+      providerId: "fake",
+    });
     const shuttingDownProcess = manager.requireProviderProcess({
       processKey: "fake",
       providerId: "fake",
@@ -683,7 +727,11 @@ describe("createAgentRuntime process lifecycle", () => {
     );
     await shutdown;
 
-    await manager.ensureProvider({ processKey: "fake", providerId: "fake" });
+    await manager.ensureProvider({
+      bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+      processKey: "fake",
+      providerId: "fake",
+    });
     const replacementProcess = manager.requireProviderProcess({
       processKey: "fake",
       providerId: "fake",
@@ -729,7 +777,7 @@ describe("createAgentRuntime process lifecycle", () => {
     return { processLog, runtime };
   }
 
-  it("runs each codex thread on a separate provider process", async () => {
+  it("runs every codex thread on one provider process", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });
     await runtime.startThread({
@@ -746,13 +794,12 @@ describe("createAgentRuntime process lifecycle", () => {
       providerId: "codex",
       options: fullRuntimeOptions,
     });
-    await waitForRuntimeState({
-      label: "two codex provider processes spawned",
-      predicate: () =>
-        processLog.read().filter((line) => line.startsWith("spawn:")).length ===
-        2,
-      runtime,
-    });
+    // One process per provider artifact: the bridge supervises its own
+    // per-thread children (see runtime.codex-topology.test.ts for the real
+    // codex bridge); the runtime never scopes a process to a thread.
+    expect(
+      processLog.read().filter((line) => line.startsWith("spawn:")),
+    ).toHaveLength(1);
     const firstSession = runtime.getProviderSession("t1");
     const secondSession = runtime.getProviderSession("t2");
     if (!firstSession || !secondSession) {
@@ -789,8 +836,8 @@ describe("createAgentRuntime process lifecycle", () => {
       text: "second",
       threadId: "t2",
     });
-    // Each answer carries the pid of the process that served it: two
-    // different processes.
+    // Each answer carries the pid of the process that served it: the same
+    // process for both threads.
     const pidOf = (threadId: string): string | undefined =>
       events
         .filter(
@@ -804,16 +851,13 @@ describe("createAgentRuntime process lifecycle", () => {
         )
         .find((pid) => pid !== undefined);
     expect(pidOf("t1")).toBeDefined();
-    expect(pidOf("t1")).not.toBe(pidOf("t2"));
+    expect(pidOf("t1")).toBe(pidOf("t2"));
 
+    // Stopping one thread releases its session; the process stays up for
+    // the other thread and for the provider's next thread.
     await runtime.stopThread({ threadId: "t1" });
-    await waitForRuntimeState({
-      label: "one codex provider process exited after stopping one thread",
-      predicate: () =>
-        processLog.read().filter((line) => line.startsWith("exit:")).length ===
-        1,
-      runtime,
-    });
+    expect(runtime.hasThread("t1")).toBe(false);
+    expect(runtime.listRunningProviders()).toEqual(["codex"]);
     await runtime.runTurn({
       clientRequestId: "creq_2222222252",
       threadId: "t2",
@@ -827,10 +871,13 @@ describe("createAgentRuntime process lifecycle", () => {
       text: "still alive",
       threadId: "t2",
     });
+    expect(
+      processLog.read().filter((line) => line.startsWith("exit:")),
+    ).toHaveLength(0);
     await runtime.shutdown();
   });
 
-  it("stops a thread-scoped codex process when session construction fails", async () => {
+  it("keeps the codex provider process when one session construction fails", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({
       events,
@@ -849,170 +896,22 @@ describe("createAgentRuntime process lifecycle", () => {
         options: fullRuntimeOptions,
       }),
     ).rejects.toThrow("no rollout found");
-    // The process the failed construction spawned does not linger.
-    await waitForRuntimeState({
-      label: "thread-scoped codex process exited after failed construction",
-      predicate: () =>
-        processLog.read().filter((line) => line.startsWith("exit:")).length ===
-        1,
-      runtime,
-      timeoutMs: 5_000,
-    });
     expect(runtime.getProviderSession("t1")).toBeNull();
-    await waitForRuntimeState({
-      label: "no codex provider process left running",
-      predicate: () => runtime.listRunningProviders().length === 0,
-      runtime,
-      timeoutMs: 5_000,
-    });
+    // The process serves every codex thread in the environment, so one
+    // failed construction does not take it down.
+    expect(runtime.listRunningProviders()).toEqual(["codex"]);
+    expect(
+      processLog.read().filter((line) => line.startsWith("exit:")),
+    ).toHaveLength(0);
     await runtime.shutdown();
   });
 
-  it("restarts a codex thread process after a terminal account error before the next turn", async () => {
-    const events: ThreadEvent[] = [];
-    const { processLog, runtime } = createCodexRuntime({ events });
-    try {
-      await runtime.startThread({
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      const initialSession = runtime.getProviderSession("t1");
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222253",
-        threadId: "t1",
-        input: [
-          promptTextInput({
-            text: "fail_turn:unexpected_status_401_Unauthorized:_Missing_bearer",
-          }),
-        ],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnCompleted({
-        events,
-        providerId: "codex",
-        runtime,
-        threadId: "t1",
-      });
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "turn/completed",
-          threadId: "t1",
-          status: "failed",
-        }),
-      );
-      // The 401 was the point; the waits below must not fail fast on it.
-      events.splice(0, events.length);
-
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222254",
-        threadId: "t1",
-        input: [promptTextInput({ text: "after reauth" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadAgentMessageText({
-        events,
-        providerId: "codex",
-        runtime,
-        text: "after reauth",
-        threadId: "t1",
-      });
-
-      // Same provider session, resumed on a fresh process.
-      expect(runtime.getProviderSession("t1")).toEqual(initialSession);
-      const logLines = processLog.read();
-      expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
-        2,
-      );
-      expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
-        1,
-      );
-      expect(
-        logLines.some(
-          (line) =>
-            line.startsWith("thread/resume:") &&
-            line.endsWith(`:t1:${initialSession?.providerThreadId ?? ""}`),
-        ),
-      ).toBe(true);
-      const turnStarts = logLines.filter((line) =>
-        line.startsWith("turn/start:"),
-      );
-      expect(turnStarts).toHaveLength(2);
-      const [accountErrorTurn, afterReauthTurn] = turnStarts;
-      expect(accountErrorTurn?.split(":")[1]).not.toBe(
-        afterReauthTurn?.split(":")[1],
-      );
-    } finally {
-      await runtime.shutdown();
-    }
-  });
-
-  // A graduated provider has no daemon-bundled bridge, so the runtime's
-  // account restart must re-resume with the launch the session started with —
-  // otherwise the restart fails with "no provider bridge launch".
-  it("re-resumes the codex account restart with the thread's bridge launch", async () => {
-    const events: ThreadEvent[] = [];
-    const record = createScriptedEchoRequestRecord();
-    const bridgeLaunch = createScriptedEchoLaunch({
-      pluginId: "provider-codex",
-      scripted: CODEX_SCRIPT,
-    });
-    const runtime = createAgentRuntime({
-      workspacePath: tmpDir,
-      env: record.env,
-      onEvent: (event) => events.push(event),
-      onToolCall: async () => ({ contentItems: [], success: true }),
-    });
-    try {
-      // The launch rides only this startThread; the restart's resume must
-      // reuse it on its own.
-      await runtime.startThread({
-        bridgeLaunch,
-        environmentId: "env-1",
-        threadId: "t1",
-        projectId: "p1",
-        providerId: "codex",
-        options: fullRuntimeOptions,
-      });
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222255",
-        threadId: "t1",
-        input: [promptTextInput({ text: "fail_turn:401_Unauthorized" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadTurnCompleted({
-        events,
-        providerId: "codex",
-        runtime,
-        threadId: "t1",
-      });
-      events.splice(0, events.length);
-      await runtime.runTurn({
-        clientRequestId: "creq_2222222256",
-        threadId: "t1",
-        input: [promptTextInput({ text: "after reauth" })],
-        options: fullRuntimeOptions,
-      });
-      await waitForThreadAgentMessageText({
-        events,
-        providerId: "codex",
-        runtime,
-        text: "after reauth",
-        threadId: "t1",
-      });
-      // Two bridge processes were launched from the same artifact, and the
-      // second one received the resume.
-      const requests = record.read();
-      expect(requests.filter((r) => r.method === "initialize")).toHaveLength(2);
-      expect(requests.filter((r) => r.method === "thread/resume")).toHaveLength(
-        1,
-      );
-    } finally {
-      await runtime.shutdown();
-    }
-  });
+  // The codex account restart (shut the thread's process down after a
+  // terminal 401/429 and resume before the next turn, #130) moved into the
+  // codex bridge, which rebuilds its own app-server child from the rollout:
+  // plugins/provider-codex/src/bridge/bridge.recovery.test.ts. The runtime's
+  // generic counterpart, the `restartRecommended` recovery hint, is pinned in
+  // runtime.recovery.test.ts.
 
   it("gives a changed declaration its own bridge process at the same artifact hash", async () => {
     const record = createScriptedEchoRequestRecord();
@@ -1084,7 +983,7 @@ describe("createAgentRuntime process lifecycle", () => {
     }
   });
 
-  it("reaps a codex thread process after a terminal provider error before turn start", async () => {
+  it("reaps a codex session after a terminal provider error before turn start", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });
     try {
@@ -1131,19 +1030,18 @@ describe("createAgentRuntime process lifecycle", () => {
           threadId: "t1",
         }),
       ]);
-      await waitForRuntimeState({
-        label: "reaped codex process exited",
-        predicate: () =>
-          processLog.read().filter((line) => line.startsWith("exit:"))
-            .length === 1,
-        runtime,
-      });
+      // The session is released (thread/stop), the provider process stays.
+      expect(runtime.getProviderSession("t1")).toBeNull();
+      expect(runtime.listRunningProviders()).toEqual(["codex"]);
+      expect(
+        processLog.read().filter((line) => line.startsWith("exit:")),
+      ).toHaveLength(0);
     } finally {
       await runtime.shutdown();
     }
   });
 
-  it("reaps an idle codex thread process and resumes it later", async () => {
+  it("reaps an idle codex session and resumes it later on the same process", async () => {
     const events: ThreadEvent[] = [];
     const { processLog, runtime } = createCodexRuntime({ events });
     try {
@@ -1199,15 +1097,10 @@ describe("createAgentRuntime process lifecycle", () => {
         threadId: "t1",
       });
       expect(reapedSession.idleForMs).toBeGreaterThanOrEqual(30 * 60 * 1000);
-      await waitForRuntimeState({
-        label: "reaped codex process exited",
-        predicate: () =>
-          processLog.read().filter((line) => line.startsWith("exit:"))
-            .length === 1,
-        runtime,
-      });
       expect(runtime.hasThread("t1")).toBe(false);
       expect(runtime.getProviderSession("t1")).toBeNull();
+      // The session was released on the provider process, which stays up.
+      expect(runtime.listRunningProviders()).toEqual(["codex"]);
 
       await runtime.resumeThread({
         environmentId: "env-1",
@@ -1230,12 +1123,13 @@ describe("createAgentRuntime process lifecycle", () => {
         text: "after reap",
         threadId: "t1",
       });
+      // Resumed on the same process: one spawn, no exit, one thread/resume.
       const logLines = processLog.read();
       expect(logLines.filter((line) => line.startsWith("spawn:"))).toHaveLength(
-        2,
+        1,
       );
       expect(logLines.filter((line) => line.startsWith("exit:"))).toHaveLength(
-        1,
+        0,
       );
       expect(
         logLines.some(
@@ -1343,6 +1237,71 @@ describe("createAgentRuntime process lifecycle", () => {
     }
   });
 
+  // A cold daemon resumes a thread it never started: the runtime seeds
+  // sessionRestorable false and only the bridge's thread/resume result can
+  // turn it on, which is what makes the resumed session reapable.
+  it("marks a cold-resumed session restorable from the bridge's resume result", async () => {
+    const runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: () => {} },
+      launch: {
+        pluginId: "provider-claude-code",
+        scripted: { sessionRestorable: true },
+      },
+    });
+    try {
+      await runtime.resumeThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerThreadId: "old-prov-1",
+        providerId: "claude-code",
+        options: fullRuntimeOptions,
+      });
+      expect(runtime.hasThread("t1")).toBe(true);
+      const result = await runtime.reapIdleProviderSessions({
+        idleForMs: 0,
+        nowMs: Date.now(),
+        providerSessionReapingEnabled: true,
+      });
+      expect(result.reapedSessions).toEqual([
+        expect.objectContaining({ providerId: "claude-code", threadId: "t1" }),
+      ]);
+      expect(runtime.hasThread("t1")).toBe(false);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("keeps a cold-resumed session when the bridge's resume result is not restorable", async () => {
+    const runtime = createScriptedEchoRuntime({
+      runtime: { workspacePath: tmpDir, onEvent: () => {} },
+      launch: {
+        pluginId: "provider-claude-code",
+        scripted: { sessionRestorable: false },
+      },
+    });
+    try {
+      await runtime.resumeThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerThreadId: "old-prov-1",
+        providerId: "claude-code",
+        options: fullRuntimeOptions,
+      });
+      await expect(
+        runtime.reapIdleProviderSessions({
+          idleForMs: 0,
+          nowMs: Date.now(),
+          providerSessionReapingEnabled: true,
+        }),
+      ).resolves.toEqual({ reapedSessions: [] });
+      expect(runtime.hasThread("t1")).toBe(true);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
   it("keeps releasing later sessions after one release fails", async () => {
     const events: ThreadEvent[] = [];
     const runtime = createScriptedEchoRuntime({
@@ -1420,7 +1379,11 @@ describe("createAgentRuntime process lifecycle", () => {
       // The idle script never answers initialize; the spawn env is what is
       // under test, so the stderr line is awaited while startup is pending.
       const ensure = manager
-        .ensureProvider({ processKey: "fake", providerId: "fake" })
+        .ensureProvider({
+          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+          processKey: "fake",
+          providerId: "fake",
+        })
         .catch(() => undefined);
       await waitForRuntimeState({
         label: "provider env stderr",
@@ -1485,7 +1448,11 @@ describe("createAgentRuntime process lifecycle", () => {
 
     try {
       const ensure = manager
-        .ensureProvider({ processKey: "fake", providerId: "fake" })
+        .ensureProvider({
+          bridgeLaunch: MANAGER_BRIDGE_LAUNCH,
+          processKey: "fake",
+          providerId: "fake",
+        })
         .catch(() => undefined);
       await waitForRuntimeState({
         label: "bridge env stderr",
@@ -1583,13 +1550,7 @@ describe("createAgentRuntime process lifecycle", () => {
             ],
           }),
         },
-        skillRoots: [
-          {
-            id: "skill-root",
-            providerId: "codex",
-            skillDirectoryRootPath: tmpDir,
-          },
-        ],
+        skillRoots: [{ id: "skill-root", path: tmpDir, skills: [] }],
         onEvent: () => {},
       },
       launch: { pluginId: "provider-codex" },
@@ -1625,13 +1586,7 @@ describe("createAgentRuntime process lifecycle", () => {
       runtime: {
         workspacePath: tmpDir,
         env: retryRecord.env,
-        skillRoots: [
-          {
-            id: "skill-root",
-            providerId: "codex",
-            skillDirectoryRootPath: tmpDir,
-          },
-        ],
+        skillRoots: [{ id: "skill-root", path: tmpDir, skills: [] }],
         onEvent: () => {},
       },
       launch: { pluginId: "provider-codex" },
@@ -1661,13 +1616,7 @@ describe("createAgentRuntime process lifecycle", () => {
       runtime: {
         workspacePath: tmpDir,
         env: record.env,
-        skillRoots: [
-          {
-            id: "skill-root",
-            providerId: "codex",
-            skillDirectoryRootPath: tmpDir,
-          },
-        ],
+        skillRoots: [{ id: "skill-root", path: tmpDir, skills: [] }],
         onEvent: () => {},
       },
       launch: { pluginId: "provider-codex", scripted: { startDelayMs: 50 } },

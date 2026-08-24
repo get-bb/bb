@@ -1,12 +1,121 @@
 // @vitest-environment jsdom
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
+import { resetDeprecatedAliasWarningsForTests } from "./plugin-sdk-deprecated-aliases";
 import { AppNavigationHostProvider } from "./app-navigation-host";
 
 afterEach(cleanup);
+
+/**
+ * Bundles built against an SDK before 0.4.16 reach the runtime through the
+ * old names (`export const { experimental_UrlLink } = runtime.pluginSdkApp`
+ * in the build shim; `navigate.experimental_openUrl(url)` in plugin code).
+ * The aliases are off-contract, so the tests read them the way such a bundle
+ * does: by name, through Reflect.
+ */
+describe("plugin SDK deprecated aliases", () => {
+  beforeEach(() => {
+    resetDeprecatedAliasWarningsForTests();
+  });
+
+  it("hands experimental_UrlLink a stable alias that warns on its first render, not on access", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const runtime = pluginSdkAppImplementation;
+      const alias = Reflect.get(runtime, "experimental_UrlLink");
+      // Destructuring at bundle load is silent; the same alias comes back.
+      expect(typeof alias).toBe("function");
+      expect(Reflect.get(runtime, "experimental_UrlLink")).toBe(alias);
+      expect(warn).not.toHaveBeenCalled();
+      // Off-contract: never part of the enumerated surface.
+      expect(Object.keys(runtime)).not.toContain("experimental_UrlLink");
+
+      const LegacyUrlLink = alias as typeof runtime.UrlLink;
+      const view = render(
+        <MemoryRouter>
+          <AppNavigationHostProvider capabilities={{ openUrl: () => true }}>
+            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+              <LegacyUrlLink href="https://example.com/docs">Docs</LegacyUrlLink>
+            </PluginSlotMount>
+          </AppNavigationHostProvider>
+        </MemoryRouter>,
+      );
+      expect(screen.getByText("Docs").closest("a")?.getAttribute("href")).toBe(
+        "https://example.com/docs",
+      );
+      view.rerender(
+        <MemoryRouter>
+          <AppNavigationHostProvider capabilities={{ openUrl: () => true }}>
+            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+              <LegacyUrlLink href="https://example.com/docs">Docs again</LegacyUrlLink>
+            </PluginSlotMount>
+          </AppNavigationHostProvider>
+        </MemoryRouter>,
+      );
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        "experimental_UrlLink is deprecated; use UrlLink. Removed in bb 0.42",
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("forwards navigate.experimental_openUrl to openUrl and warns once", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const openUrl = vi.fn(() => true);
+    const results: unknown[] = [];
+    function Probe() {
+      const navigate = pluginSdkAppImplementation.useBbNavigate();
+      const legacyOpenUrl = Reflect.get(navigate, "experimental_openUrl");
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof legacyOpenUrl !== "function") {
+              results.push("missing");
+              return;
+            }
+            results.push(legacyOpenUrl("https://example.com/a"));
+            results.push(legacyOpenUrl("https://example.com/b"));
+          }}
+        >
+          Open
+        </button>
+      );
+    }
+    try {
+      render(
+        <MemoryRouter>
+          <AppNavigationHostProvider capabilities={{ openUrl }}>
+            <PluginSlotMount pluginId="demo" slotKind="test" slotId="probe">
+              <Probe />
+            </PluginSlotMount>
+          </AppNavigationHostProvider>
+        </MemoryRouter>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Open" }));
+      expect(results).toEqual([true, true]);
+      expect(openUrl).toHaveBeenNthCalledWith(1, {
+        url: "https://example.com/a",
+      });
+      expect(openUrl).toHaveBeenNthCalledWith(2, {
+        url: "https://example.com/b",
+      });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        "experimental_openUrl is deprecated; use openUrl. Removed in bb 0.42",
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
 
 describe("plugin SDK Markdown", () => {
   it("uses the surrounding thread detail navigation for file and web links", () => {

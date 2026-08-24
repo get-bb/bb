@@ -49,8 +49,25 @@ vi.mock("@/components/ui/app-toast", () => ({
   },
 }));
 
-vi.mock("@/lib/sdk", () => ({
-  sdk: { system: { version: vi.fn() } },
+vi.mock("@/lib/sdk", async () => {
+  // The provider roster: each provider's declared logo is its mark.
+  const { makeProviderInfo } = await import("@/test/provider-info-fixture");
+  return {
+    sdk: {
+      system: { version: vi.fn() },
+      providers: {
+        list: vi.fn(async () => [
+          makeProviderInfo({ id: "codex", displayName: "Codex" }),
+          makeProviderInfo({ id: "claude-code", displayName: "Claude Code" }),
+          makeProviderInfo({ id: "acp-cursor", displayName: "Cursor" }),
+        ]),
+      },
+    },
+  };
+});
+
+vi.mock("@/lib/ws", () => ({
+  wsManager: { subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
 vi.mock("@/hooks/useUpdateInventory", () => ({
@@ -930,7 +947,7 @@ The canonical release summary.
     ).toBeDefined();
   });
 
-  it("shows installed provider CLIs including up-to-date rows", () => {
+  it("shows installed provider CLIs including up-to-date rows", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -976,11 +993,17 @@ The canonical release summary.
     expect(screen.queryByText("Cursor")).toBeNull();
     expect(screen.queryByText(/^Update available/)).toBeNull();
     expect(screen.queryByText("Choose an update below.")).toBeNull();
-    const providerIcon = document.querySelector('[data-provider-icon="codex"]');
-    expect(providerIcon).not.toBeNull();
-    expect(providerIcon?.querySelector("svg")?.className.baseVal).toContain(
-      "text-muted-foreground",
-    );
+    // The mark is the provider's served logo as a currentColor mask; it
+    // arrives with the roster and takes the row's muted colour.
+    const providerIcon = await waitFor(() => {
+      const node = document.querySelector('[data-provider-icon="codex"]');
+      expect(node).not.toBeNull();
+      expect(node?.querySelector("[data-provider-logo]")).not.toBeNull();
+      return node;
+    });
+    expect(
+      providerIcon?.querySelector("[data-provider-logo]")?.getAttribute("class"),
+    ).toContain("text-muted-foreground");
     // Icon-only. The accessible name is the state and the verb — the row
     // already prints the CLI, its versions, and the machine above it. Row and
     // bulk actions share the same quiet treatment so neither competes with the
@@ -1049,7 +1072,7 @@ The canonical release summary.
     expect(localHeading.textContent).not.toContain("Primary");
   });
 
-  it("lists Cursor updates with the other provider CLIs", () => {
+  it("lists Cursor updates with the other provider CLIs", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -1068,9 +1091,11 @@ The canonical release summary.
     expect(
       screen.getByRole("button", { name: "Open Cursor settings" }),
     ).toBeDefined();
-    expect(
-      document.querySelector('[data-provider-icon="acp-cursor"]'),
-    ).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-provider-icon="acp-cursor"]'),
+      ).not.toBeNull(),
+    );
     fireEvent.click(
       screen.getByRole("button", {
         name: "Update available · Update Cursor on workstation",
@@ -1266,7 +1291,7 @@ The canonical release summary.
     expect(screen.queryByText("Codex")).toBeNull();
   });
 
-  it("removes running and queued provider jobs from Update all", () => {
+  it("removes running and queued provider jobs from Update all", async () => {
     useDesktopUpdateInfoMock.mockReturnValue({
       desktopApi: null,
       desktopInfo: null,
@@ -1299,11 +1324,15 @@ The canonical release summary.
       ).length,
     ).toBe(2);
     for (const providerId of ["codex", "claude-code"]) {
-      expect(
-        document
-          .querySelector(`[data-provider-icon="${providerId}"] svg`)
-          ?.getAttribute("class"),
-      ).toContain("text-muted-foreground");
+      await waitFor(() =>
+        expect(
+          document
+            .querySelector(
+              `[data-provider-icon="${providerId}"] [data-provider-logo]`,
+            )
+            ?.getAttribute("class"),
+        ).toContain("text-muted-foreground"),
+      );
     }
   });
 

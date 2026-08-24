@@ -37,6 +37,8 @@ import {
   makeDispatchOptions,
   makeTempDir,
   unexpectedProjectAttachmentFetch,
+  unexpectedProviderMaintenance,
+  fetchDispatchTestArtifact,
 } from "./dispatch-helpers.js";
 
 /**
@@ -153,7 +155,7 @@ async function scriptedEchoDispatchLaunch(
         : { scripted: JSON.parse(JSON.stringify(options.scripted)) },
     envPassthrough: [],
     capabilities: {
-      experimental_providerInstallation: false,
+      providerInstallation: false,
       supportsServiceTier: false,
       permissionModes: ["accept-edits", "auto", "full"],
       supportsThreadArchive: true,
@@ -479,6 +481,8 @@ describe("thread.stop race semantics", () => {
       dataDir: "/tmp/bb-stop-race-data",
       eventSink: noopEventSink,
       fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       logger: { debug: () => undefined, warn: () => undefined },
       runtimeManager: harness.manager,
       threadStorageRootPath: "/tmp/bb-stop-race-thread-storage",

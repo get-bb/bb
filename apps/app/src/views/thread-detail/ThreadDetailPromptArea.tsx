@@ -7,14 +7,14 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import type { IconName } from "@bb/shared-ui/icon";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import { isPluginPendingInteraction, PERSONAL_PROJECT_ID } from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   EnvironmentStatus,
   PendingInteraction,
@@ -34,7 +34,6 @@ import type {
 } from "@bb/server-contract";
 import type { ChildThreadPendingAttention } from "@/hooks/queries/child-thread-pending-interactions";
 import { ThreadPendingInteractionBanner } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
-import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import {
   type PluginComposerHost,
   useComposerHostDraftNotifier,
@@ -692,6 +691,7 @@ export function ThreadDetailPromptArea({
     supportsPermissionModeSelection,
     supportsServiceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     executionInputSources,
   } = useThreadCreationOptions({
     enabled: thread.archivedAt === null,
@@ -1168,6 +1168,7 @@ export function ThreadDetailPromptArea({
         onChange: setServiceTier,
         supported: supportsServiceTier,
         supportByProvider: serviceTierSupportByProvider,
+        fastLabel: serviceTierFastLabel,
       },
       reasoning: {
         value: reasoningLevel,
@@ -1200,6 +1201,7 @@ export function ThreadDetailPromptArea({
       setReasoningLevel,
       setServiceTier,
       supportsServiceTier,
+      serviceTierFastLabel,
     ],
   );
   const compactExecutionConfig = useMemo(() => {
@@ -1549,26 +1551,14 @@ export function ThreadDetailPromptArea({
   ]);
   const childPendingInteractionBanners = useMemo(
     () =>
-      childPendingInteractions.map((item) =>
-        isPluginPendingInteraction(item.interaction) ? (
-          <div key={item.interaction.id}>
-            <NavLink
-              to={item.href}
-              className="mb-1 block text-xs text-muted-foreground no-underline hover:underline"
-            >
-              From child thread: {item.childTitle}
-            </NavLink>
-            <PluginPendingInteractionComposer interaction={item.interaction} />
-          </div>
-        ) : (
-          <ThreadPendingInteractionBanner
-            key={item.interaction.id}
-            interaction={item.interaction}
-            sourceThread={{ href: item.href, title: item.childTitle }}
-            threadId={item.childThreadId}
-          />
-        ),
-      ),
+      childPendingInteractions.map((item) => (
+        <ThreadPendingInteractionBanner
+          key={item.interaction.id}
+          interaction={item.interaction}
+          sourceThread={{ href: item.href, title: item.childTitle }}
+          threadId={item.childThreadId}
+        />
+      )),
     [childPendingInteractions],
   );
   const promptStack = useMemo(
@@ -1718,11 +1708,7 @@ export function ThreadDetailPromptArea({
     if (!activePendingInteraction || shouldHideComposer) {
       return null;
     }
-    return isPluginPendingInteraction(activePendingInteraction) ? (
-      <PluginPendingInteractionComposer
-        interaction={activePendingInteraction}
-      />
-    ) : (
+    return (
       <ThreadPendingInteractionBanner
         interaction={activePendingInteraction}
         threadId={thread.id}

@@ -1,0 +1,100 @@
+{
+  "providerId": "acp-hermes-agent",
+  "variant": "hermes-home",
+  "workspace": {
+    "commands": [
+      {
+        "name": "hermes-external-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "hermes-external-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "nested-hermes-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "nested-hermes-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "top-hermes-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "top-hermes-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "hermes-external-skill",
+        "description": "hermes-external-skill skill",
+        "filePath": "<root>/hermes-external/team/hermes-external-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "nested-hermes-skill",
+        "description": "nested-hermes-skill skill",
+        "filePath": "<root>/hermes-home/skills/software/nested-hermes-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "top-hermes-skill",
+        "description": "top-hermes-skill skill",
+        "filePath": "<root>/hermes-home/skills/top-hermes-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  },
+  "userOnly": {
+    "commands": [
+      {
+        "name": "hermes-external-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "hermes-external-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "nested-hermes-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "nested-hermes-skill skill",
+        "argumentHint": null
+      },
+      {
+        "name": "top-hermes-skill",
+        "source": "skill",
+        "origin": "user",
+        "description": "top-hermes-skill skill",
+        "argumentHint": null
+      }
+    ],
+    "skills": [
+      {
+        "name": "hermes-external-skill",
+        "description": "hermes-external-skill skill",
+        "filePath": "<root>/hermes-external/team/hermes-external-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "nested-hermes-skill",
+        "description": "nested-hermes-skill skill",
+        "filePath": "<root>/hermes-home/skills/software/nested-hermes-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      },
+      {
+        "name": "top-hermes-skill",
+        "description": "top-hermes-skill skill",
+        "filePath": "<root>/hermes-home/skills/top-hermes-skill/SKILL.md",
+        "rootKind": "provider-user",
+        "linked": false
+      }
+    ]
+  }
+}

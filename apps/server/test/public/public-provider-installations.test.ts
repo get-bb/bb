@@ -37,10 +37,8 @@ function registerInstallationProviders(
         declaration: validatePluginProviderDeclaration({
           id: providerId,
           displayName: providerId,
+          maintenance: { health: false, usage: false, installation: true },
           capabilities: {
-            experimental_providerHealth: false,
-            experimental_providerUsage: false,
-            experimental_providerInstallation: true,
             supportsServiceTier: false,
             supportsNativeUserQuestion: false,
             fork: "none",
@@ -55,6 +53,7 @@ function registerInstallationProviders(
         readSettings: () => ({}),
       }),
       pluginId,
+      iconNames: new Set<string>(),
     });
     harness.deps.pluginHostArtifacts.set(pluginId, bridgeArtifact);
   }
@@ -66,7 +65,9 @@ function installationStatus(providerId: string) {
       ? "claude"
       : providerId === "acp-cursor"
         ? "cursor-agent"
-        : "codex";
+        : providerId === "pi"
+          ? "pi"
+          : "codex";
   return {
     executableName,
     executablePath: `/usr/local/bin/${executableName}`,
@@ -153,10 +154,11 @@ describe("public provider installation routes", () => {
 
       expect(response.status).toBe(200);
       const body = (await readJson(response)) as ProviderCliStatusResponse;
-      expect(Object.keys(body)).toEqual(["codex", "claude-code", "acp-cursor"]);
+      expect(Object.keys(body)).toEqual(["codex", "claude-code", "pi", "acp-cursor"]);
       expect(Object.values(body).map((status) => status.displayName)).toEqual([
         "Codex",
         "Claude Code",
+        "Pi",
         "Cursor",
       ]);
       expect(
@@ -179,7 +181,7 @@ describe("public provider installation routes", () => {
               ? request.command.providerId
               : null,
           ),
-      ).toEqual(["codex", "claude-code", "acp-cursor"]);
+      ).toEqual(["codex", "claude-code", "pi", "acp-cursor"]);
     });
   });
 
@@ -214,9 +216,10 @@ describe("public provider installation routes", () => {
 
       expect(response.status).toBe(200);
       const body = (await readJson(response)) as ProviderCliStatusResponse;
-      expect(Object.keys(body)).toEqual(["codex", "acp-cursor"]);
+      expect(Object.keys(body)).toEqual(["codex", "pi", "acp-cursor"]);
       expect(Object.values(body).map((status) => status.displayName)).toEqual([
         "Codex",
+        "Pi",
         "Cursor",
       ]);
       expect(warn).toHaveBeenCalledWith(
@@ -360,7 +363,8 @@ describe("public provider installation routes", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: "pi", actionKind: "install" }),
+          // A provider id nothing registered.
+          body: JSON.stringify({ provider: "no-such-provider", actionKind: "install" }),
         },
       );
       expect(unsupported.status).toBe(404);

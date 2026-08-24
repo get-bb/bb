@@ -522,41 +522,8 @@ describe("RuntimeManager", () => {
     expect(entry.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
     expect(runtimeOptions.current?.skillRoots).toEqual([
       {
-        id: `global-skills:${entry.skillCatalogHash}:codex`,
-        providerId: "codex",
-        skillDirectoryRootPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-          "skills",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:claude-code`,
-        providerId: "claude-code",
-        localPluginPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:pi`,
-        providerId: "pi",
-        skillDirectoryRootPath: path.join(
-          dataDir,
-          "runtime",
-          "global-skills",
-          entry.skillCatalogHash ?? "",
-          "skills",
-        ),
-      },
-      {
-        id: `global-skills:${entry.skillCatalogHash}:acp`,
-        providerId: "acp",
-        skillDirectoryRootPath: path.join(
+        id: `global-skills:${entry.skillCatalogHash}`,
+        path: path.join(
           dataDir,
           "runtime",
           "global-skills",
@@ -781,6 +748,76 @@ describe("RuntimeManager", () => {
     expect(newCatalogStat.isDirectory()).toBe(true);
     await expect(
       fs.stat(path.join(stagingRoot, firstEntry.skillCatalogHash ?? "")),
+    ).rejects.toThrow();
+  });
+
+  it("keeps the staged catalog of an environment still being created while another environment swaps catalogs", async () => {
+    const dataDir = await makeTempDir("bb-runtime-manager-skills-pending-");
+    const sourceA = await writeInjectedSkillSource({
+      dataDir,
+      name: "release-notes",
+      token: "env-a-token",
+    });
+    // Env A's workspace provisioning stalls inside createEntry: its entry is
+    // pending, its catalog is staged, and nothing in `entries` names it yet.
+    const provisionStarted = createDeferredPromise<void>();
+    const releaseProvision = createDeferredPromise<void>();
+    const provisionWorkspace = vi.fn(async (options: ProvisionWorkspaceArgs) => {
+      const targetPath = "path" in options ? options.path : undefined;
+      if (targetPath === "/tmp/env-a") {
+        provisionStarted.resolve();
+        await releaseProvision.promise;
+      }
+      return createFakeWorkspace(targetPath ?? "/tmp/env");
+    });
+    const manager = new RuntimeManager({
+      dataDir,
+      provisionWorkspace,
+      createRuntime: vi.fn(() => createFakeRuntime()),
+    });
+
+    const envA = manager.ensureEnvironment({
+      environmentId: "env-a",
+      injectedSkillSources: [sourceA],
+      workspacePath: "/tmp/env-a",
+    });
+    await provisionStarted.promise;
+
+    // Env B starts on one catalog, then swaps to another: the swap prunes
+    // every staged catalog no environment uses — A's must count as in use.
+    const sourceB = await writeInjectedSkillSource({
+      dataDir,
+      name: "other-notes",
+      token: "env-b-first",
+    });
+    const firstB = await manager.ensureEnvironment({
+      environmentId: "env-b",
+      injectedSkillSources: [sourceB],
+      workspacePath: "/tmp/env-b",
+    });
+    await writeInjectedSkillSource({
+      dataDir,
+      name: "other-notes",
+      token: "env-b-second",
+    });
+    const secondB = await manager.ensureEnvironment({
+      environmentId: "env-b",
+      injectedSkillSources: [sourceB],
+      targetThreadId: "thread-b",
+      workspacePath: "/tmp/env-b",
+    });
+    expect(secondB.skillCatalogHash).not.toBe(firstB.skillCatalogHash);
+
+    releaseProvision.resolve();
+    const entryA = await envA;
+    expect(entryA.skillCatalogHash).toMatch(/^[a-f0-9]{64}$/u);
+    const stagingRoot = path.join(dataDir, "runtime", "global-skills");
+    const catalogAStat = await fs.stat(
+      path.join(stagingRoot, entryA.skillCatalogHash ?? ""),
+    );
+    expect(catalogAStat.isDirectory()).toBe(true);
+    await expect(
+      fs.stat(path.join(stagingRoot, firstB.skillCatalogHash ?? "")),
     ).rejects.toThrow();
   });
 

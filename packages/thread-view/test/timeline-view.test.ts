@@ -132,8 +132,7 @@ function commandRowReadingPaths(paths: readonly string[], seq: number) {
 }
 
 function explorationIntents(row: ThreadTimelineViewRow): TimelineActivityIntent[] {
-  if (row.kind !== "work") return [];
-  if (row.workKind !== "command" && row.workKind !== "tool") return [];
+  if (row.kind !== "work" || row.workKind !== "command") return [];
   return [...row.activityIntents];
 }
 
@@ -172,7 +171,6 @@ function fileChangeRow({
 }
 
 interface ToolRowOverrides extends WorkRowOverrides {
-  activityIntents?: TimelineActivityIntent[];
   callId?: string;
   durationMs?: number | null;
   output?: string;
@@ -181,7 +179,6 @@ interface ToolRowOverrides extends WorkRowOverrides {
 }
 
 function toolRow({
-  activityIntents = [],
   callId = "tool-call-1",
   durationMs = 200,
   id = "tool-1",
@@ -204,7 +201,6 @@ function toolRow({
       ? null
       : (baseOverrides.startedAt ?? 1) + durationMs,
     approvalStatus: null,
-    activityIntents,
   };
 }
 
@@ -227,6 +223,8 @@ function delegationRow({
     status,
     callId,
     toolName: "spawnAgent",
+    childRef: null,
+    background: false,
     subagentType: "reviewer",
     description: "Review timeline grouping",
     output: "",
@@ -563,13 +561,11 @@ describe("buildTimelineViewRows", () => {
   it("uses active labels for tool-only bundle summaries", () => {
     const rows = buildTimelineViewRows([
       toolRow({
-        activityIntents: [],
         id: "tool-pending-1",
         sourceSeqStart: 1,
         status: "pending",
       }),
       toolRow({
-        activityIntents: [],
         id: "tool-pending-2",
         sourceSeqStart: 2,
         status: "pending",

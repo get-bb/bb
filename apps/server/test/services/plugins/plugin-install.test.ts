@@ -39,6 +39,7 @@ import {
   parsePluginSource,
   runInstallCommand,
 } from "../../../src/services/plugins/install-sources.js";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -391,6 +392,7 @@ describe("plugin install flows", () => {
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -1032,6 +1034,7 @@ describe("plugin install flows", () => {
 
       // The same db and dataDir, so the checkout and its artifact row survive.
       service = createPluginService({
+      aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -1155,6 +1158,7 @@ describe("plugin install flows", () => {
       await mkdir(`${entry.rootDir}.promoting`, { recursive: true });
       await writeFile(join(`${entry.rootDir}.promoting`, "partial"), "copy");
       service = createPluginService({
+      aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {

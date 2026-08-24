@@ -480,24 +480,18 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps bb command approvals back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 8,
-          method: "item/commandExecution/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-1",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "command",
-              itemId: "item-1",
-              command: "git push",
-              cwd: "/tmp/project",
-              actions: [],
-              sessionGrant: null,
-            },
-            reason: null,
-            availableDecisions: ["allow_once", "allow_for_session", "deny"],
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "command",
+            itemId: "item-1",
+            command: "git push",
+            cwd: "/tmp/project",
+            actions: [],
+            sessionGrant: null,
           },
+          reason: null,
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
         },
         resolution: {
           decision: "allow_for_session",
@@ -512,24 +506,18 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps command denial back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 10,
-          method: "item/commandExecution/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-3",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "command",
-              itemId: "item-3",
-              command: "git push",
-              cwd: "/tmp/project",
-              actions: [],
-              sessionGrant: null,
-            },
-            reason: null,
-            availableDecisions: ["allow_once", "deny"],
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "command",
+            itemId: "item-3",
+            command: "git push",
+            cwd: "/tmp/project",
+            actions: [],
+            sessionGrant: null,
           },
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
         },
         resolution: {
           decision: "deny",
@@ -543,22 +531,16 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps file-change approvals back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 12,
-          method: "item/fileChange/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-file-change",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "file_change",
-              itemId: "item-file-change",
-              writeScope: null,
-              sessionGrant: null,
-            },
-            reason: "Review generated file changes",
-            availableDecisions: ["allow_once", "allow_for_session", "deny"],
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "file_change",
+            itemId: "item-file-change",
+            writeScope: null,
+            sessionGrant: null,
           },
+          reason: "Review generated file changes",
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
         },
         resolution: {
           decision: "allow_for_session",
@@ -573,28 +555,22 @@ describe("buildCodexInteractiveResponse", () => {
   it("maps permission grants back to Codex responses", () => {
     expect(
       buildCodexInteractiveResponse({
-        request: {
-          requestId: 13,
-          method: "item/permissions/requestApproval",
-          providerThreadId: "t1",
-          turnId: "turn-permissions",
-          payload: {
-            kind: "approval",
-            subject: {
-              kind: "permission_grant",
-              itemId: "item-permissions",
-              toolName: null,
-              permissions: {
-                network: { enabled: true },
-                fileSystem: {
-                  read: ["/tmp/project/README.md"],
-                  write: [],
-                },
+        payload: {
+          kind: "approval",
+          subject: {
+            kind: "permission_grant",
+            itemId: "item-permissions",
+            toolName: null,
+            permissions: {
+              network: { enabled: true },
+              fileSystem: {
+                read: ["/tmp/project/README.md"],
+                write: [],
               },
             },
-            reason: "Need network access",
-            availableDecisions: ["allow_once", "allow_for_session", "deny"],
           },
+          reason: "Need network access",
+          availableDecisions: ["allow_once", "allow_for_session", "deny"],
         },
         resolution: {
           decision: "allow_for_session",

@@ -575,13 +575,8 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
 
   post(routes.clearGoal, async (context) => {
     const thread = requirePublicThread(deps.db, context.req.param("id"));
-    if (thread.providerId !== "codex") {
-      throw new ApiError(
-        409,
-        "invalid_request",
-        "This provider does not support active Goals",
-      );
-    }
+    // No provider gate: a Goal is provider extension state, so a thread whose
+    // provider never declares one simply has no active Goal to clear.
     const activity = getThreadPromptBannerActivity(deps, thread);
     if (activity.activeGoalCount === 0) {
       throw new ApiError(409, "invalid_request", "No active Goal to clear");
@@ -609,9 +604,6 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
         threadId: thread.id,
         options: preparedRuntimeCommand.options,
         resumeContext: preparedRuntimeCommand.resumeContext,
-        ...(preparedRuntimeCommand.acpLaunchSpec !== undefined
-          ? { acpLaunchSpec: preparedRuntimeCommand.acpLaunchSpec }
-          : {}),
         bridgeLaunch: preparedRuntimeCommand.bridgeLaunch,
       },
       hostId: environment.hostId,

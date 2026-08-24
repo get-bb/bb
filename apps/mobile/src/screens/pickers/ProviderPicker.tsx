@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { ProviderPickerOption } from "@/data/compose";
 import { useTheme } from "@/theme";
-import { useSheet } from "@/ui";
+import { isIconName, useSheet, type IconName } from "@/ui";
 import { ServerSvgIcon } from "../plugins/ServerSvgIcon";
 import { OptionSheet, type PickerOption } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
@@ -17,8 +17,16 @@ interface ProviderPickerProps {
 /**
  * Agent provider (Codex, Claude, …) picker. Provider logos come from the
  * server (`GET /system/providers/:id/logo`, `currentColor` SVGs) painted in
- * the theme foreground; a provider without a logo gets the Zap glyph.
+ * the theme foreground; a provider that declared a named glyph instead of a
+ * logo file (`icon: "Zap"` on its declaration) gets that glyph when this app
+ * knows it, and any other provider gets the Zap glyph.
  */
+function providerGlyph(option: ProviderPickerOption): IconName {
+  return option.glyph !== null && isIconName(option.glyph)
+    ? option.glyph
+    : "Zap";
+}
+
 export function ProviderPicker({
   options,
   value,
@@ -33,7 +41,7 @@ export function ProviderPicker({
       options.map((option) => ({
         value: option.value,
         label: option.label,
-        icon: "Zap",
+        icon: providerGlyph(option),
         leading:
           option.logoUrl === null ? undefined : (
             <ServerSvgIcon
@@ -55,7 +63,7 @@ export function ProviderPicker({
   return (
     <>
       <PickerTrigger
-        icon="Zap"
+        icon={selected === undefined ? "Zap" : providerGlyph(selected)}
         leading={
           selected?.logoUrl ? (
             <ServerSvgIcon

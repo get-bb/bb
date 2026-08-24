@@ -8,15 +8,13 @@
 import {
   ProviderRequestDecodeError as ProviderRequestDecodeErrorValue,
   ProviderResponseEncodeError,
-  type BuildInteractiveResponseArgs,
+  type ApprovalInteractionOutcome,
   type DecodedInteractiveRequest,
   type ProviderInboundRequest,
   type PendingInteractionApprovalDecision,
   type PendingInteractionGrantablePermissionProfile,
   type PendingInteractionGrantedPermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
-  isApprovalPendingInteractionPayload,
-  isApprovalPendingInteractionResolution,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import type { CodexMacOsPermissionItem } from "./extension-kinds.js";
 import { normalizePendingInteractionRequestedPermissionProfile } from "./pending-interaction-normalization.js";
@@ -46,7 +44,7 @@ function assertNever(value: never): never {
 
 function requireGrantedPermissions(
   args: Extract<
-    BuildInteractiveResponseArgs["resolution"],
+    ApprovalInteractionOutcome["resolution"],
     { decision: "allow_once" | "allow_for_session" }
   >,
 ) {
@@ -212,19 +210,16 @@ export function decodeCodexInteractiveRequest(
   }
 }
 
+/**
+ * Map an approval outcome back onto the Codex approval response. Codex
+ * raises approvals only, so the bridge parses the wire resolution with
+ * `approvalInteractionOutcomeSchema` against the payload it kept: the pair
+ * arrives here checked, and a user answer cannot reach this encoder.
+ */
 export function buildCodexInteractiveResponse(
-  args: BuildInteractiveResponseArgs,
+  args: ApprovalInteractionOutcome,
 ): CodexInteractiveResponse {
-  if (
-    !isApprovalPendingInteractionPayload(args.request.payload) ||
-    !isApprovalPendingInteractionResolution(args.resolution)
-  ) {
-    throw new ProviderResponseEncodeError(
-      "Codex user-question interactive requests are unsupported",
-    );
-  }
-
-  switch (args.request.payload.subject.kind) {
+  switch (args.payload.subject.kind) {
     case "command": {
       const response: CommandExecutionRequestApprovalResponse = {
         decision: toCodexCommandApprovalDecision(args.resolution.decision),
@@ -262,13 +257,14 @@ export function buildCodexInteractiveResponse(
       throw new ProviderResponseEncodeError(
         "Codex plan-review interactive requests are unsupported",
       );
-    // Unsupported until WS5: this bridge raises no tool_use subject yet.
+    // This bridge raises no tool_use subject: every Codex approval is a
+    // command, a file change, or a permission profile.
     case "tool_use":
       throw new ProviderResponseEncodeError(
-        "tool_use approval subjects are not produced by the Codex bridge until WS5",
+        "tool_use approval subjects are not produced by the Codex bridge",
       );
     default:
-      return assertNever(args.request.payload.subject);
+      return assertNever(args.payload.subject);
   }
 }
 

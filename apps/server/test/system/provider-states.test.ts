@@ -2,6 +2,7 @@ import type { ProviderHealth } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import { getProviderStates } from "../../src/services/system/provider-states.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -84,33 +85,35 @@ describe("getProviderStates", () => {
 
   it("does not start a health probe the provider did not declare", async () => {
     await withTestHarness(async (harness) => {
-      harness.deps.providerRegistry.register({
-        pluginId: "provider-no-health",
-        info: {
-          id: "no-health",
-          displayName: "No Health",
-          logoUrl: null,
-          available: true,
-          experimental_providerHealth: false,
-          experimental_providerUsage: false,
-          experimental_providerInstallation: false,
-          capabilities: {
-            supportsThreadArchive: false,
-            supportsThreadRename: false,
-            supportsServiceTier: false,
-            supportsNativeUserQuestion: false,
-            supportsFork: false,
-            supportsSessionRewind: false,
-            permissionModes: ["full"],
+      harness.deps.providerRegistry.register(
+        minimalProviderRegistration({
+          pluginId: "provider-no-health",
+          info: {
+            id: "no-health",
+            pluginId: "provider-no-health",
+            displayName: "No Health",
+            logoUrl: null,
+            available: true,
+            maintenance: { health: false, usage: false, installation: false },
+            capabilities: {
+              supportsThreadArchive: false,
+              supportsThreadRename: false,
+              supportsServiceTier: false,
+              supportsNativeUserQuestion: false,
+              supportsFork: false,
+              supportsSessionRewind: false,
+              modelCatalogScope: "workspace",
+              permissionModes: ["full"],
+            },
+            composerActions: [],
           },
-          composerActions: [],
-        },
-        serverCapabilities: {
-          reasoningLevels: ["medium"],
-          fork: "none",
-          supportsManualCompaction: false,
-        },
-      });
+          serverCapabilities: {
+            reasoningLevels: ["medium"],
+            fork: "none",
+            supportsManualCompaction: false,
+          },
+        }),
+      );
       const { host, session } = seedHostSession(harness.deps);
       const responder = registerHostRpcResponder(harness, {
         hostId: host.id,

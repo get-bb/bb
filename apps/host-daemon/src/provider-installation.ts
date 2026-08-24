@@ -1,5 +1,5 @@
 import { PassThrough, type Readable } from "node:stream";
-import type { ExperimentalProviderInstallationCommand } from "@bb/provider-bridge-protocol";
+import type { ProviderInstallationCommand } from "@bb/provider-bridge-protocol";
 import {
   providerCliInstallEventSchema,
   type ProviderCliInstallEvent,
@@ -83,7 +83,7 @@ function createPtyProviderInstallationProcessSpawner(): ProviderInstallationProc
 
 export function streamProviderInstallation(args: {
   providerId: string;
-  plan: ExperimentalProviderInstallationCommand;
+  plan: ProviderInstallationCommand;
   env?: NodeJS.ProcessEnv;
   processSpawner?: ProviderInstallationProcessSpawner;
 }): ReadableStream<Uint8Array> {

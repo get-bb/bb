@@ -106,25 +106,35 @@ entry with a warning. The entry then appears in bb provider models output and
 in the model picker, but the provider must still accept the id: claude-code
 and codex accept unlisted ids, while an ACP agent can reject an id it does
 not know at session start. OpenCode rejects unlisted ids, so add an OpenCode
-model to the OpenCode config instead. Like customAcpAgents, edit the JSON and
-run bb-app config refresh; there is no set/unset CLI surface. The streamerMode
+model to the OpenCode config instead. Edit the JSON and run bb-app config
+refresh; there is no set/unset CLI surface. The streamerMode
 General setting hides every entry from these lists; see the customization
 chapter.
 
-Custom ACP agents are configured in the app data-dir config.json under
-customAcpAgents. bb derives provider id acp-<id> from each slug id. Edit the JSON
-and run bb-app config refresh; there is no set/unset CLI surface for this list.
-Custom config wins if it uses the same provider id as an installed-only ACP
-plugin provider; for example, override acp-opencode with id opencode. Use modelCli for CLI model
-listing/selection, reasoningCli for launch-time reasoning flags, and
-nativeReasoning for ACP session/set_config_option reasoning. Optional logo
-accepts an SVG, PNG, or WebP path; relative paths resolve from the bb data dir.
-Use nativeSkillRoots to add native skills to the composer. User roots resolve
-from the target host home directory. Project roots resolve from the selected
-workspace. Each root must use a relative path without dot segments. Set
-supportsManualCompaction to true only if the agent accepts an explicit
-compaction request; it defaults to false, and bb hides the /compact command
-for agents that do not declare it.
+Custom ACP agents live in the ACP providers plugin's customAgents setting, a
+JSON array. Set it with bb plugin config provider-acp set customAgents '[...]'.
+Each entry needs id (lowercase letters, digits and dashes), displayName, and
+command. bb derives provider id acp-<id> from the slug id. The id is permanent.
+The id cursor is reserved because bb always lists that agent. The ids opencode,
+omp, grok and hermes-agent are not reserved, so an entry with one of those ids
+replaces the shipped agent. Use args, env, and cwd for the launch, modelCli
+for CLI model listing/selection, reasoningCli for launch-time reasoning flags,
+nativeReasoning for ACP session/set_config_option reasoning, permissionCli for
+permission-mode launch flags, and dialect (cursor or grok) for the vendor side
+channels bb reads. Use nativeSkillRoots to add native skills to the composer.
+Give it a user list and a project list. User roots resolve from the target host
+home directory. Project roots resolve from the selected workspace. Each root
+must use a relative path without dot segments. Set supportsManualCompaction to true only
+if the agent accepts an explicit compaction request; it defaults to false, and
+bb hides the /compact command for agents that do not declare it. The plugin
+re-registers its providers as soon as the setting changes, so no restart or
+config refresh is needed.
+
+The old customAcpAgents array in the app data-dir config.json is deprecated. bb
+still reads it and logs a warning for each agent it finds, until 0.41. Move each
+entry into the customAgents setting. The shapes match except for logo, which the
+setting does not accept: bb drops that field when it reads the old array, and a
+configured agent shows the generic tool glyph.
 
 Use top-level sharedSkillRoots for one provider-neutral skill collection. The
 user and project paths use the same relative-path rules. bb indexes these roots

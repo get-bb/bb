@@ -27,7 +27,7 @@ for (const providerId of providers) {
     // 9. Resumes a thread across process lifetimes.
     it("resumes a thread across process lifetimes", async () => {
       const ctx1 = createTestRuntime(providerId);
-      let providerThreadId: string | undefined;
+      let providerThreadId: string;
       let firstRuntimeEvents: ThreadEvent[] = [];
       const firstThreadId = newThreadId();
       let ctx1Shutdown = false;
@@ -46,7 +46,7 @@ for (const providerId of providers) {
           options,
         });
 
-        providerThreadId = startResult.providerThreadId || undefined;
+        providerThreadId = startResult.providerThreadId;
 
         await ctx1.runtime.runTurn({
           clientRequestId: "creq_2222222222",
@@ -66,17 +66,6 @@ for (const providerId of providers) {
           label: "first session turn/completed",
         });
         firstRuntimeEvents = [...ctx1.events];
-
-        // Capture providerThreadId from thread/identity event if the response
-        // didn't include one (claude-code sends it asynchronously).
-        if (!providerThreadId) {
-          const identityEvent = ctx1.events.find(
-            (e) => e.type === "thread/identity",
-          );
-          if (identityEvent && identityEvent.type === "thread/identity") {
-            providerThreadId = identityEvent.providerThreadId;
-          }
-        }
 
         // Shutdown first runtime (simulates process death)
         await ctx1.runtime.shutdown();
@@ -172,7 +161,7 @@ describe.concurrent("codex resume scenarios", () => {
       },
     });
 
-    let providerThreadId: string | undefined;
+    let providerThreadId: string;
     const firstThreadId = newThreadId();
 
     try {
@@ -190,7 +179,7 @@ describe.concurrent("codex resume scenarios", () => {
         dynamicTools,
       });
 
-      providerThreadId = startResult.providerThreadId || undefined;
+      providerThreadId = startResult.providerThreadId;
 
       await ctx1.runtime.runTurn({
         clientRequestId: "creq_2222222224",
@@ -215,15 +204,6 @@ describe.concurrent("codex resume scenarios", () => {
         timeoutMs: 30_000,
         label: "runtime 1 turn/completed",
       });
-
-      if (!providerThreadId) {
-        const identityEvent = ctx1.events.find(
-          (e) => e.type === "thread/identity",
-        );
-        if (identityEvent && identityEvent.type === "thread/identity") {
-          providerThreadId = identityEvent.providerThreadId;
-        }
-      }
 
       await ctx1.runtime.shutdown();
     } finally {
@@ -297,7 +277,7 @@ describe.concurrent("codex resume scenarios", () => {
 
     // Runtime 1: start thread, ask to remember a word
     const ctx1 = createTestRuntime(providerId);
-    let providerThreadId: string | undefined;
+    let providerThreadId: string;
     const firstThreadId = newThreadId();
 
     try {
@@ -314,7 +294,7 @@ describe.concurrent("codex resume scenarios", () => {
         options,
       });
 
-      providerThreadId = startResult.providerThreadId || undefined;
+      providerThreadId = startResult.providerThreadId;
 
       await ctx1.runtime.runTurn({
         clientRequestId: "creq_2222222226",
@@ -333,15 +313,6 @@ describe.concurrent("codex resume scenarios", () => {
         timeoutMs: 30_000,
         label: "runtime 1 turn/completed",
       });
-
-      if (!providerThreadId) {
-        const identityEvent = ctx1.events.find(
-          (e) => e.type === "thread/identity",
-        );
-        if (identityEvent && identityEvent.type === "thread/identity") {
-          providerThreadId = identityEvent.providerThreadId;
-        }
-      }
 
       await ctx1.runtime.shutdown();
     } finally {
@@ -428,7 +399,7 @@ describe.concurrent("codex resume scenarios", () => {
         },
       });
 
-      let providerThreadId: string | undefined;
+      let providerThreadId: string;
       const firstThreadId = newThreadId();
 
       try {
@@ -447,7 +418,7 @@ describe.concurrent("codex resume scenarios", () => {
           dynamicTools,
         });
 
-        providerThreadId = startResult.providerThreadId || undefined;
+        providerThreadId = startResult.providerThreadId;
 
         await ctx1.runtime.runTurn({
           clientRequestId: "creq_2222222228",
@@ -474,15 +445,6 @@ describe.concurrent("codex resume scenarios", () => {
           timeoutMs: CODEX_TOOL_CALL_TIMEOUT_MS,
           label: "runtime 1 turn/completed",
         });
-
-        if (!providerThreadId) {
-          const identityEvent = ctx1.events.find(
-            (e) => e.type === "thread/identity",
-          );
-          if (identityEvent && identityEvent.type === "thread/identity") {
-            providerThreadId = identityEvent.providerThreadId;
-          }
-        }
 
         await ctx1.runtime.shutdown();
       } finally {

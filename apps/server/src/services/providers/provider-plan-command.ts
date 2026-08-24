@@ -7,8 +7,8 @@ import type { ProviderRegistryService } from "./provider-registry.js";
  * timeline projection and the thread-list banner pre-filter both read it
  * instead of repeating a `claude-code || codex` test.
  *
- * Dynamic ACP ids are never registered and the ACP tier declares no plan
- * action, so they answer null — the same as before.
+ * An id with no registration answers null — a provider whose plugin is
+ * disabled mid-thread offers no plan action, which is the safe reading.
  */
 export function resolveProviderPlanCommand(
   registry: ProviderRegistryService,

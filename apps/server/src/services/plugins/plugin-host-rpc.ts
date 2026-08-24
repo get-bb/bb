@@ -66,6 +66,8 @@ export async function callPluginHostRpc(
     input: unknown;
     hostId: string;
     signal?: AbortSignal;
+    /** The call's own budget; defaults to the common command timeout. */
+    timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
   },
 ): Promise<unknown> {
@@ -79,9 +81,10 @@ export async function callPluginHostRpc(
     `host rpc input for ${args.method}`,
   );
   const callId = randomUUID();
+  const timeoutMs = args.timeoutMs ?? COMMAND_TIMEOUT_MS;
   const rpc = callHostOnlineRpc(deps, {
     hostId: args.hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS + HOST_RPC_TRANSPORT_GRACE_MS,
+    timeoutMs: timeoutMs + HOST_RPC_TRANSPORT_GRACE_MS,
     command: {
       type: "plugin.host.call",
       pluginId: args.pluginId,
@@ -93,7 +96,7 @@ export async function callPluginHostRpc(
       callId,
       method: args.method,
       input,
-      timeoutMs: COMMAND_TIMEOUT_MS,
+      timeoutMs,
     },
   });
   const signal = args.signal;

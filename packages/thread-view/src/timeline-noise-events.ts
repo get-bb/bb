@@ -8,6 +8,10 @@ import type { ThreadEventType } from "@bb/domain";
  * full workspace diff — one observed thread held 11.3 MB of them across 144
  * rows, more than 90 % of everything its window read — and the projection
  * classifies it as a duplicate event and drops it.
+ *
+ * `turn/plan/updated` is NOT here: persisted codex plan notifications decode
+ * into `planSteps` items at read time (legacy-thread-events.ts), so a window
+ * must read them to show old threads' plans.
  */
 export const THREAD_TIMELINE_EXCLUDED_EVENT_TYPES = [
   "thread/started",
@@ -15,5 +19,4 @@ export const THREAD_TIMELINE_EXCLUDED_EVENT_TYPES = [
   "thread/contextWindowUsage/updated",
   "thread/tokenUsage/updated",
   "turn/diff/updated",
-  "turn/plan/updated",
 ] as const satisfies readonly ThreadEventType[];

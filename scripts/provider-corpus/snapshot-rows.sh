@@ -7,6 +7,18 @@
 #
 # Requires BB_PROVIDER_CORPUS_DIR (defaults to ~/.bb/provider-corpus when that
 # directory exists). See docs/debugging-and-qa.md, "Provider corpus".
+#
+# snapshots/rows is the baseline minted on main and shared by every
+# workstream. From a feature branch, compare against it with a per-workstream
+# allowlist and never write into it:
+#
+#   BB_PROVIDER_CORPUS_ALLOWLIST=apps/server/test/provider-corpus/allowlists/<ws>.json \
+#     scripts/provider-corpus/snapshot-rows.sh compare
+#   BB_PROVIDER_CORPUS_SNAPSHOT_DIR=$HOME/.bb/provider-corpus/snapshots/rows.<ws> \
+#     scripts/provider-corpus/snapshot-rows.sh write      # shadow snapshot
+#   BB_PROVIDER_CORPUS_ROW_CLASSES=apps/server/test/provider-corpus/allowlists/<ws>-row-classes.json \
+#     scripts/provider-corpus/snapshot-rows.sh compare    # identity-based classes
+#                                                         # (rows added/removed/moved)
 set -euo pipefail
 
 mode="${1:-compare}"

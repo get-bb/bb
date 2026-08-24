@@ -203,6 +203,11 @@ const threadEventScopeDefinitionByType = {
     rationale:
       "Thread-management operations use thread scope outside provider turns; tool-owned operations use turn scope so the operation stays with the tool call that caused it.",
   },
+  "system/interaction/lifecycle": {
+    policy: "thread-or-turn",
+    rationale:
+      "A provider interaction belongs to the turn that raised it; a plugin may raise one outside any turn.",
+  },
   "system/permissionGrant/lifecycle": { policy: "turn" },
   "system/userQuestion/lifecycle": { policy: "turn" },
   "system/thread-provisioning": {

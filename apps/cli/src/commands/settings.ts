@@ -138,6 +138,33 @@ export function registerSettingsCommands(
     );
 
   settings
+    .command("ai-services")
+    .description(
+      "Show the AI-service settings (BB_INFERENCE, BB_INFERENCE_FALLBACK, BB_TRANSCRIPTION) and the plugin services they may name",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonOptions) => {
+        const { aiServices } = await createCliBbSdk(getUrl()).system.config();
+        if (outputJson(opts, aiServices)) return;
+        console.log(`BB_INFERENCE          ${aiServices.inference}`);
+        console.log(`BB_INFERENCE_FALLBACK ${aiServices.inferenceFallback}`);
+        console.log(`BB_TRANSCRIPTION      ${aiServices.transcription}`);
+        console.log("");
+        if (aiServices.services.length === 0) {
+          console.log("No plugin registers an AI service.");
+          return;
+        }
+        console.log("Registered services (<id>/<model> in the settings above):");
+        for (const service of aiServices.services) {
+          console.log(
+            `  ${service.id}  ${service.displayName}  [${service.kinds.join(", ")}]  plugin ${service.pluginId}`,
+          );
+        }
+      }),
+    );
+
+  settings
     .command("general <key> <value>")
     .description("Set a Settings → General preference")
     .option("--json", "Print machine-readable JSON output")

@@ -1,1 +1,7 @@
-{"ts":1787277411315,"run":1787275055276,"seq":1358,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"You are a fork of an earlier thread. What word did the assistant reply with first in this conversation? Reply with that word only.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787347923967,"run":1787347884248,"seq":687,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347924497,"run":1787347884248,"seq":690,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"fork\",\"sourceFile\":\"/tmp/pi-raw-l5-sessions/thr_7mq98ky59s.jsonl\",\"targetFile\":\"/tmp/pi-raw-l5-sessions/thr_ja2y8t49k8.jsonl\",\"cwd\":\"/tmp/bb-recording-ws\",\"sessionDir\":\"/tmp/pi-raw-l5-sessions\"}}"}
+{"ts":1787347924502,"run":1787347884248,"seq":692,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347925021,"run":1787347884248,"seq":699,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"You are a fork of an earlier thread. What word did the assistant reply with first in this conversation? Reply with that word only.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347926851,"run":1787347884248,"seq":715,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":862,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-4\"}"}
+{"ts":1787347931344,"run":1787347884248,"seq":873,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}

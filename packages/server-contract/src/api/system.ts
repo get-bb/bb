@@ -12,7 +12,7 @@ import {
   pluginThemeMetaSchema,
   providerInfoSchema,
 } from "@bb/domain";
-import { experimental_providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
+import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
 
 export const systemExecutionOptionsModelLoadErrorCodeSchema = z.enum([
@@ -146,6 +146,28 @@ export type SystemProviderStatesResponse = z.infer<
   typeof systemProviderStatesResponseSchema
 >;
 
+/** One AI service a loaded plugin serves (an option for BB_INFERENCE / BB_TRANSCRIPTION). */
+export const systemAiServiceSchema = z.object({
+  /** The `<serviceId>` segment of the `<serviceId>/<model>` setting. */
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  kinds: z.array(z.enum(["inference", "voice"])),
+  pluginId: z.string().min(1),
+});
+export type SystemAiService = z.infer<typeof systemAiServiceSchema>;
+
+export const systemAiServicesSchema = z.object({
+  /** `BB_INFERENCE`, as configured (`<serviceId>/<model>`). */
+  inference: z.string().min(1),
+  /** `BB_INFERENCE_FALLBACK`, as configured. */
+  inferenceFallback: z.string().min(1),
+  /** `BB_TRANSCRIPTION`, as configured. */
+  transcription: z.string().min(1),
+  /** The registered services those settings may name, in registration order. */
+  services: z.array(systemAiServiceSchema),
+});
+export type SystemAiServices = z.infer<typeof systemAiServicesSchema>;
+
 export const systemConfigResponseSchema = z.object({
   /** App-wide Settings → General preferences, persisted server-side. */
   generalSettings: appSettingsSchema,
@@ -181,6 +203,8 @@ export const systemConfigResponseSchema = z.object({
   primaryHostId: z.string().nullable(),
   primaryHostPlatform: hostPlatformSchema.nullable(),
   voiceTranscriptionEnabled: z.boolean(),
+  /** The AI-service chooser: current settings plus the registered options. */
+  aiServices: systemAiServicesSchema,
   /** Absolute path of the active bb data directory (where ui/, theme/, the DB live). */
   dataDir: z.string(),
 });

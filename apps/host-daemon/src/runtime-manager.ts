@@ -309,6 +309,13 @@ export class RuntimeManager {
   private baseShellEnv;
   private readonly entries = new Map<string, RuntimeEntry>();
   private readonly pendingEntries = new Map<string, Promise<RuntimeEntry>>();
+  /**
+   * The catalog an entry still being created will run on. A catalog swap in
+   * another environment prunes staging dirs by the catalogs in use, and an
+   * entry inside `createEntry` is not in `entries` yet — without this its
+   * staged root could be removed from under it.
+   */
+  private readonly pendingCatalogHashes = new Map<string, string>();
   private readonly pendingEnvironmentProvisions = new Map<
     string,
     PendingEnvironmentProvision
@@ -735,6 +742,7 @@ export class RuntimeManager {
         dataDir: this.options.dataDir,
         keepCatalogHashes: [
           ...pendingCatalogHashes,
+          ...this.pendingCatalogHashes.values(),
           ...[...this.entries.values()].flatMap((entry) =>
             entry.skillCatalogHash === null ? [] : [entry.skillCatalogHash],
           ),
@@ -1027,6 +1035,7 @@ export class RuntimeManager {
       })
       .finally(() => {
         this.pendingEntries.delete(args.environmentId);
+        this.pendingCatalogHashes.delete(args.environmentId);
         this.clearPendingEnvironmentProvision(
           args.environmentId,
           pendingProvision,
@@ -1034,6 +1043,9 @@ export class RuntimeManager {
       });
     pendingProvision.done = creation;
     this.pendingEntries.set(args.environmentId, creation);
+    if (skillConfig !== null) {
+      this.pendingCatalogHashes.set(args.environmentId, skillConfig.catalogHash);
+    }
 
     return creation;
   }
@@ -1463,8 +1475,13 @@ export class RuntimeManager {
       onInteractiveRequest: this.options.onInteractiveRequest,
       onStderr: this.options.onStderr,
       onProviderRecovery: (hint) => {
-        // Parse-and-forward only: the recovery actions land with the runtime
-        // cleanup workstream. Logged so a hint is never silently consumed.
+        // The runtime has already acted on the kind (unarchive-and-retry,
+        // typed auth_required rejection, bridge restart, stale-steer drop,
+        // rate-limit ladder end: a rateLimited rejection arrives here only
+        // when it is terminal or ended the retry ladder). Provider health is
+        // pulled on demand by the server, so there is no host-side cache to
+        // invalidate here; the hint is logged so it is never silently
+        // consumed.
         this.options.logger?.debug(
           {
             environmentId: args.environmentId,

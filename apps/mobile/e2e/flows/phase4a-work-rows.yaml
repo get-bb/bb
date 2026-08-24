@@ -1,6 +1,7 @@
 # Phase 4a work-row renderers: the dev showcase (/dev/work-rows, Settings →
 # Developer) renders synthetic command / tool / file-change / web / image /
-# approval / question / delegation / workflow rows through the real list model
+# approval / question / delegation / workflow / file-read / search / plan-steps
+# / extension rows through the real list model
 # (grouping, compact intents, auto-expand). Checks a few expand/collapse paths
 # and the bodies they reveal, then opens the seeded "Rich thread" and expands
 # its real tool row.
@@ -229,13 +230,17 @@ env:
     direction: DOWN
     timeout: 30000
     speed: 40
-# The table is the last content on the page: bottom the list out so the
-# whole table is on screen on any device height. (Cells inside the nested
-# horizontal ScrollView report as visible before they are, so they are not
-# reliable scroll targets.)
-- scroll
-- scroll
-- scroll
+# Bring the whole table on screen on any device height by scrolling to the
+# user message right below it: the presentation section follows this
+# message, so the table is no longer the last content. (Cells inside the
+# nested horizontal ScrollView report as visible before they are, so they
+# are not reliable scroll targets.)
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Show me every new row kind.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
 - assertNotVisible: "(?s).*scroll sideways inside the timeline.*"
 - swipe:
     from:
@@ -256,3 +261,56 @@ env:
 - extendedWaitUntil:
     visible: "Copied"
     timeout: 10000
+# Presentation-driven rows (grammar v3, WS3): reads and searches are
+# title-only rows labelled by the bridge ("Read file index.ts"), a tinted
+# tool row opens to its presentation detail above the call card, the plan
+# snapshot lists its steps with a status glyph each, and a plugin extension
+# row renders from its declarative base alone (label + detail, no plugin JS).
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Read file.*index.ts.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- assertVisible: "(?s).*Reading file.*long-file-name.ts.*"
+- assertVisible: "(?s).*Searched files.*for TODO in src.*"
+- assertVisible: "(?s).*Found files.*matching \*\*/\*.test.ts.*"
+- tapOn:
+    text: "(?s).*Stamped receipt.*"
+- extendedWaitUntil:
+    visible:
+      id: "timeline-presentation-detail"
+    timeout: 10000
+- assertVisible: "(?s).*Stamped by the echo provider.*"
+- takeScreenshot: phase4a-work-rows-presentation-tool
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Updated plan.*Wire the renderer.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    text: "(?s).*Updated plan.*Wire the renderer.*"
+- extendedWaitUntil:
+    visible:
+      id: "timeline-plan-steps-body"
+    timeout: 10000
+- assertVisible:
+    id: "timeline-plan-step-active"
+- assertVisible:
+    id: "timeline-plan-step-failed"
+- assertVisible: "(?s).*Four steps, one failed.*"
+- takeScreenshot: phase4a-work-rows-plan-steps
+- scrollUntilVisible:
+    element:
+      text: "(?s).*Wrote receipt.*hello world.*"
+    direction: DOWN
+    timeout: 30000
+    speed: 40
+- tapOn:
+    text: "(?s).*Wrote receipt.*hello world.*"
+- extendedWaitUntil:
+    visible: "(?s).*Echoed 2 items.*shout off.*"
+    timeout: 10000
+- assertVisible: "(?s).*Writing receipt.*still echoing.*"
+- takeScreenshot: phase4a-work-rows-extension

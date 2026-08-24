@@ -11,7 +11,7 @@ import { atom, useAtom, useAtomValue, useStore } from "jotai";
 import { atomFamily } from "jotai-family";
 import type { Host, JsonValue } from "@bb/domain";
 import { jsonValueSchema } from "@bb/domain";
-import type { ExperimentalPluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
+import type { PluginFixedTabDeclaration } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
 import { CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
@@ -122,7 +122,7 @@ function PluginFixedTabContent({
   panelId: string;
   panelStateId: string;
   pluginId: string;
-  registration: ExperimentalPluginFixedTabDeclaration;
+  registration: PluginFixedTabDeclaration;
   subPath: string;
 }) {
   const targetStore = useStore();
@@ -225,7 +225,7 @@ export function PluginPanelRightPanelHost({
   });
   const fixedViewTabs = useMemo<readonly PluginPageFixedPanelTab[]>(
     () =>
-      (panel?.experimental_fixedTabs ?? []).map((fixedTab) =>
+      (panel?.fixedTabs ?? []).map((fixedTab) =>
         createPluginPageFixedPanelTab({
           fixedTabId: fixedTab.id,
           pageId: panel?.id ?? panelPath,
@@ -348,7 +348,7 @@ export function PluginPanelRightPanelHost({
   );
   const fixedTabDestinations = useMemo<readonly AppFixedTabDestination[]>(
     () =>
-      (panel?.experimental_fixedTabs ?? []).flatMap((registration) => {
+      (panel?.fixedTabs ?? []).flatMap((registration) => {
         const tab = fixedViewTabs.find(
           (candidate) => candidate.fixedTabId === registration.id,
         );
@@ -398,7 +398,7 @@ export function PluginPanelRightPanelHost({
       fixedViewTabs,
       fixedTabOwnerId,
       panelStateId,
-      panel?.experimental_fixedTabs,
+      panel?.fixedTabs,
       revealPanel,
       targetStore,
       updatePanelState,
@@ -596,7 +596,7 @@ export function PluginPanelRightPanelHost({
 
   const fixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
     () =>
-      (panel?.experimental_fixedTabs ?? []).flatMap((registration) => {
+      (panel?.fixedTabs ?? []).flatMap((registration) => {
         const tab = fixedViewTabs.find(
           (candidate) => candidate.fixedTabId === registration.id,
         );

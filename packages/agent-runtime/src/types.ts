@@ -15,53 +15,28 @@ import type {
   ToolCallRequest,
   ToolCallResponse,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
-  ExperimentalProviderHealthResult,
-  ExperimentalProviderInstallationRunResult,
-  ExperimentalProviderInstallationStatus,
-  ExperimentalProviderUsageResult,
+  ProviderHealthResult,
+  ProviderInstallationRunResult,
+  ProviderInstallationStatus,
+  ProviderUsageResult,
+  SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
 
 export type AgentRuntimeShellEnvironment = Record<string, string>;
 
 export type AgentRuntimeExecutionOptions = RuntimeThreadExecutionOptions;
 
-export interface AgentRuntimeCodexSkillRoot {
-  id: string;
-  providerId: "codex";
-  skillDirectoryRootPath: string;
-}
-
-export interface AgentRuntimeClaudeCodeSkillRoot {
-  id: string;
-  providerId: "claude-code";
-  localPluginPath: string;
-}
-
-export interface AgentRuntimePiSkillRoot {
-  id: string;
-  providerId: "pi";
-  skillDirectoryRootPath: string;
-}
-
-export interface AgentRuntimeAcpSkill {
-  description: string;
-  name: string;
-}
-
-export interface AgentRuntimeAcpSkillRoot {
-  id: string;
-  providerId: "acp";
-  skillDirectoryRootPath: string;
-  skills: readonly AgentRuntimeAcpSkill[];
-}
-
-export type AgentRuntimeSkillRoot =
-  | AgentRuntimeAcpSkillRoot
-  | AgentRuntimeClaudeCodeSkillRoot
-  | AgentRuntimeCodexSkillRoot
-  | AgentRuntimePiSkillRoot;
+/**
+ * One staged skill root, the shape every provider receives on
+ * `skills/configure` (it is the wire type itself): `path` is an absolute
+ * directory holding one subdirectory per listed skill
+ * (`<path>/<skill.name>/SKILL.md`), and `skills` lists every skill in it.
+ * Each bridge maps this to its provider's own layout (a codex extra root, a
+ * claude local plugin, a pi skill path, an ACP prompt listing); no
+ * provider-flavored root crosses the runtime.
+ */
+export type AgentRuntimeSkillRoot = SkillsConfigureRoot;
 
 /**
  * Final per-thread state snapshot taken when a provider process exits,
@@ -112,6 +87,18 @@ export interface AgentRuntimeOptions {
    * accepted turn never starts). Defaults: 120s threshold, 15s sweep.
    */
   turnStartWatchdog?: { thresholdMs?: number; intervalMs?: number };
+  /**
+   * The retry ladder for a request a bridge rejected with a retryable
+   * `rateLimited` recovery hint: one re-send per entry, after that delay.
+   * Default: [2s, 8s]. Tests shorten it.
+   */
+  rateLimitRetry?: { delaysMs?: readonly number[] };
+  /**
+   * How long a session construction request (thread/start, resume, fork)
+   * may take before the runtime gives the thread up. Default: 2 minutes.
+   * Tests shorten it.
+   */
+  threadCreation?: { requestTimeoutMs?: number };
 
   /** Optional caller-provided skill roots to expose to provider sessions. */
   skillRoots?: readonly AgentRuntimeSkillRoot[];
@@ -137,11 +124,14 @@ export interface AgentRuntimeOptions {
   onProcessExit?: (info: AgentRuntimeProcessExitInfo) => void;
 
   /**
-   * Called when a bridge raises a typed `provider/recovery` hint. The runtime
-   * parses and forwards; it does not act on the kind yet (the recovery
-   * actions — unarchive-and-retry, bridge restart, stale-steer drop, retry
-   * scheduling — land with the runtime cleanup workstream). A runtime signal,
-   * never a timeline event.
+   * Called when a bridge raises a typed `provider/recovery` hint, after the
+   * runtime has recorded it for the action it drives (unarchive-and-retry,
+   * typed `auth_required` rejection, bridge restart, stale-steer drop,
+   * rate-limit ladder end). A session-scoped `rateLimited` rejection is
+   * forwarded only when it is terminal or ends the retry ladder; a rung that
+   * then succeeds forwards nothing. The host uses the forward for what the
+   * runtime cannot do itself, such as re-checking provider health after
+   * `authRequired`. A runtime signal, never a timeline event.
    */
   onProviderRecovery?: (hint: AgentRuntimeProviderRecoveryHint) => void;
 }
@@ -181,15 +171,12 @@ export interface AgentRuntimeBridgeLaunch {
   dataDir: string;
   /**
    * Which bridge binary to run, as the server decided it: a hash-verified
-   * plugin artifact already cached on this host, or a bridge inside the
-   * daemon's own bundle (Pi).
+   * plugin artifact already cached on this host.
    */
-  source:
-    | { kind: "artifact"; digest: string; artifactPath: string }
-    | { kind: "daemon-bundled"; id: string };
+  source: { kind: "artifact"; digest: string; artifactPath: string };
   /** Server-validated capabilities from the provider declaration. */
   capabilities: {
-    experimental_providerInstallation: boolean;
+    providerInstallation: boolean;
     supportsServiceTier: boolean;
     permissionModes: PermissionMode[];
     supportsThreadArchive: boolean;
@@ -207,20 +194,12 @@ export interface AgentRuntimeBridgeLaunch {
 }
 
 export interface EnsureProviderArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
-  /**
-   * Providers with thread-scoped processes use this to start the process for a
-   * specific bb thread. Omit it for provider-scoped maintenance work such as
-   * model listing.
-   */
-  forThreadId?: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   providerId: string;
 }
 
 export interface StartThreadArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   projectId: string;
@@ -250,8 +229,7 @@ export interface StartThreadResult {
 }
 
 interface PrepareThreadRewindArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   leaseId: string;
@@ -275,8 +253,7 @@ interface DiscardThreadRewindArgs {
 }
 
 export interface ResumeThreadArgs {
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   environmentId: string;
   threadId: string;
   projectId?: string;
@@ -371,14 +348,14 @@ interface ClearThreadGoalArgs {
 }
 
 interface ArchiveThreadArgs {
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
 }
 
 interface UnarchiveThreadArgs {
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   providerId: string;
   providerThreadId: string;
   threadId: string;
@@ -386,15 +363,13 @@ interface UnarchiveThreadArgs {
 
 export interface ListModelsArgs {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }
 
 interface ProviderMaintenanceArgs {
   providerId: string;
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
 }
 
@@ -442,19 +417,19 @@ export interface AgentRuntime {
 
   providerHealth(
     args: ProviderMaintenanceArgs,
-  ): Promise<ExperimentalProviderHealthResult>;
+  ): Promise<ProviderHealthResult>;
 
   providerUsage(
     args: ProviderMaintenanceArgs,
-  ): Promise<ExperimentalProviderUsageResult>;
+  ): Promise<ProviderUsageResult>;
 
   providerInstallationStatus(
     args: ProviderInstallationStatusArgs,
-  ): Promise<ExperimentalProviderInstallationStatus>;
+  ): Promise<ProviderInstallationStatus>;
 
   providerInstallationRun(
     args: ProviderMaintenanceArgs & { action: "install" | "update" },
-  ): Promise<ExperimentalProviderInstallationRunResult>;
+  ): Promise<ProviderInstallationRunResult>;
 
   listRunningProviders(): string[];
 

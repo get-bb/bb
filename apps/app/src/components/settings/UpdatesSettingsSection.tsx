@@ -86,6 +86,7 @@ import {
   getSettingsRoutePath,
 } from "@/lib/route-paths";
 import { getProviderIconInfo } from "@/lib/provider-icon";
+import { useSystemProviders } from "@/hooks/queries/system-queries";
 import { sdk } from "@/lib/sdk";
 import { rawStringLocalStorage } from "@/lib/browser-storage";
 
@@ -1213,6 +1214,8 @@ export function MachineUpdatesRows({
   onOpenProvider,
 }: MachineUpdatesRowsProps) {
   const { host } = machine;
+  // The marks live with the provider registrations.
+  const providerRoster = useSystemProviders().data;
   const providerEntries = visibleInstalledProviderEntries(machine);
   const issuesByProvider = new Map(
     visibleProviderUpdateIssues(machine).map((issue) => [
@@ -1239,7 +1242,13 @@ export function MachineUpdatesRows({
     const actionable =
       issue !== null && hasProviderCliAction(issue) && !running && !queued;
     const providerId = provider;
-    const ProviderIcon = getProviderIconInfo(providerId)?.icon;
+    const providerInfo = providerRoster?.find(
+      (candidate) => candidate.id === providerId,
+    );
+    const ProviderIcon = getProviderIconInfo(
+      providerId,
+      providerInfo ?? null,
+    )?.icon;
     return (
       <ResourceRow
         key={provider}

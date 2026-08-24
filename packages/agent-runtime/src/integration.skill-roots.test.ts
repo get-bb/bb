@@ -17,7 +17,6 @@ import {
 import { promptTextInput } from "./test/prompt-input.js";
 
 type SkillRootProviderId = "claude-code" | "codex" | "pi";
-type DirectorySkillRootProviderId = "codex" | "pi";
 
 const providers: readonly SkillRootProviderId[] = [
   "codex",
@@ -25,116 +24,47 @@ const providers: readonly SkillRootProviderId[] = [
   "pi",
 ];
 const skillName = "bb-runtime-skill-integration";
+const skillDescription =
+  "Use when asked for the BB runtime dynamic skill integration token.";
 
-interface CreateSkillMarkdownArgs {
-  token: string;
-}
-
-interface CreateProviderSkillRootArgs {
-  providerId: SkillRootProviderId;
+interface CreateSkillRootArgs {
   token: string;
   workspacePath: string;
 }
 
-interface CreateDirectorySkillRootArgs {
-  providerId: DirectorySkillRootProviderId;
-  token: string;
-  workspacePath: string;
-}
-
-interface WriteSkillFileArgs {
-  skillDir: string;
-  token: string;
-}
-
-function createSkillMarkdown(args: CreateSkillMarkdownArgs): string {
+function createSkillMarkdown(token: string): string {
   return [
     "---",
     `name: ${skillName}`,
-    "description: Use when asked for the BB runtime dynamic skill integration token.",
+    `description: ${skillDescription}`,
     "---",
     "",
     "# BB Runtime Skill Integration",
     "",
     "When asked for the runtime skill integration token, reply with exactly:",
-    args.token,
+    token,
     "",
   ].join("\n");
 }
 
-function writeSkillFile(args: WriteSkillFileArgs): void {
-  mkdirSync(args.skillDir, { recursive: true });
+/**
+ * One generic root for every provider — a skills directory with one
+ * subdirectory per skill — exactly what the daemon stages. Each bridge maps
+ * it to its provider's layout (claude assembles a local plugin around it).
+ */
+function createSkillRoot(args: CreateSkillRootArgs): AgentRuntimeSkillRoot {
+  const rootPath = join(args.workspacePath, "skill-roots");
+  mkdirSync(join(rootPath, skillName), { recursive: true });
   writeFileSync(
-    join(args.skillDir, "SKILL.md"),
-    createSkillMarkdown({ token: args.token }),
+    join(rootPath, skillName, "SKILL.md"),
+    createSkillMarkdown(args.token),
     "utf8",
   );
-}
-
-function createClaudeSkillPlugin(
-  args: CreateProviderSkillRootArgs,
-): AgentRuntimeSkillRoot {
-  const pluginDir = join(args.workspacePath, "claude-runtime-skill-plugin");
-  const manifestDir = join(pluginDir, ".claude-plugin");
-  mkdirSync(manifestDir, { recursive: true });
-  writeFileSync(
-    join(manifestDir, "plugin.json"),
-    JSON.stringify(
-      {
-        $schema: "https://anthropic.com/claude-code/plugin.schema.json",
-        name: skillName,
-        version: "0.1.0",
-        description: "BB runtime dynamic skill integration test plugin.",
-        author: {
-          name: "BB Integration Tests",
-          email: "bb@example.com",
-        },
-        skills: ["./"],
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
-  writeSkillFile({ skillDir: pluginDir, token: args.token });
   return {
     id: skillName,
-    providerId: "claude-code",
-    localPluginPath: pluginDir,
+    path: rootPath,
+    skills: [{ name: skillName, description: skillDescription }],
   };
-}
-
-function createDirectorySkillRoot(
-  args: CreateDirectorySkillRootArgs,
-): AgentRuntimeSkillRoot {
-  const rootPath = join(args.workspacePath, `${args.providerId}-skill-roots`);
-  writeSkillFile({ skillDir: join(rootPath, skillName), token: args.token });
-  return {
-    id: skillName,
-    providerId: args.providerId,
-    skillDirectoryRootPath: rootPath,
-  };
-}
-
-function createProviderSkillRoot(
-  args: CreateProviderSkillRootArgs,
-): AgentRuntimeSkillRoot {
-  switch (args.providerId) {
-    case "claude-code":
-      return createClaudeSkillPlugin(args);
-    case "codex":
-      return createDirectorySkillRoot({
-        providerId: "codex",
-        token: args.token,
-        workspacePath: args.workspacePath,
-      });
-    case "pi":
-      return createDirectorySkillRoot({
-        providerId: "pi",
-        token: args.token,
-        workspacePath: args.workspacePath,
-      });
-  }
 }
 
 for (const providerId of providers) {
@@ -146,11 +76,7 @@ for (const providerId of providers) {
       const token = `BB_SKILL_TOKEN_${randomUUID()
         .replaceAll("-", "")
         .toUpperCase()}`;
-      const skillRoot = createProviderSkillRoot({
-        providerId,
-        token,
-        workspacePath,
-      });
+      const skillRoot = createSkillRoot({ token, workspacePath });
       const ctx = createTestRuntime(providerId, {
         skillRoots: [skillRoot],
         workspacePath,

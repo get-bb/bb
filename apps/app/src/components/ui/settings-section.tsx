@@ -81,10 +81,19 @@ export function SettingsRow({ children, className }: SettingsRowProps) {
   );
 }
 
+/**
+ * Where a setting's control sits relative to its label: beside it on wide
+ * viewports (`"inline"`, the row every toggle and picker uses) or below the
+ * label and description at full width (`"below"`, for a multi-line editor
+ * that needs the row's whole width).
+ */
+export type SettingsControlPlacement = "inline" | "below";
+
 interface SettingsWithControlProps {
   label: string;
   labelBadge?: string;
   description?: ReactNode;
+  controlPlacement?: SettingsControlPlacement;
   children: ReactNode;
 }
 
@@ -100,13 +109,17 @@ export function SettingsWithControl({
   label,
   labelBadge,
   description,
+  controlPlacement = "inline",
   children,
 }: SettingsWithControlProps) {
+  const inline = controlPlacement === "inline";
   return (
     <div
+      data-control-placement={controlPlacement}
       className={cn(
-        "flex flex-col gap-2.5 sm:flex-row sm:justify-between sm:gap-5",
-        description ? "sm:items-start" : "sm:items-center",
+        "flex flex-col gap-2.5",
+        inline && "sm:flex-row sm:justify-between sm:gap-5",
+        inline && (description ? "sm:items-start" : "sm:items-center"),
       )}
     >
       <div className="min-w-0 flex-1">
@@ -120,7 +133,13 @@ export function SettingsWithControl({
           </p>
         ) : null}
       </div>
-      <div className="shrink-0 sm:flex sm:justify-end">{children}</div>
+      <div
+        className={
+          inline ? "shrink-0 sm:flex sm:justify-end" : "w-full min-w-0"
+        }
+      >
+        {children}
+      </div>
     </div>
   );
 }

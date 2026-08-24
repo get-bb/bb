@@ -18,10 +18,10 @@ import { bridgeExecutionOptionsSchema } from "./execution-options.js";
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
   modelList: "model/list",
-  experimentalProviderHealth: "provider/health",
-  experimentalProviderUsage: "provider/usage",
-  experimentalProviderInstallationStatus: "provider/installation/status",
-  experimentalProviderInstallationRun: "provider/installation/run",
+  providerHealth: "provider/health",
+  providerUsage: "provider/usage",
+  providerInstallationStatus: "provider/installation/status",
+  providerInstallationRun: "provider/installation/run",
   threadStart: "thread/start",
   threadResume: "thread/resume",
   threadFork: "thread/fork",
@@ -130,11 +130,13 @@ export const turnSteerParamsSchema = z
   .passthrough();
 
 /**
- * One staged skill root: an absolute directory the bridge hands to its
- * provider, plus the skills it contains. `skills` is always present (empty for
- * providers whose native form discovers skills from the directory itself);
- * only providers that must name skills inline — ACP, which lists them in the
- * session instructions — read it.
+ * One injected skill root, the same shape for every provider: `path` is an
+ * absolute directory holding one subdirectory per listed skill
+ * (`<path>/<skill.name>/SKILL.md`) and `skills` lists every skill in it.
+ * The bridge maps it to its provider's own layout — codex adds the
+ * directory as an extra skills root, claude assembles a local plugin around
+ * it, pi adds it as a skill path, an ACP bridge lists the skills in the
+ * session instructions — so no provider-native manifest is staged by core.
  */
 export const skillsConfigureRootSchema = z
   .object({

@@ -15,34 +15,26 @@ import type {
   PromptMode,
   ReasoningLevel,
   RuntimePermissionPolicy,
-  RuntimeThreadExecutionOptions,
   ServiceTier,
 } from "@bb/domain";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type {
   AgentRuntimeBridgeLaunch,
   AgentRuntimeSkillRoot,
 } from "./types.js";
 
-export interface ProviderAcceptedCommandTranslationArgs {
-  command: AdapterCommand;
-  providerThreadId?: string;
-}
-
 /**
  * What the runtime knows when it builds the adapter for a provider process:
- * the plugin's bridge launch (artifact or daemon-bundled bridge), the ACP
- * launch spec for the ACP tier, host-local write roots, and the node/bundle
+ * the plugin's bridge launch (its artifact, carrying the provider options the
+ * owning plugin declared), host-local write roots, and the node/bundle
  * locations a packaged daemon runs bridges from.
  */
 export interface CreateBridgeAdapterOptions {
   additionalWorkspaceWriteRoots: readonly string[];
-  acpLaunchSpec?: HostDaemonAcpLaunchSpec;
   /**
-   * A plugin-delivered bridge artifact resolved to a verified local path by
-   * the host daemon, or the id of a bridge the daemon bundles (pi).
+   * The plugin-delivered bridge artifact, resolved to a verified local path
+   * by the host daemon. Every provider runs from one.
    */
-  bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
   bridgeNodeExecutablePath?: string;
@@ -69,7 +61,6 @@ export type ProviderExecutionContext = {
 } & RuntimePermissionPolicy;
 
 export type AdapterCommand =
-  | { type: "initialize" }
   | {
       type: "skills/configure";
       skillRoots: readonly AgentRuntimeSkillRoot[];
@@ -186,11 +177,4 @@ export function flattenPromptInputGroups(
       ? group
       : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...group],
   );
-}
-
-export type ProviderExecutionSettingsChange = "unchanged" | "live" | "session";
-
-export interface ClassifyProviderExecutionSettingsChangeArgs {
-  current: RuntimeThreadExecutionOptions;
-  next: RuntimeThreadExecutionOptions;
 }

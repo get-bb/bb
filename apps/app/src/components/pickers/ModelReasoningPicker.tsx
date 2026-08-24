@@ -18,6 +18,7 @@ import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
 } from "./model-brand-prefix";
+import { fastServiceTierLabel } from "@/lib/reasoning-labels";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
@@ -253,6 +254,12 @@ interface ModelReasoningPickerProps {
   commandShortcutsEnabled?: boolean;
   serviceTierSupportByProvider?: Record<string, boolean>;
   className?: string;
+  /**
+   * The committed provider's declared label for its fast tier (the toggle
+   * reads `<label> mode`); a previewed provider's own declaration wins while
+   * previewing. Defaults to "Fast".
+   */
+  fastModeLabel?: string;
   /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
   /** Render with the popover open on mount. Story-only escape hatch. */
@@ -304,6 +311,7 @@ export function ModelReasoningPicker({
   commandShortcutsEnabled = true,
   serviceTierSupportByProvider,
   className,
+  fastModeLabel,
   muted,
   defaultOpen = false,
   modal = true,
@@ -433,6 +441,17 @@ export function ModelReasoningPicker({
     !previewQuery.isError &&
     previewQuery.data.modelLoadError === null;
 
+  // The previewed provider's own declaration labels its reasoning levels and
+  // its fast tier while previewing (each provider declares its own names).
+  const previewProvider = useMemo(
+    () =>
+      isPreviewing
+        ? previewQuery.data?.providers.find(
+            (provider) => provider.id === previewProviderId,
+          )
+        : undefined,
+    [isPreviewing, previewProviderId, previewQuery.data?.providers],
+  );
   const previewSelection = useMemo(
     () =>
       isPreviewing
@@ -441,6 +460,7 @@ export function ModelReasoningPicker({
             selectedOnlyModels: previewQuery.data?.selectedOnlyModels ?? [],
             selectedModel: "",
             preferredReasoningLevel: reasoningValue,
+            provider: previewProvider,
             catalogIsVerified: previewCatalogIsVerified,
             formatModelLabel: formatModelLabel ?? preserveModelLabel,
           })
@@ -449,6 +469,7 @@ export function ModelReasoningPicker({
       formatModelLabel,
       isPreviewing,
       previewCatalogIsVerified,
+      previewProvider,
       previewQuery.data?.models,
       previewQuery.data?.selectedOnlyModels,
       reasoningValue,
@@ -573,6 +594,10 @@ export function ModelReasoningPicker({
     (serviceTierSupportByProvider
       ? (serviceTierSupportByProvider[activeProviderId] ?? false)
       : showFastModeToggle);
+  const effectiveFastModeLabel = isPreviewing
+    ? fastServiceTierLabel(previewProvider)
+    : (fastModeLabel ?? "Fast");
+  const fastModeText = `${effectiveFastModeLabel} mode`;
   const showSelectedFastMode =
     hasSelectedModel && fastModeEnabled && modelOptions.length > 0;
   const showReasoningSection =
@@ -1219,12 +1244,12 @@ export function ModelReasoningPicker({
                         name="Zap"
                         className="size-4 fill-current text-muted-foreground"
                       />
-                      <span>Fast mode</span>
+                      <span>{fastModeText}</span>
                     </span>
                     <Switch
                       checked={fastModeEnabled}
                       onCheckedChange={onFastModeChange}
-                      aria-label="Fast mode"
+                      aria-label={fastModeText}
                       className={LIST_HOVER_TRANSITION}
                     />
                   </div>

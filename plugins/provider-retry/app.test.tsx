@@ -18,12 +18,11 @@ const waitingView: ProviderRetryView = {
 
 const claudeCodeProvider: ProviderInfo = {
   id: "claude-code",
+  pluginId: "provider-claude-code",
   displayName: "Claude Code",
   logoUrl: null,
   available: true,
-  experimental_providerHealth: true,
-  experimental_providerUsage: true,
-  experimental_providerInstallation: true,
+  maintenance: { health: true, usage: true, installation: true },
   capabilities: {
     supportsThreadArchive: false,
     supportsThreadRename: false,
@@ -31,6 +30,7 @@ const claudeCodeProvider: ProviderInfo = {
     supportsNativeUserQuestion: true,
     supportsFork: true,
     supportsSessionRewind: true,
+    modelCatalogScope: "workspace",
     permissionModes: ["accept-edits", "auto", "full"],
   },
   composerActions: [],

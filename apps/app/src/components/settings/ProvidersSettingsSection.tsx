@@ -2,7 +2,6 @@ import type { AppSettings, ProviderInfo } from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import { COARSE_POINTER_ICON_SIZE_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
-import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SettingsBadge,
   SettingsRow,
@@ -10,10 +9,8 @@ import {
   SettingsSection,
 } from "@/components/ui/settings-section";
 import { useSystemProviders } from "@/hooks/queries/system-queries";
-import {
-  getProviderIconColorClass,
-  getProviderIconInfo,
-} from "@/lib/provider-icon";
+import { getProviderIconInfo } from "@/lib/provider-icon";
+import { ProviderIconMark } from "./ProviderIconMark";
 
 interface ProvidersSettingsSectionProps {
   disabled: boolean;
@@ -62,10 +59,7 @@ export function ProvidersSettingsSection({
       ) : (
         <SettingsRowList>
           {providers.map((provider, index) => {
-            const ProviderIcon = getProviderIconInfo(
-              provider.id,
-              provider.logoUrl,
-            )?.icon;
+            const ProviderIcon = getProviderIconInfo(provider.id, provider)?.icon;
             const isDefault =
               generalSettings.defaultProviderId === provider.id ||
               (generalSettings.defaultProviderId === null && index === 0);
@@ -73,11 +67,10 @@ export function ProvidersSettingsSection({
               <SettingsRow key={provider.id}>
                 <span className="flex size-5 items-center justify-center">
                   {ProviderIcon ? (
-                    <ProviderIcon
-                      className={cn(
-                        COARSE_POINTER_ICON_SIZE_CLASS,
-                        getProviderIconColorClass(provider.id),
-                      )}
+                    <ProviderIconMark
+                      provider={provider}
+                      icon={ProviderIcon}
+                      className={COARSE_POINTER_ICON_SIZE_CLASS}
                     />
                   ) : (
                     <Icon name="Zap" className="text-muted-foreground" />

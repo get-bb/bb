@@ -4,7 +4,7 @@ import {
   commandRow,
   conversationRow,
   fileChangeRow,
-  readIntent,
+  fileReadRow,
   systemRow,
   toolRow,
 } from "@/test/fixtures/thread-timeline-rows";
@@ -190,8 +190,8 @@ function explorationRead(
   status: TimelineRowStatus = "completed",
 ): TimelineRow {
   const pending = status === "pending";
-  return toolRow({
-    id: `${THREAD_ID}:tool:explore_${seq}`,
+  return fileReadRow({
+    id: `${THREAD_ID}:file-read:explore_${seq}`,
     threadId: THREAD_ID,
     turnId: TURN_ID,
     sourceSeqStart: seq,
@@ -199,10 +199,7 @@ function explorationRead(
     createdAt: pending ? Date.now() : 1777944020100 + seq,
     status,
     callId: `call_ramp_explore_${seq}`,
-    toolName: "Read",
-    toolArgs: { file_path: path },
-    output: pending ? "" : "...file contents...",
-    activityIntents: [readIntent({ path })],
+    path,
     durationMs: pending ? null : 60,
   });
 }

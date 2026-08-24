@@ -10,16 +10,12 @@ import {
 import type { Host } from "@bb/domain";
 import { RETRY_ACTION_ICON } from "@bb/domain/update-state";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { MachinesSettingsSection } from "./MachinesSettingsSection";
 
 vi.mock("@/lib/sdk", () => ({
@@ -74,24 +70,10 @@ const offlineHost = host({
 });
 
 function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
-    keybindings: [],
-    defaultKeybindings: [],
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    localHelperPorts: [],
-    serverUrl: "http://localhost:38886",
+  return makeSystemConfig({
     primaryHostId: "host_primary",
     primaryHostPlatform: "darwin",
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
+  });
 }
 
 /** Sidebar bootstrap with two projects on the primary host, one on dev-vm. */

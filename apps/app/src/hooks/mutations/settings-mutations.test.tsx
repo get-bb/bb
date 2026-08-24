@@ -4,8 +4,6 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { SystemConfigResponse } from "@bb/server-contract";
 import {
   defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
   type AppKeybindingOverrides,
   type AppKeybindings,
 } from "@bb/domain";
@@ -17,6 +15,7 @@ import {
 } from "@/lib/model-catalog-cache";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import {
   systemConfigQueryKey,
   systemExecutionOptionsQueryKey,
@@ -56,24 +55,10 @@ const defaultKeybindings: AppKeybindings = [
 ];
 
 function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
+  return makeSystemConfig({
     keybindings: defaultKeybindings,
     defaultKeybindings,
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    localHelperPorts: [],
-    serverUrl: "http://localhost:38886",
-    primaryHostId: null,
-    primaryHostPlatform: null,
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
+  });
 }
 
 afterEach(() => {

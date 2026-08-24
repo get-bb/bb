@@ -1,5 +1,5 @@
-import { providerRecoveryKindSchema } from "@bb/domain";
 import { z } from "zod";
+import { providerRecoveryHintSchema } from "./errors.js";
 
 /**
  * Bridge → runtime notifications. Everything timeline-bound (assistant text,
@@ -77,15 +77,14 @@ export const providerRawNotificationSchema = z
  * session (`sessionArchived`, `staleTurn`). `retryable` says whether the
  * runtime may retry the failed command after acting on the hint.
  *
- * Additive: no consumer yet. WS4 (runtime cleanup) acts on each kind; until
- * then the runtime ignores the method like any unknown notification.
+ * Unsolicited hints only: a condition that is the reason a runtime request
+ * failed rides that request's error response as `error.data.recovery`
+ * (see `bridgeErrorDataSchema`), never this notification as well.
  */
 export const providerRecoveryNotificationSchema = z
   .object({
     threadId: z.string().min(1).optional(),
-    kind: providerRecoveryKindSchema,
-    message: z.string().min(1),
-    retryable: z.boolean(),
+    ...providerRecoveryHintSchema.shape,
   })
   .passthrough();
 

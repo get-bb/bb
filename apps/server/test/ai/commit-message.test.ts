@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "../../src/errors.js";
+import { registerFakeAiService } from "../helpers/ai-services.js";
 import { generateCommitMessage } from "../../src/services/ai/commit-message.js";
+import { AiServiceCallError } from "../../src/services/ai/ai-service-call.js";
 import { InferenceTimeoutError } from "../../src/services/ai/inference.js";
 import type { AppDeps, LoggedWorkSessionDeps } from "../../src/types.js";
 import {
-  reportQueuedCommandError,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
@@ -21,11 +21,9 @@ const piAiMocks = vi.hoisted(() => ({
   getModel: vi.fn(),
 }));
 
-type CommitMessageDeps = LoggedWorkSessionDeps;
-
 interface TestCommitMessageDeps {
   cleanup: () => Promise<void>;
-  deps: CommitMessageDeps;
+  deps: LoggedWorkSessionDeps;
   logger: AppDeps["logger"];
 }
 
@@ -45,6 +43,9 @@ vi.mock("@earendil-works/pi-ai/providers/all", () => ({
   builtinModels: () => ({
     complete: piAiMocks.complete,
     getModel: piAiMocks.getModel,
+    // No builtin provider ids: the `test/*` models these tests configure
+    // are neither server-direct nor plugin-served, so they reach getModel.
+    getProviders: () => [],
   }),
 }));
 
@@ -157,11 +158,10 @@ describe("commit message generation", () => {
   it("uses the fallback model after transient service unavailability", async () => {
     piAiMocks.complete
       .mockRejectedValueOnce(
-        new ApiError(
-          502,
-          "codex_service_unavailable",
+        new AiServiceCallError(
+          "codex",
+          "service_unavailable",
           "Our servers are currently overloaded. Please try again later.",
-          false,
         ),
       )
       .mockResolvedValueOnce(
@@ -181,7 +181,7 @@ describe("commit message generation", () => {
       );
       expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({
-          errorCode: "codex_service_unavailable",
+          errorCode: "ai_service_unavailable",
           fallbackModel: "test/mock-fallback-model",
         }),
         "Commit message inference failed transiently; using fallback model",
@@ -265,26 +265,22 @@ describe("commit message generation", () => {
     });
   });
 
-  it("returns null for transient Codex inference command failures", async () => {
+  it("returns null for a failed plugin-served inference", async () => {
     await withTestHarness({
       inferenceModel: "codex/gpt-5.6-luna",
     }, async (harness) => {
       seedHostSession(harness.deps);
-      const messagePromise = generateCommitMessage(
-        harness.deps,
-        commitMessageArgs,
-      );
-
-      const inferenceCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "codex.inference.complete",
-      );
-      await reportQueuedCommandError(harness, inferenceCommand, {
-        errorCode: "codex_request_failed",
-        errorMessage: "Codex request failed",
+      registerFakeAiService(harness.deps.aiServices, {
+        completeInference: () => ({
+          ok: false,
+          code: "request_failed",
+          message: "Codex request failed",
+        }),
       });
 
-      await expect(messagePromise).resolves.toBeNull();
+      await expect(
+        generateCommitMessage(harness.deps, commitMessageArgs),
+      ).resolves.toBeNull();
     });
   });
 
@@ -458,15 +454,6 @@ describe("commit message generation", () => {
           shortstat: commitMessageArgs.shortstat,
           truncated: false,
         },
-      });
-
-      const inferenceCommand = await waitForQueuedCommand(
-        harness,
-        ({ command }) => command.type === "codex.inference.complete",
-      );
-      await reportQueuedCommandError(harness, inferenceCommand, {
-        errorCode: "codex_request_failed",
-        errorMessage: "Codex request failed",
       });
 
       const commitCommand = await waitForQueuedCommand(

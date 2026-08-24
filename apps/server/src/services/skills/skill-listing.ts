@@ -22,20 +22,14 @@ import { resolveServerOwnedSkillCatalogEntries } from "./injected-skills.js";
 import { resolveSkillCatalog } from "./skill-catalog.js";
 import { readRegistrySkillProvenance } from "./registry-skill-provenance.js";
 import { hostPathDirname, resolveSharedSkills } from "./shared-skills.js";
+import {
+  providerHasNativeRootSurface,
+  scanProviderNativeRoots,
+} from "../providers/native-roots.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 const SERVER_SKILL_FILE_LIMIT = 200;
 const SERVER_SKILL_CONTENT_LIMIT_BYTES = 25 * 1024 * 1024;
-
-/**
- * Providers with a skill surface. A bb skill is discovered under each, so the
- * listing queries all of them and de-dupes provider-agnostic bb skills by path.
- */
-const SKILL_COMMAND_SURFACE_PROVIDERS: readonly SkillProvider[] = [
-  "claude-code",
-  "codex",
-  "acp-cursor",
-];
 
 /** Deterministic page grouping order; also keeps listing output test-stable. */
 const SKILL_SCOPE_ORDER: readonly SkillScope[] = [
@@ -238,20 +232,25 @@ export async function listProjectSkills(
   deps: AppDeps,
   args: { workspace: CommandWorkspace },
 ): Promise<SkillSummary[]> {
+  // A provider has a skill surface when its registration declares a native
+  // root or its plugin resolves roots per host; the listing asks the daemon
+  // to scan exactly those roots and de-dupes provider-agnostic bb skills by
+  // path.
+  const skillProviders = deps.providerRegistry
+    .list()
+    .filter(providerHasNativeRootSurface);
   const [perProvider, sharedSkills] = await Promise.all([
     Promise.all(
-      SKILL_COMMAND_SURFACE_PROVIDERS.map(
-        async (provider): Promise<ProviderSkillDiscovery> => {
-          const result = await callHostRetryableOnlineRpc(deps, {
+      skillProviders.map(
+        async (registration): Promise<ProviderSkillDiscovery> => {
+          // Providers run in parallel, each within its own listing budget.
+          const result = await scanProviderNativeRoots(deps, {
+            type: "host.list_skills",
+            registration,
             hostId: args.workspace.hostId,
-            timeoutMs: COMMAND_TIMEOUT_MS,
-            command: {
-              type: "host.list_skills",
-              providerId: provider,
-              cwd: args.workspace.cwd,
-            },
+            cwd: args.workspace.cwd,
           });
-          return { provider, skills: result.skills };
+          return { provider: registration.info.id, skills: result.skills };
         },
       ),
     ),

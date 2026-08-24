@@ -3,7 +3,7 @@
   "cell": "web-search",
   "threadId": "thr_gck2qwkakt",
   "scope": "thread",
-  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (in-process)",
+  "cliVersion": "@earendil-works/pi-coding-agent 0.84.0 (rpc)",
   "recordedAt": "2026-08-21",
   "description": "A turn that uses web search or fetch (or a shell fallback).",
   "note": "",
@@ -11,7 +11,7 @@
   "lines": {
     "runtime→bridge": 2,
     "bridge→runtime": 17,
-    "provider→bridge": 91,
-    "bridge→provider": 1
+    "provider→bridge": 97,
+    "bridge→provider": 6
   }
 }

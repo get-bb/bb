@@ -381,7 +381,15 @@
     },
     "test": {
       "dependsOn": ["//#ensure-native-modules", "topo"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"],
+      // Re-pin knobs a suite reads to rewrite its own committed baseline.
+      // Turbo strips undeclared variables, so a documented re-pin command
+      // (`UPDATE_PARITY_ROW_COUNTS=1 pnpm exec turbo run test …`) silently
+      // does nothing without them.
+      "passThroughEnv": [
+        "UPDATE_PARITY_ROW_COUNTS",
+        "UPDATE_TRANSCRIPT_EXPECTATIONS"
+      ]
     },
     // syncPluginTypes reads packages/plugin-sdk/bundled-types at runtime, and
     // plugin-scaffold-external packs @get-bb/plugin-sdk (prepack rebuilds its
@@ -410,6 +418,9 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/tests/scripted-echo-provider/host.ts",
         "$TURBO_ROOT$/tests/scripted-echo-provider/src/**",
+        "$TURBO_ROOT$/examples/plugins/echo-provider/*.ts",
+        "$TURBO_ROOT$/examples/plugins/echo-provider/package.json",
+        "$TURBO_ROOT$/examples/plugins/echo-provider/src/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
     },
@@ -441,7 +452,10 @@
       "cache": false,
       "passThroughEnv": [
         "BB_PROVIDER_CORPUS_DIR",
-        "BB_PROVIDER_CORPUS_SNAPSHOT"
+        "BB_PROVIDER_CORPUS_SNAPSHOT",
+        "BB_PROVIDER_CORPUS_SNAPSHOT_DIR",
+        "BB_PROVIDER_CORPUS_ALLOWLIST",
+        "BB_PROVIDER_CORPUS_ROW_CLASSES"
       ]
     },
     // Builds real plugin host artifacts (the builtin artifacts suite, plus the
@@ -453,7 +467,13 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.shared.ts"]
+      // The SVG validator suite reads every first-party branding SVG.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/vitest.shared.ts",
+        "$TURBO_ROOT$/plugins/*/icons/**",
+        "$TURBO_ROOT$/examples/plugins/*/icons/**"
+      ]
     },
     // The live-CLI suite's global setup rebuilds every first-party provider
     // bridge from source, so it needs the SDK dist too.

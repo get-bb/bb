@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { resolveCodexHome } from "@bb/config/codex-home";
 import { resolveDataDirSkillsRootPath } from "@bb/config/skill-storage-paths";
 import type {
   HostDaemonOnlineRpcResult,
@@ -18,14 +17,14 @@ import {
   type SkillScanRoot,
 } from "../command-discovery.js";
 import {
-  type CommandRootResolution,
-  resolveProviderCommandScanRoots,
+  type DeclaredScanRootResolution,
+  resolveDeclaredScanRoots,
 } from "./list-commands.js";
 import { writeHostFile } from "./file-write.js";
 
 const SKILL_FILE_NAME = "SKILL.md";
 
-type SkillRootResolution = CommandRootResolution;
+type SkillRootResolution = DeclaredScanRootResolution;
 
 function createBbSkillScanRoot(
   rootPath: string,
@@ -65,14 +64,13 @@ function resolveBbSkillScanRoots(
 /**
  * Classify a scan root by its originating identity so the server can map it to a
  * product scope. Plugin roots are tagged structurally (they always carry a
- * `namePrefix`); provider base roots are matched by exact path against the same
- * resolution that produced them. bb roots arrive already tagged from
- * `resolveBbSkillScanRoots`. Returns `null` for legacy command roots or an
- * unrecognized root.
+ * `namePrefix`); every other provider skill root carries the identity seed the
+ * root resolver gave it. bb roots arrive already tagged from
+ * `resolveBbSkillScanRoots`. Returns `null` for command roots.
  */
 function classifySkillRoot(
   root: CommandScanRoot,
-  resolution: CommandRootResolution,
+  resolution: SkillRootResolution,
 ): Pick<SkillScanRoot, "identitySeed" | "rootKind"> | null {
   if (root.source !== "skill") {
     return null;
@@ -88,64 +86,32 @@ function classifySkillRoot(
       rootKind: "plugin",
     };
   }
-  if (root.skillIdentitySeed !== undefined) {
-    const shared = resolution.providerId === "bb-shared";
-    return {
-      identitySeed: root.skillIdentitySeed,
-      rootKind: shared
-        ? root.origin === "project"
-          ? "shared-project"
-          : "shared-user"
-        : root.origin === "project"
-          ? "provider-project"
-          : "provider-user",
-    };
-  }
-  // All remaining non-plugin skill base roots are directory-shaped.
-  if (root.shape !== "skill" && root.shape !== "skill-recursive") {
+  if (root.skillIdentitySeed === undefined) {
     return null;
   }
-  const { rootPath } = root;
-  if (
-    resolution.cwd !== null &&
-    (rootPath === path.join(resolution.cwd, ".claude", "skills") ||
-      rootPath === path.join(resolution.cwd, ".codex", "skills") ||
-      (resolution.providerId === "codex" &&
-        root.origin === "project" &&
-        path.basename(rootPath) === "skills" &&
-        path.basename(path.dirname(rootPath)) === ".agents"))
-  ) {
-    return {
-      identitySeed:
-        root.skillIdentitySeed ?? `${resolution.providerId}:provider-project`,
-      rootKind: "provider-project",
-    };
-  }
-  if (
-    rootPath === path.join(resolution.homeDir, ".claude", "skills") ||
-    rootPath === path.join(resolution.codexHome, "skills") ||
-    rootPath === path.join(resolution.codexHome, "skills", ".system")
-  ) {
-    return {
-      identitySeed: `${resolution.providerId}:provider-user:${
-        rootPath.endsWith(`${path.sep}.system`) ? "system" : "user"
-      }`,
-      rootKind: "provider-user",
-    };
-  }
-  return null;
+  const shared = resolution.providerId === "bb-shared";
+  return {
+    identitySeed: root.skillIdentitySeed,
+    rootKind: shared
+      ? root.origin === "project"
+        ? "shared-project"
+        : "shared-user"
+      : root.origin === "project"
+        ? "provider-project"
+        : "provider-user",
+  };
 }
 
 /**
  * Resolve the skill scan roots for a provider and tag each with its `rootKind`.
  * Reuses the command-typeahead root resolution verbatim (single source of root
- * paths), then drops non-skill roots and roots that do not classify.
+ * paths), then drops command roots.
  */
 export async function resolveSkillScanRoots(
   resolution: SkillRootResolution,
 ): Promise<SkillScanRoot[]> {
   const skillRoots = resolveBbSkillScanRoots(resolution);
-  const providerRoots = await resolveProviderCommandScanRoots(resolution);
+  const providerRoots = await resolveDeclaredScanRoots(resolution);
   for (const root of providerRoots) {
     const classification = classifySkillRoot(root, resolution);
     if (classification === null) {
@@ -163,15 +129,11 @@ export async function listHostSkills(
   if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
   }
-  const homeDir = os.homedir();
   const roots = await resolveSkillScanRoots({
     cwd: command.cwd,
-    homeDir,
-    codexHome: resolveCodexHome(homeDir),
+    homeDir: os.homedir(),
     providerId: command.providerId,
-    ...(command.nativeSkillRoots !== undefined
-      ? { nativeSkillRoots: command.nativeSkillRoots }
-      : {}),
+    nativeRoots: command.nativeRoots,
   });
   const skills = await discoverSkills({ roots });
   return { skills };

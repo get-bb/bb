@@ -10,20 +10,29 @@ import {
 function createInteraction(
   payload: PendingInteractionPayload,
 ): PendingInteraction {
-  return {
+  const base = {
     id: "pint_123456789a",
     threadId: "thr_123",
     turnId: "turn_123",
     providerId: "codex",
     providerThreadId: "provider-thread-123",
     providerRequestId: "request-123",
-    status: "pending",
-    payload,
+    status: "pending" as const,
     resolution: null,
     statusReason: null,
     createdAt: 1,
     resolvedAt: null,
   };
+  // Each payload kind pairs with its own resolution type; spelling the
+  // branches keeps the fixture on the paired union without a cast.
+  switch (payload.kind) {
+    case "approval":
+      return { ...base, payload };
+    case "user_question":
+      return { ...base, payload };
+    default:
+      return { ...base, payload };
+  }
 }
 
 describe("pending interaction formatting", () => {

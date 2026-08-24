@@ -17,7 +17,7 @@ import {
   ThreadChat,
   useBbContext,
   useBbNavigate,
-  type ExperimentalPluginFixedTabRegistration,
+  type PluginFixedTabRegistration,
   type JsonValue,
 } from "@get-bb/plugin-sdk/app";
 
@@ -76,7 +76,7 @@ function ThreadChatDemoPanel({ subPath }: { subPath: string }) {
           type="button"
           className="h-8 cursor-pointer rounded-md border px-2 text-sm hover:bg-surface-recessed"
           onClick={() =>
-            navigate.experimental_openUrl(
+            navigate.openUrl(
               "https://github.com/get-bb/bb/tree/main/examples/plugins/thread-chat-demo",
             )
           }
@@ -118,7 +118,7 @@ function DemoThreadFixedTab() {
   );
 }
 
-const demoThreadFixedTab: ExperimentalPluginFixedTabRegistration<
+const demoThreadFixedTab: PluginFixedTabRegistration<
   DemoThreadTarget
 > = {
   panelId: "thread-chat-demo",
@@ -177,7 +177,7 @@ export default definePluginApp((app) => {
     icon: "MessageSquarePlus",
     path: "thread-chat",
     component: ThreadChatDemoPanel,
-    experimental_fixedTabs: [demoThreadFixedTab],
+    fixedTabs: [demoThreadFixedTab],
   });
   app.slots.threadPanelAction({
     id: "demo-panel",

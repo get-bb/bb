@@ -5,12 +5,7 @@ import type {
   SystemExecutionOptionsResponse,
   SystemProvidersQuery,
 } from "@bb/server-contract";
-import { buildAcpProviderInfo } from "../providers/acp-provider-tier.js";
-import {
-  formatCustomAcpAgentProviderId,
-  type CustomAcpAgent,
-  type CustomProviderModel,
-} from "@bb/config/bb-app-managed-config";
+import { type CustomProviderModel } from "@bb/config/bb-app-managed-config";
 import {
   providerModelCatalogDependsOnWorkspace,
   reasoningEffortsForLevels,
@@ -18,10 +13,7 @@ import {
   type ProviderInfo,
 } from "@bb/domain";
 import { getAppSettings } from "@bb/db";
-import {
-  normalizeHostDaemonAcpLaunchSpec,
-  type HostDaemonRetryableOnlineRpcCommand,
-} from "@bb/host-daemon-contract";
+import { type HostDaemonRetryableOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { ProviderModelListMemoValue } from "../../lifecycle-dedupers.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -33,7 +25,6 @@ import type { ProviderRegistryService } from "../providers/provider-registry.js"
 import { getSupportedReasoningLevelsForProvider } from "../threads/thread-reasoning-policy.js";
 import { resolveSystemLookupHostId } from "./host-lookup.js";
 import {
-  isAcpProviderTierRegistered,
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
 } from "./provider-bridge-launch.js";
@@ -101,61 +92,32 @@ interface ResolveSystemProviderInfosPlanResult {
   providersPromise: Promise<ProviderInfo[]>;
 }
 
-function buildCustomAcpProviderInfo(agent: CustomAcpAgent): ProviderInfo {
-  const providerId = formatCustomAcpAgentProviderId(agent.id);
-  return buildAcpProviderInfo({
-    id: providerId,
-    displayName: agent.displayName,
-    logoUrl:
-      agent.logo === undefined
-        ? null
-        : `/api/v1/system/providers/${encodeURIComponent(providerId)}/logo`,
-  });
-}
-
 function providerMatchesCapability(
   provider: ProviderInfo,
   capability: ProviderCapabilityFilter | undefined,
 ): boolean {
   switch (capability) {
     case "installation":
-      return provider.experimental_providerInstallation;
+      return provider.maintenance.installation;
     case "usage":
-      return provider.experimental_providerUsage;
+      return provider.maintenance.usage;
     case undefined:
       return true;
   }
 }
 
 function listConfiguredSystemProviderInfos(
-  deps: Pick<LoggedWorkSessionDeps, "config" | "providerRegistry">,
+  deps: Pick<LoggedWorkSessionDeps, "providerRegistry">,
   capability?: ProviderCapabilityFilter,
 ): ProviderInfo[] {
-  // User-configured ACP ids stay dynamic and override a plugin-owned built-in
-  // with the same id, preserving the existing custom-agent precedence.
-  const acpTierAvailable = isAcpProviderTierRegistered(deps);
-  const customProviderIds = new Set(
-    deps.config.customAcpAgents.map((agent) =>
-      formatCustomAcpAgentProviderId(agent.id),
-    ),
-  );
-  const providers = [
-    ...deps.providerRegistry
-      .list()
-      .filter(
-        (entry) =>
-          entry.visibility === "always" &&
-          !customProviderIds.has(entry.info.id) &&
-          providerMatchesCapability(entry.info, capability),
-      )
-      .map((entry) => entry.info),
-    ...(acpTierAvailable
-      ? deps.config.customAcpAgents
-          .map(buildCustomAcpProviderInfo)
-          .filter((provider) => providerMatchesCapability(provider, capability))
-      : []),
-  ];
-  return providers;
+  return deps.providerRegistry
+    .list()
+    .filter(
+      (entry) =>
+        entry.visibility === "always" &&
+        providerMatchesCapability(entry.info, capability),
+    )
+    .map((entry) => entry.info);
 }
 
 function includeRequestedRegisteredProvider(
@@ -201,17 +163,11 @@ async function listInstalledPluginProviderInfos(
   hostId: string,
   capability?: ProviderCapabilityFilter,
 ): Promise<ProviderInfo[]> {
-  const customProviderIds = new Set(
-    deps.config.customAcpAgents.map((agent) =>
-      formatCustomAcpAgentProviderId(agent.id),
-    ),
-  );
   const registrations = deps.providerRegistry
     .list()
     .filter(
       (registration) =>
         registration.visibility === "installed" &&
-        !customProviderIds.has(registration.info.id) &&
         providerMatchesCapability(registration.info, capability),
     );
   const results = await mapProviderMaintenanceRequests(
@@ -307,15 +263,6 @@ export async function listSystemProviderInfos(
   // an early request would otherwise report an empty provider list.
   await deps.providerRegistry.whenRegistrationsSettled();
   return await resolveSystemProviderInfosPlan(deps, query).providersPromise;
-}
-
-function findCustomAcpAgentForProviderId(
-  customAcpAgents: CustomAcpAgent[],
-  providerId: string,
-): CustomAcpAgent | undefined {
-  return customAcpAgents.find(
-    (agent) => formatCustomAcpAgentProviderId(agent.id) === providerId,
-  );
 }
 
 /**
@@ -597,10 +544,6 @@ async function loadSystemProviderModels(
   if (!provider.available) {
     return unavailableProviderModelResult(provider.id);
   }
-  const customAcpAgent = findCustomAcpAgentForProviderId(
-    deps.config.customAcpAgents,
-    provider.id,
-  );
   const bridgeLaunch = requireBridgeLaunchForProviderId(deps, provider.id);
   const command: ProviderListModelsCommand = {
     type: "provider.list_models",
@@ -608,13 +551,11 @@ async function loadSystemProviderModels(
     // Only a workspace-scoped catalog gets the path: the other bridges ignore
     // it, and leaving it out lets every environment on the host share one
     // memo entry.
-    ...(cwd !== undefined && providerModelCatalogDependsOnWorkspace(provider.id)
+    ...(cwd !== undefined &&
+    providerModelCatalogDependsOnWorkspace(
+      provider.capabilities.modelCatalogScope,
+    )
       ? { cwd }
-      : {}),
-    ...(customAcpAgent !== undefined
-      ? {
-          acpLaunchSpec: normalizeHostDaemonAcpLaunchSpec(customAcpAgent),
-        }
       : {}),
     bridgeLaunch,
   };

@@ -1,0 +1,101 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
+import { type FakePiBridgeHarness, fakePiPath, startFakePiBridge } from "./test-support.js";
+
+/**
+ * Pi is user-installed (L6): before the bridge talks to pi, `provider/health`
+ * and `model/list` gate on the executable being on the launch path and on
+ * `pi --version` >= 0.84.0, then `provider/health` runs the `get_state`
+ * smoke probe through the catalog child. The fake answers `--version` from
+ * FAKE_PI_VERSION.
+ */
+
+let harness: FakePiBridgeHarness;
+
+beforeEach(async () => {
+  harness = await startFakePiBridge({ prefix: "bb-pi-install-gate-", initialize: true });
+});
+
+afterEach(async () => {
+  await harness.teardown();
+});
+
+it("reports ready with the installed version after the get_state probe", async () => {
+  const response = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  expect(response.result).toMatchObject({
+    supported: true,
+    health: {
+      status: "ready",
+      installedVersion: "0.84.0",
+      minimumSupportedVersion: "0.84.0",
+      canInstall: true,
+      canUpdate: true,
+      loginCommand: "pi",
+    },
+  });
+});
+
+it("refuses a pi older than the supported minimum before spawning it", async () => {
+  vi.stubEnv("FAKE_PI_VERSION", "0.83.2");
+  const health = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  expect(health.result).toMatchObject({
+    health: { status: "unsupported_version", installedVersion: "0.83.2" },
+  });
+  const models = await harness.request(2, "model/list", { cwd: harness.workspaceDir });
+  expect(models.error).toMatchObject({
+    message: expect.stringContaining("0.83.2 is older than the supported minimum 0.84.0"),
+  });
+});
+
+it("reports not_installed when the launch command is missing", async () => {
+  vi.stubEnv(PI_BRIDGE_COMMAND_ENV, join(harness.workspaceDir, "no-such-pi"));
+  vi.stubEnv(PI_BRIDGE_ARGS_ENV, "[]");
+  const health = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  expect(health.result).toMatchObject({
+    health: { status: "not_installed", canInstall: true, canUpdate: false },
+  });
+  const models = await harness.request(2, "model/list", { cwd: harness.workspaceDir });
+  expect(models.error).toMatchObject({
+    message: expect.stringContaining("Could not find the pi CLI"),
+  });
+});
+
+it("fails closed when pi cannot report its version, with install guidance", async () => {
+  // The crash prints "pi 0.84.0" on stderr and exits 1: a gate that read
+  // stderr or treated a failed probe as "no version, pass" would say ready.
+  vi.stubEnv("FAKE_PI_VERSION", "crash");
+  const health = await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  expect(health.result).toMatchObject({
+    health: {
+      status: "unknown",
+      installedVersion: null,
+      statusMessage: expect.stringMatching(
+        /^Could not determine the pi version: `.*--version` exited with 1\. Install @earendil-works\/pi-coding-agent 0\.84\.0 or newer: npm install -g @earendil-works\/pi-coding-agent@latest$/u,
+      ),
+    },
+  });
+  const models = await harness.request(2, "model/list", { cwd: harness.workspaceDir });
+  expect(models.error).toMatchObject({
+    message: expect.stringContaining("Could not determine the pi version"),
+  });
+});
+
+it("memoizes the install gate per launch path across health polls", async () => {
+  const processLog = join(harness.workspaceDir, "process.log");
+  vi.stubEnv("FAKE_PI_PROCESS_LOG", processLog);
+  await harness.request(1, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  await harness.request(2, "model/list", { cwd: harness.workspaceDir });
+  await harness.request(3, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  const versionSpawns = readFileSync(processLog, "utf8")
+    .split("\n")
+    .filter((line) => line.startsWith("version:"));
+  expect(versionSpawns).toHaveLength(1);
+  // A different launch path is a different install: it probes again.
+  vi.stubEnv(PI_BRIDGE_ARGS_ENV, JSON.stringify([fakePiPath, "--other-launch"]));
+  await harness.request(4, "provider/health", { providerId: "pi", cwd: harness.workspaceDir });
+  expect(
+    readFileSync(processLog, "utf8").split("\n").filter((line) => line.startsWith("version:")),
+  ).toHaveLength(2);
+});

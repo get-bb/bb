@@ -7,6 +7,7 @@ type ExpectedBbPluginApiKey =
   | "background"
   | "cli"
   | "events"
+  | "experimental_aiServices"
   | "hosts"
   | "http"
   | "log"
@@ -25,11 +26,14 @@ type ExpectedBbPluginApiKey =
 const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "BbPluginApi",
   "PluginAgents",
+  "PluginAiServiceDeclaration",
+  "PluginAiServiceKind",
+  "PluginAiServices",
   "PluginAgentConfiguration",
   "PluginAgentConfigurationContext",
   "PluginAgentToolContentPart",
   "PluginAgentToolContext",
-  "PluginAgentToolExperimentalStatusLabels",
+  "PluginAgentToolLabels",
   "PluginAgentToolPresentation",
   "PluginAgentToolRegistrationBase",
   "PluginAgentToolResult",
@@ -61,6 +65,10 @@ const EXPECTED_BACKEND_ROOT_TYPE_EXPORTS = [
   "PluginProviderDeclaration",
   "PluginProviderExtensionKindDeclaration",
   "PluginProviderFallbackModel",
+  "PluginProviderMaintenance",
+  "PluginProviderModelCatalogScope",
+  "PluginProviderNativeRootEntry",
+  "PluginProviderNativeRoots",
   "PluginProviderOptionDescriptor",
   "PluginProviderOptionsContext",
   "PluginProviderPermissionMode",

@@ -4,7 +4,8 @@ import {
   commandRow,
   conversationRow,
   fileChangeRow,
-  toolRow,
+  fileReadRow,
+  searchRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
 
@@ -39,15 +40,11 @@ function workSummaryId(children: readonly TimelineRow[]): string {
   ].join(":");
 }
 
-interface ExplorationToolRowArgs {
-  callId: string;
-  seq: number;
-  toolName: "Read" | "Grep" | "Glob";
-  toolArgs: Record<string, string | number | boolean>;
-  intentPath: string | null;
-  intentType: "read" | "search" | "list_files";
-  output: string;
-}
+type ExplorationRowArgs = { callId: string; seq: number } & (
+  | { kind: "read"; path: string }
+  | { kind: "search"; query: string; path: string | null }
+  | { kind: "list"; pattern: string; path: string | null }
+);
 
 // ---------------------------------------------------------------------------
 // Step summaries are produced by `buildTimelineViewRows` when an
@@ -313,98 +310,73 @@ const fileChangeToViewMessages: TimelineRow = fileChangeRow({
   approvalStatus: null,
 });
 
-// ---- Exploration tools (Read / Grep / Glob with real intents) -------------
-function explorationToolRow(args: ExplorationToolRowArgs): TimelineRow {
-  return toolRow({
-    id: `${THREAD_ID}:tool:${args.callId}`,
+// ---- Exploration rows (Read / Grep / Glob as file-read / search rows) -----
+function explorationRow(args: ExplorationRowArgs): TimelineRow {
+  const base = {
     threadId: THREAD_ID,
     turnId: TURN_ID,
     sourceSeqStart: args.seq,
     sourceSeqEnd: args.seq,
     startedAt: 1777337100000 + args.seq,
     createdAt: 1777337100000 + args.seq + 50,
-    status: "completed",
+    status: "completed" as const,
     callId: args.callId,
-    toolName: args.toolName,
-    toolArgs: args.toolArgs,
-    output: args.output,
-    approvalStatus: null,
-    activityIntents:
-      args.intentType === "read"
-        ? [
-            {
-              type: "read",
-              command: args.toolName,
-              name: args.intentPath?.split("/").pop() ?? args.toolName,
-              path: args.intentPath,
-            },
-          ]
-        : args.intentType === "search"
-          ? [
-              {
-                type: "search",
-                command: args.toolName,
-                query:
-                  typeof args.toolArgs.pattern === "string"
-                    ? args.toolArgs.pattern
-                    : null,
-                path: args.intentPath,
-              },
-            ]
-          : [
-              {
-                type: "list_files",
-                command: args.toolName,
-                path: args.intentPath,
-              },
-            ],
     durationMs: 50,
-  });
+  };
+  switch (args.kind) {
+    case "read":
+      return fileReadRow({
+        ...base,
+        id: `${THREAD_ID}:file-read:${args.callId}`,
+        path: args.path,
+      });
+    case "search":
+      return searchRow({
+        ...base,
+        id: `${THREAD_ID}:search:${args.callId}`,
+        mode: "content",
+        query: args.query,
+        path: args.path,
+      });
+    case "list":
+      return searchRow({
+        ...base,
+        id: `${THREAD_ID}:search:${args.callId}`,
+        mode: "path",
+        query: args.pattern,
+        path: args.path,
+      });
+  }
 }
 
-const readAssistantStream = explorationToolRow({
+const readAssistantStream = explorationRow({
   callId: "call_read_assist_stream",
   seq: 35100,
-  toolName: "Read",
-  toolArgs: {
-    file_path: "packages/core-ui/src/assistant-stream-projection.ts",
-  },
-  intentPath: "packages/core-ui/src/assistant-stream-projection.ts",
-  intentType: "read",
-  output: "...file contents...",
+  kind: "read",
+  path: "packages/core-ui/src/assistant-stream-projection.ts",
 });
 
-const readIndex = explorationToolRow({
+const readIndex = explorationRow({
   callId: "call_read_index",
   seq: 35110,
-  toolName: "Read",
-  toolArgs: { file_path: "packages/core-ui/src/index.ts" },
-  intentPath: "packages/core-ui/src/index.ts",
-  intentType: "read",
-  output: "...file contents...",
+  kind: "read",
+  path: "packages/core-ui/src/index.ts",
 });
 
-const grepFinalized = explorationToolRow({
+const grepFinalized = explorationRow({
   callId: "call_grep_finalized",
   seq: 35120,
-  toolName: "Grep",
-  toolArgs: {
-    pattern: "finalizedReasoningMessageKeys",
-    path: "packages/core-ui/src",
-  },
-  intentPath: "packages/core-ui/src",
-  intentType: "search",
-  output: "src/assistant-stream-projection.ts:24\nsrc/to-view-messages.ts:131",
+  kind: "search",
+  query: "finalizedReasoningMessageKeys",
+  path: "packages/core-ui/src",
 });
 
-const globTests = explorationToolRow({
+const globTests = explorationRow({
   callId: "call_glob_tests",
   seq: 35130,
-  toolName: "Glob",
-  toolArgs: { pattern: "packages/core-ui/test/*.test.ts" },
-  intentPath: "packages/core-ui/test",
-  intentType: "list_files",
-  output: "test/to-view-messages.assistant-streams.test.ts",
+  kind: "list",
+  pattern: "packages/core-ui/test/*.test.ts",
+  path: "packages/core-ui/test",
 });
 
 // ---- Step compositions ----------------------------------------------------

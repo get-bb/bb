@@ -1,7 +1,9 @@
 import type {
   BackgroundTaskStatus,
   BackgroundTaskUsage,
+  ExtensionKind,
   JsonObject,
+  JsonValue,
   OwnershipChangeOperationMetadata,
   PendingInteractionUserAnswer,
   PendingInteractionUserQuestionQuestion,
@@ -10,7 +12,10 @@ import type {
   SystemMessageKind,
   SystemMessageSubject,
   Thread,
+  ThreadEventItemPresentation,
+  ThreadEventPlanStep,
   ThreadEventScope,
+  ThreadEventSearchMode,
   ThreadTurnInitiator,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
@@ -60,6 +65,16 @@ export interface EventProjectionMessageBase {
   scope: ThreadEventScope;
   startedAt?: number;
   parentToolCallId?: string;
+}
+
+/**
+ * Messages projected from a provider item carry the bridge's declarative
+ * presentation (grammar v3) when the persisted item had one. Absent on
+ * events persisted before presentation existed; the row then renders
+ * through its kind's legacy derivation.
+ */
+interface EventProjectionPresentedMessage {
+  presentation?: ThreadEventItemPresentation;
 }
 
 const eventProjectionTurnRequestKindValues = ["message", "steer"] as const;
@@ -138,13 +153,12 @@ interface EventProjectionDelegationMetadata {
   model?: string;
 }
 
-export interface EventProjectionToolCallMessage extends EventProjectionMessageBase {
+export interface EventProjectionToolCallMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
   kind: "tool-call";
   toolName: string;
   toolArgs: JsonObject | null;
-  statusLabels?: { pending: string; completed: string };
   callId: string;
-  parsedIntents: EventProjectionToolParsedIntent[];
   output: string;
   completedAt: number | null;
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
@@ -154,7 +168,8 @@ export interface EventProjectionToolCallMessage extends EventProjectionMessageBa
   >;
 }
 
-export interface EventProjectionCommandMessage extends EventProjectionMessageBase {
+export interface EventProjectionCommandMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
   kind: "command";
   callId: string;
   command: string;
@@ -171,7 +186,8 @@ export interface EventProjectionCommandMessage extends EventProjectionMessageBas
   >;
 }
 
-export interface EventProjectionWebSearchMessage extends EventProjectionMessageBase {
+export interface EventProjectionWebSearchMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
   kind: "web-search";
   callId: string;
   queries: string[];
@@ -182,7 +198,8 @@ export interface EventProjectionWebSearchMessage extends EventProjectionMessageB
   >;
 }
 
-export interface EventProjectionWebFetchMessage extends EventProjectionMessageBase {
+export interface EventProjectionWebFetchMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
   kind: "web-fetch";
   callId: string;
   url: string;
@@ -195,7 +212,8 @@ export interface EventProjectionWebFetchMessage extends EventProjectionMessageBa
   >;
 }
 
-export interface EventProjectionImageViewMessage extends EventProjectionMessageBase {
+export interface EventProjectionImageViewMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
   kind: "image-view";
   callId: string;
   path: string;
@@ -206,6 +224,57 @@ export interface EventProjectionImageViewMessage extends EventProjectionMessageB
   >;
 }
 
+type EventProjectionItemActivityStatus = Extract<
+  EventProjectionMessageStatus,
+  "pending" | "completed" | "error" | "interrupted"
+>;
+
+/** A grammar v3 `fileRead` item. */
+export interface EventProjectionFileReadMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
+  kind: "file-read";
+  callId: string;
+  path: string;
+  cmd: string | null;
+  completedAt: number | null;
+  status: EventProjectionItemActivityStatus;
+}
+
+/** A grammar v3 `search` item (content search, path match, or listing). */
+export interface EventProjectionSearchMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
+  kind: "search";
+  callId: string;
+  mode: ThreadEventSearchMode;
+  query: string;
+  path: string | null;
+  cmd: string | null;
+  completedAt: number | null;
+  status: EventProjectionItemActivityStatus;
+}
+
+/** A grammar v3 `planSteps` snapshot. */
+export interface EventProjectionPlanStepsMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
+  kind: "plan-steps";
+  callId: string;
+  steps: ThreadEventPlanStep[];
+  explanation: string | null;
+  completedAt: number | null;
+  status: EventProjectionItemActivityStatus;
+}
+
+/** A plugin extension item; `presentation` is mandatory on the item. */
+export interface EventProjectionExtensionMessage extends EventProjectionMessageBase {
+  kind: "extension";
+  callId: string;
+  extensionKind: ExtensionKind;
+  payload: JsonValue;
+  presentation: ThreadEventItemPresentation;
+  completedAt: number | null;
+  status: EventProjectionItemActivityStatus;
+}
+
 export interface EventProjectionFileEditChange {
   path: string;
   kind?: string;
@@ -213,7 +282,8 @@ export interface EventProjectionFileEditChange {
   diff?: string;
 }
 
-export interface EventProjectionFileEditMessage extends EventProjectionMessageBase {
+export interface EventProjectionFileEditMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
   kind: "file-edit";
   callId: string;
   changes: EventProjectionFileEditChange[];
@@ -344,10 +414,15 @@ export interface EventProjectionUserQuestionLifecycleMessage extends EventProjec
 }
 
 export interface EventProjectionDelegationMessage
-  extends EventProjectionMessageBase, EventProjectionDelegationMetadata {
+  extends EventProjectionMessageBase,
+    EventProjectionDelegationMetadata,
+    EventProjectionPresentedMessage {
   kind: "delegation";
   toolName: string;
   callId: string;
+  /** Provider-native child id (grammar v3); null for legacy tool-call delegations. */
+  childRef: string | null;
+  background: boolean;
   output: string;
   completedAt: number | null;
   status: Extract<
@@ -363,7 +438,8 @@ export interface EventProjectionDelegationMessage
  * thread: the turn-scoped item/started anchors placement and later
  * thread-scoped progress/completed events replace its payload in place.
  */
-export interface EventProjectionWorkflowMessage extends EventProjectionMessageBase {
+export interface EventProjectionWorkflowMessage
+  extends EventProjectionMessageBase, EventProjectionPresentedMessage {
   kind: "workflow";
   itemId: string;
   /**
@@ -410,6 +486,10 @@ export type EventProjectionMessage =
   | EventProjectionWebSearchMessage
   | EventProjectionWebFetchMessage
   | EventProjectionImageViewMessage
+  | EventProjectionFileReadMessage
+  | EventProjectionSearchMessage
+  | EventProjectionPlanStepsMessage
+  | EventProjectionExtensionMessage
   | EventProjectionFileEditMessage
   | EventProjectionOperationMessage
   | EventProjectionPermissionGrantLifecycleMessage

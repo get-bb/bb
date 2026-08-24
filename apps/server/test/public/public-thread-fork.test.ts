@@ -380,20 +380,13 @@ describe("public thread fork route", () => {
     });
   });
 
-  it("forks a custom ACP provider and uses the returned child session", async () => {
+  // A shipped ACP agent that declares `fork: "tip"`. A user-CONFIGURED agent
+  // cannot stand in for it: the plugin declares every configured agent
+  // `fork: "none"`, because bb has not verified its session/fork support and
+  // the bridge refuses a fork only after bb created the fork thread (#1833).
+  it("forks an ACP provider that declares it and uses the returned child session", async () => {
     await withTestHarness(
-      {
-        customAcpAgents: [
-          {
-            id: "test-agent",
-            displayName: "Test Agent",
-            command: "test-agent",
-            args: ["acp"],
-            env: {},
-            supportsManualCompaction: false,
-          },
-        ],
-      },
+      {},
       async (harness) => {
         const { host } = seedHostSession(harness.deps);
         const { project } = seedProjectWithSource(harness.deps, {
@@ -406,7 +399,7 @@ describe("public thread fork route", () => {
         const sourceThread = seedThread(harness.deps, {
           environmentId: environment.id,
           projectId: project.id,
-          providerId: "acp-test-agent",
+          providerId: "acp-opencode",
         });
         seedThreadRuntimeState(harness.deps, {
           environmentId: environment.id,
@@ -437,11 +430,14 @@ describe("public thread fork route", () => {
         if (start.command.type !== "thread.start") {
           throw new Error("Expected thread.start");
         }
+        // The launch spec reaches the bridge through the opaque provider
+        // options every provider uses, from the plugin's own registration.
         expect(start.command).toMatchObject({
-          providerId: "acp-test-agent",
-          acpLaunchSpec: {
-            command: "test-agent",
-            args: ["acp"],
+          providerId: "acp-opencode",
+          bridgeLaunch: {
+            providerOptions: {
+              acpLaunchSpec: { command: "opencode", args: ["acp"] },
+            },
           },
           fork: {
             sourceProviderThreadId: "provider-acp-source",
@@ -874,23 +870,16 @@ describe("fork branch point and inherited history", () => {
     });
   });
 
-  const TIP_ONLY_PROVIDER_HARNESS = {
-    customAcpAgents: [
-      {
-        id: "test-agent",
-        displayName: "Test Agent",
-        command: "test-agent",
-        args: ["acp"],
-        env: {},
-        supportsManualCompaction: false,
-      },
-    ],
-  };
+  // A shipped ACP agent that declares `fork: "tip"`: it can clone a whole
+  // session but not recreate one at an earlier checkpoint, so
+  // `supportsSessionRewind` is false. A user-configured agent cannot stand in
+  // for it (the plugin declares every configured agent `fork: "none"`).
+  const TIP_ONLY_PROVIDER_ID = "acp-opencode";
 
   it("clones the tip of a mid-turn source when the provider cannot branch at a checkpoint", async () => {
-    await withTestHarness(TIP_ONLY_PROVIDER_HARNESS, async (harness) => {
+    await withTestHarness({}, async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness, {
-        providerId: "acp-test-agent",
+        providerId: TIP_ONLY_PROVIDER_ID,
       });
 
       const response = await postFork(harness, {
@@ -914,9 +903,9 @@ describe("fork branch point and inherited history", () => {
   });
 
   it("lets a tip-only provider fork at its latest turn but not earlier", async () => {
-    await withTestHarness(TIP_ONLY_PROVIDER_HARNESS, async (harness) => {
+    await withTestHarness({}, async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness, {
-        providerId: "acp-test-agent",
+        providerId: TIP_ONLY_PROVIDER_ID,
         runningThirdTurn: false,
       });
 
@@ -929,7 +918,7 @@ describe("fork branch point and inherited history", () => {
       expect(await readJson(earlier)).toMatchObject({
         code: "fork_source_session_unavailable",
         message:
-          "Provider acp-test-agent can only fork at the end of a session, not from an earlier point in it",
+          `Provider ${TIP_ONLY_PROVIDER_ID} can only fork at the end of a session, not from an earlier point in it`,
       });
 
       // Sequence 10 sits in turn 2, the source's latest turn: the whole

@@ -14,8 +14,11 @@ import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/te
 import {
   assembleRecordedEvents,
   compareParity,
+  firstPartyReplayBridge,
   readBridgeRecording,
   replayRecording,
+  FIRST_PARTY_BRIDGE_MODULES,
+  resolveFirstPartyBridgeModulePath,
   resolveReplayProfile,
   UnreplayableProviderError,
   withCurrentBridgeLane,
@@ -152,15 +155,29 @@ export function isReplayable(providerId: string): boolean {
   }
 }
 
+/**
+ * The first-party bridge module a leg would launch for the provider, when
+ * the leg's checkout does not have it. A checkout from before a provider's
+ * bridge moved (pi before its plugin) has nothing at the path and its own
+ * bridge is not replayable, so the leg cannot take part in a comparison.
+ */
+export function missingBridgeModule(checkoutRoot: string, providerId: string): string | null {
+  const entry = FIRST_PARTY_BRIDGE_MODULES[resolveReplayProfile(providerId).bridgeFamily]!;
+  return resolveFirstPartyBridgeModulePath(checkoutRoot, entry) === null ? entry.modulePath : null;
+}
+
 /** Replay one cell through the bridge of one checkout. */
 export async function replayCell(
   cell: RecordedCell,
   options: ReplayCellOptions,
 ): Promise<CellInputs & { run: ParityRun }> {
   const projectRows = options.projectRows ?? projectParityRows;
+  const bridge = firstPartyReplayBridge(cell.provider, options.checkoutRoot);
   const run = await replayRecording({
     recordingDir: cell.dir,
-    bridge: { checkoutRoot: options.checkoutRoot, providerId: cell.provider },
+    providerId: cell.provider,
+    bridge: bridge.launch,
+    profile: bridge.profile,
     createAssembler: options.createAssembler ?? createParityAssembler,
     ...(options.planFromCurrentLane === undefined ? {} : { planFromCurrentLane: options.planFromCurrentLane }),
     ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),

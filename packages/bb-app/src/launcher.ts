@@ -2127,10 +2127,6 @@ function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
     { label: "host daemon entry", path: context.daemonEntry },
     { label: "bundled bb CLI", path: join(context.daemonBundleDir, "bb") },
     {
-      label: "Pi bridge",
-      path: join(context.daemonBundleDir, "bb-pi-bridge.mjs"),
-    },
-    {
       label: "provider bridge worker",
       path: join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
     },

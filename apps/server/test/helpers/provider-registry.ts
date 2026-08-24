@@ -5,14 +5,10 @@
  * there is no core seed to fall back on. Most server tests need those
  * providers but cannot afford to install and run four plugins, so this helper
  * takes the SAME declarations those plugins register — by invoking their
- * server entrypoints against a capture stub — and pushes them through the same
- * validation and mapping the plugin runtime uses. Nothing is re-stated here,
- * so a declaration change cannot drift from what the tests assume.
- *
- * The plugin modules load by dynamic import rather than a static one: they
- * live outside this package's rootDir, exactly as they do for the real plugin
- * runtime, which also imports them as untyped modules and validates what comes
- * back.
+ * server entrypoints against the SDK's fake plugin host
+ * (`captureFirstPartyProviderDeclarations`) — and pushes them through the
+ * same mapping the plugin runtime uses. Nothing is re-stated here, so a
+ * declaration change cannot drift from what the tests assume.
  */
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
@@ -23,15 +19,29 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import { buildPluginHost, resolvePluginBuildToolchain } from "@bb/plugin-build";
-import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
-import type {
-  BbPluginApi,
-  PluginProviderDeclaration,
-} from "@get-bb/plugin-sdk";
+import {
+  validatePluginProviderDeclaration,
+  type NormalizedPluginProviderDeclaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  EMPTY_PROVIDER_NATIVE_ROOTS,
+  EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+  type JsonValue,
+  type ProviderInfo,
+  type ProviderNativeRootSet,
+} from "@bb/domain";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import {
+  captureFirstPartyProviderDeclarations,
+  firstPartyPluginRootDir,
+} from "@bb/agent-runtime/test";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
+import { readPluginProviderIcon } from "../../src/services/plugins/plugin-runtime.js";
 import {
   createProviderRegistryService,
+  type ProviderRegistration,
   type ProviderRegistryService,
+  type ProviderServerCapabilities,
 } from "../../src/services/providers/provider-registry.js";
 import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
 import type { PluginHostArtifactSnapshot } from "../../src/services/plugins/plugin-service-internal.js";
@@ -43,58 +53,20 @@ const FIRST_PARTY_PROVIDER_PLUGIN_IDS = [
   "provider-acp",
 ] as const;
 
-function pluginRootDir(pluginId: string): string {
-  // No trailing slash: the plugin build's directory-escape checks compare
-  // against `rootDir + "/"`.
-  return fileURLToPath(
-    new URL(`../../../../plugins/${pluginId}`, import.meta.url),
-  );
-}
-
-async function loadDeclarations(
-  pluginId: string,
-): Promise<PluginProviderDeclaration[]> {
-  const moduleUrl = new URL(
-    `../../../../plugins/${pluginId}/server.ts`,
-    import.meta.url,
-  ).href;
-  const loaded: unknown = await import(/* @vite-ignore */ moduleUrl);
-  const entry = (loaded as { default?: unknown }).default;
-  if (typeof entry !== "function") {
-    throw new Error(`${pluginId} has no default plugin export`);
-  }
-  const captured: PluginProviderDeclaration[] = [];
-  const register = (declaration: PluginProviderDeclaration): void => {
-    captured.push(declaration);
-  };
-  const bb = {
-    providers: { register },
-    agents: { experimental_registerProvider: register },
-    // The provider plugins define their own settings before registering;
-    // the capture stub records nothing, so reads answer the defaults.
-    settings: {
-      define: () => ({ get: async () => ({}), onChange: () => undefined }),
-    },
-  } as unknown as BbPluginApi;
-  (entry as (bb: BbPluginApi) => void)(bb);
-  if (captured.length === 0) {
-    throw new Error(`${pluginId} registered no provider declaration`);
-  }
-  // Same narrowing the plugin runtime does: a plugin module is an unknowable
-  // boundary, so every declaration is validated before it is trusted.
-  return captured.map(validatePluginProviderDeclaration);
-}
-
 /**
  * The loaded first-party declarations, keyed by plugin id — for tests that
  * pin the projected `ProviderInfo` against the declarations themselves.
  */
 export async function loadFirstPartyProviderDeclarations(): Promise<
-  ReadonlyMap<string, readonly PluginProviderDeclaration[]>
+  ReadonlyMap<string, readonly NormalizedPluginProviderDeclaration[]>
 > {
   const entries = await Promise.all(
     FIRST_PARTY_PROVIDER_PLUGIN_IDS.map(
-      async (pluginId) => [pluginId, await loadDeclarations(pluginId)] as const,
+      async (pluginId) =>
+        [
+          pluginId,
+          await captureFirstPartyProviderDeclarations(pluginId),
+        ] as const,
     ),
   );
   return new Map(entries);
@@ -130,8 +102,24 @@ export async function registerFirstPartyProviders(
     if (excluded.has(pluginId)) {
       continue;
     }
-    const declarations = await loadDeclarations(pluginId);
+    const declarations = await captureFirstPartyProviderDeclarations(pluginId);
+    // The artifact lands before the registration flushes, as the plugin
+    // runtime records it before the load commits: a picker request that
+    // wakes on the registration must find the bridge already there.
+    if (
+      options.artifacts !== undefined &&
+      !unavailable.has(pluginId) &&
+      (await hasHostEntry(firstPartyPluginRootDir(pluginId)))
+    ) {
+      options.artifacts.set(pluginId, stubHostArtifact(pluginId));
+    }
     for (const declaration of declarations) {
+      // The icon byte snapshot the plugin runtime captures at registration;
+      // the provider-logo route serves exactly these bytes.
+      const icon = readPluginProviderIcon(
+        firstPartyPluginRootDir(pluginId),
+        declaration.icon,
+      );
       registry.register({
         ...buildPluginProviderRegistration({
           available: !unavailable.has(pluginId),
@@ -139,7 +127,9 @@ export async function registerFirstPartyProviders(
           declaration,
           readSettings: NO_PLUGIN_SETTINGS,
         }),
+        ...(icon === null ? {} : { icon }),
         pluginId,
+        iconNames: new Set<string>(),
         // The bundled order: codex, claude-code, pi, acp — the same install
         // rank the plugin runtime assigns from the bundled plugin list.
         installRank: {
@@ -148,14 +138,38 @@ export async function registerFirstPartyProviders(
         },
       });
     }
-    if (
-      options.artifacts !== undefined &&
-      !unavailable.has(pluginId) &&
-      (await hasHostEntry(pluginRootDir(pluginId)))
-    ) {
-      options.artifacts.set(pluginId, stubHostArtifact(pluginId));
-    }
   }
+}
+
+/**
+ * A full registration for a test that states only the provider's info and
+ * server capabilities. The registry takes every field filled — the
+ * declaration validator and `buildPluginProviderRegistration` are the one
+ * place defaults are decided — so a partial test registration states the
+ * empty values here rather than through a third defaulting layer in the
+ * registry. `installRank` stays the registry's own optional: omitting it
+ * ranks last.
+ */
+export function minimalProviderRegistration(args: {
+  pluginId: string;
+  info: ProviderInfo;
+  serverCapabilities: ProviderServerCapabilities;
+}): ProviderRegistration {
+  return {
+    info: args.info,
+    serverCapabilities: args.serverCapabilities,
+    pluginId: args.pluginId,
+    bridgeOptions: {},
+    extensionKinds: {},
+    visibility: "always",
+    fallbackModels: [],
+    envPassthrough: [],
+    nativeSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
+    nativeCommandRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
+    resolvesNativeRoots: false,
+    deriveProviderOptions: () => ({}),
+    iconNames: new Set<string>(),
+  };
 }
 
 /**
@@ -185,8 +199,7 @@ const firstPartyBridgeArtifactBuilds = new Map<
 async function buildFirstPartyBridgeArtifact(
   pluginId: string,
 ): Promise<PluginHostArtifactSnapshot | null> {
-  const rootDir = pluginRootDir(pluginId);
-  // Pi has no `bb.host`: its bridge stays in the daemon bundle.
+  const rootDir = firstPartyPluginRootDir(pluginId);
   if (!(await hasHostEntry(rootDir))) {
     return null;
   }
@@ -240,6 +253,26 @@ async function hasHostEntry(rootDir: string): Promise<boolean> {
   );
 }
 
+/**
+ * The root set a listing forwards for a registered provider whose plugin
+ * resolved nothing: its declared skill and command roots, read back from the
+ * registry so a test pins the forwarding, not the plugin's declaration.
+ */
+export function declaredNativeRootSet(
+  registry: ProviderRegistryService,
+  providerId: string,
+): ProviderNativeRootSet {
+  const registration = registry.get(providerId);
+  if (registration === null) {
+    throw new Error(`provider "${providerId}" is not registered`);
+  }
+  return {
+    skills: registration.nativeSkillRoots,
+    commands: registration.nativeCommandRoots,
+    resolved: EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+  };
+}
+
 /** A registry holding the first-party providers, in product order. */
 export async function createTestProviderRegistry(): Promise<ProviderRegistryService> {
   const registry = createProviderRegistryService();
@@ -255,11 +288,11 @@ export async function createTestProviderRegistry(): Promise<ProviderRegistryServ
  */
 export const TRANSPORT_TEST_BRIDGE_LAUNCH: HostDaemonBridgeLaunch = {
   pluginId: "provider-pi",
-  source: { kind: "daemon-bundled", id: "pi" },
+  source: { kind: "artifact", digest: "a".repeat(64), byteLength: 1 },
   providerOptions: {},
   envPassthrough: [],
   capabilities: {
-    experimental_providerInstallation: false,
+    providerInstallation: false,
     supportsServiceTier: false,
     permissionModes: ["full"],
     supportsThreadArchive: false,
@@ -328,10 +361,8 @@ export async function registerFakeProviders(
         declaration: validatePluginProviderDeclaration({
           id: providerId,
           displayName: providerId,
+          maintenance: { health: true, usage: true, installation: false },
           capabilities: {
-            experimental_providerHealth: true,
-            experimental_providerUsage: true,
-            experimental_providerInstallation: false,
             supportsServiceTier: true,
             supportsNativeUserQuestion: true,
             fork: "checkpoint",
@@ -346,7 +377,79 @@ export async function registerFakeProviders(
         readSettings: NO_PLUGIN_SETTINGS,
       }),
       pluginId,
+      iconNames: new Set<string>(),
     });
     artifacts.set(pluginId, artifact);
+  }
+}
+
+/**
+ * The declarations the ACP plugin builds for the agents this `customAgents`
+ * setting declares — through the plugin's own factory, not a hand-built copy.
+ *
+ * A test that states its own declaration proves the server reads a shape, not
+ * that the plugin produces it. That gap is how `nativeSkillRoots` reached the
+ * launch spec and never the declaration.
+ */
+export async function acpProviderDeclarationsFromSetting(
+  entries: readonly JsonValue[],
+): Promise<NormalizedPluginProviderDeclaration[]> {
+  const shipped = new Set(
+    (await captureFirstPartyProviderDeclarations("provider-acp")).map(
+      (declaration) => declaration.id,
+    ),
+  );
+  const withSetting = await captureFirstPartyProviderDeclarations(
+    "provider-acp",
+    {
+      settings: { customAgents: JSON.stringify(entries) },
+    },
+  );
+  const configured = withSetting.filter(
+    (declaration) => !shipped.has(declaration.id),
+  );
+  if (configured.length !== entries.length) {
+    throw new Error(
+      `the ACP plugin registered ${configured.length} of ${entries.length} configured agents; check the setting entries`,
+    );
+  }
+  return configured;
+}
+
+/**
+ * One configured ACP agent as a `withTestHarness({ extraProviders })` entry.
+ * The setting entry's `id` is the slug: the provider id is `acp-<id>`.
+ */
+export async function configuredAcpProvider(
+  entry: Record<string, JsonValue>,
+): Promise<{ declaration: PluginProviderDeclaration; pluginId: string }> {
+  const [declaration] = await acpProviderDeclarationsFromSetting([entry]);
+  if (declaration === undefined) {
+    throw new Error("the ACP plugin registered no provider for this entry");
+  }
+  return { declaration, pluginId: "provider-acp" };
+}
+
+/**
+ * A user-configured ACP agent in the registry, registered the way the ACP
+ * plugin registers one from its own settings. `entry` is the setting entry,
+ * so the provider id is `acp-<entry.id>`.
+ */
+export async function registerConfiguredAcpProvider(
+  registry: ProviderRegistryService,
+  entry: Record<string, JsonValue>,
+): Promise<void> {
+  const pluginId = "provider-acp";
+  for (const declaration of await acpProviderDeclarationsFromSetting([entry])) {
+    registry.register({
+      ...buildPluginProviderRegistration({
+        available: true,
+        pluginId,
+        declaration,
+        readSettings: NO_PLUGIN_SETTINGS,
+      }),
+      pluginId,
+      iconNames: new Set<string>(),
+    });
   }
 }

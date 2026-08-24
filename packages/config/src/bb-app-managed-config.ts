@@ -176,6 +176,10 @@ export const bbAppManagedConfigSchema = z
     config: bbAppManagedConfigValuesSchema.optional(),
     customAcpAgents: customAcpAgentsSchema.optional(),
     customModels: z.array(customProviderModelSchema).optional(),
+    // Skill directories every provider shares. The server sends them to the
+    // daemon as declared roots, whose wire schema caps each side at 32
+    // entries (`providerNativeRootsSchema`); this file does not enforce the
+    // cap, so a longer list fails at listing time, not at load.
     sharedSkillRoots: providerNativeSkillRootsSchema.optional(),
     machineCredential: z.string().min(1).optional(),
     connectMachineId: z.string().min(1).optional(),

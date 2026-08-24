@@ -312,30 +312,31 @@ describe("options mapping", () => {
 });
 
 describe("skills/configure", () => {
-  it("forwards every provider flavor of skill root as canonical roots", () => {
+  it("is a noop until the handshake declares skills.configure", () => {
     const adapter = makeAdapter();
+    const command = {
+      type: "skills/configure" as const,
+      skillRoots: [{ id: "global-skills:abc", path: "/staged/skills", skills: [] }],
+    };
+    // A bridge that says nothing never receives the request: a third-party
+    // bridge answering METHOD_NOT_FOUND must still start threads.
+    expect(adapter.buildCommandPlan(command)).toMatchObject({ kind: "noop" });
+    completeHandshake(adapter, { skills: { configure: true } });
+    expect(adapter.buildCommandPlan(command)).toMatchObject({
+      kind: "request",
+      method: "skills/configure",
+    });
+  });
+
+  it("forwards the generic skill root unchanged", () => {
+    const adapter = makeAdapter();
+    completeHandshake(adapter, { skills: { configure: true } });
     const plan = adapter.buildCommandPlan({
       type: "skills/configure",
       skillRoots: [
         {
-          id: "root_claude",
-          providerId: "claude-code",
-          localPluginPath: "/staged/claude-plugin",
-        },
-        {
-          id: "root_codex",
-          providerId: "codex",
-          skillDirectoryRootPath: "/staged/codex-skills",
-        },
-        {
-          id: "root_pi",
-          providerId: "pi",
-          skillDirectoryRootPath: "/staged/pi-skills",
-        },
-        {
-          id: "root_acp",
-          providerId: "acp",
-          skillDirectoryRootPath: "/staged/acp-skills",
+          id: "global-skills:abc",
+          path: "/staged/skills",
           skills: [{ name: "deploy", description: "Ship the app." }],
         },
       ],
@@ -346,12 +347,9 @@ describe("skills/configure", () => {
       method: "skills/configure",
       params: {
         roots: [
-          { id: "root_claude", path: "/staged/claude-plugin", skills: [] },
-          { id: "root_codex", path: "/staged/codex-skills", skills: [] },
-          { id: "root_pi", path: "/staged/pi-skills", skills: [] },
           {
-            id: "root_acp",
-            path: "/staged/acp-skills",
+            id: "global-skills:abc",
+            path: "/staged/skills",
             skills: [{ name: "deploy", description: "Ship the app." }],
           },
         ],

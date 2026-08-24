@@ -18,8 +18,10 @@
  * (`message.delta`/`message.close`, `usage.turn`/`usage.exact`) are gone:
  * every bridge in this repo emits v3 and a bridge that reports a grammar
  * range without 3 is refused at the handshake. `presentation` stays optional
- * until every first-party bridge attaches it; the stabilization pass makes
- * it required.
+ * until every first-party bridge attaches it; it becomes required together
+ * with the `legacy-tool-item-backfill` migration
+ * (`LEGACY_TOOL_ITEM_BACKFILL_MIGRATION` in @bb/domain), the follow-up that
+ * stamps presentation onto old rows and retires the read-time adapter.
  */
 import {
   backgroundTaskStatusSchema,
@@ -53,8 +55,10 @@ export const THREAD_DELTA_NOTIFICATION_METHOD = "thread/delta";
  * (`threadEventItemPresentationSchema` in @bb/domain) — one vocabulary, no
  * translation.
  *
- * Optional in grammar v3 so v2 bridges still validate; a later workstream
- * makes it required once every first-party bridge attaches it.
+ * Optional in grammar v3 while rows persisted before bridges stamped it are
+ * upgraded at read time; it becomes required together with the
+ * `legacy-tool-item-backfill` migration that stamps those rows and retires
+ * that adapter.
  */
 export const deltaPresentationSchema = threadEventItemPresentationSchema;
 export type DeltaPresentation = z.infer<typeof deltaPresentationSchema>;
@@ -279,8 +283,12 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
    * The generic tool call: the escape hatch for tools with no core kind. In
    * grammar v3 the bridge says how the row reads through the delta's
    * `presentation` (label, icon, suppression) instead of core keeping a
-   * tool-name table; a `tool` item without presentation renders with the
-   * generic tool row.
+   * tool-name table. A `tool` item without presentation is read as legacy
+   * data: `@bb/domain`'s `upgradeLegacyToolItem` reshapes read/grep/glob/
+   * find/ls by name and suppresses the Task- and Todo-family bookkeeping
+   * calls when the stored row is parsed, and any other name renders with
+   * the generic tool row — until the backfill migration, after which
+   * `presentation` is required.
    */
   z.object({
     type: z.literal("tool"),

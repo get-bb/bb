@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildTimelineViewRows } from "@bb/thread-view";
 import {
+  ECHO_RECEIPT_PRESENTATION,
   commandRow,
   conversationRow,
   delegationRow,
+  extensionRow,
   imageViewRow,
   systemRow,
   workflowRow,
@@ -47,6 +49,25 @@ describe("isWorkRowExpandable", () => {
     const row = workflowRow({ status: "pending", taskStatus: "running" });
 
     expect(isWorkRowExpandable(row)).toBe(false);
+  });
+
+  it("expands an extension row only when its detail has text", () => {
+    // The schema caps the detail's length but not its content, so a bridge
+    // may persist a blank one; a chevron must never open onto an empty body.
+    const base = { ...ECHO_RECEIPT_PRESENTATION, icon: { glyph: "Check" } };
+    for (const detail of [undefined, "", "   ", "\n\t "]) {
+      expect(
+        isWorkRowExpandable(
+          extensionRow({ presentation: { ...base, detail } }),
+        ),
+        JSON.stringify(detail),
+      ).toBe(false);
+    }
+    expect(
+      isWorkRowExpandable(
+        extensionRow({ presentation: { ...base, detail: "Echoed **2**" } }),
+      ),
+    ).toBe(true);
   });
 });
 

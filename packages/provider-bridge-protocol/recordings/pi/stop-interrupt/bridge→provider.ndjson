@@ -1,3 +1,11 @@
-{"ts":1787275141261,"run":1787275055276,"seq":594,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Run `sleep 120` in the shell in the foreground, wait for it to finish, then reply with the single word done.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
-{"ts":1787275179952,"run":1787275055276,"seq":622,"dir":"bridge→provider","line":"{\"method\":\"abort\"}"}
-{"ts":1787275189133,"run":1787275055276,"seq":629,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"What is 2 + 2? Reply with the number only.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787347901694,"run":1787347884248,"seq":315,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347902226,"run":1787347884248,"seq":322,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Run `sleep 120` in the shell in the foreground, wait for it to finish, then reply with the single word done.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347907011,"run":1787347884248,"seq":351,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-3\"}"}
+{"ts":1787347907015,"run":1787347884248,"seq":356,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1787347907018,"run":1787347884248,"seq":365,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1787347907019,"run":1787347884248,"seq":367,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-5\"}"}
+{"ts":1787347907023,"run":1787347884248,"seq":372,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347907540,"run":1787347884248,"seq":379,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"What is 2 + 2? Reply with the number only.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347909640,"run":1787347884248,"seq":397,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":858,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-4\"}"}
+{"ts":1787347931344,"run":1787347884248,"seq":875,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
