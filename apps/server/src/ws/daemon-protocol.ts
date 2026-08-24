@@ -239,6 +239,7 @@ export function onDaemonSocketClose(
     | "hub"
     | "logger"
     | "pendingInteractions"
+    | "providerRegistry"
     | "sharedPorts"
     | "terminalSessions"
   >,

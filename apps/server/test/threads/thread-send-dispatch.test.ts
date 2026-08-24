@@ -6,7 +6,13 @@ import {
   listQueuedThreadMessages,
   markThreadDeleted,
 } from "@bb/db";
-import { turnScope, type Environment, type Thread } from "@bb/domain";
+import {
+  changedMessageSchema,
+  turnScope,
+  type Environment,
+  type Thread,
+  type ThreadChangedMessage,
+} from "@bb/domain";
 import { describe, expect, it, vi } from "vitest";
 import type { TelemetryService } from "../../src/services/system/telemetry.js";
 import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
@@ -17,6 +23,7 @@ import {
   reportQueuedCommandError,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
 import { textInput } from "../helpers/prompt-input.js";
 import {
   seedEnvironment,
@@ -114,6 +121,15 @@ function installTelemetryCaptureSpy(harness: TestAppHarness) {
   return capture;
 }
 
+function parseThreadMessages(
+  messages: readonly string[],
+): ThreadChangedMessage[] {
+  return messages.flatMap((raw) => {
+    const message = changedMessageSchema.parse(JSON.parse(raw));
+    return message.entity === "thread" ? [message] : [];
+  });
+}
+
 describe("queued message dispatch gate", () => {
   it("rolls back and sends no host command when the idle thread was archived between claim and dispatch", async () => {
     await withTestHarness(async (harness) => {
@@ -191,6 +207,41 @@ describe("queued message dispatch gate", () => {
         listQueuedThreadCommands(harness, "thread.start", thread.id),
       ).toHaveLength(0);
       expect(getQueuedThreadMessage(harness.db, queued.id)).not.toBeNull();
+    });
+  });
+});
+
+describe("queued message auto-send notification", () => {
+  it("carries the statusChange row snapshot when the auto-send activates the thread", async () => {
+    await withTestHarness(async (harness) => {
+      const { thread } = seedProviderThreadFixture({ harness, value: 41 });
+      const queued = seedQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        content: textInput("queued while idle"),
+      });
+      const socket = createMockHubSocket();
+      harness.hub.subscribe(socket, { kind: "thread-list" });
+
+      await sendQueuedMessage(harness.deps, {
+        threadId: thread.id,
+        queuedMessageId: queued.id,
+        mode: "auto",
+      });
+
+      // Every status flip must carry the row snapshot, or the client falls
+      // back to refetching every active thread list for this transition.
+      const statusMessages = parseThreadMessages(socket.messages).filter(
+        (message) =>
+          message.id === thread.id &&
+          message.changes.includes("status-changed"),
+      );
+      expect(statusMessages.length).toBeGreaterThan(0);
+      for (const message of statusMessages) {
+        expect(message.metadata?.statusChange).toMatchObject({
+          status: "active",
+          runtime: { displayStatus: "active" },
+        });
+      }
     });
   });
 });

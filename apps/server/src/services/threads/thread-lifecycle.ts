@@ -70,6 +70,7 @@ import {
   applyLoggedThreadLifecycleEvent,
   applyLoggedThreadLifecycleEventInTransaction,
 } from "./lifecycle-outcome.js";
+import { buildThreadStatusChangeMetadata } from "./thread-runtime-display.js";
 import {
   addRequestIdToTurnSubmitCommandPayload,
   buildThreadStartCommand,
@@ -535,6 +536,9 @@ function markThreadStoppingWithEventInTransaction(
   if (!outcome.applied) {
     return false;
   }
+  // Bare on purpose: an in-transaction producer with a buffered notifier
+  // cannot build `statusChange` metadata (see buildThreadStatusChangeMetadata);
+  // clients fall back to the throttled thread-list refetch.
   deps.hub.notifyThread(args.threadId, ["status-changed"]);
   appendThreadInterruptedEventInTransaction(deps.db, {
     threadId: args.threadId,
@@ -807,6 +811,8 @@ function settleThreadCommandFailure(
     threadId: thread.id,
   });
   if (outcome.applied) {
+    // Bare on purpose: in-transaction producers cannot build `statusChange`
+    // metadata; clients fall back to the throttled thread-list refetch.
     args.deps.hub.notifyThread(thread.id, ["status-changed"]);
   }
   // Forks / side chats are user-initiated branches, not agent-delegated
@@ -877,6 +883,8 @@ export function settleThreadStartCommandResult(
       threadId: currentThread.id,
     });
     if (outcome.applied) {
+      // Bare on purpose: in-transaction producers cannot build `statusChange`
+      // metadata; clients fall back to the throttled thread-list refetch.
       args.deps.hub.notifyThread(currentThread.id, ["status-changed"]);
       if (shouldAutoSendQueuedMessagesAfterThreadStart(args.command)) {
         postCommitActions.push({
@@ -1563,6 +1571,8 @@ function interruptActiveTurnForThreadInTransaction(
   if (appendedThreadInterruptedEvent) {
     eventTypes.push("system/thread/interrupted");
   }
+  // No `statusChange` on purpose: in-transaction producers cannot build it;
+  // clients fall back to the throttled thread-list refetch.
   deps.hub.notifyThread(args.threadId, ["events-appended", "status-changed"], {
     eventTypes,
   });
@@ -1576,7 +1586,10 @@ function interruptActiveTurnForThreadInTransaction(
  * threads with an open turn also get an interrupted turn completion event.
  */
 function interruptActiveThreads(
-  deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
+  deps: Pick<
+    AppDeps,
+    "db" | "hub" | "logger" | "pendingInteractions" | "providerRegistry"
+  >,
   args: InterruptActiveThreadsArgs,
 ): InterruptActiveThreadsResult {
   if (args.threads.length === 0) {
@@ -1673,11 +1686,16 @@ function interruptActiveThreads(
     if (result.interruptedTurnId !== null) {
       eventTypes.unshift("turn/completed");
     }
+    // Published after the transaction committed, so the row snapshot is the
+    // settled post-interruption state and clients patch their list rows
+    // instead of refetching every thread list once per interrupted thread.
+    const thread = getThread(deps.db, result.threadId);
     deps.hub.notifyThread(
       result.threadId,
       ["events-appended", "status-changed"],
       {
         eventTypes,
+        ...(thread ? buildThreadStatusChangeMetadata(deps, thread) : {}),
       },
     );
   }
@@ -1686,7 +1704,10 @@ function interruptActiveThreads(
 }
 
 export function interruptActiveThreadsForHost(
-  deps: Pick<AppDeps, "db" | "hub" | "logger" | "pendingInteractions">,
+  deps: Pick<
+    AppDeps,
+    "db" | "hub" | "logger" | "pendingInteractions" | "providerRegistry"
+  >,
   args: InterruptActiveThreadsForHostArgs,
 ): InterruptActiveThreadsResult {
   const activeThreads = deps.db
@@ -1773,6 +1794,9 @@ export function finalizeStoppedThreadInTransaction(
         threadId: currentThread.id,
       });
       if (outcome.applied) {
+        // Bare on purpose: in-transaction producers cannot build
+        // `statusChange` metadata; clients fall back to the throttled
+        // thread-list refetch.
         deps.hub.notifyThread(currentThread.id, ["status-changed"]);
       }
     }
@@ -1782,6 +1806,7 @@ export function finalizeStoppedThreadInTransaction(
       threadId: currentThread.id,
     });
     if (outcome.applied) {
+      // Bare on purpose: see the active/stopping branch above.
       deps.hub.notifyThread(currentThread.id, ["status-changed"]);
     }
   }
