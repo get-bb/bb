@@ -135,6 +135,16 @@ export class PiRpcChild {
   private readonly channelWriter: Writable | null;
   private readonly channelRecorder: ChannelRecorder | null;
   private killEscalation: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Pi's stdout lines, handled one per event-loop turn. One read can carry a
+   * response and the events pi wrote after it; handled in one synchronous
+   * loop, the next event's delivery would run before the request's
+   * continuation (a steer's ack after `await request("prompt")`), so the
+   * bridge's order would depend on pipe chunking. Yielding between lines
+   * lets the continuation finish first, the order a line-at-a-time read has.
+   */
+  private readonly stdoutLines: string[] = [];
+  private stdoutDraining = false;
 
   constructor(private readonly args: SpawnPiRpcChildArgs) {
     const launch = resolvePiLaunch(process.env);
@@ -159,7 +169,7 @@ export class PiRpcChild {
     if (stdout) {
       experimental_readBoundedLines({
         input: stdout,
-        onLine: (line) => this.handleStdoutLine(line),
+        onLine: (line) => this.queueStdoutLine(line),
         onOverflow: (bytes) => {
           process.stderr.write(`pi bridge: dropped a ${bytes}-byte stdout line\n`);
         },
@@ -326,6 +336,27 @@ export class PiRpcChild {
       return;
     }
     stdin.write(line);
+  }
+
+  private queueStdoutLine(line: string): void {
+    this.stdoutLines.push(line);
+    if (!this.stdoutDraining) {
+      this.stdoutDraining = true;
+      this.drainStdoutLine();
+    }
+  }
+
+  private drainStdoutLine(): void {
+    const line = this.stdoutLines.shift();
+    if (line === undefined) {
+      this.stdoutDraining = false;
+      return;
+    }
+    try {
+      this.handleStdoutLine(line);
+    } finally {
+      setImmediate(() => this.drainStdoutLine());
+    }
   }
 
   private handleStdoutLine(line: string): void {

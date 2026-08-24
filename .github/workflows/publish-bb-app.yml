@@ -301,10 +301,11 @@ jobs:
           echo "version=${nightly_version}" >> "$GITHUB_OUTPUT"
           echo "Prepared bb-app and desktop version ${nightly_version}."
 
-      # bb-app has no prepack hook and its `files` list ships built output, so
-      # `npm publish` packs whatever is on disk. This job runs on a fresh
-      # runner, so it must build before it packs. smoke:tarball depends on
-      # build and also proves the packed tarball runs at the nightly version.
+      # bb-app's prepack hook only prunes stale bb CLI chunks; its `files`
+      # list ships built output, so `npm publish` packs whatever is on disk.
+      # This job runs on a fresh runner, so it must build before it packs.
+      # smoke:tarball depends on build and also proves the packed tarball
+      # runs at the nightly version.
       - name: Smoke bb-app tarball
         run: pnpm exec turbo run smoke:tarball --filter=bb-app --force --output-logs=new-only
 

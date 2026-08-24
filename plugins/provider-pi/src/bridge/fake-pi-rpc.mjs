@@ -51,8 +51,10 @@
  *   FAKE_PI_NO_SESSION_START=1 never emits session_start to the extension (so
  *   no `ready`); FAKE_PI_DROP_STEER_AT_END=1 ends a run with a queued steer
  *   still queued; FAKE_PI_STREAMING_AFTER_END=1 reports isStreaming after a
- *   run ended (a continuation pi is still finishing). The prompt `/die` exits
- *   the process mid-run without answering.
+ *   run ended (a continuation pi is still finishing);
+ *   FAKE_PI_BATCH_STEER_REPLY=1 writes a steer's `prompt` response and the
+ *   resumed run's first event in one stdout write (one read on the bridge's
+ *   side). The prompt `/die` exits the process mid-run without answering.
  * - `prompt` with `streamingBehavior: "steer"` during a `/hold` run is queued
  *   (`queue_update.steering`), consumed when the run resumes, and the run's
  *   reply names it.
@@ -185,8 +187,21 @@ const followUp = [];
 const steering = [];
 let endedWithStreamingFlag = false;
 
+/** A line held back to go out in one write with the next one. */
+let heldLine = null;
+
 function send(message) {
-  process.stdout.write(`${JSON.stringify(message)}\n`);
+  const line = `${JSON.stringify(message)}\n`;
+  if (heldLine === null) {
+    process.stdout.write(line);
+    return;
+  }
+  // One write, so the bridge reads both lines in one chunk.
+  process.stdout.write(`${heldLine}${line}`);
+  heldLine = null;
+}
+function holdUntilNextSend(message) {
+  heldLine = `${JSON.stringify(message)}\n`;
 }
 function respond(id, command, data) {
   send({ id, type: "response", command, success: true, ...(data === undefined ? {} : { data }) });
@@ -451,7 +466,12 @@ async function handle(command) {
         // it at its end.
         steering.push(command.message);
         queueUpdate();
-        respond(id, "prompt");
+        if (process.env.FAKE_PI_BATCH_STEER_REPLY === "1" && holdAbort) {
+          // The response goes out with the resumed run's first event.
+          holdUntilNextSend({ id, type: "response", command: "prompt", success: true });
+        } else {
+          respond(id, "prompt");
+        }
         if (holdAbort) {
           holdAbort("steer");
         }

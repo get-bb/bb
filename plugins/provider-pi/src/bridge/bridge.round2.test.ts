@@ -152,6 +152,45 @@ it("a steer consumed by the run is reported accepted and named in the reply", as
   expect(harness.messages.some((m) => m.method === "error")).toBe(false);
 }, 90_000);
 
+it("a steer's ack precedes the event pi wrote in the same chunk as the prompt response", async () => {
+  // Pi answers the steer's prompt and the resumed run writes its next event
+  // back to back, so one pipe read can carry both. The bridge's order must
+  // not depend on that chunking: the ack, emitted after the request's
+  // continuation, goes out before the event, as a line-at-a-time read has it
+  // (the parity replay of pi/compaction pins the recorded order).
+  vi.stubEnv("FAKE_PI_BATCH_STEER_REPLY", "1");
+  const threadId = "thr_r2_steer_batch";
+  await harness.startThread(threadId);
+  turnStart(threadId, "/hold", "creq_ab23456789");
+  await harness.waitForDelta(threadId, (d) => d.kind === "turn.open");
+  const steer = await harness.request((nextId += 1), "turn/steer", {
+    threadId,
+    providerThreadId: threadId,
+    expectedTurnId: "turn-1",
+    clientRequestId: "creq_cd23456789",
+    input: [{ type: "text", text: "take the left path", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(steer.result).toMatchObject({ threadId });
+  await harness.waitForDelta(threadId, (d) => d.kind === "turn.boundary");
+  const deltas = harness.deltasOf(threadId);
+  const queued = deltas.findIndex((d) => queueUpdateSteering(d)?.includes("take the left path") === true);
+  const accepted = deltas.findIndex((d) => d.kind === "input.accepted" && d.clientRequestId === "creq_cd23456789");
+  const consumed = deltas.findIndex((d, index) => index > queued && queueUpdateSteering(d)?.length === 0);
+  expect(queued).toBeGreaterThan(-1);
+  expect(accepted).toBeGreaterThan(queued);
+  expect(consumed).toBeGreaterThan(accepted);
+}, 90_000);
+
+/** The steering queue an `unhandled` delta carries when it wraps pi's `queue_update`. */
+function queueUpdateSteering(delta: Record<string, unknown>): unknown[] | null {
+  if (delta.kind !== "unhandled") return null;
+  const raw = delta.raw as { params?: { message?: { type?: unknown; steering?: unknown } } } | undefined;
+  const message = raw?.params?.message;
+  if (message?.type !== "queue_update" || !Array.isArray(message.steering)) return null;
+  return message.steering;
+}
+
 it("a steer still queued when the run ends is reported dropped through the delivery barrier, not a timer", async () => {
   vi.stubEnv("FAKE_PI_DROP_STEER_AT_END", "1");
   const threadId = "thr_r2_steer_drop";

@@ -2,7 +2,7 @@
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import {
   access,
   mkdir,
@@ -471,10 +471,15 @@ interface MaybeAddAutoJoinEnvArgs {
   serverUrl: string;
 }
 
-interface ArtifactPath {
-  label: string;
-  path: string;
-}
+/**
+ * A built artifact the launcher needs on disk. A `chunk-dir` is present only
+ * once it holds a chunk: the code-split `bb` entry imports from it
+ * statically, so an empty directory fails in Node's ESM loader exactly like
+ * a missing one.
+ */
+type ArtifactPath =
+  | { kind: "file"; label: string; path: string }
+  | { kind: "chunk-dir"; label: string; path: string };
 
 interface CreateCliEnvArgs {
   context: BbAppStartContext;
@@ -2123,28 +2128,70 @@ async function runClientCommand(args: RunClientCommandArgs): Promise<void> {
 
 function requiredArtifactPaths(context: BbAppStartContext): ArtifactPath[] {
   return [
-    { label: "server entry", path: context.serverEntry },
-    { label: "host daemon entry", path: context.daemonEntry },
-    { label: "bundled bb CLI", path: join(context.daemonBundleDir, "bb") },
+    { kind: "file", label: "server entry", path: context.serverEntry },
+    { kind: "file", label: "host daemon entry", path: context.daemonEntry },
     {
+      kind: "file",
+      label: "bundled bb CLI",
+      path: join(context.daemonBundleDir, "bb"),
+    },
+    {
+      // The CLI entry is code-split: it imports its shared chunks statically
+      // and each command group on demand from this directory, so without it
+      // even `bb --version` dies in Node's ESM loader before the CLI's own
+      // error handling runs.
+      kind: "chunk-dir",
+      label: "bundled bb CLI chunks",
+      path: join(context.daemonBundleDir, "bb-chunks"),
+    },
+    {
+      kind: "file",
       label: "provider bridge worker",
       path: join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
     },
     {
+      kind: "file",
       label: "parcel watcher child",
       path: join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
     },
     {
+      kind: "file",
       label: "plugin host worker",
       path: join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
     },
-    { label: "web app", path: join(context.appDistDir, "index.html") },
+    {
+      kind: "file",
+      label: "web app",
+      path: join(context.appDistDir, "index.html"),
+    },
   ];
 }
 
-function assertBbAppArtifacts(context: BbAppStartContext): void {
+function artifactPresent(artifact: ArtifactPath): boolean {
+  switch (artifact.kind) {
+    case "file":
+      return existsSync(artifact.path);
+    case "chunk-dir":
+      try {
+        return readdirSync(artifact.path).some((name) => name.endsWith(".js"));
+      } catch (error) {
+        // No directory there (or a stray file in its place) is the same
+        // missing-artifact condition, not a launcher fault.
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          (error.code === "ENOENT" || error.code === "ENOTDIR")
+        ) {
+          return false;
+        }
+        throw error;
+      }
+  }
+}
+
+export function assertBbAppArtifacts(context: BbAppStartContext): void {
   const missingArtifact = requiredArtifactPaths(context).find(
-    (artifact) => !existsSync(artifact.path),
+    (artifact) => !artifactPresent(artifact),
   );
   if (missingArtifact) {
     throw new Error(

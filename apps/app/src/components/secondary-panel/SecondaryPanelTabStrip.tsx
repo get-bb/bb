@@ -520,7 +520,12 @@ export function SecondaryPanelTabStrip({
           // each wheel notch into its own ~150ms animation — the strip advances,
           // sits frozen between notches, then jumps. Letting it track 1:1 matches
           // native horizontal trackpad scrolling.
-          className="no-scrollbar min-w-0 overflow-x-auto overflow-y-hidden"
+          className={cn(
+            "no-scrollbar min-w-0 overflow-x-auto overflow-y-hidden",
+            // The desktop header is a window-drag region. Carve out the whole
+            // viewport so Electron keeps routing wheel events across tab gaps.
+            usesDesktopChrome && MACOS_APP_REGION_NO_DRAG_CLASS,
+          )}
         >
           <div
             ref={contentRef}
