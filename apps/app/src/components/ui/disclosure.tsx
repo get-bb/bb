@@ -1,5 +1,6 @@
 import { useSetAtom } from "jotai";
 import {
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -223,12 +224,20 @@ export function ExpandablePanel({
   const headerRootClassName = cn("px-2 py-1", headerClassName);
   const [isClosing, setIsClosing] = useState(false);
   const renderedBodyRef = useRef<ReactNode>(null);
+  // The header/chevron flip stays urgent (it reads `isExpanded` directly),
+  // but the body realizes off the deferred value: an expand tap's discrete
+  // commit paints the caret in the first frame, and the body subtree — the
+  // expensive part of a large tool section — mounts in a follow-up
+  // interruptible commit. On first render the deferred value equals
+  // `isExpanded`, so rows that mount already expanded render their body
+  // immediately.
+  const deferredIsExpanded = useDeferredValue(isExpanded);
   const expandedBody = useMemo(() => {
-    if (!isExpanded) {
+    if (!deferredIsExpanded) {
       return null;
     }
     return renderBody ? renderBody() : children;
-  }, [children, isExpanded, renderBody]);
+  }, [children, deferredIsExpanded, renderBody]);
 
   // Signal to AutoHeightContainer / HeightTransition wrappers that a
   // CSS-driven layout animation is in flight, so they snap their wrapper to
