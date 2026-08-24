@@ -157,6 +157,7 @@ export interface ComposerLog {
   inputLockCalls: boolean[];
   quotes: string[];
   mentions: PluginComposerMention[];
+  copiedMentions: PluginComposerMention[];
   focusCount: number;
 }
 
@@ -1478,6 +1479,7 @@ export function renderSlot<
     inputLockCalls: [],
     quotes: [],
     mentions: [],
+    copiedMentions: [],
     focusCount: 0,
   };
   const composerOwnership = { active: true };
@@ -1531,6 +1533,10 @@ export function renderSlot<
         commitComposerText(`${composerText}${separator}${label} `);
         composerLog.mentions.push(mention);
         composerLog.focusCount += 1;
+      },
+      async experimental_copyMention(mention) {
+        composerLog.copiedMentions.push(mention);
+        return true;
       },
       focus() {
         composerLog.focusCount += 1;

@@ -6,7 +6,11 @@
  */
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import {
+  Cancel01Icon,
+  Copy01Icon,
+  Tick02Icon,
+} from "@hugeicons/core-free-icons";
 
 import { GROUP_BY_SURFACE_ID, type PluginSurface } from "./surfaces";
 import {
@@ -23,11 +27,13 @@ export function SurfaceCard({
   surface,
   number,
   onDismiss,
+  onCopyForAgent,
 }: {
   surface: PluginSurface;
   /** Marker number, so the card reads as the same annotation. */
   number: number | null;
   onDismiss: () => void;
+  onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   // Null outside a map (the reference sidebar renders cards standalone), and
@@ -37,6 +43,38 @@ export function SurfaceCard({
   const pluginPageHref = surfaceMap?.pluginPageHref;
   const icon = surfaceIcon(surface.id);
   const { currentGroupId, onGoToSurface, numberOf } = surfaceMap ?? {};
+  const [copyState, setCopyState] = useState<
+    "idle" | "copying" | "copied" | "failed"
+  >("idle");
+  const copyResetTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    setCopyState("idle");
+    if (copyResetTimer.current !== null) {
+      window.clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = null;
+    }
+  }, [surface.id]);
+
+  useEffect(
+    () => () => {
+      if (copyResetTimer.current !== null) {
+        window.clearTimeout(copyResetTimer.current);
+      }
+    },
+    [],
+  );
+
+  const copyForAgent = useCallback(async () => {
+    if (!onCopyForAgent || copyState === "copying") return;
+    setCopyState("copying");
+    const copied = await onCopyForAgent(surface);
+    setCopyState(copied ? "copied" : "failed");
+    copyResetTimer.current = window.setTimeout(() => {
+      setCopyState("idle");
+      copyResetTimer.current = null;
+    }, 2_000);
+  }, [copyState, onCopyForAgent, surface]);
   // Cross-references only resolve inside the map: the number and the "which
   // page" answer both come from the carousel. Elsewhere the label is prose.
   const resolveReference = useCallback(
@@ -122,51 +160,78 @@ export function SurfaceCard({
         ))}
       </ul>
 
-      {surface.firstParty && surface.firstParty.length > 0 ? (
+      {(surface.firstParty && surface.firstParty.length > 0) ||
+      onCopyForAgent ? (
         // A footnote, not a second subject: the label recedes to an eyebrow
         // above the border so the surface copy stays the card's content.
-        <div className="mt-3 flex items-center gap-x-2 border-t border-border-hairline pt-2.5">
+        <div className="mt-3 flex min-w-0 items-center gap-x-2 border-t border-border-hairline pt-2.5">
           {/* Inline lead-in, not a stacked heading: the label shares the
               first baseline with the list, which keeps to one line and
               drifts when it outgrows the row. */}
           {/* A subtle pill: the recessed tint alone, no border and no extra
               weight, so the label sits under the names it introduces. */}
-          <span className="shrink-0 rounded bg-surface-recessed px-2 py-0.5 text-xs font-normal text-subtle-foreground">
-            Used by
-          </span>
-          <UsedByList
-            items={surface.firstParty}
-            renderItem={(plugin) => {
-              const icon = pluginIcon(plugin);
-              const href = pluginPageHref?.(plugin) ?? null;
-              const body = (
-                <>
-                  {icon ? (
-                    <HugeiconsIcon
-                      icon={icon}
-                      className="size-3.5 shrink-0 text-subtle-foreground"
-                    />
-                  ) : null}
-                  {plugin}
-                </>
-              );
-              return href ? (
-                <a
-                  href={href}
-                  // A plain anchor. Inside bb the host opens a plugin's page
-                  // beside the guide on any click; anywhere else it is an
-                  // ordinary link.
-                  className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"
-                >
-                  {body}
-                </a>
-              ) : (
-                <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
-                  {body}
-                </span>
-              );
-            }}
-          />
+          {surface.firstParty && surface.firstParty.length > 0 ? (
+            <>
+              <span className="shrink-0 rounded bg-surface-recessed px-2 py-0.5 text-xs font-normal text-subtle-foreground">
+                Used by
+              </span>
+              <UsedByList
+                items={surface.firstParty}
+                renderItem={(plugin) => {
+                  const icon = pluginIcon(plugin);
+                  const href = pluginPageHref?.(plugin) ?? null;
+                  const body = (
+                    <>
+                      {icon ? (
+                        <HugeiconsIcon
+                          icon={icon}
+                          className="size-3.5 shrink-0 text-subtle-foreground"
+                        />
+                      ) : null}
+                      {plugin}
+                    </>
+                  );
+                  return href ? (
+                    <a
+                      href={href}
+                      // A plain anchor. Inside bb the host opens a plugin's page
+                      // beside the guide on any click; anywhere else it is an
+                      // ordinary link.
+                      className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-foreground"
+                    >
+                      {body}
+                    </a>
+                  ) : (
+                    <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+                      {body}
+                    </span>
+                  );
+                }}
+              />
+            </>
+          ) : null}
+          {onCopyForAgent ? (
+            <button
+              type="button"
+              onClick={() => void copyForAgent()}
+              disabled={copyState === "copying"}
+              className="ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-wait disabled:opacity-60"
+            >
+              <HugeiconsIcon
+                icon={copyState === "copied" ? Tick02Icon : Copy01Icon}
+                className="size-3.5"
+              />
+              <span aria-live="polite">
+                {copyState === "copying"
+                  ? "Copying…"
+                  : copyState === "copied"
+                    ? "Copied"
+                    : copyState === "failed"
+                      ? "Copy failed"
+                      : "Copy for agent"}
+              </span>
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

@@ -370,6 +370,7 @@ export function ProductMap({
   pluginPageHref,
   initialSlideId,
   onSlideChange,
+  onCopyForAgent,
   tone = "primary",
 }: {
   /** Page copy above the diagrams; omitted inside compact plugin panels. */
@@ -402,6 +403,8 @@ export function ProductMap({
   initialSlideId?: string;
   /** Fires when the reader pans; the bb plugin mirrors it into the URL. */
   onSlideChange?: (slideId: string) => void;
+  /** Copies a surface as a structured bb composer reference. */
+  onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
   /**
    * "supporting" steps the per-slide heading and blurb down a level, for
    * pages where the map explains the docs rather than leading them. Behavior,
@@ -487,6 +490,7 @@ export function ProductMap({
       surface={openSurface}
       number={SURFACE_NUMBERS.get(openSurface.id) ?? null}
       onDismiss={card.close}
+      onCopyForAgent={onCopyForAgent}
     />
   ) : null;
   // Click-away, scoped to the plugin's own UI. A pointer-down anywhere in the

@@ -3,6 +3,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parsePromptMentionClipboardElement,
+  promptMentionClipboardContent,
   promptMentionClipboardDataAttributes,
   serializedTextForPromptMentionResource,
 } from "./prompt-mention-clipboard";
@@ -37,6 +38,28 @@ describe("serializedTextForPromptMentionResource", () => {
         label: "Some thread",
       }),
     ).toBe("@thread:thr_abc");
+  });
+});
+
+describe("promptMentionClipboardContent", () => {
+  it("serializes a plugin reference as pasteable structured HTML", () => {
+    const resource = {
+      kind: "plugin" as const,
+      pluginId: "plugin-api-docs",
+      icon: null,
+      itemId: "surface:composer-actions",
+      label: "Inline actions",
+    };
+    const content = promptMentionClipboardContent(resource);
+    const document = new DOMParser().parseFromString(content.html, "text/html");
+    const element = document.querySelector("[data-prompt-mention]");
+
+    expect(content.text).toBe("@Inline actions ");
+    expect(element).not.toBeNull();
+    expect(parsePromptMentionClipboardElement({ element: element! })).toEqual({
+      resource,
+      serializedText: "@Inline actions",
+    });
   });
 });
 

@@ -272,6 +272,7 @@ ever needs two configured differently. For `acpLaunchSpecSchema`: the shape
 is stored in the ACP plugin's `customAgents` setting and in registrations'
 bridge options, so a change is a migration of stored agents — decide what a
 plugin is owed when the spec grows a field.
+
 ## `PluginProviderDeclaration.experimental_nativeSkillRoots`
 
 **Kept experimental (2026-08-22).** every first-party provider declares it now (stabilization S5 moved the daemon's per-provider scan table here), but no third-party agent has validated the relative-path / 32-root rule or the per-root options, and the split between a global declaration and the per-workspace resolver (`experimental_resolvesNativeRoots`) is one release old.
@@ -1404,6 +1405,23 @@ boot (`InstalledPlugin.providerIds` marks the candidates the loader defers).
    JS (by design). Confirm the base (label, glyph, tint, title, detail) is
    sufficient for the first-party extension kinds before a third party
    relies on a web-only upgrade.
+
+## `PluginComposerApi.experimental_copyMention` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Copies a plugin-owned mention as bb's structured rich
+clipboard payload. Pasting it into any bb composer creates the same durable
+plugin mention pill as `insertMention`: the calling plugin owns the provider
+and item id, and its server-side mention provider resolves fresh agent context
+when the message is sent. It returns `false` instead of silently degrading to
+plain text when the provider id is invalid or rich clipboard access fails.
+
+**Audit before stabilizing.** Confirm that clipboard is the right transfer
+boundary for references initiated outside a composer, rather than exposing a
+more general host drag/share object. Decide whether plugins need an icon hint
+or a distinct display label versus serialized fallback text. Verify the
+modern `ClipboardItem` path and editing-command fallback remain sufficient in
+supported desktop, browser, and LAN-origin environments, and whether failures
+need a host toast API instead of caller-owned feedback.
 
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 

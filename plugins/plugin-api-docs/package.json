@@ -6,7 +6,7 @@
   "description": "Browse the bb plugin API as an annotated map of the product.",
   "engines": {
     "bb": ">=0.0",
-    "bbPluginSdk": ">=0.4.3"
+    "bbPluginSdk": ">=0.4.17"
   },
   "bb": {
     "name": "bb Plugin Guide",
@@ -15,7 +15,10 @@
       "icon": "./icons/ai-generative.svg"
     },
     "server": "./server.ts",
-    "app": "./app.tsx"
+    "app": "./app.tsx",
+    "skills": [
+      "skills"
+    ]
   },
   "keywords": [
     "bb-plugin"

@@ -65,6 +65,7 @@ import {
   type PromptVoiceConfig,
   type TypeaheadConfig,
 } from "./PromptBoxInternal";
+import { promptMentionClipboardContent } from "./mentions/prompt-mention-clipboard";
 import type {
   PromptMentionSuggestion,
   ProviderCommandSuggestion,
@@ -3121,6 +3122,41 @@ describe("PromptBoxInternal prompt actions", () => {
 
     await waitFor(() => expect(latestValue(changes)).toBe("> quoted"));
     expect(getPromptEditorElement().querySelector("blockquote")).not.toBeNull();
+  });
+
+  it("keeps multiple pasted plugin references as distinct pills", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("");
+    const reference = (id: string, label: string) =>
+      promptMentionClipboardContent({
+        kind: "plugin",
+        pluginId: "plugin-api-docs",
+        icon: null,
+        itemId: `surface:${id}`,
+        label,
+      });
+
+    await focusPromptEnd(promptBoxRef);
+    const actions = reference("composer-actions", "Inline actions");
+    pasteClipboard({ html: actions.html, plainText: actions.text });
+    await waitFor(() =>
+      expect(latestChange(changes)?.mentions).toHaveLength(1),
+    );
+
+    const panels = reference("thread-panel", "Thread side-panel tabs");
+    pasteClipboard({ html: panels.html, plainText: panels.text });
+
+    await waitFor(() =>
+      expect(latestChange(changes)?.mentions).toHaveLength(2),
+    );
+    expect(
+      latestChange(changes)?.mentions.map((mention) => mention.resource),
+    ).toEqual([
+      expect.objectContaining({ itemId: "surface:composer-actions" }),
+      expect.objectContaining({ itemId: "surface:thread-panel" }),
+    ]);
+    expect(
+      getPromptEditorElement().querySelectorAll(".prompt-mention-pill"),
+    ).toHaveLength(2);
   });
 
   it("opens the file picker from the prompt actions menu", async () => {

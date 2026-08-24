@@ -38,6 +38,7 @@
     "@bb/plugin-api-map#test": {
       "dependsOn": [
         "//#ensure-native-modules",
+        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
@@ -46,6 +47,10 @@
         "$TURBO_ROOT$/packages/plugin-sdk/package.json",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
+    },
+    "@bb/plugin-api-map#update:sdk-inventory": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types"],
+      "cache": false
     },
     "@bb/app#build": {
       "dependsOn": ["topo"],

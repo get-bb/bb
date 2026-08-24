@@ -12,6 +12,7 @@ vi.mock("@/components/ui/app-toast", () => ({
 }));
 
 import {
+  copyRichTextToClipboard,
   copyTextToClipboard,
   copyToClipboardWithToast,
 } from "./clipboard";
@@ -23,6 +24,15 @@ function installClipboard(writeText: (text: string) => Promise<void>): void {
   });
 }
 
+function installRichClipboard(
+  write: (items: ClipboardItem[]) => Promise<void>,
+): void {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { write },
+  });
+}
+
 function removeClipboard(): void {
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -30,9 +40,7 @@ function removeClipboard(): void {
   });
 }
 
-function installEditingCommand(
-  implementation: (command: string) => boolean,
-) {
+function installEditingCommand(implementation: (command: string) => boolean) {
   const execCommand = vi.fn(implementation);
   Object.defineProperty(document, "execCommand", {
     configurable: true,
@@ -47,6 +55,46 @@ afterEach(() => {
   toastMocks.success.mockReset();
   vi.restoreAllMocks();
   removeClipboard();
+  Reflect.deleteProperty(globalThis, "ClipboardItem");
+});
+
+describe("copyRichTextToClipboard", () => {
+  it("writes matching plain and HTML clipboard representations", async () => {
+    class TestClipboardItem {
+      constructor(readonly data: Record<string, Blob>) {}
+    }
+    Object.defineProperty(globalThis, "ClipboardItem", {
+      configurable: true,
+      value: TestClipboardItem,
+    });
+    const write = vi.fn().mockResolvedValue(undefined);
+    installRichClipboard(write);
+
+    await expect(
+      copyRichTextToClipboard({
+        text: "@Surface ",
+        html: '<span data-prompt-mention="true">@Surface</span> ',
+      }),
+    ).resolves.toBe(true);
+
+    const item = write.mock.calls[0]?.[0]?.[0] as TestClipboardItem;
+    await expect(item.data["text/plain"]?.text()).resolves.toBe("@Surface ");
+    await expect(item.data["text/html"]?.text()).resolves.toContain(
+      'data-prompt-mention="true"',
+    );
+  });
+
+  it("does not report a plain-only editing fallback as rich success", async () => {
+    removeClipboard();
+    installEditingCommand(() => true);
+
+    await expect(
+      copyRichTextToClipboard({
+        text: "@Surface ",
+        html: "<span>Surface</span>",
+      }),
+    ).resolves.toBe(false);
+  });
 });
 
 describe("copyTextToClipboard", () => {

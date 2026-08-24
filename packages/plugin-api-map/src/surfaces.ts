@@ -374,7 +374,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Adds a button to the row of controls inside the prompt box, beside the voice and send buttons. With this, a plugin can:",
         bullets: [
           "Read and rewrite the draft prompt, for example rephrasing it or inserting a template",
-          "Insert a quoted passage, or an @-mention that resolves through its own mention provider",
+          "Insert an @-mention into the draft, or copy one as a structured pill someone can paste into another bb composer",
           "Lock the input while it works, and tint the whole draft while it does",
           "Render in the same row as bb's own prompt-box buttons. If you have more than 3 plugins enabled, bb keeps the 3 most-used plugins inline and moves the rest into an overflow menu",
         ],

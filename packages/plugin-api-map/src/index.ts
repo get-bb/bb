@@ -1,5 +1,11 @@
 export { cn } from "./cn";
 export {
+  PLUGIN_GUIDE_SURFACE_PROVIDER_ID,
+  pluginSurfaceAgentContext,
+  pluginSurfaceAgentMention,
+  type PluginSurfaceAgentMention,
+} from "./agent-reference";
+export {
   annotationChipClass,
   ExperimentalBadge,
   renderSurfaceCopy,

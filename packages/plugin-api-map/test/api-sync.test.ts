@@ -14,6 +14,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { SURFACE_GROUPS } from "../src/index";
+import {
+  createSdkPublicApiInventory,
+  readSdkPublicApiInventory,
+} from "../scripts/sdk-api-inventory.mjs";
 
 const SDK_SRC = join(import.meta.dirname, "../../plugin-sdk/src");
 
@@ -46,6 +50,15 @@ const EXPORTED = new Set(
 );
 
 const SURFACES = SURFACE_GROUPS.flatMap((group) => group.surfaces);
+
+describe("public SDK inventory", () => {
+  it("matches every non-internal published declaration subpath", () => {
+    // This is intentionally an exact declaration-shape gate, not only an
+    // export-name list: adding a BbPluginApi property or an interface method
+    // must fail CI even when its enclosing exported type already has a card.
+    expect(createSdkPublicApiInventory()).toEqual(readSdkPublicApiInventory());
+  });
+});
 
 describe("surface-to-SDK links", () => {
   it("names only symbols the SDK still exports", () => {

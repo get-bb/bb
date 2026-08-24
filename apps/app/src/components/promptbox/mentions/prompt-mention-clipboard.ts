@@ -4,6 +4,7 @@ import {
   type PromptMentionResource,
 } from "@bb/domain";
 import { PLUGIN_MENTION_TRIGGER_VALUES } from "@bb/client-core";
+import { copyRichTextToClipboard } from "@/lib/clipboard";
 
 const PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR = "data-prompt-mention-resource";
 const PROMPT_MENTION_CLIPBOARD_SERIALIZED_TEXT_ATTR =
@@ -49,6 +50,35 @@ export function promptMentionClipboardDataAttributes(
     [PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR]: JSON.stringify(args.resource),
     [PROMPT_MENTION_CLIPBOARD_SERIALIZED_TEXT_ATTR]: args.serializedText,
   };
+}
+
+/**
+ * The exact rich clipboard representation the composer already emits for an
+ * inline pill. A trailing space keeps sequentially pasted references
+ * independently editable without becoming one run of text.
+ */
+export function promptMentionClipboardContent(
+  resource: PromptMentionResource,
+): { text: string; html: string } {
+  const serializedText = serializedTextForPromptMentionResource(resource);
+  const element = document.createElement("span");
+  for (const [name, value] of Object.entries(
+    promptMentionClipboardDataAttributes({ resource, serializedText }),
+  )) {
+    element.setAttribute(name, value);
+  }
+  element.textContent = serializedText;
+  return {
+    text: `${serializedText} `,
+    html: `${element.outerHTML} `,
+  };
+}
+
+/** Copy one mention using the same structured payload the composer pastes. */
+export function copyPromptMentionToClipboard(
+  resource: PromptMentionResource,
+): Promise<boolean> {
+  return copyRichTextToClipboard(promptMentionClipboardContent(resource));
 }
 
 export function serializedTextForPromptMentionResource(

@@ -13,7 +13,7 @@ interface CopyToClipboardOptions {
  * Clipboard API, this remains available on plain-HTTP LAN origins when it is
  * called synchronously from a user gesture.
  */
-function copyWithEditingCommand(text: string): boolean {
+function copyWithEditingCommand(text: string, html?: string): boolean {
   if (
     typeof document === "undefined" ||
     document.body === null ||
@@ -50,6 +50,18 @@ function copyWithEditingCommand(text: string): boolean {
   document.body.append(textarea);
 
   let copied = false;
+  let richClipboardHandled = false;
+  const onCopy =
+    html === undefined
+      ? null
+      : (event: ClipboardEvent) => {
+          if (event.clipboardData === null) return;
+          event.clipboardData.setData("text/plain", text);
+          event.clipboardData.setData("text/html", html);
+          event.preventDefault();
+          richClipboardHandled = true;
+        };
+  if (onCopy) document.addEventListener("copy", onCopy, { once: true });
   try {
     textarea.focus({ preventScroll: true });
     textarea.select();
@@ -58,6 +70,7 @@ function copyWithEditingCommand(text: string): boolean {
   } catch {
     copied = false;
   } finally {
+    if (onCopy) document.removeEventListener("copy", onCopy);
     textarea.remove();
     if (activeElement?.isConnected) {
       activeElement.focus({ preventScroll: true });
@@ -69,7 +82,44 @@ function copyWithEditingCommand(text: string): boolean {
       }
     }
   }
-  return copied;
+  return copied && (html === undefined || richClipboardHandled);
+}
+
+export interface RichClipboardContent {
+  /** Plain-text fallback shown when pasted outside bb. */
+  text: string;
+  /** bb-owned structured markup consumed by the composer paste path. */
+  html: string;
+}
+
+/**
+ * Copies matching plain and rich representations. A rich copy only reports
+ * success when the structured HTML reached the clipboard; silently falling
+ * back to plain text would break callers that promise a composer pill.
+ */
+export async function copyRichTextToClipboard({
+  text,
+  html,
+}: RichClipboardContent): Promise<boolean> {
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.clipboard?.write === "function" &&
+    typeof ClipboardItem !== "undefined"
+  ) {
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/plain": new Blob([text], { type: "text/plain" }),
+          "text/html": new Blob([html], { type: "text/html" }),
+        }),
+      ]);
+      return true;
+    } catch {
+      // The user-gesture editing-command path still works on insecure LAN
+      // origins and on hosts that expose a partial Clipboard API.
+    }
+  }
+  return copyWithEditingCommand(text, html);
 }
 
 /**

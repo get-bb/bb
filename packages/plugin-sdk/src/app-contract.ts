@@ -1564,6 +1564,13 @@ export interface PluginComposerApi {
    * content should be fetched fresh when the message is sent.
    */
   insertMention(mention: PluginComposerMention): void;
+  /**
+   * Copy an @-mention reference to the clipboard using bb's structured
+   * composer format. Pasting it into any bb composer creates a pill that
+   * resolves through this plugin's mention provider at send time. Returns
+   * false when the provider id is invalid or rich clipboard access fails.
+   */
+  experimental_copyMention(mention: PluginComposerMention): Promise<boolean>;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
 }

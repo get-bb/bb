@@ -9,11 +9,17 @@
       "source": "./src/index.ts",
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./agent-reference": {
+      "source": "./src/agent-reference.ts",
+      "types": "./src/agent-reference.ts",
+      "default": "./src/agent-reference.ts"
     }
   },
   "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
+    "update:sdk-inventory": "node scripts/sdk-api-inventory.mjs --write",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"
   },
