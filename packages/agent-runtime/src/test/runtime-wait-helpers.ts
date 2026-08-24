@@ -171,9 +171,14 @@ export async function waitForRuntimeConditionUnsafe(
   const label = options.label ?? "condition";
   const deadline = Date.now() + timeoutMs;
 
-  while (Date.now() < deadline) {
+  while (true) {
+    // Observe state before enforcing the deadline: the worker may have been
+    // descheduled past it after the condition became true.
     if (condition()) {
       return;
+    }
+    if (Date.now() >= deadline) {
+      break;
     }
     const failFastMessage = options.failFast?.();
     if (failFastMessage) {
