@@ -1470,29 +1470,38 @@ describe("server-contract clients", () => {
   // table in public-api.ts drags ~85 zod schemas into the boot chunk, so the
   // client must reach PublicApiRoutes through a type-only import and nothing
   // else from that module graph. Typecheck cannot tell `import type` from a
-  // value import here, so pin the source form.
+  // value import here, so pin the source form: the exact set of modules
+  // api-client.ts imports or re-exports from, so a new edge (a sibling zod
+  // module, a value re-export of the route table) fails by construction.
   it("keeps the api client off the route table's value import graph", () => {
     const source = readFileSync(
       fileURLToPath(new URL("../src/api-client.ts", import.meta.url)),
       "utf8",
     );
-    const importLines = source.match(/^import\b[^;]*;/gm) ?? [];
+    const specifiers = [
+      ...source.matchAll(
+        /^(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["'];/gm,
+      ),
+    ].map((match) => match[1]);
 
-    expect(importLines).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(
-          /^import type \{[^}]*\bPublicApiRoutes\b[^}]*\} from "\.\/public-api\.js";$/,
-        ),
-      ]),
+    expect(specifiers).toEqual(["hono/client", "./public-api.js"]);
+    expect(source).toMatch(
+      /^import type \{[^}]*\bPublicApiRoutes\b[^}]*\} from "\.\/public-api\.js";$/m,
     );
-    for (const line of importLines) {
-      if (line.includes("./public-api.js")) {
-        expect(line).toMatch(/^import type /);
-      }
-      expect(line).not.toMatch(/["']\.\/api-types\.js["']/);
-      expect(line).not.toMatch(/["']@bb\/domain["']/);
-      expect(line).not.toMatch(/["']zod["']/);
-    }
+  });
+
+  // index.ts re-exports public-api.ts with `export *`, which stays a live
+  // module-graph edge no matter how api-client.ts imports it. Bundlers only
+  // drop the route table (and the schema modules behind it) from that edge
+  // because the package declares itself side-effect free; without the flag
+  // the whole table returns to the browser boot chunk while the test above
+  // stays green.
+  it("declares the package side-effect free so the barrel's route-table edge is droppable", () => {
+    const manifest = readFileSync(
+      fileURLToPath(new URL("../package.json", import.meta.url)),
+      "utf8",
+    );
+    expect(JSON.parse(manifest)).toHaveProperty("sideEffects", false);
   });
 
   it("builds canonical public routes", () => {
