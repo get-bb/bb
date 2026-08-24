@@ -74,10 +74,12 @@ describe("createProviderInstallationGate", () => {
     expect(probe).toHaveBeenCalledTimes(2);
   });
 
-  it("never remembers a not-installed status", async () => {
+  it("never remembers a not-installed status from a bridge with a minimum version", async () => {
     const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
     // Bridges compute versionUnsupported as `installed && ...`, so a missing
-    // CLI arrives as versionUnsupported: false; it must still not be stored.
+    // CLI arrives as versionUnsupported: false. Codex and pi enforce a
+    // minimum version, so an out-of-band install into a directory already on
+    // PATH can turn this answer into a rejection; it must not be stored.
     const notInstalled = status({
       installed: false,
       executablePath: null,
@@ -102,6 +104,30 @@ describe("createProviderInstallationGate", () => {
     await expect(gate.run("codex", probe)).resolves.toEqual(tooOld);
 
     expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("remembers a not-installed status from a bridge with no minimum version", async () => {
+    const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
+    // Claude Code and ACP report minimumSupportedVersion: null and hard-code
+    // versionUnsupported: false, so re-probing can never change the verdict;
+    // their launchers resolve the executable on their own, so "not installed"
+    // is a working steady state that must be served from memory.
+    const notInstalled = status({
+      executableName: "claude",
+      executablePath: null,
+      installed: false,
+      installSource: "notInstalled",
+      currentVersion: null,
+      minimumSupportedVersion: null,
+      npmPackageName: "@anthropic-ai/claude-code",
+      npmGlobalPackageVersion: null,
+    });
+    const probe = vi.fn(async () => notInstalled);
+
+    await expect(gate.run("claude", probe)).resolves.toEqual(notInstalled);
+    await expect(gate.run("claude", probe)).resolves.toEqual(notInstalled);
+
+    expect(probe).toHaveBeenCalledOnce();
   });
 
   it("shares one in-flight probe between concurrent callers", async () => {

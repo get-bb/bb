@@ -16,9 +16,7 @@ import type {
   GitHostPullRequest,
   PromptInput,
 } from "@bb/domain";
-import type {
-  HostDaemonBridgeLaunch,
-} from "@bb/host-daemon-contract";
+import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
 import { makeWorkspaceMergeBase, makeWorkspaceStatus } from "@bb/test-helpers";
 import type {
   HostWorkspace,
@@ -46,7 +44,11 @@ export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
 
 /**
  * The provider maintenance callbacks for a test that never reaches that
- * surface; a test that does supplies its own beside these.
+ * surface; a test that does supplies its own beside these. The shell-env
+ * refresh is the one member that does not throw: the provider-CLI gate
+ * awaits it on every gated thread start, and a test seeds the runtime
+ * manager with a fixed env, so there is nothing to re-read and a no-op is
+ * the faithful answer. A test that drives a PATH change supplies its own.
  */
 export const unexpectedProviderMaintenance: Pick<
   CommandDispatchOptions,
@@ -55,6 +57,7 @@ export const unexpectedProviderMaintenance: Pick<
   | "providerUsage"
   | "providerInstallationStatus"
   | "providerInstallationRun"
+  | "refreshShellEnv"
 > = {
   listModels: async () => {
     throw new Error("Unexpected provider.list_models call");
@@ -71,6 +74,7 @@ export const unexpectedProviderMaintenance: Pick<
   providerInstallationRun: async () => {
     throw new Error("Unexpected provider.installation.run call");
   },
+  refreshShellEnv: async () => undefined,
 };
 
 type GitCommandArgs = string[];

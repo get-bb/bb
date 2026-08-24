@@ -116,7 +116,7 @@ async function requireSupportedProviderCliForThreadStart({
   // skip the probe that used to carry the refresh, and before the gate
   // samples its generation, so the clear does not discard the fresh probe.
   // The refresh's own short TTL keeps back-to-back starts free.
-  await options.refreshShellEnv?.();
+  await options.refreshShellEnv();
   // The probe spawns the provider CLI several times, so a remembered
   // supported answer is served without touching the maintenance bridge or
   // re-verifying the bridge artifact.

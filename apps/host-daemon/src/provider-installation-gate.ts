@@ -6,7 +6,7 @@ import type {
 } from "@bb/provider-bridge-protocol";
 
 /**
- * How long a "supported" probe answer gates thread start and rewind before
+ * How long a remembered probe answer gates thread start and rewind before
  * the daemon asks the bridge again. A bounded staleness window only matters
  * for an out-of-band downgrade: upgrades stay supported, and installs the
  * daemon runs itself or a shell-environment change clear the memo outright.
@@ -22,10 +22,14 @@ export interface ProviderInstallationGateKeyArgs {
 /**
  * Memo for the provider-CLI version gate in front of thread start and rewind.
  * Concurrent starts for one key share the in-flight probe, and a supported
- * answer is served from memory until it expires. A not-installed answer, an
- * unsupported answer, and a rejected probe are never stored: a CLI that is
- * missing or too old is re-probed on every attempt until it passes, so an
- * install that arrives without a PATH change is seen on the next start.
+ * answer is served from memory until it expires. An unsupported answer and a
+ * rejected probe are never stored, so a CLI that is too old is re-probed on
+ * every attempt until it passes. A not-installed answer is stored only when
+ * the bridge reports no minimum version: a bridge that enforces one (codex,
+ * pi) can turn an install that arrives without a PATH change into an
+ * unsupported answer, so its "not installed" is re-probed on every attempt;
+ * a bridge that enforces none (Claude Code, ACP) can never reject, and its
+ * launcher resolves the executable on its own, so re-probing it is pure cost.
  */
 export interface ProviderInstallationGate {
   clear(): void;
@@ -104,11 +108,15 @@ export function createProviderInstallationGate({
           // map stays bounded without keeping the process alive.
           pruneExpired(settledAt);
           // Bridges report `versionUnsupported: false` for a CLI that is not
-          // installed at all, so `installed` has to be checked on its own:
-          // remembering "not installed" would let a too-old CLI installed in
-          // the meantime slip past the gate's actionable version error.
+          // installed at all. Only a bridge that enforces a minimum version
+          // (codex, pi) can turn a too-old CLI installed in the meantime,
+          // without a PATH change, into an unsupported answer, so only its
+          // not-installed answer is worth forgetting. A bridge that reports
+          // `minimumSupportedVersion: null` (Claude Code, ACP) can never
+          // reject, and its launcher finds the executable on its own, so its
+          // not-installed answer is remembered like a supported one.
           if (
-            status.installed &&
+            (status.installed || status.minimumSupportedVersion === null) &&
             !status.versionUnsupported &&
             startedGeneration === generation
           ) {

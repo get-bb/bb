@@ -76,7 +76,7 @@ export interface CommandRouterOptions {
   providerUsage: CommandDispatchOptions["providerUsage"];
   providerInstallationStatus: CommandDispatchOptions["providerInstallationStatus"];
   providerInstallationRun: CommandDispatchOptions["providerInstallationRun"];
-  refreshShellEnv?: CommandDispatchOptions["refreshShellEnv"];
+  refreshShellEnv: CommandDispatchOptions["refreshShellEnv"];
   resolveInteractiveRequest?: CommandDispatchOptions["resolveInteractiveRequest"];
   pluginHostManager?: PluginHostManager;
   ensureConnectTunnelIdentity?: CommandDispatchOptions["ensureConnectTunnelIdentity"];

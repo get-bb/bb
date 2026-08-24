@@ -1829,7 +1829,7 @@ describe("dispatchCommand", () => {
     expect(providerInstallationStatus).toHaveBeenCalledOnce();
   });
 
-  it("does not remember a not-installed provider", async () => {
+  it("does not remember a not-installed provider that enforces a minimum version", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
       createRuntime: () => runtime,
@@ -1837,7 +1837,8 @@ describe("dispatchCommand", () => {
     });
     const providerInstallationStatus = vi
       .fn<() => Promise<ProviderCliStatus>>()
-      // Bridges report a missing CLI with versionUnsupported: false.
+      // Bridges report a missing CLI with versionUnsupported: false; codex
+      // reports a minimum version, so the next probe can still reject.
       .mockResolvedValueOnce({
         ...supportedCodexInstallationStatus(),
         installed: false,
