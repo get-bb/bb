@@ -78,6 +78,41 @@ async function commitPlugin(
   return git(repo, ["rev-parse", "HEAD"]);
 }
 
+describe("plugin update scheduling", () => {
+  it("waits one full interval when no plugins are eligible for update checks", async () => {
+    const HOUR = 60 * 60 * 1_000;
+    const emptyDb = createConnection(":memory:");
+    migrate(emptyDb);
+    const scheduled: number[] = [];
+    const emptyService = createPluginService({
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db: emptyDb,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(tmpdir(), "bb-plugin-update-empty-test"),
+      appVersion: "1.0.0",
+      stabilizationWindowMs: 0,
+      scheduleUpdateCheck: (delayMs) => {
+        scheduled.push(delayMs);
+        return () => {};
+      },
+    });
+
+    try {
+      emptyService.startPeriodicUpdateChecks();
+      expect(scheduled).toEqual([6 * HOUR]);
+    } finally {
+      await emptyService.stop();
+      emptyDb.$client.close();
+    }
+  });
+});
+
 describe("plugin update service and routes", () => {
   let db: DbConnection;
   let workDir: string;
@@ -781,16 +816,6 @@ describe("plugin update service and routes", () => {
     await service.start();
     return scheduled;
   }
-
-  it("waits one full interval when no plugins are eligible for update checks", async () => {
-    const HOUR = 60 * 60 * 1_000;
-    await service.remove("updater");
-    const scheduled = await restartWithScheduler(Date.now);
-
-    service.startPeriodicUpdateChecks();
-
-    expect(scheduled.map((entry) => entry.delayMs)).toEqual([6 * HOUR]);
-  });
 
   it("sweeps on start when a plugin was never checked, then waits out the interval across restarts", async () => {
     const HOUR = 60 * 60 * 1_000;
