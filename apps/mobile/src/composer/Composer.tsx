@@ -33,6 +33,7 @@ import { useSystemConfig, useSystemProviders } from "@/data/system";
 import { useTheme } from "@/theme";
 import {
   Button,
+  GlassSurface,
   Icon,
   LONG_PRESS_DELAY_MS,
   NativeMenu,
@@ -533,25 +534,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
       />
     );
 
+    // The card's shape (the pill and the expanded card) is what Liquid Glass
+    // refracts through on iOS 26; the fill and border are the fallback
+    // surface (older iOS: secondary fill + hairline; Android: the web card).
+    const cardShape: ViewStyle = {
+      borderRadius: collapsed ? CARD_RADIUS_COLLAPSED : CARD_RADIUS_EXPANDED,
+      paddingHorizontal: collapsed ? 6 : 0,
+    };
     const cardStyle: ViewStyle = IS_IOS
+      ? { ...cardShape, borderCurve: "continuous" }
+      : cardShape;
+    const cardFallbackStyle: ViewStyle = IS_IOS
       ? {
-          borderRadius: collapsed
-            ? CARD_RADIUS_COLLAPSED
-            : CARD_RADIUS_EXPANDED,
-          borderCurve: "continuous",
           borderWidth: StyleSheet.hairlineWidth,
           borderColor: tokens.borderHairline,
           backgroundColor: tokens.secondary,
-          paddingHorizontal: collapsed ? 6 : 0,
         }
       : {
-          borderRadius: collapsed
-            ? CARD_RADIUS_COLLAPSED
-            : CARD_RADIUS_EXPANDED,
           borderWidth: 1,
           borderColor: focused && !collapsed ? tokens.ring : tokens.input,
           backgroundColor: tokens.card,
-          paddingHorizontal: collapsed ? 6 : 0,
         };
 
     return (
@@ -577,7 +579,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
               {menuNode}
             </View>
           ) : null}
-          <Animated.View
+          <GlassSurface
             // The pill ↔ card growth (and the input's own growth) animate.
             layout={
               collapsible
@@ -585,6 +587,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                 : undefined
             }
             style={cardStyle}
+            fallbackStyle={cardFallbackStyle}
             testID={`${testID}-card`}
             accessibilityState={
               collapsible ? { expanded: !collapsed } : undefined
@@ -703,7 +706,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(
                 ) : null}
               </Animated.View>
             )}
-          </Animated.View>
+          </GlassSurface>
         </View>
       </SheetPresenceContext.Provider>
     );

@@ -10,6 +10,12 @@ export { cn } from "./cn";
 export { confirmDestructive, type ConfirmDestructiveOptions } from "./confirm";
 export { EmptyState, EmptyStatePanel } from "./EmptyState";
 export {
+  GlassSurface,
+  useLiquidGlass,
+  type GlassSurfaceLayout,
+  type GlassSurfaceProps,
+} from "./GlassSurface";
+export {
   GROUPED_CARD_RADIUS,
   GROUPED_ROW_PADDING_X,
   GroupedRow,

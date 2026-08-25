@@ -67,31 +67,35 @@ export function Screen({
       : "flex-1 bg-background";
   if (scroll) {
     return (
-      <View className={rootClassName} testID={testID}>
-        <ScrollView
-          className="flex-1"
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={[
-            {
-              padding: 16,
-              gap: 24,
-              // iOS already adds the home-indicator inset through the
-              // automatic content inset adjustment.
-              paddingBottom: IS_IOS ? 32 : insets.bottom + 32,
-            },
-            contentStyle,
-          ]}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-        >
-          {banner ? <ConnectionBanner /> : null}
-          {children}
-        </ScrollView>
-      </View>
+      <ScrollView
+        className={rootClassName}
+        testID={testID}
+        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[
+          {
+            padding: 16,
+            gap: 24,
+            // iOS already adds the home-indicator inset through the
+            // automatic content inset adjustment.
+            paddingBottom: IS_IOS ? 32 : insets.bottom + 32,
+          },
+          contentStyle,
+        ]}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
+        {banner ? <ConnectionBanner /> : null}
+        {children}
+      </ScrollView>
     );
   }
+  // `collapsable={false}`: Fabric would otherwise flatten this root into a
+  // childless sibling (it keeps a leaf for the background + testID and hoists
+  // the content next to it), and UIKit / react-native-screens look for the
+  // screen's scroll view along the first-subview chain — with the leaf first,
+  // the large title never collapses and the bar never gets its edge effect.
   return (
-    <View className={rootClassName} testID={testID}>
+    <View className={rootClassName} testID={testID} collapsable={false}>
       {banner && !IS_IOS ? <ConnectionBanner inset /> : null}
       <View className="flex-1">{children}</View>
       {banner && IS_IOS ? <FloatingConnectionBanner /> : null}

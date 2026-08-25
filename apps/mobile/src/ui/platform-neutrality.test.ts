@@ -31,6 +31,13 @@ const IOS_ONLY_PATTERNS: readonly { label: string; regex: RegExp }[] = [
   { label: "sf: image source", regex: /["'`]sf:/ },
 ];
 
+/**
+ * The Liquid Glass native view: its module is iOS-only, so the import may
+ * live only in a `*.ios.tsx` sibling (no guard window — a default-platform
+ * bundle must never resolve it).
+ */
+const GLASS_IMPORT_REGEX = /["']expo-glass-effect["']/;
+
 /** A platform check that makes the following lines iOS-only. */
 const GUARD_REGEX =
   /Platform\.select\s*\(|Platform\.OS\s*[!=]==?\s*["']ios["']|process\.env\.EXPO_OS\s*[!=]==?\s*["']ios["']/;
@@ -107,6 +114,27 @@ describe("platform neutrality", () => {
     expect(problems).toEqual([]);
   });
 
+  it("imports expo-glass-effect only from *.ios.tsx siblings under src/", () => {
+    const offenders: string[] = [];
+    const files = [
+      ...listSourceFiles(SRC_ROOT, []),
+      ...listSourceFiles(APP_ROOT, []),
+    ];
+    for (const file of files) {
+      const relPath = relative(MOBILE_ROOT, file);
+      if (ALLOWED_FILES.has(relPath) || isIosSibling(relPath)) continue;
+      readFileSync(file, "utf8")
+        .split("\n")
+        .forEach((line, index) => {
+          if (isCommentLine(line)) return;
+          if (GLASS_IMPORT_REGEX.test(line)) {
+            offenders.push(`${relPath}:${index + 1}`);
+          }
+        });
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("never puts platform siblings under app/ (expo-router would route them)", () => {
     const siblings = listSourceFiles(APP_ROOT, [])
       .map((file) => relative(MOBILE_ROOT, file))
@@ -158,10 +186,16 @@ describe("platform neutrality", () => {
     );
     expect(files).toContain("src/ui/Icon.ios.tsx");
     expect(files).toContain("src/ui/NativeMenu.ios.tsx");
+    expect(files).toContain("src/ui/GlassSurface.ios.tsx");
     const iconSource = readFileSync(
       join(SRC_ROOT, "ui", "Icon.ios.tsx"),
       "utf8",
     );
     expect(IOS_ONLY_PATTERNS.some((p) => p.regex.test(iconSource))).toBe(true);
+    const glassSource = readFileSync(
+      join(SRC_ROOT, "ui", "GlassSurface.ios.tsx"),
+      "utf8",
+    );
+    expect(GLASS_IMPORT_REGEX.test(glassSource)).toBe(true);
   });
 });

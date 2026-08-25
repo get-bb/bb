@@ -17,6 +17,8 @@ import {
   StyleSheet,
   useWindowDimensions,
   View,
+  type ViewProps,
+  type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Composer, type ComposerAction, type ComposerHandle } from "@/composer";
@@ -56,11 +58,26 @@ interface ThreadPromptAreaProps {
   contextChips: ThreadContextChipsProps;
   /** "Handoff to new thread" (compose seeded with a `@thread:` mention). */
   onHandoffToNewThread: () => void;
+  /**
+   * Liquid Glass: float over the bottom of the timeline (absolute, no page
+   * fill, no seam) instead of docking under it — the composer is glass and
+   * the banner / chips / queued list keep their own card surfaces. The
+   * screen pads the timeline for the height `onLayout` reports.
+   */
+  floating?: boolean;
+  onLayout?: ViewProps["onLayout"];
 }
 
 /** Share of the window the stack + composer may take before the stack scrolls. */
 const MAX_PROMPT_AREA_WINDOW_FRACTION = 0.6;
 const IS_IOS = process.env.EXPO_OS === "ios";
+/** The floating host: pinned to the bottom of the overlay bounds. */
+const FLOATING_HOST_STYLE: ViewStyle = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+};
 
 /**
  * The bottom of the thread screen (port of apps/app ThreadDetailPromptArea):
@@ -93,6 +110,8 @@ export function ThreadPromptArea({
   contextWindowUsage,
   contextChips,
   onHandoffToNewThread,
+  floating = false,
+  onLayout,
 }: ThreadPromptAreaProps) {
   const insets = useSafeAreaInsets();
   const { tokens } = useTheme();
@@ -132,31 +151,52 @@ export function ThreadPromptArea({
   );
 
   const showBanner = pendingInteraction !== null && !composer.hidden;
+  // Floating host: the banner / chip stack lose the page fill behind them,
+  // so they sit on a raised panel (the composer itself is glass).
+  const floatingPanelStyle: ViewStyle | undefined = floating
+    ? {
+        backgroundColor: tokens.surfaceRaisedSolid,
+        borderRadius: 18,
+        borderCurve: "continuous",
+        overflow: "hidden",
+        boxShadow: "0 8px 24px rgba(0, 0, 0, 0.18)",
+        marginBottom: 8,
+      }
+    : undefined;
   // Skip the stack's bottom gap when nothing renders in it.
   const stackHasContent =
     hasThreadPromptChips(stackChips) ||
     (!composer.hidden && queuedMessages.length > 0);
   return (
     <View
-      className="bg-background px-3 pt-2"
-      style={{
-        paddingBottom: Math.max(insets.bottom, 8),
-        maxHeight: windowHeight * MAX_PROMPT_AREA_WINDOW_FRACTION,
-        // iOS: a hairline seam between the timeline and the input region,
-        // the Messages-style bottom bar edge.
-        ...(IS_IOS
-          ? {
-              borderTopWidth: StyleSheet.hairlineWidth,
-              borderTopColor: tokens.borderHairline,
-            }
-          : null),
-      }}
+      className={floating ? "px-3 pt-2" : "bg-background px-3 pt-2"}
+      // Floating: the host's own margins let touches through to the rows
+      // scrolling under them; its children take theirs as usual.
+      pointerEvents={floating ? "box-none" : undefined}
+      style={[
+        {
+          paddingBottom: Math.max(insets.bottom, 8),
+          maxHeight: windowHeight * MAX_PROMPT_AREA_WINDOW_FRACTION,
+        },
+        floating
+          ? FLOATING_HOST_STYLE
+          : // iOS: a hairline seam between the timeline and the input
+            // region, the Messages-style bottom bar edge.
+            IS_IOS
+            ? {
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: tokens.borderHairline,
+              }
+            : null,
+      ]}
+      onLayout={onLayout}
       testID="thread-prompt-area"
     >
       {showBanner ? (
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ gap: 8 }}
+          style={floatingPanelStyle}
+          contentContainerStyle={{ gap: 8, padding: floating ? 8 : 0 }}
           testID="thread-prompt-area-banner"
         >
           <ThreadPromptChips
@@ -180,9 +220,13 @@ export function ThreadPromptArea({
         <>
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            style={{ flexGrow: 0, flexShrink: 1 }}
+            style={[
+              { flexGrow: 0, flexShrink: 1 },
+              stackHasContent && floating ? floatingPanelStyle : null,
+            ]}
             contentContainerStyle={{
               gap: 8,
+              padding: stackHasContent && floating ? 8 : 0,
               paddingBottom: stackHasContent ? 8 : 0,
             }}
             testID="thread-prompt-stack"

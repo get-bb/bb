@@ -1,7 +1,13 @@
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { ScrollView, View, type StyleProp, type ViewStyle } from "react-native";
+import {
+  ScrollView,
+  View,
+  type ScrollViewProps,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { useHosts } from "@/data/hosts";
 import {
   useSidebarBootstrap,
@@ -51,6 +57,8 @@ function SidebarListSkeleton() {
 
 interface SidebarThreadListProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
+  /** Keeps the indicator clear of a bar floating over the list's bottom. */
+  scrollIndicatorInsets?: ScrollViewProps["scrollIndicatorInsets"];
   /** Scrolls with the rows (the connection banner on home). */
   ListHeaderComponent?: ReactElement | null;
   testID?: string;
@@ -66,6 +74,7 @@ interface SidebarThreadListProps {
  */
 export function SidebarThreadList({
   contentContainerStyle,
+  scrollIndicatorInsets,
   ListHeaderComponent,
   testID,
 }: SidebarThreadListProps) {
@@ -275,6 +284,7 @@ export function SidebarThreadList({
       }
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={contentContainerStyle}
+      scrollIndicatorInsets={scrollIndicatorInsets}
       keyboardShouldPersistTaps="handled"
       // Not "interactive": the dock under the list is padded by
       // KeyboardPaddingView, which only follows keyboard frame notifications,

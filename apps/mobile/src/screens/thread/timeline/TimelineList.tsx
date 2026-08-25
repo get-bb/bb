@@ -63,6 +63,13 @@ interface TimelineListProps {
   footer?: ReactElement | null;
   /** Extra space under the footer (bottom bar height). */
   bottomInset: number;
+  /**
+   * Height of a bar floating over the bottom of the list (the Liquid Glass
+   * prompt area). `bottomInset` must already clear it; this lifts the
+   * jump-to-latest pill and the scroll indicator above it. 0 (the default)
+   * when the bar is docked under the list.
+   */
+  bottomOverlay?: number;
   testID?: string;
 }
 
@@ -167,6 +174,7 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
       onLoadOlderRows,
       footer,
       bottomInset,
+      bottomOverlay = 0,
       testID,
     },
     ref,
@@ -394,12 +402,17 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
           // First scrollable of the route: insets under a transparent /
           // blurred native header and above the home indicator.
           contentInsetAdjustmentBehavior="automatic"
+          // The indicator stops where the floating prompt area begins.
+          scrollIndicatorInsets={
+            bottomOverlay > 0 ? { bottom: bottomOverlay } : undefined
+          }
           testID={testID}
         />
         {showJumpToLatest ? (
           <View
             pointerEvents="box-none"
-            className="absolute bottom-3 left-0 right-0 items-center"
+            className="absolute left-0 right-0 items-center"
+            style={{ bottom: 12 + bottomOverlay }}
           >
             <Pressable
               accessibilityRole="button"

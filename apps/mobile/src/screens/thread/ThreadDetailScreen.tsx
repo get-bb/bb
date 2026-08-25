@@ -7,8 +7,16 @@ import {
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
-import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { ScrollView, View } from "react-native";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { ScrollView, View, type LayoutChangeEvent } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfiles } from "@/app-shell";
 import type { ComposerHandle } from "@/composer";
 import {
@@ -44,6 +52,7 @@ import {
   promptName,
   Skeleton,
   Text,
+  useLiquidGlass,
   useSheet,
 } from "@/ui";
 import { ThreadWorkspacePanelProvider, usePanel } from "../panel";
@@ -232,6 +241,22 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
   );
 
   const listRef = useRef<TimelineListHandle>(null);
+  // Liquid Glass (iOS 26): the prompt area floats over the timeline (the
+  // composer is a glass card) and the rows scroll under it. The host
+  // reports its height; the rows and the jump pill clear the part of it
+  // above the list's bottom edge (the home-indicator padding sits below
+  // that edge, outside the list's frame, so the scroll view's own
+  // safe-area inset stays zero and `scrollToEnd` lands exactly).
+  const glass = useLiquidGlass();
+  const insets = useSafeAreaInsets();
+  const promptBottomPadding = Math.max(insets.bottom, 8);
+  const [promptAreaHeight, setPromptAreaHeight] = useState(0);
+  const handlePromptAreaLayout = useCallback((event: LayoutChangeEvent) => {
+    setPromptAreaHeight(event.nativeEvent.layout.height);
+  }, []);
+  const promptOverlap = glass
+    ? Math.max(0, promptAreaHeight - promptBottomPadding)
+    : 0;
   // The workspace panel (Info / Diff / Files / Terminal + synced file tabs):
   // the header button presents it.
   const panel = usePanel();
@@ -510,48 +535,65 @@ function ThreadDetailBody({ threadId }: { threadId: string }) {
         {/* The composer's typeahead floats up to the top of this region,
             never under the header. */}
         <OverlayBounds style={{ flex: 1 }}>
-          {(timelineLoading && entries.length === 0) || !threadReady ? (
-            <TimelineSkeleton />
-          ) : timelineError && entries.length === 0 ? (
-            <TimelinePlaceholder testID="thread-timeline-error">
-              <EmptyStatePanel>
-                <Text className="text-center text-sm text-muted-foreground">
-                  Failed to load the timeline.
-                </Text>
-                <Text variant="caption" className="pt-1 text-center" selectable>
-                  {timelineError.message}
-                </Text>
-              </EmptyStatePanel>
-              <Button
-                variant="outline"
-                icon="RotateCcw"
-                onPress={() => void refetchLatestTimeline()}
-              >
-                Retry
-              </Button>
-            </TimelinePlaceholder>
-          ) : entries.length === 0 && !showWorkingIndicator ? (
-            <TimelinePlaceholder testID="thread-timeline-empty">
-              <EmptyStatePanel>No messages yet.</EmptyStatePanel>
-            </TimelinePlaceholder>
-          ) : (
-            <TimelineList
-              ref={listRef}
-              entries={entries}
-              unreadDividerIndex={unreadDividerIndex}
-              unreadDividerAutoScroll={unreadDivider.autoScroll}
-              onToggleRow={toggleRow}
-              threadId={threadId}
-              projectId={thread?.projectId ?? ""}
-              hasOlderRows={hasOlderTimelineRows}
-              isLoadingOlderRows={isLoadingOlderTimelineRows}
-              onLoadOlderRows={loadOlderTimelineRows}
-              footer={footer}
-              bottomInset={8}
-              testID="thread-timeline"
-            />
-          )}
+          {/* Floating prompt area: the timeline's frame ends at the glass
+              card's bottom edge; only the card's own height is padded into
+              the rows (above). In flow, the body is the region itself. */}
+          <View
+            style={{
+              flex: 1,
+              paddingBottom: glass ? promptBottomPadding : 0,
+            }}
+          >
+            {(timelineLoading && entries.length === 0) || !threadReady ? (
+              <TimelineSkeleton />
+            ) : timelineError && entries.length === 0 ? (
+              <TimelinePlaceholder testID="thread-timeline-error">
+                <EmptyStatePanel>
+                  <Text className="text-center text-sm text-muted-foreground">
+                    Failed to load the timeline.
+                  </Text>
+                  <Text
+                    variant="caption"
+                    className="pt-1 text-center"
+                    selectable
+                  >
+                    {timelineError.message}
+                  </Text>
+                </EmptyStatePanel>
+                <Button
+                  variant="outline"
+                  icon="RotateCcw"
+                  onPress={() => void refetchLatestTimeline()}
+                >
+                  Retry
+                </Button>
+              </TimelinePlaceholder>
+            ) : entries.length === 0 && !showWorkingIndicator ? (
+              <TimelinePlaceholder testID="thread-timeline-empty">
+                <EmptyStatePanel>No messages yet.</EmptyStatePanel>
+              </TimelinePlaceholder>
+            ) : (
+              <TimelineList
+                ref={listRef}
+                entries={entries}
+                unreadDividerIndex={unreadDividerIndex}
+                unreadDividerAutoScroll={unreadDivider.autoScroll}
+                onToggleRow={toggleRow}
+                threadId={threadId}
+                projectId={thread?.projectId ?? ""}
+                hasOlderRows={hasOlderTimelineRows}
+                isLoadingOlderRows={isLoadingOlderTimelineRows}
+                onLoadOlderRows={loadOlderTimelineRows}
+                footer={footer}
+                bottomInset={promptOverlap + 8}
+                bottomOverlay={promptOverlap}
+                testID="thread-timeline"
+              />
+            )}
+          </View>
           <ThreadPromptArea
+            floating={glass}
+            onLayout={glass ? handlePromptAreaLayout : undefined}
             threadId={threadId}
             thread={thread}
             environmentId={bootstrap.data?.environment?.id ?? null}

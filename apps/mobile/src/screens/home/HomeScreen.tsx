@@ -13,7 +13,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { Animated, Keyboard, Pressable, StyleSheet, View } from "react-native";
+import {
+  Animated,
+  Keyboard,
+  Pressable,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+  type ViewStyle,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfiles } from "@/app-shell";
 import type { ComposerHandle } from "@/composer";
@@ -31,6 +39,7 @@ import {
   sfSymbolFor,
   Spinner,
   Text,
+  useLiquidGlass,
 } from "@/ui";
 import { ComposeDock } from "../compose/ComposeDock";
 import {
@@ -56,6 +65,15 @@ const IS_IOS = process.env.EXPO_OS === "ios";
 const SCRIM_DURATION_MS = 180;
 /** Opacity of the scrim over the list while the dock is expanded. */
 const SCRIM_ALPHA = 0.35;
+/** Gap between the last row and the dock (in flow, or floating over it). */
+const LIST_BOTTOM_GAP = 16;
+/** Liquid Glass: the dock host floats at the bottom of the overlay bounds. */
+const FLOATING_DOCK_STYLE: ViewStyle = {
+  position: "absolute",
+  left: 0,
+  right: 0,
+  bottom: 0,
+};
 
 /** Android: the workspace avatar button on the header's left. */
 function HomeWorkspaceButton() {
@@ -282,6 +300,22 @@ function HomeBody() {
   const [searchOpen, setSearchOpen] = useState(false);
   const searching = IS_IOS && (searchOpen || query.trim().length > 0);
 
+  // Liquid Glass (iOS 26): the dock floats over the list as a glass pill
+  // and the rows scroll under it. The host reports its height; the rows pad
+  // for the part of it above the list's bottom edge (the home-indicator
+  // padding sits below that edge).
+  const glass = useLiquidGlass();
+  const dockBottomPadding = Math.max(insets.bottom, 8);
+  const [dockHeight, setDockHeight] = useState(0);
+  const handleDockLayout = useCallback((event: LayoutChangeEvent) => {
+    setDockHeight(event.nativeEvent.layout.height);
+  }, []);
+  const floatingDock = glass && !searching;
+  const dockOverlap = floatingDock
+    ? Math.max(0, dockHeight - dockBottomPadding)
+    : 0;
+  const listBottomPadding = dockOverlap + LIST_BOTTOM_GAP;
+
   const animateScrim = useCallback(
     (open: boolean) => {
       if (open) setScrimMounted(true);
@@ -375,17 +409,29 @@ function HomeBody() {
         {/* The dock's typeahead floats up to the top of this region, never
             under the header. */}
         <OverlayBounds style={{ flex: 1 }}>
-          <View className="flex-1">
+          {/* Floating dock: the list's frame ends at the pill's bottom edge
+              (the home-indicator inset stays outside it), so the scroll
+              view's own safe-area inset stays zero and the content padding
+              below is exact — RN's `scrollToEnd` ignores that inset. */}
+          <View
+            className="flex-1"
+            style={
+              floatingDock ? { paddingBottom: dockBottomPadding } : undefined
+            }
+          >
             {searching ? (
               <ThreadSearchResults
                 query={query}
                 ListHeaderComponent={banner}
-                contentContainerStyle={{ paddingBottom: 16 }}
+                contentContainerStyle={{ paddingBottom: listBottomPadding }}
               />
             ) : (
               <SidebarThreadList
                 ListHeaderComponent={banner}
-                contentContainerStyle={{ paddingBottom: 16 }}
+                contentContainerStyle={{ paddingBottom: listBottomPadding }}
+                scrollIndicatorInsets={
+                  floatingDock ? { bottom: dockOverlap } : undefined
+                }
                 testID="home-thread-list"
               />
             )}
@@ -423,16 +469,28 @@ function HomeBody() {
           ) : null}
           {/* The dock host: a hairline above the collapsed pill on the page
               background; while the card is expanded the scrim owns the
-              region and the rule disappears. Hidden (kept mounted) while
-              the header search bar is open. */}
+              region and the rule disappears. With Liquid Glass the host is
+              a transparent overlay at the bottom of the bounds instead —
+              the glass pill floats over the rows, and the host's own
+              margins pass touches through (to the rows, or to the scrim
+              while expanded). Hidden (kept mounted) while the header
+              search bar is open. */}
           <View
             className="px-3 pt-2"
-            style={{
-              display: searching ? "none" : "flex",
-              paddingBottom: Math.max(insets.bottom, 8),
-              borderTopWidth: expanded ? 0 : StyleSheet.hairlineWidth,
-              borderTopColor: tokens.borderHairline,
-            }}
+            pointerEvents={glass ? "box-none" : undefined}
+            style={[
+              {
+                display: searching ? "none" : "flex",
+                paddingBottom: dockBottomPadding,
+              },
+              glass
+                ? FLOATING_DOCK_STYLE
+                : {
+                    borderTopWidth: expanded ? 0 : StyleSheet.hairlineWidth,
+                    borderTopColor: tokens.borderHairline,
+                  },
+            ]}
+            onLayout={glass ? handleDockLayout : undefined}
             testID="home-compose-dock"
           >
             <ComposeDock
