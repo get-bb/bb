@@ -463,6 +463,14 @@ describe("builtin plugin reconciliation", () => {
     expect(pluginApiTester?.defaultEnabled).toBe(false);
   });
 
+  it("ships the File Editor (monaco-editor) disabled on a fresh database", () => {
+    const monacoEditor = BUILTIN_PLUGINS.find(
+      (builtin) => builtin.name === "monaco-editor",
+    );
+
+    expect(monacoEditor?.defaultEnabled).toBe(false);
+  });
+
   it("ships Workflows disabled on a fresh database", async () => {
     const workflows = BUILTIN_PLUGINS.find(
       (builtin) => builtin.name === "workflows",

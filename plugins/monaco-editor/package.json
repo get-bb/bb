@@ -27,7 +27,7 @@
     "bbPluginSdk": ">=0.4.9"
   },
   "bb": {
-    "name": "Monaco editor",
+    "name": "File Editor",
     "description": "Edit files in BB with the Monaco editor instead of the read-only preview.",
     "branding": {
       "icon": "Code"

@@ -547,7 +547,7 @@ function NoticeAction({
 export default definePluginApp((app) => {
   app.slots.fileOpener({
     id: "monaco",
-    title: "Monaco",
+    title: "File Editor",
     extensions: CLAIMED_EXTENSIONS,
     component: MonacoFileOpener,
   });
