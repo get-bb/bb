@@ -170,9 +170,30 @@
 //     provider `rootPath`, and the old vocabulary could not name a plugin
 //     provider. An old daemon rejects the new scope values.
 //
+// Version 162 (stabilization S5): `host.list_commands` and `host.list_skills`
+// carry a required `nativeRoots` set — the provider's declared skill and
+// command roots with per-root options (`recursive`, `ancestors`,
+// `namePrefix`) and the roots its plugin resolved for the host and workspace
+// — in place of the optional `nativeSkillRoots` string lists. The daemon's
+// per-provider scan table is gone; an old daemon rejects the new field and an
+// old server's `nativeSkillRoots` fails the new daemon's strict schema.
+//
+// Version 165 adds a server-to-daemon acknowledgement for every daemon
+// heartbeat. The daemon uses the acknowledgement to detect a one-way-stale
+// websocket and reconnect instead of remaining registered but unable to
+// receive host RPC commands.
+//
+// Version 166 makes turn admission single-owner across the shared runtime and
+// lets turn submission recover a stale target by re-steering the live turn.
+// An old daemon can still start a competing provider turn in that race.
+//
+// Version 167 carries deferred agent-only thread-start context in the first
+// provider-bound turn.submit input for an idle seeded fork. The wire shape is
+// unchanged, but the server-to-daemon payload semantics differ.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 153 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 167 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

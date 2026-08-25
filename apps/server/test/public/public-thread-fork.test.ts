@@ -423,6 +423,82 @@ describe("public thread fork route", () => {
       if (secondTurn.command.type !== "turn.submit") {
         throw new Error("Expected turn.submit");
       }
+      expect(secondTurn.command.input).toEqual([seed, ...secondInput]);
+    });
+  });
+
+  it("stops deferring the seed after a provider turn starts", async () => {
+    await withTestHarness(async (harness) => {
+      const seed = {
+        type: "text" as const,
+        text: "Replying to the selected earlier message",
+        mentions: [],
+        visibility: "agent-only" as const,
+      };
+      const { fork, start } = await createIdleSeededFork(harness, {
+        seed,
+        providerThreadId: "provider-started-seeded-fork",
+      });
+      const firstInput = textInput("Explain the selected message");
+      const firstResponse = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: firstInput,
+            mode: "auto",
+            permissionMode: "full",
+          }),
+        },
+      );
+      expect(firstResponse.status).toBe(200);
+      const firstTurn = await waitForQueuedCommandAfter(
+        harness,
+        start.row.cursor,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === fork.id,
+      );
+      if (firstTurn.command.type !== "turn.submit") {
+        throw new Error("Expected turn.submit");
+      }
+      const lastSequence =
+        listEvents(harness.db, { threadId: fork.id }).at(-1)?.sequence ?? 0;
+      seedTurnStarted(harness.deps, {
+        environmentId: fork.environmentId,
+        providerThreadId: "provider-started-seeded-fork",
+        sequence: lastSequence + 1,
+        threadId: fork.id,
+        turnId: "turn-started-seeded-fork",
+      });
+      await reportQueuedCommandError(harness, firstTurn, {
+        errorCode: "provider_error",
+        errorMessage: "Provider turn failed after starting",
+      });
+
+      const secondInput = textInput("Try again");
+      const secondResponse = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: secondInput,
+            mode: "auto",
+            permissionMode: "full",
+          }),
+        },
+      );
+      expect(secondResponse.status).toBe(200);
+      const secondTurn = await waitForQueuedCommandAfter(
+        harness,
+        firstTurn.row.cursor,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === fork.id,
+      );
+      if (secondTurn.command.type !== "turn.submit") {
+        throw new Error("Expected turn.submit");
+      }
       expect(secondTurn.command.input).toEqual(secondInput);
     });
   });

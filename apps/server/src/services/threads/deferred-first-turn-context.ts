@@ -1,4 +1,7 @@
-import { getLastStoredTurnRequestEvent } from "@bb/db";
+import {
+  findStoredEventRow,
+  getLastStoredTurnRequestEvent,
+} from "@bb/db";
 import type { DbQueryConnection } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import { ApiError } from "../../errors.js";
@@ -19,13 +22,6 @@ interface GroupedPrompt {
   inputGroups: PromptInput[][];
 }
 
-function isDeferredFirstTurnContextInput(
-  input: readonly PromptInput[],
-): boolean {
-  return (
-    input.length > 0 && input.every((item) => item.visibility === "agent-only")
-  );
-}
 
 export function resolveDeferredFirstTurnContext(
   db: DbQueryConnection,
@@ -36,17 +32,36 @@ export function resolveDeferredFirstTurnContext(
     return null;
   }
   const request = parseStoredTurnRequestEvent(row);
+  const isSeedRequest =
+    request.source === "spawn" &&
+    request.request.method === "thread/start" &&
+    request.initiator === "agent" &&
+    request.senderThreadId !== null &&
+    request.target.kind === "thread-start";
+  const isUndeliveredRetry =
+    request.source === "tell" &&
+    request.request.method === "turn/start" &&
+    request.target.kind === "new-turn";
+  const visibleInputIndex = request.input.findIndex(
+    (item) => item.visibility !== "agent-only",
+  );
+  const leadingInput =
+    visibleInputIndex === -1
+      ? request.input
+      : request.input.slice(0, visibleInputIndex);
+  const context = leadingInput.length > 0 ? [...leadingInput] : null;
   if (
-    request.source !== "spawn" ||
-    request.request.method !== "thread/start" ||
-    request.initiator !== "agent" ||
-    request.senderThreadId === null ||
-    request.target.kind !== "thread-start" ||
-    !isDeferredFirstTurnContextInput(request.input)
+    context === null ||
+    (!isSeedRequest && !isUndeliveredRetry) ||
+    findStoredEventRow(db, {
+      afterSequence: row.sequence,
+      threadId,
+      type: "turn/started",
+    }) !== null
   ) {
     return null;
   }
-  return { input: request.input, requestSequence: row.sequence };
+  return { input: context, requestSequence: row.sequence };
 }
 
 export function prependDeferredFirstTurnContext(

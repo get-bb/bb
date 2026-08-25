@@ -487,4 +487,82 @@ describe("prompt history service", () => {
       "Skipping malformed prompt history row",
     );
   });
+  it("does not persist empty-input turns as prompt history rows", () => {
+    const { db, firstProject, logger } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: firstProject.id,
+      providerId: "codex",
+    });
+
+    // Side-chat and fork preloads reach the write path with input: [] — the
+    // runtime starts no first turn, so there is no prompt to recall. A row
+    // persisted anyway would store input "[]", which the stored-input schema
+    // rejects at read time (the empty-array rows observed in production).
+    expect(
+      recordAcceptedPromptHistoryEntry(
+        { db },
+        {
+          thread,
+          input: [],
+          initiator: "user",
+          target: { kind: "thread-start" },
+          requestSequence: 1,
+        },
+      ),
+    ).toBe(false);
+
+    expect(db.select().from(promptHistoryEntries).all()).toEqual([]);
+    expect(
+      listProjectPromptHistory(
+        { db, logger },
+        {
+          projectId: firstProject.id,
+          limit: 50,
+        },
+      ),
+    ).toEqual([]);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("excludes agent-only context from recalled prompt history", () => {
+    const { db, firstProject, logger } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: firstProject.id,
+      providerId: "codex",
+    });
+    const visibleInput = textInput("Explain the selected message");
+
+    expect(
+      recordAcceptedPromptHistoryEntry(
+        { db },
+        {
+          thread,
+          input: [
+            {
+              type: "text",
+              text: "Replying to this earlier message",
+              mentions: [],
+              visibility: "agent-only",
+            },
+            ...visibleInput,
+          ],
+          initiator: "user",
+          target: { kind: "new-turn" },
+          requestSequence: 1,
+        },
+      ),
+    ).toBe(true);
+    expect(
+      listThreadPromptHistory(
+        { db, logger },
+        { threadId: thread.id, limit: 50 },
+      ),
+    ).toEqual([
+      {
+        id: expect.stringMatching(/^phist_/u),
+        createdAt: expect.any(Number),
+        input: visibleInput,
+      },
+    ]);
+  });
 });
