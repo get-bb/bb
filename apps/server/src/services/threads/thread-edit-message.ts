@@ -12,7 +12,12 @@ import {
   listActiveBackgroundTaskCountsByThreadIds,
   type DbQueryConnection,
 } from "@bb/db";
-import { threadScope, type Thread, type ThreadEvent } from "@bb/domain";
+import {
+  threadScope,
+  type PromptInput,
+  type Thread,
+  type ThreadEvent,
+} from "@bb/domain";
 import type {
   EditMessageRequest,
   EditMessageResponse,
@@ -45,6 +50,7 @@ import {
   sendThreadMessage,
 } from "./thread-send.js";
 import { requestThreadStopForCurrentState } from "./thread-lifecycle.js";
+import { getLeadingAgentOnlyInput } from "./deferred-first-turn-context.js";
 
 type ThreadRewindPrepareCommand = Extract<
   HostDaemonCommand,
@@ -52,6 +58,7 @@ type ThreadRewindPrepareCommand = Extract<
 >;
 
 interface EditableTurn {
+  leadingAgentOnlyInput: PromptInput[];
   currentTurnId: string;
   oldMaxSequence: number;
   precedingProviderCheckpoint: string | null;
@@ -297,6 +304,7 @@ function resolveEditableTurnCandidate(
     conflict("This earlier provider turn has no editable history checkpoint");
   }
   return {
+    leadingAgentOnlyInput: getLeadingAgentOnlyInput(request.input),
     currentTurnId: accepted.turnId,
     oldMaxSequence: getHighWaterMarks(db, [thread.id])[thread.id] ?? 0,
     precedingProviderCheckpoint,
@@ -599,7 +607,11 @@ export async function editThreadMessage(
           ? { onCommandSettled: discardStagedRewind }
           : {}),
       },
-      payload: { ...sendPayload, mode: "start" },
+      payload: {
+        ...sendPayload,
+        input: [...target.leadingAgentOnlyInput, ...sendPayload.input],
+        mode: "start",
+      },
       thread: editableThread,
       trigger: "user",
     });
