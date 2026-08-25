@@ -7,6 +7,8 @@
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
   Cancel01Icon,
   Copy01Icon,
   Tick02Icon,
@@ -28,12 +30,19 @@ export function SurfaceCard({
   number,
   onDismiss,
   onCopyForAgent,
+  navigation,
 }: {
   surface: PluginSurface;
   /** Marker number, so the card reads as the same annotation. */
   number: number | null;
   onDismiss: () => void;
   onCopyForAgent?: (surface: PluginSurface) => Promise<boolean>;
+  /** Adjacent annotations on this page; omitted for standalone cards. */
+  navigation?: {
+    previous: PluginSurface | null;
+    next: PluginSurface | null;
+    onOpen: (surfaceId: string) => void;
+  };
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   // Null outside a map (the reference sidebar renders cards standalone), and
@@ -141,14 +150,52 @@ export function SurfaceCard({
             {surface.experimental ? <ExperimentalBadge /> : null}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label="Close"
-          className="-mr-1 -mt-1 inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-        >
-          <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
-        </button>
+        <div className="-mr-1 -mt-1 flex shrink-0 items-center gap-0.5">
+          {navigation ? (
+            <div
+              role="group"
+              aria-label="Annotation navigation"
+              className="flex items-center gap-0.5"
+            >
+              {(
+                [
+                  ["previous", navigation.previous, ArrowLeft01Icon],
+                  ["next", navigation.next, ArrowRight01Icon],
+                ] as const
+              ).map(([direction, target, arrowIcon]) => {
+                const directionLabel =
+                  direction === "previous" ? "Previous" : "Next";
+                const label = target
+                  ? `${directionLabel} annotation: ${target.title}`
+                  : `No ${direction} annotation`;
+                return (
+                  <button
+                    key={direction}
+                    type="button"
+                    onClick={() => {
+                      if (target) navigation.onOpen(target.id);
+                    }}
+                    disabled={!target}
+                    aria-label={label}
+                    title={label}
+                    className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  >
+                    <HugeiconsIcon icon={arrowIcon} className="size-3.5" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Close"
+            title="Close annotation"
+            className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+          >
+            <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
+          </button>
+        </div>
       </div>
 
       <p className="mt-2 text-sm leading-relaxed text-muted-foreground">

@@ -139,6 +139,37 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         experimental: true,
       },
       {
+        id: "command-palette-actions",
+        title: "Command palette actions",
+        summary:
+          "Adds a row under Plugins in bb's quick command palette. With this, a plugin can:",
+        bullets: [
+          "Supply the row's label and run behavior; bb owns matching, ordering, and recency",
+          "Read the current thread and project, and hide the row when it is unavailable",
+          "Open one of the plugin's own thread side-panel tabs when a thread is on screen",
+        ],
+        apiSymbols: [
+          "PluginCommandPaletteActionRegistration",
+          "PluginCommandPaletteActionContext",
+        ],
+      },
+      {
+        id: "timeline-renderers",
+        title: "Timeline row renderers",
+        summary:
+          "Renders the expanded body of timeline rows the plugin owns, while bb keeps the row header and lifecycle controls. With this, a plugin can:",
+        bullets: [
+          "Register a renderer for one of its extension item kinds, or for tool rows emitted by a provider it owns",
+          "Receive the normalized row, payload, presentation, thread context, and bb's built-in body as `Original`",
+          "Fall back to bb's declarative body automatically when the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginTimelineRendererRegistration",
+          "PluginTimelineRendererProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "message-directives",
         title: "Rich message embeds",
         summary:
@@ -178,6 +209,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Ask User Question", "Secrets"],
       },
       {
+        id: "code-renderers",
+        title: "Code & diff renderers",
+        summary:
+          "Replaces bb's source-code or diff renderer everywhere that kind of content appears. With this, a plugin can:",
+        bullets: [
+          "Register the source-code and diff replacements independently",
+          "Apply each replacement across bb's file previews, timeline and environment diffs, and plugin pages",
+          "Hand any individual render back to bb's built-in renderer, and fall back to it automatically if the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginSourceCodeRendererRegistration",
+          "PluginSourceCodeRendererProps",
+          "PluginDiffRendererRegistration",
+          "PluginDiffRendererProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "thread-panel",
         title: "Thread side-panel tabs",
         summary:
@@ -203,40 +252,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Docs"],
       },
       {
-        id: "code-renderers",
-        title: "Code & diff renderers",
-        summary:
-          "Replaces bb's source-code or diff renderer everywhere that kind of content appears. With this, a plugin can:",
-        bullets: [
-          "Register the source-code and diff replacements independently",
-          "Apply each replacement across bb's file previews, timeline and environment diffs, and plugin pages",
-          "Hand any individual render back to bb's built-in renderer, and fall back to it automatically if the plugin is unavailable or crashes",
-        ],
-        apiSymbols: [
-          "PluginSourceCodeRendererRegistration",
-          "PluginSourceCodeRendererProps",
-          "PluginDiffRendererRegistration",
-          "PluginDiffRendererProps",
-        ],
-        experimental: true,
-      },
-      {
-        id: "timeline-renderers",
-        title: "Timeline row renderers",
-        summary:
-          "Renders the expanded body of timeline rows the plugin owns, while bb keeps the row header and lifecycle controls. With this, a plugin can:",
-        bullets: [
-          "Register a renderer for one of its extension item kinds, or for tool rows emitted by a provider it owns",
-          "Receive the normalized row, payload, presentation, thread context, and bb's built-in body as `Original`",
-          "Fall back to bb's declarative body automatically when the plugin is unavailable or crashes",
-        ],
-        apiSymbols: [
-          "PluginTimelineRendererRegistration",
-          "PluginTimelineRendererProps",
-        ],
-        experimental: true,
-      },
-      {
         id: "content-scripts",
         title: "App-wide scripts",
         summary:
@@ -251,21 +266,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: [
           "PluginContentScriptRegistration",
           "PluginContentScriptContext",
-        ],
-      },
-      {
-        id: "command-palette-actions",
-        title: "Command palette actions",
-        summary:
-          "Adds a row under Plugins in bb's quick command palette. With this, a plugin can:",
-        bullets: [
-          "Supply the row's label and run behavior; bb owns matching, ordering, and recency",
-          "Read the current thread and project, and hide the row when it is unavailable",
-          "Open one of the plugin's own thread side-panel tabs when a thread is on screen",
-        ],
-        apiSymbols: [
-          "PluginCommandPaletteActionRegistration",
-          "PluginCommandPaletteActionContext",
         ],
       },
     ],

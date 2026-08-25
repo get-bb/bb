@@ -20,6 +20,31 @@ function surfaceIds(groupId: string): string[] {
 }
 
 describe("product-map surfaces", () => {
+  it("orders app-window annotations along one spatial scan path", () => {
+    const ordered = [
+      // Sidebar, top to bottom.
+      "nav-panel",
+      "thread-list",
+      "thread-row-status",
+      "sidebar-footer",
+      // Main thread, top to bottom.
+      "thread-header",
+      "command-palette-actions",
+      "timeline-renderers",
+      "message-directives",
+      "message-actions",
+      "pending-interaction",
+      // Right-panel tabs, left to right.
+      "code-renderers",
+      "thread-panel",
+      "file-opener",
+      // Whole-window behavior is the final, enclosing annotation.
+      "content-scripts",
+    ];
+    expect(surfaceIds("app-shell")).toEqual(ordered);
+    expect([...APP_SHELL_MARKS]).toEqual(ordered);
+  });
+
   it("has globally unique surface ids", () => {
     const all = SURFACE_GROUPS.flatMap((group) =>
       group.surfaces.map((surface) => surface.id),

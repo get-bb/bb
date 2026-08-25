@@ -13,7 +13,12 @@ export {
 } from "./annotation";
 export { firstPartyPluginId, pluginIcon } from "./plugin-icons";
 export { SurfaceCard, useSurfaceCard } from "./surface-card";
-export { panCarets, ProductMap, SURFACE_NUMBERS } from "./product-map";
+export {
+  annotationNeighbors,
+  panCarets,
+  ProductMap,
+  SURFACE_NUMBERS,
+} from "./product-map";
 export {
   scrollUsedBy,
   UsedByList,

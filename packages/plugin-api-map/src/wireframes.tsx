@@ -21,6 +21,7 @@ import {
   createContext,
   Fragment,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -111,15 +112,15 @@ export const APP_SHELL_MARKS = [
   "thread-row-status",
   "sidebar-footer",
   "thread-header",
+  "command-palette-actions",
+  "timeline-renderers",
   "message-directives",
   "message-actions",
   "pending-interaction",
+  "code-renderers",
   "thread-panel",
   "file-opener",
-  "code-renderers",
-  "timeline-renderers",
   "content-scripts",
-  "command-palette-actions",
 ] as const;
 
 export const COMPOSER_MARKS = [
@@ -538,8 +539,22 @@ export type AppShellRightPanelTab =
   | "code-renderers";
 
 export function AppShellWireframe() {
+  const { expandedId } = useSurfaceMap();
   const [rightPanelTab, setRightPanelTab] =
     useState<AppShellRightPanelTab>("thread-panel");
+
+  // Card arrows can select these annotations without clicking their tab
+  // markers. Keep the fixture body synchronized with whichever card is open
+  // so every sequential step still demonstrates the surface it describes.
+  useEffect(() => {
+    if (
+      expandedId === "thread-panel" ||
+      expandedId === "file-opener" ||
+      expandedId === "code-renderers"
+    ) {
+      setRightPanelTab(expandedId);
+    }
+  }, [expandedId]);
 
   return (
     // The padding is the annotation gutter: edge-hugging markers anchor to

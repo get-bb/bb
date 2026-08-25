@@ -61,6 +61,27 @@ export const SURFACE_NUMBERS: ReadonlyMap<string, number> = new Map(
 );
 
 /**
+ * The adjacent cards in one page's authored annotation order. The surface
+ * array is also what assigns marker numbers, so navigation and the diagram
+ * can never disagree about what "next" means.
+ */
+export function annotationNeighbors(
+  surfaces: readonly PluginSurface[],
+  currentId: string,
+): { previous: PluginSurface | null; next: PluginSurface | null } {
+  const currentIndex = surfaces.findIndex(
+    (surface) => surface.id === currentId,
+  );
+  if (currentIndex === -1) {
+    return { previous: null, next: null };
+  }
+  return {
+    previous: surfaces[currentIndex - 1] ?? null,
+    next: surfaces[currentIndex + 1] ?? null,
+  };
+}
+
+/**
  * One capability row in the platform grid: icon, title, one-line tagline.
  * The prose lives in the detail card a click opens, so the grid stays
  * scannable. Same anchor as a skeleton marker, same measurement path.
@@ -507,6 +528,10 @@ export function ProductMap({
       number={SURFACE_NUMBERS.get(openSurface.id) ?? null}
       onDismiss={card.close}
       onCopyForAgent={onCopyForAgent}
+      navigation={{
+        ...annotationNeighbors(slides[index].surfaces, openSurface.id),
+        onOpen: goToSurface,
+      }}
     />
   ) : null;
   // Click-away, scoped to the plugin's own UI. A pointer-down anywhere in the
