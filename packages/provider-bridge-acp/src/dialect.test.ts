@@ -3,6 +3,7 @@ import {
   CURSOR_ACP_DIALECT,
   GENERIC_ACP_DIALECT,
   GROK_ACP_DIALECT,
+  OMP_ACP_DIALECT,
   resolveAcpDialect,
 } from "./dialect.js";
 import type { AcpToolCallUpdateEvent } from "./wire.js";
@@ -28,6 +29,9 @@ describe("resolveAcpDialect", () => {
     expect(resolveAcpDialect({ command: "cursor-agent" })).toBe(
       CURSOR_ACP_DIALECT,
     );
+    expect(resolveAcpDialect({ command: "/opt/homebrew/bin/omp" })).toBe(
+      OMP_ACP_DIALECT,
+    );
   });
 
   it("is generic for a dialect id it does not ship", () => {
@@ -43,6 +47,7 @@ describe("resolveAcpDialect", () => {
     expect(dialect).toBe(GENERIC_ACP_DIALECT);
     expect(dialect.toolIdentity).toBeUndefined();
     expect(dialect.classifyToolCall).toBeUndefined();
+    expect(dialect.commandResult).toBeUndefined();
     expect(dialect.handleClientRequest).toBeUndefined();
   });
 });
@@ -53,6 +58,115 @@ const toolCall = (fields: Partial<AcpToolCallUpdateEvent>) =>
     toolCallId: "call-1",
     ...fields,
   }) as AcpToolCallUpdateEvent;
+
+describe("omp command results", () => {
+  const result = (fields: Partial<AcpToolCallUpdateEvent>) =>
+    OMP_ACP_DIALECT.commandResult?.(
+      toolCall({
+        kind: "execute",
+        status: "completed",
+        rawInput: { command: "command" },
+        ...fields,
+      }),
+    );
+
+  it("preserves omp's reported non-zero exit code", () => {
+    expect(
+      result({
+        status: "failed",
+        rawOutput: {
+          content: [
+            {
+              type: "text",
+              text: "bad\n\nWall time: 0.50 seconds\n\nCommand exited with code 7",
+            },
+          ],
+          details: { exitCode: 7, wallTimeMs: 500 },
+        },
+      }),
+    ).toEqual({ exitCode: 7, output: "bad" });
+  });
+
+  it("does not remove suffix text that its structured details do not prove", () => {
+    const output =
+      "literal\n\nWall time: 1.24 seconds\n\nCommand exited with code 8";
+    expect(
+      result({
+        status: "failed",
+        rawOutput: {
+          content: [{ type: "text", text: output }],
+          details: { exitCode: 7, wallTimeMs: 1_250 },
+        },
+      }),
+    ).toEqual({ exitCode: 7, output });
+  });
+
+  it("does not infer zero for a timeout or signal", () => {
+    expect(
+      result({
+        status: "failed",
+        rawOutput: {
+          content: [
+            {
+              type: "text",
+              text: "partial\n\nWall time: 1.00 seconds\n\n[Command timed out after 1 seconds]",
+            },
+          ],
+          details: { timedOut: true, wallTimeMs: 1_000 },
+        },
+      }),
+    ).toEqual({
+      output:
+        "partial\n\nWall time: 1.00 seconds\n\n[Command timed out after 1 seconds]",
+    });
+
+    expect(
+      result({
+        rawOutput: {
+          content: [
+            { type: "text", text: "killed\n\nWall time: 0.25 seconds" },
+          ],
+          details: { signal: "SIGTERM", wallTimeMs: 250 },
+        },
+      }),
+    ).toEqual({ output: "killed" });
+  });
+
+  it.each<Partial<AcpToolCallUpdateEvent>>([
+    {
+      kind: "other",
+      rawOutput: {
+        content: [{ type: "text", text: "hello\n\nWall time: 0.25 seconds" }],
+        details: { wallTimeMs: 250 },
+      },
+    },
+    {
+      rawInput: { cells: [{ code: "1 + 1" }] },
+      rawOutput: {
+        content: [{ type: "text", text: "2\n\nWall time: 0.25 seconds" }],
+        details: { wallTimeMs: 250 },
+      },
+    },
+    {
+      rawOutput: {
+        content: [{ type: "text", text: "hello" }],
+        details: { timeoutSeconds: 10 },
+      },
+    },
+    {
+      rawOutput: {
+        content: [{ type: "text", text: "hello\n\nWall time: 0.25 seconds" }],
+        details: { wallTimeMs: 250 },
+        exit_code: 9,
+      },
+    },
+  ])(
+    "leaves a result without the foreground Bash proof to generic ACP",
+    (fields) => {
+      expect(result(fields)).toBeUndefined();
+    },
+  );
+});
 
 describe("grok sub-agents", () => {
   // Version 1 of the protocol has no sub-agent concept, so only the dialect

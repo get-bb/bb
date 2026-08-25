@@ -579,7 +579,8 @@ export function createAcpDeltaTranslator(
     Extract<ThreadDelta, { kind: "item.close" }>,
     "aggregatedOutput" | "exitCode" | "resultText"
   > {
-    const result = extractAcpCommandResult(event);
+    const result =
+      dialect.commandResult?.(event) ?? extractAcpCommandResult(event);
     const exitCode = result.exitCode ?? (status === "failed" ? 1 : undefined);
     return {
       ...(result.output === undefined

@@ -2019,6 +2019,136 @@ describe("acp delta translation (dialects)", () => {
     return harness;
   }
 
+  function completedDialectCommand(args: {
+    dialectId: string;
+    rawInput: Record<string, unknown>;
+    rawOutput: unknown;
+    status?: "completed" | "failed";
+  }) {
+    const harness = dialectHarness(args.dialectId);
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-command",
+        title: "command",
+        kind: "execute",
+        status: "pending",
+        rawInput: args.rawInput,
+      }),
+    );
+    return completedItems(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-command",
+          status: args.status ?? "completed",
+          rawOutput: args.rawOutput,
+        }),
+      ),
+    )[0];
+  }
+
+  it("normalizes omp foreground command output and successful completion", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "omp",
+        rawInput: { command: "echo ok" },
+        rawOutput: {
+          content: [{ type: "text", text: "ok\n\nWall time: 0.25 seconds" }],
+          details: { timeoutSeconds: 10, wallTimeMs: 250 },
+        },
+      }),
+    ).toMatchObject({
+      type: "commandExecution",
+      command: "echo ok",
+      status: "completed",
+      exitCode: 0,
+      aggregatedOutput: "ok",
+    });
+  });
+
+  it.each([
+    {
+      label: "explicit",
+      rawInput: { command: "sleep 10", async: true },
+      details: { wallTimeMs: 250 },
+    },
+    {
+      label: "automatic",
+      rawInput: { command: "sleep 10" },
+      details: { async: { state: "running" }, wallTimeMs: 250 },
+    },
+  ])(
+    "leaves a completed omp $label background launch without exit zero",
+    (sample) => {
+      const item = completedDialectCommand({
+        dialectId: "omp",
+        rawInput: sample.rawInput,
+        rawOutput: {
+          content: [{ type: "text", text: "Command running in background" }],
+          details: sample.details,
+        },
+      });
+      expect(item).toMatchObject({
+        type: "commandExecution",
+        status: "completed",
+        aggregatedOutput: "Command running in background",
+      });
+      expect(item).not.toHaveProperty("exitCode");
+    },
+  );
+
+  it("preserves omp timeout failure semantics", () => {
+    const output =
+      "partial\n\nWall time: 1.00 seconds\n\n[Command timed out after 1 seconds]";
+    expect(
+      completedDialectCommand({
+        dialectId: "omp",
+        rawInput: { command: "sleep 10" },
+        rawOutput: {
+          content: [{ type: "text", text: output }],
+          details: { timedOut: true, wallTimeMs: 1_000 },
+        },
+        status: "failed",
+      }),
+    ).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      aggregatedOutput: output,
+    });
+  });
+
+  it("preserves shared ACP semantics inside and outside the omp dialect", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "omp",
+        rawInput: { command: "sleep 10" },
+        rawOutput: {
+          exit_code: 124,
+          output_for_prompt: "exit: 124\n",
+          signal: "SIGKILL",
+          timed_out: true,
+        },
+        status: "failed",
+      }),
+    ).toMatchObject({
+      exitCode: 124,
+      aggregatedOutput: "exit: 124\n[timed out] [signal SIGKILL]",
+    });
+
+    const decoratedOutput = "ok\n\nWall time: 0.25 seconds";
+    const generic = completedDialectCommand({
+      dialectId: "unknown",
+      rawInput: { command: "echo ok" },
+      rawOutput: {
+        content: [{ type: "text", text: decoratedOutput }],
+        details: { wallTimeMs: 250 },
+      },
+    });
+    expect(generic).toMatchObject({ aggregatedOutput: decoratedOutput });
+    expect(generic).not.toHaveProperty("exitCode");
+  });
+
   it("opens a Cursor task call as a delegation and takes the report's detail", () => {
     const harness = dialectHarness("cursor");
     const opened = harness.translate(
