@@ -523,4 +523,46 @@ describe("prompt history service", () => {
     ).toEqual([]);
     expect(logger.warn).not.toHaveBeenCalled();
   });
+
+  it("excludes agent-only context from recalled prompt history", () => {
+    const { db, firstProject, logger } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: firstProject.id,
+      providerId: "codex",
+    });
+    const visibleInput = textInput("Explain the selected message");
+
+    expect(
+      recordAcceptedPromptHistoryEntry(
+        { db },
+        {
+          thread,
+          input: [
+            {
+              type: "text",
+              text: "Replying to this earlier message",
+              mentions: [],
+              visibility: "agent-only",
+            },
+            ...visibleInput,
+          ],
+          initiator: "user",
+          target: { kind: "new-turn" },
+          requestSequence: 1,
+        },
+      ),
+    ).toBe(true);
+    expect(
+      listThreadPromptHistory(
+        { db, logger },
+        { threadId: thread.id, limit: 50 },
+      ),
+    ).toEqual([
+      {
+        id: expect.stringMatching(/^phist_/u),
+        createdAt: expect.any(Number),
+        input: visibleInput,
+      },
+    ]);
+  });
 });

@@ -2792,6 +2792,120 @@ describe("PromptBoxInternal mention triggers", () => {
     replacement: "#42 Fix login bug",
   };
 
+  it("applies the first result with Enter for a multiword mention query", async () => {
+    const { changes, onMentionQueryChange, onSubmit, promptBoxRef } =
+      renderPromptBox("Ask @fix login", {
+        mentionSuggestions: [githubIssueSuggestion],
+      });
+
+    await focusPromptEnd(promptBoxRef);
+    await waitFor(() =>
+      expect(onMentionQueryChange).toHaveBeenCalledWith("fix login", "@"),
+    );
+    await screen.findByRole("button", { name: /Fix login bug/u });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
+
+    await waitFor(() =>
+      expect(latestValue(changes)).toBe("Ask @#42 Fix login bug "),
+    );
+    expect(latestChange(changes)?.mentions).toHaveLength(1);
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps a dismissed multiword occurrence closed as its query extends", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("@asdf qwe", {
+      mentionSuggestions: [githubIssueSuggestion],
+    });
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByRole("button", { name: /Fix login bug/u });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    await act(async () => promptBoxRef.current?.insertTextAtCursor("rt"));
+
+    await waitFor(() => expect(latestValue(changes)).toBe("@asdf qwe rt"));
+    expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
+  });
+
+  it("dismisses a coarse-pointer occurrence from a 44px close target", async () => {
+    const restorePointer = mockPointerCoarse(true);
+    try {
+      const { onMentionQueryChange } = renderPromptBox("@fix", {
+        mentionSuggestions: [githubIssueSuggestion],
+      });
+
+      const closeButton = await screen.findByRole("button", {
+        name: "Close suggestions",
+      });
+      expect(closeButton.classList).toContain("size-11");
+      expect(closeButton.parentElement?.classList).toContain("h-11");
+      expect(closeButton.parentElement?.classList).not.toContain("absolute");
+
+      fireEvent.click(closeButton);
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: /Fix login bug/u }),
+        ).toBeNull(),
+      );
+      expect(getPromptEditorElement().textContent).toBe("@fix");
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null);
+    } finally {
+      restorePointer();
+    }
+  });
+
+  it("reopens after a touch-dismissed occurrence is removed and retyped", async () => {
+    const restorePointer = mockPointerCoarse(true);
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    function RetriggerHarness() {
+      const [value, setValue] = useState("@fix");
+      return (
+        <>
+          <button type="button" onClick={() => setValue("")}>
+            Remove occurrence
+          </button>
+          <button type="button" onClick={() => setValue("@fix")}>
+            Retype occurrence
+          </button>
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value,
+              onChange: (nextValue) => setValue(nextValue),
+              typeahead: buildTypeaheadConfig({
+                mentionSuggestions: [githubIssueSuggestion],
+              }),
+            })}
+            promptBoxRef={promptBoxRef}
+          />
+        </>
+      );
+    }
+
+    try {
+      render(<RetriggerHarness />);
+      await screen.findByRole("button", { name: /Fix login bug/u });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Close suggestions" }),
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: "Remove occurrence" }),
+      );
+      await waitFor(() =>
+        expect(getPromptEditorElement().textContent).toBe(""),
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "Retype occurrence" }),
+      );
+
+      await screen.findByRole("button", { name: /Fix login bug/u });
+    } finally {
+      restorePointer();
+    }
+  });
+
   it("reports the queued editor typeahead's open state and measured height", async () => {
     const layouts: Array<{ height: number; isOpen: boolean }> = [];
     const nativeGetBoundingClientRect =

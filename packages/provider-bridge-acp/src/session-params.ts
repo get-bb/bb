@@ -4,7 +4,12 @@
  * model-list params out.
  */
 
-import type { DynamicTool, PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
+import type {
+  DynamicTool,
+  PermissionMode,
+  ReasoningLevel,
+  ServiceTier,
+} from "@bb/domain";
 import path from "node:path";
 
 import {
@@ -65,12 +70,15 @@ export interface AcpModelListParams {
    * from the `session/new` result's config state.
    */
   agent?: AcpAgentCommandParam;
-  /**
-   * Family ids served in the picker's default list; the rest become
-   * selected-only "more models". No matches (or an empty list) serves
-   * everything as primary.
-   */
+  /** Family ids served in the CLI catalog's default list. */
   primaryModels: string[];
+  /**
+   * Model ids to probe first within ACP-native reasoning discovery's fixed
+   * deadline. Discovery still returns every advertised model in agent order.
+   */
+  reasoningProbePriorityModelIds: string[];
+  /** Enables separate model, reasoning, and service-tier ACP options. */
+  parameterizedModelPicker: boolean;
   reasoningCli?: AcpBridgeReasoningCli;
   nativeReasoning?: AcpBridgeNativeReasoning;
 }
@@ -78,11 +86,9 @@ export interface AcpModelListParams {
 /**
  * Session-level model pin. CLI-style agents resolve (model, reasoningLevel,
  * serviceTier) to a raw model id and launch with `<selectFlag> <resolved-id>`.
- * ACP-native agents receive `{ modelId }` after `session/new` — via their
- * "model"-category config option (`session/set_config_option`) when they
- * advertise one, otherwise via `session/set_model`; if they expose a
- * `thought_level` config option, the bridge applies `reasoningLevel` via
- * `session/set_config_option`. Absent when the thread has no model preference.
+ * ACP-native agents receive these selections after `session/new`: the model
+ * through its config option or legacy `session/set_model`, reasoning through
+ * `thought_level`, and service tier through `fast`.
  */
 type AcpModelSelection =
   | {
@@ -92,7 +98,11 @@ type AcpModelSelection =
       reasoningLevel?: ReasoningLevel;
       serviceTier?: ServiceTier;
     }
-  | { modelId: string; reasoningLevel?: ReasoningLevel };
+  | {
+      modelId: string;
+      reasoningLevel?: ReasoningLevel;
+      serviceTier?: ServiceTier;
+    };
 
 /** Everything the bridge needs to construct one ACP agent session. */
 export interface AcpSessionParams {
@@ -109,6 +119,8 @@ export interface AcpSessionParams {
   launchReasoningLevel?: ReasoningLevel;
   reasoningCli?: AcpBridgeReasoningCli;
   nativeReasoning?: AcpBridgeNativeReasoning;
+  /** Enables the agent's separate model configuration options. */
+  parameterizedModelPicker: boolean;
   /**
    * Launch-time permission flags for agents whose own prompt policy must be
    * selected by CLI args rather than by ACP permission responses.
@@ -173,9 +185,9 @@ function buildAcpSessionInstructions(
 }
 
 /** The spec's `env` is always a record; an empty one adds no envVars key. */
-function launchEnvVars(
-  launchSpec: AcpLaunchSpec,
-): { envVars?: Record<string, string> } {
+function launchEnvVars(launchSpec: AcpLaunchSpec): {
+  envVars?: Record<string, string>;
+} {
   return Object.keys(launchSpec.env).length > 0
     ? { envVars: launchSpec.env }
     : {};
@@ -209,6 +221,12 @@ function buildAcpModelDiscoveryAgentCommand(
   };
 }
 
+interface AcpModelListOptions {
+  parameterizedModelPicker: boolean;
+  primaryModels?: readonly string[];
+  reasoningProbePriorityModelIds: readonly string[];
+}
+
 /**
  * Model-discovery params derived from the launch spec. A null spec means the
  * request carried none; the bridge then serves its synthetic default entry
@@ -216,16 +234,29 @@ function buildAcpModelDiscoveryAgentCommand(
  */
 export function buildAcpModelListParams(
   launchSpec: AcpLaunchSpec | null,
+  options: AcpModelListOptions,
 ): AcpModelListParams {
+  const primaryModels = [
+    ...(options.primaryModels ?? launchSpec?.modelCli?.primaryModels ?? []),
+  ];
+  const reasoningProbePriorityModelIds = [
+    ...options.reasoningProbePriorityModelIds,
+  ];
   if (launchSpec === null) {
-    return { primaryModels: [] };
+    return {
+      primaryModels,
+      reasoningProbePriorityModelIds,
+      parameterizedModelPicker: options.parameterizedModelPicker,
+    };
   }
   const listCommand = buildAcpModelListCommand(launchSpec);
   const agent = buildAcpModelDiscoveryAgentCommand(launchSpec);
   return {
     ...(listCommand !== undefined ? { listCommand } : {}),
     ...(agent !== undefined ? { agent } : {}),
-    primaryModels: [...(launchSpec.modelCli?.primaryModels ?? [])],
+    primaryModels,
+    reasoningProbePriorityModelIds,
+    parameterizedModelPicker: options.parameterizedModelPicker,
     ...(launchSpec.reasoningCli !== undefined
       ? { reasoningCli: launchSpec.reasoningCli }
       : {}),
@@ -239,25 +270,30 @@ export function buildAcpModelListParams(
 function buildAcpModelSelectionParam(
   launchSpec: AcpLaunchSpec,
   options: AcpSessionExecutionOptions,
+  parameterizedModelPicker: boolean,
 ): { modelSelection?: AcpModelSelection } {
   const model = options.model;
   const listCommand = buildAcpModelListCommand(launchSpec);
   if (!model || model === ACP_DEFAULT_MODEL_ID) {
     return {};
   }
-  if (!listCommand || !launchSpec.modelCli?.selectFlag) {
+  if (
+    parameterizedModelPicker ||
+    !listCommand ||
+    !launchSpec.modelCli?.selectFlag
+  ) {
     return {
       modelSelection: {
         modelId: model,
         ...(options.reasoningLevel !== undefined
           ? { reasoningLevel: options.reasoningLevel }
           : {}),
+        ...(parameterizedModelPicker && options.serviceTier !== undefined
+          ? { serviceTier: options.serviceTier }
+          : {}),
       },
     };
   }
-  // Cursor encodes reasoning in the selected model id and has no ACP
-  // `thought_level` option; keep that CLI variant path separate from native
-  // ACP config-option reasoning.
   return {
     modelSelection: {
       listCommand,
@@ -266,7 +302,7 @@ function buildAcpModelSelectionParam(
       ...(options.reasoningLevel !== undefined
         ? { reasoningLevel: options.reasoningLevel }
         : {}),
-      // Only "fast" changes resolution; "default" is the catalog's normal id.
+      // Only "fast" changes launch resolution; "default" is the normal id.
       ...(options.serviceTier === "fast"
         ? { serviceTier: options.serviceTier }
         : {}),
@@ -285,6 +321,7 @@ interface BuildAcpSessionParamsArgs {
   /** Provider label used in user-facing capability errors. */
   providerLabel: string;
   threadId: string;
+  parameterizedModelPicker: boolean;
 }
 
 /** The bridge's session-construction params for a thread start/resume/fork. */
@@ -311,7 +348,12 @@ export function buildAcpSessionParams(
       args: [...launchSpec.args],
     },
     ...(args.dialectId === undefined ? {} : { dialectId: args.dialectId }),
-    ...buildAcpModelSelectionParam(launchSpec, options),
+    ...buildAcpModelSelectionParam(
+      launchSpec,
+      options,
+      args.parameterizedModelPicker,
+    ),
+    parameterizedModelPicker: args.parameterizedModelPicker,
     ...(launchSpec.reasoningCli !== undefined
       ? { reasoningCli: launchSpec.reasoningCli }
       : {}),

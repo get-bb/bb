@@ -59,16 +59,6 @@ function ancestorRoots(entries: readonly RootEntry[]) {
   return entries.map((entry) => ({ ...entryOf(entry), ancestors: true }));
 }
 
-/** Cursor exposes a `-fast` model tail the bridge resolves from the tier. */
-export const CURSOR_PRIMARY_MODELS = [
-  "auto",
-  "cursor-grok-4.6-medium",
-  "gpt-5.6-sol-medium",
-  "claude-opus-5-thinking-medium",
-  "claude-fable-5-thinking-medium",
-  "composer-2.5",
-];
-
 export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
   {
     id: "acp-cursor",
@@ -80,6 +70,20 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     dialect: "cursor",
     providerUsage: true,
     providerInstallation: true,
+    // Cursor exposes bare session model ids plus effort and Fast options only
+    // when the ACP client opts into its parameterized model picker. Probe the
+    // Grok families first so the bounded discovery window captures their full
+    // effort ladders.
+    parameterizedModelPicker: true,
+    primaryModels: [
+      "default",
+      "grok-4.6",
+      "gpt-5.6-sol",
+      "claude-opus-5",
+      "claude-fable-5",
+      "composer-2.5",
+    ],
+    reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
     // cursor-agent (2026.08.11) advertises `sessionCapabilities: { list }`
     // only; no session/fork.
     fork: "none",
@@ -88,11 +92,6 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
       command: "cursor-agent",
       args: ["acp"],
       env: {},
-      modelCli: {
-        listArgs: ["--list-models"],
-        selectFlag: "--model",
-        primaryModels: CURSOR_PRIMARY_MODELS,
-      },
       // The skill directories cursor-agent reads (its own, then the shared
       // and cross-agent conventions), so bb lists them beside its own.
       // cursor-agent scans each tree recursively.

@@ -27,11 +27,12 @@ export interface ActiveTriggerEditor {
  * fires at the start of input or after whitespace / an opening bracket, so a
  * mid-word `a/b` or `foo@bar` never opens a menu.
  *
- * - mention triggers keep a per-char self-exclusion query class, so a second
- *   trigger char ends the current query rather than extending it (`##` stays a
- *   markdown heading, not a `#` mention query).
- * - command triggers (`/`) capture the whole token up to whitespace
- *   (`\S*`), so a namespaced name like `frontend:component` is captured whole.
+ * - mention triggers keep a per-char self-exclusion query pattern while
+ *   allowing ordinary spaces between words. Other whitespace still ends the
+ *   query, and a second trigger char ends it rather than extending it (`##`
+ *   stays a markdown heading, not a `#` mention query).
+ * - command triggers (`/`) capture the whole token up to whitespace (`\S*`),
+ *   so a namespaced name like `frontend:component` is captured whole.
  */
 function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -42,14 +43,14 @@ function triggerPattern(
   options: { windowed: boolean },
 ): RegExp {
   const escapedChar = escapeRegexLiteral(trigger.char);
-  const queryClass =
-    trigger.kind === "mention" ? `[^\\s${escapedChar}]*` : "\\S*";
+  const queryPattern =
+    trigger.kind === "mention" ? `(?:[^\\s${escapedChar}]| )*` : "\\S*";
   // In a windowed scan the window start is not the start of input, so the
   // `^` alternative must not fire there; a real trigger inside the window
   // always carries its boundary char (the window includes one extra char
   // beyond the longest recognizable query).
   const boundary = options.windowed ? "([\\s([{])" : "(^|[\\s([{])";
-  return new RegExp(`${boundary}${escapedChar}(${queryClass})$`, "u");
+  return new RegExp(`${boundary}${escapedChar}(${queryPattern})$`, "u");
 }
 
 /**

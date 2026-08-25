@@ -15,8 +15,8 @@ import { ACP_FAMILY, type AcpAgentDefinition } from "./agents.js";
 /**
  * ACP agents run their own tools and own their permission prompts, so bb's
  * pre-session facts are deliberately few. Permission modes are enforced
- * cooperatively by the bridge; service tier exists because an agent may
- * expose a fast model tail the bridge resolves from the tier.
+ * cooperatively by the bridge; service tier is available when an agent
+ * advertises a Fast config option.
  */
 const ACP_BASE_CAPABILITIES: PluginProviderCapabilities = {
   supportsServiceTier: true,
@@ -102,6 +102,19 @@ export function acpProviderDeclaration(
       // registration so a third-party plugin that registers a known agent
       // gets the same reporting fidelity a first-party registration does.
       ...(agent.dialect === undefined ? {} : { acpDialect: agent.dialect }),
+      ...(agent.parameterizedModelPicker === true
+        ? { parameterizedModelPicker: true }
+        : {}),
+      ...(agent.primaryModels === undefined
+        ? {}
+        : { primaryModels: [...agent.primaryModels] }),
+      ...(agent.reasoningProbePriorityModelIds === undefined
+        ? {}
+        : {
+            reasoningProbePriorityModelIds: [
+              ...agent.reasoningProbePriorityModelIds,
+            ],
+          }),
       acpLaunchSpec: { ...agent.launch },
     },
     // Every ACP agent answers `model/list` from its own account or agent
