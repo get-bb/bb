@@ -104,6 +104,26 @@ describe("buildAcpModelListParams", () => {
       expect(params).not.toHaveProperty("listCommand");
     },
   );
+  it("discovers parameterized Cursor session models with Grok first", () => {
+    expect(
+      buildAcpModelListParams(
+        launchSpecFor({
+          displayName: "Cursor",
+          command: "cursor-agent",
+          args: ["acp"],
+          env: {},
+        }),
+        {
+          parameterizedModelPicker: true,
+          primaryModels: ["grok-4.6", "grok-4.5"],
+        },
+      ),
+    ).toEqual({
+      agent: { command: "cursor-agent", args: ["acp"] },
+      parameterizedModelPicker: true,
+      primaryModels: ["grok-4.6", "grok-4.5"],
+    });
+  });
 });
 
 describe("buildAcpSessionParams", () => {
@@ -205,25 +225,12 @@ describe("buildAcpSessionParams", () => {
   });
 });
 
-/**
- * The CLI-flavored launch spec (Cursor's shape): model discovery and selection run
- * through the launch binary's flags rather than the ACP protocol.
- */
-describe("buildAcpSessionParams model selection", () => {
+describe("buildAcpSessionParams parameterized model selection", () => {
   const cursorSpec: AcpLaunchSpec = {
     displayName: "Cursor",
     command: "cursor-agent",
     args: ["acp"],
     env: {},
-    modelCli: {
-      listArgs: ["--list-models"],
-      selectFlag: "--model",
-      primaryModels: ["composer-2.5"],
-    },
-  };
-  const cursorListCommand = {
-    command: "cursor-agent",
-    args: ["--list-models"],
   };
 
   function cursorSessionParams(
@@ -233,46 +240,40 @@ describe("buildAcpSessionParams model selection", () => {
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
       options: { ...BASE_OPTIONS, ...options },
+      parameterizedModelPicker: true,
       launchSpec: launchSpecFor(cursorSpec),
       providerLabel: "acp-cursor",
       threadId: "thread-1",
     });
   }
 
-  it("forwards the session model and reasoning level for bridge resolution", () => {
+  it("forwards Cursor's bare ACP model and reasoning level", () => {
     expect(
-      cursorSessionParams({ model: "gpt-5.3-codex", reasoningLevel: "high" }),
+      cursorSessionParams({ model: "grok-4.6", reasoningLevel: "high" }),
     ).toMatchObject({
       agent: { command: "cursor-agent", args: ["acp"] },
       modelSelection: {
-        listCommand: cursorListCommand,
-        selectFlag: "--model",
-        model: "gpt-5.3-codex",
+        modelId: "grok-4.6",
         reasoningLevel: "high",
       },
+      parameterizedModelPicker: true,
     });
   });
 
   it("omits the reasoning level when the session has none", () => {
-    const selection = cursorSessionParams({ model: "gpt-5.3-codex" })
+    const selection = cursorSessionParams({ model: "grok-4.6" })
       .modelSelection as Record<string, unknown>;
-    expect(selection).toMatchObject({ model: "gpt-5.3-codex" });
+    expect(selection).toMatchObject({ modelId: "grok-4.6" });
     expect("reasoningLevel" in selection).toBe(false);
   });
 
-  it("forwards Fast mode as the model selection service tier", () => {
+  it.each([
+    ["default", "default"],
+    ["fast", "fast"],
+  ] as const)("forwards the %s service tier explicitly", (_, serviceTier) => {
     expect(
-      cursorSessionParams({ model: "composer-2.5", serviceTier: "fast" })
-        .modelSelection,
-    ).toMatchObject({ model: "composer-2.5", serviceTier: "fast" });
-  });
-
-  it("omits a default service tier from the model selection", () => {
-    const selection = cursorSessionParams({
-      model: "composer-2.5",
-      serviceTier: "default",
-    }).modelSelection as Record<string, unknown>;
-    expect("serviceTier" in selection).toBe(false);
+      cursorSessionParams({ model: "grok-4.6", serviceTier }).modelSelection,
+    ).toMatchObject({ modelId: "grok-4.6", serviceTier });
   });
 
   it("never forwards the synthetic default model id", () => {

@@ -13,7 +13,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
-import { PROVIDER_BRIDGE_PROTOCOL_VERSION, THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
+import {
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_NOTIFICATION_METHOD,
+} from "@bb/provider-bridge-protocol";
 import {
   assembleCapturedThreadEvents,
   captureBridgeJsonRpcOutput,
@@ -183,6 +186,7 @@ function executionOptions(args: {
 
 interface AgentLaunchArgs {
   dialectId?: string;
+  parameterizedModelPicker?: boolean;
   agent?: { command: string; args: string[] };
   envVars?: Record<string, string>;
   /** `listArgs` the agent binary itself understands (see the fake agent). */
@@ -266,6 +270,10 @@ async function startThread(args?: StartThreadArgs): Promise<{
       ...args,
       providerOptions: {
         ...(args?.dialectId ? { acpDialect: args.dialectId } : {}),
+        ...(args?.parameterizedModelPicker === true
+          ? { parameterizedModelPicker: true }
+          : {}),
+        ...(args?.primaryModels ? { primaryModels: args.primaryModels } : {}),
         acpLaunchSpec: acpLaunchSpec(args ?? {}),
         ...(args?.additionalWorkspaceWriteRoots
           ? {
@@ -357,9 +365,7 @@ function deltaKindsOf(message: BridgeJsonRpcOutputMessage): string[] {
   if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
     return [];
   }
-  const params = message.params as
-    | { deltas?: { kind?: string }[] }
-    | undefined;
+  const params = message.params as { deltas?: { kind?: string }[] } | undefined;
   return (params?.deltas ?? []).map((delta) => delta.kind ?? "");
 }
 
@@ -388,6 +394,10 @@ function sendModelList(
   return sendRequest("model/list", {
     providerOptions: {
       ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
+      ...(launch.parameterizedModelPicker === true
+        ? { parameterizedModelPicker: true }
+        : {}),
+      ...(launch.primaryModels ? { primaryModels: launch.primaryModels } : {}),
       acpLaunchSpec: acpLaunchSpec(
         modelLines === undefined
           ? launch
@@ -685,6 +695,8 @@ describe("acp bridge", () => {
     const requestLog = join(workspaceDir, "cursor-discovery-requests.jsonl");
     const modelListId = sendModelList({
       dialectId: "cursor",
+      parameterizedModelPicker: true,
+      primaryModels: ["grok-4.6", "grok-4.5"],
       envVars: {
         FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
         FAKE_ACP_REQUEST_LOG: requestLog,
@@ -711,6 +723,97 @@ describe("acp bridge", () => {
         .find((model) => model.id === "grok-4.6")
         ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
     ).toEqual(["low", "medium", "high", "xhigh"]);
+    expect(
+      loggedAcpRequests(requestLog)
+        .filter((request) => request.method === "session/set_config_option")
+        .map((request) => request.params?.["value"])
+        .slice(0, 2),
+    ).toEqual(["grok-4.6", "grok-4.5"]);
+    expect(result.models.map((model) => model.id)).toEqual([
+      "default",
+      "composer-2.5",
+      "grok-4.6",
+      "grok-4.5",
+    ]);
+  });
+
+  it.each([
+    {
+      serviceTier: "default" as const,
+      initialFast: "true",
+      selectedFast: "false",
+    },
+    {
+      serviceTier: "fast" as const,
+      initialFast: "false",
+      selectedFast: "true",
+    },
+  ])(
+    "applies Cursor model parameters and maps $serviceTier to fast=$selectedFast",
+    async ({ serviceTier, initialFast, selectedFast }) => {
+      const requestLog = join(
+        workspaceDir,
+        `cursor-${serviceTier}-session-requests.jsonl`,
+      );
+      const { providerThreadId } = await startThread({
+        dialectId: "cursor",
+        parameterizedModelPicker: true,
+        envVars: {
+          FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+          FAKE_ACP_INITIAL_FAST: initialFast,
+          FAKE_ACP_REQUEST_LOG: requestLog,
+        },
+        model: "grok-4.6",
+        reasoningLevel: "high",
+        serviceTier,
+      });
+
+      const requests = loggedAcpRequests(requestLog);
+      const initialize = requests.find(
+        (request) => request.method === "initialize",
+      );
+      expect(initialize?.params).toMatchObject({
+        clientCapabilities: {
+          _meta: { parameterizedModelPicker: true },
+        },
+      });
+      expect(
+        requests
+          .filter((request) => request.method === "session/set_config_option")
+          .map((request) => ({
+            configId: request.params?.["configId"],
+            value: request.params?.["value"],
+          })),
+      ).toEqual([
+        { configId: "model", value: "grok-4.6" },
+        { configId: "effort", value: "high" },
+        { configId: "fast", value: selectedFast },
+      ]);
+
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "echo-selected-fast", mentions: [] }],
+      });
+      await waitForTurnCompleted();
+      expect(agentMessageTexts()).toContain(`selected-fast:${selectedFast}`);
+    },
+  );
+
+  it("leaves service tier untouched when the agent advertises no Fast option", async () => {
+    const requestLog = join(workspaceDir, "no-fast-session-requests.jsonl");
+    await startThread({
+      parameterizedModelPicker: true,
+      envVars: {
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+      model: "fake/strong",
+      serviceTier: "fast",
+    });
+
+    const configIds = loggedAcpRequests(requestLog)
+      .filter((request) => request.method === "session/set_config_option")
+      .map((request) => request.params?.["configId"]);
+    expect(configIds).toEqual(["model"]);
   });
 
   it("discovers ACP-native models from session models state", async () => {
