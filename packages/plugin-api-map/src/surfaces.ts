@@ -255,7 +255,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "content-scripts",
         title: "App-wide scripts",
         summary:
-          "Runs your code inside the bb window itself, without rendering a slot of its own. With this, a plugin can:",
+          "Runs your code inside the bb window itself, without rendering a UI of its own. With this, a plugin can:",
         bullets: [
           "Mount once per bb window and unmount when the window reloads",
           "Add behavior that is not tied to one screen, such as a keyboard shortcut",
