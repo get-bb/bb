@@ -862,7 +862,8 @@ export class RuntimeManager {
   /**
    * Tears down the resident provider-maintenance runtime so the next caller
    * gets a fresh one. In-flight maintenance RPCs fail with "Runtime shutting
-   * down" and are expected to retry; callers refetch after invalidation.
+   * down"; the provider-installation gate transparently re-probes after its
+   * generation changes, while other maintenance callers refetch on demand.
    */
   async invalidateProviderMaintenanceRuntime(): Promise<void> {
     this.providerInstallationGate.clear();

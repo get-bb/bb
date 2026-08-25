@@ -1090,7 +1090,7 @@ describe("@bb/sdk", () => {
   it("forwards every public permission mode through thread surfaces", async () => {
     const queue = createFetchQueue([
       { body: { id: "thr_auto" }, status: 201 },
-      { body: null, status: 204 },
+      { body: { ok: true, delivery: "sent" } },
       { body: { id: "qmsg_full" }, status: 201 },
     ]);
     const sdk = createBbSdk({

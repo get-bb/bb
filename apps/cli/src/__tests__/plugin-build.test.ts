@@ -382,13 +382,12 @@ describe("buildPluginApp", () => {
     expect(result.jsPath).toBe(join(root, "dist", "app.js"));
   });
 
-  it("builds the `bb plugin new --app` scaffold end to end", async () => {
+  it("builds the `bb plugin new` scaffold end to end", async () => {
     const targetDir = join(root, "bb-plugin-scaffolded");
     await scaffoldPlugin({
       targetDir,
       packageName: "bb-plugin-scaffolded",
       bbVersion: "0.9.0",
-      app: true,
     });
     // The vendored starter components bundle real npm deps (`bb plugin new`
     // runs npm install for authors); the offline test links them from the
@@ -396,6 +395,7 @@ describe("buildPluginApp", () => {
     // absent: the build shims them to host slots, so linking them would
     // hide a shim regression.
     await linkScaffoldDeps(targetDir, [
+      "@radix-ui/react-checkbox",
       "@radix-ui/react-slot",
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
@@ -413,9 +413,15 @@ describe("buildPluginApp", () => {
     // The scaffold's default export must be a definePluginApp product the
     // host interpreter accepts (a stub runtime stands in for the BB app).
     (globalThis as { __bbPluginRuntime?: unknown }).__bbPluginRuntime = {
-      // The vendored starter components bundle radix Slot, which calls
-      // forwardRef at module scope — the stub must provide it.
-      react: { forwardRef: (render: unknown) => render },
+      // The vendored starter components bundle radix Slot and Checkbox,
+      // which call forwardRef/createContext at module scope — the stub must
+      // provide them. Checkbox's radix tree also imports react-dom at module
+      // scope (used only inside handlers), so the slot must exist.
+      react: {
+        forwardRef: (render: unknown) => render,
+        createContext: () => ({}),
+      },
+      reactDom: {},
       jsxRuntime: { jsx: () => ({}), jsxs: () => ({}), Fragment: {} },
       // The vendored button calls cva() at module scope, and lib/utils reads
       // clsx/twMerge; all three come from host slots, never the bundle.

@@ -1,5 +1,5 @@
 import { fork, spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -814,6 +814,32 @@ async function smokeSdkPackage(tarballPath) {
   return sdkDir;
 }
 
+async function smokeInstalledRepack(installedPackageDir) {
+  const stdout = await runCommand({
+    args: ["pack", "--dry-run", "--json"],
+    command: "npm",
+    cwd: installedPackageDir,
+    label: "repack installed bb-app",
+  });
+  const [packed] = JSON.parse(stdout);
+  if (!Array.isArray(packed?.files)) throw new Error("Invalid npm pack output");
+  const chunkPrefix = "host-daemon/dist/bb-chunks/";
+  const liveChunks = readdirSync(join(installedPackageDir, chunkPrefix))
+    .filter((name) => name.endsWith(".js"))
+    .map((name) => `${chunkPrefix}${name}`)
+    .sort();
+  const repackedChunks = packed?.files
+    ?.map((file) => file.path)
+    .filter((path) => typeof path === "string" && path.startsWith(chunkPrefix))
+    .sort();
+  if (
+    liveChunks.length === 0 ||
+    JSON.stringify(repackedChunks) !== JSON.stringify(liveChunks)
+  ) {
+    throw new Error("Installed bb-app repack did not preserve its live chunks");
+  }
+}
+
 async function smokeBuiltinPluginsRunning({ cliEnv, tarballPath }) {
   const deadline = Date.now() + PLUGIN_LOAD_TIMEOUT_MS;
   let lastSummary = "no plugin list output yet";
@@ -1037,6 +1063,7 @@ try {
   await smokeConfigCommand(tarballPath);
   const sdkDir = await smokeSdkPackage(tarballPath);
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
+  await smokeInstalledRepack(installedPackageDir);
   await smokeProviderBridgeBundles(installedPackageDir);
   await smokePluginHostWorkerBundle(installedPackageDir);
   await smokeFullStack(tarballPath, sdkDir);

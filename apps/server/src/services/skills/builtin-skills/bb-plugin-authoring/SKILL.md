@@ -17,7 +17,7 @@ their own product gates. `bb plugin list` shows each plugin's status.
 ## Quickstart
 
 ```
-bb plugin new hello            # scaffolds ./bb-plugin-hello (add --app for a frontend entry)
+bb plugin new hello            # scaffolds ./bb-plugin-hello: a todo list with a sidebar page, `bb hello` CLI, and a skill
 cd bb-plugin-hello
 bb plugin install .            # registers the directory in place (--yes to skip the prompt)
 bb plugin dev                  # rebuild app/host bundles + reload on every save
@@ -2419,9 +2419,9 @@ only `definePluginApp` + the hooks):
 - Builtin plugins in this repo import shared UI from `@bb/shared-ui` (the
   single source of truth the app also consumes and the registry generates
   from); external and example plugins still vendor source through the registry.
-- `bb plugin new --app` pre-vendors button, card, input, dialog (plus their
-  support files: `lib/utils`, `lib/portal-scope`, icon, responsive-overlay,
-  drawer, hooks) into `components/ui/` etc., and writes a `components.json`
+- `bb plugin new` pre-vendors button, card, input, checkbox, dialog (plus
+  their support files: `lib/utils`, `lib/portal-scope`, icon,
+  responsive-overlay, drawer, hooks) into `components/ui/` etc., and writes a `components.json`
   whose `@bb` registry is pinned to the release tag matching the running
   BB. Import via the `@/*` alias: `import { Button } from
 "@/components/ui/button"` (tsconfig maps it; `bb plugin build` reads it).

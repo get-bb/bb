@@ -135,6 +135,7 @@ import type {
   ResolveThreadMentionsResponse,
   RespondPluginInteractionRequest,
   SendMessageRequest,
+  SendMessageResponse,
   SetQueuedMessageGroupBoundaryRequest,
   SendQueuedMessageRequest,
   SendQueuedMessageResponse,
@@ -971,6 +972,10 @@ export const publicApiRoutes = {
      * starts a turn. mode=steer-if-active steers when the thread is active;
      * otherwise it starts a turn. Legacy mode=auto starts idle threads and
      * uses the provider's auto target for active turns.
+     * A thread that awaits user interaction cannot take a prompt: every mode
+     * but `start` is then held (`delivery: "deferred"`) and delivered once the
+     * interaction settles; `start` still fails with 409
+     * `awaiting_user_interaction`.
      */
     send: defineRoute({
       path: "/threads/:id/send",
@@ -978,7 +983,7 @@ export const publicApiRoutes = {
       request: jsonRequest<PathId, SendMessageRequest>(
         sendMessageRequestSchema,
       ),
-      response: jsonResponse<{ ok: true }>(),
+      response: jsonResponse<SendMessageResponse>(),
     }),
     /**
      * Replace an accepted root user turn and every later turn. A running

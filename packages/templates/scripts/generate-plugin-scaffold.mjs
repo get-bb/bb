@@ -1,6 +1,6 @@
 // Generates src/generated/plugin-starter-files.generated.ts: the
-// `bb plugin new --app` starter component set from the plugin component
-// registry, plus the npm deps a scaffold needs to build and typecheck them.
+// `bb plugin new` starter component set from the plugin component registry,
+// plus the npm deps a scaffold needs to build and typecheck them.
 //
 // The output is not committed. turbo runs this as
 // `@bb/templates#generate:plugin-scaffold` before any task that resolves
@@ -17,15 +17,17 @@ const packageRoot = path.resolve(
   "..",
 );
 
-// Embed the `bb plugin new --app` starter component set from the plugin
-// component registry (plugin design §5.5): the transitive closure of the
-// starter items, as {target, content} pairs, plus the npm deps a scaffold
-// needs to build (dependencies) and typecheck (devDependencies) them —
-// versions mirrored from apps/app so vendored source matches what the app
-// ships. Read by file path — NOT a package import — same as the plugin-sdk
-// dts embed above. Regenerate the registry FIRST
+// Embed the `bb plugin new` starter component set from the plugin component
+// registry (plugin design §5.5): the transitive closure of the starter
+// items, as {target, content} pairs, plus the npm deps a scaffold needs to
+// build (dependencies) and typecheck (devDependencies) them — versions
+// mirrored from apps/app so vendored source matches what the app ships.
+// Read by file path — NOT a package import — same as the plugin-sdk dts
+// embed above. Regenerate the registry FIRST
 // (node packages/plugin-registry/scripts/build-registry.mjs), then this.
-const STARTER_ITEMS = ["button", "card", "input", "dialog"];
+// The scaffold's todo page uses button, card, input, and checkbox; dialog is
+// vendored so the next feature has a confirm step ready.
+const STARTER_ITEMS = ["button", "card", "input", "checkbox", "dialog"];
 // Keep in sync with RUNTIME_SLOT_BY_SPECIFIER in
 // packages/plugin-build/src/build-plugin-app.ts: shimmed packages are
 // runtime-provided (devDependencies for types only); everything else must be

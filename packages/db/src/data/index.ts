@@ -368,6 +368,18 @@ export {
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
+export {
+  createDeferredThreadMessage,
+  deleteDeferredThreadMessage,
+  deleteDeferredThreadMessagesForThread,
+  listDeferredThreadMessages,
+  listThreadIdsWithDeliverableDeferredThreadMessages,
+  listThreadIdsWithUndeliverableDeferredThreadMessages,
+} from "./deferred-thread-messages.js";
+export type {
+  CreateDeferredThreadMessageInput,
+  DeferredThreadMessageRow,
+} from "./deferred-thread-messages.js";
 export type {
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,

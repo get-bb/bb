@@ -249,10 +249,9 @@ describe("acpProviderDeclaration", () => {
     expect(byId.get("acp-grok")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "grok",
     });
-    // An agent with no vendor side channels bb reads names no dialect.
-    expect(
-      byId.get("acp-opencode")?.experimental_bridgeOptions,
-    ).not.toHaveProperty("acpDialect");
+    expect(byId.get("acp-opencode")?.experimental_bridgeOptions).toMatchObject({
+      acpDialect: "opencode",
+    });
     expect(byId.get("acp-opencode")?.capabilities.supportsManualCompaction).toBe(
       true,
     );

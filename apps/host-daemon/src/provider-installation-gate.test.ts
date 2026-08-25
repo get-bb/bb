@@ -161,6 +161,22 @@ describe("createProviderInstallationGate", () => {
     expect(probe).toHaveBeenCalledTimes(2);
   });
 
+  it("retries an in-flight probe that is interrupted by invalidation", async () => {
+    const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
+    const staleProbe = createDeferredPromise<ProviderInstallationStatus>();
+    const probe = vi
+      .fn<() => Promise<ProviderInstallationStatus>>()
+      .mockReturnValueOnce(staleProbe.promise)
+      .mockResolvedValueOnce(status());
+
+    const result = gate.run("codex", probe);
+    gate.clear();
+    staleProbe.reject(new Error("Runtime shutting down"));
+
+    await expect(result).resolves.toEqual(status());
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
   it("probes again once the remembered status expires", async () => {
     let currentTime = 0;
     const gate = createProviderInstallationGate({
@@ -190,7 +206,7 @@ describe("createProviderInstallationGate", () => {
     expect(probe).toHaveBeenCalledTimes(2);
   });
 
-  it("does not store a probe that was in flight when the gate was cleared", async () => {
+  it("replaces a stale in-flight answer after the gate is cleared", async () => {
     const gate = createProviderInstallationGate({ ttlMs: 1_000, now: () => 0 });
     const staleProbe = createDeferredPromise<ProviderInstallationStatus>();
     const probe = vi
@@ -204,7 +220,7 @@ describe("createProviderInstallationGate", () => {
     // arrives after the clear must start its own probe rather than join it.
     const fresh = gate.run("codex", probe);
     staleProbe.resolve(status({ currentVersion: "0.140.0" }));
-    await expect(stale).resolves.toEqual(status({ currentVersion: "0.140.0" }));
+    await expect(stale).resolves.toEqual(status());
     await expect(fresh).resolves.toEqual(status());
     expect(probe).toHaveBeenCalledTimes(2);
 

@@ -905,7 +905,9 @@ Expected result:
 - `accept-edits` turns allow workspace changes but surface pending interactions
   for the explicit outside-workspace probes; inspect them with
   `bb thread interactions list/show`.
-- `bb thread tell` is rejected while the thread is awaiting user interaction.
+- `bb thread tell` reports the message as held while the thread is awaiting
+  user interaction and delivers it after the interaction settles;
+  `--mode start` is still rejected with 409 `awaiting_user_interaction`.
 - `approve`, `deny`, and `grant` resolve their matching interaction kinds.
 - Approved/granted threads continue to `idle`; denied threads either reply with the denial handling text or clearly record the denied approval in the log.
 

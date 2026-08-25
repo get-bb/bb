@@ -63,16 +63,24 @@ describe("scaffold backend", () => {
   it("loads, inspects, and atomically reloads through the packed harness", async () => {
     const host = createFakePluginHost({ pluginId: "external-backend" });
     await plugin(host.bb);
-    await expect(host.harness.behavior.callRpc("greeting")).resolves.toEqual({
-      greeting: "hello",
-      loadCount: 1,
+    await expect(host.harness.behavior.callRpc("todos_list")).resolves.toEqual({
+      todos: [],
     });
-    expect(host.harness.inspection.registrations.rpcMethods).toEqual(["greeting"]);
+    const added = await host.harness.behavior.callRpc("todos_add", {
+      title: "Ship it",
+    });
+    expect(added).toMatchObject({ title: "Ship it", done: false });
+    expect(host.harness.inspection.registrations.rpcMethods).toEqual([
+      "todos_list",
+      "todos_add",
+      "todos_set_done",
+      "todos_remove",
+    ]);
 
+    // The todo store lives in bb.storage.kv, so it survives a reload.
     const next = await host.harness.lifecycle.reload(plugin);
-    await expect(next.harness.behavior.callRpc("greeting")).resolves.toEqual({
-      greeting: "hello",
-      loadCount: 2,
+    await expect(next.harness.behavior.callRpc("todos_list")).resolves.toEqual({
+      todos: [added],
     });
     await next.harness.lifecycle.dispose();
   });
@@ -86,20 +94,43 @@ import { describe, expect, it } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 
 describe("scaffold frontend", () => {
-  it("loads and renders a slot through the packed harness", async () => {
+  it("loads and renders the Example todos page through the packed harness", async () => {
     const app = await loadPluginApp(() => import("./app"));
+    const createdAt = "2026-01-01T00:00:00.000Z";
+    let todos = [{ id: "a1", title: "Ship it", done: false, createdAt }];
     const slot = renderSlot(
-      app.homepageSections[0]!,
-      { projectId: "proj_external" },
+      app.navPanels[0]!,
+      { subPath: "" },
       {
         context: { projectId: "proj_external", threadId: null },
-        rpc: { greeting: () => ({ greeting: "external", loadCount: 3 }) },
+        rpc: {
+          todos_list: () => ({ todos }),
+          todos_add: (input: unknown) => {
+            const { title } = input as { title: string };
+            const todo = { id: "b2", title, done: false, createdAt };
+            todos = [...todos, todo];
+            return todo;
+          },
+        },
       },
     );
+    await slot.findByText("Ship it");
 
-    fireEvent.click(slot.getByText("Say hello"));
-    await slot.findByText("external (#3)");
-    expect(slot.inspection.rpcCalls).toEqual([{ method: "greeting", input: null }]);
+    fireEvent.change(slot.getByLabelText("New todo"), {
+      target: { value: "Write docs" },
+    });
+    fireEvent.click(slot.getByText("Add"));
+    await slot.findByText("Write docs");
+    expect(slot.inspection.rpcCalls.map((call) => call.method)).toEqual([
+      "todos_list",
+      "todos_add",
+      "todos_list",
+    ]);
+
+    // A server-side write (bb <id> remove …) reaches the page as a signal.
+    todos = [];
+    await slot.behavior.emitRealtime("todos-changed", { count: 0 });
+    await slot.findByText(/Nothing to do/);
     slot.lifecycle.unmount();
   });
 });
@@ -347,14 +378,13 @@ describe("external plugin scaffold types", () => {
   beforeAll(async () => {
     packRoot = await mkdtemp(join(tmpdir(), "bb-external-pack-"));
     tarball = await packPluginSdk(join(packRoot, "pack"));
-    // The app scaffold declares the superset of the backend scaffold's
-    // dependencies, so its install serves both.
+    // Every scaffold declares the same dependencies, so one install serves
+    // them all.
     const templateDir = join(packRoot, "template");
     await scaffoldPlugin({
       targetDir: templateDir,
       packageName: "bb-plugin-external-template",
       bbVersion: "0.9.0",
-      app: true,
     });
     await installPackedSdk(templateDir, tarball);
     await linkExternalDependencies(templateDir);
@@ -379,7 +409,6 @@ describe("external plugin scaffold types", () => {
       targetDir,
       packageName: "bb-plugin-external",
       bbVersion: "0.9.0",
-      app: true,
     });
     await writeFile(join(targetDir, "server.ts"), REPRESENTATIVE_SERVER);
     await writeFile(join(targetDir, "app.tsx"), REPRESENTATIVE_APP);
@@ -513,16 +542,15 @@ describe("external plugin scaffold types", () => {
       };
     };
     expect(backendTsconfig.compilerOptions.skipLibCheck).toBe(false);
-    // No mapping to fall back on: the testing declarations import the package
-    // root, which has to resolve through the install alone.
-    expect(backendTsconfig.compilerOptions.paths).toBeUndefined();
+    // Only the shadcn alias is mapped, never the SDK: the testing declarations
+    // import the package root, which has to resolve through the install alone.
+    expect(backendTsconfig.compilerOptions.paths).toEqual({ "@/*": ["./*"] });
 
     const frontendDir = join(workDir, "bb-plugin-external-frontend");
     await scaffoldPlugin({
       targetDir: frontendDir,
       packageName: "bb-plugin-external-frontend",
       bbVersion: "0.9.0",
-      app: true,
     });
     await useInstalledNodeModules(frontendDir);
     await writeFile(join(frontendDir, "app.test.tsx"), FRONTEND_TEST);

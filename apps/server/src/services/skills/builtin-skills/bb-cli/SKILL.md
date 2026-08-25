@@ -353,9 +353,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   co-located daemon. Optional per-agent fields: `args`, `env`, `cwd`,
   `modelCli`, `reasoningCli`, `nativeReasoning`, `nativeSkillRoots`
   (`{"user": [...], "project": [...]}` relative paths), `permissionCli`,
-  `supportsManualCompaction`, and `dialect` (`cursor` or `grok`). The old
-  `customAcpAgents` array in `config.json` is deprecated; bb reads it and warns
-  until 0.41.
+  `supportsManualCompaction`, and `dialect` (`cursor`, `opencode`, `omp`, or
+  `grok`). The old `customAcpAgents` array in `config.json` is deprecated; bb
+  reads it and warns until 0.41.
 - Top-level `customModels` in the same `config.json` registers extra picker
   models. `providerId` accepts a built-in provider id or any `acp-*` provider
   id. The provider must still accept the id: `claude-code` and `codex` accept
@@ -406,6 +406,13 @@ or artifacts, validation performed, and blockers.
   agent can finish its current work first. Steer is especially important for a
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
+- If the target thread is awaiting user interaction (an open question or
+  approval), `bb thread tell` cannot interrupt it. The message is held and
+  delivers in the requested mode once the interaction settles; the CLI prints
+  "message held". That outcome is not a failure, so do not resend. For a hard
+  stop use `bb thread stop <thread-id>`. `--json` reports `delivery` as `sent`,
+  `queued`, or `deferred`. If the thread fails while the message is held (its
+  provider exited), the message waits until somebody retries the thread.
 
 ## Inspecting Results
 
@@ -888,9 +895,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
-  - `bb plugin new <name> [--app]` — scaffold a plugin and install its npm
-    dependencies (`--app` adds a frontend entry plus a typecheck-only
-    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `>=0.4.3`). The
+  - `bb plugin new <name>` — scaffold a todo-list plugin (`server.ts`,
+    `app.tsx` with a sidebar page, a `bb <name>` CLI command, a skill, and
+    vendored UI components) and install its npm dependencies (scaffold sets
+    `engines.bbPluginSdk` to `>=0.4.3`). The
     scaffold depends on `@get-bb/plugin-sdk`, pinned to this bb's exact SDK
     version in `devDependencies`, so the API declarations arrive with
     `npm install` at `node_modules/@get-bb/plugin-sdk/bundled-types/*.d.ts`

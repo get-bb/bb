@@ -233,11 +233,12 @@ added/updated/unchanged counts.
                                  secrets, and schedules (managed git:/npm:
                                  files deleted; local path sources stay on
                                  disk; builtin removals are remembered)
-  bb plugin new <name> [--app]   Scaffold a new plugin and install its npm
+  bb plugin new <name>           Scaffold a todo-list plugin (server.ts,
+                                 app.tsx with a sidebar page, a `bb <id>` CLI
+                                 command, and a skill) and install its npm
                                  dependencies, including @get-bb/plugin-sdk
                                  pinned to this bb's exact SDK version (no
-                                 server required; --app adds a frontend entry,
-                                 app.tsx, plus a typecheck-only tsconfig.json)
+                                 server required)
   bb plugin types [path]         Sync a plugin's @get-bb/plugin-sdk surface to
                                  this bb (default: cwd): repin the npm
                                  devDependency to this bb's SDK version, or
@@ -556,7 +557,7 @@ backend contract import with `useRpc<typeof contract>()` for exact frontend
 method/input/result inference. The server validates both schemas and rejects
 non-JSON results (including cyclic and non-finite values) with structured
 error codes. Components are vendored shadcn source the plugin owns (the
-shadcn model): `bb plugin new --app` pre-vendors a starter set into
+shadcn model): `bb plugin new` pre-vendors a starter set into
 components/ui/ and `npx shadcn add @bb/<name>` pulls more from the BB
 component registry (the full stock shadcn set, version-matched to the
 running BB via the pinned ref in components.json). Product capabilities are
@@ -622,9 +623,10 @@ large content.
 
 Authoring a plugin
 
-The loop: `bb plugin new <name>` scaffolds `./bb-plugin-<name>` (add --app
-for a frontend entry); `bb plugin install .` registers it; `bb plugin dev`
-watches and reloads on every save. The manifest is package.json: required
+The loop: `bb plugin new <name>` scaffolds `./bb-plugin-<name>` — a working
+todo list with a backend, a sidebar page, a `bb <name>` command, and a skill;
+delete what you do not need; `bb plugin install .` registers it; `bb plugin
+dev` watches and reloads on every save. The manifest is package.json: required
 `bb.name` and `bb.description` human identity, required `bb.branding` with at
 least `icon` or `logo.light`, `bb.server`
 (backend entry, loaded as TypeScript — no build step), optional `bb.app`

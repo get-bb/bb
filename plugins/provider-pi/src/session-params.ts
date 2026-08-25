@@ -75,6 +75,25 @@ export interface PiSessionParams {
   thinkingLevel?: PiReasoningLevel;
 }
 
+/**
+ * The construction-scoped option subset a turn command can change. Every turn
+ * command carries the full execution options and the runtime never diffs
+ * them, so the bridge reads these off each turn and reconciles them with the
+ * session it already holds. `undefined` means the turn named nothing and the
+ * live value stands.
+ */
+export interface PiTurnOptions {
+  model: string | undefined;
+  thinkingLevel: PiReasoningLevel | undefined;
+}
+
+export function buildPiTurnOptions(options: PiSessionOptions): PiTurnOptions {
+  return {
+    model: options.model ? options.model : undefined,
+    thinkingLevel: toPiThinkingLevel(options.reasoningLevel),
+  };
+}
+
 export function buildPiSessionParams(
   args: BuildPiSessionParamsArgs,
 ): PiSessionParams {

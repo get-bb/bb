@@ -18,6 +18,7 @@ import {
 } from "./delta-translation.js";
 import { resolveAcpDialect } from "./dialect.js";
 import { ACP_TOOL_PAYLOAD_MAX_CHARS } from "./tool-classification.js";
+import type { AcpToolCallUpdateEvent } from "./wire.js";
 
 /**
  * ACP translation equivalence for the narrow-grammar path.
@@ -93,11 +94,24 @@ function updateEvent(update: Record<string, unknown>): ProviderRuntimeEvent {
   };
 }
 
-function fsWriteEvent(path: string): ProviderRuntimeEvent {
+function fsWriteEvent(
+  path: string,
+  options: {
+    kind?: "add" | "update";
+    oldText?: string;
+    content?: string;
+  } = {},
+): ProviderRuntimeEvent {
   return {
     jsonrpc: "2.0",
     method: ACP_FS_WRITE_METHOD,
-    params: { threadId: THREAD_ID, path, kind: "add", content: "hello\n" },
+    params: {
+      threadId: THREAD_ID,
+      path,
+      kind: options.kind ?? "add",
+      ...(options.oldText === undefined ? {} : { oldText: options.oldText }),
+      content: options.content ?? "hello\n",
+    },
   };
 }
 
@@ -244,7 +258,7 @@ describe("acp delta translation (bridge-shared invariants)", () => {
   // Historical fix f60cf84ee (recast): fs-write item ids must never collide
   // across writes or sessions. Minting moved to the runtime assembler, whose
   // per-assembler entropy+serial ids are unique across every session it sees.
-  it("mints distinct fs-write item ids across writes", () => {
+  it("keeps unmatched fs writes standalone with distinct item ids", () => {
     const harness = createHarness();
     harness.translate(turnStartedEvent());
     const first = completedItems(
@@ -259,6 +273,111 @@ describe("acp delta translation (bridge-shared invariants)", () => {
     expect(first.id).toMatch(ITEM_ID_PATTERN);
     expect(second.id).toMatch(ITEM_ID_PATTERN);
     expect(first.id).not.toBe(second.id);
+  });
+
+  it("keeps an fs write standalone when its native file-change match is ambiguous", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    for (const toolCallId of ["edit-a", "edit-b"]) {
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId,
+          kind: "edit",
+          status: "pending",
+          rawInput: {},
+        }),
+      );
+    }
+
+    const [write] = completedItems(
+      harness.translate(fsWriteEvent("/tmp/file.ts")),
+    );
+    expect(write).toMatchObject({
+      type: "fileChange",
+      changes: [{ path: "/tmp/file.ts", kind: "add" }],
+    });
+  });
+
+  it("accumulates repeated client writes and reapplies them after provider updates", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "omp-repeated-write",
+        title: "edit",
+        kind: "edit",
+        status: "pending",
+        rawInput: {},
+      }),
+    );
+
+    expect(
+      harness.translate(
+        fsWriteEvent("/workspace/poem.md", {
+          kind: "update",
+          oldText: "original\n",
+          content: "middle\n",
+        }),
+      ),
+    ).toEqual([]);
+
+    // Provider content has replace semantics, but it cannot overwrite the
+    // authoritative file snapshot observed by the ACP client write.
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "omp-repeated-write",
+        status: "in_progress",
+        locations: [{ path: "/workspace/poem.md" }],
+        content: [
+          {
+            type: "diff",
+            path: "/workspace/poem.md",
+            oldText: "provider-old\n",
+            newText: "provider-stale\n",
+          },
+        ],
+      }),
+    );
+
+    expect(
+      harness.translate(
+        fsWriteEvent("/workspace/poem.md", {
+          kind: "update",
+          oldText: "middle\n",
+          content: "latest\n",
+        }),
+      ),
+    ).toEqual([]);
+
+    const [completed] = completedItems(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "omp-repeated-write",
+          title: "poem.md",
+          status: "completed",
+          content: [
+            {
+              type: "content",
+              content: { type: "text", text: "Edited file successfully." },
+            },
+          ],
+        }),
+      ),
+    );
+    expect(completed).toMatchObject({
+      type: "fileChange",
+      changes: [{ path: "/workspace/poem.md", kind: "update" }],
+    });
+    const change =
+      completed?.type === "fileChange" ? completed.changes[0] : undefined;
+    expect(change?.diff).toContain("-original");
+    expect(change?.diff).toContain("+latest");
+    expect(change?.diff).not.toContain("middle");
+    expect(change?.diff).not.toContain("provider-stale");
   });
 });
 
@@ -619,6 +738,23 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
       expect(item.exitCode).toBe(1);
     });
 
+    it("does not claim OpenCode metadata for a generic ACP agent", () => {
+      const item = completeCommand(
+        startedHarness(),
+        "call-generic",
+        "echo ok",
+        {
+          status: "completed",
+          rawOutput: {
+            output: "ok\n",
+            metadata: { exit: 0, output: "ok\n", truncated: false },
+          },
+        },
+      );
+      expect(item.exitCode).toBeUndefined();
+      expect(item.aggregatedOutput).toContain('"metadata"');
+    });
+
     it("omits the exit code when a completed call carries no result at all", () => {
       const item = completeCommand(
         startedHarness(),
@@ -739,7 +875,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
   });
 
-  it("tracks Cursor edit calls as file changes before the final diff arrives", () => {
+  it("keeps a Cursor edit in one file-change lifecycle when the final diff supplies its path", () => {
     const harness = startedHarness();
     const turnId = harness.openTurnId();
 
@@ -750,7 +886,7 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         title: "Edit file",
         kind: "edit",
         status: "in_progress",
-        locations: [{ path: "/workspace/a.ts" }],
+        rawInput: {},
       }),
     );
     expect(startedEvents).toEqual([
@@ -762,13 +898,12 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         item: {
           type: "fileChange",
           id: expect.stringMatching(ITEM_ID_PATTERN),
-          changes: [{ path: "/workspace/a.ts", kind: "update" }],
+          changes: [],
           status: "pending",
           approvalStatus: null,
           presentation: {
             label: { pending: "Editing file", completed: "Edited file" },
             icon: { glyph: "EditFile" },
-            title: "a.ts",
           },
         },
       },
@@ -809,6 +944,152 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         ? completedEvents[0].item.changes[0]
         : undefined;
     expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
+  });
+
+  it("keeps an OpenCode edit in one file-change lifecycle when its path arrives late", () => {
+    const harness = startedHarness();
+    const turnId = harness.openTurnId();
+
+    const startedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-opencode-write",
+        title: "write",
+        kind: "edit",
+        status: "pending",
+        locations: [],
+        rawInput: {},
+      }),
+    );
+    expect(startedEvents).toEqual([
+      {
+        type: "item/started",
+        threadId: "",
+        providerThreadId: "",
+        scope: turnScope(turnId),
+        item: {
+          type: "fileChange",
+          id: expect.stringMatching(ITEM_ID_PATTERN),
+          changes: [],
+          status: "pending",
+          approvalStatus: null,
+          presentation: {
+            label: { pending: "Editing file", completed: "Edited file" },
+            icon: { glyph: "EditFile" },
+          },
+        },
+      },
+    ]);
+    const startedItemId =
+      startedEvents[0]?.type === "item/started" ? startedEvents[0].item.id : "";
+
+    const completedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-opencode-write",
+        title: "notes.md",
+        status: "completed",
+        locations: [{ path: "/workspace/notes.md" }],
+        rawInput: {
+          content: "updated\n",
+          filePath: "/workspace/notes.md",
+        },
+        rawOutput: { output: "Wrote file successfully." },
+      }),
+    );
+    expect(completedEvents).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "fileChange",
+          id: startedItemId,
+          status: "completed",
+          changes: [
+            expect.objectContaining({
+              path: "/workspace/notes.md",
+              kind: "update",
+            }),
+          ],
+          presentation: expect.objectContaining({ title: "notes.md" }),
+        }),
+      }),
+    ]);
+  });
+
+  it("folds an OMP client fs write into its path-pending native edit", () => {
+    const harness = startedHarness();
+    const startedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-omp-edit",
+        title: "edit",
+        kind: "edit",
+        status: "pending",
+        rawInput: {},
+      }),
+    );
+    const startedItem = startedEvents.find(
+      (event) => event.type === "item/started",
+    );
+    expect(startedItem).toMatchObject({
+      type: "item/started",
+      item: { type: "fileChange", changes: [] },
+    });
+    const startedItemId =
+      startedItem?.type === "item/started" ? startedItem.item.id : "";
+
+    expect(
+      harness.translate({
+        jsonrpc: "2.0",
+        method: ACP_FS_WRITE_METHOD,
+        params: {
+          threadId: THREAD_ID,
+          path: "/workspace/poem.md",
+          kind: "update",
+          oldText: "# Lions\n",
+          content: "# Rabbits\n",
+        },
+      }),
+    ).toEqual([]);
+
+    const completedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-omp-edit",
+        title: "poem.md",
+        status: "completed",
+        locations: [{ path: "/workspace/poem.md" }],
+        content: [
+          {
+            type: "content",
+            content: {
+              type: "text",
+              text: "Edited file successfully.",
+            },
+          },
+        ],
+      }),
+    );
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "fileChange",
+        id: startedItemId,
+        status: "completed",
+        changes: [{ path: "/workspace/poem.md", kind: "update" }],
+      },
+    });
+    const change =
+      completedEvents[0]?.type === "item/completed" &&
+      completedEvents[0].item.type === "fileChange"
+        ? completedEvents[0].item.changes[0]
+        : undefined;
+    expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
+
+    expect(
+      completedItems(harness.translate(turnCompletedEvent("end_turn"))),
+    ).toEqual([]);
   });
 
   it("translates plan updates into settled planSteps snapshots", () => {
@@ -1200,6 +1481,24 @@ describe("acp delta translation (native kinds → core kinds)", () => {
     );
   });
 
+  it("maps a path-pending delete to an empty file change", () => {
+    expect(
+      openItem({
+        toolCallId: "delete-1",
+        title: "Delete file",
+        kind: "delete",
+        rawInput: {},
+      }),
+    ).toMatchObject({
+      type: "fileChange",
+      changes: [],
+      presentation: {
+        label: { pending: "Deleting file", completed: "Deleted file" },
+        icon: { glyph: "Trash2" },
+      },
+    });
+  });
+
   it("maps a fetch to webFetch when the URL is known", () => {
     expect(
       openItem({
@@ -1575,7 +1874,9 @@ describe("acp delta translation (raw payloads and real results)", () => {
         sessionUpdate: "tool_call_update",
         toolCallId: "call-stream",
         status: "in_progress",
-        content: [{ type: "content", content: { type: "text", text: "one\n" } }],
+        content: [
+          { type: "content", content: { type: "text", text: "one\n" } },
+        ],
       }),
     );
     expect(first).toEqual([
@@ -1609,7 +1910,9 @@ describe("acp delta translation (raw payloads and real results)", () => {
         sessionUpdate: "tool_call_update",
         toolCallId: "call-stream",
         status: "in_progress",
-        content: [{ type: "content", content: { type: "text", text: "two\n" } }],
+        content: [
+          { type: "content", content: { type: "text", text: "two\n" } },
+        ],
       }),
     );
     expect(third).toEqual([
@@ -1853,7 +2156,11 @@ describe("acp delta translation (raw payloads and real results)", () => {
         content: [
           { type: "content", content: { type: "text", text: "README.md\n" } },
         ],
-        rawOutput: { type: "Bash", exit_code: 0, output_for_prompt: "exit: 0\n" },
+        rawOutput: {
+          type: "Bash",
+          exit_code: 0,
+          output_for_prompt: "exit: 0\n",
+        },
       }),
     );
     expect(closed).toHaveLength(1);
@@ -1883,7 +2190,11 @@ describe("acp delta translation (raw payloads and real results)", () => {
       }),
     );
     expect(opened[0]).toMatchObject({
-      item: { type: "toolCall", tool: "fetch", presentation: { title: "Web Fetch" } },
+      item: {
+        type: "toolCall",
+        tool: "fetch",
+        presentation: { title: "Web Fetch" },
+      },
     });
     const openedId =
       opened[0]?.type === "item/started" ? opened[0].item.id : "";
@@ -2018,6 +2329,187 @@ describe("acp delta translation (dialects)", () => {
     harness.translate(turnStartedEvent());
     return harness;
   }
+
+  function completedDialectCommand(args: {
+    dialectId: string;
+    rawInput: Record<string, unknown>;
+    rawOutput: unknown;
+    content?: AcpToolCallUpdateEvent["content"];
+    status?: "completed" | "failed";
+  }) {
+    const harness = dialectHarness(args.dialectId);
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-command",
+        title: "command",
+        kind: "execute",
+        status: "pending",
+        rawInput: args.rawInput,
+      }),
+    );
+    return completedItems(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-command",
+          status: args.status ?? "completed",
+          ...(args.content === undefined ? {} : { content: args.content }),
+          rawOutput: args.rawOutput,
+        }),
+      ),
+    )[0];
+  }
+
+  it("normalizes omp foreground command output and successful completion", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "omp",
+        rawInput: { command: "echo ok" },
+        rawOutput: {
+          content: [{ type: "text", text: "ok\n\nWall time: 0.25 seconds" }],
+          details: { timeoutSeconds: 10, wallTimeMs: 250 },
+        },
+      }),
+    ).toMatchObject({
+      type: "commandExecution",
+      command: "echo ok",
+      status: "completed",
+      exitCode: 0,
+      aggregatedOutput: "ok",
+    });
+  });
+
+  it.each([
+    {
+      label: "explicit",
+      rawInput: { command: "sleep 10", async: true },
+      details: { wallTimeMs: 250 },
+    },
+    {
+      label: "automatic",
+      rawInput: { command: "sleep 10" },
+      details: { async: { state: "running" }, wallTimeMs: 250 },
+    },
+  ])(
+    "leaves a completed omp $label background launch without exit zero",
+    (sample) => {
+      const item = completedDialectCommand({
+        dialectId: "omp",
+        rawInput: sample.rawInput,
+        rawOutput: {
+          content: [{ type: "text", text: "Command running in background" }],
+          details: sample.details,
+        },
+      });
+      expect(item).toMatchObject({
+        type: "commandExecution",
+        status: "completed",
+        aggregatedOutput: "Command running in background",
+      });
+      expect(item).not.toHaveProperty("exitCode");
+    },
+  );
+
+  it("preserves omp timeout failure semantics", () => {
+    const output =
+      "partial\n\nWall time: 1.00 seconds\n\n[Command timed out after 1 seconds]";
+    expect(
+      completedDialectCommand({
+        dialectId: "omp",
+        rawInput: { command: "sleep 10" },
+        rawOutput: {
+          content: [{ type: "text", text: output }],
+          details: { timedOut: true, wallTimeMs: 1_000 },
+        },
+        status: "failed",
+      }),
+    ).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      aggregatedOutput: output,
+    });
+  });
+
+  it("preserves shared ACP semantics inside and outside the omp dialect", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "omp",
+        rawInput: { command: "sleep 10" },
+        rawOutput: {
+          exit_code: 124,
+          output_for_prompt: "exit: 124\n",
+          signal: "SIGKILL",
+          timed_out: true,
+        },
+        status: "failed",
+      }),
+    ).toMatchObject({
+      exitCode: 124,
+      aggregatedOutput: "exit: 124\n[timed out] [signal SIGKILL]",
+    });
+
+    const decoratedOutput = "ok\n\nWall time: 0.25 seconds";
+    const generic = completedDialectCommand({
+      dialectId: "unknown",
+      rawInput: { command: "echo ok" },
+      rawOutput: {
+        content: [{ type: "text", text: decoratedOutput }],
+        details: { wallTimeMs: 250 },
+      },
+    });
+    expect(generic).toMatchObject({ aggregatedOutput: decoratedOutput });
+    expect(generic).not.toHaveProperty("exitCode");
+  });
+
+  it("normalizes the recorded OpenCode command completion envelope", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "opencode",
+        rawInput: { command: "echo ok" },
+        rawOutput: {
+          output: "ok\n",
+          metadata: { exit: 0, output: "ok\n", truncated: false },
+        },
+      }),
+    ).toMatchObject({
+      type: "commandExecution",
+      command: "echo ok",
+      status: "completed",
+      exitCode: 0,
+      aggregatedOutput: "ok\n",
+    });
+  });
+
+  it("keeps standard content and shared result fields ahead of OpenCode fallbacks", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "opencode",
+        rawInput: { command: "echo protocol" },
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: "protocol content\n" },
+          },
+        ],
+        rawOutput: {
+          exit_code: 9,
+          stdout: "shared stdout\n",
+          output_for_prompt: "shared prompt output\n",
+          output: "OpenCode output\n",
+          metadata: {
+            exit: 0,
+            output: "OpenCode metadata output\n",
+            truncated: false,
+          },
+        },
+      }),
+    ).toMatchObject({
+      type: "commandExecution",
+      exitCode: 9,
+      aggregatedOutput: "protocol content\n",
+    });
+  });
 
   it("opens a Cursor task call as a delegation and takes the report's detail", () => {
     const harness = dialectHarness("cursor");

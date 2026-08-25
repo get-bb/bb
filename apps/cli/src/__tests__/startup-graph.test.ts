@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -93,7 +94,11 @@ describe("bb startup module graph", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  async function runCli(entry: CliEntry, args: string[]): Promise<CliRun> {
+  async function runCli(
+    entry: CliEntry,
+    args: string[],
+    serverUrl?: string,
+  ): Promise<CliRun> {
     const logPath = join(
       tempDir,
       `${entry}_${args.join("_").replace(/\W/g, "_")}.log`,
@@ -106,6 +111,7 @@ describe("bb startup module graph", () => {
     );
     env.BB_CLI_REEXEC = "1";
     env.BB_STARTUP_GRAPH_LOG = logPath;
+    if (serverUrl !== undefined) env.BB_SERVER_URL = serverUrl;
     const entryArgs =
       entry === "source"
         ? [
@@ -249,6 +255,63 @@ describe("bb startup module graph", () => {
       );
       for (const name of [...otherGroups, "plugin-cli-proxy", "mime-types"]) {
         expect(loaded(run, `${chunkDirUrl}${name}-`), name).toEqual([]);
+      }
+    }, 30_000);
+
+    it("executes plugin commands from the split artifact", async () => {
+      const server = createServer(async (request, response) => {
+        response.setHeader("content-type", "application/json");
+        if (request.url === "/api/v1/plugins/contributions") {
+          response.end(
+            JSON.stringify({
+              cliCommands: [
+                { pluginId: "fixture-plugin", name: "fixture" },
+              ],
+            }),
+          );
+          return;
+        }
+        if (request.url !== "/api/v1/plugins/fixture-plugin/cli") {
+          response.statusCode = 404;
+          response.end();
+          return;
+        }
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        const { argv } = z
+          .object({ argv: z.array(z.string()) })
+          .parse(JSON.parse(body));
+        response.end(
+          JSON.stringify({
+            exitCode: 0,
+            stdout: `fixture ran: ${argv.join(" ")}`,
+            stderr: "",
+          }),
+        );
+      });
+      await new Promise<void>((resolvePromise) =>
+        server.listen(0, "127.0.0.1", resolvePromise),
+      );
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        throw new Error("Fixture server did not bind to a TCP port");
+      }
+      const serverUrl = `http://127.0.0.1:${address.port}`;
+
+      try {
+        for (const args of [
+          ["fixture", "--help"],
+          ["plugin", "run", "fixture-plugin", "--help"],
+        ]) {
+          const run = await runCli("dist", args, serverUrl);
+          expect(run.stdout).toBe("fixture ran: --help\n");
+        }
+      } finally {
+        await new Promise<void>((resolvePromise, rejectPromise) =>
+          server.close((error) =>
+            error ? rejectPromise(error) : resolvePromise(),
+          ),
+        );
       }
     }, 30_000);
   });

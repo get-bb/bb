@@ -747,6 +747,11 @@ export class ServerConnection {
       if (lastTickAt !== null) {
         const gapMs = now - lastTickAt;
         const thresholdMs = session.leaseTimeoutMs / 2;
+        if (gapMs > session.leaseTimeoutMs) {
+          // The timer could not test liveness while it was delayed. Give the
+          // return path one fresh lease regardless of how the gap is logged.
+          this.lastHeartbeatAcknowledgedAt = now;
+        }
         const resumedAfterSuspension = isLikelySystemSuspensionDelay({
           gapMs,
           intervalMs: session.heartbeatIntervalMs,
@@ -762,10 +767,6 @@ export class ServerConnection {
             },
             "Host daemon resumed after likely system suspension",
           );
-          // The process could not receive acknowledgements while suspended.
-          // Give the resumed connection a full lease window to prove that its
-          // server-to-daemon direction still works.
-          this.lastHeartbeatAcknowledgedAt = now;
         } else if (gapMs > thresholdMs) {
           this.options.logger.warn(
             {

@@ -338,7 +338,7 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
     });
   });
 
-  it("keeps an edit-kind permission without any path a tool_use subject, like the timeline", () => {
+  it("keeps a path-pending edit permission aligned with its file-change row", () => {
     const payload = buildAcpPermissionInteractionPayload({
       toolCall: {
         toolCallId: "write-tool-2",
@@ -350,10 +350,9 @@ describe("buildAcpPermissionInteractionPayload file-change subjects", () => {
 
     expect(payload).toMatchObject({
       subject: {
-        kind: "tool_use",
+        kind: "file_change",
         itemId: "write-tool-2",
-        tool: "edit",
-        presentation: { title: "Edit file" },
+        writeScope: null,
       },
     });
   });

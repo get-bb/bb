@@ -1,12 +1,12 @@
 import {
   providerCliInstallEventSchema,
+  type HostDaemonCommand,
+  type HostDaemonCommandResult,
+  type HostDaemonOnlineRpcCommand,
+  type HostDaemonOnlineRpcCommandType,
+  type HostDaemonOnlineRpcResult,
+  type HostDaemonSettledCommandType,
   type ProviderCliInstallEvent,
-  HostDaemonCommand,
-  HostDaemonCommandResult,
-  HostDaemonOnlineRpcCommand,
-  HostDaemonOnlineRpcCommandType,
-  HostDaemonOnlineRpcResult,
-  HostDaemonSettledCommandType,
 } from "@bb/host-daemon-contract";
 import semver from "semver";
 import {

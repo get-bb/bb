@@ -76,17 +76,15 @@ function packageNameOf(specifier: string): string {
     : (segments[0] ?? specifier);
 }
 
-async function scaffoldWithDependencies(args: {
-  workDir: string;
-  app: boolean;
-}): Promise<{ targetDir: string; dependencies: string[] }> {
-  const packageName = `bb-plugin-${args.app ? "app" : "headless"}`;
-  const targetDir = join(args.workDir, packageName);
+async function scaffoldWithDependencies(
+  workDir: string,
+): Promise<{ targetDir: string; dependencies: string[] }> {
+  const packageName = "bb-plugin-deps";
+  const targetDir = join(workDir, packageName);
   await scaffoldPlugin({
     targetDir,
     packageName,
     bbVersion: "0.9.0",
-    app: args.app,
   });
   const manifest: { dependencies?: Record<string, string> } = JSON.parse(
     await readFile(join(targetDir, "package.json"), "utf8"),
@@ -105,40 +103,30 @@ describe("scaffold dependency classification", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it.each([{ app: false }, { app: true }])(
-    "declares every bundled import as a dependency (app: $app)",
-    async ({ app }) => {
-      const { targetDir, dependencies } = await scaffoldWithDependencies({
-        workDir,
-        app,
-      });
+  it("declares every bundled import as a dependency", async () => {
+    const { targetDir, dependencies } =
+      await scaffoldWithDependencies(workDir);
 
-      const misdeclared: string[] = [];
-      for (const file of await generatedSourceFiles(targetDir)) {
-        for (const specifier of importedSpecifiers(
-          await readFile(file, "utf8"),
-        )) {
-          // Swapped for a host runtime shim, or left unresolved for the
-          // loader — either way it is never read from node_modules.
-          if (specifier in RUNTIME_SLOT_BY_SPECIFIER) continue;
-          const packageName = packageNameOf(specifier);
-          if (PLUGIN_SERVER_EXTERNALS.includes(packageName)) continue;
-          if (dependencies.includes(packageName)) continue;
-          misdeclared.push(
-            `${relative(targetDir, file)} imports "${specifier}"`,
-          );
-        }
+    const misdeclared: string[] = [];
+    for (const file of await generatedSourceFiles(targetDir)) {
+      for (const specifier of importedSpecifiers(
+        await readFile(file, "utf8"),
+      )) {
+        // Swapped for a host runtime shim, or left unresolved for the
+        // loader — either way it is never read from node_modules.
+        if (specifier in RUNTIME_SLOT_BY_SPECIFIER) continue;
+        const packageName = packageNameOf(specifier);
+        if (PLUGIN_SERVER_EXTERNALS.includes(packageName)) continue;
+        if (dependencies.includes(packageName)) continue;
+        misdeclared.push(`${relative(targetDir, file)} imports "${specifier}"`);
       }
+    }
 
-      expect(misdeclared).toEqual([]);
-    },
-  );
+    expect(misdeclared).toEqual([]);
+  });
 
   it("keeps host-provided packages out of dependencies", async () => {
-    const { dependencies } = await scaffoldWithDependencies({
-      workDir,
-      app: true,
-    });
+    const { dependencies } = await scaffoldWithDependencies(workDir);
 
     // Bundling a shimmed package ships a second copy of a singleton (a second
     // React means "Invalid hook call"), and bundling an external defeats the

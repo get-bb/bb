@@ -305,10 +305,7 @@ function createRetryHost(args: {
       },
       threads: {
         get: async ({ threadId }) => {
-          inspectionByThreadId.set(
-            threadId,
-            await args.inspect({ threadId }),
-          );
+          inspectionByThreadId.set(threadId, await args.inspect({ threadId }));
           return makeThreadResponse({
             id: threadId,
             environmentId: "environment-one",
@@ -349,7 +346,9 @@ function createRetryHost(args: {
             );
           },
         },
-        send: args.continueFailedTurn ?? (async () => ({ ok: true as const })),
+        send:
+          args.continueFailedTurn ??
+          (async () => ({ ok: true as const, delivery: "sent" as const })),
       },
       subscribe: ({ event, callback }) => {
         if (event === "host:changed") {
@@ -469,7 +468,10 @@ describe("provider retry scheduler", () => {
   });
 
   it("classifies provider events and schedules subscription-window failures", async () => {
-    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
+    const continueFailedTurn = vi.fn(async () => ({
+      ok: true as const,
+      delivery: "sent" as const,
+    }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,
@@ -637,7 +639,10 @@ describe("provider retry scheduler", () => {
   });
 
   it("releases immediately when a later provider observation is allowed", async () => {
-    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
+    const continueFailedTurn = vi.fn(async () => ({
+      ok: true as const,
+      delivery: "sent" as const,
+    }));
     const host = createRetryHost({
       inspect: async ({ threadId }) =>
         failedTurnInspection(threadId, {
@@ -703,7 +708,10 @@ describe("provider retry scheduler", () => {
   });
 
   it("keeps non-resettable limits manual and retries them through the plugin CLI", async () => {
-    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
+    const continueFailedTurn = vi.fn(async () => ({
+      ok: true as const,
+      delivery: "sent" as const,
+    }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => manualInspection(threadId),
       continueFailedTurn,
@@ -749,7 +757,10 @@ describe("provider retry scheduler", () => {
   });
 
   it("paces threads sharing one provider account", async () => {
-    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
+    const continueFailedTurn = vi.fn(async () => ({
+      ok: true as const,
+      delivery: "sent" as const,
+    }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,
@@ -777,7 +788,10 @@ describe("provider retry scheduler", () => {
   });
 
   it("attempts each reported reset window only once per plugin process", async () => {
-    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
+    const continueFailedTurn = vi.fn(async () => ({
+      ok: true as const,
+      delivery: "sent" as const,
+    }));
     const host = createRetryHost({
       inspect: async ({ threadId }) => failedTurnInspection(threadId),
       continueFailedTurn,
@@ -858,7 +872,10 @@ describe("provider retry scheduler", () => {
         providerId: "claude-code",
       }),
     );
-    const continueFailedTurn = vi.fn(async () => ({ ok: true as const }));
+    const continueFailedTurn = vi.fn(async () => ({
+      ok: true as const,
+      delivery: "sent" as const,
+    }));
     const host = createRetryHost({
       inspect,
       continueFailedTurn,
@@ -998,7 +1015,7 @@ describe("provider retry scheduler", () => {
           status: 502,
         }),
       )
-      .mockResolvedValueOnce({ ok: true as const });
+      .mockResolvedValueOnce({ ok: true as const, delivery: "sent" as const });
     const subscription = {
       hostChanged: null as
         | ((changes: Array<"host-connected" | "host-disconnected">) => void)

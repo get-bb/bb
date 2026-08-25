@@ -117,7 +117,10 @@ beforeEach(() => {
     operationId: "edit-op-1",
     requestSequence: 42,
   });
-  vi.mocked(sdk.threads.send).mockResolvedValue({ ok: true });
+  vi.mocked(sdk.threads.send).mockResolvedValue({
+    ok: true,
+    delivery: "sent",
+  });
   vi.mocked(sdk.threads.queuedMessages.create).mockResolvedValue(
     makeQueuedMessage(),
   );
@@ -286,6 +289,29 @@ describe("thread runtime mutations", () => {
         threadId: "thread-1",
       }),
     );
+  });
+
+  it("returns the server's delivery so a held message is not treated as a started turn", async () => {
+    vi.mocked(sdk.threads.send).mockResolvedValue({
+      ok: true,
+      delivery: "deferred",
+    });
+    const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(() => useSendThreadMessage(), { wrapper });
+
+    let sendResult: Awaited<ReturnType<typeof result.current.mutateAsync>> = {
+      ok: true,
+      delivery: "sent",
+    };
+    await act(async () => {
+      sendResult = await result.current.mutateAsync({
+        id: "thread-1",
+        mode: "steer-if-active",
+        input: [{ type: "text", text: "worker report", mentions: [] }],
+      });
+    });
+
+    expect(sendResult).toEqual({ ok: true, delivery: "deferred" });
   });
 
   it("forwards execution input sources and sender thread when queueing a message", async () => {

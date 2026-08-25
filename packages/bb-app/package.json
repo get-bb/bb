@@ -62,7 +62,6 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "clean": "rimraf dist app host-daemon server tsconfig.tsbuildinfo",
-    "prepack": "node scripts/prune-bb-chunks.mjs",
     "smoke:tarball": "node scripts/smoke-tarball.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"

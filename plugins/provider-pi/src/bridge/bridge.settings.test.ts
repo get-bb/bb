@@ -60,7 +60,8 @@ it("pins model and thinking at spawn and never sends set_model or set_thinking_l
     options: OPTIONS,
   });
   let seen = await harness.waitForTurnBoundary(threadId, 0);
-  // A turn with different options: still no settings-writing command.
+  // A turn with different options rebuilds the session on the new spawn
+  // flags (#2160): still no settings-writing command.
   await harness.request(3, "turn/start", {
     threadId,
     providerThreadId: threadId,
@@ -92,13 +93,14 @@ it("pins model and thinking at spawn and never sends set_model or set_thinking_l
   const sent = commandsSent();
   expect(sent.length).toBeGreaterThan(0);
   expect(sent.filter((c) => c === "set_model" || c === "set_thinking_level")).toEqual([]);
-  // The pinned model reached pi as the spawn flag: the session runs
-  // fake-mini (32k context), not the fake's default fake-model (200k).
+  // Both selections reached pi as spawn flags: the first turn ran on the
+  // pinned fake-mini (32k context) rather than the fake's default
+  // fake-model, and the turn that picked fake-model ran on its 200k window.
   const contextWindows = harness.messages
     .filter((m) => m.method === "thread/delta")
     .flatMap((m) => (m.params as { deltas: { kind: string; size?: number }[] }).deltas)
     .filter((d) => d.kind === "contextWindow")
     .map((d) => d.size);
-  expect(contextWindows.length).toBeGreaterThan(0);
-  expect(new Set(contextWindows)).toEqual(new Set([32_000]));
+  expect(contextWindows[0]).toBe(32_000);
+  expect(contextWindows.at(-1)).toBe(200_000);
 }, SETTINGS_PROCESS_TEST_TIMEOUT_MS);

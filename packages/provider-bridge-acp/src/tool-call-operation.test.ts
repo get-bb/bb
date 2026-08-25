@@ -15,7 +15,7 @@ describe("classifyAcpToolCall", () => {
     ).toEqual({ kind: "generic" });
   });
 
-  it("treats a move-kind tool and a location-free edit as generic", () => {
+  it("keeps move generic but treats path-pending edits and deletes as file changes", () => {
     expect(
       classifyAcpToolCall({
         kind: "move",
@@ -23,7 +23,14 @@ describe("classifyAcpToolCall", () => {
       }),
     ).toEqual({ kind: "generic" });
     expect(classifyAcpToolCall({ kind: "edit", title: "Edit" })).toEqual({
-      kind: "generic",
+      kind: "file_change",
+      changeKind: "update",
+      paths: [],
+    });
+    expect(classifyAcpToolCall({ kind: "delete", title: "Delete" })).toEqual({
+      kind: "file_change",
+      changeKind: "delete",
+      paths: [],
     });
   });
 
@@ -41,7 +48,7 @@ describe("classifyAcpToolCall", () => {
     });
     expect(
       classifyAcpToolCall({ kind: "edit", locations: [{ path: "" }] }),
-    ).toEqual({ kind: "generic" });
+    ).toEqual({ kind: "file_change", changeKind: "update", paths: [] });
   });
 
   it("classifies diff content as a file change whatever the kind", () => {

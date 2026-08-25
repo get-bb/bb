@@ -186,19 +186,9 @@ const packageMetadataSchema = z.object({
   }),
   files: z.array(z.string()),
   os: z.array(z.string()),
-  scripts: z.object({
-    prepack: z.string(),
-  }),
 });
 
 type PackageMetadata = z.infer<typeof packageMetadataSchema>;
-
-/** The part of `npm pack --json` output the prepack test reads. */
-const packDryRunSchema = z.array(
-  z.object({
-    files: z.array(z.object({ path: z.string() })),
-  }),
-);
 
 class FakeManagedProcessRun implements ManagedProcessRun {
   readonly exit: Promise<NamedProcessExitResult>;
@@ -2203,24 +2193,16 @@ describe("bb-app launcher", () => {
     }
   });
 
-  it("prunes stale bb CLI chunks when npm packs the package", () => {
-    // `bb-app#build` prunes the chunks it copies, but turbo restores that
-    // task's own host-daemon/** output over what is on disk on a cache hit,
-    // when the task body never runs. The prune therefore also runs as npm's
-    // `prepack` hook, which fires for `npm pack` and `npm publish` alike.
-    // The hook is exercised through npm itself, from a package root that
-    // holds only the chunk layout, with the script path made absolute so
-    // the fixture does not need a copy of scripts/.
-    expect(readPackageMetadata().scripts.prepack).toBe(
-      "node scripts/prune-bb-chunks.mjs",
-    );
+  it("prunes stale bb CLI chunks from package build output", () => {
+    // `bb-app#build` runs this cleanup after copying the host-daemon output.
+    // Keep the graph tiny here so the expected publication inventory is clear.
     const pruneScript = resolve(
       dirname(fileURLToPath(import.meta.url)),
       "..",
       "scripts",
       "prune-bb-chunks.mjs",
     );
-    const packageRoot = mkdtempSync(join(tmpdir(), "bb-app-prepack-"));
+    const packageRoot = mkdtempSync(join(tmpdir(), "bb-app-prune-"));
     try {
       const chunkDir = join(packageRoot, "host-daemon", "dist", "bb-chunks");
       mkdirSync(chunkDir, { recursive: true });
@@ -2233,32 +2215,13 @@ describe("bb-app launcher", () => {
       writeFileSync(
         join(packageRoot, "package.json"),
         JSON.stringify({
-          name: "bb-app-prepack-fixture",
+          name: "bb-app-prune-fixture",
           version: "0.0.1",
           files: ["host-daemon/dist/bb", "host-daemon/dist/bb-chunks"],
-          scripts: { prepack: `node ${JSON.stringify(pruneScript)}` },
         }),
       );
 
-      const packed = packDryRunSchema.parse(
-        JSON.parse(
-          execFileSync("npm", ["pack", "--dry-run", "--json"], {
-            cwd: packageRoot,
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "pipe"],
-          }),
-        ),
-      );
-
-      expect(
-        packed.map((entry) => entry.files.map((file) => file.path)),
-      ).toEqual([
-        [
-          "host-daemon/dist/bb",
-          "host-daemon/dist/bb-chunks/chunk-LIVE.js",
-          "package.json",
-        ],
-      ]);
+      execFileSync("node", [pruneScript], { cwd: packageRoot });
       expect(readdirSync(chunkDir)).toEqual(["chunk-LIVE.js"]);
     } finally {
       rmSync(packageRoot, { recursive: true, force: true });

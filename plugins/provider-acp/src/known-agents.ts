@@ -125,6 +125,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     signInCommand: "opencode auth login",
     installUrl: "https://opencode.ai/docs",
     visibility: "installed",
+    dialect: "opencode",
     supportsManualCompaction: true,
     // Unverified: bb has never read this agent's `initialize` reply, and this
     // is the value the ACP tier declared for it. Q21's per-instance probe

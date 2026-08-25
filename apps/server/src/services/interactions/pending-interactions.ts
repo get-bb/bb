@@ -239,6 +239,8 @@ function buildInteractiveResolveCommand(
 
 type PendingInteractionLifecycleArgs = CreateLifecycleDeps;
 
+export type ThreadInteractionSettledListener = (threadId: string) => void;
+
 function buildInteractionChangeMetadata({
   db,
   hasPendingInteraction,
@@ -279,6 +281,8 @@ export class PendingInteractionLifecycle {
   private readonly pluginWaiters = new Map<string, PluginInteractionWaiter>();
   private pluginDirectory: PendingInteractionPluginDirectory | null = null;
   private started = false;
+  private interactionSettledListener: ThreadInteractionSettledListener | null =
+    null;
 
   constructor(args: PendingInteractionLifecycleArgs) {
     this.deps = {
@@ -319,6 +323,20 @@ export class PendingInteractionLifecycle {
         return updated ? [updated] : [];
       }),
     );
+  }
+
+  /**
+   * Registers the one listener that runs after an interaction reaches a
+   * terminal state (resolving, resolved, or interrupted). It releases work held
+   * back while the thread was blocked. The listener must re-check
+   * `hasPendingThreadInteraction`: a thread can settle one interaction and
+   * still hold another, and a `resolving` interaction still counts as pending.
+   * It may run inside a database transaction, so it must only schedule work.
+   */
+  setThreadInteractionSettledListener(
+    listener: ThreadInteractionSettledListener,
+  ): void {
+    this.interactionSettledListener = listener;
   }
 
   listThreadInteractions(threadId: string): PendingInteraction[] {
@@ -954,6 +972,7 @@ export class PendingInteractionLifecycle {
       hasPendingInteraction: false,
       threadId: interaction.threadId,
     });
+    this.notifyInteractionSettled(interaction.threadId);
   }
 
   private settleInteractionTerminalStateInTransaction(
@@ -966,6 +985,21 @@ export class PendingInteractionLifecycle {
       hasPendingInteraction: false,
       threadId: interaction.threadId,
     });
+    this.notifyInteractionSettled(interaction.threadId);
+  }
+
+  private notifyInteractionSettled(threadId: string): void {
+    if (!this.interactionSettledListener) {
+      return;
+    }
+    try {
+      this.interactionSettledListener(threadId);
+    } catch (error) {
+      this.deps.logger.warn(
+        { err: error, threadId },
+        "Pending interaction settled listener failed",
+      );
+    }
   }
 
   private cancelPluginInteractionFromCallback(args: {

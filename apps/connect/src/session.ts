@@ -1,5 +1,7 @@
 import { and, eq, gt, isNull } from "drizzle-orm";
 import {
+  CONNECT_SESSION_EXPIRES_IN_SECONDS,
+  CONNECT_SESSION_UPDATE_AGE_SECONDS,
   type ConnectDb,
   labelClaim,
   machine,
@@ -18,13 +20,26 @@ import {
 // reach a disconnected server).
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
+const SESSION_REFRESH_BEFORE_EXPIRY_MS =
+  (CONNECT_SESSION_EXPIRES_IN_SECONDS - CONNECT_SESSION_UPDATE_AGE_SECONDS) *
+  1000;
 
 interface CacheEntry<T> {
   value: T;
   expires: number;
 }
 const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
-const sessionCache = new Map<string, CacheEntry<string | null>>();
+
+interface CachedSession {
+  userId: string;
+  expiresAt: number;
+}
+
+const sessionCache = new Map<string, CacheEntry<CachedSession | null>>();
+
+export function invalidateSessionCookie(cookieValue: string): void {
+  sessionCache.delete(safeDecode(cookieValue));
+}
 
 function cacheGet<T>(
   map: Map<string, CacheEntry<T>>,
@@ -165,17 +180,34 @@ export async function resolveLabel(
   return resolvedMachine;
 }
 
+export interface VerifiedSessionCookie {
+  userId: string;
+  /** A hint only; Better Auth rechecks the session before refreshing it. */
+  needsRefresh: boolean;
+}
+
+function verifiedSession(
+  session: CachedSession,
+  now: number,
+): VerifiedSessionCookie {
+  return {
+    userId: session.userId,
+    needsRefresh: session.expiresAt <= now + SESSION_REFRESH_BEFORE_EXPIRY_MS,
+  };
+}
+
 /**
  * Verify a better-auth session cookie directly against D1 (no cross-worker
  * call), cached per-isolate. Mirrors better-auth's
- * `${token}.${base64(hmac-sha256(token,secret))}` scheme. Returns the userId
- * when the signature is valid and the session row exists and is unexpired.
+ * `${token}.${base64(hmac-sha256(token,secret))}` scheme. The refresh hint
+ * matches Better Auth's update-age boundary but is not authoritative; Better
+ * Auth rechecks the session before writing or reissuing its cookie.
  */
-export async function verifySessionCookie(
+export async function verifySessionCookieDetails(
   cookieValue: string,
   secret: string,
   db: ConnectDb,
-): Promise<string | null> {
+): Promise<VerifiedSessionCookie | null> {
   // better-auth URL-encodes the cookie value, so the base64 signature arrives
   // with %2F/%2B/%3D. Decode before splitting/comparing (the hex token is
   // unaffected by decoding).
@@ -192,7 +224,8 @@ export async function verifySessionCookie(
   // one would negative-poison the real token). The full-cookie key makes the
   // cache reflect exactly what passed verification.
   const cached = cacheGet(sessionCache, decoded, now);
-  if (cached !== undefined) return cached;
+  if (cached !== undefined)
+    return cached === null ? null : verifiedSession(cached, now);
 
   const key = await crypto.subtle.importKey(
     "raw",
@@ -213,13 +246,32 @@ export async function verifySessionCookie(
   }
 
   const row = await db
-    .select({ userId: session.userId })
+    .select({ expiresAt: session.expiresAt, userId: session.userId })
     .from(session)
-    .where(and(eq(session.token, token), gt(session.expiresAt, new Date())))
+    .where(and(eq(session.token, token), gt(session.expiresAt, new Date(now))))
     .get();
-  const userId = row?.userId ?? null;
-  sessionCache.set(decoded, { value: userId, expires: now + SESSION_TTL_MS });
-  return userId;
+  const cachedSession = row
+    ? { userId: row.userId, expiresAt: row.expiresAt.getTime() }
+    : null;
+  sessionCache.set(decoded, {
+    value: cachedSession,
+    expires:
+      row === undefined
+        ? now + SESSION_TTL_MS
+        : Math.min(now + SESSION_TTL_MS, row.expiresAt.getTime()),
+  });
+  return cachedSession === null ? null : verifiedSession(cachedSession, now);
+}
+
+/** Returns the owning user for callers that do not participate in refresh. */
+export async function verifySessionCookie(
+  cookieValue: string,
+  secret: string,
+  db: ConnectDb,
+): Promise<string | null> {
+  return (
+    (await verifySessionCookieDetails(cookieValue, secret, db))?.userId ?? null
+  );
 }
 
 const machineLastSeenWrites = new Map<string, number>();

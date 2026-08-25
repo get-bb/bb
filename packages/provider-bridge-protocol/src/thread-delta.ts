@@ -276,7 +276,7 @@ export const deltaItemShapeSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("fileChange"),
-    /** Empty only on bare close-without-open fallbacks (path unknown). */
+    /** Empty while a path is not yet known, including bare close fallbacks. */
     changes: z.array(deltaFileChangeSchema),
   }),
   /**

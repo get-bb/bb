@@ -26,7 +26,10 @@ import {
   type AcpMaintenanceDialect,
 } from "./bridge/provider-maintenance.js";
 import { delegationPresentation } from "./presentation.js";
-import type { AcpClassifiedToolCall } from "./tool-classification.js";
+import type {
+  AcpClassifiedToolCall,
+  AcpCommandResult,
+} from "./tool-classification.js";
 import {
   acpToolKindSchema,
   type AcpToolCallUpdateEvent,
@@ -74,6 +77,17 @@ export interface AcpDialect {
   classifyToolCall?(
     event: AcpToolCallUpdateEvent,
   ): AcpClassifiedToolCall | undefined;
+  /**
+   * A command result carried in the agent's non-standard rawOutput shape.
+   * Returning `undefined` leaves the shared ACP result parser in charge.
+   */
+  commandResult?(event: AcpToolCallUpdateEvent): AcpCommandResult | undefined;
+  /**
+   * A command event with the agent's non-standard result fields normalized
+   * into the shared ACP result shapes. The hook runs only after the call has
+   * classified as a command; existing shared result fields must win.
+   */
+  normalizeCommandEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
   /**
    * A vendor JSON-RPC request the agent sends to the client. A dialect that
    * answers one returns the JSON-RPC result to reply with (`{}` is a valid
@@ -280,6 +294,189 @@ export const CURSOR_ACP_DIALECT: AcpDialect = {
 };
 
 // ---------------------------------------------------------------------------
+// omp (`omp acp`)
+// ---------------------------------------------------------------------------
+
+/**
+ * omp forwards its Bash AgentToolResult as rawOutput. Foreground successes
+ * omit `details.exitCode`, while failures carry the non-zero value. The text
+ * block includes renderer notices derived from those details. Background
+ * launches also close as completed, so both of omp's async markers must keep
+ * them out of foreground result normalization.
+ */
+const ompBashRawInputSchema = z
+  .object({
+    command: z.string(),
+    async: z.boolean().optional(),
+  })
+  .passthrough();
+
+const ompBashRawOutputSchema = z
+  .object({
+    content: z.array(
+      z
+        .object({
+          type: z.literal("text"),
+          text: z.string(),
+        })
+        .passthrough(),
+    ),
+    details: z
+      .object({
+        exitCode: z.number().int().optional(),
+        wallTimeMs: z.number().nonnegative().optional(),
+        timedOut: z.boolean().optional(),
+        signal: z.unknown().optional(),
+        async: z.unknown().optional(),
+      })
+      .passthrough(),
+    // If an OMP version emits generic ACP result fields, the shared parser
+    // owns those exit/output/timeout/signal semantics.
+    exitCode: z.number().int().nullable().optional(),
+    exit_code: z.number().int().nullable().optional(),
+    stdout: z.string().optional(),
+    stderr: z.string().optional(),
+    output_for_prompt: z.string().optional(),
+    signal: z.string().nullable().optional(),
+    timed_out: z.boolean().optional(),
+  })
+  .passthrough();
+
+function stripOmpTrailingNotice(text: string, notice: string): string {
+  const suffix = `\n\n${notice}`;
+  return text.endsWith(suffix) ? text.slice(0, -suffix.length) : text;
+}
+
+function ompCommandResult(
+  event: AcpToolCallUpdateEvent,
+): AcpCommandResult | undefined {
+  if (event.kind !== "execute") {
+    return undefined;
+  }
+  const parsedInput = ompBashRawInputSchema.safeParse(event.rawInput);
+  const parsedOutput = ompBashRawOutputSchema.safeParse(event.rawOutput);
+  if (
+    !parsedInput.success ||
+    parsedInput.data.command.trim().length === 0 ||
+    !parsedOutput.success
+  ) {
+    return undefined;
+  }
+  const rawOutput = parsedOutput.data;
+  const details = rawOutput.details;
+  const hasGenericCommandResult =
+    rawOutput.exitCode !== undefined ||
+    rawOutput.exit_code !== undefined ||
+    rawOutput.stdout !== undefined ||
+    rawOutput.stderr !== undefined ||
+    rawOutput.output_for_prompt !== undefined ||
+    (rawOutput.signal !== undefined && rawOutput.signal !== null) ||
+    rawOutput.timed_out === true;
+  if (
+    parsedInput.data.async === true ||
+    details.async !== undefined ||
+    hasGenericCommandResult
+  ) {
+    return undefined;
+  }
+  if (details.exitCode === undefined && details.wallTimeMs === undefined) {
+    return undefined;
+  }
+
+  let output = rawOutput.content.map((block) => block.text).join("\n");
+  if (details.exitCode !== undefined) {
+    output = stripOmpTrailingNotice(
+      output,
+      `Command exited with code ${String(details.exitCode)}`,
+    );
+  }
+  if (details.wallTimeMs !== undefined) {
+    output = stripOmpTrailingNotice(
+      output,
+      `Wall time: ${(details.wallTimeMs / 1_000).toFixed(2)} seconds`,
+    );
+  }
+
+  const isCompletedForegroundBash =
+    event.status === "completed" &&
+    details.timedOut !== true &&
+    (details.signal === undefined || details.signal === null);
+  const exitCode =
+    details.exitCode ?? (isCompletedForegroundBash ? 0 : undefined);
+  return {
+    ...(exitCode === undefined ? {} : { exitCode }),
+    ...(output.length === 0 ? {} : { output }),
+  };
+}
+
+export const OMP_ACP_DIALECT: AcpDialect = {
+  id: "omp",
+  commandResult: ompCommandResult,
+};
+
+// ---------------------------------------------------------------------------
+// opencode (`opencode acp`)
+// ---------------------------------------------------------------------------
+
+/**
+ * OpenCode reports command output twice on its AgentToolResult envelope and
+ * puts the process exit code in metadata. The shared ACP parser deliberately
+ * does not claim these generic-looking vendor fields for every agent.
+ */
+const openCodeCommandRawOutputSchema = z
+  .object({
+    output: z.unknown().optional(),
+    metadata: z
+      .object({
+        exit: z.number().int().nullable().optional(),
+        output: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+function normalizeOpenCodeCommandEvent(
+  event: AcpToolCallUpdateEvent,
+): AcpToolCallUpdateEvent {
+  const parsed = openCodeCommandRawOutputSchema.safeParse(event.rawOutput);
+  if (!parsed.success) {
+    return event;
+  }
+  const rawOutput = parsed.data;
+  const output =
+    typeof rawOutput.output === "string"
+      ? rawOutput.output
+      : rawOutput.metadata?.output;
+  const hasSharedOutput =
+    rawOutput["stdout"] !== undefined ||
+    rawOutput["stderr"] !== undefined ||
+    rawOutput["output_for_prompt"] !== undefined;
+  const hasSharedExitCode =
+    rawOutput["exitCode"] !== undefined || rawOutput["exit_code"] !== undefined;
+  const exitCode = rawOutput.metadata?.exit ?? undefined;
+  if (
+    (output === undefined || hasSharedOutput) &&
+    (exitCode === undefined || hasSharedExitCode)
+  ) {
+    return event;
+  }
+  return {
+    ...event,
+    rawOutput: {
+      ...rawOutput,
+      ...(output === undefined || hasSharedOutput ? {} : { stdout: output }),
+      ...(exitCode === undefined || hasSharedExitCode ? {} : { exitCode }),
+    },
+  };
+}
+
+export const OPENCODE_ACP_DIALECT: AcpDialect = {
+  id: "opencode",
+  normalizeCommandEvent: normalizeOpenCodeCommandEvent,
+};
+
+// ---------------------------------------------------------------------------
 // Selection
 // ---------------------------------------------------------------------------
 
@@ -291,12 +488,16 @@ export const CURSOR_ACP_DIALECT: AcpDialect = {
 const DIALECTS_BY_ID: ReadonlyMap<string, AcpDialect> = new Map([
   [CURSOR_ACP_DIALECT.id, CURSOR_ACP_DIALECT],
   [GROK_ACP_DIALECT.id, GROK_ACP_DIALECT],
+  [OMP_ACP_DIALECT.id, OMP_ACP_DIALECT],
+  [OPENCODE_ACP_DIALECT.id, OPENCODE_ACP_DIALECT],
 ]);
 
 /** The executable name each dialect's agent is normally launched as. */
 const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
   "cursor-agent": CURSOR_ACP_DIALECT.id,
   grok: GROK_ACP_DIALECT.id,
+  omp: OMP_ACP_DIALECT.id,
+  opencode: OPENCODE_ACP_DIALECT.id,
 };
 
 /**

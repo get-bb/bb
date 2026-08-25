@@ -120,8 +120,9 @@ omp, grok and hermes-agent are not reserved, so an entry with one of those ids
 replaces the shipped agent. Use args, env, and cwd for the launch, modelCli
 for CLI model listing/selection, reasoningCli for launch-time reasoning flags,
 nativeReasoning for ACP session/set_config_option reasoning, permissionCli for
-permission-mode launch flags, and dialect (cursor or grok) for the vendor side
-channels bb reads. Use nativeSkillRoots to add native skills to the composer.
+permission-mode launch flags, and dialect (cursor, opencode, omp, or grok) for
+the vendor side channels bb reads. Use nativeSkillRoots to add native skills to
+the composer.
 Give it a user list and a project list. User roots resolve from the target host
 home directory. Project roots resolve from the selected workspace. Each root
 must use a relative path without dot segments. Set supportsManualCompaction to true only

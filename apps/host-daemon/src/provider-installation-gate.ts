@@ -24,12 +24,15 @@ export interface ProviderInstallationGateKeyArgs {
  * Concurrent starts for one key share the in-flight probe, and a supported
  * answer is served from memory until it expires. An unsupported answer and a
  * rejected probe are never stored, so a CLI that is too old is re-probed on
- * every attempt until it passes. A not-installed answer is stored only when
- * the bridge reports no minimum version: a bridge that enforces one (codex,
- * pi) can turn an install that arrives without a PATH change into an
- * unsupported answer, so its "not installed" is re-probed on every attempt;
- * a bridge that enforces none (Claude Code, ACP) can never reject, and its
- * launcher resolves the executable on its own, so re-probing it is pure cost.
+ * every attempt until it passes. Clearing the gate while a probe is in flight
+ * transparently re-runs that probe: callers must not launch against a stale
+ * shell environment or fail because invalidation shut down its maintenance
+ * runtime. A not-installed answer is stored only when the bridge reports no
+ * minimum version: a bridge that enforces one (codex, pi) can turn an install
+ * that arrives without a PATH change into an unsupported answer, so its "not
+ * installed" is re-probed on every attempt; a bridge that enforces none
+ * (Claude Code, ACP) can never reject, and its launcher resolves the executable
+ * on its own, so re-probing it is pure cost.
  */
 export interface ProviderInstallationGate {
   clear(): void;
@@ -81,28 +84,29 @@ export function createProviderInstallationGate({
     }
   }
 
-  return {
-    clear() {
-      generation += 1;
-      settledByKey.clear();
-      pendingByKey.clear();
-    },
-    run(key, probe) {
-      const currentTime = now();
-      const settled = settledByKey.get(key);
-      if (settled !== undefined) {
-        if (settled.expiresAt > currentTime) {
-          return Promise.resolve(settled.status);
-        }
-        settledByKey.delete(key);
+  const run: ProviderInstallationGate["run"] = (key, probe) => {
+    const currentTime = now();
+    const settled = settledByKey.get(key);
+    if (settled !== undefined) {
+      if (settled.expiresAt > currentTime) {
+        return Promise.resolve(settled.status);
       }
-      const pending = pendingByKey.get(key);
-      if (pending !== undefined) {
-        return pending;
-      }
-      const startedGeneration = generation;
-      const started = probe()
-        .then((status) => {
+      settledByKey.delete(key);
+    }
+    const pending = pendingByKey.get(key);
+    if (pending !== undefined) {
+      return pending;
+    }
+    const startedGeneration = generation;
+    const started = probe()
+      .then(
+        (status) => {
+          // This answer describes the provider state from before the shell
+          // environment or installation changed. Join (or start) the probe
+          // for the current generation instead of returning a stale answer.
+          if (startedGeneration !== generation) {
+            return run(key, probe);
+          }
           const settledAt = now();
           // Expired neighbours are swept here rather than on a timer so the
           // map stays bounded without keeping the process alive.
@@ -117,20 +121,37 @@ export function createProviderInstallationGate({
           // not-installed answer is remembered like a supported one.
           if (
             (status.installed || status.minimumSupportedVersion === null) &&
-            !status.versionUnsupported &&
-            startedGeneration === generation
+            !status.versionUnsupported
           ) {
             settledByKey.set(key, { status, expiresAt: settledAt + ttlMs });
           }
           return status;
-        })
-        .finally(() => {
-          if (pendingByKey.get(key) === started) {
-            pendingByKey.delete(key);
+        },
+        (error: unknown) => {
+          // Shell-environment refresh deliberately shuts down the old
+          // maintenance runtime. The generation, rather than the error text,
+          // distinguishes that expected interruption from a real probe error.
+          if (startedGeneration !== generation) {
+            return run(key, probe);
           }
-        });
-      pendingByKey.set(key, started);
-      return started;
+          throw error;
+        },
+      )
+      .finally(() => {
+        if (pendingByKey.get(key) === started) {
+          pendingByKey.delete(key);
+        }
+      });
+    pendingByKey.set(key, started);
+    return started;
+  };
+
+  return {
+    clear() {
+      generation += 1;
+      settledByKey.clear();
+      pendingByKey.clear();
     },
+    run,
   };
 }

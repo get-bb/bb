@@ -30,6 +30,12 @@ function isCacheable(resp: Response): boolean {
   return maxAge ? Number(maxAge[1]) >= MIN_CACHEABLE_MAX_AGE : false;
 }
 
+export interface CacheResult {
+  /** True for both edge-cache hits and cacheable origin misses. */
+  cacheable: boolean;
+  response: Response;
+}
+
 /**
  * Serve `request` from the edge cache when possible, else run `fetchOrigin`
  * (the tunnel) and populate the cache when the response is cacheable.
@@ -42,8 +48,10 @@ export async function serveWithCache(
   namespace: string,
   ctx: ExecutionContext,
   fetchOrigin: () => Promise<Response>,
-): Promise<Response> {
-  if (request.method !== "GET") return fetchOrigin();
+): Promise<CacheResult> {
+  if (request.method !== "GET") {
+    return { cacheable: false, response: await fetchOrigin() };
+  }
 
   const url = new URL(request.url);
   const key = cacheKey(namespace, url);
@@ -57,7 +65,7 @@ export async function serveWithCache(
     // labelled text/html. This is NOT symmetric with the miss path below.
     const r = rebuiltResponse(hit.body, hit);
     r.headers.set("x-bb-cache", "hit");
-    return r;
+    return { cacheable: true, response: r };
   }
 
   const resp = await fetchOrigin();
@@ -70,7 +78,7 @@ export async function serveWithCache(
     // this one pre-encoded would advertise a gzip body that isn't gzipped.
     const r = new Response(resp.body, resp);
     r.headers.set("x-bb-cache", "miss");
-    return r;
+    return { cacheable: true, response: r };
   }
-  return resp;
+  return { cacheable: false, response: resp };
 }

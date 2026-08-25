@@ -120,8 +120,11 @@ export function extractAcpToolCallPaths(
 
 /**
  * Classify an ACP tool call. An `execute` tool with a command is a command. A
- * tool with diff content, or an `edit`/`delete` tool that names a path, is a
- * file change. Everything else, including ACP's generic `other` kind, is a
+ * tool with diff content, or an `edit`/`delete` tool, is a file change. The
+ * native kind is already a write signal even when the path arrives only on a
+ * later update (OpenCode and Cursor both do this); classifying the
+ * path-pending start as a generic tool would make one call project as two
+ * timeline rows. Everything else, including ACP's generic `other` kind, is a
  * generic tool: locations alone are not a write signal, because read-only
  * tools name locations too.
  */
@@ -136,9 +139,6 @@ export function classifyAcpToolCall(
     }
   }
   const paths = extractAcpToolCallPaths(event, options);
-  if (paths.length === 0) {
-    return { kind: "generic" };
-  }
   const hasDiff = (event.content ?? []).some((entry) => entry.type === "diff");
   if (hasDiff || event.kind === "edit") {
     return { kind: "file_change", changeKind: "update", paths };

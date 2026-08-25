@@ -928,6 +928,64 @@ describe("thread runtime cache owner", () => {
       )?.rows,
     ).toEqual([]);
   });
+  it("keeps a held message visible and the thread idle when the server defers the send", async () => {
+    const queryClient = createAppQueryClient({
+      defaultOptions: { queries: { gcTime: Infinity, retry: false } },
+      showMutationErrorToasts: false,
+    });
+    const idleThread = {
+      id: "thread-1",
+      status: "idle",
+      updatedAt: 1,
+      runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
+    };
+    queryClient.setQueryData(threadQueryKey("thread-1"), idleThread);
+    queryClient.setQueryData(
+      threadTimelineQueryKey("thread-1"),
+      makeTimelineResponse(),
+    );
+    const request = {
+      id: "thread-1",
+      mode: "steer-if-active" as const,
+      input: [{ type: "text" as const, text: "worker report", mentions: [] }],
+    };
+    const transaction = await beginSendThreadMessageTransaction({
+      queryClient,
+      request,
+    });
+    expect(transaction.kind).toBe("accepted-turn");
+
+    // The thread awaits a user interaction, so the server holds the message
+    // (#1650): nothing runs, but the message was accepted and must not vanish.
+    // Realtime is down, the case where an accepted send refetches the timeline
+    // and would drop the optimistic row for a turn the server never started.
+    applySendThreadMessageSuccess({
+      delivery: "deferred",
+      queryClient,
+      realtimeConnected: false,
+      request,
+      transaction,
+    });
+    await Promise.resolve();
+
+    const timeline = queryClient.getQueryData<ThreadTimelineResponse>(
+      threadTimelineQueryKey("thread-1"),
+    );
+    expect(timeline?.rows).toHaveLength(1);
+    expect(
+      queryClient.getQueryState(threadTimelineQueryKey("thread-1"))
+        ?.isInvalidated,
+    ).toBe(false);
+    // No turn started, so the working indicator must not mount.
+    expect(queryClient.getQueryData(threadQueryKey("thread-1"))).toMatchObject({
+      status: "idle",
+      runtime: { displayStatus: "idle" },
+    });
+    expect(
+      queryClient.getQueryData(threadPromptHistoryQueryKey("thread-1")),
+    ).toMatchObject([{ input: request.input }]);
+  });
+
   it("keeps an accepted send local while realtime is connected: prompt history is prepended, not refetched, and default execution options only go stale", async () => {
     const queryClient = createAppQueryClient({
       defaultOptions: { queries: { gcTime: Infinity, retry: false } },
@@ -970,6 +1028,7 @@ describe("thread runtime cache owner", () => {
     expect(transaction.kind).toBe("accepted-turn");
 
     applySendThreadMessageSuccess({
+      delivery: "sent",
       queryClient,
       realtimeConnected: true,
       request,
@@ -1042,6 +1101,7 @@ describe("thread runtime cache owner", () => {
     expect(transaction.kind).toBe("queued-message");
 
     applySendThreadMessageSuccess({
+      delivery: "sent",
       queryClient,
       realtimeConnected: true,
       request,

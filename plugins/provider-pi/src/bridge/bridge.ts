@@ -54,6 +54,7 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import { createPiDeltaTranslator } from "../delta-translation.js";
 import {
   buildPiSessionParams,
+  buildPiTurnOptions,
   type PiSessionParams,
 } from "../session-params.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
@@ -186,6 +187,14 @@ interface ThreadSession {
   providerThreadId: string;
   /** The working directory pi runs this thread in. */
   cwd: string;
+  /**
+   * The params this thread's pi child was constructed from. A turn that
+   * carries a different model or thinking level is reconciled against them
+   * and rebuilds the child from the same base.
+   */
+  construction: PiSessionParams;
+  /** The model the child spawned on, resolved against pi's catalog. */
+  constructionModel: { provider: string; id: string } | undefined;
 }
 
 let sessionSerialCounter = 0;
@@ -719,21 +728,25 @@ async function buildSessionOptions(args: {
   };
 }
 
-async function startPiThreadSession(
+/**
+ * Construct one pi child for a thread, register it, and start it. The
+ * registration precedes `start()` so the child's own startup events reach
+ * the thread; a start that fails takes the registration back out, so the
+ * caller decides what serves the thread next.
+ */
+async function constructPiThreadSession(
   threadId: string,
   providerThreadId: string,
   params: PiSessionParams,
-): Promise<void> {
-  const existing = sessions.get(threadId);
-  if (existing) {
-    await closeThreadSession({
-      message: "Pi thread session replaced while tool call was pending",
-      threadId,
-    });
-  }
+): Promise<ThreadSession> {
   const sessionSerial = nextSessionSerial();
+  const sessionOptions = await buildSessionOptions({
+    params,
+    providerThreadId,
+    threadId,
+  });
   const session = new PiRpcSession(
-    await buildSessionOptions({ params, providerThreadId, threadId }),
+    sessionOptions,
     createForwardToolCall(() => threadId),
     createOnPiEvent({ sessionSerial, threadId }),
     createOnSessionDone({ sessionSerial, threadId }),
@@ -747,6 +760,8 @@ async function startPiThreadSession(
     // pi's SessionManager.open resolves the cwd from the header. A fresh
     // session has no file yet and runs in the requested cwd.
     cwd: persistedSessionCwd(providerThreadId) ?? params.cwd,
+    construction: params,
+    constructionModel: sessionOptions.model,
   };
   sessions.set(threadId, threadSession);
   try {
@@ -757,6 +772,7 @@ async function startPiThreadSession(
         { id: liveModel.id, provider: liveModel.provider, contextWindow: liveModel.contextWindow },
       ]);
     }
+    return threadSession;
   } catch (error) {
     if (sessions.get(threadId) === threadSession) {
       sessions.delete(threadId);
@@ -766,14 +782,97 @@ async function startPiThreadSession(
   }
 }
 
+async function startPiThreadSession(
+  threadId: string,
+  providerThreadId: string,
+  params: PiSessionParams,
+): Promise<void> {
+  const existing = sessions.get(threadId);
+  if (existing) {
+    await closeThreadSession({
+      message: "Pi thread session replaced while tool call was pending",
+      threadId,
+    });
+  }
+  await constructPiThreadSession(threadId, providerThreadId, params);
+}
+
+/**
+ * Retire the child a verified replacement took over from. It is idle and no
+ * longer registered, so nothing waits on its close: holding the turn for the
+ * old child's abort/leaf exchange would spend the runtime's request budget
+ * on a session that no longer serves anything.
+ */
+function retireReplacedPiChild(replaced: ThreadSession): void {
+  replaced.closing = true;
+  resolvePendingToolCalls(
+    replaced,
+    "Pi thread session replaced while tool call was pending",
+  );
+  void replaced.session
+    .closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS)
+    .catch(() => undefined);
+}
+
+/**
+ * Swap a thread's pi child for one built from `params`, keeping the thread
+ * servable if the replacement never starts.
+ *
+ * The replacement is constructed, started and verified (`start()` answers
+ * `get_state`, waits for the extension's `ready`, and refuses a child that
+ * came up on another model) BEFORE the child it replaces is closed. Two pi
+ * children may hold one session file: the file is append-only, the outgoing
+ * child is idle, and pi takes no lock (verified against pi 0.84.3). So a
+ * replacement that dies at spawn — an unstartable `provider/id`, a
+ * readiness timeout, a crash — costs the turn and nothing else: the
+ * previous child never stopped serving, and the next turn runs on it.
+ *
+ * Closing first is what stranded the thread: `sessions` had no entry, every
+ * later turn answered "No active pi session", and the runtime still held the
+ * thread, so nothing resumed it (#2221 review).
+ */
+async function rebuildThreadSession(
+  threadId: string,
+  previous: ThreadSession,
+  params: PiSessionParams,
+): Promise<ThreadSession> {
+  let replacement: ThreadSession;
+  try {
+    replacement = await constructPiThreadSession(
+      threadId,
+      previous.providerThreadId,
+      params,
+    );
+  } catch (error) {
+    // The failed construction removed its own registration. Put the child
+    // that is still alive back in front of the thread, unless something
+    // else (a resume, a discard) already claimed it.
+    if (!sessions.has(threadId) && !previous.closing) {
+      sessions.set(threadId, previous);
+    }
+    throw error;
+  }
+  retireReplacedPiChild(previous);
+  return replacement;
+}
+
+/**
+ * The native id-space boundary a newly constructed pi child opens: its turn
+ * and item ids may repeat, so the thread's assembly state is dropped on both
+ * sides of the wire.
+ */
+function sendSessionResetBoundary(threadId: string): void {
+  piDeltaTranslator.resetThread(threadId);
+  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
+}
+
 function sendThreadSessionResult(
   id: string | number,
   threadId: string,
   providerThreadId: string,
 ): void {
   sendThreadIdentity(threadId, providerThreadId);
-  piDeltaTranslator.resetThread(threadId);
-  sendThreadDeltas(threadId, [{ kind: "session.reset" }]);
+  sendSessionResetBoundary(threadId);
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
@@ -884,10 +983,101 @@ function recordAcceptedTurnInput(params: TurnStartParams): void {
   ]);
 }
 
+/**
+ * Reconcile the execution options a turn carries with the live session before
+ * its input is dispatched (#2160). The runtime never diffs options: they ride
+ * every turn command and each bridge applies what changed. Model and thinking
+ * level are spawn-time flags for pi, and `set_model` / `set_thinking_level`
+ * write the selection into the user's global pi settings, which bb must not
+ * touch — so a change is applied by rebuilding the child from the thread's
+ * session file, the way the codex bridge rebuilds from its rollout. The
+ * history is on disk, so the conversation survives the replacement.
+ *
+ * Nothing is in flight at this point: the daemon steers an active thread
+ * instead of starting a turn on it, and a steer joins the turn that is
+ * already running on the model it started with. Reconciliation runs ahead of
+ * every dispatch, including manual compaction, so the summarization request
+ * also goes to the selected model. A selection the rebuild cannot serve —
+ * a model that does not resolve, a child that will not start on it — fails
+ * the turn alone: `rebuildThreadSession` keeps the live child until a
+ * replacement is verified, so the thread stays servable either way.
+ */
+async function reconcileTurnOptions(
+  threadId: string,
+  threadSession: ThreadSession,
+  options: TurnStartParams["options"],
+): Promise<ThreadSession> {
+  const turnOptions = buildPiTurnOptions(options);
+  const construction = threadSession.construction;
+  // The request the construction ran with is the cheap comparison: an
+  // unchanged spelling settles the common turn without touching pi's
+  // catalog. Pi clamps a level the model does not support at spawn, so
+  // comparing requests (not the clamped result) also keeps a clamped
+  // session from rebuilding on every turn.
+  const changedModelRequest =
+    turnOptions.model !== undefined && turnOptions.model !== construction.model
+      ? turnOptions.model
+      : undefined;
+  const thinkingLevelChanged =
+    turnOptions.thinkingLevel !== undefined &&
+    turnOptions.thinkingLevel !== construction.thinkingLevel;
+  if (changedModelRequest === undefined && !thinkingLevelChanged) {
+    return threadSession;
+  }
+  // Resolved before anything is torn down: a model that does not resolve
+  // fails the turn with the live session intact, and two spellings of one
+  // model ("fake-model", "fake-provider/fake-model") rebuild nothing.
+  const nextModel =
+    changedModelRequest === undefined
+      ? undefined
+      : await resolvePiModel(changedModelRequest, construction.cwd);
+  const modelChanged =
+    nextModel !== undefined &&
+    (threadSession.constructionModel === undefined ||
+      threadSession.constructionModel.provider !== nextModel.provider ||
+      threadSession.constructionModel.id !== nextModel.id);
+  if (!modelChanged && !thinkingLevelChanged) {
+    return threadSession;
+  }
+  const replacement = await rebuildThreadSession(threadId, threadSession, {
+    ...construction,
+    ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
+    ...(turnOptions.thinkingLevel === undefined
+      ? {}
+      : { thinkingLevel: turnOptions.thinkingLevel }),
+  });
+  // A replacement session re-reports its identity and restorability, and
+  // its boundary deltas go out before the notification that explains them.
+  sendThreadIdentity(threadId, replacement.providerThreadId);
+  sendSessionResetBoundary(threadId);
+  send({
+    jsonrpc: "2.0",
+    method: BRIDGE_NOTIFICATION_METHODS.sessionReplaced,
+    params: {
+      threadId,
+      providerThreadId: replacement.providerThreadId,
+      reason: "Execution settings changed; the pi session was rebuilt to apply them.",
+      contextLost: false,
+    },
+  });
+  return replacement;
+}
+
 async function handleTurnStart(id: string | number, params: TurnStartParams): Promise<void> {
-  const threadSession = sessions.get(params.threadId);
-  if (!threadSession || threadSession.closing) {
+  const liveSession = sessions.get(params.threadId);
+  if (!liveSession || liveSession.closing) {
     sendError(id, -32000, "No active pi session");
+    return;
+  }
+  let threadSession: ThreadSession;
+  try {
+    threadSession = await reconcileTurnOptions(
+      params.threadId,
+      liveSession,
+      params.options,
+    );
+  } catch (error) {
+    sendError(id, -32000, error instanceof Error ? error.message : String(error));
     return;
   }
   if (isStandaloneBuiltinCompactCommand(params.input)) {
