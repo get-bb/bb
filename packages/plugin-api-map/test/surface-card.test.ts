@@ -7,7 +7,7 @@ import { SurfaceCard, SURFACE_GROUPS } from "../src/index";
 const surfaces = SURFACE_GROUPS[0]!.surfaces;
 
 describe("SurfaceCard annotation navigation", () => {
-  it("places compact previous and next actions on opposite card edges", () => {
+  it("renders compact previous and next annotation actions", () => {
     const markup = renderToStaticMarkup(
       createElement(SurfaceCard, {
         surface: surfaces[1]!,
@@ -26,12 +26,6 @@ describe("SurfaceCard annotation navigation", () => {
     );
     expect(markup).toContain(
       `aria-label="Next annotation: ${surfaces[2]!.title}"`,
-    );
-    expect(markup).toMatch(
-      /data-annotation-navigation-side="left"[^>]*class="[^"]*left-1\.5/,
-    );
-    expect(markup).toMatch(
-      /data-annotation-navigation-side="right"[^>]*class="[^"]*right-1\.5/,
     );
   });
 

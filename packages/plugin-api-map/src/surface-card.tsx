@@ -124,50 +124,8 @@ export function SurfaceCard({
       ref={cardRef}
       role="dialog"
       aria-label={surface.title}
-      className={`relative w-full rounded-lg border border-border bg-popover py-3.5 shadow-lg ${
-        navigation ? "px-10" : "px-3.5"
-      }`}
+      className="w-full rounded-lg border border-border bg-popover p-3.5 shadow-lg"
     >
-      {navigation ? (
-        <div
-          role="group"
-          aria-label="Annotation navigation"
-          className="pointer-events-none absolute inset-0 z-10"
-        >
-          {(
-            [
-              ["previous", navigation.previous, ArrowLeft01Icon],
-              ["next", navigation.next, ArrowRight01Icon],
-            ] as const
-          ).map(([direction, target, arrowIcon]) => {
-            const directionLabel =
-              direction === "previous" ? "Previous" : "Next";
-            const label = target
-              ? `${directionLabel} annotation: ${target.title}`
-              : `No ${direction} annotation`;
-            return (
-              <button
-                key={direction}
-                type="button"
-                onClick={() => {
-                  if (target) navigation.onOpen(target.id);
-                }}
-                disabled={!target}
-                aria-label={label}
-                title={label}
-                data-annotation-navigation-side={
-                  direction === "previous" ? "left" : "right"
-                }
-                className={`pointer-events-auto absolute top-1/2 inline-flex size-7 -translate-y-1/2 shrink-0 cursor-pointer items-center justify-center rounded-md border border-border-hairline bg-popover text-muted-foreground shadow-sm transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-popover disabled:hover:text-muted-foreground ${
-                  direction === "previous" ? "left-1.5" : "right-1.5"
-                }`}
-              >
-                <HugeiconsIcon icon={arrowIcon} className="size-3.5" />
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
       <div className="flex items-start gap-2">
         {/* A numbered surface is identified by its marker; a pixel-less one
             has no marker, so it carries the same capability glyph its card on
@@ -192,7 +150,42 @@ export function SurfaceCard({
             {surface.experimental ? <ExperimentalBadge /> : null}
           </div>
         </div>
-        <div className="-mr-1 -mt-1 flex shrink-0 items-center">
+        <div className="-mr-1 -mt-1 flex shrink-0 items-center gap-0.5">
+          {navigation ? (
+            <div
+              role="group"
+              aria-label="Annotation navigation"
+              className="flex items-center gap-0.5"
+            >
+              {(
+                [
+                  ["previous", navigation.previous, ArrowLeft01Icon],
+                  ["next", navigation.next, ArrowRight01Icon],
+                ] as const
+              ).map(([direction, target, arrowIcon]) => {
+                const directionLabel =
+                  direction === "previous" ? "Previous" : "Next";
+                const label = target
+                  ? `${directionLabel} annotation: ${target.title}`
+                  : `No ${direction} annotation`;
+                return (
+                  <button
+                    key={direction}
+                    type="button"
+                    onClick={() => {
+                      if (target) navigation.onOpen(target.id);
+                    }}
+                    disabled={!target}
+                    aria-label={label}
+                    title={label}
+                    className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                  >
+                    <HugeiconsIcon icon={arrowIcon} className="size-3.5" />
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           <button
             type="button"
             onClick={onDismiss}
