@@ -519,6 +519,187 @@ function walkAllPages(
 }
 
 describe("in-turn timeline windows", () => {
+  it("keeps an accepted steer out of details for work that spans the steer", () => {
+    const { db, thread } = setup();
+    const initialRequestId = requestId(1);
+    const steerRequestId = requestId(2);
+    const turnId = "turn-1";
+    const commandId = "command-1";
+
+    insertEvents(db, noopNotifier, [
+      {
+        threadId: thread.id,
+        sequence: 1,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: initialRequestId,
+          senderThreadId: null,
+          input: [{ type: "text", text: "Run the command", mentions: [] }],
+          target: { kind: "thread-start" },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 2,
+        type: "turn/started",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({}),
+      },
+      {
+        threadId: thread.id,
+        sequence: 3,
+        type: "turn/input/accepted",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ clientRequestId: initialRequestId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 4,
+        type: "item/started",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: commandId,
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: commandId,
+            command: "sleep 20",
+            cwd: "/tmp/test",
+            status: "pending",
+            approvalStatus: null,
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 5,
+        type: "client/turn/requested",
+        scope: threadScope(),
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          direction: "outbound",
+          source: "tell",
+          initiator: "user",
+          request: { method: "turn/start", params: {} },
+          requestId: steerRequestId,
+          senderThreadId: null,
+          input: [
+            {
+              type: "text",
+              text: "Stop waiting and answer immediately.",
+              mentions: [],
+            },
+          ],
+          target: { kind: "steer", expectedTurnId: turnId },
+          execution,
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 6,
+        type: "turn/input/accepted",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ clientRequestId: steerRequestId }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 7,
+        type: "item/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: commandId,
+        itemKind: "commandExecution",
+        parentToolCallId: null,
+        data: JSON.stringify({
+          item: {
+            type: "commandExecution",
+            id: commandId,
+            command: "sleep 20",
+            cwd: "/tmp/test",
+            status: "completed",
+            approvalStatus: null,
+            exitCode: 0,
+            aggregatedOutput: "",
+          },
+        }),
+      },
+      {
+        threadId: thread.id,
+        sequence: 8,
+        type: "turn/completed",
+        scope: turnScope(turnId),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({ status: "completed", providerThreadId }),
+      },
+    ]);
+
+    const timeline = buildPage(db, thread, LARGE_BUDGET, null).response;
+    const turnRow = timeline.rows.find(
+      (row): row is Extract<TimelineRow, { kind: "turn" }> =>
+        row.kind === "turn",
+    );
+    expect(turnRow).toBeDefined();
+    if (!turnRow) {
+      throw new Error("expected a turn row");
+    }
+    expect(
+      timeline.rows.filter(
+        (row) =>
+          row.kind === "conversation" &&
+          row.role === "user" &&
+          row.turnRequest?.kind === "steer",
+      ),
+    ).toHaveLength(1);
+
+    const details = buildTimelineTurnSummaryDetails(db, thread, {
+      includeProviderUnhandledOperations: false,
+      sourceSeqEnd: turnRow.sourceSeqEnd,
+      sourceSeqStart: turnRow.sourceSeqStart,
+      turnId: turnRow.turnId,
+    });
+    expect(
+      details.rows.filter(
+        (row) =>
+          row.kind === "conversation" &&
+          row.role === "user" &&
+          row.turnRequest?.kind === "steer",
+      ),
+    ).toEqual([]);
+    expect(
+      details.rows.filter(
+        (row) => row.kind === "work" && row.workKind === "command",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("bounds a running turn that is larger than the whole budget", () => {
     const { db, thread } = setup();
     // One 300-item turn still running: no user message inside it to cut on.
