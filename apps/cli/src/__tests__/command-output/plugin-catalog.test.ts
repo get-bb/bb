@@ -27,6 +27,7 @@ const searchResult = {
   official: true,
   author: null,
   installed: false,
+  installs: null,
   compatible: true,
   incompatibleReason: null,
 };
@@ -148,6 +149,25 @@ describe("bb plugin catalog", () => {
     expect(output).toContain("Marketplace");
     expect(output).toContain("Acme Plugins");
     expect(output).toContain("BB Official");
+  });
+
+  it("adds an Installs column only once a listing reports counts", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(json({ results: [searchResult] }));
+    await runCommand(["plugin", "search", "lin"], register);
+    expect(collectLogPayloads(vi.mocked(console.log)).join("\n")).not.toContain(
+      "Installs",
+    );
+
+    vi.mocked(console.log).mockClear();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      json({ results: [{ ...searchResult, installs: 4210 }] }),
+    );
+    await runCommand(["plugin", "search", "lin"], register);
+
+    // Exact, not compact: a terminal column is read to be compared.
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Installs");
+    expect(output).toContain("4,210");
   });
 
   it("outputs raw catalog search results as JSON", async () => {

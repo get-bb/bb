@@ -348,6 +348,15 @@ fetched, validated, and served by the bb server, so the app never requests a
 marketplace URL. Installing an entry runs the normal install pipeline against
 its listed git or npm source and records which marketplace listed it.
 
+The BB Community marketplace also publishes install counts beside its
+manifest, at https://getbb.app/marketplace/v1/stats.json. bb re-reads that
+file on every refresh — the counts move while the manifest sits unchanged —
+and shows them in the store and in the Installs column of `bb plugin search`.
+The number is how many BB installations reported installing the plugin
+through anonymous telemetry, so it undercounts: telemetry is opt-out and only
+production builds report. No third-party marketplace has counts; bb measures
+them itself rather than repeating a publisher's claim.
+
 Third-party marketplaces
 
 Anyone can host a marketplace manifest. Add one with its https manifest URL,

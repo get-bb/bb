@@ -573,6 +573,7 @@ const UNINSTALLED_CATALOG_PLUGIN = {
   official: true,
   author: null,
   installed: false,
+  installs: null,
   compatible: true,
   incompatibleReason: null,
 } satisfies PluginCatalogSearchEntry;

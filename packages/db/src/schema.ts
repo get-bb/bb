@@ -340,6 +340,13 @@ export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
   /** Commit the last successful "git" refresh read the manifest from. */
   sourceGitCommit: text("source_git_commit"),
   manifestJson: text("manifest_json").notNull(),
+  /**
+   * Last-known-good install-count sidecar (`stats.json`) of the curated
+   * marketplace, verbatim; null when it was never fetched or never parsed.
+   * It refreshes on its own cadence: the counts move while the manifest sits
+   * unchanged behind a 304, so it cannot live inside `manifest_json`.
+   */
+  statsJson: text("stats_json"),
   etag: text("etag"),
   lastModified: text("last_modified"),
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),

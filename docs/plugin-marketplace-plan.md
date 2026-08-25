@@ -191,6 +191,43 @@ This applies the conclusions from the Go modules discussion:
 - Plugin ID collisions across marketplaces resolve through `id@marketplace`
   install routing. A conflicting installed plugin ID is refused, as today.
 
+## Install counts
+
+The curated marketplace publishes a second document beside its manifest,
+`stats.json`, and BB shows the number on the store card, the mobile browse
+row, and in `bb plugin search`:
+
+```json
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-21T06:17:00.000Z",
+  "plugins": { "thread-hover-cards": { "installs": 4210 } }
+}
+```
+
+- The counts are BB's own measurement, from the `plugin_installed` telemetry
+  event (`apps/server/src/services/system/telemetry.ts`), which already
+  carries a `plugin_id` for bundled plugins and `bb-community` entries and
+  null for everything private. A daily job in the registry repo queries
+  PostHog and uploads the file to the same R2 prefix as the manifest; a run
+  that finds no counts fails without uploading rather than zeroing the store.
+- A sidecar, not a manifest field. The manifest schema is strict, so an
+  unknown field there would reject the whole catalog on an older desktop and
+  need a `schemaVersion` bump; and the counts move daily while the manifest
+  sits unchanged behind a 304.
+- Its parser is deliberately not strict, unlike the manifest's: this is
+  display metadata a later publisher may extend, and losing every count over
+  an unknown field is worse than ignoring the field. A malformed document is
+  still rejected whole — half-parsed counts are worse than none.
+- Fetched unconditionally on every refresh, and never allowed to fail one. A
+  failure keeps the counts already stored, exactly as a failed manifest read
+  keeps the last-known-good catalog.
+- Only the curated marketplace is asked for a sidecar. A number beside a
+  third-party listing would be that publisher's claim wearing BB's label, so
+  those entries report `installs: null` and BB does not request the file.
+- The count undercounts by construction: telemetry is opt-out and only
+  production builds report. Present it as installs BB heard about.
+
 ## Provenance
 
 Generalize the current `builtin | direct | catalog` enum: keep `catalog` as

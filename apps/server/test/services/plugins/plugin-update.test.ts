@@ -416,6 +416,7 @@ describe("plugin update service and routes", () => {
       manifestUrl: workDir,
       sourceGitRef: null,
       sourceGitCommit: null,
+      statsJson: null,
       manifestJson: JSON.stringify({
         schemaVersion: 1,
         name: "acme-plugins",

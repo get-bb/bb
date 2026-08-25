@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDebounceValue } from "usehooks-ts";
@@ -348,6 +348,19 @@ function groupByPublisher(
   return groups;
 }
 
+/**
+ * Store counts are read at a glance, not audited: "1.2k" carries the scale a
+ * card needs, and the exact number stays in the title attribute.
+ */
+const INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+export function formatInstallCount(installs: number): string {
+  return `${INSTALL_COUNT_FORMATTER.format(installs)} ${installs === 1 ? "install" : "installs"}`;
+}
+
 function BrowseCard({
   entry,
   installedPluginId,
@@ -419,12 +432,32 @@ function BrowseCard({
         />
       </a>
     );
+  // Only the curated marketplace publishes counts, so this is null for every
+  // third-party listing and for any entry its sidecar does not name.
+  const installs =
+    entry.installs === null ? null : (
+      <span
+        title={`${entry.installs.toLocaleString()} ${entry.installs === 1 ? "install" : "installs"}`}
+      >
+        {formatInstallCount(entry.installs)}
+      </span>
+    );
+  const footerParts = [
+    entry.official ? null : entry.publisherLabel,
+    installs,
+    repositoryLink,
+  ].filter((part) => part !== null);
   const footerMeta =
-    entry.official && repositoryLink === null ? undefined : (
+    footerParts.length === 0 ? undefined : (
       <span className="text-2xs text-subtle-foreground">
-        {entry.official ? null : entry.publisherLabel}
-        {!entry.official && repositoryLink !== null ? " · " : null}
-        {repositoryLink}
+        {footerParts.map((part, index) => (
+          // Index keys: the parts are a fixed, ordered set, not a reorderable
+          // list, so position is their identity.
+          <Fragment key={index}>
+            {index > 0 ? " · " : null}
+            {part}
+          </Fragment>
+        ))}
       </span>
     );
   const headerAction =

@@ -913,10 +913,20 @@ export function registerPluginCommands(
         // Where a listing came from only matters once something other than
         // BB's own catalog is registered; until then the column is noise.
         const showMarketplace = results.some((result) => !result.official);
+        // Only the curated marketplace publishes counts, and only once it has
+        // been refreshed from a server that serves the sidecar.
+        const showInstalls = results.some((result) => result.installs !== null);
         const rows = results.map((result) => [
           result.displayName,
           result.description,
           ...(showMarketplace ? [result.marketplaceDisplayName] : []),
+          ...(showInstalls
+            ? [
+                result.installs === null
+                  ? ""
+                  : result.installs.toLocaleString("en-US"),
+              ]
+            : []),
           result.installed
             ? "✓ installed"
             : result.compatible
@@ -930,9 +940,16 @@ export function registerPluginCommands(
                 "Name",
                 "Description",
                 ...(showMarketplace ? ["Marketplace"] : []),
+                ...(showInstalls ? ["Installs"] : []),
                 "Status",
               ],
-              colWidths: showMarketplace ? [26, 42, 22, 40] : [28, 54, 48],
+              colWidths: [
+                showMarketplace ? 26 : 28,
+                showMarketplace ? 42 : 54,
+                ...(showMarketplace ? [22] : []),
+                ...(showInstalls ? [10] : []),
+                showMarketplace ? 40 : 48,
+              ],
               trimTrailingWhitespace: true,
             },
             rows,
@@ -1087,9 +1104,8 @@ export function registerPluginCommands(
                 // moved, not refused; name the install being replaced so
                 // the confirmation is about the move, not a fresh install.
                 const pluginId = derivePluginId(pkg.name);
-                const { plugins } = await createCliBbSdk(
-                  getUrl(),
-                ).plugins.list();
+                const { plugins } =
+                  await createCliBbSdk(getUrl()).plugins.list();
                 const installed = plugins.find((p) => p.id === pluginId);
                 if (
                   installed !== undefined &&
