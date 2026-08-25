@@ -80,13 +80,14 @@ async function callHostOnlineRpcWithRetry(
   );
   const response = await requestHostOnlineRpcResponse(deps, args).catch(
     async (error) => {
-      if (
-        !(error instanceof HostOnlineRpcUnavailableError) ||
-        !options.retryOnUnavailable
-      ) {
+      if (!options.retryOnUnavailable) {
         throwOnlineRpcError(error);
       }
-      await waitForRetryableHostRpcTransport(deps, args.hostId);
+      if (error instanceof HostOnlineRpcUnavailableError) {
+        await waitForRetryableHostRpcTransport(deps, args.hostId);
+      } else if (!(error instanceof HostOnlineRpcTimeoutError)) {
+        throwOnlineRpcError(error);
+      }
       return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
         throwOnlineRpcError(retryError);
       });

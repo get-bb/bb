@@ -208,6 +208,50 @@ describe("host online RPC retry semantics", () => {
     });
   });
 
+  it("retries read-only online RPCs when the first response times out", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-timeout-retry",
+      });
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+      const socket: TestHostRpcSocket = {
+        close() {},
+        send(data) {
+          const request = parseHostRpcRequest(data);
+          requests.push(request);
+          if (requests.length === 1) return;
+          harness.hub.recordHostOnlineRpcResponse({
+            sessionId: session.id,
+            message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+              type: "host-rpc.response",
+              requestId: request.requestId,
+              commandType: request.command.type,
+              ok: true,
+              result: { models: [], selectedOnlyModels: [] },
+            }),
+          });
+        },
+      };
+      harness.hub.registerDaemon(session.id, host.id, socket);
+
+      await expect(
+        callHostRetryableOnlineRpc(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 10,
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
+        }),
+      ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+      expect(requests.map((request) => request.command.type)).toEqual([
+        "provider.list_models",
+        "provider.list_models",
+      ]);
+    });
+  });
+
   it("does not retry non-retry host RPC calls after websocket unavailability", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
