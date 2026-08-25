@@ -2826,6 +2826,34 @@ describe("PromptBoxInternal mention triggers", () => {
     expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
   });
 
+  it("dismisses a coarse-pointer occurrence from a 44px close target", async () => {
+    const restorePointer = mockPointerCoarse(true);
+    try {
+      const { onMentionQueryChange } = renderPromptBox("@fix", {
+        mentionSuggestions: [githubIssueSuggestion],
+      });
+
+      const closeButton = await screen.findByRole("button", {
+        name: "Close suggestions",
+      });
+      expect(closeButton.classList).toContain("size-11");
+      expect(closeButton.parentElement?.classList).toContain("h-11");
+      expect(closeButton.parentElement?.classList).not.toContain("absolute");
+
+      fireEvent.click(closeButton);
+
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("button", { name: /Fix login bug/u }),
+        ).toBeNull(),
+      );
+      expect(getPromptEditorElement().textContent).toBe("@fix");
+      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null);
+    } finally {
+      restorePointer();
+    }
+  });
+
   it("reports the queued editor typeahead's open state and measured height", async () => {
     const layouts: Array<{ height: number; isOpen: boolean }> = [];
     const nativeGetBoundingClientRect =

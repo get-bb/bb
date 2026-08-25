@@ -43,6 +43,7 @@ interface MentionMenuProps {
   /** Currently-highlighted index in the results list (for keyboard nav). */
   selectedIndex: number;
   onApply: (item: TypeaheadSuggestion) => void;
+  onDismiss?: () => void;
   onCommandLoadMore?: () => void;
 }
 
@@ -516,6 +517,7 @@ export function MentionMenu({
   state,
   selectedIndex,
   onApply,
+  onDismiss,
   onCommandLoadMore,
 }: MentionMenuProps) {
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -558,6 +560,19 @@ export function MentionMenu({
 
   return (
     <div className="overflow-hidden rounded-md border border-border bg-popover text-popover-foreground">
+      {onDismiss ? (
+        <div className="flex h-11 justify-end border-b border-border px-1">
+          <button
+            type="button"
+            aria-label="Close suggestions"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onDismiss}
+            className="flex size-11 items-center justify-center rounded text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          >
+            <Icon name="X" className="size-3.5" />
+          </button>
+        </div>
+      ) : null}
       <div className="max-h-48 overflow-y-auto" onScroll={handleScroll}>
         {innerState.kind === "hint" ? (
           <div className="px-3 py-2 text-xs text-muted-foreground">

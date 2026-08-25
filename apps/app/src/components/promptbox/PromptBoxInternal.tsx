@@ -2447,6 +2447,20 @@ export function PromptBoxInternal({
     [applyCommandSuggestion, applyMentionSuggestion],
   );
 
+  const dismissActiveTrigger = useCallback(() => {
+    triggerKeyRef.current = "";
+    if (activeTrigger) {
+      dismissedTriggerRef.current = {
+        start: activeTrigger.from,
+        end: activeTrigger.to,
+        hasLeftRange: false,
+      };
+    }
+    setActiveTrigger(null);
+    onMentionQueryChange(null, null);
+    onCommandQueryChange(null);
+  }, [activeTrigger, onCommandQueryChange, onMentionQueryChange]);
+
   const focusEnd = useCallback(() => {
     if (isPointerCoarse) {
       pendingFocusEndRef.current = false;
@@ -2941,19 +2955,7 @@ export function PromptBoxInternal({
         }
         if (event.key === "Escape") {
           event.preventDefault();
-          triggerKeyRef.current = "";
-          if (activeTrigger) {
-            // Escape dismisses the typed token span for both kinds — re-trigger
-            // stays suppressed while the caret remains inside `[from, to]`.
-            dismissedTriggerRef.current = {
-              start: activeTrigger.from,
-              end: activeTrigger.to,
-              hasLeftRange: false,
-            };
-          }
-          setActiveTrigger(null);
-          onMentionQueryChange(null, null);
-          onCommandQueryChange(null);
+          dismissActiveTrigger();
           return true;
         }
       }
@@ -3086,7 +3088,6 @@ export function PromptBoxInternal({
     [
       activeHistoryIndex,
       activeSuggestions,
-      activeTrigger,
       activeTriggerKind,
       applyHistoryDraft,
       applyTrigger,
@@ -3095,12 +3096,11 @@ export function PromptBoxInternal({
       commandHasMore,
       commandIsLoadingMore,
       dispatchAppCommandKey,
+      dismissActiveTrigger,
       history,
       isPointerCoarse,
       loadMoreCommands,
-      onCommandQueryChange,
       onEscape,
-      onMentionQueryChange,
       onModifierSubmit,
       postCompositionKeyDownEvents,
       resetHistorySession,
@@ -3258,6 +3258,7 @@ export function PromptBoxInternal({
                 state={typeaheadMenuState}
                 selectedIndex={selectedIndex}
                 onApply={applyTrigger}
+                onDismiss={isPointerCoarse ? dismissActiveTrigger : undefined}
                 onCommandLoadMore={
                   canLoadMoreCommands ? loadMoreCommands : undefined
                 }
