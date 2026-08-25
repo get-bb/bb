@@ -1829,6 +1829,65 @@ describe("codex error and warning translation", () => {
     );
   });
 
+  it.each([
+    ["sessionBudgetExceeded", "budget-exceeded"],
+    ["misalignmentPolicyViolation", "policy"],
+  ] as const)(
+    "normalizes %s errors and failed turn completion",
+    (codexErrorInfo, category) => {
+      const harness = createHarness();
+
+      expect(
+        harness.translate(
+          codexEvent("error", {
+            threadId: "t1",
+            turnId: "turn-1",
+            error: {
+              message: "terminal failure",
+              codexErrorInfo,
+              additionalDetails: null,
+            },
+            willRetry: false,
+          }),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          type: "provider/error",
+          scope: turnScope(harness.turnId("turn-1")),
+          errorInfo: {
+            category,
+            providerCode: codexErrorInfo,
+            httpStatusCode: null,
+          },
+        }),
+      ]);
+
+      expect(
+        harness.translate(
+          codexEvent("turn/completed", {
+            threadId: "t1",
+            turn: codexTurn({
+              id: "turn-1",
+              status: "failed",
+              error: {
+                message: "terminal failure",
+                codexErrorInfo,
+                additionalDetails: null,
+              },
+            }),
+          }),
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          type: "turn/completed",
+          scope: turnScope(harness.turnId("turn-1")),
+          status: "failed",
+          error: { message: "terminal failure" },
+        }),
+      ]);
+    },
+  );
+
   it("maps deprecationNotice to a thread-scoped warning", () => {
     const harness = createHarness();
     const events = harness.translate(

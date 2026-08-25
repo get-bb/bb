@@ -327,11 +327,14 @@ function getProviderErrorCategory(
     switch (errorInfo) {
       case "contextWindowExceeded":
         return "context-window-exceeded";
+      case "sessionBudgetExceeded":
+        return "budget-exceeded";
       case "usageLimitExceeded":
         return "rate-limit";
       case "serverOverloaded":
         return "overloaded";
       case "cyberPolicy":
+      case "misalignmentPolicyViolation":
         return "policy";
       case "internalServerError":
         return "internal";
