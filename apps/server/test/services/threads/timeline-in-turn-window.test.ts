@@ -519,12 +519,41 @@ function walkAllPages(
 }
 
 describe("in-turn timeline windows", () => {
-  it("keeps an accepted steer out of details for work that spans the steer", () => {
+  const expectSteerDetailsOwnership = (
+    steerStatus: "accepted" | "rejected",
+  ): void => {
     const { db, thread } = setup();
     const initialRequestId = requestId(1);
     const steerRequestId = requestId(2);
     const turnId = "turn-1";
     const commandId = "command-1";
+    const steerTerminalEvent: EventInput =
+      steerStatus === "accepted"
+        ? {
+            threadId: thread.id,
+            sequence: 6,
+            type: "turn/input/accepted",
+            scope: turnScope(turnId),
+            providerThreadId,
+            itemId: null,
+            itemKind: null,
+            parentToolCallId: null,
+            data: JSON.stringify({ clientRequestId: steerRequestId }),
+          }
+        : {
+            threadId: thread.id,
+            sequence: 6,
+            type: "client/turn/rejected",
+            scope: threadScope(),
+            itemId: null,
+            itemKind: null,
+            parentToolCallId: null,
+            data: JSON.stringify({
+              requestId: steerRequestId,
+              reason: "command_failed",
+              message: "The steer was rejected",
+            }),
+          };
 
     insertEvents(db, noopNotifier, [
       {
@@ -615,17 +644,7 @@ describe("in-turn timeline windows", () => {
           execution,
         }),
       },
-      {
-        threadId: thread.id,
-        sequence: 6,
-        type: "turn/input/accepted",
-        scope: turnScope(turnId),
-        providerThreadId,
-        itemId: null,
-        itemKind: null,
-        parentToolCallId: null,
-        data: JSON.stringify({ clientRequestId: steerRequestId }),
-      },
+      steerTerminalEvent,
       {
         threadId: thread.id,
         sequence: 7,
@@ -670,14 +689,16 @@ describe("in-turn timeline windows", () => {
     if (!turnRow) {
       throw new Error("expected a turn row");
     }
-    expect(
-      timeline.rows.filter(
-        (row) =>
-          row.kind === "conversation" &&
-          row.role === "user" &&
-          row.turnRequest?.kind === "steer",
-      ),
-    ).toHaveLength(1);
+    const rootSteers = timeline.rows.filter(
+      (row) =>
+        row.kind === "conversation" &&
+        row.role === "user" &&
+        row.turnRequest?.kind === "steer",
+    );
+    expect(rootSteers).toHaveLength(1);
+    expect(rootSteers[0]).toMatchObject({
+      turnRequest: { kind: "steer", status: steerStatus },
+    });
 
     const details = buildTimelineTurnSummaryDetails(db, thread, {
       includeProviderUnhandledOperations: false,
@@ -698,6 +719,14 @@ describe("in-turn timeline windows", () => {
         (row) => row.kind === "work" && row.workKind === "command",
       ),
     ).toHaveLength(1);
+  };
+
+  it("keeps an accepted steer out of details for work that spans it", () => {
+    expectSteerDetailsOwnership("accepted");
+  });
+
+  it("keeps a rejected steer out of details for work that spans it", () => {
+    expectSteerDetailsOwnership("rejected");
   });
 
   it("bounds a running turn that is larger than the whole budget", () => {
