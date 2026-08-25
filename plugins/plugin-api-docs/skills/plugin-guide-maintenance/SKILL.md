@@ -1,9 +1,9 @@
 ---
 name: plugin-guide-maintenance
-description: Keep bb Plugin Guide synchronized with public @get-bb/plugin-sdk APIs and the live bb surfaces that host them. Use whenever adding, changing, stabilizing, renaming, or removing a public Plugin SDK export, BbPluginApi member, app slot, composer API, provider bridge API, host API, or testing API; when adding or auditing a Guide surface/card/fixture; when correcting fixture fidelity, annotation placement, interaction realism, or responsive layout; or when the Plugin Guide API inventory or UI-anatomy tests fail.
+description: Keep the Plugin Guide synchronized with public @get-bb/plugin-sdk APIs and the live bb surfaces that host them. Use whenever adding, changing, stabilizing, renaming, or removing a public Plugin SDK export, BbPluginApi member, app slot, composer API, provider bridge API, host API, or testing API; when adding or auditing a Guide surface/card/fixture; when correcting fixture fidelity, annotation placement, interaction realism, or responsive layout; or when the Plugin Guide API inventory or UI-anatomy tests fail.
 ---
 
-# Maintain bb Plugin Guide
+# Maintain the Plugin Guide
 
 The Plugin Guide is bb's only public Plugin SDK documentation. Update it in
 the same change as every public API delta and every source-UI change that makes

@@ -101,7 +101,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
 export default definePluginApp((app) => {
   app.slots.navPanel({
     id: "plugin-api",
-    title: "bb Plugin Guide",
+    title: "Plugin Guide",
     icon: "Puzzle",
     path: "plugin-api",
     component: PluginApiMapPage,

@@ -79,7 +79,7 @@ export function createPluginSurfaceAgentReference(
     html: `${escapeHtml(AGENT_REFERENCE_PREFIX)}<span data-prompt-mention="true" data-prompt-mention-resource="${escapeHtml(JSON.stringify(resource))}" data-prompt-mention-serialized-text="${escapeHtml(serializedText)}">${escapeHtml(serializedText)}</span>${escapeHtml(AGENT_REFERENCE_SUFFIX)}`,
   };
   const context = [
-    `bb Plugin Guide surface: ${surface.title} (${surface.id}).`,
+    `Plugin Guide surface: ${surface.title} (${surface.id}).`,
     `Relevant @get-bb/plugin-sdk symbols: ${surface.apiSymbols.join(", ")}.`,
     "Use the bb-plugin-authoring skill and the authoritative @get-bb/plugin-sdk declarations to build a similar plugin capability.",
   ].join("\n");

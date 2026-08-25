@@ -12,7 +12,7 @@ import {
 export default function plugin(bb: BbPluginApi) {
   bb.ui.registerMentionProvider({
     id: PLUGIN_GUIDE_SURFACE_PROVIDER_ID,
-    label: "bb Plugin Guide",
+    label: "Plugin Guide",
     search: () => [],
     resolve(surfaceId) {
       const context = pluginSurfaceAgentContext(surfaceId);
