@@ -160,11 +160,13 @@ controls, or the card. Shorter viewports may scroll vertically to keep the
 card reachable.
 
 Above that reference, restore the roomier app-window fixture deterministically:
-the 500px app body grows one CSS pixel per additional viewport pixel and caps
-at 650px; its 350px timeline grows at the same rate and caps at 510px. Do not
-grow from display width alone: vertical room determines whether the in-flow
-card can remain visible. Keep the cap even on very tall displays so blank
-timeline canvas does not outweigh the documented controls and content.
+the 500px app-body minimum grows one CSS pixel per additional viewport pixel
+and caps at 650px; its 350px timeline minimum grows at the same rate and caps
+at 510px. These are blank-canvas bounds, not fixed heights: real content may
+grow beyond them and must not be clipped. Do not grow from display width alone:
+vertical room determines whether the in-flow card can remain visible. Keep the
+cap even on very tall displays so blank timeline canvas does not outweigh the
+documented controls and content.
 
 Never reflow a spatial fixture into anatomy bb does not have, shrink labels
 until they stop being readable, or add blank canvas to match the tallest page.

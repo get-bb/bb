@@ -1007,8 +1007,9 @@ function AppShellWireframeBody({
       </span>
       {/* Keep product chrome and the pending form at their real density. At
           bb's 1028px desktop viewport the 500px floor leaves every card above
-          the fold; each extra viewport pixel then restores one pixel of the
-          roomier fixture until its original 650px footprint is reached. */}
+          the fold; each extra viewport pixel then restores one pixel of blank
+          canvas until the original 650px minimum is reached. Real content may
+          still grow past that minimum rather than being clipped. */}
       <div className="flex min-h-[clamp(500px,calc(100dvh-528px),650px)] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
         <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
