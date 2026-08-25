@@ -13,6 +13,7 @@ import {
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
+  restoreConsumedQueuedThreadMessagesInTransaction,
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "../../src/data/queued-thread-messages.js";
@@ -1339,5 +1340,148 @@ describe("queued thread messages", () => {
         nextQueuedMessageId: secondQueuedMessage.id,
       }).kind,
     ).toBe("stale_neighbor");
+  });
+
+  it("restores a consumed group at its original place with its grouping and claim cleared (#2370)", () => {
+    const { db, thread } = setup();
+    const base = {
+      threadId: thread.id,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full" as const,
+      serviceTier: "default",
+    };
+    const first = createQueuedThreadMessage(db, noopNotifier, {
+      ...base,
+      content: textInput("do X"),
+    });
+    const second = createQueuedThreadMessage(db, noopNotifier, {
+      ...base,
+      content: textInput("then Y"),
+    });
+    const third = createQueuedThreadMessage(db, noopNotifier, {
+      ...base,
+      content: textInput("queued later"),
+    });
+    setQueuedThreadMessageGroupBoundary({
+      db,
+      expectedGroupedPrefixQueuedMessageIds: [first.id, second.id],
+      groupBoundaryQueuedMessageId: second.id,
+      notifier: noopNotifier,
+      threadId: thread.id,
+    });
+    const claimed = claimQueuedThreadMessageGroup(db, noopNotifier, first.id);
+    if (!claimed) {
+      throw new Error("Expected the head group to be claimed");
+    }
+    expect(claimed.map((row) => row.id)).toEqual([first.id, second.id]);
+    expect(
+      db.transaction((tx) =>
+        deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+          queuedMessages: claimed,
+        }),
+      ),
+    ).toBe(true);
+    expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
+      third.id,
+    ]);
+
+    // The host refused the dispatch: the same rows go back where they were,
+    // ahead of what was queued behind them, grouped as before and claimable.
+    db.transaction((tx) =>
+      restoreConsumedQueuedThreadMessagesInTransaction(tx, {
+        queuedMessages: claimed,
+      }),
+    );
+    const restored = listQueuedThreadMessages(db, thread.id);
+    expect(
+      restored.map((row) => ({
+        id: row.id,
+        groupWithNext: row.groupWithNext,
+        claimToken: row.claimToken,
+        claimedAt: row.claimedAt,
+      })),
+    ).toEqual([
+      { id: first.id, groupWithNext: true, claimToken: null, claimedAt: null },
+      { id: second.id, groupWithNext: false, claimToken: null, claimedAt: null },
+      { id: third.id, groupWithNext: false, claimToken: null, claimedAt: null },
+    ]);
+    expect(JSON.parse(restored[0]?.content ?? "null")).toEqual(textInput("do X"));
+    expect(claimQueuedThreadMessageGroup(db, noopNotifier, first.id)?.map((row) => row.id)).toEqual([
+      first.id,
+      second.id,
+    ]);
+  });
+
+  it("restores a consumed group ahead of a row queued into the emptied queue while the host refused it (#2370)", () => {
+    const { db, thread } = setup();
+    const base = {
+      threadId: thread.id,
+      model: "gpt-5",
+      reasoningLevel: "medium",
+      permissionMode: "full" as const,
+      serviceTier: "default",
+    };
+    const first = createQueuedThreadMessage(db, noopNotifier, {
+      ...base,
+      content: textInput("do X"),
+    });
+    const second = createQueuedThreadMessage(db, noopNotifier, {
+      ...base,
+      content: textInput("then Y"),
+    });
+    setQueuedThreadMessageGroupBoundary({
+      db,
+      expectedGroupedPrefixQueuedMessageIds: [first.id, second.id],
+      groupBoundaryQueuedMessageId: second.id,
+      notifier: noopNotifier,
+      threadId: thread.id,
+    });
+    const claimed = claimNextQueuedThreadMessageGroup(
+      db,
+      noopNotifier,
+      thread.id,
+    );
+    if (!claimed) {
+      throw new Error("Expected the head group to be claimed");
+    }
+    expect(claimed.map((row) => row.id)).toEqual([first.id, second.id]);
+    db.transaction((tx) =>
+      deleteClaimedQueuedThreadMessageBatchInTransaction(tx, {
+        queuedMessages: claimed,
+      }),
+    );
+    expect(listQueuedThreadMessages(db, thread.id)).toEqual([]);
+
+    // Queued while the dispatch was in flight: an empty queue hands out the
+    // same initial key the consumed head had.
+    const later = createQueuedThreadMessage(db, noopNotifier, {
+      ...base,
+      content: textInput("queued during the round trip"),
+    });
+    expect(later.sortKey).toBe(first.sortKey);
+
+    db.transaction((tx) =>
+      restoreConsumedQueuedThreadMessagesInTransaction(tx, {
+        queuedMessages: claimed,
+      }),
+    );
+    const restored = listQueuedThreadMessages(db, thread.id);
+    expect(
+      restored.map((row) => ({ id: row.id, groupWithNext: row.groupWithNext })),
+    ).toEqual([
+      { id: first.id, groupWithNext: true },
+      { id: second.id, groupWithNext: false },
+      { id: later.id, groupWithNext: false },
+    ]);
+    // Strict key order, not a tie the random id breaks.
+    expect(restored[0]!.sortKey < restored[1]!.sortKey).toBe(true);
+    expect(restored[1]!.sortKey < restored[2]!.sortKey).toBe(true);
+    // The next drain takes the restored group, whole, and nothing else.
+    expect(
+      claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.map(
+        (row) => row.id,
+      ),
+    ).toEqual([first.id, second.id]);
   });
 });

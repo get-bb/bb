@@ -406,6 +406,10 @@ or artifacts, validation performed, and blockers.
   agent can finish its current work first. Steer is especially important for a
   wrong direction, hard stop, or critical clarification.
   Example: `bb thread tell <thread-id> "Stop and use approach B" --mode steer`.
+  `--mode auto` steers a live turn and starts a new one on an idle thread.
+- If the provider cannot take a message mid-run (for example while it compacts
+  its context), the message is not lost and the thread does not fail: it moves
+  to the thread's queue and delivers after the live turn. Do not resend.
 - If the target thread is awaiting user interaction (an open question or
   approval), `bb thread tell` cannot interrupt it. The message is held and
   delivers in the requested mode once the interaction settles; the CLI prints

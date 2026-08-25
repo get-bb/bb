@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  THREAD_TURN_BUSY_ERROR_CODE,
   type HostDaemonCommand,
   type HostDaemonCommandResult,
   type HostDaemonSettledCommandType,
@@ -94,7 +95,12 @@ interface LiveHostCommandBaseLogFields {
   threadId?: string;
 }
 
-const EXPECTED_LIVE_HOST_COMMAND_ERROR_CODES = new Set(["provision_cancelled"]);
+const EXPECTED_LIVE_HOST_COMMAND_ERROR_CODES = new Set<string>([
+  "provision_cancelled",
+  // The daemon could not take a turn submission because the thread's turn is
+  // still live; the dispatcher parks the input (thread-turn-busy.ts).
+  THREAD_TURN_BUSY_ERROR_CODE,
+]);
 
 function commandFailureCode(error: Error): string {
   if (error instanceof ApiError) {
@@ -278,18 +284,31 @@ export function startLiveHostCommand<
       };
       const expectedErrorFields =
         expectedLiveHostCommandErrorLogFields(normalized);
-      if (expectedErrorFields !== null) {
-        deps.logger.debug(
+      // A handler that throws (the busy re-queue writes to the database)
+      // must not turn a settled failure into an unhandled rejection.
+      try {
+        if (expectedErrorFields !== null) {
+          deps.logger.debug(
+            {
+              ...liveHostCommandBaseLogFields(handlerArgs),
+              ...expectedErrorFields,
+            },
+            "Expected live host command failure",
+          );
+          args.onExpectedError?.(handlerArgs);
+          return;
+        }
+        args.onError?.(handlerArgs);
+      } catch (handlerError) {
+        deps.logger.error(
           {
+            err: handlerError,
             ...liveHostCommandBaseLogFields(handlerArgs),
-            ...expectedErrorFields,
+            originalError: normalized,
           },
-          "Expected live host command failure",
+          "Live command failure handler failed",
         );
-        args.onExpectedError?.(handlerArgs);
-        return;
       }
-      args.onError?.(handlerArgs);
     })
     .finally(async () => {
       try {

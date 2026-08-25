@@ -840,6 +840,82 @@ describe("runtime recovery hints", () => {
     expect(runtime.getActiveTurnId("t-stale")).toBeNull();
   });
 
+  it("TURN_BUSY: a steer the bridge refuses as busy is a typed thread_turn_busy error and keeps the live turn", async () => {
+    const { events, runtime } = createRecoveryRuntime({
+      failMethods: [
+        {
+          method: "turn/steer",
+          code: BRIDGE_JSON_RPC_ERRORS.TURN_BUSY,
+          message: "Agent is already processing a prompt",
+        },
+      ],
+    });
+    await startThread(runtime, "t-busy-steer");
+    await runtime.runTurn({
+      clientRequestId: "creq_rcvrhint29",
+      input: [promptTextInput({ text: "hold_turn" })],
+      options: fullRuntimeOptions,
+      threadId: "t-busy-steer",
+    });
+    const { turnId } = await waitForThreadTurnStarted({
+      events,
+      providerId: PROVIDER_ID,
+      runtime,
+      threadId: "t-busy-steer",
+    });
+
+    await expect(
+      runtime.steerTurn({
+        clientRequestId: "creq_rcvrhint30",
+        expectedTurnId: turnId,
+        input: [promptTextInput({ text: "refused" })],
+        options: fullRuntimeOptions,
+        threadId: "t-busy-steer",
+      }),
+    ).rejects.toMatchObject({
+      code: "thread_turn_busy",
+      message: "Agent is already processing a prompt",
+    });
+    // The provider is still running the turn: nothing about it changed.
+    expect(runtime.getActiveTurnId("t-busy-steer")).toBe(turnId);
+    expect(runtime.getLiveThreadIds()).toEqual(["t-busy-steer"]);
+  });
+
+  it("TURN_BUSY: a start the bridge refuses as busy is a typed thread_turn_busy error", async () => {
+    const { record, runtime } = createRecoveryRuntime({
+      failMethods: [
+        {
+          method: "turn/start",
+          code: BRIDGE_JSON_RPC_ERRORS.TURN_BUSY,
+          message: "Agent is already processing a prompt",
+        },
+      ],
+      sessionRestorable: true,
+    });
+    const providerThreadId = await startThread(runtime, "t-busy-start");
+
+    await expect(
+      runtime.runTurn({
+        clientRequestId: "creq_rcvrhint31",
+        input: [promptTextInput({ text: "refused" })],
+        options: fullRuntimeOptions,
+        threadId: "t-busy-start",
+      }),
+    ).rejects.toMatchObject({ code: "thread_turn_busy" });
+    expect(countRequests(record, "turn/start")).toBe(1);
+    // The refused start left no pending turn behind, and the session is as
+    // idle as it was before the attempt: the reaper can still release it.
+    expect(runtime.getLiveThreadIds()).toEqual([]);
+    const reaped = await runtime.reapIdleProviderSessions({
+      idleForMs: 0,
+      nowMs: Date.now() + 60 * 60 * 1000,
+      providerSessionReapingEnabled: true,
+    });
+    expect(reaped.reapedSessions).toEqual([
+      expect.objectContaining({ providerThreadId, threadId: "t-busy-start" }),
+    ]);
+  });
+
   it("restartRecommended: an idle thread is moved to a fresh bridge process right away", async () => {
     const { events, hints, processLog, record, runtime } =
       createRecoveryRuntime();

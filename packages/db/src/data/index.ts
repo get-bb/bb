@@ -365,6 +365,7 @@ export {
   releaseQueuedMessageClaim,
   releaseStaleQueuedMessageClaims,
   reorderQueuedThreadMessage,
+  restoreConsumedQueuedThreadMessagesInTransaction,
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
@@ -381,6 +382,7 @@ export type {
   DeferredThreadMessageRow,
 } from "./deferred-thread-messages.js";
 export type {
+  ClaimedQueuedThreadMessageRow,
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,
   SetQueuedThreadMessageGroupBoundaryResult,

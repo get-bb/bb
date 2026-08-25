@@ -191,12 +191,16 @@ Messaging:
 
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
-  is free. A target that is awaiting user interaction (an open question or
+  is free; --mode auto steers a live turn and starts a new one on an idle
+  thread. A target that is awaiting user interaction (an open question or
   approval) cannot take a prompt; tell then holds the message and delivers it
   in the requested mode once the interaction settles. That outcome is not a
   failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
   or `deferred`. A held message waits for a thread that failed while it was
-  held, and delivers when the thread is retried.
+  held, and delivers when the thread is retried. A provider that cannot take
+  a message mid-run (for example while it compacts its context) does not fail
+  the thread: the message moves to the thread's queue and delivers after the
+  live turn.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude

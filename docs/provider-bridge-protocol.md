@@ -61,6 +61,14 @@ Hygiene rules (each traces to incident #853):
   `INVALID_PARAMS (-32602)` carrying the validation issues. Never silently
   dropped — a dropped request is an undebuggable 30-second timeout.
 - An unrecognized method is answered with `METHOD_NOT_FOUND (-32601)`.
+- A `turn/start` or `turn/steer` the provider refuses because it is mid-run
+  (or compacting) and will not queue the input is answered with
+  `TURN_BUSY (-32004)`. The live turn is untouched: the bridge settles
+  nothing and raises no session error, because the rejection is the whole
+  report. The runtime surfaces it as a typed `thread_turn_busy` failure and
+  the server keeps the thread active and parks the input in its queue
+  (#2370). Settling the live turn here is what flipped a working thread to
+  `error` and stranded its queue.
 - Anything written to stdout that is not protocol traffic is ignored by the
   reader; bridges must guard stdout against stray writes.
 

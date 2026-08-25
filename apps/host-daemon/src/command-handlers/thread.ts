@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import type { PromptInput } from "@bb/domain";
-import type { HostDaemonCommandResult } from "@bb/host-daemon-contract";
+import {
+  THREAD_TURN_BUSY_ERROR_CODE,
+  type HostDaemonCommandResult,
+} from "@bb/host-daemon-contract";
 import { resolveContainedPath } from "@bb/process-utils";
 import type { RuntimeEntry } from "../runtime-manager.js";
 import {
@@ -448,7 +451,10 @@ async function resolveLiveSubmittedTurnTarget(
     return refreshedTurnId;
   }
   if (entry.runtime.getLiveThreadIds().includes(command.threadId)) {
-    throw new Error(
+    // Typed so the server keeps the thread active and parks the input
+    // instead of failing the run that is still starting (#2370).
+    throw new ExpectedCommandDispatchError(
+      THREAD_TURN_BUSY_ERROR_CODE,
       `Refusing to start a competing turn while ${command.threadId} is still starting`,
     );
   }

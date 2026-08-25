@@ -349,12 +349,27 @@ const turnSubmitTargetSchema = z.discriminatedUnion("mode", [
 export type TurnSubmitTarget = z.infer<typeof turnSubmitTargetSchema>;
 
 /**
+ * `turn.submit` failure code for a submission the thread cannot take right
+ * now: the daemon's runtime already has a turn active or starting on it, or
+ * the bridge refused the input as `TURN_BUSY` (its provider is mid-run). The
+ * live turn is untouched, so the server keeps the thread active and parks the
+ * input instead of failing the run (#2370). The runtime's
+ * `AgentRuntimeTurnBusyError.code` is this string; the daemon checks the two
+ * against each other at compile time.
+ */
+export const THREAD_TURN_BUSY_ERROR_CODE = "thread_turn_busy" as const;
+
+/**
  * Submit input for an existing provider thread. The daemon chooses whether
  * auto-targeted input steers the live active turn or starts a new turn. The
  * nullable expected id is the server's snapshot; the daemon rechecks its
  * runtime so input sent while turn/started is still in flight is not mistaken
- * for a competing turn, and rejects instead of starting another turn if the
- * pending start does not produce an id within its bounded wait.
+ * for a competing turn, and rejects with `thread_turn_busy` instead of
+ * starting another turn if the pending start does not produce an id within
+ * its bounded wait. The same code answers a start the runtime refuses while
+ * a turn is active and a submission the bridge refuses as `TURN_BUSY`: the
+ * live turn is untouched, so the server keeps the thread active and
+ * re-queues the input rather than failing the run.
  */
 const turnSubmitCommandSchema = hostDaemonThreadTargetSchema
   .extend({
@@ -2059,7 +2074,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

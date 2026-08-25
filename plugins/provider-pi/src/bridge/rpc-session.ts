@@ -385,6 +385,7 @@ export class PiRpcSession {
       void consumed.catch(() => undefined);
       return { consumed, settled: Promise.resolve(null) };
     }
+    const wasProcessing = this.isProcessing;
     this.isProcessing = true;
     const tracked = this.trackPendingInputConsumption("followUp");
     const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
@@ -415,15 +416,19 @@ export class PiRpcSession {
         return outcome;
       },
       (error: unknown): PiPromptRunOutcome | null => {
-        this.isProcessing = false;
+        // The rejected request is the whole report: pi started no run for
+        // this input, so there is nothing to settle — not on the session
+        // (a session error closed a live turn from under pi) and not as a
+        // prompt settlement (a failed settlement is a failed turn boundary,
+        // which the assembler applies to the open turn or, with an accepted
+        // input pending, to a synthetic one). A run that is live (pi
+        // refusing the prompt while it compacts) keeps going and its own
+        // agent_end settles it (#2370). Inputs pi already queued for that
+        // run stay tracked; the run consumes them.
+        this.isProcessing = wasProcessing;
         this.dropRunSettlement(settlement);
-        const queued = tracked.pending.queuedText !== null;
         this.rejectPendingInputConsumption(tracked.pending, asError(error));
-        this.rejectPendingInputConsumptions(
-          "Pi prompt failed before input was consumed",
-        );
-        this.onDone(error);
-        return queued ? null : { error };
+        return null;
       },
     );
     return { consumed: tracked.promise, settled };
@@ -440,8 +445,9 @@ export class PiRpcSession {
         streamingBehavior: "steer",
       });
     } catch (error) {
+      // The rejection is the report; the run the steer targeted is still
+      // live, so no session error (it would settle that run, #2370).
       this.rejectPendingInputConsumption(tracked.pending, asError(error));
-      this.onDone(error);
       throw error;
     }
     if (tracked.pending.queuedText === null) {

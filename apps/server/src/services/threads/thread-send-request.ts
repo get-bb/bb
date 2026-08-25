@@ -36,7 +36,7 @@ import {
   queuedMessagePayloadFromSendRequest,
 } from "./queued-messages.js";
 import { requireThreadCommandEnvironment } from "./thread-command-environment.js";
-import { isManualCompactionActive } from "./thread-events.js";
+import { getActiveTurnId, isManualCompactionActive } from "./thread-events.js";
 import {
   ensureThreadIsWritable,
   resolveMessageSenderThreadId,
@@ -95,8 +95,9 @@ export async function acceptThreadSendRequest(
       projectId: thread.projectId,
     });
     deferThreadMessage(deps, {
-      threadId: thread.id,
       payload: { kind: "send", request: payload },
+      reason: "pending-interaction",
+      threadId: thread.id,
     });
     return { ok: true, delivery: "deferred" };
   }
@@ -223,6 +224,20 @@ function dropUndeliverableDeferredThreadMessages(
   );
 }
 
+function isHeldForLiveTurn(
+  deps: Pick<AppDeps, "db">,
+  thread: Thread,
+  payload: DeferredThreadMessagePayload,
+): boolean {
+  if (payload.kind !== "parent-system" || payload.heldForTurn === null) {
+    return false;
+  }
+  return (
+    thread.status === "active" &&
+    getActiveTurnId(deps, thread.id) === payload.heldForTurn.activeTurnId
+  );
+}
+
 async function flushDeferredThreadMessagesNow(
   deps: LoggedPendingInteractionWorkSessionDeps,
   threadId: string,
@@ -257,6 +272,15 @@ async function flushDeferredThreadMessagesNow(
         { err: error, deferredMessageId: row.id, threadId },
         "Dropped malformed deferred thread message",
       );
+      continue;
+    }
+    if (isHeldForLiveTurn(deps, thread, payload)) {
+      // Refused as `thread_turn_busy` for the turn that is still live; another
+      // attempt now would be refused the same way, so the row waits for the
+      // tick after that turn ends or a new one starts. The rows behind it get
+      // their attempt: a send refused the same way is parked in the queue,
+      // not lost, and holding a steer for the rest of a long turn would undo
+      // the #1650 promise that it delivers once the interaction settles.
       continue;
     }
     try {

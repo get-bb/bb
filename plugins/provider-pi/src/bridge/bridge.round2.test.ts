@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { BRIDGE_JSON_RPC_ERRORS } from "@get-bb/plugin-sdk/provider-bridge";
 import { handleLine } from "./bridge.js";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
 import { FULL_PERMISSION_OPTIONS, type FakePiBridgeHarness, startFakePiBridge } from "./test-support.js";
@@ -190,6 +191,108 @@ function queueUpdateSteering(delta: Record<string, unknown>): unknown[] | null {
   if (message?.type !== "queue_update" || !Array.isArray(message.steering)) return null;
   return message.steering;
 }
+
+it("a steer pi refuses as busy answers TURN_BUSY and leaves the held run open (#2370)", async () => {
+  const threadId = "thr_r2_steer_busy";
+  await harness.startThread(threadId);
+  turnStart(threadId, "/hold", "creq_ab23456789");
+  await harness.waitForDelta(threadId, (d) => d.kind === "turn.open");
+  const before = harness.deltasOf(threadId).length;
+  const refused = await harness.request((nextId += 1), "turn/steer", {
+    threadId,
+    providerThreadId: threadId,
+    expectedTurnId: "turn-1",
+    clientRequestId: "creq_cd23456789",
+    input: [{ type: "text", text: "/busy", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(refused.error).toMatchObject({
+    code: BRIDGE_JSON_RPC_ERRORS.TURN_BUSY,
+    message: expect.stringContaining("compaction is in progress"),
+  });
+  // The rejected request is the whole report: pi is still running the held
+  // turn, so the bridge must not settle it or raise a session error (that is
+  // what flipped a working thread to `error` and stranded its queue).
+  expect(
+    harness.deltasOf(threadId).slice(before).some((d) => d.kind === "turn.boundary" || d.kind === "provider.error"),
+  ).toBe(false);
+  expect(harness.messages.some((m) => m.method === "error")).toBe(false);
+  // The held run is untouched: the next steer pi accepts is consumed by it.
+  const steer = await harness.request((nextId += 1), "turn/steer", {
+    threadId,
+    providerThreadId: threadId,
+    expectedTurnId: "turn-1",
+    clientRequestId: "creq_ef23456789",
+    input: [{ type: "text", text: "carry on", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(steer.result).toMatchObject({ threadId });
+  await harness.waitForDelta(threadId, (d) => d.kind === "turn.boundary" && d.status === "completed", before);
+  expect(harness.deltasOf(threadId).some((d) => d.kind === "item.textDelta" && String(d.text).includes("Steered: carry on"))).toBe(true);
+  expect(harness.messages.some((m) => m.method === "error")).toBe(false);
+}, 90_000);
+
+it("a turn/start pi refuses as busy answers TURN_BUSY without a session error (#2370)", async () => {
+  const threadId = "thr_r2_start_busy";
+  await harness.startThread(threadId);
+  const refused = await harness.request((nextId += 1), "turn/start", {
+    threadId,
+    providerThreadId: threadId,
+    clientRequestId: "creq_ab23456789",
+    input: [{ type: "text", text: "/busy", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(refused.error).toMatchObject({
+    code: BRIDGE_JSON_RPC_ERRORS.TURN_BUSY,
+    message: expect.stringContaining("compaction is in progress"),
+  });
+  // Pi started no run for the refused input, so there is nothing to settle:
+  // a failed boundary here would claim a pending accepted input as a failed
+  // synthetic turn, and a session error would fail the thread.
+  expect(
+    harness.deltasOf(threadId).some((d) => d.kind === "turn.boundary" || d.kind === "provider.error"),
+  ).toBe(false);
+  expect(harness.messages.some((m) => m.method === "error")).toBe(false);
+  // The session is still serving: the next prompt runs a turn.
+  turnStart(threadId, "hello again", "creq_cd23456789");
+  await harness.waitForDelta(threadId, (d) => d.kind === "turn.boundary" && d.status === "completed");
+  expect(harness.deltasOf(threadId).some((d) => d.kind === "input.accepted" && d.clientRequestId === "creq_cd23456789")).toBe(true);
+}, 90_000);
+
+it("a turn/start pi refuses as busy during a held run leaves that run open (#2370)", async () => {
+  const threadId = "thr_r2_start_busy_held";
+  await harness.startThread(threadId);
+  turnStart(threadId, "/hold", "creq_ab23456789");
+  await harness.waitForDelta(threadId, (d) => d.kind === "turn.open");
+  const before = harness.deltasOf(threadId).length;
+  const refused = await harness.request((nextId += 1), "turn/start", {
+    threadId,
+    providerThreadId: threadId,
+    clientRequestId: "creq_cd23456789",
+    input: [{ type: "text", text: "/busy", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(refused.error).toMatchObject({ code: BRIDGE_JSON_RPC_ERRORS.TURN_BUSY });
+  // The held run is still the live turn: the refusal settled no boundary on
+  // it (that is what closed a working turn as failed) and raised no error.
+  expect(
+    harness.deltasOf(threadId).slice(before).some((d) => d.kind === "turn.boundary" || d.kind === "provider.error"),
+  ).toBe(false);
+  expect(harness.messages.some((m) => m.method === "error")).toBe(false);
+  // The run resumes on the next steer and settles itself.
+  const steer = await harness.request((nextId += 1), "turn/steer", {
+    threadId,
+    providerThreadId: threadId,
+    expectedTurnId: "turn-1",
+    clientRequestId: "creq_ef23456789",
+    input: [{ type: "text", text: "carry on", mentions: [] }],
+    options: FULL_PERMISSION_OPTIONS,
+  });
+  expect(steer.result).toMatchObject({ threadId });
+  await harness.waitForDelta(threadId, (d) => d.kind === "turn.boundary" && d.status === "completed", before);
+  expect(harness.deltasOf(threadId).some((d) => d.kind === "item.textDelta" && String(d.text).includes("Steered: carry on"))).toBe(true);
+  expect(harness.messages.some((m) => m.method === "error")).toBe(false);
+}, 90_000);
 
 it("a steer still queued when the run ends is reported dropped through the delivery barrier, not a timer", async () => {
   vi.stubEnv("FAKE_PI_DROP_STEER_AT_END", "1");

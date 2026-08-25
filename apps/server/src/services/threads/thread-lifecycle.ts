@@ -24,6 +24,7 @@ import {
   type DbTransaction,
 } from "@bb/db";
 import { assertNever } from "@bb/core-ui";
+import { THREAD_TURN_BUSY_ERROR_CODE } from "@bb/host-daemon-contract";
 import {
   type ProvisioningTranscriptEntry,
   type SystemThreadInterruptedReason,
@@ -792,6 +793,17 @@ function settleThreadCommandFailure(
     });
   }
   if (hasExpectedTurnCompletedEvent(args.deps, args.command)) {
+    return emptyCommandResultSideEffects();
+  }
+  if (
+    args.command.type === "turn.submit" &&
+    args.report.errorCode === THREAD_TURN_BUSY_ERROR_CODE
+  ) {
+    // The provider is still running a turn the daemon would not interrupt.
+    // That run owns the thread's status and settles it when it ends; the
+    // dispatcher parks the refused input. Failing the run here flipped a
+    // working thread to `error` and stranded its queue, which only drains
+    // from `idle` (#2370).
     return emptyCommandResultSideEffects();
   }
   appendSystemErrorEventInTransaction(args.deps, {

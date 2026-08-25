@@ -57,6 +57,10 @@
  *   FAKE_PI_BATCH_STEER_REPLY=1 writes a steer's `prompt` response and the
  *   resumed run's first event in one stdout write (one read on the bridge's
  *   side). The prompt `/die` exits the process mid-run without answering.
+ *   The prompt `/busy` (any streamingBehavior) is refused with pi's own
+ *   compaction preflight error ("Cannot submit a prompt while compaction is
+ *   in progress"), the one prompt refusal pi's RPC mode answers as an error
+ *   (#2370); queues and the live run are untouched.
  * - `prompt` with `streamingBehavior: "steer"` during a `/hold` run is queued
  *   (`queue_update.steering`), consumed when the run resumes, and the run's
  *   reply names it.
@@ -464,6 +468,17 @@ async function handle(command) {
       });
       return;
     case "prompt": {
+      if (command.message === "/busy") {
+        // `AgentSession.prompt` throws this before `preflightResult`, so RPC
+        // mode answers the prompt with the error. Nothing is queued and the
+        // live run keeps going.
+        respondError(
+          id,
+          "prompt",
+          "Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
+        );
+        return;
+      }
       if (isStreaming && command.streamingBehavior === "steer") {
         // A steer into a live run: pi reports the queue BEFORE it answers the
         // preflight (recorded order), then hands it to the run (a held run
@@ -563,12 +578,14 @@ readLines(process.stdin, (line) => {
     return;
   }
   // Commands are handled in order, but `prompt` runs its scripted turn
-  // asynchronously so `abort` — and a steer into a held run — can reach it.
+  // asynchronously so `abort` — and a steer or a `/busy` refusal into a held
+  // run — can reach it.
   if (
     command.type === "abort" ||
     command.type === "get_state" ||
     command.type === "get_session_stats" ||
-    (command.type === "prompt" && command.streamingBehavior === "steer")
+    (command.type === "prompt" &&
+      (command.streamingBehavior === "steer" || command.message === "/busy"))
   ) {
     void loaded.then(() => handle(command));
     return;

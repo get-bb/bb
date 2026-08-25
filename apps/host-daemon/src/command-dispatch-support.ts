@@ -1,15 +1,19 @@
-import type { AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeTurnBusyError,
+} from "@bb/agent-runtime";
 import type { AvailableModel } from "@bb/domain";
 import type { EventSinkInput } from "./event-sink.js";
-import type {
-  HostDaemonCommand,
-  ProviderHealthResult,
-  ProviderUsageResult,
-  HostDaemonBridgeLaunch,
-  HostDaemonInjectedSkillSource,
-  HostDaemonOnlineRpcCommand,
-  HostDaemonConnectTunnelIdentity,
-  WorkspaceContext,
+import {
+  THREAD_TURN_BUSY_ERROR_CODE,
+  type HostDaemonCommand,
+  type ProviderHealthResult,
+  type ProviderUsageResult,
+  type HostDaemonBridgeLaunch,
+  type HostDaemonInjectedSkillSource,
+  type HostDaemonOnlineRpcCommand,
+  type HostDaemonConnectTunnelIdentity,
+  type WorkspaceContext,
 } from "@bb/host-daemon-contract";
 import type {
   ProviderInstallationCommand,
@@ -130,9 +134,15 @@ export function isExpectedCommandDispatchError(
   return error instanceof ExpectedCommandDispatchError;
 }
 
-const EXPECTED_ONLINE_RPC_FAILURE_CODES = new Set([
+const EXPECTED_ONLINE_RPC_FAILURE_CODES = new Set<string>([
   "file_too_large",
   "provision_cancelled",
+  // A turn submission the thread could not take: the shared runtime refused
+  // a competing start (`AgentRuntimeTurnBusyError`) or the bridge answered
+  // TURN_BUSY. The live turn is fine and the server parks the input. The
+  // runtime's error code is what reaches the wire, so it must be the
+  // contract's string.
+  THREAD_TURN_BUSY_ERROR_CODE satisfies AgentRuntimeTurnBusyError["code"],
 ]);
 
 export function isExpectedOnlineRpcFailureError(error: unknown): boolean {

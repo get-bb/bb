@@ -425,7 +425,10 @@ export function registerActionsCommands(
       "Reasoning level: low, medium, high, xhigh, max (provider-dependent)",
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
-    .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
+    .option(
+      "--mode <mode>",
+      "Message mode: steer (default), queue, or auto (steer a live turn, else start one)",
+    )
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",

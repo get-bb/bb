@@ -87,6 +87,11 @@ export interface DeleteClaimedQueuedThreadMessageBatchInTransactionArgs {
   queuedMessages: readonly ClaimedQueuedThreadMessageMutationArgs[];
 }
 
+export interface RestoreConsumedQueuedThreadMessagesInTransactionArgs {
+  /** The rows exactly as they were claimed, before the batch delete. */
+  queuedMessages: readonly ClaimedQueuedThreadMessageRow[];
+}
+
 export interface ReleaseStaleQueuedMessageClaimsArgs {
   claimedBefore: number;
   protectedClaimTokens: readonly string[];
@@ -276,6 +281,21 @@ function getLastQueuedThreadMessage(
       .from(queuedThreadMessages)
       .where(eq(queuedThreadMessages.threadId, threadId))
       .orderBy(desc(queuedThreadMessages.sortKey), desc(queuedThreadMessages.id))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+function getFirstQueuedThreadMessage(
+  db: DbQueryConnection,
+  threadId: string,
+): QueuedThreadMessageRow | null {
+  return (
+    db
+      .select()
+      .from(queuedThreadMessages)
+      .where(eq(queuedThreadMessages.threadId, threadId))
+      .orderBy(asc(queuedThreadMessages.sortKey), asc(queuedThreadMessages.id))
       .limit(1)
       .get() ?? null
   );
@@ -1114,6 +1134,50 @@ export function deleteClaimedQueuedThreadMessageBatchInTransaction(
     }
   }
   return true;
+}
+
+/**
+ * Puts back rows that `deleteClaimedQueuedThreadMessageBatchInTransaction`
+ * consumed for a dispatch the host then refused (`thread_turn_busy`, #2370):
+ * same ids, content and grouping, claim cleared, at the head of the queue in
+ * the given order. The group drains again ahead of everything the thread
+ * holds, claimed or not, instead of as ungrouped rows at the tail.
+ *
+ * The rows get fresh sort keys rather than their stored ones. The consume
+ * often empties the queue, and a row queued into an empty queue takes the
+ * same initial key the consumed head had; re-inserting the old keys would
+ * then tie on `sortKey` and let the random id decide whether the newcomer
+ * drains first or lands inside the restored group. The caller notifies
+ * `queue-changed` after the transaction commits.
+ */
+export function restoreConsumedQueuedThreadMessagesInTransaction(
+  tx: DbTransaction,
+  args: RestoreConsumedQueuedThreadMessagesInTransactionArgs,
+): void {
+  if (args.queuedMessages.length === 0) return;
+  const threadId = args.queuedMessages[0]!.threadId;
+  const now = Date.now();
+  // Chain the keys from the last row back to the first: each is strictly
+  // before the current head (or the restored row behind it), so the group
+  // keeps its internal order and lands ahead of the head.
+  let nextKey = getFirstQueuedThreadMessage(tx, threadId)?.sortKey ?? null;
+  const sortKeys: string[] = [];
+  for (let index = args.queuedMessages.length - 1; index >= 0; index -= 1) {
+    const sortKey = createOrderKeyBetween({ previousKey: null, nextKey });
+    sortKeys[index] = sortKey;
+    nextKey = sortKey;
+  }
+  tx.insert(queuedThreadMessages)
+    .values(
+      args.queuedMessages.map((queuedMessage, index) => ({
+        ...queuedMessage,
+        claimedAt: null,
+        claimToken: null,
+        sortKey: sortKeys[index]!,
+        updatedAt: now,
+      })),
+    )
+    .run();
 }
 
 export function deleteQueuedThreadMessage(

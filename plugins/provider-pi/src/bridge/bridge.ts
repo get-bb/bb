@@ -1096,8 +1096,37 @@ async function handleTurnStart(id: string | number, params: TurnStartParams): Pr
     recordAcceptedTurnInput(params);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
-    sendError(id, -32000, error instanceof Error ? error.message : String(error));
+    sendInputDispatchError(id, error);
   }
+}
+
+/**
+ * Pi's own refusals of input while it is mid-run. Pi's RPC mode answers a
+ * `prompt` with an error only when the refusal precedes its preflight
+ * (`preflightResult(true)` is already the success response), which is how
+ * `AgentSession.prompt`'s compaction refusal arrives. The `Agent.prompt`
+ * guard ("Agent is already processing a prompt", a run live while the
+ * session's streaming flag is down) fires after preflight, so pi 0.84's RPC
+ * mode swallows it; it is matched for a pi that surfaces it (the reporter's
+ * in-process session did, #2370). Neither refusal touches the live run, so
+ * the bridge answers `TURN_BUSY` and the runtime keeps the turn.
+ */
+const PI_BUSY_REFUSAL_PATTERNS = [
+  /Cannot submit a prompt while compaction is in progress/u,
+  /Agent is already processing/u,
+];
+
+function isPiBusyRefusal(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return PI_BUSY_REFUSAL_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+function sendInputDispatchError(id: string | number, error: unknown): void {
+  sendError(
+    id,
+    isPiBusyRefusal(error) ? BRIDGE_JSON_RPC_ERRORS.TURN_BUSY : -32000,
+    error instanceof Error ? error.message : String(error),
+  );
 }
 
 async function handleTurnSteer(id: string | number, params: TurnSteerParams): Promise<void> {
@@ -1112,7 +1141,8 @@ async function handleTurnSteer(id: string | number, params: TurnSteerParams): Pr
     return;
   }
   if (threadSession.session.getIsCompacting()) {
-    sendError(id, -32000, "Cannot steer while context compaction is active");
+    // The compaction turn is live and pi takes no input during it.
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.TURN_BUSY, "Cannot steer while context compaction is active");
     return;
   }
   try {
@@ -1122,7 +1152,7 @@ async function handleTurnSteer(id: string | number, params: TurnSteerParams): Pr
     ]);
     sendResult(id, { threadId: params.threadId });
   } catch (error) {
-    sendError(id, -32000, error instanceof Error ? error.message : String(error));
+    sendInputDispatchError(id, error);
   }
 }
 

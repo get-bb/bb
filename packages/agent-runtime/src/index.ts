@@ -1,4 +1,8 @@
-export { AgentRuntimeRecoveryError, createAgentRuntime } from "./runtime.js";
+export {
+  AgentRuntimeRecoveryError,
+  AgentRuntimeTurnBusyError,
+  createAgentRuntime,
+} from "./runtime.js";
 export { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
 export type {
   AgentRuntime,

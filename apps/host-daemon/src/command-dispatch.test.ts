@@ -22,7 +22,10 @@ import {
   fetchDispatchTestArtifact,
   unexpectedProviderMaintenance,
 } from "../test/command/dispatch-helpers.js";
-import type { CommandOf } from "./command-dispatch-support.js";
+import {
+  isExpectedOnlineRpcFailureError,
+  type CommandOf,
+} from "./command-dispatch-support.js";
 import { RuntimeManager } from "./runtime-manager.js";
 
 const WORKSPACE_PATH = "/tmp/bb-command-dispatch-test";
@@ -581,10 +584,57 @@ describe("dispatchCommand", () => {
           threadStorageRootPath: "/tmp/bb-thread-storage",
         },
       ),
-    ).rejects.toThrow(
-      "Refusing to start a competing turn while thread-1 is still starting",
-    );
+    ).rejects.toMatchObject({
+      code: "thread_turn_busy",
+      message:
+        "Refusing to start a competing turn while thread-1 is still starting",
+    });
     expect(runtime.runTurn).not.toHaveBeenCalled();
+    expect(runtime.steerTurn).not.toHaveBeenCalled();
+  });
+
+  it("reports a runtime turn admission refusal as an expected thread_turn_busy failure", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+    });
+    await manager.ensureEnvironment({
+      environmentId: "env-1",
+      workspacePath: WORKSPACE_PATH,
+    });
+    runtime.setIdle("thread-1");
+    // The shared runtime refuses a competing start with its typed busy code
+    // (a turn is active or starting on the thread, or the bridge answered
+    // TURN_BUSY). The daemon must pass the code through unchanged and treat
+    // the failure as expected: the server keeps the thread active and
+    // re-queues the input, so nothing here warrants a warning.
+    const busy = Object.assign(
+      new Error(
+        'Refusing to start a competing turn for thread "thread-1" while another turn is active or starting',
+      ),
+      { code: "thread_turn_busy" },
+    );
+    vi.mocked(runtime.runTurn).mockRejectedValueOnce(busy);
+
+    let caught: unknown;
+    try {
+      await dispatchCommand(createTurnSubmitCommand({ mode: "start" }), {
+        dataDir: "/tmp/bb-data",
+        logger: silentLogger,
+        eventSink: { emit: vi.fn(), flush: vi.fn(async () => undefined) },
+        fetchProjectAttachment: async () => {
+          throw new Error("Unexpected project attachment fetch");
+        },
+        ...unexpectedProviderMaintenance,
+        runtimeManager: manager,
+        threadStorageRootPath: "/tmp/bb-thread-storage",
+      });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toMatchObject({ code: "thread_turn_busy" });
+    expect(isExpectedOnlineRpcFailureError(caught)).toBe(true);
     expect(runtime.steerTurn).not.toHaveBeenCalled();
   });
 

@@ -992,7 +992,10 @@ describe("createAgentRuntime lifecycle", () => {
           input: [promptTextInput({ text: "competing active turn" })],
           options: fullRuntimeOptions,
         }),
-      ).rejects.toThrow(/active or starting/);
+      ).rejects.toMatchObject({
+        code: "thread_turn_busy",
+        message: expect.stringMatching(/active or starting/),
+      });
       expect(
         recordedMethods(record).filter((method) => method === "turn/start"),
       ).toHaveLength(1);
@@ -1035,7 +1038,10 @@ describe("createAgentRuntime lifecycle", () => {
             input: [promptTextInput({ text: "competing pending turn" })],
             options: fullRuntimeOptions,
           }),
-        ).rejects.toThrow(/active or starting/);
+        ).rejects.toMatchObject({
+          code: "thread_turn_busy",
+          message: expect.stringMatching(/active or starting/),
+        });
         expect(
           recordedMethods(record).filter((method) => method === "turn/start"),
         ).toHaveLength(1);

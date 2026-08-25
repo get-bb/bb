@@ -176,6 +176,29 @@ export class AgentRuntimeRecoveryError extends Error {
 }
 
 /**
+ * A turn submission the thread cannot take right now: the runtime already
+ * has a turn active or starting on it, or the bridge answered `TURN_BUSY`
+ * (its provider is mid-run and will not queue the input). The live turn is
+ * untouched. `code` reaches the server as `thread_turn_busy`, which keeps the
+ * thread active and re-queues the input instead of failing the run (#2370).
+ */
+export class AgentRuntimeTurnBusyError extends Error {
+  readonly code = "thread_turn_busy" as const;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "AgentRuntimeTurnBusyError";
+  }
+}
+
+function isTurnBusyRejection(error: unknown): error is JsonRpcResponseError {
+  return (
+    error instanceof JsonRpcResponseError &&
+    error.code === BRIDGE_JSON_RPC_ERRORS.TURN_BUSY
+  );
+}
+
+/**
  * A `rateLimited { retryable: true }` rejection is retried on this ladder;
  * the failure after the last rung propagates as a typed error.
  */
@@ -931,7 +954,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       turnState.getActiveTurnId(threadId) !== null ||
       pendingTurnStarts.has(threadId)
     ) {
-      throw new Error(
+      throw new AgentRuntimeTurnBusyError(
         `Refusing to start a competing turn for thread "${threadId}" while another turn is active or starting`,
       );
     }
@@ -2200,7 +2223,19 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             });
           } catch (error) {
             pendingTurnStarts.delete(threadId);
+            // The refused start left the session as it found it. For the
+            // runtime that is idle (no turn, no pending start), so the idle
+            // clock restarts here as after any other refusal; a provider
+            // that is in fact mid-run re-marks the session busy with the
+            // turn events it emits, and those protect it from the reaper.
             markHostedProviderSessionIdle(threadId);
+            if (isTurnBusyRejection(error)) {
+              // The typed code lets the host keep the thread active and
+              // re-queue the input (#2370).
+              throw new AgentRuntimeTurnBusyError(error.message, {
+                cause: error,
+              });
+            }
             throw error;
           }
         },
@@ -2304,6 +2339,14 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
             ) {
               turnState.clearThread(threadId);
               return { status: "stale", activeTurnId: null };
+            }
+            // TURN_BUSY: the provider would not take the steer but the turn
+            // it targeted is still running. The turn state stays as it is;
+            // the typed code lets the host re-queue the input (#2370).
+            if (isTurnBusyRejection(error)) {
+              throw new AgentRuntimeTurnBusyError(error.message, {
+                cause: error,
+              });
             }
             throw error;
           }

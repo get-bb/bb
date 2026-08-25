@@ -29,15 +29,40 @@ export const deferredThreadMessagePayloadSchema = z.discriminatedUnion("kind", [
     input: z.array(promptInputSchema),
     systemMessageKind: systemMessageKindSchema,
     systemMessageSubject: systemMessageSubjectSchema.nullable(),
+    /**
+     * Set when the daemon refused the message as `thread_turn_busy`: the
+     * thread's live turn at that moment (null while its start was still
+     * pending). The flush skips the row while that is still the live turn,
+     * so a busy thread sees one attempt per turn rather than one per sweep
+     * (#2370). Null for a row held behind a pending interaction (#1650);
+     * rows persisted before the field existed parse as null.
+     */
+    heldForTurn: z
+      .object({ activeTurnId: z.string().nullable() })
+      .nullable()
+      .default(null),
   }),
 ]);
 export type DeferredThreadMessagePayload = z.infer<
   typeof deferredThreadMessagePayloadSchema
 >;
 
+export type DeferThreadMessageReason = "pending-interaction" | "turn-busy";
+
+const DEFER_LOG_MESSAGES: Record<DeferThreadMessageReason, string> = {
+  "pending-interaction":
+    "Thread awaits user interaction; deferred message until it settles",
+  "turn-busy":
+    "Thread's live turn refused the message; deferred until that turn is over",
+};
+
 export function deferThreadMessage(
   deps: Pick<AppDeps, "db" | "logger">,
-  args: { threadId: string; payload: DeferredThreadMessagePayload },
+  args: {
+    payload: DeferredThreadMessagePayload;
+    reason: DeferThreadMessageReason;
+    threadId: string;
+  },
 ): void {
   const row = createDeferredThreadMessage(deps.db, {
     threadId: args.threadId,
@@ -48,9 +73,10 @@ export function deferThreadMessage(
     {
       deferredMessageId: row.id,
       kind: args.payload.kind,
+      reason: args.reason,
       threadId: args.threadId,
     },
-    "Thread awaits user interaction; deferred message until it settles",
+    DEFER_LOG_MESSAGES[args.reason],
   );
 }
 

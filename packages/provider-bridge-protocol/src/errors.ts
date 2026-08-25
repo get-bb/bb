@@ -23,6 +23,14 @@ export const BRIDGE_JSON_RPC_ERRORS = {
   SESSION_NOT_RESTORABLE: -32002,
   /** thread/fork with a checkpoint on a bridge that only forks at the tip. */
   FORK_CHECKPOINT_UNSUPPORTED: -32003,
+  /**
+   * A turn/start or turn/steer the provider refused because it is mid-run
+   * (or compacting) and will not queue the input. The live turn is
+   * untouched: the bridge settles nothing and raises no session error. The
+   * runtime reports the rejection as `thread_turn_busy`, and the server keeps
+   * the thread active and parks the input in its queue (#2370).
+   */
+  TURN_BUSY: -32004,
 } as const;
 
 /**

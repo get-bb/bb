@@ -18,6 +18,10 @@ import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { requireThreadEnvironment } from "../lib/entity-lookup.js";
 import { deferThreadMessage } from "./deferred-thread-messages.js";
 import {
+  holdParentSystemMessageForBusyTurn,
+  isThreadTurnBusyError,
+} from "./thread-turn-busy.js";
+import {
   addRequestIdToTurnSubmitCommandPayload,
   buildExecutionOptions,
   prepareTurnSubmitCommandPayload,
@@ -296,6 +300,7 @@ async function queueActiveParentSystemMessage(
     command,
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onExpectedError: ({ error }) => holdOnBusyTurn(deps, args, error),
     onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
@@ -304,6 +309,28 @@ async function queueActiveParentSystemMessage(
     },
   });
   return true;
+}
+
+/**
+ * The daemon answered `thread_turn_busy`: the provider would not take the
+ * notice mid-run, and the server keeps the thread active rather than failing
+ * it. The notice must still reach the parent, so it is held for the turn
+ * that refused it (#2370).
+ */
+function holdOnBusyTurn(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: QueueReadyParentSystemMessageArgs,
+  error: Error,
+): void {
+  if (!isThreadTurnBusyError(error)) {
+    return;
+  }
+  holdParentSystemMessageForBusyTurn(deps, {
+    input: args.input,
+    systemMessageKind: args.systemMessageKind,
+    systemMessageSubject: args.systemMessageSubject,
+    threadId: args.thread.id,
+  });
 }
 
 async function queueReadyParentSystemMessage(
@@ -378,6 +405,14 @@ async function queueReadyParentSystemMessage(
     command: command.command,
     hostId: args.environment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    // Only a turn.submit can answer `thread_turn_busy` with its run kept
+    // alive; a failed thread.start still fails the run.
+    ...(command.mode === "turn.submit"
+      ? {
+          onExpectedError: ({ error }: { error: Error }) =>
+            holdOnBusyTurn(deps, args, error),
+        }
+      : {}),
     onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: args.thread.id },
@@ -412,13 +447,15 @@ export async function queueParentSystemMessage(
     // notice left the parent believing its child had gone silent (#1650). It
     // waits and flushes when the parent's interactions settle.
     deferThreadMessage(deps, {
-      threadId: parentThread.id,
       payload: {
         kind: "parent-system",
         input: args.input,
         systemMessageKind: args.systemMessageKind,
         systemMessageSubject: args.systemMessageSubject,
+        heldForTurn: null,
       },
+      reason: "pending-interaction",
+      threadId: parentThread.id,
     });
     return true;
   }

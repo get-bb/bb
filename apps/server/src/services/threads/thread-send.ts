@@ -3,7 +3,11 @@ import {
   getThread,
   requireThreadLifecycleEventApplied,
 } from "@bb/db";
-import type { DbConnection, DbTransaction } from "@bb/db";
+import type {
+  ClaimedQueuedThreadMessageRow,
+  DbConnection,
+  DbTransaction,
+} from "@bb/db";
 import type {
   ClientTurnRequestId,
   Environment,
@@ -44,6 +48,11 @@ import {
 } from "./thread-turn-dispatch.js";
 import { resolvePermissionEscalation } from "./thread-runtime-config.js";
 import {
+  isThreadTurnBusyError,
+  requeueInputForBusyTurn,
+  restoreQueuedMessagesForBusyTurn,
+} from "./thread-turn-busy.js";
+import {
   buildThreadStatusChangeMetadata,
   resolveThreadRuntimeState,
 } from "./thread-runtime-display.js";
@@ -73,6 +82,13 @@ type SendThreadMessagePayload = SendMessageRequest & {
 
 interface SendThreadMessageArgs {
   beforeAppendInTransaction?: SendThreadMessageTransactionPreflight;
+  /**
+   * The queue rows `beforeAppendInTransaction` consumes for this send. A
+   * `thread_turn_busy` refusal puts these rows back (same ids and grouping,
+   * head of the queue) instead of queueing the flattened payload at the
+   * tail. Absent for input that did not come from the queue.
+   */
+  consumedQueuedMessages?: readonly ClaimedQueuedThreadMessageRow[];
   environment: Environment;
   /**
    * Internal edit-message path. Presence forces a new provider session;
@@ -472,6 +488,36 @@ export async function sendThreadMessage(
   const permissionEscalation = resolvePermissionEscalation({
     initiator,
   });
+  // What goes back to the queue if the daemon answers `thread_turn_busy`:
+  // the rows a queued send consumed, as they were; otherwise the sender's
+  // own input, before the cross-thread envelope and the plugin mention
+  // context were applied, so the drain applies them exactly once.
+  const requeueOnBusyTurn = ({ error }: { error: Error }): void => {
+    if (!isThreadTurnBusyError(error)) {
+      return;
+    }
+    if (args.consumedQueuedMessages !== undefined) {
+      restoreQueuedMessagesForBusyTurn(deps, {
+        queuedMessages: args.consumedQueuedMessages,
+        threadId: thread.id,
+      });
+      return;
+    }
+    requeueInputForBusyTurn(deps, {
+      input: {
+        content:
+          payload.inputGroups !== undefined
+            ? groupedInputForRuntime(payload.inputGroups)
+            : payload.input,
+        senderThreadId,
+        model: execution.model,
+        reasoningLevel: execution.reasoningLevel,
+        permissionMode: execution.permissionMode,
+        serviceTier: execution.serviceTier,
+      },
+      threadId: thread.id,
+    });
+  };
 
   if (
     await dispatchTurnDuringReprovision({
@@ -603,6 +649,13 @@ export async function sendThreadMessage(
       ...(args.historyReplacement?.onCommandSettled !== undefined
         ? { onSettled: args.historyReplacement.onCommandSettled }
         : {}),
+      // Only a turn.submit can answer `thread_turn_busy` with its run kept
+      // alive (settleThreadCommandFailure exempts exactly that); a failed
+      // thread.start still fails the run, so its input is not queued behind
+      // an `error` thread.
+      ...(command.mode === "turn.submit"
+        ? { onExpectedError: requeueOnBusyTurn }
+        : {}),
       onError: ({ error }) => {
         deps.logger.warn(
           { err: error, threadId: thread.id },
@@ -673,6 +726,7 @@ export async function sendThreadMessage(
     command,
     hostId: readyEnvironment.hostId,
     timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+    onExpectedError: requeueOnBusyTurn,
     onError: ({ error }) => {
       deps.logger.warn(
         { err: error, threadId: thread.id },
