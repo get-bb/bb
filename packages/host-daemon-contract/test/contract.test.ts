@@ -948,9 +948,11 @@ const ACP_BRIDGE_LAUNCH = {
 } as const;
 
 describe("host-daemon command schemas", () => {
-  // Version 168 advertises Cursor's parameterized model picker through the
+  // Version 169 advertises Cursor's parameterized model picker through the
   // provider bridge options, keeps a curated bare-id primary list ahead of
   // "More models", and sends effort plus explicit Fast/default values.
+  // Version 168 carries deferred agent-only start context in the first
+  // provider-bound turn for an idle seeded fork.
   // Version 167 retries explicitly retryable online RPCs after response
   // timeouts; an enrolled daemon must share those at-least-once semantics.
   // Version 154 removes the codex AI-service commands: helper inference and
@@ -1044,7 +1046,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(168);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(169);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

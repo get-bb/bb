@@ -62,6 +62,11 @@ import {
 } from "../lib/lifecycle-api-errors.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import {
+  prependDeferredFirstTurnContext,
+  requireDeferredFirstTurnContextCurrent,
+  resolveDeferredFirstTurnContext,
+} from "./deferred-first-turn-context.js";
 
 type SendThreadMessageMode = SendMessageRequest["mode"];
 type TextPromptInput = Extract<PromptInput, { type: "text" }>;
@@ -442,6 +447,25 @@ export async function sendThreadMessage(
       ];
     }
   }
+  const deferredFirstTurnContext = resolveDeferredFirstTurnContext(
+    deps.db,
+    thread.id,
+  );
+  ({ input, inputGroups } = prependDeferredFirstTurnContext(
+    { input, ...(inputGroups !== undefined ? { inputGroups } : {}) },
+    deferredFirstTurnContext,
+  ));
+  const beforeAppendInTransaction: SendThreadMessageTransactionPreflight = ({
+    tx,
+  }) => {
+    args.beforeAppendInTransaction?.({ tx });
+    if (deferredFirstTurnContext) {
+      requireDeferredFirstTurnContextCurrent(tx, {
+        requestSequence: deferredFirstTurnContext.requestSequence,
+        threadId: thread.id,
+      });
+    }
+  };
   await validatePromptAttachmentReferences({
     dataDir: deps.config.dataDir,
     input,
@@ -475,7 +499,7 @@ export async function sendThreadMessage(
 
   if (
     await dispatchTurnDuringReprovision({
-      beforeRequestAppendInTransaction: args.beforeAppendInTransaction,
+      beforeRequestAppendInTransaction: beforeAppendInTransaction,
       deps,
       environment,
       execution,
@@ -551,7 +575,7 @@ export async function sendThreadMessage(
       : await prepareReadyThreadTurnCommand(deps, commandArgs);
     const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
       beforeAppendInTransaction: ({ tx }) => {
-        args.beforeAppendInTransaction?.({ tx });
+        beforeAppendInTransaction({ tx });
         ensureThreadCanStartRequest(thread);
       },
       db: deps.db,
@@ -649,7 +673,7 @@ export async function sendThreadMessage(
     requestId,
   });
   const queuedRequest = appendAndQueueSendThreadMessageInTransaction({
-    beforeAppendInTransaction: args.beforeAppendInTransaction,
+    beforeAppendInTransaction,
     db: deps.db,
     environmentId: thread.environmentId,
     execution,

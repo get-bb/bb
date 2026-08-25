@@ -1538,7 +1538,7 @@ export function listStoredClientTurnRequestRowsByKeys(
 }
 
 export function findStoredEventRow(
-  db: DbConnection,
+  db: DbQueryConnection,
   args: FindStoredEventRowArgs,
 ): StoredEventRow | null {
   return (

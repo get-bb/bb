@@ -250,17 +250,14 @@ export function recordAcceptedPromptHistoryEntry(
   deps: PromptHistoryRecordDeps,
   args: RecordAcceptedPromptHistoryEntryArgs,
 ): boolean {
-  // Empty input reaches this write path for turns that carry no prompt — a
-  // side-chat or fork preload starts the provider session before the first
-  // message, and createThreadRequestSchema deliberately allows input: []. The
-  // stored-input schema requires at least one item, so persisting an empty
-  // array would write a row the read path always skips. Reject it here;
-  // buildPromptHistoryEntries keeps skipping malformed rows as defense in
-  // depth for anything already persisted.
-  if (args.input.length === 0) {
+  // Prompt history is user-editable composer state. Provider-only context
+  // belongs on the accepted turn request, never in a recalled draft.
+  const input = args.input.filter((item) => item.visibility !== "agent-only");
+  // Empty input also reaches this path when an idle side-chat/fork provider
+  // session is preloaded. The stored schema requires at least one item.
+  if (input.length === 0) {
     return false;
   }
-
   const scope = resolveAcceptedPromptHistoryScope({
     initiator: args.initiator,
     target: args.target,
@@ -275,7 +272,7 @@ export function recordAcceptedPromptHistoryEntry(
     threadId: args.thread.id,
     scope,
     requestSequence: args.requestSequence,
-    input: args.input,
+    input,
   });
   return true;
 }
