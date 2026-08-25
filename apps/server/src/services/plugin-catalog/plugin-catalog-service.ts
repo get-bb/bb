@@ -441,9 +441,9 @@ export function createPluginCatalogService(deps: {
       // Bundled plugins are BB's own; attribute them like the seed entries.
       author: { name: "BB Team", url: "https://getbb.app" },
       installed: getInstalledPlugin(deps.db, entry.pluginId) !== undefined,
-      // Bundled plugins are counted under their own entry id: telemetry sends
-      // a plugin_id for them too, so the curated sidecar names them alongside
-      // the entries it lists.
+      // Bundled plugins are counted under their canonical plugin id: telemetry
+      // sends that id too, so the curated sidecar names them alongside the
+      // entries it lists.
       installs,
       compatible: problem === null,
       incompatibleReason: problem,
@@ -1180,7 +1180,7 @@ export function createPluginCatalogService(deps: {
               entry,
               manifest,
               icon?.hash ?? null,
-              curatedInstalls.get(entry.name) ?? null,
+              curatedInstalls.get(entry.pluginId) ?? null,
             ),
           };
         }),
