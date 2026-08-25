@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { jsonValueSchema } from "./json-value.js";
+import { pluginInputsSchema } from "./dispatch-gate.js";
+import { pluginIdSchema } from "./plugin-id.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
 import {
   promptInputSchema,
@@ -37,13 +38,6 @@ export const DISPATCH_HOLD_PLUGIN_HOLDER_PREFIX = "plugin:";
 export const DISPATCH_HOLD_CORE_HOLDER_PREFIX = "core:";
 
 /**
- * Plugin ids as produced by `derivePluginId`: lowercase alphanumerics and
- * dashes. Re-validated here so a holder string can never round-trip a value
- * the routes and CLI could not address.
- */
-const dispatchHoldPluginIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*$/u);
-
-/**
  * Who owns the hold and therefore who may release it. Modelled as a prefixed
  * string because that is what the `dispatch_holds.holder` column stores; the
  * template-literal arms keep the prefix discriminable at the type level
@@ -53,7 +47,7 @@ export const dispatchHoldHolderSchema = z.union([
   z.literal(DISPATCH_HOLD_USER_HOLDER),
   z.templateLiteral([
     DISPATCH_HOLD_PLUGIN_HOLDER_PREFIX,
-    dispatchHoldPluginIdSchema,
+    pluginIdSchema,
   ]),
   z.templateLiteral([
     DISPATCH_HOLD_CORE_HOLDER_PREFIX,
@@ -90,19 +84,6 @@ export const dispatchHoldReasonSchema = z
   .max(DISPATCH_HOLD_REASON_MAX_LENGTH);
 
 /**
- * Side-channel input addressed to a specific plugin's gates, keyed by plugin
- * id. Carried on the request that produced the hold so a release re-runs the
- * pipeline with the same plugin input the original dispatch had.
- */
-export const dispatchHoldPluginInputsSchema = z.record(
-  dispatchHoldPluginIdSchema,
-  jsonValueSchema,
-);
-export type DispatchHoldPluginInputs = z.infer<
-  typeof dispatchHoldPluginInputsSchema
->;
-
-/**
  * What a released `turn` hold dispatches.
  *
  * `inline` carries the whole turn: the prompt blocks the user wrote, the
@@ -118,7 +99,9 @@ export const dispatchHoldPayloadSchema = z.discriminatedUnion("kind", [
     kind: z.literal("inline"),
     input: z.array(promptInputSchema),
     execution: resolvedThreadExecutionOptionsSchema,
-    pluginInputs: dispatchHoldPluginInputsSchema,
+    // The request's plugin side-channel, carried so a release re-runs the gate
+    // pipeline with the same plugin input the original dispatch had.
+    pluginInputs: pluginInputsSchema,
   }),
   z.object({
     kind: z.literal("retry"),

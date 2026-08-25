@@ -821,6 +821,10 @@ export const queuedThreadMessages = sqliteTable(
     reasoningLevel: text("reasoning_level").notNull(),
     permissionMode: text("permission_mode").$type<PermissionMode>().notNull(),
     serviceTier: text("service_tier").notNull(),
+    // JSON `PluginInputs` from the send that queued this row, or NULL when the
+    // sender addressed no plugin. Persisted so the dispatch gates that run at
+    // drain time see the same plugin input the original send carried.
+    pluginInputs: text("plugin_inputs"),
     groupWithNext: integer("group_with_next", { mode: "boolean" })
       .notNull()
       .default(false),

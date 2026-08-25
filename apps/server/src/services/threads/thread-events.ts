@@ -60,6 +60,11 @@ interface ThreadEventTransactionDeps {
 }
 
 interface ClientTurnRequestedEventArgs {
+  /**
+   * Dispatch-gate provenance for this turn. Absent means no gate amended it —
+   * the ordinary case — which is why it is optional rather than nullable.
+   */
+  amendment?: { pluginId: string; originalInput?: PromptInput[] };
   continuationOfRequestId?: ClientTurnRequestId;
   environmentId: string | null;
   execution: ResolvedThreadExecutionOptions;
@@ -247,6 +252,14 @@ function buildClientTurnRequestedEventData(
     input: args.input,
     ...(args.inputGroups !== undefined
       ? { inputGroups: args.inputGroups }
+      : {}),
+    ...(args.amendment !== undefined
+      ? {
+          amendedByPluginId: args.amendment.pluginId,
+          ...(args.amendment.originalInput !== undefined
+            ? { originalInput: args.amendment.originalInput }
+            : {}),
+        }
       : {}),
     target: args.target,
     execution: args.execution,

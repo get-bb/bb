@@ -140,6 +140,77 @@ and reads nothing under that method, so the constant names a lane that no
 longer exists. Kept because 0.4.x published it; remove at the next major
 version.
 
+## `bb.experimental_dispatch` (`gate`, `release`, `report`)
+
+**What it does.** The one plugin surface that *decides* about a dispatch rather
+than observing it. `bb.experimental_dispatch.gate(stage, handler)` registers a
+gate at `"thread.create"` or `"turn.submit"`; the handler receives a typed
+context (project, environment/host, prompt blocks plus a plain-text view, the
+resolved execution tuple with per-field provenance, origin/parent provenance,
+this plugin's `pluginInputs` entry, and — when a hold is being released — the
+hold plus an `isReleaseReevaluation` flag) and answers `proceed` (optionally
+amending provider, model, reasoning level, service tier, permission mode,
+target environment or the message itself), `hold` (a durable dispatch hold with
+a reason and optional `resumeAt`), or `reject` (a synchronous 409 carrying the
+plugin's message). `release(holdId, { amend? })` and `report(holdId, update)`
+act on holds this plugin owns; both refuse another plugin's hold.
+
+Gates run as a deterministic chain in plugin install order with a per-stage
+override in app settings (`dispatchGateOrder`), amendments accumulate left to
+right, `reject` short-circuits, `hold` verdicts collect across a full pass so
+provider and model are final before anything is parked, and one hold row is
+created per pass owned by the first holder. The whole pass runs under a single
+server-wide async lock. A gate that throws or exceeds a 10s decision box fails
+the dispatch with the plugin named (fail-closed, the `deriveProviderOptions`
+precedent). Amendment values are validated against the provider registry, the
+host permission ceiling and the environment schema; an invalid amendment fails
+the dispatch the same way.
+
+**Audit before stabilizing.**
+
+- **The stage set and the decision union.** `turn.failed` is planned and
+  returns a *different* union (`none | retry`). `PluginDispatchGateStages` maps
+  stage → `{ context, decision }` so that arrives additively, but confirm the
+  shape survives contact with a third stage before freezing it.
+- **`PluginDispatchAmendments` vs `PluginDispatchCreateAmendments`.** The split
+  keeps `providerId`/`environment` off follow-up turns structurally. Two
+  interfaces with an `extends` is the cheapest encoding; check whether a
+  per-stage mapped type reads better once a third stage exists. Also settle
+  whether an `environment` amendment should be honoured when a never-started
+  thread's first-turn hold is released — the plan says yes, and it is currently
+  refused (re-resolving an environment intent at release means re-running the
+  whole creation environment pipeline).
+- **The context DTOs.** `project`/`environment`/`host` are the `@bb/domain`
+  records and `thread` is `ThreadResponse`. Confirm these are the shapes we
+  want frozen into a plugin contract, and that nothing on them is
+  server-internal.
+- **The blast radius of fail-closed.** One broken gate blocks its stage until
+  the plugin is disabled. The mitigations shipped (plugin named in every error,
+  10s box, Release-now, no hold row on the no-gates path) are what makes it
+  acceptable; re-check after the first real third-party gate.
+- **The single server-wide lock.** It is what makes count-based gates correct
+  and what makes a slow gate everyone's problem. Decide whether to scope it per
+  project or host before stabilizing.
+- **Ownership as the authorization model.** `release`/`report` allow exactly
+  the holds a plugin created. Confirm there is no case for a delegated release
+  (a supervisor plugin releasing another's hold) that a `403` would block.
+- **`pluginInputs` sizing.** 8KB total per request, enforced at the schema
+  boundary. Confirm the budget and whether per-plugin (rather than total) is
+  the right unit.
+
+## `dispatch.held` / `dispatch.released` / `dispatch.cancelled` (`bb.events.on`)
+
+**What it does.** Hold lifecycle events on the existing observe-only
+`bb.events.on` registry, each carrying the `DispatchHoldResponse` DTO that
+`GET /holds/:id` serves. `dispatch.cancelled` is an owner's teardown signal.
+
+**Audit before stabilizing.** These are the first non-thread events on
+`bb.events.on`, so the interface is still called `PluginThreadEventPayloads`
+and its handler type `PluginThreadEventHandler`; renaming both project-wide is
+part of stabilizing. Decide too whether every plugin should see every hold (it
+does today, and filtering on `hold.holder` is the documented pattern) or
+whether owners should only see their own.
+
 ## `bb.branding.experimental_icons` (manifest) and namespaced presentation glyphs
 
 **What it does.** A plugin ships SVG files and declares a name → file map in

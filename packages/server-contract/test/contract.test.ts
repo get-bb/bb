@@ -282,6 +282,30 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
+      "pluginInputs is a side channel addressed to specific plugins; omitting it means the caller addressed no plugin at all, which is not the same as an empty map addressed to nobody.",
+    fields: [
+      "createThreadRequestSchema.pluginInputs",
+      "sendMessageRequestSchema.pluginInputs",
+      "createQueuedMessageRequestSchema.pluginInputs",
+    ],
+  },
+  {
+    reason:
+      "GET /threads/count filters are all genuinely absent by default: omitting one does not filter on it, and groups is present only when groupBy was asked for.",
+    fields: [
+      "threadCountQuerySchema.status",
+      "threadCountQuerySchema.hostId",
+      "threadCountQuerySchema.providerId",
+      "threadCountQuerySchema.projectId",
+      "threadCountQuerySchema.parentThreadId",
+      "threadCountQuerySchema.groupBy",
+      "threadCountQuerySchema.includeArchived",
+      "threadCountQuerySchema.includeHidden",
+      "threadCountResponseSchema.groups",
+    ],
+  },
+  {
+    reason:
       "The hold list is unfiltered by default: omitting threadId or holder means every live hold, which is what a cross-thread pending view asks for.",
     fields: [
       "dispatchHoldListQuerySchema.threadId",
@@ -1820,6 +1844,8 @@ describe("server-contract clients", () => {
         contract.systemExecutionOptionsQuerySchema,
       systemProvidersQuerySchema: contract.systemProvidersQuerySchema,
       threadEventsQuerySchema: contract.threadEventsQuerySchema,
+      threadCountQuerySchema: contract.threadCountQuerySchema,
+      threadCountResponseSchema: contract.threadCountResponseSchema,
       threadListQuerySchema: contract.threadListQuerySchema,
       threadPendingInteractionsResponseSchema:
         contract.threadPendingInteractionsResponseSchema,

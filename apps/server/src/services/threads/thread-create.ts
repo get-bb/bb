@@ -12,6 +12,7 @@ import type {
   ThreadVisibility,
 } from "@bb/domain";
 import { DISPATCH_HOLD_USER_HOLDER } from "@bb/domain";
+import type { DispatchHoldHolder } from "@bb/domain";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -38,6 +39,15 @@ import {
   createThreadDispatchHold,
   SCHEDULED_DISPATCH_HOLD_REASON,
 } from "./dispatch-holds.js";
+import {
+  dispatchExecutionSources,
+  dispatchGateHolder,
+  dispatchHoldReasonForPass,
+  hasDispatchAmendments,
+  hasDispatchGates,
+  runDispatchGatePass,
+  type DispatchAmendmentResult,
+} from "./dispatch-gates.js";
 import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 import {
   createThreadRecord,
@@ -417,6 +427,7 @@ async function createProvisioningThread(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
+    pluginAmended: boolean;
   },
 ) {
   const thread = createThreadRecord(deps, {
@@ -468,6 +479,7 @@ async function createProvisioningThread(
   }
   rememberProjectExecutionDefaultsForCreate(deps, {
     execution,
+    pluginAmended: args.pluginAmended,
     request: args.request,
   });
   if (shouldAdvanceProvisioningBeforeResponse(args.environmentIntent)) {
@@ -479,6 +491,19 @@ async function createProvisioningThread(
     scheduleThreadProvisioningAdvance(deps, context, thread.id);
   }
   return getThreadSafe(deps, thread.id);
+}
+
+/**
+ * What a held creation parks its first turn under. Phase 1 only ever produced
+ * a user-owned `holdUntil` hold; a `thread.create` gate verdict produces the
+ * same row with a plugin holder and the pass's reason, which is why this is a
+ * descriptor rather than a bare timestamp.
+ */
+interface HeldThreadDispatchHold {
+  holder: DispatchHoldHolder;
+  reason: string;
+  resumeAt: number | null;
+  userReleasable: boolean;
 }
 
 /**
@@ -500,7 +525,8 @@ async function createHeldThread(
   deps: ThreadCreateDeps,
   args: CreateProvisioningThreadArgs & {
     environmentIntent: ThreadProvisionEnvironmentIntent;
-    holdUntil: number;
+    hold: HeldThreadDispatchHold;
+    pluginAmended: boolean;
   },
 ) {
   const thread = createThreadRecord(deps, {
@@ -531,16 +557,16 @@ async function createHeldThread(
     createThreadDispatchHold(deps, {
       threadId: thread.id,
       environmentId: args.environmentId,
-      holder: DISPATCH_HOLD_USER_HOLDER,
+      holder: args.hold.holder,
       payload: {
         kind: "inline",
         input: args.request.input,
         execution,
-        pluginInputs: {},
+        pluginInputs: args.request.pluginInputs ?? {},
       },
-      reason: SCHEDULED_DISPATCH_HOLD_REASON,
-      resumeAt: args.holdUntil,
-      userReleasable: true,
+      reason: args.hold.reason,
+      resumeAt: args.hold.resumeAt,
+      userReleasable: args.hold.userReleasable,
       threadStartContext: {
         environmentIntent: args.environmentIntent,
         fork: args.fork?.descriptor ?? null,
@@ -562,6 +588,7 @@ async function createHeldThread(
   }
   rememberProjectExecutionDefaultsForCreate(deps, {
     execution,
+    pluginAmended: args.pluginAmended,
     request: args.request,
   });
   return getThreadSafe(deps, thread.id);
@@ -708,13 +735,106 @@ export async function createThreadFromRequest(
     projectId: requestInput.projectId,
   });
   await deps.providerRegistry.whenRegistrationsSettled();
-  const { executionDefaults, providerId, requestedModel } =
+  let { executionDefaults, providerId, requestedModel } =
     resolveProjectExecutionDefaultsForCreate(deps, {
       executionInputSources: requestInput.executionInputSources,
       model: requestInput.model,
       projectId: requestInput.projectId,
       providerId: requestInput.providerId,
     });
+  // The `thread.create` gate pass: defaults are resolved, nothing is inserted
+  // yet, and no environment work has started — so a hold here costs no
+  // worktree, no setup script and no host resources.
+  //
+  // A `holdUntil` request skips it deliberately. That dispatch is not
+  // advancing now, and the plan settles that a user hold is not a gate
+  // verdict; the pass runs when the timer releases it instead.
+  const gateOutcome =
+    requestInput.holdUntil === undefined && hasDispatchGates("thread.create")
+      ? await runDispatchGatePass(deps, {
+          stage: "thread.create",
+          thread: null,
+          threadResponse: null,
+          project,
+          // Only a reuse request already names an environment; every other
+          // shape resolves one after this pass, so the gate sees null.
+          environmentId:
+            requestInput.environment.type === "reuse"
+              ? requestInput.environment.environmentId
+              : null,
+          input: requestInput.input,
+          requestedExecution: {
+            providerId,
+            model: requestedModel ?? executionDefaults?.model ?? null,
+            reasoningLevel:
+              requestInput.reasoningLevel ??
+              executionDefaults?.reasoningLevel ??
+              null,
+            serviceTier:
+              requestInput.serviceTier ?? executionDefaults?.serviceTier ?? null,
+            permissionMode:
+              requestInput.permissionMode ??
+              executionDefaults?.permissionMode ??
+              null,
+          },
+          executionSources: dispatchExecutionSources(
+            requestInput.executionInputSources ?? {},
+          ),
+          origin: requestInput.origin,
+          originPluginId: requestInput.originPluginId ?? null,
+          startedOnBehalfOf: requestInput.startedOnBehalfOf,
+          parentThreadId: requestInput.parentThreadId ?? null,
+          pluginInputs: requestInput.pluginInputs ?? {},
+          release: null,
+        })
+      : null;
+  const amendments: DispatchAmendmentResult | null =
+    gateOutcome?.amendments ?? null;
+  if (amendments !== null && hasDispatchAmendments(amendments)) {
+    if (amendments.input !== null) requestInput.input = amendments.input;
+    if (amendments.environment !== null) {
+      // A gate may amend to the same `project-default` marker a caller can
+      // send, so it resolves through the same server-owned policy the request
+      // did rather than reaching provisioning as a marker.
+      requestInput.environment =
+        amendments.environment.type === "project-default"
+          ? await resolveProjectDefaultThreadEnvironment(deps, {
+              projectId: requestInput.projectId,
+            })
+          : amendments.environment;
+    }
+    if (amendments.reasoningLevel !== null) {
+      requestInput.reasoningLevel = amendments.reasoningLevel;
+    }
+    if (amendments.serviceTier !== null) {
+      requestInput.serviceTier = amendments.serviceTier;
+    }
+    if (amendments.permissionMode !== null) {
+      requestInput.permissionMode = amendments.permissionMode;
+    }
+    if (amendments.providerId !== null || amendments.model !== null) {
+      // A new provider brings its own stored defaults, so the whole default
+      // resolution is redone rather than patched — the same call, with the
+      // amended values marked `plugin` so they are used but never remembered.
+      const amended = resolveProjectExecutionDefaultsForCreate(deps, {
+        executionInputSources: {
+          ...requestInput.executionInputSources,
+          ...(amendments.providerId !== null
+            ? { providerId: "plugin" as const }
+            : {}),
+          ...(amendments.model !== null ? { model: "plugin" as const } : {}),
+        },
+        model: amendments.model ?? requestInput.model,
+        projectId: requestInput.projectId,
+        providerId: amendments.providerId ?? requestInput.providerId,
+      });
+      executionDefaults = amended.executionDefaults;
+      providerId = amended.providerId;
+      requestedModel = amended.requestedModel;
+      requestInput.model = amended.requestedModel ?? requestInput.model;
+      requestInput.providerId = providerId;
+    }
+  }
   const {
     originKind: _requestedOriginKind,
     parentThreadId: _requestedParentThreadId,
@@ -889,13 +1009,36 @@ export async function createThreadFromRequest(
       : {}),
     request,
   };
-  const thread =
+  const pluginAmended = amendments !== null && hasDispatchAmendments(amendments);
+  // Three outcomes, in priority order: a gate held the pass (its verdict owns
+  // the row), the caller scheduled the send (`holdUntil`, user-owned), or the
+  // thread starts now. A `holdUntil` request never reaches a gate, so the two
+  // hold branches cannot both apply.
+  const gateHold =
+    gateOutcome?.kind === "hold"
+      ? ({
+          holder: dispatchGateHolder(gateOutcome.holder.pluginId),
+          reason: dispatchHoldReasonForPass(gateOutcome),
+          resumeAt: gateOutcome.holder.resumeAt,
+          // Release-now is how a user overrides a plugin's decision, and the
+          // pass that runs then skips the owning gate for exactly that reason.
+          userReleasable: true,
+        } satisfies HeldThreadDispatchHold)
+      : null;
+  const scheduledHold =
     request.holdUntil === undefined
-      ? await createProvisioningThread(deps, createArgs)
-      : await createHeldThread(deps, {
-          ...createArgs,
-          holdUntil: request.holdUntil,
-        });
+      ? null
+      : ({
+          holder: DISPATCH_HOLD_USER_HOLDER,
+          reason: SCHEDULED_DISPATCH_HOLD_REASON,
+          resumeAt: request.holdUntil,
+          userReleasable: true,
+        } satisfies HeldThreadDispatchHold);
+  const hold = gateHold ?? scheduledHold;
+  const thread =
+    hold === null
+      ? await createProvisioningThread(deps, { ...createArgs, pluginAmended })
+      : await createHeldThread(deps, { ...createArgs, hold, pluginAmended });
   deps.telemetry.capture({
     name: "thread_created",
     properties: {

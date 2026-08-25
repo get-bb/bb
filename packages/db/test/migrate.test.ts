@@ -312,6 +312,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   db.$client.prepare("DROP TABLE IF EXISTS marketplaces").run();
   dropMarketplaceCatalogSchema(db);
   dropEventParentToolCallIdColumn(db);
+  dropQueuedMessagePluginInputsColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS plugins").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_kv").run();
   db.$client.prepare("DROP TABLE IF EXISTS plugin_settings").run();
@@ -682,6 +683,22 @@ function dropMarketplaceStatsColumn(db: DbConnection): void {
   }
 }
 
+/**
+ * The dispatch-hold migration adds the queued-message plugin-input sidecar
+ * column. A rewind that clears its journal row must drop the column so the
+ * replay's ADD does not hit a table that already has it.
+ */
+function dropQueuedMessagePluginInputsColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (columns.some((column) => column.name === "plugin_inputs")) {
+    db.$client
+      .prepare("ALTER TABLE queued_thread_messages DROP COLUMN plugin_inputs")
+      .run();
+  }
+}
+
 function dropEnvironmentNameColumn(db: DbConnection): void {
   db.$client.prepare("ALTER TABLE environments DROP COLUMN name").run();
 }
@@ -753,6 +770,7 @@ function dropQueuedMessageSenderThreadIdColumn(db: DbConnection): void {
 
 function dropPost0023Tables(db: DbConnection): void {
   dropEventParentToolCallIdColumn(db);
+  dropQueuedMessagePluginInputsColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
   dropProjectGitRemoteUrlColumn(db);
@@ -1545,6 +1563,7 @@ describe("migrate", () => {
         providerOrder: [],
         defaultProviderId: null,
         streamerMode: false,
+        dispatchGateOrder: {},
       });
       expect(
         db.$client
@@ -1869,6 +1888,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
+        pluginInputs: null,
       });
       const inheritedQueue = createQueuedThreadMessage(db, noopNotifier, {
         threadId: sideChatWithHistory.id,
@@ -1877,6 +1897,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
+        pluginInputs: null,
       });
       const fallbackQueue = createQueuedThreadMessage(db, noopNotifier, {
         threadId: sideChatWithoutHistory.id,
@@ -1885,6 +1906,7 @@ describe("migrate", () => {
         permissionMode: "full",
         reasoningLevel: "medium",
         serviceTier: "default",
+        pluginInputs: null,
       });
       db.$client
         .prepare(
@@ -1956,6 +1978,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       migrate(db);
@@ -2360,6 +2383,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(
@@ -2461,6 +2485,7 @@ describe("migrate", () => {
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
+      dropQueuedMessagePluginInputsColumn(db);
 
       restoreLegacyThreadOriginColumn(db);
       expect(() => migrate(db)).not.toThrow();
@@ -5029,6 +5054,7 @@ describe("migrate", () => {
 
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
+      dropQueuedMessagePluginInputsColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

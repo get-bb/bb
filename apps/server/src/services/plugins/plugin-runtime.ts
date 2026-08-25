@@ -60,7 +60,12 @@ import { buildPluginProviderRegistration } from "../providers/plugin-provider-re
 import type { ProviderInstallRank } from "../providers/provider-registry.js";
 import { BUNDLED_PLUGINS } from "./builtin-registry.js";
 import { readPluginSettingsValuesSync } from "./plugin-settings.js";
-import type { PluginSettingDescriptors } from "@get-bb/plugin-sdk";
+import type {
+  PluginDispatchGateStage,
+  PluginSettingDescriptors,
+} from "@get-bb/plugin-sdk";
+import type { DispatchHoldResponse } from "@bb/server-contract";
+import type { DispatchGateRegistration } from "./dispatch-gate-registry.js";
 import {
   isPluginSdkRangeSatisfied,
   pluginSdkRangeProblem,
@@ -601,6 +606,22 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     );
   }
 
+  /**
+   * The gates registered for one stage, in plugin install order (the `loaded`
+   * map's insertion order, which is the order `listInstalledPlugins` returns).
+   * The runner reorders from settings on top of this.
+   */
+  function listDispatchGates<S extends PluginDispatchGateStage>(
+    stage: S,
+  ): DispatchGateRegistration<S>[] {
+    const registrations: DispatchGateRegistration<S>[] = [];
+    for (const [id, plugin] of loaded) {
+      const handler = plugin.handle.dispatchGates[stage];
+      if (handler !== null) registrations.push({ pluginId: id, handler });
+    }
+    return registrations;
+  }
+
   function hasThreadEventHandlers(event: PluginThreadEventName): boolean {
     if (loaded.size === 0) return false;
     for (const plugin of loaded.values()) {
@@ -694,6 +715,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
       }
     });
+  }
+
+  function buildDispatchHoldEmitter(
+    event: Extract<PluginThreadEventName, `dispatch.${string}`>,
+  ): (hold: DispatchHoldResponse) => void {
+    return (hold) => {
+      emitThreadEvent(event, () => ({ hold }));
+    };
   }
 
   function buildThreadDto(thread: Thread) {
@@ -1267,6 +1296,22 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       reportAgentToolProblem: (message) => {
         reportAgentToolProblem(row.id, message);
       },
+      releaseDispatchHold: ({ holdId, amend }) => {
+        if (!deps.dispatchHolds) {
+          return Promise.reject(
+            new Error("dispatch holds are unavailable in this host"),
+          );
+        }
+        return deps.dispatchHolds.release({ pluginId: row.id, holdId, amend });
+      },
+      reportDispatchHold: ({ holdId, update }) => {
+        if (!deps.dispatchHolds) {
+          return Promise.reject(
+            new Error("dispatch holds are unavailable in this host"),
+          );
+        }
+        return deps.dispatchHolds.report({ pluginId: row.id, holdId, update });
+      },
       requestInteraction: (args) => {
         if (!deps.pendingInteractions) {
           throw new Error("Plugin interactions are unavailable in this host");
@@ -1660,12 +1705,14 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     checkPluginSdkRange,
     disposeAll,
     disposeOne,
+    buildDispatchHoldEmitter,
     emitThreadEvent,
     handlerStats,
     handleUncaughtException,
     hungServices,
     invokeWrapped,
     isBuiltinPluginId,
+    listDispatchGates,
     identities,
     isPackagedBuiltinEntry,
     loadAll,

@@ -15,7 +15,11 @@ import type {
   DispatchHoldPayload,
   DispatchHoldReleaseKind,
 } from "@bb/domain";
-import type { DbConnection, DbQueryConnection } from "../connection.js";
+import type {
+  DbConnection,
+  DbQueryConnection,
+  DbTransaction,
+} from "../connection.js";
 import { createDispatchHoldId } from "../ids.js";
 import { queryInSqliteVariableBatches } from "./events.js";
 import { dispatchHolds } from "../schema.js";
@@ -57,7 +61,7 @@ export interface UpdateDispatchHoldReportInput {
 }
 
 export function createDispatchHold(
-  db: DbConnection,
+  db: DbConnection | DbTransaction,
   input: CreateDispatchHoldInput,
 ): DispatchHoldRow {
   const row: DispatchHoldRow = {

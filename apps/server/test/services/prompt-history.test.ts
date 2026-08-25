@@ -398,6 +398,7 @@ describe("prompt history service", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(

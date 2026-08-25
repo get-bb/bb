@@ -177,6 +177,8 @@ import type {
   ThreadFilesRawQuery,
   ThreadGetQuery,
   ThreadHostFileContentQuery,
+  ThreadCountQuery,
+  ThreadCountResponse,
   ThreadListQuery,
   ThreadListResponse,
   ThreadConversationOutlineResponse,
@@ -289,6 +291,7 @@ import {
   threadFilesRawQuerySchema,
   threadGetQuerySchema,
   threadHostFileContentQuerySchema,
+  threadCountQuerySchema,
   threadListQuerySchema,
   threadOpenRequestSchema,
   threadPaneActionRequestSchema,
@@ -913,6 +916,19 @@ export const publicApiRoutes = {
         threadListQuerySchema,
       ),
       response: jsonResponse<ThreadListResponse>(),
+    }),
+    /**
+     * Grouped `SELECT count(*)` over threads. Exists because a plugin gate
+     * that limits concurrency must count without loading: `threads.list`
+     * would page rows into memory and still miscount past its limit.
+     */
+    count: defineRoute({
+      path: "/threads/count",
+      method: "get",
+      request: optionalQueryRequest<EmptyInput, ThreadCountQuery>(
+        threadCountQuerySchema,
+      ),
+      response: jsonResponse<ThreadCountResponse>(),
     }),
     search: defineRoute({
       path: "/threads/search",

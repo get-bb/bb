@@ -60,6 +60,7 @@ export {
 export {
   createThread,
   countLiveThreadsInEnvironment,
+  countThreads,
   countNonDeletedAssignedChildThreads,
   getThread,
   getThreadExecutionOverride,
@@ -98,10 +99,14 @@ export {
 export type {
   ApplyThreadLifecycleEventArgs,
   ApplyThreadLifecycleEventOutcome,
+  CountThreadsGroupBy,
+  CountThreadsOptions,
+  CountThreadsResult,
   ReorderPinnedThreadResult,
   ThreadSearchHighlightRange,
   ThreadSearchMatch,
   ThreadSearchResult,
+  ThreadCountGroupRow,
   ThreadSearchResultGroup,
   ThreadWithPendingInteractionState,
   ThreadExecutionOverride,

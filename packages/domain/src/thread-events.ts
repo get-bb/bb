@@ -104,6 +104,14 @@ export const turnRequestEventDataSchema = z.object({
   systemMessageSubject: systemMessageSubjectSchema.nullable().optional(),
   input: z.array(promptInputSchema),
   inputGroups: z.array(z.array(promptInputSchema).min(1)).min(1).optional(),
+  // Dispatch-gate provenance. Omitted means no gate amended this turn, which
+  // is the overwhelmingly common case and the reason these are optional rather
+  // than nullable: a null would claim "a gate ran and changed nothing".
+  /** The plugin whose gate amended this turn's execution or input. */
+  amendedByPluginId: z.string().min(1).optional(),
+  /** The prompt blocks as the caller wrote them, kept only when a gate
+   * replaced them — the audit trail for a silently rewriting plugin. */
+  originalInput: z.array(promptInputSchema).optional(),
   target: turnRequestTargetSchema,
   request: z.object({
     method: z.enum(["thread/start", "turn/start"]),

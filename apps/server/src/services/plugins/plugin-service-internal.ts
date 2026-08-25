@@ -1,9 +1,15 @@
 import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
-import type { DynamicTool, Thread } from "@bb/domain";
+import type {
+  DispatchHoldReportUpdate,
+  DynamicTool,
+  Thread,
+} from "@bb/domain";
+import type { PluginDispatchAmendments } from "@get-bb/plugin-sdk";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
 import {
   pluginUpdateCheckEntrySchema,
+  type DispatchHoldResponse,
   type InstalledPlugin,
   type PluginApplyUpdateResult,
   type PluginRuntimeStatus,
@@ -78,6 +84,25 @@ export interface PluginServiceDeps {
    * (dispatch holds it owns) is released here instead of waiting for a sweep.
    */
   onPluginUnregistered?: (pluginId: string) => void;
+  /**
+   * Owner-scoped hold operations behind `bb.experimental_dispatch.release` and
+   * `.report`. Assembled in server.ts where the full thread services exist;
+   * omitted only by isolated plugin-runtime tests, where either call throws.
+   */
+  dispatchHolds?: {
+    release(args: {
+      pluginId: string;
+      holdId: string;
+      amend: PluginDispatchAmendments | undefined;
+    }): Promise<void>;
+    report(args: {
+      pluginId: string;
+      holdId: string;
+      update: DispatchHoldReportUpdate;
+    }): Promise<boolean>;
+  };
+  /** Per-gate decision box; tests shrink it to exercise the timeout path. */
+  dispatchGateTimeoutMs?: number;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
@@ -184,6 +209,14 @@ export interface PluginThreadEventEmitter {
   emitThreadFailed(thread: Thread): void;
   emitThreadArchived(thread: Thread): void;
   emitThreadDeleted(thread: Thread): void;
+  /**
+   * Hold lifecycle. The row is already in its new state when these fire; the
+   * DTO is built once and shared by every listener, exactly like the thread
+   * events above.
+   */
+  emitDispatchHeld(hold: DispatchHoldResponse): void;
+  emitDispatchReleased(hold: DispatchHoldResponse): void;
+  emitDispatchCancelled(hold: DispatchHoldResponse): void;
 }
 
 export type PluginWireLookup<T> =

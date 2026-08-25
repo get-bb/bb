@@ -160,6 +160,7 @@ const BB_PLUGIN_API_KEYS = [
   "server",
   "hosts",
   "experimental_aiServices",
+  "experimental_dispatch",
   "sdk",
   "onDispose",
 ] as const satisfies readonly (keyof BbPluginApi)[];
@@ -209,6 +210,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.failed": ["thread", "error"],
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
+  "dispatch.held": ["hold"],
+  "dispatch.released": ["hold"],
+  "dispatch.cancelled": ["hold"],
 } as const satisfies {
   [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
 };

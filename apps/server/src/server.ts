@@ -28,6 +28,11 @@ import {
 } from "./services/plugins/plugin-service.js";
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
+import { setDispatchGateProvider } from "./services/plugins/dispatch-gate-registry.js";
+import {
+  releaseDispatchHoldForOwnerPlugin,
+  reportDispatchHoldForOwnerPlugin,
+} from "./services/threads/dispatch-hold-owner.js";
 import { requestDeferredThreadMessageFlush } from "./services/threads/thread-send-request.js";
 import { releaseDispatchHoldsForUnregisteredPlugin } from "./services/threads/dispatch-hold-sweeps.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
@@ -575,6 +580,21 @@ export function createApp(
         },
       );
     },
+    // `bb.experimental_dispatch.release` / `.report`, scoped to the calling
+    // plugin. Ownership is checked here rather than in the plugin API so one
+    // rule covers the SDK, the routes and the CLI.
+    dispatchHolds: {
+      release: ({ pluginId, holdId, amend }) =>
+        releaseDispatchHoldForOwnerPlugin(deps, { pluginId, holdId, amend }),
+      report: ({ pluginId, holdId, update }) =>
+        Promise.resolve(
+          reportDispatchHoldForOwnerPlugin(deps, {
+            pluginId,
+            holdId,
+            update,
+          }),
+        ),
+    },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
@@ -582,6 +602,10 @@ export function createApp(
     requestDeferredThreadMessageFlush(deps, threadId);
   });
   setPluginThreadEventEmitter(pluginService.events);
+  // Bridge the dispatch pipeline to this service's gates. Until this runs
+  // there are no gates, which is exactly the zero-overhead path.
+  setDispatchGateProvider(pluginService.dispatchGates);
+  // Bridge runtime-config assembly to plugin skills + context (§4.4).
   setPluginAgentContributions(pluginService);
   const publicApi = new Hono();
   publicApi.use("*", async (context, next) => {

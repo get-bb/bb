@@ -1,8 +1,9 @@
 import { getThread, type DispatchHoldRow } from "@bb/db";
-import type {
-  DispatchHoldInlinePayload,
-  DispatchHoldReleaseKind,
-  Thread,
+import {
+  DISPATCH_HOLD_PLUGIN_HOLDER_PREFIX,
+  type DispatchHoldInlinePayload,
+  type DispatchHoldReleaseKind,
+  type Thread,
 } from "@bb/domain";
 import type { SendMessageRequest } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
@@ -15,11 +16,22 @@ import {
   parkDispatchHoldForOfflineHost,
 } from "./dispatch-hold-core.js";
 import {
+  createThreadDispatchHold,
   parseDispatchHoldPayload,
   parseDispatchHoldThreadStartContext,
   settleDispatchHold,
   type DispatchHoldThreadStartContext,
 } from "./dispatch-holds.js";
+import {
+  dispatchExecutionSources,
+  dispatchGateHolder,
+  dispatchHoldReasonForPass,
+  hasDispatchAmendments,
+  hasDispatchGates,
+  isDispatchReleaseReheldRecently,
+  runDispatchGatePass,
+} from "./dispatch-gates.js";
+import { requirePublicProject } from "../lib/entity-lookup.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import { resolveThreadHostCommandEnvironment } from "./thread-command-environment.js";
 import { stopThreadForCurrentState } from "./thread-lifecycle.js";
@@ -59,8 +71,23 @@ function releasedHoldSendRequest(
     permissionMode: payload.execution.permissionMode,
     reasoningLevel: payload.execution.reasoningLevel,
     serviceTier: payload.execution.serviceTier,
+    // The gate pass re-runs at release, so it must see the same plugin input
+    // the original request addressed to it.
+    ...(Object.keys(payload.pluginInputs).length > 0
+      ? { pluginInputs: payload.pluginInputs }
+      : {}),
   };
 }
+
+/**
+ * The plugin a `plugin:` hold belongs to, or null for `user`/`core:` holds.
+ */
+export function dispatchHoldOwnerPluginId(hold: DispatchHoldRow): string | null {
+  return hold.holder.startsWith(DISPATCH_HOLD_PLUGIN_HOLDER_PREFIX)
+    ? hold.holder.slice(DISPATCH_HOLD_PLUGIN_HOLDER_PREFIX.length)
+    : null;
+}
+
 
 /**
  * Cold-start dispatch: the thread exists but has never run, so the release
@@ -69,14 +96,117 @@ function releasedHoldSendRequest(
  * stack. Workspace readiness and the first turn are then ordered by the
  * existing provisioning machinery, unchanged.
  */
-function dispatchHeldThreadStart(
+/**
+ * Re-runs the `thread.create` pass for a cold-start hold that is releasing.
+ *
+ * Returns the payload to dispatch (amended when a gate amended it), or null
+ * when the pass voted to hold again — in which case a fresh hold carrying the
+ * same start context replaces the one just released, and the thread stays
+ * exactly where it was: `idle`, unprovisioned, with its first turn parked.
+ */
+async function reevaluateHeldThreadStart(
   deps: DispatchHoldReleaseDeps,
   args: {
+    hold: DispatchHoldRow;
     payload: DispatchHoldInlinePayload;
+    releaseKind: DispatchingReleaseKind;
     startContext: DispatchHoldThreadStartContext;
     thread: Thread;
   },
-): void {
+): Promise<DispatchHoldInlinePayload | null> {
+  if (!hasDispatchGates("thread.create")) {
+    return args.payload;
+  }
+  const outcome = await runDispatchGatePass(deps, {
+    stage: "thread.create",
+    thread: null,
+    threadResponse: null,
+    project: requirePublicProject(deps.db, args.thread.projectId),
+    environmentId: args.thread.environmentId,
+    input: args.payload.input,
+    requestedExecution: {
+      providerId: args.thread.providerId,
+      model: args.payload.execution.model,
+      reasoningLevel: args.payload.execution.reasoningLevel,
+      serviceTier: args.payload.execution.serviceTier,
+      permissionMode: args.payload.execution.permissionMode,
+    },
+    // The frozen tuple is an explicit input to this dispatch, exactly as it is
+    // for a queue drain replaying one.
+    executionSources: dispatchExecutionSources({}),
+    origin: null,
+    originPluginId: null,
+    startedOnBehalfOf: args.startContext.startedOnBehalfOf,
+    parentThreadId: args.thread.parentThreadId,
+    pluginInputs: args.payload.pluginInputs,
+    release: {
+      hold: args.hold,
+      skipPluginId:
+        args.releaseKind === "user"
+          ? dispatchHoldOwnerPluginId(args.hold)
+          : null,
+    },
+  });
+  const amended: DispatchHoldInlinePayload = {
+    ...args.payload,
+    ...(outcome.amendments.input !== null
+      ? { input: outcome.amendments.input }
+      : {}),
+    execution: {
+      ...args.payload.execution,
+      ...(outcome.amendments.model !== null
+        ? { model: outcome.amendments.model }
+        : {}),
+      ...(outcome.amendments.reasoningLevel !== null
+        ? { reasoningLevel: outcome.amendments.reasoningLevel }
+        : {}),
+      ...(outcome.amendments.serviceTier !== null
+        ? { serviceTier: outcome.amendments.serviceTier }
+        : {}),
+      ...(outcome.amendments.permissionMode !== null
+        ? { permissionMode: outcome.amendments.permissionMode }
+        : {}),
+    },
+  };
+  if (outcome.kind === "proceed") {
+    return amended;
+  }
+  createThreadDispatchHold(deps, {
+    threadId: args.thread.id,
+    environmentId: args.thread.environmentId,
+    holder: dispatchGateHolder(outcome.holder.pluginId),
+    payload: amended,
+    reason: dispatchHoldReasonForPass(outcome),
+    resumeAt: outcome.holder.resumeAt,
+    userReleasable: true,
+    threadStartContext: args.startContext,
+    ...(hasDispatchAmendments(outcome.amendments)
+      ? {
+          effectiveRequest: {
+            amendedBy: outcome.amendments.amendedBy,
+            originalInput: outcome.amendments.originalInput,
+          },
+        }
+      : {}),
+  });
+  return null;
+}
+
+async function dispatchHeldThreadStart(
+  deps: DispatchHoldReleaseDeps,
+  args: {
+    hold: DispatchHoldRow;
+    payload: DispatchHoldInlinePayload;
+    releaseKind: DispatchingReleaseKind;
+    startContext: DispatchHoldThreadStartContext;
+    thread: Thread;
+  },
+): Promise<void> {
+  const payload = await reevaluateHeldThreadStart(deps, args);
+  if (payload === null) {
+    return;
+  }
+  args = { ...args, payload };
   const prepared = applyLoggedThreadLifecycleEvent(deps, {
     threadId: args.thread.id,
     event: { type: "run.preparing" },
@@ -111,14 +241,25 @@ function dispatchHeldThreadStart(
 }
 
 /**
- * Runs the dispatch a released hold described. Phase 2 re-runs the gate
- * pipeline and applies `amend` here, before anything dispatches; until then a
- * release is unconditional.
+ * Runs the dispatch a released hold described, re-running the gate pipeline
+ * first.
+ *
+ * The re-run is the whole point of releasing through this path: a message
+ * scheduled for 9am still has to respect the limiter at 9am, so a release is a
+ * fresh dispatch decision rather than a replay. `core:reprovision` is the one
+ * exemption — that row is a tracking record whose turn is already persisted as
+ * a deferred event and re-dispatched by the provisioning machinery, so there is
+ * no dispatch here for a gate to decide about.
+ *
+ * A `user` release ("Release now") skips the gate that produced the hold, and
+ * only that gate: the user overrode that plugin's decision, and re-asking it
+ * would undo the override. Every other gate still runs once.
  */
 async function dispatchReleasedHold(
   deps: DispatchHoldReleaseDeps,
-  hold: DispatchHoldRow,
+  args: { hold: DispatchHoldRow; releaseKind: DispatchingReleaseKind },
 ): Promise<void> {
+  const { hold } = args;
   const payload = parseDispatchHoldPayload(hold);
   if (payload.kind === "retry") {
     // Retry holds arrive with `turn.failed` in phase 3; nothing creates one
@@ -129,18 +270,41 @@ async function dispatchReleasedHold(
     );
     return;
   }
+  if (hold.holder === CORE_REPROVISION_DISPATCH_HOLDER) {
+    // A tracking record, not a dispatch carrier: its turn is persisted as a
+    // deferred `client/turn/requested` and replayed by the provisioning
+    // machinery, so there is nothing here to gate or to send.
+    // `settleReprovisionDispatchHolds` is its only settle path; arriving here
+    // means something new started releasing it.
+    deps.logger.warn(
+      { holdId: hold.id, threadId: hold.threadId },
+      "Released a core:reprovision hold, whose dispatch is owned by provisioning",
+    );
+    return;
+  }
   const thread = getThread(deps.db, hold.threadId);
   if (!thread || thread.deletedAt !== null) {
     return;
   }
   const startContext = parseDispatchHoldThreadStartContext(hold);
   if (startContext !== null) {
-    dispatchHeldThreadStart(deps, { payload, startContext, thread });
+    await dispatchHeldThreadStart(deps, {
+      hold,
+      payload,
+      releaseKind: args.releaseKind,
+      startContext,
+      thread,
+    });
     return;
   }
   await acceptThreadSendRequest(deps, {
     payload: releasedHoldSendRequest(payload),
     thread,
+    gateRelease: {
+      hold,
+      skipPluginId:
+        args.releaseKind === "user" ? dispatchHoldOwnerPluginId(hold) : null,
+    },
   });
 }
 
@@ -154,6 +318,17 @@ export async function releaseDispatchHoldAndDispatch(
   deps: DispatchHoldReleaseDeps,
   args: { hold: DispatchHoldRow; releaseKind: DispatchingReleaseKind },
 ): Promise<DispatchHoldRow | null> {
+  if (isDispatchReleaseReheldRecently(args.hold.threadId)) {
+    // This thread turned a release straight back into a hold moments ago.
+    // Nothing is settled here, so the hold stays live and the next timer tick,
+    // sweep or user action tries again — a hot release → re-hold loop cannot
+    // form, while an ordinary release is never delayed.
+    deps.logger.debug(
+      { holdId: args.hold.id, threadId: args.hold.threadId },
+      "Skipped a dispatch-hold release: this thread re-held moments ago",
+    );
+    return null;
+  }
   const released = settleDispatchHold(deps, {
     row: args.hold,
     releaseKind: args.releaseKind,
@@ -161,7 +336,10 @@ export async function releaseDispatchHoldAndDispatch(
   if (!released) {
     return null;
   }
-  await dispatchReleasedHold(deps, released);
+  await dispatchReleasedHold(deps, {
+    hold: released,
+    releaseKind: args.releaseKind,
+  });
   return released;
 }
 

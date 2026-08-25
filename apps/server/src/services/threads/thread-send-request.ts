@@ -46,9 +46,12 @@ import {
   ensureThreadIsWritable,
   resolveMessageSenderThreadId,
   sendThreadMessage,
+  type SendThreadMessageGateRelease,
 } from "./thread-send.js";
 
 interface AcceptThreadSendRequestArgs {
+  /** Present only when a released hold is re-entering the send path. */
+  gateRelease?: SendThreadMessageGateRelease;
   payload: SendMessageRequest;
   thread: Thread;
 }
@@ -100,7 +103,7 @@ async function holdThreadSendRequest(
       kind: "inline",
       input: payload.input,
       execution,
-      pluginInputs: {},
+      pluginInputs: payload.pluginInputs ?? {},
     },
     reason: SCHEDULED_DISPATCH_HOLD_REASON,
     resumeAt: args.holdUntil,
@@ -169,6 +172,9 @@ export async function acceptThreadSendRequest(
   const environment = await requireThreadCommandEnvironment(deps, { thread });
   await sendThreadMessage(deps, {
     environment,
+    ...(args.gateRelease !== undefined
+      ? { gateRelease: args.gateRelease }
+      : {}),
     payload,
     thread,
     trigger: "user",

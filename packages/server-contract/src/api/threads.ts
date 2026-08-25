@@ -8,6 +8,8 @@ import {
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
   permissionModeInputSchema,
+  pluginInputsSchema,
+  pluginInputsSizeProblem,
   promptInputSchema,
   reasoningLevelSchema,
   rawThreadIdSchema,
@@ -16,6 +18,7 @@ import {
   threadListEntrySchema,
   threadQueuedMessageSchema,
   threadSearchSourceKindSchema,
+  threadStatusSchema,
   threadTimelineActivePromptModeSchema,
   threadTimelineGoalSchema,
   threadTimelineModelFallbackSchema,
@@ -116,8 +119,20 @@ export const createThreadRequestSchema = z
      * as it did before holds existed.
      */
     holdUntil: z.number().int().nonnegative().optional(),
+    /**
+     * Side-channel input for dispatch gates, keyed by plugin id. Each plugin's
+     * gate sees only its own entry. Omitted means no plugin input at all,
+     * which is not the same as an empty object addressed to nobody.
+     */
+    pluginInputs: pluginInputsSchema.optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.pluginInputs !== undefined) {
+      const problem = pluginInputsSizeProblem(value.pluginInputs);
+      if (problem !== null) {
+        ctx.addIssue({ code: "custom", message: problem, path: ["pluginInputs"] });
+      }
+    }
     if (value.origin === "plugin" && value.originPluginId === undefined) {
       ctx.addIssue({
         code: "custom",
@@ -184,7 +199,7 @@ export const forkThreadRequestSchema = z
   });
 export type ForkThreadRequest = z.infer<typeof forkThreadRequestSchema>;
 
-export const sendMessageRequestSchema = z.object({
+const sendMessageRequestBaseSchema = z.object({
   input: z.array(promptInputSchema).min(1),
   model: z.string().optional(),
   serviceTier: serviceTierSchema.optional(),
@@ -200,7 +215,23 @@ export const sendMessageRequestSchema = z.object({
    * before holds existed.
    */
   holdUntil: z.number().int().nonnegative().optional(),
+  /**
+   * Side-channel input for dispatch gates, keyed by plugin id. Each plugin's
+   * gate sees only its own entry. It rides the hold payload and the queued row
+   * so a message that waits reaches its gate with the input it was sent with.
+   */
+  pluginInputs: pluginInputsSchema.optional(),
 });
+
+export const sendMessageRequestSchema = sendMessageRequestBaseSchema.superRefine(
+  (value, ctx) => {
+    if (value.pluginInputs === undefined) return;
+    const problem = pluginInputsSizeProblem(value.pluginInputs);
+    if (problem !== null) {
+      ctx.addIssue({ code: "custom", message: problem, path: ["pluginInputs"] });
+    }
+  },
+);
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
 /**
@@ -228,8 +259,8 @@ export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 
 // `holdUntil` is deliberately dropped: an edit rewrites a message that has
 // already been dispatched, so there is nothing left to defer.
-export const editMessageRequestSchema = sendMessageRequestSchema
-  .omit({ mode: true, holdUntil: true })
+export const editMessageRequestSchema = sendMessageRequestBaseSchema
+  .omit({ mode: true, holdUntil: true, pluginInputs: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -257,6 +288,8 @@ export const createQueuedMessageRequestSchema = z.object({
   permissionMode: permissionModeInputSchema.optional(),
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   senderThreadId: z.string().min(1).optional(),
+  /** Carried to the gate that runs when this row drains (see send). */
+  pluginInputs: pluginInputsSchema.optional(),
 });
 export type CreateQueuedMessageRequest = z.infer<
   typeof createQueuedMessageRequestSchema
@@ -610,6 +643,59 @@ export const threadListQuerySchema = z.object({
   offset: z.string().regex(/^\d+$/).optional(),
 });
 export type ThreadListQuery = z.infer<typeof threadListQuerySchema>;
+
+/**
+ * Grouping for `GET /threads/count`. Omitted, the route answers one total.
+ * `host` groups by the host the thread's environment lives on; a thread with
+ * no environment yet counts under the `null` key.
+ */
+export const threadCountGroupBySchema = z.enum(["host", "provider", "project"]);
+export type ThreadCountGroupBy = z.infer<typeof threadCountGroupBySchema>;
+
+/**
+ * Filters for `GET /threads/count`. Every value is a string because this is a
+ * query string; the route parses them once at the boundary.
+ *
+ * `parentThreadId` is deliberately three-valued and unambiguous: omitted means
+ * "do not filter on parentage", the literal `"none"` means root threads only
+ * (`parent_thread_id IS NULL`), and any other value is that parent's id. An
+ * empty string would have been ambiguous with an omitted parameter, and a
+ * thread id can never be `"none"` (ids are prefixed `thr_`).
+ */
+export const THREAD_COUNT_ROOT_PARENT = "none";
+
+export const threadCountQuerySchema = z.object({
+  status: threadStatusSchema.optional(),
+  hostId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
+  projectId: z.string().min(1).optional(),
+  parentThreadId: z.string().min(1).optional(),
+  groupBy: threadCountGroupBySchema.optional(),
+  /** Count archived threads too; omitted/false excludes them (deleted always are). */
+  includeArchived: z.enum(["true", "false"]).optional(),
+  /** Count hidden threads too; omitted/false counts visible threads only. */
+  includeHidden: z.enum(["true", "false"]).optional(),
+});
+export type ThreadCountQuery = z.infer<typeof threadCountQuerySchema>;
+
+/**
+ * `total` is always the count of every matching thread. `groups` is present
+ * exactly when `groupBy` was requested — an ungrouped count has no group list,
+ * rather than one anonymous group.
+ */
+export const threadCountResponseSchema = z.object({
+  total: z.number().int().nonnegative(),
+  groups: z
+    .array(
+      z.object({
+        /** The host/provider/project id, or null for threads with none. */
+        key: z.string().nullable(),
+        count: z.number().int().nonnegative(),
+      }),
+    )
+    .optional(),
+});
+export type ThreadCountResponse = z.infer<typeof threadCountResponseSchema>;
 
 export const threadSearchQuerySchema = z.object({
   query: z.string().trim().min(2),

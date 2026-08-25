@@ -27,6 +27,8 @@ export interface ThreadCreateServiceRequestInput {
   originKind?: ThreadOriginKind | null;
   parentThreadId?: string;
   permissionMode?: CreateThreadRequest["permissionMode"];
+  /** Side-channel input for dispatch gates, keyed by plugin id. */
+  pluginInputs?: CreateThreadRequest["pluginInputs"];
   projectId: string;
   providerId?: CreateThreadRequest["providerId"];
   reasoningLevel?: CreateThreadRequest["reasoningLevel"];

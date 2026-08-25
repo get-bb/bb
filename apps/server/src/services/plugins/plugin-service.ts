@@ -109,6 +109,7 @@ import {
   type InstallContext,
   type RegisterInstalledArgs,
 } from "./managed-plugin-artifacts.js";
+import type { DispatchGateProvider } from "./dispatch-gate-registry.js";
 import { createPluginRegistration } from "./plugin-registration.js";
 import { createPluginRuntime, forgetMutableRoot } from "./plugin-runtime.js";
 import { createPluginUpdates } from "./plugin-updates.js";
@@ -158,6 +159,12 @@ export function dispatchPluginSourceWatchChange(
 export interface PluginService {
   isBuiltin(id: string): boolean;
   events: PluginThreadEventEmitter;
+  /** The gate chain the dispatch pipeline consults; registered in createApp. */
+  dispatchGates: DispatchGateProvider;
+  /**
+   * Bind the in-process BB SDK to the running server. Call once the HTTP
+   * listener is up, before start(): bb.sdk throws until this runs.
+   */
   bindSdk(args: { baseUrl: string }): void;
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -312,6 +319,13 @@ export interface PluginService {
 
 const DEFAULT_MENTION_SEARCH_TIMEOUT_MS = 2_000;
 const DEFAULT_MENTION_RESOLVE_TIMEOUT_MS = 10_000;
+/**
+ * Per-gate decision box. A gate is on the dispatch hot path and holds a
+ * server-wide lock while it runs, so it must decide in milliseconds; this is
+ * the outer bound past which the dispatch fails with the plugin named, not a
+ * budget to spend.
+ */
+const DEFAULT_DISPATCH_GATE_TIMEOUT_MS = 10_000;
 const DEFAULT_STABILIZATION_WINDOW_MS = 30_000;
 const DEFAULT_ARTIFACT_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SCHEDULE_SWEEP_BATCH_SIZE = 100;
@@ -800,6 +814,8 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     deps.mentionSearchTimeoutMs ?? DEFAULT_MENTION_SEARCH_TIMEOUT_MS;
   const mentionResolveTimeoutMs =
     deps.mentionResolveTimeoutMs ?? DEFAULT_MENTION_RESOLVE_TIMEOUT_MS;
+  const dispatchGateTimeoutMs =
+    deps.dispatchGateTimeoutMs ?? DEFAULT_DISPATCH_GATE_TIMEOUT_MS;
   const stabilizationWindowMs =
     deps.stabilizationWindowMs ?? DEFAULT_STABILIZATION_WINDOW_MS;
   const artifactRetentionMs =
@@ -827,6 +843,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     checkPluginSdkRange,
     disposeAll,
     disposeOne,
+    buildDispatchHoldEmitter,
     emitThreadEvent,
     handlerStats,
     handleUncaughtException,
@@ -835,6 +852,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     identities,
     invokeWrapped,
     isBuiltinPluginId,
+    listDispatchGates,
     isPackagedBuiltinEntry,
     loadAll,
     loaded,
@@ -1340,6 +1358,20 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
           thread: buildThreadDto(thread),
         }));
       },
+      emitDispatchHeld: buildDispatchHoldEmitter("dispatch.held"),
+      emitDispatchReleased: buildDispatchHoldEmitter("dispatch.released"),
+      emitDispatchCancelled: buildDispatchHoldEmitter("dispatch.cancelled"),
+    },
+
+    dispatchGates: {
+      listGates: listDispatchGates,
+      invokeGate: async (pluginId, label, run) => {
+        const outcome = await invokeWrapped(pluginId, label, run);
+        return outcome.ok
+          ? { ok: true, value: outcome.value }
+          : { ok: false, error: outcome.error };
+      },
+      decisionTimeoutMs: dispatchGateTimeoutMs,
     },
 
     bindSdk: bindRuntimeSdk,

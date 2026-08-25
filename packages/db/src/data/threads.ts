@@ -1142,6 +1142,116 @@ export function searchThreadsWithPendingInteractionState(
   };
 }
 
+/** How `countThreads` buckets its result; omitted asks for the total only. */
+export type CountThreadsGroupBy = "host" | "provider" | "project";
+
+export interface CountThreadsOptions {
+  status?: ThreadStatus;
+  hostId?: string;
+  providerId?: string;
+  projectId?: string;
+  /**
+   * `{ kind: "root" }` counts threads with no parent, `{ kind: "id" }` counts
+   * one parent's children, and omitting the option does not filter on
+   * parentage. Three states, three shapes — a nullable string would have made
+   * "no parent" and "no filter" the same value.
+   */
+  parent?: { kind: "root" } | { kind: "id"; parentThreadId: string };
+  groupBy?: CountThreadsGroupBy;
+  /** Archived rows are excluded unless this is true; deleted rows always are. */
+  includeArchived?: boolean;
+  /** Hidden rows are excluded unless this is true. */
+  includeHidden?: boolean;
+}
+
+export interface ThreadCountGroupRow {
+  /** The host/provider/project id, or null for threads that have none. */
+  key: string | null;
+  count: number;
+}
+
+export interface CountThreadsResult {
+  total: number;
+  /** Present exactly when `groupBy` was asked for. */
+  groups?: ThreadCountGroupRow[];
+}
+
+/**
+ * `SELECT count(*)` over threads, optionally grouped.
+ *
+ * This exists because the concurrency-limiting gates the dispatch pipeline
+ * serves must answer "how many are running" without materializing rows: a
+ * `listThreads` + filter would page every matching thread into memory on every
+ * single dispatch. The host filter and the `host` grouping both need the
+ * environment row, so they join it; every other shape reads `threads` alone.
+ */
+export function countThreads(
+  db: DbQueryConnection,
+  options: CountThreadsOptions,
+): CountThreadsResult {
+  const needsEnvironmentJoin =
+    options.hostId !== undefined || options.groupBy === "host";
+  const filters = [
+    nonDeletedThreads(),
+    options.includeArchived === true ? undefined : isNull(threads.archivedAt),
+    options.includeHidden === true
+      ? undefined
+      : eq(threads.visibility, "visible"),
+    options.status !== undefined ? eq(threads.status, options.status) : undefined,
+    options.providerId !== undefined
+      ? eq(threads.providerId, options.providerId)
+      : undefined,
+    options.projectId !== undefined
+      ? eq(threads.projectId, options.projectId)
+      : undefined,
+    options.parent === undefined
+      ? undefined
+      : options.parent.kind === "root"
+        ? isNull(threads.parentThreadId)
+        : eq(threads.parentThreadId, options.parent.parentThreadId),
+    options.hostId !== undefined
+      ? eq(environments.hostId, options.hostId)
+      : undefined,
+  ].filter((value) => value !== undefined);
+
+  const groupColumn =
+    options.groupBy === "host"
+      ? environments.hostId
+      : options.groupBy === "provider"
+        ? threads.providerId
+        : options.groupBy === "project"
+          ? threads.projectId
+          : null;
+
+  if (groupColumn === null) {
+    const base = db.select({ value: count() }).from(threads).$dynamic();
+    const joined = needsEnvironmentJoin
+      ? base.leftJoin(environments, eq(environments.id, threads.environmentId))
+      : base;
+    return { total: joined.where(and(...filters)).get()?.value ?? 0 };
+  }
+
+  const base = db
+    .select({ key: groupColumn, value: count() })
+    .from(threads)
+    .$dynamic();
+  const joined = needsEnvironmentJoin
+    ? base.leftJoin(environments, eq(environments.id, threads.environmentId))
+    : base;
+  const rows = joined
+    .where(and(...filters))
+    .groupBy(groupColumn)
+    .all();
+  const groups = rows.map((row) => ({
+    key: row.key ?? null,
+    count: row.value,
+  }));
+  return {
+    total: groups.reduce((sum, group) => sum + group.count, 0),
+    groups,
+  };
+}
+
 export function listThreads(db: DbConnection, options: ListThreadsOptions) {
   let query = db
     .select()

@@ -17,16 +17,25 @@ import {
   type DispatchHoldPayload,
   type DispatchHoldReleaseKind,
   type DispatchHoldReportUpdate,
+  type PermissionMode,
   type PromptInput,
   type ProvisioningTranscriptEntry,
+  type ReasoningLevel,
+  type ServiceTier,
   threadScope,
   type SystemDispatchHoldStatus,
 } from "@bb/domain";
+import type { DbTransaction } from "@bb/db";
 import type { DispatchHoldResponse } from "@bb/server-contract";
 import { startedOnBehalfOfSchema } from "@bb/server-contract";
 import { z } from "zod";
 import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
+import {
+  emitPluginDispatchCancelled,
+  emitPluginDispatchHeld,
+  emitPluginDispatchReleased,
+} from "../plugins/plugin-thread-events.js";
 import { appendThreadEvent } from "./thread-events.js";
 import {
   threadForkDescriptorSchema,
@@ -80,9 +89,48 @@ export interface CreateThreadDispatchHoldArgs {
   reason: string;
   /** Non-null makes core's timer sweep release the hold when it arrives. */
   resumeAt: number | null;
+  /**
+   * The post-amendment audit record for a hold a gate pass produced: what the
+   * gates changed and which plugin changed each field. `original_request` is
+   * already taken by the cold-start thread context, so the amendment pair
+   * lives here alone — the pre-amendment input rides it as `originalInput`.
+   */
+  effectiveRequest?: DispatchHoldEffectiveRequest;
   userReleasable: boolean;
   /** Present only for a never-started thread's first turn. */
   threadStartContext?: DispatchHoldThreadStartContext;
+  /**
+   * Runs in the same transaction as the insert. The queue drain uses it to
+   * consume the queued message it is converting into a hold, so the message
+   * can never be consumed without a hold to show for it, nor a hold created
+   * for a message another drain already claimed.
+   */
+  beforeCreateInTransaction?: (args: { tx: DbTransaction }) => void;
+}
+
+/**
+ * What a gate pass changed, stored on `dispatch_holds.effective_request`. It
+ * exists so a plugin that silently rewrote a user's provider, model or message
+ * stays debuggable after the fact — nothing reads it to dispatch.
+ */
+const dispatchHoldEffectiveRequestSchema = z.object({
+  amendedBy: z.record(z.string(), z.string()),
+  originalInput: z.array(promptInputSchema).nullable(),
+});
+export type DispatchHoldEffectiveRequest = z.infer<
+  typeof dispatchHoldEffectiveRequestSchema
+>;
+
+/** Null for a hold no gate amended. */
+export function parseDispatchHoldEffectiveRequest(
+  row: DispatchHoldRow,
+): DispatchHoldEffectiveRequest | null {
+  if (row.effectiveRequest === null) {
+    return null;
+  }
+  return dispatchHoldEffectiveRequestSchema.parse(
+    JSON.parse(row.effectiveRequest),
+  );
 }
 
 export interface ListDispatchHoldsForApiArgs {
@@ -201,29 +249,39 @@ export function createThreadDispatchHold(
   deps: DispatchHoldDeps,
   args: CreateThreadDispatchHoldArgs,
 ): DispatchHoldRow {
-  const row = createDispatchHold(deps.db, {
-    kind: "turn",
-    threadId: args.threadId,
-    payload: args.payload,
-    holder: args.holder,
-    userReleasable: args.userReleasable,
-    reason: args.reason,
-    resumeAt: args.resumeAt,
-    amend: null,
-    originalRequest:
-      args.threadStartContext === undefined
-        ? null
-        : JSON.stringify(args.threadStartContext),
-    effectiveRequest: null,
-    expectedReleaseAt: null,
-    staleAfterMs: null,
-  });
+  const row = deps.db.transaction(
+    (tx) => {
+      args.beforeCreateInTransaction?.({ tx });
+      return createDispatchHold(tx, {
+        kind: "turn",
+        threadId: args.threadId,
+        payload: args.payload,
+        holder: args.holder,
+        userReleasable: args.userReleasable,
+        reason: args.reason,
+        resumeAt: args.resumeAt,
+        amend: null,
+        originalRequest:
+          args.threadStartContext === undefined
+            ? null
+            : JSON.stringify(args.threadStartContext),
+        effectiveRequest:
+          args.effectiveRequest === undefined
+            ? null
+            : JSON.stringify(args.effectiveRequest),
+        expectedReleaseAt: null,
+        staleAfterMs: null,
+      });
+    },
+    { behavior: "immediate" },
+  );
   appendDispatchHoldEvent(deps, {
     entries: [],
     environmentId: args.environmentId,
     row,
     status: "active",
   });
+  emitPluginDispatchHeld(toDispatchHoldResponse(row));
   return row;
 }
 
@@ -258,6 +316,14 @@ export function settleDispatchHold(
     row: released,
     status: dispatchHoldStatusForReleaseKind(args.releaseKind),
   });
+  // Cancelling discards the dispatch; every other kind runs it. Owners tell
+  // the two apart to know whether to tear down or to expect their work to run.
+  const response = toDispatchHoldResponse(released);
+  if (args.releaseKind === "cancelled") {
+    emitPluginDispatchCancelled(response);
+  } else {
+    emitPluginDispatchReleased(response);
+  }
   return released;
 }
 
@@ -371,6 +437,62 @@ export function reportDispatchHoldProgress(
     status: "active",
   });
   return true;
+}
+
+/**
+ * Applies an owner's release amendment to a live hold's frozen payload.
+ *
+ * Amendments at release are narrower than at a gate pass: the row already
+ * exists, so its provider and its environment are settled facts. What is left
+ * is the turn itself — its message and its execution knobs — which is exactly
+ * what {@link PluginDispatchAmendments} carries.
+ *
+ * Returns the updated row, or the row unchanged when the amendment was empty.
+ */
+export function applyDispatchHoldReleaseAmendment(
+  deps: DispatchHoldDeps,
+  args: { hold: DispatchHoldRow; amend: DispatchHoldReleaseAmendment },
+): DispatchHoldRow {
+  const payload = parseDispatchHoldPayload(args.hold);
+  if (payload.kind !== "inline") {
+    throw new ApiError(
+      409,
+      "hold_not_amendable",
+      "This hold re-submits an earlier turn and cannot be amended",
+    );
+  }
+  const next: DispatchHoldPayload = {
+    ...payload,
+    ...(args.amend.input !== undefined ? { input: args.amend.input } : {}),
+    execution: {
+      ...payload.execution,
+      ...(args.amend.model !== undefined ? { model: args.amend.model } : {}),
+      ...(args.amend.reasoningLevel !== undefined
+        ? { reasoningLevel: args.amend.reasoningLevel }
+        : {}),
+      ...(args.amend.serviceTier !== undefined
+        ? { serviceTier: args.amend.serviceTier }
+        : {}),
+      ...(args.amend.permissionMode !== undefined
+        ? { permissionMode: args.amend.permissionMode }
+        : {}),
+    },
+  };
+  updateDispatchHoldPayload(deps.db, { id: args.hold.id, payload: next });
+  return requireDispatchHold(deps, args.hold.id);
+}
+
+/**
+ * What an owner may change when it releases its own hold. Structurally the
+ * plugin-facing amendment shape, restated locally so this module does not
+ * depend on the SDK contract for a four-field record.
+ */
+export interface DispatchHoldReleaseAmendment {
+  input?: PromptInput[];
+  model?: string;
+  permissionMode?: PermissionMode;
+  reasoningLevel?: ReasoningLevel;
+  serviceTier?: ServiceTier;
 }
 
 export interface UpdateLiveDispatchHoldArgs {

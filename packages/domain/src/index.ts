@@ -8,6 +8,7 @@ export * from "./background-task.js";
 export * from "./change-kinds.js";
 export * from "./code-theme.js";
 export * from "./debounced-callback-scheduler.js";
+export * from "./dispatch-gate.js";
 export * from "./dispatch-hold.js";
 export * from "./environment-lifecycle.js";
 export * from "./environment.js";

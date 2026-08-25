@@ -2,12 +2,27 @@ import type Database from "better-sqlite3";
 import type { Context } from "hono";
 import type * as z from "zod";
 import type {
+  DispatchHoldReportUpdate,
+  Environment,
+  Host,
+  PermissionMode,
+  Project,
+  PromptInput,
   ProviderNativeRootInput,
   ProviderNativeRootsInputLike,
+  ReasoningLevel,
+  ServiceTier,
 } from "@bb/domain";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type { BbSdk } from "@bb/sdk";
-import type { ThreadResponse } from "@bb/server-contract";
+import type {
+  CreateThreadEnvironmentArgs,
+  DispatchHoldResponse,
+  ExecutionInputFieldSource,
+  StartedOnBehalfOf,
+  ThreadCreateOrigin,
+  ThreadResponse,
+} from "@bb/server-contract";
 import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
@@ -150,9 +165,11 @@ export interface PluginStorage {
 // ---------------------------------------------------------------------------
 
 /**
- * Thread lifecycle events a plugin can observe (design §4.5). Observe-only:
- * handlers run fire-and-forget after the transition is applied and can never
- * block or veto it. `thread` is the same public DTO GET /threads/:id serves.
+ * Lifecycle events a plugin can observe with `bb.events.on` (design §4.5).
+ * Observe-only: handlers run fire-and-forget after the change is applied and
+ * can never block or veto it — the surface that *can* is
+ * `bb.experimental_dispatch.gate`. `thread` is the same public DTO
+ * GET /threads/:id serves and `hold` is the one GET /holds/:id serves.
  */
 export interface PluginThreadEventPayloads {
   /** Fired after a thread row is created. */
@@ -169,6 +186,24 @@ export interface PluginThreadEventPayloads {
   "thread.archived": { thread: ThreadResponse };
   /** Fired after a thread is soft-deleted. */
   "thread.deleted": { thread: ThreadResponse };
+  /**
+   * Fired after a dispatch hold row is created — by a gate's `hold` verdict,
+   * by `holdUntil`, or by core parking a dispatch. Every listener sees every
+   * hold, not just its own: an observer that only wants its own filters on
+   * `hold.holder === "plugin:" + bb.pluginId`.
+   */
+  "dispatch.held": { hold: DispatchHoldResponse };
+  /**
+   * Fired after a hold is released (owner, timer, user or orphan sweep). The
+   * dispatch it was holding runs after this, so a handler must not assume the
+   * turn has started.
+   */
+  "dispatch.released": { hold: DispatchHoldResponse };
+  /**
+   * Fired when a live hold is cancelled and its dispatch discarded. An owner
+   * plugin gets this as its teardown signal.
+   */
+  "dispatch.cancelled": { hold: DispatchHoldResponse };
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -176,6 +211,231 @@ export type PluginThreadEventName = keyof PluginThreadEventPayloads;
 export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
   payload: PluginThreadEventPayloads[E],
 ) => void | Promise<void>;
+
+// ---------------------------------------------------------------------------
+// Dispatch gates and holds (plans/plugin-interception-hooks.md).
+// ---------------------------------------------------------------------------
+
+/**
+ * Amendments every stage accepts. They are applied on top of what core already
+ * resolved, so omitting a field leaves core's answer alone — an amendment is a
+ * correction, not a full tuple.
+ *
+ * `permissionMode` is still clamped to the host's ceiling: a gate can lower
+ * permission but never raise it past what the machine allows.
+ *
+ * `input` REPLACES the prompt blocks. The pre-amendment blocks are recorded on
+ * the hold's request audit and on the turn event, so a plugin that silently
+ * rewrites a user's message stays debuggable.
+ */
+export interface PluginDispatchAmendments {
+  model?: string;
+  reasoningLevel?: ReasoningLevel;
+  serviceTier?: ServiceTier;
+  permissionMode?: PermissionMode;
+  input?: PromptInput[];
+}
+
+/**
+ * What a `thread.create` gate may additionally amend. `providerId` and
+ * `environment` live here rather than on the shared shape because a thread's
+ * provider is immutable once its row is inserted and its environment is
+ * resolved at creation — amending either on an existing thread is not a
+ * validation failure to be reported, it is a request that has no meaning.
+ * Keeping them off `PluginDispatchAmendments` makes a `turn.submit` gate that
+ * tries it fail to compile.
+ */
+export interface PluginDispatchCreateAmendments
+  extends PluginDispatchAmendments {
+  providerId?: string;
+  environment?: CreateThreadEnvironmentArgs;
+}
+
+/**
+ * A gate's answer.
+ *
+ * `proceed` lets the dispatch continue, optionally amended. `hold` parks it in
+ * a durable dispatch hold this plugin owns; `resumeAt` (epoch ms) asks core's
+ * timer to release it, and null/omitted means only the owner, the user or the
+ * orphan sweep will. `reject` refuses the dispatch outright: `message` is
+ * shown to the user verbatim.
+ *
+ * There is deliberately no "handled it myself" verdict — a gate is a decision,
+ * never an owner of the work.
+ */
+export type PluginDispatchDecision<
+  TAmendments extends PluginDispatchAmendments,
+> =
+  | { action: "proceed"; amend?: TAmendments }
+  | { action: "hold"; reason: string; resumeAt?: number | null }
+  | { action: "reject"; message: string };
+
+/**
+ * The execution tuple as core resolved it before this gate ran, including any
+ * amendment an earlier gate in the same pass already made. `model` and the
+ * three option fields are null at `thread.create` only when no default has
+ * been resolved for them yet; `providerId` is always resolved.
+ */
+export interface PluginDispatchExecution {
+  providerId: string;
+  model: string | null;
+  reasoningLevel: ReasoningLevel | null;
+  serviceTier: ServiceTier | null;
+  permissionMode: PermissionMode | null;
+}
+
+/**
+ * Where each execution value came from. `explicit` is a user choice,
+ * `client-preference` a remembered client default, `plugin` an amendment an
+ * earlier gate in this pass made, and null means core resolved it from
+ * project/provider defaults. A router that must not override a deliberate
+ * choice checks for `explicit` here.
+ */
+export interface PluginDispatchExecutionSources {
+  providerId: ExecutionInputFieldSource | null;
+  model: ExecutionInputFieldSource | null;
+  reasoningLevel: ExecutionInputFieldSource | null;
+  serviceTier: ExecutionInputFieldSource | null;
+  permissionMode: ExecutionInputFieldSource | null;
+}
+
+/**
+ * The prompt this dispatch carries. `blocks` is the real thing an amendment
+ * replaces; `text` is the concatenated text of its text blocks, which is what
+ * a rules-based router actually wants to match on.
+ */
+export interface PluginDispatchInput {
+  blocks: readonly PromptInput[];
+  text: string;
+}
+
+/** Everything both stages put on a gate's context. */
+export interface PluginDispatchGateContextBase {
+  project: Project;
+  /** Null until an environment is chosen (a held or not-yet-provisioned thread). */
+  environment: Environment | null;
+  /** The machine the work will run on; null whenever `environment` is. */
+  host: Host | null;
+  input: PluginDispatchInput;
+  requestedExecution: PluginDispatchExecution;
+  executionSources: PluginDispatchExecutionSources;
+  /** How the dispatch was requested; null for internal/core-driven sends. */
+  origin: ThreadCreateOrigin | null;
+  originPluginId: string | null;
+  startedOnBehalfOf: StartedOnBehalfOf | null;
+  parentThreadId: string | null;
+  /**
+   * This plugin's entry from the request's `pluginInputs`, or null when the
+   * caller addressed no input to it. Never another plugin's entry.
+   */
+  pluginInput: JsonValue | null;
+  /**
+   * True when this pass is re-deciding a hold that is being released rather
+   * than deciding a fresh dispatch. A gate that counts in-flight work should
+   * treat the two identically; a gate that logs should not double-count.
+   */
+  isReleaseReevaluation: boolean;
+  /** The hold being released; null unless `isReleaseReevaluation`. */
+  hold: DispatchHoldResponse | null;
+}
+
+/** `thread.create`: no thread exists yet, which is why `thread` is null. */
+export interface PluginThreadCreateGateContext
+  extends PluginDispatchGateContextBase {
+  stage: "thread.create";
+  thread: null;
+}
+
+/** `turn.submit`: a follow-up on an existing thread. */
+export interface PluginTurnSubmitGateContext
+  extends PluginDispatchGateContextBase {
+  stage: "turn.submit";
+  thread: ThreadResponse;
+}
+
+/**
+ * The per-stage context and decision types. Adding a stage — `turn.failed`,
+ * whose decision is `none | retry` — is one entry here plus its context type;
+ * `gate()`, the handler type and the server's registry all derive from this
+ * map, so a half-added stage does not compile.
+ */
+export interface PluginDispatchGateStages {
+  "thread.create": {
+    context: PluginThreadCreateGateContext;
+    decision: PluginDispatchDecision<PluginDispatchCreateAmendments>;
+  };
+  "turn.submit": {
+    context: PluginTurnSubmitGateContext;
+    decision: PluginDispatchDecision<PluginDispatchAmendments>;
+  };
+}
+
+export type PluginDispatchGateStage = keyof PluginDispatchGateStages;
+
+export type PluginDispatchGateContext<S extends PluginDispatchGateStage> =
+  PluginDispatchGateStages[S]["context"];
+
+export type PluginDispatchGateDecision<S extends PluginDispatchGateStage> =
+  PluginDispatchGateStages[S]["decision"];
+
+export type PluginDispatchGateHandler<S extends PluginDispatchGateStage> = (
+  context: PluginDispatchGateContext<S>,
+) =>
+  | PluginDispatchGateDecision<S>
+  | Promise<PluginDispatchGateDecision<S>>;
+
+export interface PluginDispatch {
+  /**
+   * Register a gate at a dispatch stage. Gates for a stage run as a
+   * deterministic chain in plugin install order (reorderable per stage in
+   * Settings → Plugins), amendments accumulate left to right so each gate sees
+   * its predecessors' effects, a `reject` short-circuits the pass, and `hold`
+   * verdicts are collected across the whole pass so provider and model are
+   * final before anything is parked. The operation proceeds only when a pass
+   * yields no holds.
+   *
+   * Fail-closed: a handler that throws or exceeds the 10 second decision box
+   * FAILS THE DISPATCH with this plugin named. Decide in milliseconds — if the
+   * answer needs real work, return `hold` and finish it in a background
+   * service, then `release` the hold.
+   *
+   * The whole pass runs under one server-wide lock, so a counting gate never
+   * races another dispatch. It also means a gate that blocks delays every
+   * other dispatch, up to the box.
+   *
+   * Passes re-run: on release, on restart and on retry. A handler must be
+   * idempotent for one logical dispatch.
+   *
+   * At most one gate per stage per plugin; registering a second replaces
+   * nothing and throws.
+   */
+  gate<S extends PluginDispatchGateStage>(
+    stage: S,
+    handler: PluginDispatchGateHandler<S>,
+  ): void;
+  /**
+   * Release a hold this plugin owns, optionally amending the dispatch. The
+   * gate pipeline re-runs before it dispatches — including this plugin's own
+   * gate, so a limiter that releases while still at capacity re-holds. A hold
+   * owned by anyone else is refused.
+   *
+   * Resolves after the released dispatch has been driven, which is when a
+   * failure surfaces.
+   */
+  release(
+    holdId: string,
+    options?: { amend?: PluginDispatchAmendments },
+  ): Promise<void>;
+  /**
+   * Report progress on a hold this plugin owns: a reason, a transcript step, a
+   * tail of output, an ETA, and the staleness window core uses to flag a hold
+   * that has gone quiet. Every field is "leave as is" when omitted.
+   *
+   * Returns false when the hold is gone or already released — a late report
+   * from a torn-down owner never resurrects one.
+   */
+  report(holdId: string, update: DispatchHoldReportUpdate): Promise<boolean>;
+}
 
 // ---------------------------------------------------------------------------
 // Wire surfaces: HTTP, rpc, realtime (design §4.6/§4.7).
@@ -1217,6 +1477,11 @@ export interface BbPluginApi {
   readonly ui: PluginUi;
   /** Additive plugin lifecycle listeners (design §4.5). */
   readonly events: PluginEvents;
+  /**
+   * Dispatch gates and the holds they create: intercept thread creation and
+   * follow-up turns, park them, and release them later.
+   */
+  readonly experimental_dispatch: PluginDispatch;
   /** Plugin-reported status (needs-configuration). */
   readonly status: PluginStatusApi;
   /** Read-only facts about the running server (loopback base URL). */

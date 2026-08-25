@@ -14,6 +14,7 @@ import {
 import {
   PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES,
   PLUGIN_INTERACTION_MAX_TITLE_LENGTH,
+  type DispatchHoldReportUpdate,
   type JsonValue,
 } from "@bb/domain";
 import type {
@@ -29,6 +30,10 @@ import type {
   PluginCliCommandInfo,
   PluginCliContext,
   PluginCliResult,
+  PluginDispatch,
+  PluginDispatchAmendments,
+  PluginDispatchGateHandler,
+  PluginDispatchGateStage,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -80,6 +85,8 @@ import {
   summarizeParseIssues,
   agentToolIconRefusalMessage,
   aiServiceAlreadyRegisteredMessage,
+  dispatchGateAlreadyRegisteredMessage,
+  storeDispatchGate,
   providerAlreadyRegisteredMessage,
   providerIconRefusalMessage,
   undeclaredIconProblem,
@@ -128,6 +135,17 @@ export function isNeedsConfigurationError(error: unknown): error is Error {
   return error instanceof Error && error.name === "NeedsConfigurationError";
 }
 
+/**
+ * The gate this plugin registered per stage, or null where it registered
+ * none. A mapped type over the stage union rather than a loose map: a stage
+ * added to the contract without an entry here fails to compile, which is what
+ * keeps the registry and the contract from drifting.
+ */
+export type PluginDispatchGateRecords = {
+  [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
+};
+
+/** Per-event handler lists recorded by `bb.events.on`; dropped with the handle. */
 type PluginThreadEventHandlers = {
   [E in PluginThreadEventName]: Array<PluginThreadEventHandler<E>>;
 };
@@ -209,6 +227,9 @@ export interface PluginApiHandle {
   };
   databaseHandles: Database.Database[];
   threadEventHandlers: PluginThreadEventHandlers;
+  /** Dispatch gates recorded by `bb.experimental_dispatch.gate`. */
+  dispatchGates: PluginDispatchGateRecords;
+  /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   rpcHandlers: Map<string, PluginRpcHandler>;
   hostWorkerExitHandlers: PluginHostWorkerExitHandler[];
@@ -373,6 +394,20 @@ export function createPluginApi(options: {
     timeoutMs: number;
     signal?: AbortSignal;
   }) => Promise<PluginInteractionResult>;
+  /**
+   * Releases a hold this plugin owns, re-running the gate pipeline. Rejects
+   * when the hold belongs to somebody else. Undefined in isolated
+   * plugin-runtime harnesses that carry no thread services.
+   */
+  releaseDispatchHold?: (args: {
+    holdId: string;
+    amend: PluginDispatchAmendments | undefined;
+  }) => Promise<void>;
+  /** Applies an owner progress report; false when the hold is already gone. */
+  reportDispatchHold?: (args: {
+    holdId: string;
+    update: DispatchHoldReportUpdate;
+  }) => Promise<boolean>;
   ensureSharedPortTunnel: PluginHosts["ensureSharedPortTunnel"];
   validateSharedPortDeclaration: (
     hostId: string,
@@ -421,6 +456,8 @@ export function createPluginApi(options: {
     reportAgentToolProblem,
     declaredIconNames,
     requestInteraction,
+    releaseDispatchHold,
+    reportDispatchHold,
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
     declareSharedPorts,
@@ -452,6 +489,13 @@ export function createPluginApi(options: {
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
+    "dispatch.held": [],
+    "dispatch.released": [],
+    "dispatch.cancelled": [],
+  };
+  const dispatchGates: PluginDispatchGateRecords = {
+    "thread.create": null,
+    "turn.submit": null,
   };
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
@@ -1270,6 +1314,37 @@ export function createPluginApi(options: {
     },
   };
 
+  const experimental_dispatch: PluginDispatch = {
+    gate(stage, handler) {
+      assertLive();
+      if (dispatchGates[stage] !== null) {
+        // Two gates from one plugin at one stage would make the chain order
+        // within the plugin invisible and unorderable in settings. Say so at
+        // registration rather than silently keeping one.
+        throw new Error(dispatchGateAlreadyRegisteredMessage(stage));
+      }
+      storeDispatchGate(dispatchGates, stage, handler);
+    },
+    release(holdId, options) {
+      assertLive();
+      if (releaseDispatchHold === undefined) {
+        return Promise.reject(
+          new Error("dispatch holds are unavailable in this host"),
+        );
+      }
+      return releaseDispatchHold({ holdId, amend: options?.amend });
+    },
+    report(holdId, update) {
+      assertLive();
+      if (reportDispatchHold === undefined) {
+        return Promise.reject(
+          new Error("dispatch holds are unavailable in this host"),
+        );
+      }
+      return reportDispatchHold({ holdId, update });
+    },
+  };
+
   const providers: PluginProviders = {
     register: providerRegistrations.register,
   };
@@ -1302,6 +1377,7 @@ export function createPluginApi(options: {
     providers,
     ui,
     events,
+    experimental_dispatch,
     status,
     server,
     hosts,
@@ -1330,6 +1406,7 @@ export function createPluginApi(options: {
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
+    dispatchGates,
     httpRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,

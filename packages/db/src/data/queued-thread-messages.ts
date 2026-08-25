@@ -11,7 +11,7 @@ import {
   notInArray,
   or,
 } from "drizzle-orm";
-import type { PermissionMode, PromptInput } from "@bb/domain";
+import type { PermissionMode, PluginInputs, PromptInput } from "@bb/domain";
 import type {
   DbConnection,
   DbQueryConnection,
@@ -33,6 +33,12 @@ export interface CreateQueuedThreadMessageInput {
   reasoningLevel: string;
   permissionMode: PermissionMode;
   serviceTier: string;
+  /**
+   * The send's `pluginInputs`. Null when the sender addressed no plugin —
+   * which is not the same as an empty map, so the column is nullable rather
+   * than defaulting to `{}`.
+   */
+  pluginInputs: PluginInputs | null;
 }
 
 export interface UpdateQueuedThreadMessageInput {
@@ -488,6 +494,8 @@ export function createQueuedThreadMessageInTransaction(
       reasoningLevel: input.reasoningLevel,
       permissionMode: input.permissionMode,
       serviceTier: input.serviceTier,
+      pluginInputs:
+        input.pluginInputs === null ? null : JSON.stringify(input.pluginInputs),
       groupWithNext: false,
       claimedAt: null,
       claimToken: null,

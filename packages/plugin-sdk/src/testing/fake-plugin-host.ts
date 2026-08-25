@@ -7,11 +7,13 @@ import { CronExpressionParser } from "cron-parser";
 import { Hono } from "hono";
 import { z } from "zod";
 import { PLUGIN_INTERACTION_MAX_TITLE_LENGTH } from "@bb/domain/plugin-interaction-limits";
+import type { DispatchHoldReportUpdate } from "@bb/domain";
 import {
   adoptHttpRouteResponse,
   AGENT_TOOL_NAME_PATTERN,
   agentToolIconRefusalMessage,
   aiServiceAlreadyRegisteredMessage,
+  dispatchGateAlreadyRegisteredMessage,
   assertAiServiceRegistrable,
   assertNoRecursiveJsonSchemaReferences,
   BACKGROUND_NAME_PATTERN,
@@ -19,6 +21,7 @@ import {
   enforcePluginCliOutputLimit,
   isStandardSchema,
   isZodSchemaLike,
+  storeDispatchGate,
   KV_VALUE_MAX_BYTES,
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
@@ -58,6 +61,10 @@ import type {
   PluginCliContext,
   PluginCliExecutionResult,
   PluginCliResult,
+  PluginDispatch,
+  PluginDispatchAmendments,
+  PluginDispatchGateHandler,
+  PluginDispatchGateStage,
   PluginEvents,
   PluginHttp,
   PluginHttpAuthMode,
@@ -245,6 +252,20 @@ export interface FakePluginRegistrations {
     | ((ctx: { threadId: string; projectId: string }) => string | null)
     | null;
   threadEventHandlers: Record<PluginThreadEventName, number>;
+  /** The gate registered per stage by `bb.experimental_dispatch.gate`. */
+  dispatchGates: {
+    [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
+  };
+  /** Every `bb.experimental_dispatch.release` call, in order. */
+  releasedDispatchHolds: Array<{
+    holdId: string;
+    amend: PluginDispatchAmendments | undefined;
+  }>;
+  /** Every `bb.experimental_dispatch.report` call, in order. */
+  reportedDispatchHolds: Array<{
+    holdId: string;
+    update: DispatchHoldReportUpdate;
+  }>;
   mentionProviders: FakeMentionProviderRecord[];
   /** Live provider registrations from `bb.providers.register`
    * (normalized declarations, registration order; dispose removes). */
@@ -1589,7 +1610,24 @@ function createFakePluginHostInternal(
     "thread.failed": [],
     "thread.archived": [],
     "thread.deleted": [],
+    "dispatch.held": [],
+    "dispatch.released": [],
+    "dispatch.cancelled": [],
   };
+  const dispatchGates: {
+    [S in PluginDispatchGateStage]: PluginDispatchGateHandler<S> | null;
+  } = {
+    "thread.create": null,
+    "turn.submit": null,
+  };
+  const releasedDispatchHolds: Array<{
+    holdId: string;
+    amend: PluginDispatchAmendments | undefined;
+  }> = [];
+  const reportedDispatchHolds: Array<{
+    holdId: string;
+    update: DispatchHoldReportUpdate;
+  }> = [];
   const disposeHooks: Array<() => void | Promise<void>> = [];
   const serviceControllers: AbortController[] = [];
   let nextInteractionId = 1;
@@ -1845,6 +1883,23 @@ function createFakePluginHostInternal(
     },
   };
 
+  const experimental_dispatch: PluginDispatch = {
+    gate(stage, handler) {
+      if (dispatchGates[stage] !== null) {
+        throw new Error(dispatchGateAlreadyRegisteredMessage(stage));
+      }
+      storeDispatchGate(dispatchGates, stage, handler);
+    },
+    release(holdId, options) {
+      releasedDispatchHolds.push({ holdId, amend: options?.amend });
+      return Promise.resolve();
+    },
+    report(holdId, update) {
+      reportedDispatchHolds.push({ holdId, update });
+      return Promise.resolve(true);
+    },
+  };
+
   const bb: BbPluginApi = {
     pluginId,
     log,
@@ -1859,6 +1914,7 @@ function createFakePluginHostInternal(
     providers,
     ui,
     events,
+    experimental_dispatch,
     status,
     server,
     hosts,
@@ -1949,7 +2005,20 @@ function createFakePluginHostInternal(
           "thread.failed": threadEventHandlers["thread.failed"].length,
           "thread.archived": threadEventHandlers["thread.archived"].length,
           "thread.deleted": threadEventHandlers["thread.deleted"].length,
+          "dispatch.held": threadEventHandlers["dispatch.held"].length,
+          "dispatch.released": threadEventHandlers["dispatch.released"].length,
+          "dispatch.cancelled":
+            threadEventHandlers["dispatch.cancelled"].length,
         };
+      },
+      get dispatchGates() {
+        return { ...dispatchGates };
+      },
+      get releasedDispatchHolds() {
+        return [...releasedDispatchHolds];
+      },
+      get reportedDispatchHolds() {
+        return [...reportedDispatchHolds];
       },
       mentionProviders,
       providerRegistrations,

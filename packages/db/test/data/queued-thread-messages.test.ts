@@ -55,6 +55,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(queuedMessage.id).toMatch(/^qmsg_/);
@@ -74,6 +75,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     const fetched = getQueuedThreadMessage(db, queuedMessage.id);
@@ -90,6 +92,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -98,6 +101,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(2);
@@ -112,6 +116,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const second = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -120,6 +125,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -163,6 +169,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(
@@ -198,6 +205,7 @@ describe("queued thread messages", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        pluginInputs: null,
       });
 
       const result = updateQueuedThreadMessage(db, noopNotifier, {
@@ -225,6 +233,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
 
@@ -250,6 +259,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(true);
@@ -266,6 +276,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
@@ -294,6 +305,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const firstClaim = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
     if (!firstClaim) {
@@ -355,6 +367,7 @@ describe("queued thread messages", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        pluginInputs: null,
       });
       const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
       expect(claimedQueuedMessage?.claimedAt).toBe(1_000);
@@ -392,6 +405,7 @@ describe("queued thread messages", () => {
           reasoningLevel: "medium",
           permissionMode: "full",
           serviceTier: "default",
+          pluginInputs: null,
         },
       );
       const releasableQueuedMessage = createQueuedThreadMessage(
@@ -404,6 +418,7 @@ describe("queued thread messages", () => {
           reasoningLevel: "medium",
           permissionMode: "full",
           serviceTier: "default",
+          pluginInputs: null,
         },
       );
       const protectedClaim = claimQueuedThreadMessage(
@@ -454,6 +469,7 @@ describe("queued thread messages", () => {
         reasoningLevel: "medium",
         permissionMode: "full",
         serviceTier: "default",
+        pluginInputs: null,
       });
       nowSpy.mockReturnValueOnce(2_000);
       const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
@@ -463,6 +479,7 @@ describe("queued thread messages", () => {
         reasoningLevel: "high",
         permissionMode: "full",
         serviceTier: "default",
+        pluginInputs: null,
       });
 
       const claimedQueuedMessage = claimNextQueuedThreadMessageGroup(db, noopNotifier, thread.id)?.[0];
@@ -484,6 +501,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -492,6 +510,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -500,6 +519,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -535,6 +555,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -543,6 +564,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -551,6 +573,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     expect(
       reorderQueuedThreadMessage({
@@ -596,6 +619,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -604,6 +628,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -612,6 +637,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -648,6 +674,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -656,6 +683,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -664,6 +692,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -700,6 +729,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -708,6 +738,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -716,6 +747,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -757,6 +789,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -765,6 +798,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "high",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -773,6 +807,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -811,6 +846,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -819,6 +855,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -827,6 +864,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -877,6 +915,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -886,6 +925,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "high",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -920,6 +960,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -928,6 +969,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     const result = setQueuedThreadMessageGroupBoundary({
@@ -962,6 +1004,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -970,6 +1013,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1019,6 +1063,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1027,6 +1072,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "high",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1035,6 +1081,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     const moveToFront = reorderQueuedThreadMessage({
@@ -1092,6 +1139,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1100,6 +1148,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "high",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(
@@ -1133,6 +1182,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1142,6 +1192,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1150,6 +1201,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(
@@ -1185,6 +1237,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1193,6 +1246,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1201,6 +1255,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     setQueuedThreadMessageGroupBoundary({
       db,
@@ -1254,6 +1309,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1262,6 +1318,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "high",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const thirdQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: thread.id,
@@ -1270,6 +1327,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
     const otherQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
       threadId: otherThread.id,
@@ -1278,6 +1336,7 @@ describe("queued thread messages", () => {
       reasoningLevel: "medium",
       permissionMode: "full",
       serviceTier: "default",
+      pluginInputs: null,
     });
 
     expect(
