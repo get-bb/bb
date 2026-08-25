@@ -194,6 +194,7 @@ interface AgentLaunchArgs {
   selectFlag?: string;
   primaryModels?: string[];
   reasoningProbePriorityModelIds?: string[];
+  modelPickerPrimaryModels?: string[];
   reasoningCli?: {
     flag: string;
     supportedLevels: ReasoningLevel[];
@@ -279,6 +280,9 @@ async function startThread(args?: StartThreadArgs): Promise<{
               reasoningProbePriorityModelIds:
                 args.reasoningProbePriorityModelIds,
             }
+          : {}),
+        ...(args?.modelPickerPrimaryModels
+          ? { primaryModels: args.modelPickerPrimaryModels }
           : {}),
         acpLaunchSpec: acpLaunchSpec(args ?? {}),
         ...(args?.additionalWorkspaceWriteRoots
@@ -408,6 +412,9 @@ function sendModelList(
             reasoningProbePriorityModelIds:
               launch.reasoningProbePriorityModelIds,
           }
+        : {}),
+      ...(launch.modelPickerPrimaryModels
+        ? { primaryModels: launch.modelPickerPrimaryModels }
         : {}),
       acpLaunchSpec: acpLaunchSpec(
         modelLines === undefined
@@ -708,6 +715,7 @@ describe("acp bridge", () => {
       dialectId: "cursor",
       parameterizedModelPicker: true,
       reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
+      modelPickerPrimaryModels: ["default", "composer-2.5", "grok-4.6"],
       envVars: {
         FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
         FAKE_ACP_REQUEST_LOG: requestLog,
@@ -719,6 +727,7 @@ describe("acp bridge", () => {
         id: string;
         supportedReasoningEfforts: { reasoningEffort: string }[];
       }[];
+      selectedOnlyModels: { id: string }[];
     };
     const initialize = loggedAcpRequests(requestLog).find(
       (request) => request.method === "initialize",
@@ -744,6 +753,8 @@ describe("acp bridge", () => {
       "default",
       "composer-2.5",
       "grok-4.6",
+    ]);
+    expect(result.selectedOnlyModels.map((model) => model.id)).toEqual([
       "grok-4.5",
     ]);
   });

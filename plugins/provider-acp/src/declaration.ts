@@ -105,6 +105,9 @@ export function acpProviderDeclaration(
       ...(agent.parameterizedModelPicker === true
         ? { parameterizedModelPicker: true }
         : {}),
+      ...(agent.primaryModels === undefined
+        ? {}
+        : { primaryModels: [...agent.primaryModels] }),
       ...(agent.reasoningProbePriorityModelIds === undefined
         ? {}
         : {

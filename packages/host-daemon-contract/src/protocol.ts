@@ -307,18 +307,24 @@
 // lets turn submission recover a stale target by re-steering the live turn.
 // An old daemon can still start a competing provider turn in that race.
 //
-// Version 167 changes Cursor's provider bridge options and session behavior.
+// Version 167 lets the server retry an explicitly retryable online RPC after
+// its first response timeout. This can send the same command twice when the
+// daemon executed the first request but its response was lost, so enrolled
+// daemons must update with the server even though the message schema is
+// unchanged.
+//
+// Version 168 changes Cursor's provider bridge options and session behavior.
 // Server → daemon: `bridgeLaunch.providerOptions` removes Cursor's CLI
-// `modelCli` variant catalog and adds `parameterizedModelPicker` plus
-// `reasoningProbePriorityModelIds`. The bridge advertises that capability to
-// Cursor for discovery and live sessions, then sends bare model ids with
-// explicit effort and Fast config options. Those provider options are opaque
-// but their bytes and meaning changed and mixed-version compatibility was not
-// deliberately preserved and tested.
+// `modelCli` variant catalog and adds `parameterizedModelPicker`, bare
+// `primaryModels`, and `reasoningProbePriorityModelIds`. The bridge advertises
+// that capability to Cursor for discovery and live sessions, then sends bare
+// model ids with explicit effort and Fast config options. Those provider
+// options are opaque but their bytes and meaning changed and mixed-version
+// compatibility was not deliberately preserved and tested.
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 167 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 168 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

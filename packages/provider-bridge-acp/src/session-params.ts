@@ -223,6 +223,7 @@ function buildAcpModelDiscoveryAgentCommand(
 
 interface AcpModelListOptions {
   parameterizedModelPicker: boolean;
+  primaryModels?: readonly string[];
   reasoningProbePriorityModelIds: readonly string[];
 }
 
@@ -235,7 +236,9 @@ export function buildAcpModelListParams(
   launchSpec: AcpLaunchSpec | null,
   options: AcpModelListOptions,
 ): AcpModelListParams {
-  const primaryModels = [...(launchSpec?.modelCli?.primaryModels ?? [])];
+  const primaryModels = [
+    ...(options.primaryModels ?? launchSpec?.modelCli?.primaryModels ?? []),
+  ];
   const reasoningProbePriorityModelIds = [
     ...options.reasoningProbePriorityModelIds,
   ];

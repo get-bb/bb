@@ -133,13 +133,14 @@ describe("buildAcpModelListParams", () => {
         }),
         {
           parameterizedModelPicker: true,
+          primaryModels: ["default", "composer-2.5", "grok-4.6"],
           reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
         },
       ),
     ).toEqual({
       agent: { command: "cursor-agent", args: ["acp"] },
       parameterizedModelPicker: true,
-      primaryModels: [],
+      primaryModels: ["default", "composer-2.5", "grok-4.6"],
       reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
     });
   });

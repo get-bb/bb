@@ -75,6 +75,14 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     // Grok families first so the bounded discovery window captures their full
     // effort ladders.
     parameterizedModelPicker: true,
+    primaryModels: [
+      "default",
+      "grok-4.6",
+      "gpt-5.6-sol",
+      "claude-opus-5",
+      "claude-fable-5",
+      "composer-2.5",
+    ],
     reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
     // cursor-agent (2026.08.11) advertises `sessionCapabilities: { list }`
     // only; no session/fork.

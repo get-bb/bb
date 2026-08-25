@@ -39,7 +39,9 @@ export async function callHostOnlineRpc(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
 ): Promise<HostDaemonRpcResultForCommand> {
-  return callHostOnlineRpcWithRetry(deps, args, { retryOnUnavailable: false });
+  return callHostOnlineRpcWithRetry(deps, args, {
+    retryOnTransportFailure: false,
+  });
 }
 
 export function callHostRetryableOnlineRpc<
@@ -52,46 +54,76 @@ export async function callHostRetryableOnlineRpc(
   deps: WorkSessionDeps,
   args: CallHostRetryableOnlineRpcArgs<HostDaemonRetryableOnlineRpcCommand>,
 ): Promise<HostDaemonOnlineRpcResultForCommand> {
-  return callHostOnlineRpcWithRetry(deps, args, { retryOnUnavailable: true });
+  return callHostOnlineRpcWithRetry(deps, args, {
+    retryOnTransportFailure: true,
+  });
 }
 
 async function callHostOnlineRpcWithRetry(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
-  options: { retryOnUnavailable: false },
+  options: { retryOnTransportFailure: false },
 ): Promise<HostDaemonRpcResultForCommand>;
 async function callHostOnlineRpcWithRetry(
   deps: WorkSessionDeps,
   args: CallHostRetryableOnlineRpcArgs<HostDaemonRetryableOnlineRpcCommand>,
-  options: { retryOnUnavailable: true },
+  options: { retryOnTransportFailure: true },
 ): Promise<HostDaemonOnlineRpcResultForCommand>;
 async function callHostOnlineRpcWithRetry(
   deps: WorkSessionDeps,
   args: CallHostOnlineRpcArgs<HostDaemonRpcCommand>,
-  options: { retryOnUnavailable: boolean },
+  options: { retryOnTransportFailure: boolean },
 ): Promise<HostDaemonRpcResultForCommand> {
   await ensureHostSessionReadyForWork(deps, { hostId: args.hostId }).catch(
     async (error) => {
-      if (!options.retryOnUnavailable || !isHostUnavailableApiError(error)) {
+      if (
+        !options.retryOnTransportFailure ||
+        !isHostUnavailableApiError(error)
+      ) {
         throw error;
       }
       await waitForRetryableHostRpcTransport(deps, args.hostId);
     },
   );
-  const response = await requestHostOnlineRpcResponse(deps, args).catch(
-    async (error) => {
-      if (
-        !(error instanceof HostOnlineRpcUnavailableError) ||
-        !options.retryOnUnavailable
-      ) {
-        throwOnlineRpcError(error);
-      }
+  const timeoutRetryDeadline =
+    options.retryOnTransportFailure && args.timeoutMs > 1
+      ? Date.now() + args.timeoutMs
+      : null;
+  const firstAttemptArgs =
+    timeoutRetryDeadline === null
+      ? args
+      : {
+          ...args,
+          timeoutMs: Math.max(1, Math.floor(args.timeoutMs / 2)),
+        };
+  const response = await requestHostOnlineRpcResponse(
+    deps,
+    firstAttemptArgs,
+  ).catch(async (error) => {
+    if (!options.retryOnTransportFailure) {
+      throwOnlineRpcError(error);
+    }
+    if (error instanceof HostOnlineRpcUnavailableError) {
       await waitForRetryableHostRpcTransport(deps, args.hostId);
       return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
         throwOnlineRpcError(retryError);
       });
-    },
-  );
+    }
+    if (!(error instanceof HostOnlineRpcTimeoutError)) {
+      throwOnlineRpcError(error);
+    }
+    const retryTimeoutMs =
+      timeoutRetryDeadline === null ? 0 : timeoutRetryDeadline - Date.now();
+    if (retryTimeoutMs <= 0) {
+      throwOnlineRpcError(error);
+    }
+    return requestHostOnlineRpcResponse(deps, {
+      ...args,
+      timeoutMs: retryTimeoutMs,
+    }).catch((retryError) => {
+      throwOnlineRpcError(retryError);
+    });
+  });
 
   if (!response.ok) {
     throw new ApiError(502, response.errorCode, response.errorMessage, false);

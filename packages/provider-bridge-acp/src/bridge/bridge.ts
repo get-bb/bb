@@ -2626,13 +2626,16 @@ async function handleModelList(
         )
       : null;
   if (sessionDiscoveredModels) {
-    sendResult(id, {
-      models: applyConfiguredReasoningToModels(sessionDiscoveredModels, {
-        reasoningCli: params.reasoningCli,
-        nativeReasoning: params.nativeReasoning,
-      }),
-      selectedOnlyModels: [],
-    });
+    sendResult(
+      id,
+      splitPrimaryModels(
+        applyConfiguredReasoningToModels(sessionDiscoveredModels, {
+          reasoningCli: params.reasoningCli,
+          nativeReasoning: params.nativeReasoning,
+        }),
+        params.primaryModels,
+      ),
+    );
     return;
   }
   sendResult(id, {
@@ -2677,6 +2680,8 @@ const acpProviderOptionsSchema = z
     acpDialect: z.string().min(1).optional(),
     /** Enables an agent's separate model configuration options. */
     parameterizedModelPicker: z.boolean().optional(),
+    /** Bare model ids shown before the collapsed "More models" pool. */
+    primaryModels: z.array(z.string().min(1)).optional(),
     /** Model ids to probe first during bounded native discovery. */
     reasoningProbePriorityModelIds: z.array(z.string().min(1)).optional(),
   })
@@ -2684,6 +2689,7 @@ const acpProviderOptionsSchema = z
 
 interface AcpModelPickerOptions {
   parameterizedModelPicker: boolean;
+  primaryModels?: string[];
   reasoningProbePriorityModelIds: string[];
 }
 
@@ -2693,6 +2699,9 @@ function decodeAcpModelPickerOptions(
   const parsed = acpProviderOptionsSchema.parse(providerOptions ?? {});
   return {
     parameterizedModelPicker: parsed.parameterizedModelPicker === true,
+    ...(parsed.primaryModels === undefined
+      ? {}
+      : { primaryModels: [...parsed.primaryModels] }),
     reasoningProbePriorityModelIds: [
       ...(parsed.reasoningProbePriorityModelIds ?? []),
     ],

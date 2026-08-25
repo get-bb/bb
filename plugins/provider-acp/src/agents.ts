@@ -46,6 +46,8 @@ export interface AcpAgentDefinition {
   dialect?: string;
   /** Enables separate model, reasoning, and service-tier ACP options. */
   parameterizedModelPicker?: boolean;
+  /** Bare model ids shown before the picker's collapsed "More models" pool. */
+  primaryModels?: readonly string[];
   /** Model ids to probe first during bounded ACP-native discovery. */
   reasoningProbePriorityModelIds?: readonly string[];
   /** Listed always, or only where the bridge reports the agent installed. */

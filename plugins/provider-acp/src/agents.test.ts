@@ -244,6 +244,14 @@ describe("acpProviderDeclaration", () => {
     expect(byId.get("acp-cursor")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "cursor",
       parameterizedModelPicker: true,
+      primaryModels: [
+        "default",
+        "grok-4.6",
+        "gpt-5.6-sol",
+        "claude-opus-5",
+        "claude-fable-5",
+        "composer-2.5",
+      ],
       reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
       acpLaunchSpec: {
         command: "cursor-agent",
