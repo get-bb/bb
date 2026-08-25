@@ -131,6 +131,11 @@ describe("PromptBoxInternal on a real iPadOS ProseMirror build", () => {
     expect(screen.getByRole("button", { name: "review" })).toBeTruthy();
 
     fireEvent.keyDown(getPromptEditorElement(), {
+      key: "ArrowDown",
+      code: "ArrowDown",
+      keyCode: 40,
+    });
+    fireEvent.keyDown(getPromptEditorElement(), {
       key: "Enter",
       code: "Enter",
       keyCode: 13,

@@ -2949,7 +2949,7 @@ export function PromptBoxInternal({
           return true;
         }
         const canApplyTypeaheadFromKeyboard =
-          !isPointerCoarse &&
+          (!isPointerCoarse || isOriginalIPadHardwareEnter) &&
           (event.key === "Tab" ||
             (event.key === "Enter" && hasNavigatedTypeaheadRef.current));
         if (canApplyTypeaheadFromKeyboard && activeSuggestions.length > 0) {
