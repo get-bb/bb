@@ -48,10 +48,20 @@ const THREAD_RELATION_RANK = {
   unrelated: 3,
 };
 
+const ATTENTION_BUCKET_MS = 60 * 60 * 1000;
+
 interface ThreadMentionContext {
   currentParentThreadId: string | null;
   currentProjectId?: string;
   currentThreadId?: string;
+}
+
+function threadActivityRank(thread: Thread): number {
+  return thread.status === "active" ||
+    thread.status === "starting" ||
+    thread.status === "stopping"
+    ? 0
+    : 1;
 }
 
 function threadDisplayTitle(thread: Thread): string | undefined {
@@ -140,6 +150,10 @@ export function buildThreadMentionSuggestions(
       return {
         suggestion,
         relationRank: threadRelationRank(thread, context),
+        activityRank: threadActivityRank(thread),
+        attentionBucket: Math.floor(
+          thread.latestAttentionAt / ATTENTION_BUCKET_MS,
+        ),
         score: match.score,
       };
     })
@@ -147,6 +161,8 @@ export function buildThreadMentionSuggestions(
       (left, right) =>
         right.score - left.score ||
         left.relationRank - right.relationRank ||
+        left.activityRank - right.activityRank ||
+        right.attentionBucket - left.attentionBucket ||
         (left.suggestion.title ?? "").localeCompare(
           right.suggestion.title ?? "",
         ) ||

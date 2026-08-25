@@ -2817,6 +2817,22 @@ describe("PromptBoxInternal mention triggers", () => {
     selection?.removeAllRanges();
   });
 
+  it("resynchronizes mention suggestions after IME composition ends", async () => {
+    const { promptBoxRef } = renderPromptBox("", {
+      mentionSuggestions: [githubIssueSuggestion],
+    });
+    await focusPromptEnd(promptBoxRef);
+
+    const editor = getPromptEditorElement();
+    fireEvent.compositionStart(editor, { data: "@fix" });
+    await act(async () => promptBoxRef.current?.insertTextAtCursor("@fix"));
+    expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
+
+    fireEvent.compositionEnd(editor, { data: "@fix" });
+
+    await screen.findByRole("button", { name: /Fix login bug/u });
+  });
+
   it("silently closes settled no-match results", async () => {
     const { onMentionQueryChange, promptBoxRef } = renderPromptBox("@missing");
 
@@ -2880,6 +2896,41 @@ describe("PromptBoxInternal mention triggers", () => {
 
     await waitFor(() => expect(latestValue(changes)).toBe("@fix more"));
     expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
+  });
+
+  it("opens a controlled replacement mention occurrence at the same position", async () => {
+    const promptBoxRef = createRef<PromptBoxHandle>();
+
+    function ReplacementHarness() {
+      const [value, setValue] = useState("@fix");
+      return (
+        <>
+          <button type="button" onClick={() => setValue("@different title")}>
+            Replace occurrence
+          </button>
+          <PromptBoxInternal
+            {...createPromptBoxProps({
+              value,
+              onChange: (nextValue) => setValue(nextValue),
+              typeahead: buildTypeaheadConfig({
+                mentionSuggestions: [githubIssueSuggestion],
+              }),
+            })}
+            promptBoxRef={promptBoxRef}
+          />
+        </>
+      );
+    }
+
+    render(<ReplacementHarness />);
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByRole("button", { name: /Fix login bug/u });
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Replace occurrence" }));
+
+    expect(getPromptEditorElement().textContent).toBe("@different title");
+    await screen.findByRole("button", { name: /Fix login bug/u });
   });
 
   it("does not let passive mention results hijack desktop Enter", async () => {

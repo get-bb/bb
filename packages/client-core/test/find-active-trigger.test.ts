@@ -86,14 +86,15 @@ describe("findActiveTrigger", () => {
     ).toBeNull();
   });
 
-  it("keeps spaces and whitespace verbatim in a multiword mention query", () => {
-    const text = "Ask @prompt  mention ";
+  it("keeps spaces and tabs verbatim in a multiword mention query", () => {
+    const query = "prompt \t mention  ";
+    const text = `Ask @${query}`;
     expect(
       findActiveTrigger(editorWithText(text), [{ char: "@", kind: "mention" }]),
     ).toEqual({
       char: "@",
       kind: "mention",
-      query: "prompt  mention ",
+      query,
       from: "Ask ".length,
       to: text.length,
     });

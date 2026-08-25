@@ -1307,6 +1307,7 @@ export function PromptBoxInternal({
     (event: KeyboardEvent, isOriginalIPadHardwareEnter?: boolean) => boolean
   >(() => false);
   const compositionEndedAtRef = useRef(Number.NEGATIVE_INFINITY);
+  const compositionNeedsTriggerSyncRef = useRef(false);
   const postCompositionKeyDownEvents = usePostCompositionKeyDownEvents();
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
   // The TipTap editor is created once; its `onUpdate`/`onSelectionUpdate`/click
@@ -1769,6 +1770,26 @@ export function PromptBoxInternal({
             // Magic Keyboard Enter for the next 500 ms.
             if (!_view.composing) return false;
             compositionEndedAtRef.current = event.timeStamp;
+            // Custom DOM handlers run before ProseMirror settles composition
+            // and flushes any pending DOM change. Two microtasks put this
+            // fallback after that flush; an ordinary post-composition update
+            // clears the flag and avoids dispatching the query twice.
+            queueMicrotask(() => {
+              queueMicrotask(() => {
+                if (!compositionNeedsTriggerSyncRef.current) return;
+                const currentEditor = editorRef.current;
+                if (
+                  !currentEditor ||
+                  currentEditor.isDestroyed ||
+                  currentEditor.view !== _view ||
+                  currentEditor.view.composing
+                ) {
+                  return;
+                }
+                compositionNeedsTriggerSyncRef.current = false;
+                syncTriggerStateRef.current(currentEditor);
+              });
+            });
             return false;
           },
           keydown: (_view, event) => {
@@ -1899,16 +1920,42 @@ export function PromptBoxInternal({
         // handle that transaction once. The browser already reveals the caret
         // for native contenteditable edits; measuring it here with coordsAtPos
         // forces layout on every keystroke.
-        if (transaction.docChanged || updatedEditor.view.composing) return;
+        if (transaction.docChanged) return;
+        if (updatedEditor.view.composing) {
+          compositionNeedsTriggerSyncRef.current = true;
+          return;
+        }
+        compositionNeedsTriggerSyncRef.current = false;
         syncTriggerStateRef.current(updatedEditor);
         scheduleRevealEditorSelection();
       },
       onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
+        const dismissedTrigger = dismissedTriggerRef.current;
+        if (
+          dismissedTrigger !== null &&
+          transaction.docChanged &&
+          !isRestoringAppliedMentionRef.current
+        ) {
+          const mappedStart = transaction.mapping.mapResult(
+            dismissedTrigger.start,
+            1,
+          );
+          dismissedTriggerRef.current = mappedStart.deleted
+            ? null
+            : {
+                ...dismissedTrigger,
+                start: mappedStart.pos,
+                end: transaction.mapping.map(dismissedTrigger.end, -1),
+              };
+        }
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
         lastSyncedEditorValueRef.current = nextValue;
         onChangeRef.current(nextValue.text, nextValue.mentions);
-        if (!updatedEditor.view.composing) {
+        if (updatedEditor.view.composing) {
+          compositionNeedsTriggerSyncRef.current = true;
+        } else {
+          compositionNeedsTriggerSyncRef.current = false;
           syncTriggerStateRef.current(updatedEditor);
         }
         // Native typing already asks ProseMirror to scroll the selection into
@@ -2019,6 +2066,13 @@ export function PromptBoxInternal({
     ) {
       return;
     }
+
+    // A controlled replacement is a new draft occurrence, not continued
+    // typing in an explicitly dismissed typeahead session. Parent echoes of
+    // editor updates return above because `lastSyncedEditorValueRef` matches.
+    dismissedTriggerRef.current = null;
+    hasNavigatedTypeaheadRef.current = false;
+    triggerKeyRef.current = "";
 
     try {
       skipEditorChangeRef.current = true;
@@ -2221,9 +2275,9 @@ export function PromptBoxInternal({
       ? { kind: "error" }
       : { kind: "results", suggestions: orderedCommandSuggestions };
 
-  // Loaded-empty suppression (§6): a command trigger with zero loaded results
-  // (not loading, not error) is literal text — never open the menu. Mention
-  // triggers always open (they have a hint / "no matches" state).
+  // Loaded-empty suppression: command triggers and non-empty mention queries
+  // with zero loaded results stay literal text and close silently. A bare
+  // default `@` still opens the mention hint.
   const isCommandTriggerLiteral =
     activeTriggerKind === "command" &&
     !commandLoading &&
