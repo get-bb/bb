@@ -756,6 +756,7 @@ describe("acp bridge", () => {
     ]);
     expect(result.selectedOnlyModels.map((model) => model.id)).toEqual([
       "grok-4.5",
+      "claude-sonnet-4-6",
     ]);
   });
 
@@ -823,7 +824,7 @@ describe("acp bridge", () => {
   it.each([
     // Project-default reuse reaches the bridge as an ordinary thread/start.
     ["thread/start", "cursor-grok-4.6-medium", "grok-4.6"],
-    ["thread/resume", "cursor-grok-4.5-medium", "grok-4.5"],
+    ["thread/resume", "claude-4.6-sonnet-medium-thinking", "claude-sonnet-4-6"],
     ["thread/fork", "auto", "default"],
   ] as const)(
     "translates a legacy Cursor model for %s session construction",

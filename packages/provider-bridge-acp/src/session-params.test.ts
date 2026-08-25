@@ -1,4 +1,9 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import {
+  buildAgentModelCatalog,
+  parseAgentModelLines,
+} from "./bridge/model-catalog.js";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "./launch-spec.js";
 import {
   buildAcpModelListParams,
@@ -249,6 +254,16 @@ describe("buildAcpSessionParams", () => {
 });
 
 describe("buildAcpSessionParams parameterized model selection", () => {
+  const cursorParameterizedModelIds = new Set(
+    `default grok-4.6 composer-2.5 claude-opus-5 claude-opus-4-8
+gpt-5.6-sol gpt-5.5 claude-fable-5 grok-4.5 gemini-3.7-flash gpt-5.6-terra
+claude-sonnet-5 claude-sonnet-4-6 gpt-5.3-codex claude-opus-4-7 gpt-5.4
+claude-opus-4-6 claude-opus-4-5 gpt-5.2 gpt-5.6-luna gemini-3.6-flash gemini-3.1-pro
+gpt-5.4-mini gpt-5.4-nano claude-haiku-4-5 claude-sonnet-4-5 gpt-5.1 gemini-3-flash
+gemini-3.5-flash claude-sonnet-4 gpt-5-mini gemini-2.5-flash kimi-k3 kimi-k2.7-code glm-5.2`.split(
+      /\s+/u,
+    ),
+  );
   const cursorSpec: AcpLaunchSpec = {
     displayName: "Cursor",
     command: "cursor-agent",
@@ -294,6 +309,46 @@ describe("buildAcpSessionParams parameterized model selection", () => {
   it("keeps Cursor's new default id unchanged", () => {
     expect(cursorSessionParams({ model: "default" }).modelSelection).toEqual({
       modelId: "default",
+    });
+  });
+
+  it("translates every persisted Cursor family to an accepted parameterized id", () => {
+    const persistedCatalog = buildAgentModelCatalog(
+      parseAgentModelLines(
+        readFileSync(
+          new URL(
+            "./bridge/issue-1688-cursor-list-models.txt",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+      ),
+    );
+    const translations = persistedCatalog?.models.map(({ id }) => {
+      const selection = cursorSessionParams({ model: id }).modelSelection;
+      return [
+        id,
+        selection && "modelId" in selection ? selection.modelId : undefined,
+      ];
+    });
+    expect(translations).toHaveLength(34);
+    expect(
+      translations?.filter(
+        ([, id]) => id === undefined || !cursorParameterizedModelIds.has(id),
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["claude-4.6-sonnet-medium-thinking", "claude-sonnet-4-6"],
+    ["claude-4.6-opus-high-thinking", "claude-opus-4-6"],
+    ["claude-4.5-opus-high-thinking", "claude-opus-4-5"],
+    ["gemini-3.6-flash-minimal", "gemini-3.6-flash"],
+    ["claude-4.5-sonnet-thinking", "claude-sonnet-4-5"],
+    ["claude-4-sonnet-thinking", "claude-sonnet-4"],
+  ] as const)("maps persisted Cursor family %s to %s", (model, modelId) => {
+    expect(cursorSessionParams({ model }).modelSelection).toMatchObject({
+      modelId,
     });
   });
 

@@ -267,11 +267,21 @@ export function buildAcpModelListParams(
   };
 }
 
+const CURSOR_LEGACY_FAMILY_RENAMES: Readonly<Record<string, string>> = {
+  "claude-4-sonnet": "claude-sonnet-4",
+  "claude-4.5-opus": "claude-opus-4-5",
+  "claude-4.5-sonnet": "claude-sonnet-4-5",
+  "claude-4.6-opus": "claude-opus-4-6",
+  "claude-4.6-sonnet": "claude-sonnet-4-6",
+  "gemini-3.6-flash-minimal": "gemini-3.6-flash",
+};
+
 function cursorParameterizedModelId(model: string): string {
   const familyId = model === "auto" ? "default" : agentModelFamilyId(model);
-  return familyId.startsWith("cursor-")
+  const bareFamilyId = familyId.startsWith("cursor-")
     ? familyId.slice("cursor-".length)
     : familyId;
+  return CURSOR_LEGACY_FAMILY_RENAMES[bareFamilyId] ?? bareFamilyId;
 }
 
 /** The synthetic "acp-default" id is never forwarded. */

@@ -211,6 +211,7 @@ function cursorModelOptions() {
         { value: "composer-2.5", name: "Composer 2.5" },
         { value: "grok-4.6", name: "Cursor Grok 4.6" },
         { value: "grok-4.5", name: "Cursor Grok 4.5" },
+        { value: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
       ]
     : [
         { value: "default[]", name: "Auto" },
@@ -244,7 +245,10 @@ function cursorConfigOptions() {
       options: models,
     },
   ];
-  if (clientSupportsParameterizedModels && selectedModel.startsWith("grok-")) {
+  if (
+    clientSupportsParameterizedModels &&
+    (selectedModel.startsWith("grok-") || selectedModel === "claude-sonnet-4-6")
+  ) {
     options.push(
       {
         id: "effort",
