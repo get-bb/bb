@@ -2791,242 +2791,25 @@ describe("PromptBoxInternal mention triggers", () => {
     replacement: "#42 Fix login bug",
   };
 
-  it("searches multiword queries without mutating or decorating typed text", async () => {
-    const typed = "Ask @fix  login ";
-    const { changes, onMentionQueryChange, promptBoxRef } = renderPromptBox(
-      typed,
-      { mentionSuggestions: [githubIssueSuggestion] },
-    );
+  it("applies the first result with Enter for a multiword mention query", async () => {
+    const { changes, onMentionQueryChange, onSubmit, promptBoxRef } =
+      renderPromptBox("Ask @fix login", {
+        mentionSuggestions: [githubIssueSuggestion],
+      });
 
     await focusPromptEnd(promptBoxRef);
     await waitFor(() =>
-      expect(onMentionQueryChange).toHaveBeenCalledWith("fix  login ", "@"),
+      expect(onMentionQueryChange).toHaveBeenCalledWith("fix login", "@"),
     );
-
-    const editor = getPromptEditorElement();
-    expect(editor.textContent).toBe(typed);
-    expect(editor.querySelector('[data-type="mention"]')).toBeNull();
-    expect(changes).toHaveLength(0);
-
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    expect(selection?.toString()).toBe(typed);
-    selection?.removeAllRanges();
-  });
-
-  it("resynchronizes mention suggestions after IME composition ends", async () => {
-    const { promptBoxRef } = renderPromptBox("", {
-      mentionSuggestions: [githubIssueSuggestion],
-    });
-    await focusPromptEnd(promptBoxRef);
-
-    const editor = getPromptEditorElement();
-    fireEvent.compositionStart(editor, { data: "@fix" });
-    await act(async () => promptBoxRef.current?.insertTextAtCursor("@fix"));
-    expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
-
-    fireEvent.compositionEnd(editor, { data: "@fix" });
-
-    await screen.findByRole("button", { name: /Fix login bug/u });
-  });
-
-  it("silently closes settled no-match results", async () => {
-    const { onMentionQueryChange, promptBoxRef } = renderPromptBox("@missing");
-
-    await focusPromptEnd(promptBoxRef);
-    await waitFor(() =>
-      expect(onMentionQueryChange).toHaveBeenCalledWith("missing", "@"),
-    );
-
-    expect(screen.queryByText("No matching mentions")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Close suggestions" }),
-    ).toBeNull();
-  });
-
-  it("reopens a silent no-match session when backspace restores a viable query", async () => {
-    const promptBoxRef = createRef<PromptBoxHandle>();
-
-    function BackspaceHarness() {
-      const [value, setValue] = useState("@fixx");
-      const [query, setQuery] = useState<string | null>(null);
-      return (
-        <>
-          <button type="button" onClick={() => setValue("@fix")}>
-            Backspace
-          </button>
-          <PromptBoxInternal
-            {...createPromptBoxProps({
-              value,
-              onChange: (nextValue) => setValue(nextValue),
-              typeahead: buildTypeaheadConfig({
-                mentionSuggestions:
-                  query === "fix" ? [githubIssueSuggestion] : [],
-                onMentionQueryChange: (nextQuery) => setQuery(nextQuery),
-              }),
-            })}
-            promptBoxRef={promptBoxRef}
-          />
-        </>
-      );
-    }
-
-    render(<BackspaceHarness />);
-    await focusPromptEnd(promptBoxRef);
-    expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Backspace" }));
-
-    await screen.findByRole("button", { name: /Fix login bug/u });
-    expect(getPromptEditorElement().textContent).toBe("@fix");
-  });
-
-  it("keeps an explicitly dismissed occurrence closed as typing extends it", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("@fix", {
-      mentionSuggestions: [githubIssueSuggestion],
-    });
-    await focusPromptEnd(promptBoxRef);
-    await screen.findByRole("button", { name: /Fix login bug/u });
-
-    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
-    await act(async () => promptBoxRef.current?.insertTextAtCursor("more"));
-
-    await waitFor(() => expect(latestValue(changes)).toBe("@fix more"));
-    expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
-  });
-
-  it("opens a controlled replacement mention occurrence at the same position", async () => {
-    const promptBoxRef = createRef<PromptBoxHandle>();
-
-    function ReplacementHarness() {
-      const [value, setValue] = useState("@fix");
-      return (
-        <>
-          <button type="button" onClick={() => setValue("@different title")}>
-            Replace occurrence
-          </button>
-          <PromptBoxInternal
-            {...createPromptBoxProps({
-              value,
-              onChange: (nextValue) => setValue(nextValue),
-              typeahead: buildTypeaheadConfig({
-                mentionSuggestions: [githubIssueSuggestion],
-              }),
-            })}
-            promptBoxRef={promptBoxRef}
-          />
-        </>
-      );
-    }
-
-    render(<ReplacementHarness />);
-    await focusPromptEnd(promptBoxRef);
-    await screen.findByRole("button", { name: /Fix login bug/u });
-    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
-
-    fireEvent.click(screen.getByRole("button", { name: "Replace occurrence" }));
-
-    expect(getPromptEditorElement().textContent).toBe("@different title");
-    await screen.findByRole("button", { name: /Fix login bug/u });
-  });
-
-  it("does not let passive mention results hijack desktop Enter", async () => {
-    const { changes, onSubmit, promptBoxRef } = renderPromptBox("@fix", {
-      mentionSuggestions: [githubIssueSuggestion],
-    });
-    await focusPromptEnd(promptBoxRef);
     await screen.findByRole("button", { name: /Fix login bug/u });
 
     fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
 
-    expect(onSubmit).toHaveBeenCalledOnce();
-    expect(changes).toHaveLength(0);
-  });
-
-  it("applies a mention with Enter only after keyboard navigation", async () => {
-    const { changes, promptBoxRef } = renderPromptBox("@fix", {
-      mentionSuggestions: [githubIssueSuggestion],
-    });
-    await focusPromptEnd(promptBoxRef);
-    await screen.findByRole("button", { name: /Fix login bug/u });
-
-    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
-    fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
-
     await waitFor(() =>
-      expect(latestValue(changes)).toBe("@#42 Fix login bug "),
+      expect(latestValue(changes)).toBe("Ask @#42 Fix login bug "),
     );
     expect(latestChange(changes)?.mentions).toHaveLength(1);
-  });
-
-  it("keeps coarse-pointer Enter passive", async () => {
-    const restorePointer = mockPointerCoarse(true);
-    try {
-      const { changes, onSubmit, promptBoxRef } = renderPromptBox("@fix", {
-        mentionSuggestions: [githubIssueSuggestion],
-      });
-      await focusPromptEnd(promptBoxRef);
-      await screen.findByRole("button", {
-        name: /Fix login bug/u,
-      });
-
-      fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
-      expect(onSubmit).not.toHaveBeenCalled();
-      expect(latestChange(changes)?.mentions).toEqual([]);
-      expect(latestValue(changes)).toBe("@fix\n");
-    } finally {
-      restorePointer();
-    }
-  });
-
-  it("applies a coarse-pointer mention by tapping the result", async () => {
-    const restorePointer = mockPointerCoarse(true);
-    try {
-      const { changes } = renderPromptBox("@fix", {
-        mentionSuggestions: [githubIssueSuggestion],
-      });
-      fireEvent.mouseDown(
-        await screen.findByRole("button", { name: /Fix login bug/u }),
-        { button: 0 },
-      );
-
-      await waitFor(() =>
-        expect(latestValue(changes)).toBe("@#42 Fix login bug "),
-      );
-    } finally {
-      restorePointer();
-    }
-  });
-
-  it("dismisses the current occurrence from the touch-accessible close button", async () => {
-    const restorePointer = mockPointerCoarse(true);
-    try {
-      const { onMentionQueryChange } = renderPromptBox("@fix", {
-        mentionSuggestions: [githubIssueSuggestion],
-      });
-
-      const closeButton = await screen.findByRole("button", {
-        name: "Close suggestions",
-      });
-      expect(closeButton.classList).toContain("size-11");
-      expect(closeButton.parentElement?.classList).toContain("h-11");
-      expect(closeButton.parentElement?.classList).not.toContain("absolute");
-
-      fireEvent.click(closeButton);
-
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("button", { name: /Fix login bug/u }),
-        ).toBeNull(),
-      );
-      expect(getPromptEditorElement().textContent).toBe("@fix");
-      expect(onMentionQueryChange).toHaveBeenLastCalledWith(null, null);
-    } finally {
-      restorePointer();
-    }
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("reports the queued editor typeahead's open state and measured height", async () => {
@@ -3870,7 +3653,6 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await openCommandMenu(promptBoxRef, "/compact", "compact");
 
     await act(async () => {
-      fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
       fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
     });
     await act(async () => {});
@@ -3902,7 +3684,6 @@ describe("PromptBoxInternal command typeahead submit", () => {
     await openCommandMenu(promptBoxRef, "/review", "review");
 
     await act(async () => {
-      fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
       fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
     });
     await act(async () => {});
@@ -4085,8 +3866,6 @@ describe("PromptBoxInternal command typeahead navigation", () => {
       ).toContain("bg-state-active"),
     );
 
-    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowUp" });
-    fireEvent.keyDown(getPromptEditorElement(), { key: "ArrowDown" });
     fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
 
     await waitFor(() => expect(latestValue(changes)).toBe("/plan "));

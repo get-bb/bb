@@ -1302,12 +1302,10 @@ export function PromptBoxInternal({
   const skipEditorChangeRef = useRef(false);
   const lastSyncedEditorValueRef = useRef<PromptEditorValueKey | null>(null);
   const triggerKeyRef = useRef("");
-  const hasNavigatedTypeaheadRef = useRef(false);
   const handleEditorKeyDownRef = useRef<
     (event: KeyboardEvent, isOriginalIPadHardwareEnter?: boolean) => boolean
   >(() => false);
   const compositionEndedAtRef = useRef(Number.NEGATIVE_INFINITY);
-  const compositionNeedsTriggerSyncRef = useRef(false);
   const postCompositionKeyDownEvents = usePostCompositionKeyDownEvents();
   const dispatchAppCommandKey = useAppCommandKeyDispatch();
   // The TipTap editor is created once; its `onUpdate`/`onSelectionUpdate`/click
@@ -1624,17 +1622,8 @@ export function PromptBoxInternal({
       const dismissedTrigger = dismissedTriggerRef.current;
       const isRestoringAppliedMention =
         isRestoringAppliedMentionRef.current && dismissedTrigger !== null;
-      const detectedTrigger = findActiveTrigger(editor, triggers);
 
       if (dismissedTrigger && !isRestoringAppliedMention) {
-        if (
-          !dismissedTrigger.hasLeftRange &&
-          detectedTrigger?.from === dismissedTrigger.start
-        ) {
-          // Typing extends the same dismissed occurrence. Keep its session
-          // closed rather than interpreting the new caret position as a leave.
-          dismissedTrigger.end = caretPosition;
-        }
         const isWithinDismissedRange =
           caretPosition >= dismissedTrigger.start &&
           caretPosition <= dismissedTrigger.end;
@@ -1657,13 +1646,14 @@ export function PromptBoxInternal({
             caretPosition <= dismissedTriggerRef.current.end)),
       );
 
-      const nextTrigger = shouldSuppressTrigger ? null : detectedTrigger;
+      const nextTrigger = shouldSuppressTrigger
+        ? null
+        : findActiveTrigger(editor, triggers);
       const nextKey = nextTrigger
         ? `${nextTrigger.kind}:${nextTrigger.from}:${nextTrigger.to}:${nextTrigger.query}`
         : "";
       if (nextKey !== triggerKeyRef.current) {
         triggerKeyRef.current = nextKey;
-        hasNavigatedTypeaheadRef.current = false;
         setSelectedIndex(0);
       }
       setActiveTrigger(nextTrigger);
@@ -1770,26 +1760,6 @@ export function PromptBoxInternal({
             // Magic Keyboard Enter for the next 500 ms.
             if (!_view.composing) return false;
             compositionEndedAtRef.current = event.timeStamp;
-            // Custom DOM handlers run before ProseMirror settles composition
-            // and flushes any pending DOM change. Two microtasks put this
-            // fallback after that flush; an ordinary post-composition update
-            // clears the flag and avoids dispatching the query twice.
-            queueMicrotask(() => {
-              queueMicrotask(() => {
-                if (!compositionNeedsTriggerSyncRef.current) return;
-                const currentEditor = editorRef.current;
-                if (
-                  !currentEditor ||
-                  currentEditor.isDestroyed ||
-                  currentEditor.view !== _view ||
-                  currentEditor.view.composing
-                ) {
-                  return;
-                }
-                compositionNeedsTriggerSyncRef.current = false;
-                syncTriggerStateRef.current(currentEditor);
-              });
-            });
             return false;
           },
           keydown: (_view, event) => {
@@ -1921,43 +1891,15 @@ export function PromptBoxInternal({
         // for native contenteditable edits; measuring it here with coordsAtPos
         // forces layout on every keystroke.
         if (transaction.docChanged) return;
-        if (updatedEditor.view.composing) {
-          compositionNeedsTriggerSyncRef.current = true;
-          return;
-        }
-        compositionNeedsTriggerSyncRef.current = false;
         syncTriggerStateRef.current(updatedEditor);
         scheduleRevealEditorSelection();
       },
       onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
-        const dismissedTrigger = dismissedTriggerRef.current;
-        if (
-          dismissedTrigger !== null &&
-          transaction.docChanged &&
-          !isRestoringAppliedMentionRef.current
-        ) {
-          const mappedStart = transaction.mapping.mapResult(
-            dismissedTrigger.start,
-            1,
-          );
-          dismissedTriggerRef.current = mappedStart.deleted
-            ? null
-            : {
-                ...dismissedTrigger,
-                start: mappedStart.pos,
-                end: transaction.mapping.map(dismissedTrigger.end, -1),
-              };
-        }
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
         lastSyncedEditorValueRef.current = nextValue;
         onChangeRef.current(nextValue.text, nextValue.mentions);
-        if (updatedEditor.view.composing) {
-          compositionNeedsTriggerSyncRef.current = true;
-        } else {
-          compositionNeedsTriggerSyncRef.current = false;
-          syncTriggerStateRef.current(updatedEditor);
-        }
+        syncTriggerStateRef.current(updatedEditor);
         // Native typing already asks ProseMirror to scroll the selection into
         // view. Clipboard and drop transactions still need the prompt's custom
         // scroll-container reveal that originally fixed multiline paste.
@@ -2066,13 +2008,6 @@ export function PromptBoxInternal({
     ) {
       return;
     }
-
-    // A controlled replacement is a new draft occurrence, not continued
-    // typing in an explicitly dismissed typeahead session. Parent echoes of
-    // editor updates return above because `lastSyncedEditorValueRef` matches.
-    dismissedTriggerRef.current = null;
-    hasNavigatedTypeaheadRef.current = false;
-    triggerKeyRef.current = "";
 
     try {
       skipEditorChangeRef.current = true;
@@ -2275,9 +2210,9 @@ export function PromptBoxInternal({
       ? { kind: "error" }
       : { kind: "results", suggestions: orderedCommandSuggestions };
 
-  // Loaded-empty suppression: command triggers and non-empty mention queries
-  // with zero loaded results stay literal text and close silently. A bare
-  // default `@` still opens the mention hint.
+  // Loaded-empty suppression (§6): a command trigger with zero loaded results
+  // (not loading, not error) is literal text — never open the menu. Mention
+  // triggers always open (they have a hint / "no matches" state).
   const isCommandTriggerLiteral =
     activeTriggerKind === "command" &&
     !commandLoading &&
@@ -2291,14 +2226,7 @@ export function PromptBoxInternal({
     !isVoiceBusy &&
     activeTrigger !== null &&
     !isCommandTriggerLiteral &&
-    !isBareNonDefaultMentionTrigger &&
-    !(
-      activeTriggerKind === "mention" &&
-      activeMentionQuery.length > 0 &&
-      !mentionLoading &&
-      !mentionError &&
-      mentionSuggestions.length === 0
-    );
+    !isBareNonDefaultMentionTrigger;
 
   const typeaheadMenuState: TypeaheadMenuState =
     activeTriggerKind === "command"
@@ -2508,21 +2436,6 @@ export function PromptBoxInternal({
     },
     [applyCommandSuggestion, applyMentionSuggestion],
   );
-
-  const dismissActiveTrigger = useCallback(() => {
-    triggerKeyRef.current = "";
-    hasNavigatedTypeaheadRef.current = false;
-    if (activeTrigger) {
-      dismissedTriggerRef.current = {
-        start: activeTrigger.from,
-        end: activeTrigger.to,
-        hasLeftRange: false,
-      };
-    }
-    setActiveTrigger(null);
-    onMentionQueryChange(null, null);
-    onCommandQueryChange(null);
-  }, [activeTrigger, onCommandQueryChange, onMentionQueryChange]);
 
   const focusEnd = useCallback(() => {
     if (isPointerCoarse) {
@@ -2792,17 +2705,11 @@ export function PromptBoxInternal({
     const shouldBlurAfterSubmit = blurAfterPointerSubmitRef.current;
     blurAfterPointerSubmitRef.current = false;
     if (!canSubmit) return;
-    triggerKeyRef.current = "";
-    hasNavigatedTypeaheadRef.current = false;
-    dismissedTriggerRef.current = null;
-    setActiveTrigger(null);
-    onMentionQueryChange(null, null);
-    onCommandQueryChange(null);
     onSubmit();
     if (shouldBlurAfterSubmit) {
       blurPromptEditor(editorRef.current);
     }
-  }, [canSubmit, onCommandQueryChange, onMentionQueryChange, onSubmit]);
+  }, [canSubmit, onSubmit]);
 
   const handleSubmitClick = useCallback(
     (event: ReactMouseEvent<HTMLButtonElement>) => {
@@ -2974,7 +2881,6 @@ export function PromptBoxInternal({
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
-          hasNavigatedTypeaheadRef.current = true;
           if (
             activeTriggerKind === "command" &&
             !commandError &&
@@ -2995,18 +2901,16 @@ export function PromptBoxInternal({
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
-          hasNavigatedTypeaheadRef.current = true;
           setSelectedIndex(
             (prev) =>
               (prev + activeSuggestions.length - 1) % activeSuggestions.length,
           );
           return true;
         }
-        const canApplyTypeaheadFromKeyboard =
-          (!isPointerCoarse || isOriginalIPadHardwareEnter) &&
-          (event.key === "Tab" ||
-            (event.key === "Enter" && hasNavigatedTypeaheadRef.current));
-        if (canApplyTypeaheadFromKeyboard && activeSuggestions.length > 0) {
+        if (
+          (event.key === "Enter" || event.key === "Tab") &&
+          activeSuggestions.length > 0
+        ) {
           event.preventDefault();
           const selected =
             activeSuggestions[selectedIndex] ?? activeSuggestions[0];
@@ -3025,9 +2929,21 @@ export function PromptBoxInternal({
           }
           return true;
         }
-        if (event.key === "Escape" && !isPointerCoarse) {
+        if (event.key === "Escape") {
           event.preventDefault();
-          dismissActiveTrigger();
+          triggerKeyRef.current = "";
+          if (activeTrigger) {
+            // Escape dismisses the typed token span for both kinds — re-trigger
+            // stays suppressed while the caret remains inside `[from, to]`.
+            dismissedTriggerRef.current = {
+              start: activeTrigger.from,
+              end: activeTrigger.to,
+              hasLeftRange: false,
+            };
+          }
+          setActiveTrigger(null);
+          onMentionQueryChange(null, null);
+          onCommandQueryChange(null);
           return true;
         }
       }
@@ -3160,6 +3076,7 @@ export function PromptBoxInternal({
     [
       activeHistoryIndex,
       activeSuggestions,
+      activeTrigger,
       activeTriggerKind,
       applyHistoryDraft,
       applyTrigger,
@@ -3168,11 +3085,12 @@ export function PromptBoxInternal({
       commandHasMore,
       commandIsLoadingMore,
       dispatchAppCommandKey,
-      dismissActiveTrigger,
       history,
       isPointerCoarse,
       loadMoreCommands,
+      onCommandQueryChange,
       onEscape,
+      onMentionQueryChange,
       onModifierSubmit,
       postCompositionKeyDownEvents,
       resetHistorySession,
@@ -3330,7 +3248,6 @@ export function PromptBoxInternal({
                 state={typeaheadMenuState}
                 selectedIndex={selectedIndex}
                 onApply={applyTrigger}
-                onDismiss={isPointerCoarse ? dismissActiveTrigger : undefined}
                 onCommandLoadMore={
                   canLoadMoreCommands ? loadMoreCommands : undefined
                 }

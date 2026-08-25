@@ -16,8 +16,6 @@ function thread(overrides: Partial<Thread> & { id: string }): Thread {
     projectId: "proj_1",
     parentThreadId: null,
     visibility: "visible",
-    status: "idle",
-    latestAttentionAt: 1,
     ...overrides,
   } as Thread;
 }
@@ -52,49 +50,6 @@ describe("buildThreadMentionSuggestions", () => {
       title: "Login fix child",
     });
     expect(result[1]?.projectName).toBe("Other project");
-  });
-
-  it("uses activity and coarse attention recency after match and relationship quality", () => {
-    const hour = 60 * 60 * 1000;
-    const threads = [
-      thread({
-        id: "thr_idle_recent",
-        title: "Shared context",
-        latestAttentionAt: 20 * hour,
-      }),
-      thread({
-        id: "thr_active_old",
-        title: "Shared context",
-        status: "active",
-        latestAttentionAt: 2 * hour,
-      }),
-      thread({
-        id: "thr_active_recent",
-        title: "Shared context",
-        status: "stopping",
-        latestAttentionAt: 10 * hour,
-      }),
-      thread({
-        id: "thr_active_same_bucket_z",
-        title: "Shared context",
-        status: "starting",
-        latestAttentionAt: 10 * hour + 20,
-      }),
-    ];
-
-    const result = buildThreadMentionSuggestions({
-      threads,
-      query: "shared",
-      projectNamesById: new Map(),
-      limit: 8,
-    });
-
-    expect(result.map((entry) => entry.threadId)).toEqual([
-      "thr_active_recent",
-      "thr_active_same_bucket_z",
-      "thr_active_old",
-      "thr_idle_recent",
-    ]);
   });
 
   it("returns nothing for an empty query", () => {

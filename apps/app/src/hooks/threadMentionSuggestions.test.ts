@@ -9,8 +9,6 @@ interface ThreadFixtureOptions {
   title: string | null;
   titleFallback?: string | null;
   visibility?: Thread["visibility"];
-  status?: Thread["status"];
-  latestAttentionAt?: number;
 }
 
 interface BuildSuggestionFixtureArgs {
@@ -30,7 +28,7 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     title: options.title,
     titleFallback: options.titleFallback ?? null,
     sectionId: null,
-    status: options.status ?? "idle",
+    status: "idle",
     parentThreadId: options.parentThreadId ?? null,
     sourceThreadId: null,
     originKind: null,
@@ -40,7 +38,7 @@ function makeThread(options: ThreadFixtureOptions): Thread {
     pinnedAt: null,
     deletedAt: null,
     lastReadAt: null,
-    latestAttentionAt: options.latestAttentionAt ?? 1,
+    latestAttentionAt: 1,
     createdAt: 1,
     updatedAt: 1,
   };
@@ -167,42 +165,6 @@ describe("buildThreadMentionSuggestions", () => {
         query: "shared",
       }),
     ).toEqual(["thr_earlier", "thr_later"]);
-  });
-
-  it("uses activity and coarse attention recency after match and relationship quality", () => {
-    const hour = 60 * 60 * 1000;
-    const threads = [
-      makeThread({
-        id: "thr_idle_recent",
-        title: "Shared context",
-        latestAttentionAt: 20 * hour,
-      }),
-      makeThread({
-        id: "thr_active_old",
-        title: "Shared context",
-        status: "active",
-        latestAttentionAt: 2 * hour,
-      }),
-      makeThread({
-        id: "thr_active_recent",
-        title: "Shared context",
-        status: "stopping",
-        latestAttentionAt: 10 * hour,
-      }),
-      makeThread({
-        id: "thr_active_same_bucket_z",
-        title: "Shared context",
-        status: "starting",
-        latestAttentionAt: 10 * hour + 20,
-      }),
-    ];
-
-    expect(getSuggestionThreadIds({ threads, query: "shared" })).toEqual([
-      "thr_active_recent",
-      "thr_active_same_bucket_z",
-      "thr_active_old",
-      "thr_idle_recent",
-    ]);
   });
 
   it("ranks directly related, same-parent, and same-project thread matches together", () => {

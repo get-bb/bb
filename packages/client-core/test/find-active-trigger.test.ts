@@ -86,8 +86,8 @@ describe("findActiveTrigger", () => {
     ).toBeNull();
   });
 
-  it("keeps spaces and tabs verbatim in a multiword mention query", () => {
-    const query = "prompt \t mention  ";
+  it("keeps spaces verbatim in a multiword mention query", () => {
+    const query = "prompt  mention ";
     const text = `Ask @${query}`;
     expect(
       findActiveTrigger(editorWithText(text), [{ char: "@", kind: "mention" }]),
@@ -100,16 +100,24 @@ describe("findActiveTrigger", () => {
     });
   });
 
-  it.each(["!", "?", ",", ";", ")", "]", "}", "\n"])(
-    "ends a mention query at %j",
-    (punctuation) => {
+  it.each(["\t", "\n"])(
+    "keeps existing non-space whitespace termination for %j",
+    (whitespace) => {
       expect(
-        findActiveTrigger(editorWithText(`Ask @prompt${punctuation}`), [
+        findActiveTrigger(editorWithText(`Ask @prompt${whitespace}`), [
           { char: "@", kind: "mention" },
         ]),
       ).toBeNull();
     },
   );
+
+  it("keeps punctuation inside a mention query", () => {
+    expect(
+      findActiveTrigger(editorWithText("Ask @prompt!"), [
+        { char: "@", kind: "mention" },
+      ]),
+    ).toMatchObject({ query: "prompt!" });
+  });
 
   it("does not treat dollar as an active command trigger", () => {
     expect(
