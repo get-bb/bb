@@ -42,10 +42,47 @@ interface TimedStatementOperationArgs<TValue> {
 
 const DEFAULT_SLOW_DB_QUERY_LOG_THRESHOLD_MS = 100;
 /** 256 MiB page cache. Negative cache_size is kibibytes. */
-export const SQLITE_CACHE_SIZE_KIB = 262_144;
+export const DEFAULT_SQLITE_CACHE_SIZE_KIB = 262_144;
 /** Memory-map the first 1 GiB of the database file. */
-export const SQLITE_MMAP_SIZE_BYTES = 1_073_741_824;
+export const DEFAULT_SQLITE_MMAP_SIZE_BYTES = 1_073_741_824;
+/** Overrides the page-cache budget in KiB (`0` disables the extra cache). */
+export const SQLITE_CACHE_SIZE_KIB_ENV_VAR = "BB_SQLITE_CACHE_SIZE_KIB";
+/** Overrides the mmap window in bytes (`0` disables memory mapping). */
+export const SQLITE_MMAP_SIZE_BYTES_ENV_VAR = "BB_SQLITE_MMAP_SIZE_BYTES";
 export const SQLITE_BUSY_TIMEOUT_MS = 5_000;
+
+/**
+ * Reads a non-negative integer override from the environment. An unset,
+ * empty, or malformed value falls back to the default: these are operator
+ * tuning knobs read before any logger exists, so a bad value must never
+ * prevent the database from opening.
+ */
+function resolveNonNegativeIntegerEnv(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (raw === undefined || raw === "") {
+    return fallback;
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    return fallback;
+  }
+  return value;
+}
+
+/** Resolved per connection so an env override applies without a rebuild. */
+export function resolveSqliteCacheSizeKib(): number {
+  return resolveNonNegativeIntegerEnv(
+    SQLITE_CACHE_SIZE_KIB_ENV_VAR,
+    DEFAULT_SQLITE_CACHE_SIZE_KIB,
+  );
+}
+
+export function resolveSqliteMmapSizeBytes(): number {
+  return resolveNonNegativeIntegerEnv(
+    SQLITE_MMAP_SIZE_BYTES_ENV_VAR,
+    DEFAULT_SQLITE_MMAP_SIZE_BYTES,
+  );
+}
 const MAX_LOGGED_SQL_LENGTH = 1_000;
 const SQL_TRUNCATION_SUFFIX = "...";
 // Keep ORM-generated quoted identifiers intact. SQLite accepts double-quoted
@@ -186,8 +223,8 @@ export function createConnection(
   // transactions; it cannot corrupt the file. cache_size/mmap_size replace
   // the 2 MiB default cache so a multi-GB database is not re-read per query.
   sqlite.pragma("synchronous = NORMAL");
-  sqlite.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KIB}`);
-  sqlite.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
+  sqlite.pragma(`cache_size = -${resolveSqliteCacheSizeKib()}`);
+  sqlite.pragma(`mmap_size = ${resolveSqliteMmapSizeBytes()}`);
   sqlite.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
   instrumentSqliteClient(sqlite, options);
 
