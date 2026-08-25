@@ -952,7 +952,7 @@ proxies it to the server, where `run` executes.
 
 ```ts
 bb.cli.register({
-  name: "weather", // lowercase [a-z0-9-]+; core names (thread, plugin, …) are reserved
+  name: "weather", // lowercase [a-z0-9-]+; core collisions use bb plugin run <id>
   summary: "Weather lookups",
   commands: [
     // help/skill metadata only; parsing argv is yours

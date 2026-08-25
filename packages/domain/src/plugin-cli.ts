@@ -20,3 +20,8 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "theme",
   "thread",
 ];
+
+export const pluginCliInvocation = (pluginId: string, name: string): string =>
+  RESERVED_BB_CLI_COMMANDS.includes(name)
+    ? `bb plugin run ${pluginId}`
+    : `bb ${name}`;

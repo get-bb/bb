@@ -34,7 +34,6 @@ import {
   registerSettingDescriptors,
   rejectStaleAgentToolFields,
   RESERVED_AGENT_TOOL_NAMES,
-  RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
   summarizeParseIssues,
   undeclaredIconProblem,
@@ -1186,11 +1185,6 @@ function createFakePluginHostInternal(
       if (typeof name !== "string" || !CLI_COMMAND_NAME_PATTERN.test(name)) {
         throw new Error(
           `invalid cli command name ${JSON.stringify(name)} — use lowercase letters, digits, and "-"`,
-        );
-      }
-      if (RESERVED_BB_CLI_COMMANDS.includes(name)) {
-        throw new Error(
-          `cli command name "${name}" is reserved by the bb CLI — pick another name`,
         );
       }
       if (

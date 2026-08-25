@@ -10,6 +10,7 @@ import { defineRpcContract } from "../../rpc-contract.js";
 import {
   parsePluginAgentToolPresentation,
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
+  RESERVED_BB_CLI_COMMANDS,
 } from "../../internal/host-policy.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
@@ -530,14 +531,16 @@ describe("cli", () => {
   });
 
   it("uses the production host's reserved CLI names", () => {
-    const reservedHost = createFakePluginHost();
-    expect(() =>
-      reservedHost.bb.cli.register({
-        name: "skill",
-        summary: "nope",
-        run: () => ({ exitCode: 0 }),
-      }),
-    ).toThrow('cli command name "skill" is reserved by the bb CLI');
+    for (const name of RESERVED_BB_CLI_COMMANDS) {
+      const reservedHost = createFakePluginHost();
+      expect(() =>
+        reservedHost.bb.cli.register({
+          name,
+          summary: "nope",
+          run: () => ({ exitCode: 0 }),
+        }),
+      ).not.toThrow();
+    }
 
     const availableHost = createFakePluginHost();
     expect(() =>

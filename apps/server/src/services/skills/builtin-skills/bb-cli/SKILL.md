@@ -894,7 +894,7 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
-  - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
+  - `bb plugin run <id> [args...]` — explicit form, including commands shadowed by core.
   - `bb plugin new <name>` — scaffold a todo-list plugin (`server.ts`,
     `app.tsx` with a sidebar page, a `bb <name>` CLI command, a skill, and
     vendored UI components) and install its npm dependencies (scaffold sets
