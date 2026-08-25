@@ -96,6 +96,72 @@ describe("reorderHeadForFirstPaint", () => {
   });
 });
 
+/**
+ * The document Vite 8 hands post-order transforms for the real index.html:
+ * the source entry tag is lifted out of <body>, and the built entry, its
+ * modulepreloads and the stylesheet are appended to <head> in that order,
+ * one per indented line. Built from the committed source so the test runs
+ * without a build (dist/ is absent on the CI test runners) and still covers
+ * the real pre-paint theme script and Vite's whitespace around the tags.
+ */
+function viteEmittedIndexHtml(): string {
+  const source = readFileSync(
+    resolve(import.meta.dirname, "../index.html"),
+    "utf8",
+  );
+  const sourceEntryTag =
+    /[ \t]*<script type="module" src="\/src\/main\.tsx"><\/script>\n/;
+  expect(source).toMatch(sourceEntryTag);
+  const injected = [
+    '<script type="module" crossorigin src="/assets/index-rXrqkkAU.js"></script>',
+    '<link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-abc.js">',
+    '<link rel="modulepreload" crossorigin href="/assets/boot-vendor-def.js">',
+    '<link rel="stylesheet" crossorigin href="/assets/index-CXWZ8ak3.css">',
+  ]
+    .map((tag) => `    ${tag}\n`)
+    .join("");
+  return source
+    .replace(sourceEntryTag, "")
+    .replace("  </head>", `${injected}  </head>`);
+}
+
+describe("reorderHeadForFirstPaint on the document Vite emits from index.html", () => {
+  it("front-loads the stylesheet and font preload, after the theme script and ahead of every script and modulepreload", () => {
+    const emitted = viteEmittedIndexHtml();
+    const html = reorderHeadForFirstPaint(
+      emitted,
+      resolveFontPreloadTags(bundle, "/"),
+    );
+
+    const themeScriptAt = html.indexOf("bb.theme");
+    const fontPreloadAt = html.search(/<link[^>]*as="font"/);
+    const stylesheetAt = html.search(/<link[^>]*rel="stylesheet"/);
+    const entryAt = html.search(/<script type="module"[^>]*src=/);
+    const modulepreloadsAt = [
+      ...html.matchAll(/<link rel="modulepreload"/g),
+    ].map((match) => match.index);
+    const headEndAt = html.indexOf("</head>");
+
+    expect(themeScriptAt).toBeGreaterThan(-1);
+    expect(fontPreloadAt).toBeGreaterThan(-1);
+    expect(stylesheetAt).toBeGreaterThan(-1);
+    expect(entryAt).toBeGreaterThan(-1);
+    expect(modulepreloadsAt).toHaveLength(2);
+
+    expect(themeScriptAt).toBeLessThan(fontPreloadAt);
+    expect(fontPreloadAt).toBeLessThan(stylesheetAt);
+    expect(stylesheetAt).toBeLessThan(entryAt);
+    for (const modulepreloadAt of modulepreloadsAt) {
+      expect(stylesheetAt).toBeLessThan(modulepreloadAt);
+    }
+    expect(Math.max(...modulepreloadsAt)).toBeLessThan(headEndAt);
+    // Moved, not duplicated: Vite's indented stylesheet line is consumed whole.
+    expect(html.match(/rel="stylesheet"/g)).toHaveLength(1);
+    expect(html.match(/<script type="module"/g)).toHaveLength(1);
+    expect(html).toMatch(/boot-vendor-def\.js">\n  <\/head>/);
+  });
+});
+
 const distIndexHtmlPath = resolve(import.meta.dirname, "../dist/index.html");
 
 /**
