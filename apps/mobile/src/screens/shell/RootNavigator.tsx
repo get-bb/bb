@@ -29,14 +29,17 @@ export function RootNavigator() {
           headerTransparent: true,
           headerBlurEffect: "none",
           headerLargeStyle: { backgroundColor: "transparent" },
+          scrollEdgeEffects: { top: "hard" },
         }
       : { headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }
     : { headerStyle: { backgroundColor: tokens.background } };
-  // The terminal is a WebView that manages its own insets (`never`), so its
-  // bar stays opaque and inline on every platform.
+  // Opaque, inline bar with a hairline edge: the thread timeline (nothing
+  // scrolls under the title/status line) and the terminal (a WebView that
+  // manages its own insets, `never`). Every platform.
   const opaqueHeader: NativeStackNavigationOptions = {
     headerTransparent: false,
     headerStyle: { backgroundColor: tokens.background },
+    headerShadowVisible: true,
   };
   return (
     <Stack
@@ -56,7 +59,10 @@ export function RootNavigator() {
         name="index"
         options={{ title: "bb", ...LIST_SCREEN_OPTIONS }}
       />
-      <Stack.Screen name="threads/[id]" options={{ title: "Thread" }} />
+      <Stack.Screen
+        name="threads/[id]"
+        options={{ title: "Thread", ...opaqueHeader }}
+      />
       <Stack.Screen name="threads/search" options={{ title: "Search" }} />
       <Stack.Screen name="threads/[id]/files" options={{ title: "Files" }} />
       <Stack.Screen
