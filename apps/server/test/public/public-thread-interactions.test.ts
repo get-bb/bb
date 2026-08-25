@@ -48,6 +48,9 @@ function registerPendingInteraction(
   lifecycle: PendingInteractionLifecycle,
   interaction: PendingInteractionCreate,
 ) {
+  if (interaction.turnId === null) {
+    throw new Error("Test helper expected a turn-scoped interaction");
+  }
   seedTurnStarted(deps, {
     threadId: interaction.threadId,
     turnId: interaction.turnId,

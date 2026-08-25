@@ -25,6 +25,7 @@ export interface UseThreadTimelineControllerResult {
   activeWorkflows: ThreadTimelineResponse["activeWorkflows"];
   activeBackgroundCommands: ThreadTimelineResponse["activeBackgroundCommands"];
   contextWindowUsage: ThreadTimelineResponse["contextWindowUsage"];
+  extensionStates: ThreadTimelineResponse["extensionStates"];
   goal: ThreadTimelineResponse["goal"];
   modelFallback: ThreadTimelineResponse["modelFallback"];
   hasOlderTimelineRows: boolean;
@@ -200,6 +201,7 @@ export function useThreadTimelineController({
     activeWorkflows: latestTimeline?.activeWorkflows ?? [],
     activeBackgroundCommands: latestTimeline?.activeBackgroundCommands ?? [],
     contextWindowUsage: latestTimeline?.contextWindowUsage,
+    extensionStates: latestTimeline?.extensionStates ?? [],
     goal: latestTimeline?.goal ?? null,
     modelFallback: latestTimeline?.modelFallback ?? null,
     hasOlderTimelineRows,

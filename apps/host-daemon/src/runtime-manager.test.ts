@@ -270,6 +270,7 @@ function createFakeRuntime() {
     stopThread: vi.fn(async (_args: StopThreadArgs) => ({
       providerCheckpointId: null,
     })),
+    applyExtensionAction: vi.fn(async () => ({ applied: true })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async (_args: RenameThreadArgs) => undefined),
     archiveThread: vi.fn(async () => undefined),
@@ -278,6 +279,7 @@ function createFakeRuntime() {
       models: [],
       selectedOnlyModels: [],
     })),
+    listProviderCommands: vi.fn(async () => ({ supported: false as const })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {

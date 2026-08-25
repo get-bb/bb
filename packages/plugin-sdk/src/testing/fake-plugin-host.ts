@@ -223,6 +223,10 @@ export interface ExperimentalFakeHostRpcCall {
   signal?: AbortSignal;
 }
 
+export interface ExperimentalFakeProviderBridgeRpcCall extends ExperimentalFakeHostRpcCall {
+  providerId: string;
+}
+
 export type ExperimentalFakeInvocationDecision =
   | { allowed: true }
   | { allowed: false; reason: string };
@@ -273,6 +277,12 @@ export interface FakePluginInspectionState {
   }>;
   /** Calls made through bb.hosts.experimental_client, after input validation. */
   readonly experimental_hostRpcCalls: readonly ExperimentalFakeHostRpcCall[];
+  /** Calls made through bb.providers.experimental_client. */
+  readonly experimental_providerBridgeRpcCalls: readonly ExperimentalFakeProviderBridgeRpcCall[];
+  readonly experimental_providerModelChanges: readonly {
+    providerId: string;
+    hostId: string;
+  }[];
   readonly pendingInteractions: readonly (PluginInteractionRequest & {
     id: string;
   })[];
@@ -451,6 +461,10 @@ export interface CreateFakePluginHostOptions {
   /** Deterministic stand-in for the targeted daemon host entry. */
   experimental_callHostRpc?: (
     call: ExperimentalFakeHostRpcCall,
+  ) => unknown | Promise<unknown>;
+  /** Deterministic stand-in for a provider bridge on one host. */
+  experimental_callProviderBridgeRpc?: (
+    call: ExperimentalFakeProviderBridgeRpcCall,
   ) => unknown | Promise<unknown>;
 }
 
@@ -1681,6 +1695,9 @@ function createFakePluginHostInternal(
   const sharedPortDeclarations: FakePluginHarness["sharedPortDeclarations"] =
     [];
   const hostRpcCalls: ExperimentalFakeHostRpcCall[] = [];
+  const providerBridgeRpcCalls: ExperimentalFakeProviderBridgeRpcCall[] = [];
+  const providerModelChanges: Array<{ providerId: string; hostId: string }> =
+    [];
   const hostWorkerExitSubscriptions: FakeHostWorkerExitSubscription[] = [];
   const hostSignalSubscriptions: FakeHostSignalSubscription[] = [];
   const hosts: PluginHosts = {
@@ -1855,6 +1872,65 @@ function createFakePluginHostInternal(
     register(declaration) {
       return registerProviderDeclaration(declaration);
     },
+    experimental_client({ providerId, contract }) {
+      return {
+        async call(method, input, callOptions) {
+          assertLive();
+          const methodContract = contract[method];
+          if (methodContract === undefined) {
+            throw new Error(`unknown provider bridge rpc method "${method}"`);
+          }
+          // The same gates the real host applies: a plugin may only reach
+          // its own providers' bridges, and only on a named host.
+          if (!providerRegistrations.some((entry) => entry.id === providerId)) {
+            throw new Error(
+              `plugin "${pluginId}" does not own provider "${providerId}"`,
+            );
+          }
+          if (typeof callOptions?.hostId !== "string" || callOptions.hostId.length === 0) {
+            throw new Error(
+              `provider bridge rpc method "${method}" requires a host id`,
+            );
+          }
+          const validatedInput = await validateRpcValue(
+            methodContract.input,
+            input,
+            "input",
+          );
+          const call = {
+            providerId,
+            method,
+            input: jsonRoundTrip(validatedInput, "provider bridge rpc input"),
+            hostId: callOptions.hostId,
+            ...(callOptions.signal === undefined
+              ? {}
+              : { signal: callOptions.signal }),
+          };
+          providerBridgeRpcCalls.push(call);
+          if (options.experimental_callProviderBridgeRpc === undefined) {
+            throw new Error(
+              `fake plugin host has no experimental_callProviderBridgeRpc stub for "${String(method)}"`,
+            );
+          }
+          const rawOutput =
+            await options.experimental_callProviderBridgeRpc(call);
+          return await validateRpcValue(
+            methodContract.output,
+            jsonRoundTrip(rawOutput, "provider bridge rpc output"),
+            "output",
+          );
+        },
+      };
+    },
+    experimental_modelsChanged(args) {
+      assertLive();
+      if (!providerRegistrations.some((entry) => entry.id === args.providerId)) {
+        throw new Error(
+          `plugin "${pluginId}" does not own provider "${args.providerId}"`,
+        );
+      }
+      providerModelChanges.push({ ...args });
+    },
   };
 
   const bb: BbPluginApi = {
@@ -1934,6 +2010,8 @@ function createFakePluginHostInternal(
     needsConfigurationMessages,
     sharedPortDeclarations,
     experimental_hostRpcCalls: hostRpcCalls,
+    experimental_providerBridgeRpcCalls: providerBridgeRpcCalls,
+    experimental_providerModelChanges: providerModelChanges,
     sdk: sdkHarness,
     registrations: {
       settingsDescriptors,

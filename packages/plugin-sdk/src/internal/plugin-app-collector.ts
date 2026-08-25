@@ -1,6 +1,7 @@
 import type {
   ComposerCustomization,
   ExperimentalChangesViewRegistration,
+  ExperimentalProviderExtensionStateRegistration,
   ExperimentalSidebarNavigationRegistration,
   PluginAppDefinition,
   PluginContentScriptRegistration,
@@ -82,6 +83,7 @@ function rejectStaleNavPanelKeys(kind: string, registration: object): void {
     }
   }
 }
+const PROVIDER_EXTENSION_STATE_NAME_PATTERN = /^[a-z0-9-]+$/u;
 
 /** Validated registrations produced by one plugin app setup execution. */
 export interface CollectedPluginAppRegistrations {
@@ -105,6 +107,7 @@ export interface CollectedPluginAppRegistrations {
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  providerExtensionStates: ExperimentalProviderExtensionStateRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -140,6 +143,7 @@ export function collectPluginAppRegistrations(
     commandPaletteActions: [],
     providerIcons: [],
     timelineRenderers: [],
+    providerExtensionStates: [],
     contentScripts: [],
   };
   const seenIds = {
@@ -163,6 +167,7 @@ export function collectPluginAppRegistrations(
     commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
     timelineRenderer: new Set<string>(),
+    providerExtensionState: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -572,6 +577,20 @@ export function collectPluginAppRegistrations(
         requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
         collected.timelineRenderers.push({
           kind: itemKind,
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_providerExtensionState(registration) {
+        const kind = "slots.experimental_providerExtensionState";
+        const name = requireNonEmptyString(kind, "name", registration?.name);
+        if (!PROVIDER_EXTENSION_STATE_NAME_PATTERN.test(name)) {
+          throw new Error(
+            `${kind}: "name" must match ${String(PROVIDER_EXTENSION_STATE_NAME_PATTERN)}, got ${JSON.stringify(name)}`,
+          );
+        }
+        requireUniqueId(kind, seenIds.providerExtensionState, name);
+        collected.providerExtensionStates.push({
+          name,
           component: requireComponent(kind, registration.component),
         });
       },

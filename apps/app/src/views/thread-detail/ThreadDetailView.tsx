@@ -862,6 +862,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     activeWorkflows,
     activeBackgroundCommands,
     contextWindowUsage,
+    extensionStates,
     goal,
     hasOlderTimelineRows,
     isLoadingOlderTimelineRows,
@@ -2613,6 +2614,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       pendingTodos={pendingTodos}
       activePromptMode={activePromptMode}
       goal={goal}
+      extensionStates={extensionStates}
       modelFallback={modelFallback}
       activeWorkflows={activeWorkflows}
       activeBackgroundCommands={activeBackgroundCommands}

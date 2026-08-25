@@ -48,6 +48,7 @@ describe("decodeCodexInteractiveRequest", () => {
       method: "item/commandExecution/requestApproval",
       providerThreadId: "t1",
       turnId: "turn-1",
+      scope: "active_turn",
       payload: {
         kind: "approval",
         subject: {
@@ -93,6 +94,7 @@ describe("decodeCodexInteractiveRequest", () => {
       method: "item/commandExecution/requestApproval",
       providerThreadId: "t1",
       turnId: "turn-1",
+      scope: "active_turn",
       payload: {
         kind: "approval",
         subject: {
@@ -379,6 +381,7 @@ describe("decodeCodexInteractiveRequest", () => {
       method: "item/fileChange/requestApproval",
       providerThreadId: "t1",
       turnId: "turn-file-change",
+      scope: "active_turn",
       payload: {
         kind: "approval",
         subject: {
@@ -417,6 +420,7 @@ describe("decodeCodexInteractiveRequest", () => {
       method: "item/fileChange/requestApproval",
       providerThreadId: "t1",
       turnId: "turn-file-change",
+      scope: "active_turn",
       payload: {
         kind: "approval",
         subject: {
@@ -455,6 +459,7 @@ describe("decodeCodexInteractiveRequest", () => {
       method: "item/permissions/requestApproval",
       providerThreadId: "t1",
       turnId: "turn-permissions",
+      scope: "active_turn",
       payload: {
         kind: "approval",
         subject: {

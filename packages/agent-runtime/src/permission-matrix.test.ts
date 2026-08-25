@@ -459,6 +459,7 @@ async function runCell(
   };
   const rawRequest = interactionRequest(requestId, payload);
   handleRuntimeProviderRequest({
+    interactiveRequestAbortControllers: new Map(),
     getActiveTurnId: () => "turn-1",
     getThreadExecutionOptions: () => executionOptions,
     onInteractiveRequest,

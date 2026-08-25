@@ -722,6 +722,7 @@ function buildPromptAreaElement({
       composerFocusRequestNonce={0}
       contextBannerMergeBase={null}
       environmentGoneStatus={null}
+      extensionStates={[]}
       goal={goal}
       modelFallback={modelFallback}
       isEnvironmentActionPending={false}

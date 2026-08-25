@@ -88,6 +88,7 @@ import {
   providerHasNativeRootSurface,
   scanProviderNativeRoots,
 } from "../services/providers/native-roots.js";
+import { resolveBridgeLaunchForProviderId } from "../services/system/provider-bridge-launch.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import {
   resolveProjectCommandWorkspace,
@@ -700,7 +701,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     // has no typeahead entries: skip every roundtrip.
     const registration = deps.providerRegistry.get(query.provider);
     if (registration === null || !providerHasCommandSurface(registration)) {
-      return context.json({ commands: [] });
+      return context.json({ commands: [], diagnostics: [] });
     }
 
     const workspace = resolveProjectCommandWorkspace(deps, {
@@ -716,13 +717,17 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     // with no roots on either side has nothing for the daemon to scan.
     const listProviderCommands = async () => {
       if (!providerHasNativeRootSurface(registration)) {
-        return { commands: [] };
+        return { commands: [], diagnostics: [] };
       }
       return scanProviderNativeRoots(deps, {
         type: "host.list_commands",
         registration,
         hostId: workspace.hostId,
         cwd: workspace.cwd,
+        // The bridge lists the commands its own resources register (pi's
+        // extension commands); a bridge without the method answers
+        // unsupported and the static scan stands alone.
+        bridgeLaunch: resolveBridgeLaunchForProviderId(deps, query.provider),
       });
     };
     const [result, projectSkillSources, sharedSkills] = await Promise.all([
@@ -745,6 +750,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       buildCommandListResponse({
         commands: result.commands,
+        diagnostics: result.diagnostics,
         includeBuiltinCompact: deps.providerRegistry.supportsManualCompaction(
           query.provider,
         ),

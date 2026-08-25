@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type {
   ComposerCustomization,
   ExperimentalChangesViewRegistration,
+  ExperimentalProviderExtensionStateRegistration,
   ExperimentalSidebarNavigationRegistration,
   PluginDiffRendererRegistration,
   PluginPendingInteractionRegistration,
@@ -67,6 +68,8 @@ export interface PluginRegistrationSet {
   providerIcons?: readonly PluginProviderIconRegistration[];
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
+  /** Optional for bundles built before provider extension-state rendering. */
+  providerExtensionStates?: readonly ExperimentalProviderExtensionStateRegistration[];
 }
 
 interface PluginSlotBase {
@@ -120,6 +123,8 @@ interface PluginProviderIconSlot
   extends PluginProviderIconRegistration, PluginSlotBase {}
 export interface PluginTimelineRendererSlot
   extends PluginTimelineRendererRegistration, PluginSlotBase {}
+export interface PluginProviderExtensionStateSlot
+  extends ExperimentalProviderExtensionStateRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
@@ -143,6 +148,7 @@ export interface PluginSlotSnapshot {
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
   timelineRenderers: readonly PluginTimelineRendererSlot[];
+  providerExtensionStates: readonly PluginProviderExtensionStateSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -166,6 +172,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   commandPaletteActions: [],
   providerIcons: [],
   timelineRenderers: [],
+  providerExtensionStates: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -196,6 +203,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "commandPaletteActions",
   "providerIcons",
   "timelineRenderers",
+  "providerExtensionStates",
 ];
 
 /**
@@ -247,6 +255,7 @@ function flattenRegistrations(
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
     timelineRenderers: stamp(set.timelineRenderers),
+    providerExtensionStates: stamp(set.providerExtensionStates),
   };
 }
 

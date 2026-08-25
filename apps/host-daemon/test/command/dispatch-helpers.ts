@@ -53,6 +53,8 @@ export const unexpectedProjectAttachmentFetch: FetchProjectAttachment =
 export const unexpectedProviderMaintenance: Pick<
   CommandDispatchOptions,
   | "listModels"
+  | "providerCustomCall"
+  | "listProviderCommands"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -61,6 +63,12 @@ export const unexpectedProviderMaintenance: Pick<
 > = {
   listModels: async () => {
     throw new Error("Unexpected provider.list_models call");
+  },
+  providerCustomCall: async () => {
+    throw new Error("Unexpected provider.custom_call call");
+  },
+  listProviderCommands: async () => {
+    throw new Error("Unexpected host.list_commands bridge call");
   },
   providerHealth: async () => {
     throw new Error("Unexpected provider.health call");
@@ -429,6 +437,9 @@ export function createFakeRuntime() {
       providerSessionsByThreadId.delete(args.threadId);
       return { providerCheckpointId: null };
     },
+    async applyExtensionAction() {
+      return { applied: true };
+    },
     async clearThreadGoal() {
       return { cleared: true };
     },
@@ -480,6 +491,9 @@ export function createFakeRuntime() {
         models: [] satisfies AvailableModel[],
         selectedOnlyModels: [] satisfies AvailableModel[],
       };
+    },
+    async listProviderCommands() {
+      return { supported: false as const };
     },
     async providerHealth() {
       return { supported: false as const };

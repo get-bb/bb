@@ -632,6 +632,9 @@ export const REALTIME_SYSTEM_CHANGE_REGISTRY = {
       dirtySystemExecutionOptionQueries, // Refresh changed or boot-time partial provider rosters.
     ],
   },
+  "provider-models-changed": {
+    dirty: [dirtySystemExecutionOptionQueries],
+  },
 } satisfies SystemChangeRegistry;
 
 type ThreadChangeFlushPriority = "debounced" | "immediate";

@@ -1,6 +1,7 @@
 import { createProjectSource } from "@bb/db";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
+import { resolveBridgeLaunchForProviderId } from "../../src/services/system/provider-bridge-launch.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { declaredNativeRootSet } from "../helpers/provider-registry.js";
 import { readJson } from "../helpers/json.js";
@@ -70,7 +71,10 @@ describe("public project workspace routing", () => {
             };
           }
           if (request.command.type === "host.list_commands") {
-            return { ok: true, result: { commands: [primaryCommand] } };
+            return {
+              ok: true,
+              result: { commands: [primaryCommand], diagnostics: [] },
+            };
           }
           if (request.command.type === "plugin.host.call") {
             return { ok: true, result: { output: { skills: [], commands: [] } } };
@@ -116,7 +120,10 @@ describe("public project workspace routing", () => {
             };
           }
           if (request.command.type === "host.list_commands") {
-            return { ok: true, result: { commands: [remoteCommand] } };
+            return {
+              ok: true,
+              result: { commands: [remoteCommand], diagnostics: [] },
+            };
           }
           if (request.command.type === "plugin.host.call") {
             return { ok: true, result: { output: { skills: [], commands: [] } } };
@@ -190,6 +197,9 @@ describe("public project workspace routing", () => {
           (request) => request.command.type === "host.list_commands",
         )?.command,
       ).toEqual({
+        ...(resolveBridgeLaunchForProviderId(harness.deps, "codex") === null
+          ? {}
+          : { bridgeLaunch: resolveBridgeLaunchForProviderId(harness.deps, "codex") }),
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/remote/project",

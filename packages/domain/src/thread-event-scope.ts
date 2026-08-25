@@ -209,7 +209,11 @@ const threadEventScopeDefinitionByType = {
       "A provider interaction belongs to the turn that raised it; a plugin may raise one outside any turn.",
   },
   "system/permissionGrant/lifecycle": { policy: "turn" },
-  "system/userQuestion/lifecycle": { policy: "turn" },
+  "system/userQuestion/lifecycle": {
+    policy: "thread-or-turn",
+    rationale:
+      "Provider questions normally belong to a model turn; extension-command questions can block before that command opens a turn.",
+  },
   "system/thread-provisioning": {
     policy: "thread",
     rationale:

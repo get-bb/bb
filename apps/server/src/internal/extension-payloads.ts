@@ -93,7 +93,9 @@ function extensionSiteOf(event: ThreadEvent): ExtensionPayloadSite | null {
   }
 }
 
-type ValidationOutcome = { ok: true } | { ok: false; reason: string };
+export type ExtensionValidationOutcome =
+  | { ok: true }
+  | { ok: false; reason: string };
 
 /** A Standard Schema issue path is a bare key or a list of keys/`{ key }`s. */
 function issuePathSegments(path: StandardSchemaV1Issue["path"]): string[] {
@@ -113,7 +115,7 @@ function issuePathSegments(path: StandardSchemaV1Issue["path"]): string[] {
 async function validateAgainstSchema(
   schema: StandardSchemaV1,
   payload: JsonValue,
-): Promise<ValidationOutcome> {
+): Promise<ExtensionValidationOutcome> {
   let result: StandardSchemaV1Result<unknown>;
   try {
     result = await schema["~standard"].validate(payload);
@@ -167,7 +169,7 @@ async function validateSite(
   deps: ExtensionPayloadValidationDeps,
   site: ExtensionPayloadSite,
   providerId: string | null,
-): Promise<ValidationOutcome> {
+): Promise<ExtensionValidationOutcome> {
   const ownership = extensionOwnershipProblem(deps, site, providerId);
   if (ownership !== null) {
     return { ok: false, reason: ownership };
@@ -192,6 +194,39 @@ async function validateSite(
     };
   }
   return validateAgainstSchema(schema, site.payload);
+}
+
+export async function validateExtensionAction(
+  deps: ExtensionPayloadValidationDeps,
+  args: {
+    providerId: string;
+    kind: ExtensionKind;
+    action: JsonValue;
+  },
+): Promise<ExtensionValidationOutcome> {
+  const registration = deps.providerRegistry.get(args.providerId);
+  const { pluginId, name } = parseExtensionKind(args.kind);
+  if (registration === null || registration.pluginId !== pluginId) {
+    return {
+      ok: false,
+      reason: `extension kind ${JSON.stringify(args.kind)} is not owned by provider ${JSON.stringify(args.providerId)}`,
+    };
+  }
+  const schema = registration.extensionKinds[name]?.experimental_action;
+  if (schema === undefined) {
+    return {
+      ok: false,
+      reason: `extension kind ${JSON.stringify(args.kind)} declares no experimental action schema`,
+    };
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(args.action));
+  if (bytes > EXTENSION_PAYLOAD_MAX_BYTES) {
+    return {
+      ok: false,
+      reason: `action is ${bytes} bytes; the limit is ${EXTENSION_PAYLOAD_MAX_BYTES}`,
+    };
+  }
+  return validateAgainstSchema(schema, args.action);
 }
 
 /**

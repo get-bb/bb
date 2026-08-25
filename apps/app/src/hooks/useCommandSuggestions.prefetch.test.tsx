@@ -42,7 +42,10 @@ const BASE_ARGS = {
 };
 
 beforeEach(() => {
-  vi.mocked(sdk.projects.commands).mockResolvedValue({ commands: [] });
+  vi.mocked(sdk.projects.commands).mockResolvedValue({
+    commands: [],
+    diagnostics: [],
+  });
 });
 
 afterEach(() => {

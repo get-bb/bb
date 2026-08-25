@@ -220,9 +220,16 @@ function QuestionInputBlock({
           accessibilityLabel={`${question.shortLabel} answer`}
           value={state.otherText}
           editable={!disabled}
-          autoCapitalize="sentences"
+          // A verbatim answer goes back byte-for-byte (a Pi extension's
+          // input or editor text); the keyboard must not rewrite it.
+          autoCapitalize={
+            question.experimental_responseMode === "verbatim" ? "none" : "sentences"
+          }
+          autoCorrect={question.experimental_responseMode !== "verbatim"}
           onChangeText={onFreeTextChange}
-          placeholder="Type your own answer…"
+          placeholder={
+            question.experimental_placeholder ?? "Type your own answer…"
+          }
           className="mt-2 max-h-40 bg-surface-raised"
           testID="question-free-text"
         />

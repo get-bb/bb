@@ -22,6 +22,7 @@ interface InteractiveRequestRegistrationFailure {
 }
 
 interface InteractiveRequestRegistryOptions {
+  onCancellation?: (request: PendingInteractionCreate, reason: string) => void;
   onRegistrationFailure?: (
     failure: InteractiveRequestRegistrationFailure,
   ) => void;
@@ -105,6 +106,7 @@ export class InteractiveRequestRegistry {
 
   async registerAndWait(
     request: PendingInteractionCreate,
+    signal?: AbortSignal,
   ): Promise<PendingInteractionResolution> {
     const key = buildInteractiveRequestKey(request);
     const existing = this.pendingEntries.get(key);
@@ -130,6 +132,28 @@ export class InteractiveRequestRegistry {
       request,
     };
     this.pendingEntries.set(key, entry);
+    const abort = () => {
+      if (this.pendingEntries.get(key) !== entry) {
+        return;
+      }
+      this.pendingEntries.delete(key);
+      const cancellationError =
+        signal?.reason instanceof Error
+          ? signal.reason
+          : new Error("Interactive request cancelled");
+      entry.reject(cancellationError);
+      if (entry.interactionId !== null) {
+        this.options.onCancellation?.(request, cancellationError.message);
+      }
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    void promise.then(
+      () => signal?.removeEventListener("abort", abort),
+      () => signal?.removeEventListener("abort", abort),
+    );
+    if (signal?.aborted) {
+      abort();
+    }
 
     try {
       const response = await this.options.registerRequest(request);
@@ -145,6 +169,15 @@ export class InteractiveRequestRegistry {
       }
 
       entry.interactionId = response.interactionId;
+      if (signal?.aborted) {
+        this.options.onCancellation?.(
+          request,
+          signal.reason instanceof Error
+            ? signal.reason.message
+            : "Interactive request cancelled",
+        );
+        return promise;
+      }
       if (response.status !== "pending" && response.status !== "resolving") {
         this.pendingEntries.delete(key);
         entry.reject(

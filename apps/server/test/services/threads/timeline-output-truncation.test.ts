@@ -22,6 +22,7 @@ function response(rows: TimelineRow[]): ThreadTimelineResponse {
     activeThinking: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
+    extensionStates: [],
     pendingTodos: null,
     goal: null,
     modelFallback: null,

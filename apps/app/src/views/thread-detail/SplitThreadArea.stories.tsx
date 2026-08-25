@@ -97,6 +97,7 @@ function storyTimeline(
     activeThinking: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
+    extensionStates: [],
     pendingTodos: null,
     goal,
     modelFallback: null,

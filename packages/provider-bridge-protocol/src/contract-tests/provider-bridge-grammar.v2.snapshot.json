@@ -297,8 +297,11 @@
     "retryable": "required"
   },
   "requestMethods": [
+    "command/list",
+    "extension/action",
     "initialize",
     "model/list",
+    "provider/custom",
     "provider/health",
     "provider/installation/run",
     "provider/installation/status",
@@ -318,6 +321,7 @@
   ],
   "notificationMethods": [
     "error",
+    "interaction/cancel",
     "provider/raw",
     "provider/recovery",
     "session/replaced",

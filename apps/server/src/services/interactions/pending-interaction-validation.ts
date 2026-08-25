@@ -154,7 +154,9 @@ export function pendingInteractionResolutionEquals(
         leftAnswer !== undefined &&
         rightAnswer !== undefined &&
         stringSetEquals(leftAnswer.selected, rightAnswer.selected) &&
-        leftAnswer.freeText === rightAnswer.freeText
+        leftAnswer.freeText === rightAnswer.freeText &&
+        leftAnswer.experimental_verbatimText ===
+          rightAnswer.experimental_verbatimText
       );
     });
   }
@@ -441,6 +443,29 @@ function validateUserQuestionResolution(
           `Answer for question '${question.id}' selected an unavailable option`,
         );
       }
+    }
+
+    if (question.experimental_responseMode === "verbatim") {
+      if (
+        answer.experimental_verbatimText === undefined ||
+        answer.freeText !== undefined ||
+        answer.selected.length > 0
+      ) {
+        throw new ApiError(
+          400,
+          "invalid_request",
+          `Question '${question.id}' requires exactly one verbatim text answer`,
+        );
+      }
+      continue;
+    }
+
+    if (answer.experimental_verbatimText !== undefined) {
+      throw new ApiError(
+        400,
+        "invalid_request",
+        `Question '${question.id}' does not accept verbatim text answers`,
+      );
     }
 
     if (!question.allowFreeText && answer.freeText !== undefined) {

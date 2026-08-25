@@ -25,6 +25,7 @@ import {
 import type {
   HostDaemonOnlineRpcResultForCommand,
   HostDaemonRetryableOnlineRpcCommand,
+  HostDaemonBridgeLaunch,
 } from "@bb/host-daemon-contract";
 import { experimental_nativeRootsHostContract } from "@get-bb/plugin-sdk/host";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -311,7 +312,15 @@ interface ScanProviderNativeRootsArgs {
  */
 export function scanProviderNativeRoots(
   deps: ProviderNativeRootsDeps,
-  args: ScanProviderNativeRootsArgs & { type: "host.list_commands" },
+  args: ScanProviderNativeRootsArgs & {
+    type: "host.list_commands";
+    /**
+     * The provider's bridge launch, so the daemon also asks the bridge for
+     * the commands its own resources register (`command/list`) and merges
+     * them with the static scan; null for a provider without a bridge.
+     */
+    bridgeLaunch: HostDaemonBridgeLaunch | null;
+  },
 ): Promise<ProviderNativeRootScanResult<"host.list_commands">>;
 export function scanProviderNativeRoots(
   deps: ProviderNativeRootsDeps,
@@ -319,7 +328,11 @@ export function scanProviderNativeRoots(
 ): Promise<ProviderNativeRootScanResult<"host.list_skills">>;
 export async function scanProviderNativeRoots(
   deps: ProviderNativeRootsDeps,
-  args: ScanProviderNativeRootsArgs & { type: ProviderNativeRootScanType },
+  args: ScanProviderNativeRootsArgs &
+    (
+      | { type: "host.list_commands"; bridgeLaunch: HostDaemonBridgeLaunch | null }
+      | { type: "host.list_skills" }
+    ),
 ): Promise<ProviderNativeRootScanResult<ProviderNativeRootScanType>> {
   const budget = createProviderListingBudget();
   const nativeRoots = await resolveProviderNativeRootSet(deps, {
@@ -338,7 +351,11 @@ export async function scanProviderNativeRoots(
     timeoutMs: budget.remainingMs(),
     command:
       args.type === "host.list_commands"
-        ? { type: "host.list_commands", ...scan }
+        ? {
+            type: "host.list_commands",
+            ...scan,
+            ...(args.bridgeLaunch === null ? {} : { bridgeLaunch: args.bridgeLaunch }),
+          }
         : { type: "host.list_skills", ...scan },
   });
 }

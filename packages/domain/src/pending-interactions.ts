@@ -216,7 +216,7 @@ export type ApprovalPendingInteractionPayload = z.infer<
 >;
 
 export const USER_QUESTION_MAX_QUESTIONS = 4;
-export const USER_QUESTION_MAX_OPTIONS = 4;
+export const USER_QUESTION_MAX_OPTIONS = 100;
 export const USER_QUESTION_MAX_SELECTED = 4;
 export const USER_QUESTION_MAX_FREE_TEXT_LENGTH = 4096;
 
@@ -296,8 +296,48 @@ export const pendingInteractionUserQuestionQuestionSchema = z
       )
       .optional(),
     allowFreeText: z.boolean(),
+    /**
+     * Preserve a free-text answer byte-for-byte, including an empty string.
+     * Omission keeps the normal trimmed, non-blank user-question semantics.
+     */
+    experimental_responseMode: z.literal("verbatim").optional(),
+    /** Placeholder for a verbatim text input. */
+    experimental_placeholder: z.string().optional(),
+    /** Initial byte-preserved value for a verbatim multi-line editor. */
+    experimental_prefill: z
+      .string()
+      .max(
+        USER_QUESTION_MAX_FREE_TEXT_LENGTH,
+        `User question prefill cannot exceed ${USER_QUESTION_MAX_FREE_TEXT_LENGTH} characters`,
+      )
+      .optional(),
   })
   .superRefine((question, context) => {
+    if (
+      question.experimental_responseMode === "verbatim" &&
+      (!question.allowFreeText ||
+        question.multiSelect ||
+        (question.options?.length ?? 0) > 0)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Verbatim user questions must be single-value free-text questions without options",
+        path: ["experimental_responseMode"],
+      });
+    }
+
+    if (
+      question.experimental_prefill !== undefined &&
+      question.experimental_responseMode !== "verbatim"
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Question prefill requires verbatim response semantics",
+        path: ["experimental_prefill"],
+      });
+    }
+
     const optionValues = new Set<string>();
     question.options?.forEach((option, index) => {
       if (optionValues.has(option.value)) {
@@ -476,15 +516,33 @@ export type ApprovalPendingInteractionResolution = z.infer<
   typeof approvalPendingInteractionResolutionSchema
 >;
 
-export const pendingInteractionUserAnswerSchema = z.object({
-  selected: z
-    .array(z.string().min(1))
-    .max(
-      USER_QUESTION_MAX_SELECTED,
-      `User question selected choices cannot exceed ${USER_QUESTION_MAX_SELECTED}`,
-    ),
-  freeText: pendingInteractionUserQuestionFreeTextSchema.optional(),
-});
+export const pendingInteractionUserAnswerSchema = z
+  .object({
+    selected: z
+      .array(z.string().min(1))
+      .max(
+        USER_QUESTION_MAX_SELECTED,
+        `User question selected choices cannot exceed ${USER_QUESTION_MAX_SELECTED}`,
+      ),
+    freeText: pendingInteractionUserQuestionFreeTextSchema.optional(),
+    /** Exact text returned for a question with verbatim response semantics. */
+    experimental_verbatimText: z
+      .string()
+      .max(
+        USER_QUESTION_MAX_FREE_TEXT_LENGTH,
+        `User question verbatim text cannot exceed ${USER_QUESTION_MAX_FREE_TEXT_LENGTH} characters`,
+      )
+      .optional(),
+  })
+  .refine(
+    (answer) =>
+      answer.freeText === undefined ||
+      answer.experimental_verbatimText === undefined,
+    {
+      message: "User answers cannot contain both free text and verbatim text",
+      path: ["experimental_verbatimText"],
+    },
+  );
 export type PendingInteractionUserAnswer = z.infer<
   typeof pendingInteractionUserAnswerSchema
 >;
@@ -611,14 +669,25 @@ const pendingInteractionPluginOriginSchema = z.object({
   rendererId: z.string().min(1),
 });
 
-export const pendingInteractionCreateSchema = z.object({
-  threadId: z.string().min(1),
-  turnId: z.string().min(1),
-  providerId: z.string().min(1),
-  providerThreadId: z.string().min(1),
-  providerRequestId: z.string().min(1),
-  payload: pendingInteractionPayloadSchema,
-});
+export const pendingInteractionCreateSchema = z
+  .object({
+    threadId: z.string().min(1),
+    /** Null only for a user question raised outside a provider turn. */
+    turnId: z.string().min(1).nullable(),
+    providerId: z.string().min(1),
+    providerThreadId: z.string().min(1),
+    providerRequestId: z.string().min(1),
+    payload: pendingInteractionPayloadSchema,
+  })
+  .refine(
+    (interaction) =>
+      interaction.turnId !== null ||
+      interaction.payload.kind === "user_question",
+    {
+      message: "Only user questions may be scoped outside a provider turn",
+      path: ["turnId"],
+    },
+  );
 export type PendingInteractionCreate = z.infer<
   typeof pendingInteractionCreateSchema
 >;
@@ -659,6 +728,11 @@ export type ApprovalPendingInteraction = z.infer<
 
 const userQuestionPendingInteractionSchema =
   providerPendingInteractionBaseSchema.extend({
+    /**
+     * A user question may be thread-scoped: a provider extension (Pi's
+     * `ctx.ui.select/confirm/input`) can ask outside any provider turn.
+     */
+    turnId: z.string().min(1).nullable(),
     payload: userQuestionPendingInteractionPayloadSchema,
     resolution: userQuestionPendingInteractionResolutionSchema.nullable(),
   });

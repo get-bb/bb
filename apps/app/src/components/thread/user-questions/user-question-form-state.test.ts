@@ -35,6 +35,15 @@ const freeTextOnly: PendingInteractionUserQuestionQuestion = {
   allowFreeText: true,
 };
 
+const verbatimText: PendingInteractionUserQuestionQuestion = {
+  id: "exact",
+  prompt: "Exact value",
+  multiSelect: false,
+  allowFreeText: true,
+  experimental_responseMode: "verbatim",
+  experimental_prefill: "  initial\nvalue  ",
+};
+
 describe("buildUserAnswerResolution", () => {
   it("returns the selected option for a single-select choice", () => {
     const state = createInitialFormState([singleSelect]);
@@ -51,9 +60,9 @@ describe("buildUserAnswerResolution", () => {
     state.branch.otherSelected = true;
     state.branch.otherText = "  a custom branch  ";
 
-    expect(buildUserAnswerResolution([singleSelect], state).answers.branch).toEqual(
-      { selected: [], freeText: "a custom branch" },
-    );
+    expect(
+      buildUserAnswerResolution([singleSelect], state).answers.branch,
+    ).toEqual({ selected: [], freeText: "a custom branch" });
   });
 
   it("omits free text when Other is selected but blank", () => {
@@ -61,9 +70,9 @@ describe("buildUserAnswerResolution", () => {
     state.branch.otherSelected = true;
     state.branch.otherText = "   ";
 
-    expect(buildUserAnswerResolution([singleSelect], state).answers.branch).toEqual(
-      { selected: [] },
-    );
+    expect(
+      buildUserAnswerResolution([singleSelect], state).answers.branch,
+    ).toEqual({ selected: [] });
   });
 
   it("keeps both options and free text for multi-select", () => {
@@ -72,18 +81,18 @@ describe("buildUserAnswerResolution", () => {
     state.areas.otherSelected = true;
     state.areas.otherText = "docs";
 
-    expect(buildUserAnswerResolution([multiSelect], state).answers.areas).toEqual(
-      { selected: ["app", "cli"], freeText: "docs" },
-    );
+    expect(
+      buildUserAnswerResolution([multiSelect], state).answers.areas,
+    ).toEqual({ selected: ["app", "cli"], freeText: "docs" });
   });
 
   it("drops option values that aren't part of the question", () => {
     const state = createInitialFormState([singleSelect]);
     state.branch.selected = ["main", "ghost"];
 
-    expect(buildUserAnswerResolution([singleSelect], state).answers.branch).toEqual(
-      { selected: ["main"] },
-    );
+    expect(
+      buildUserAnswerResolution([singleSelect], state).answers.branch,
+    ).toEqual({ selected: ["main"] });
   });
 
   it("captures free text for an options-less question", () => {
@@ -92,9 +101,19 @@ describe("buildUserAnswerResolution", () => {
     expect(state.notes.otherSelected).toBe(true);
     state.notes.otherText = "ship it";
 
-    expect(buildUserAnswerResolution([freeTextOnly], state).answers.notes).toEqual(
-      { selected: [], freeText: "ship it" },
-    );
+    expect(
+      buildUserAnswerResolution([freeTextOnly], state).answers.notes,
+    ).toEqual({ selected: [], freeText: "ship it" });
+  });
+
+  it("preserves editor prefill and its submitted replacement byte-for-byte", () => {
+    const state = createInitialFormState([verbatimText]);
+    expect(state.exact.otherText).toBe("  initial\nvalue  ");
+    state.exact.otherText = "  exact\nvalue  ";
+
+    expect(
+      buildUserAnswerResolution([verbatimText], state).answers.exact,
+    ).toEqual({ selected: [], experimental_verbatimText: "  exact\nvalue  " });
   });
 });
 
@@ -115,6 +134,16 @@ describe("isQuestionAnswered", () => {
         selected: [],
         otherSelected: true,
         otherText: "x",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts an empty string for a verbatim input", () => {
+    expect(
+      isQuestionAnswered(verbatimText, {
+        selected: [],
+        otherSelected: true,
+        otherText: "",
       }),
     ).toBe(true);
   });

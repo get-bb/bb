@@ -20,13 +20,14 @@ import type {
   ThreadEvent,
 } from "@bb/domain";
 import { PROVIDER_FORK_VALUES } from "@bb/domain";
-import { pendingInteractionPayloadSchema } from "@bb/domain";
 import {
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_NOTIFICATION_METHODS,
   BRIDGE_REQUEST_METHODS,
   bridgeCapabilitiesSchema,
   initializeResultSchema,
+  experimental_interactionCancelNotificationSchema,
+  interactionRequestParamsSchema,
   negotiateGrammarVersion,
   PROVIDER_BRIDGE_PROTOCOL_VERSION,
   THREAD_DELTA_NOTIFICATION_METHOD,
@@ -44,6 +45,7 @@ import type {
   ProviderExecutionContext,
 } from "./provider-adapter.js";
 import type {
+  DecodedInteractiveCancellation,
   DecodedInteractiveRequest,
   DecodedToolCallRequest,
   ProviderCommandPlan,
@@ -106,6 +108,9 @@ export interface BridgeProtocolAdapter {
   decodeInteractiveRequest(
     request: ProviderInboundRequest,
   ): DecodedInteractiveRequest | null;
+  decodeInteractiveCancellation(
+    event: ProviderRuntimeEvent,
+  ): DecodedInteractiveCancellation | null;
   buildInteractiveResponse(
     args: BuildInteractiveResponseArgs,
   ): ProviderInteractiveResponse;
@@ -173,19 +178,6 @@ const errorNotificationParamsSchema = z
     message: z.string().min(1),
   })
   .passthrough();
-
-const interactionRequestParamsSchema = z.object({
-  providerThreadId: z.string().min(1),
-  threadId: z.string().min(1).optional(),
-  turnId: z.union([z.string().min(1), z.null()]),
-  payload: pendingInteractionPayloadSchema,
-  /**
-   * The request's ids are provider-native (a thread/delta bridge holds no bb
-   * ids): translate the turn id and approval-subject item ids through the
-   * delta assembler's maps so the app sees the timeline's own ids.
-   */
-  providerNativeIds: z.boolean().optional(),
-});
 
 /** The provider-native-id marker on a normalized tool-call request. */
 const providerNativeIdsParamsSchema = z
@@ -291,6 +283,24 @@ export function createBridgeProtocolAdapter(
               // Model listing has no session to carry providerOptions, so the
               // provider-scoped statics (e.g. the ACP launch spec the bridge
               // resolves its list command from) ride the request directly.
+              ...(options.staticProviderOptions !== undefined
+                ? { providerOptions: options.staticProviderOptions }
+                : {}),
+            },
+          };
+        case "provider/custom":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.experimentalCustomCall,
+            params: { method: command.method, input: command.input },
+          };
+        case "command/list":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.experimentalProviderCommandList,
+            params: {
+              providerId: options.id,
+              cwd: command.cwd,
               ...(options.staticProviderOptions !== undefined
                 ? { providerOptions: options.staticProviderOptions }
                 : {}),
@@ -487,6 +497,17 @@ export function createBridgeProtocolAdapter(
                 command.options,
                 options.staticProviderOptions,
               ),
+            },
+          };
+        case "extension/action":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.experimentalExtensionAction,
+            params: {
+              threadId: command.threadId,
+              providerThreadId: command.providerThreadId,
+              extensionKind: command.extensionKind,
+              action: command.action,
             },
           };
         case "thread/stop":
@@ -810,9 +831,26 @@ export function createBridgeProtocolAdapter(
         method: request.method,
         providerThreadId: decoded.providerThreadId,
         turnId,
+        scope:
+          decoded.experimental_scope === "thread" ? "thread" : "active_turn",
         payload,
         ...(threadId ? { threadId } : {}),
       };
+    },
+
+    decodeInteractiveCancellation(
+      event: ProviderRuntimeEvent,
+    ): DecodedInteractiveCancellation | null {
+      if (
+        event.method !==
+        BRIDGE_NOTIFICATION_METHODS.experimentalInteractionCancel
+      ) {
+        return null;
+      }
+      const parsed = experimental_interactionCancelNotificationSchema.safeParse(
+        event.params,
+      );
+      return parsed.success ? parsed.data : null;
     },
 
     buildInteractiveResponse(

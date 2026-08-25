@@ -44,6 +44,7 @@ interface RuntimeProviderRequestArgs {
 }
 
 interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
+  interactiveRequestAbortControllers: Map<string, AbortController>;
   getActiveTurnId: (threadId: string) => string | null;
   getThreadExecutionOptions: (
     threadId: string,
@@ -80,7 +81,7 @@ type ProviderRequestTurnIdWireValue =
   | UnresolvedProviderRequestTurnId
   | InvalidProviderRequestTurnId;
 
-function scopeProviderRequestId(
+export function scopeProviderRequestId(
   scope: string,
   requestId: string | number,
 ): string {
@@ -263,13 +264,16 @@ function handleInteractiveProviderRequest(
   }
   const buildInteractiveResponse =
     args.providerProcess.adapter.buildInteractiveResponse;
-  const resolvedTurnId = resolveRuntimeProviderRequestTurnId({
-    ...args,
-    requestKind: "interactive request",
-    resolvedThreadId,
-    turnId: interactiveReq.turnId,
-  });
-  if (resolvedTurnId === null) {
+  const resolvedTurnId =
+    interactiveReq.scope === "thread"
+      ? null
+      : resolveRuntimeProviderRequestTurnId({
+          ...args,
+          requestKind: "interactive request",
+          resolvedThreadId,
+          turnId: interactiveReq.turnId,
+        });
+  if (resolvedTurnId === null && interactiveReq.scope !== "thread") {
     return true;
   }
   const resolvedInteractiveReq = {
@@ -346,8 +350,14 @@ function handleInteractiveProviderRequest(
     return true;
   }
 
+  const cancellationKey = scopeProviderRequestId(
+    args.providerProcess.interactiveRequestScope,
+    interactiveReq.requestId,
+  );
+  const abortController = new AbortController();
+  args.interactiveRequestAbortControllers.set(cancellationKey, abortController);
   void args
-    .onInteractiveRequest(scopedInteractiveReq)
+    .onInteractiveRequest(scopedInteractiveReq, abortController.signal)
     .then((resolution) => {
       const result = buildInteractiveResponse({
         request: resolvedInteractiveReq,
@@ -374,6 +384,14 @@ function handleInteractiveProviderRequest(
         id: args.parsedId,
         message: err instanceof Error ? err.message : String(err),
       });
+    })
+    .finally(() => {
+      if (
+        args.interactiveRequestAbortControllers.get(cancellationKey) ===
+        abortController
+      ) {
+        args.interactiveRequestAbortControllers.delete(cancellationKey);
+      }
     });
   return true;
 }

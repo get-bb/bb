@@ -9,8 +9,10 @@
 import type {
   ClientTurnRequestId,
   DynamicTool,
+  ExtensionKind,
   InstructionMode,
   JsonObject,
+  JsonValue,
   PromptInput,
   PromptMode,
   ReasoningLevel,
@@ -66,6 +68,8 @@ export type AdapterCommand =
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
   | { type: "model/list"; cwd?: string }
+  | { type: "provider/custom"; method: string; input: JsonValue }
+  | { type: "command/list"; cwd: string }
   | { type: "provider/health"; cwd?: string }
   | { type: "provider/usage"; cwd?: string }
   | {
@@ -126,6 +130,13 @@ export type AdapterCommand =
       inputGroups?: PromptInput[][];
       clientRequestId: ClientTurnRequestId;
       options: ProviderExecutionContext;
+    }
+  | {
+      type: "extension/action";
+      threadId: string;
+      providerThreadId: string;
+      extensionKind: ExtensionKind;
+      action: JsonValue;
     }
   | {
       type: "thread/stop";

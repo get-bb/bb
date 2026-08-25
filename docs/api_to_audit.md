@@ -537,6 +537,22 @@ stays, decide whether a bare path is the right shape or whether a plugin
 should get named, read-only accessors for the bb-managed files it may read —
 a path invites writes into bb's directory, which `bb.storage` exists to
 prevent.
+## Thread-scoped provider interactions (`experimental_interactionRequestParamsSchema` / `ExperimentalInteractionRequestParams.experimental_scope`, `BRIDGE_NOTIFICATION_METHODS.experimentalInteractionCancel`, `experimental_interactionCancelNotificationSchema`, `PendingInteractionUserQuestionQuestion.experimental_responseMode`, `PendingInteractionUserQuestionQuestion.experimental_placeholder`, and `PendingInteractionUserAnswer.experimental_verbatimText`)
+
+**What it does.** Lets a provider bridge raise a canonical `user_question`
+outside an active model turn and preserve a single text answer byte-for-byte.
+Pi uses it for extension-command `ctx.ui.select`, `ctx.ui.confirm`, and
+`ctx.ui.input` calls: option values remain internal canonical ids while the Pi
+bridge maps the selected id back to the exact extension option, and verbatim
+text retains whitespace and empty strings.
+
+**Audit before stabilizing.** Confirm which providers need thread-scoped
+questions; confirm per-dialog timeout and signal cancellation should keep using
+the same session-owned cancellation notification; verify option and text bounds
+against every client; and confirm verbatim input remains a question mode rather than earning
+a separate core interaction kind. Recheck that stop, reload, replacement,
+failed startup, and daemon/process loss interrupt persistence and reject late
+responses before removing the prefixes.
 
 ## Bridge record mode (`experimental_recordProviderChildIo` and `experimental_isProviderBridgeRecording`)
 
@@ -576,6 +592,12 @@ for installation was deliberately left to `provider/installation/*`). Decide
 whether `retryable` should be per kind (only `sessionArchived` and
 `rateLimited` read it today) and whether the runtime should bound the
 `rateLimited` ladder from the hint rather than from a constant.
+
+## Provider bridge command discovery (`BRIDGE_REQUEST_METHODS.experimentalProviderCommandList` and the `experimental_providerCommand*` schemas/types)
+
+**What it does.** Adds the optional, sessionless `command/list` provider-bridge request. It carries an explicit cwd and the provider's static options so the bridge can load the same trusted, project-bound resources as a real session. A supported result returns command metadata and non-fatal diagnostics together: one broken resource must not hide commands from healthy resources. Core currently uses this for Pi extension commands and prompt templates while the daemon keeps its existing static skill scan; Pi's resources load inside the `pi --mode rpc` catalog child the bridge spawns per cwd, never in the bridge process. The only diagnostics a bridge produces today are its own failures to answer (pi not installed, the catalog child failing to start); pi reports a broken extension on its stderr, which the runtime logs.
+
+**Audit before stabilizing.** Confirm which providers need executable command discovery rather than static files, whether providers should declare support before core starts a bridge, whether string diagnostics need structured severity and source fields, whether command argument completion metadata belongs on this boundary, and whether repeated sessionless loads need a provider-owned cache or disposal lifecycle.
 
 ## Provider maintenance toolkit (`experimental_resolveExecutablePath`, `experimental_readCliVersion`, `experimental_commandOutput`, `experimental_versionFrom`, `experimental_compareVersions`, `experimental_formatCommand`, `experimental_npmCommand`, `experimental_npmGlobalInstallCommand`, `experimental_npmLatestVersion`, `experimental_probeNpmGlobalPackage`, `experimental_npmGlobalInstallSource`, `experimental_installationVerification`, `experimental_downloadedInstallerCommand`, `experimental_clampPercent`) (`@get-bb/plugin-sdk/provider-bridge`)
 
@@ -725,6 +747,42 @@ malformed runtime targets remain inert in both the app and SDK test runtime.
    target variants; do not weaken live-file guarantees to accommodate them.
 7. Confirm `PluginFileOpenerSource.experimental_hostId` can become a stable
    required `hostId` field without breaking older opener implementations.
+
+## Provider bridge RPC and model invalidation (`bb.providers.experimental_client` and `bb.providers.experimental_modelsChanged`)
+
+**What it does.** Lets a provider plugin call a typed, provider-owned method on
+its own bridge on an explicit host. Core validates the shared Standard Schema
+contract and JSON transport but does not interpret the method or payload.
+After a native preference write, the owning plugin can clear model-catalog
+memos and broadcast `provider-models-changed` so pickers refetch immediately.
+Pi's global model editor is the first consumer.
+
+**Audit before stabilizing.**
+
+1. Confirm custom bridge methods should remain one fixed `provider/custom`
+   envelope rather than joining the shared provider vocabulary.
+2. Confirm ownership checks, payload limits, timeouts, cancellation behavior,
+   and non-retryable writes against another provider plugin.
+3. Decide whether model invalidation should target one host/provider cache key
+   instead of clearing the small process-wide memo.
+4. Confirm SDK plugin RPC remains the right end-user typed extension point for
+   provider-native settings instead of adding provider fields to core SDK model
+   responses.
+
+## Settings host context (`PluginSettingsSectionProps.experimental_hostId`)
+
+**What it does.** Gives a plugin Settings section BB's selected primary host so
+host-local editors do not add their own machine picker. It is null while no
+host is available and never supplies a cwd or workspace path.
+
+**Audit before stabilizing.**
+
+1. Confirm primary-host selection is sufficient or replace it with one shared
+   Settings-level host picker before stabilizing the prop.
+2. Verify host changes remount or refetch every host-local Settings section and
+   that offline/no-host states remain explicit.
+3. Keep target selection in host chrome; do not let each plugin invent machine
+   selectors inside its editor.
 
 ## Host plugin foundation (`bb.hosts.experimental_client`, `ExperimentalHostClient.experimental_onWorkerExit`, `ExperimentalHostClient.experimental_onSignal`, `ExperimentalHostRpcContext.experimental_retainWorker`, `experimental_defineHostEntry`, and `experimental_createHostEntryHarness`)
 
@@ -1021,6 +1079,26 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    installed-only provider, and that targeted requests may continue resolving
    a registered provider even while discovery says it is absent.
 
+## Provider extension-state rendering and actions (`app.slots.experimental_providerExtensionState`, `ExperimentalProviderExtensionStateRegistration`, `ExperimentalProviderExtensionStateProps.experimental_dispatchAction`, `PluginProviderExtensionKindDeclaration.experimental_action`, `ThreadsArea.experimental_applyExtensionStateAction`)
+
+**What it does.** A provider plugin registers a renderer for one local state
+kind. The host resolves the persisted namespaced kind through the owning plugin
+id and mounts that renderer above and below the active thread composer with the
+latest validated payload, source sequence, thread, provider, and placement.
+The renderer's `experimental_dispatchAction` callback sends a non-retried JSON
+action only to that same namespaced kind in the thread's current provider
+session; the backend declaration's `experimental_action` Standard Schema
+validates it before dispatch. The host never interprets provider payloads or
+actions; `provider-pi` owns their translation and rendering.
+
+**Audit before stabilizing.** Confirm that the two composer placements cover
+provider state that is not transcript content, that mounting one component at
+both placements is preferable to separate renderer members, and that title and
+editor side effects belong in the renderer rather than a narrower host action
+surface. Audit whether `{ applied: boolean }` is enough action feedback and
+whether every action should remain non-retryable. Confirm mobile's declarative
+fallback before dropping the prefix.
+
 ## Persistent plugin responsive drawer (`experimental_ResponsiveDrawer`, `ExperimentalResponsiveDrawerProps`)
 
 **What it does.** Gives a plugin the host's persistent, non-modal bottom drawer.
@@ -1032,6 +1110,20 @@ The backdrop and focus stack contain interaction without applying `inert` or
 **Audit before stabilizing.** Confirm title-only labeling is sufficient, whether
 plugins need animation-end or realization callbacks, and whether arbitrary
 content-height control should remain a class-name escape hatch.
+
+## Verbatim interaction editor prefill (`PendingInteractionUserQuestionQuestion.experimental_prefill`)
+
+**What it does.** Seeds the existing verbatim user-question textarea with up to
+4,096 characters. It is accepted only with `experimental_responseMode:
+"verbatim"`; the submitted value continues through
+`experimental_verbatimText` unchanged, including empty strings, leading spaces,
+and newlines. Pi maps `ctx.ui.editor(title, prefill)` onto this existing
+interaction path.
+
+**Audit before stabilizing.** Confirm 4,096 characters is enough for extension
+editors, whether prefill and response limits should be UTF-8 bytes instead of
+JavaScript characters, and whether editor requests eventually deserve a core
+interaction kind distinct from a verbatim question.
 
 ## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 

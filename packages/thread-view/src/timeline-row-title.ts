@@ -1256,6 +1256,9 @@ function singleQuestionAnswerSummary(
   if (answer.freeText) {
     parts.push(answer.freeText);
   }
+  if (answer.experimental_verbatimText !== undefined) {
+    parts.push(answer.experimental_verbatimText);
+  }
   const text = parts.join(", ");
   return text.length > 0 ? text : null;
 }

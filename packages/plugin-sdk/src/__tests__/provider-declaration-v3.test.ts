@@ -129,7 +129,7 @@ describe("provider declaration target-state fields", () => {
       validatePluginProviderDeclaration(
         declaration({ extensionKinds: { goal: {} } }),
       ),
-    ).toThrow(/item schema, a state schema, or both/u);
+    ).toThrow(/item schema, a state schema, or an experimental action schema/u);
     expect(() =>
       validatePluginProviderDeclaration(
         declaration({

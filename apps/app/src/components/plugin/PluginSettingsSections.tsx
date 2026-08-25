@@ -4,6 +4,8 @@ import {
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
 import { ResourceDetailPanel } from "@bb/shared-ui/resource-detail";
+import { selectPrimaryHost, useHosts } from "@/hooks/queries/host-queries";
+import { useSystemConfig } from "@/hooks/queries/system-queries";
 
 /**
  * Plugin `settingsSection` slot mounts, rendered on that plugin's canonical
@@ -12,30 +14,47 @@ import { ResourceDetailPanel } from "@bb/shared-ui/resource-detail";
  */
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   const { settingsSections } = usePluginSlots();
+  const hostsQuery = useHosts();
+  const systemConfigQuery = useSystemConfig();
   const sections = settingsSections.filter(
     (section) => section.pluginId === pluginId,
   );
   if (sections.length === 0) return null;
-  return <PluginSettingsSectionList sections={sections} />;
+  const selectedHost = selectPrimaryHost(
+    hostsQuery.data,
+    systemConfigQuery.data?.primaryHostId ?? null,
+  );
+  return (
+    <PluginSettingsSectionList
+      sections={sections}
+      hostId={selectedHost?.id ?? null}
+    />
+  );
 }
 
 function PluginSettingsSectionList({
   sections,
+  hostId,
 }: {
   sections: readonly PluginSettingsSectionSlot[];
+  hostId: string | null;
 }) {
   return (
     <div className="space-y-6" data-testid="plugin-settings-sections">
       {sections.map((section) => {
         const key = `${section.pluginId}/${section.id}/${section.generation}`;
         return section.title === undefined ? (
-          <PluginSettingsSectionPanel key={key} section={section} />
+          <PluginSettingsSectionPanel
+            key={key}
+            section={section}
+            hostId={hostId}
+          />
         ) : (
           <div key={key} className="space-y-3">
             <h3 className="text-xs font-medium text-foreground">
               {section.title}
             </h3>
-            <PluginSettingsSectionPanel section={section} />
+            <PluginSettingsSectionPanel section={section} hostId={hostId} />
           </div>
         );
       })}
@@ -45,8 +64,10 @@ function PluginSettingsSectionList({
 
 function PluginSettingsSectionPanel({
   section,
+  hostId,
 }: {
   section: PluginSettingsSectionSlot;
+  hostId: string | null;
 }) {
   return (
     <ResourceDetailPanel surface="recessed" className="px-3 py-3">
@@ -60,7 +81,7 @@ function PluginSettingsSectionPanel({
         slotKind="settingsSection"
         slotId={section.id}
       >
-        <section.component />
+        <section.component experimental_hostId={hostId} />
       </PluginSlotMount>
     </ResourceDetailPanel>
   );

@@ -314,6 +314,12 @@ export function queryKeysForChangedMessage(
           allProjectDefaultExecutionOptionsQueryKeyPrefix(),
         );
       }
+      if (kinds.has("provider-models-changed")) {
+        keys.push(
+          allSystemExecutionOptionsQueryKeyPrefix(),
+          allProjectDefaultExecutionOptionsQueryKeyPrefix(),
+        );
+      }
       if (kinds.has("plugins-changed")) {
         // Plugin mention providers / skills come and go with plugins.
         keys.push(

@@ -3,6 +3,7 @@ import {
   activeThinkingSchema,
   callerExecutionInputSourceSchema,
   environmentSchema,
+  extensionKindSchema,
   jsonValueSchema,
   pendingInteractionResolutionSchema,
   pendingInteractionSchema,
@@ -833,6 +834,36 @@ export type ExperimentalThreadReloadResponse = z.infer<
   typeof experimental_threadReloadResponseSchema
 >;
 
+export const experimental_extensionStateActionRequestSchema = z
+  .object({
+    kind: extensionKindSchema,
+    action: jsonValueSchema,
+  })
+  .strict();
+export type ExperimentalExtensionStateActionRequest = z.infer<
+  typeof experimental_extensionStateActionRequestSchema
+>;
+
+export const experimental_extensionStateActionResponseSchema = z
+  .object({ applied: z.boolean() })
+  .strict();
+export type ExperimentalExtensionStateActionResponse = z.infer<
+  typeof experimental_extensionStateActionResponseSchema
+>;
+
+const THREAD_TIMELINE_EXTENSION_STATE_MAX = 32;
+
+export const threadTimelineExtensionStateSchema = z
+  .object({
+    kind: extensionKindSchema,
+    payload: jsonValueSchema,
+    sourceSeq: z.number().int().nonnegative(),
+  })
+  .strict();
+export type ThreadTimelineExtensionState = z.infer<
+  typeof threadTimelineExtensionStateSchema
+>;
+
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),
@@ -843,6 +874,10 @@ export const threadTimelineResponseSchema = z.object({
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   goal: threadTimelineGoalSchema.nullable(),
   modelFallback: threadTimelineModelFallbackSchema.nullable(),
+  /** Latest persisted plugin state per declared kind, bounded by declaration. */
+  extensionStates: z
+    .array(threadTimelineExtensionStateSchema)
+    .max(THREAD_TIMELINE_EXTENSION_STATE_MAX),
   contextWindowUsage: threadContextWindowUsageSchema.optional(),
   timelinePage: timelinePageMetadataSchema,
   /** Thread high-water event sequence this window reflects; bumps on append. */

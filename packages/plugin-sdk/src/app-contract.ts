@@ -1,5 +1,6 @@
 import type { ComponentPropsWithoutRef, ComponentType, ReactNode } from "react";
 import type {
+  ExtensionKind,
   PermissionMode,
   PromptInput,
   ProviderInfo,
@@ -36,12 +37,15 @@ export interface PluginHomepageSectionProps {
   projectId: string | null;
 }
 
-/**
- * Props passed to a `settingsSection` component.
- *
- * Deliberately empty in V1; versioned additive like the other slot props.
- */
-export interface PluginSettingsSectionProps {}
+/** Props passed to a `settingsSection` component. */
+export interface PluginSettingsSectionProps {
+  /**
+   * The host selected by BB's Settings context. Plugins use this for
+   * host-local configuration without adding their own machine picker.
+   * Null while no host is available. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_hostId?: string | null;
+}
 
 /** Props passed to a `navPanel` component (it owns its whole route). */
 export interface PluginNavPanelProps {
@@ -1338,6 +1342,43 @@ export interface PluginTimelineRendererRegistration {
   component: ComponentType<PluginTimelineRendererProps>;
 }
 
+/**
+ * Current plugin-declared provider state projected from the latest persisted
+ * `extension.state` snapshot. The host mounts the renderer on both sides of
+ * the composer so the owning plugin can honor native placement semantics.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalProviderExtensionStateProps {
+  threadId: string;
+  providerId: string;
+  kind: ExtensionKind;
+  payload: JsonValue;
+  sourceSeq: number;
+  placement: "aboveEditor" | "belowEditor";
+  /**
+   * Validate and dispatch one opaque action to this state kind in the current
+   * provider session. The promise never retries: callers decide whether an
+   * action is safe to repeat. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_dispatchAction(action: JsonValue): Promise<{ applied: boolean }>;
+}
+
+/**
+ * Render one local provider extension-state kind. `name` is the local name
+ * declared by this plugin's backend; the host prefixes the owning plugin id
+ * and never passes another plugin's payload to the component.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalProviderExtensionStateRegistration {
+  name: string;
+  component: ComponentType<ExperimentalProviderExtensionStateProps>;
+}
+
+/**
+ * Host-owned non-modal drawer. Content realization starts after two animation
+ * frames and remains mounted after the first open. Experimental: see
+ * docs/api_to_audit.md.
+ */
 export interface ExperimentalResponsiveDrawerProps {
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -1440,6 +1481,13 @@ export interface PluginAppSlots {
    */
   experimental_timelineRenderer(
     registration: PluginTimelineRendererRegistration,
+  ): void;
+  /**
+   * Render current plugin-declared provider state beside the composer.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_providerExtensionState(
+    registration: ExperimentalProviderExtensionStateRegistration,
   ): void;
 }
 

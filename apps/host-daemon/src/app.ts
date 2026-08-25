@@ -412,6 +412,13 @@ export async function createHostDaemonApp(
   });
 
   const interactiveRequestRegistry = new InteractiveRequestRegistry({
+    onCancellation: (request, reason) => {
+      enqueueInteractiveInterrupt({
+        providerId: request.providerId,
+        reason,
+        threadIds: [request.threadId],
+      });
+    },
     registerRequest: (request) =>
       runSessionRequest({
         source: "registerInteractiveRequest",
@@ -584,9 +591,12 @@ export async function createHostDaemonApp(
           throw error;
         }
       }),
-    onInteractiveRequest: async (request) => {
+    onInteractiveRequest: async (request, signal) => {
       try {
-        return await interactiveRequestRegistry.registerAndWait(request);
+        return await interactiveRequestRegistry.registerAndWait(
+          request,
+          signal,
+        );
       } catch (error) {
         if (
           error instanceof InteractiveRequestRegistryError &&
@@ -770,6 +780,27 @@ export async function createHostDaemonApp(
       return runtimeManager.withProviderMaintenanceRuntime(
         { dataDir: options.dataDir },
         (runtime) => runtime.listModels(args),
+      );
+    },
+    providerCustomCall: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => {
+          if (runtime.providerCustomCall === undefined) {
+            throw new Error(
+              "Provider runtime does not support custom bridge calls",
+            );
+          }
+          return runtime.providerCustomCall(args);
+        },
+      );
+    },
+    listProviderCommands: async (args) => {
+      await refreshRuntimeShellEnv();
+      return runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        (runtime) => runtime.listProviderCommands(args),
       );
     },
     providerHealth: async (args) => {

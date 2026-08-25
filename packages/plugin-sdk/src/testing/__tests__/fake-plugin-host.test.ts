@@ -1448,18 +1448,16 @@ describe("providers.register", () => {
 
   it("clears registrations on dispose", async () => {
     const { bb, harness } = createFakePluginHost();
-    bb.providers.register(
-      agentDeclaration({ id: "my-second-agent" }),
-    );
+    bb.providers.register(agentDeclaration({ id: "my-second-agent" }));
     expect(
       harness.registrations.providerRegistrations.map((entry) => entry.id),
     ).toEqual(["my-second-agent"]);
 
     await harness.dispose();
     expect(harness.registrations.providerRegistrations).toEqual([]);
-    expect(() =>
-      bb.providers.register(agentDeclaration()),
-    ).toThrow("used a stale API handle");
+    expect(() => bb.providers.register(agentDeclaration())).toThrow(
+      "used a stale API handle",
+    );
   });
 });
 

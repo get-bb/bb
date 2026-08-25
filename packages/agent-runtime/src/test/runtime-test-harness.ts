@@ -182,6 +182,7 @@ type LaunchBearingMethod =
   | "unarchiveThread"
   | "reloadThread"
   | "listModels"
+  | "listProviderCommands"
   | "providerHealth"
   | "providerUsage"
   | "providerInstallationStatus"
@@ -235,6 +236,8 @@ export function withBridgeLaunch(
       runtime.providerInstallationStatus({ bridgeLaunch, ...args }),
     providerInstallationRun: (args) =>
       runtime.providerInstallationRun({ bridgeLaunch, ...args }),
+    listProviderCommands: (args) =>
+      runtime.listProviderCommands({ bridgeLaunch, ...args }),
   };
 }
 

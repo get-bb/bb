@@ -167,13 +167,15 @@ export function registerInternalInteractiveRequestRoutes(
         );
       }
 
-      // Daemons must flush provider turn events before every interactive
-      // registration attempt. This precondition keeps the server from
-      // accepting turn-scoped interaction state before turn/started exists.
-      const turnStarted = hasStoredTurnStarted(deps.db, {
-        threadId: payload.interaction.threadId,
-        turnId: payload.interaction.turnId,
-      });
+      // Daemons must flush provider turn events before every turn-scoped
+      // interactive registration attempt. A null turn is an explicitly
+      // thread-scoped extension question and has no turn/started prerequisite.
+      const turnStarted =
+        payload.interaction.turnId === null ||
+        hasStoredTurnStarted(deps.db, {
+          threadId: payload.interaction.threadId,
+          turnId: payload.interaction.turnId,
+        });
       if (!turnStarted) {
         deps.logger.warn(
           {

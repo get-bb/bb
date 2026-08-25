@@ -22,7 +22,7 @@ export type CreatePendingInteractionInput =
       providerId: string;
       providerRequestId: string;
       providerThreadId: string;
-      turnId: string;
+      turnId: string | null;
     })
   | (CreatePendingInteractionInputBase & {
       originKind: "plugin";

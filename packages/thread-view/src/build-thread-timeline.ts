@@ -1,5 +1,6 @@
 import type {
   ThreadContextWindowUsage,
+  ThreadTimelineExtensionState,
   TimelineActivityIntent,
   TimelineConversationAttachments,
   TimelineFileChange,
@@ -66,6 +67,7 @@ import {
   type PlanCommand,
 } from "./active-prompt-mode-extraction.js";
 import { extractThreadTimelineGoal } from "./goal-snapshot-extraction.js";
+import { extractThreadTimelineExtensionStates } from "./extension-state-extraction.js";
 import { extractThreadTimelineModelFallback } from "./model-fallback-extraction.js";
 import { extractThreadTimelinePendingTodos } from "./todo-snapshot-extraction.js";
 import { buildTimelineErrorDisplay } from "./error-display.js";
@@ -132,6 +134,7 @@ export interface ThreadTimelineFromEventsResult {
   contextWindowUsage: ThreadContextWindowUsage | null;
   goal: ThreadTimelineGoal | null;
   modelFallback: ThreadTimelineModelFallback | null;
+  extensionStates: ThreadTimelineExtensionState[];
   pendingTodos: ThreadTimelinePendingTodos | null;
   rows: TimelineRow[];
 }
@@ -1440,6 +1443,9 @@ export function buildThreadTimelineFromEvents(
     modelFallback: !args.options.isLatestPage
       ? null
       : extractThreadTimelineModelFallback(args.events),
+    extensionStates: !args.options.isLatestPage
+      ? []
+      : extractThreadTimelineExtensionStates(args.events),
     pendingTodos: !args.options.isLatestPage
       ? null
       : extractThreadTimelinePendingTodos(

@@ -39,6 +39,7 @@ import {
   type PluginPendingInteractionRegistration,
   type PluginProviderIconRegistration,
   type PluginTimelineRendererRegistration,
+  type ExperimentalProviderExtensionStateRegistration,
   type PluginRealtimeConnectionState,
   type PluginRpcClient,
   type PluginSdkApp,
@@ -916,6 +917,7 @@ export interface CapturedPluginApp {
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
   timelineRenderers: PluginTimelineRendererRegistration[];
+  providerExtensionStates: ExperimentalProviderExtensionStateRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 

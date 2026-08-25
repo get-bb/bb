@@ -167,6 +167,8 @@ import type {
   TerminalResizeRequest,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ExperimentalExtensionStateActionRequest,
+  ExperimentalExtensionStateActionResponse,
   ExperimentalThreadReloadResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
@@ -239,6 +241,7 @@ import {
   environmentDiffQuerySchema,
   environmentPathsQuerySchema,
   environmentStatusQuerySchema,
+  experimental_extensionStateActionRequestSchema,
   hostDirectoryQuerySchema,
   hostCloneDefaultPathQuerySchema,
   hostFileListRequestSchema,
@@ -1080,6 +1083,14 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<ExperimentalThreadReloadResponse>(),
+    }),
+    experimental_extensionStateAction: defineRoute({
+      path: "/threads/:id/extension-state/action",
+      method: "post",
+      request: jsonRequest<PathId, ExperimentalExtensionStateActionRequest>(
+        experimental_extensionStateActionRequestSchema,
+      ),
+      response: jsonResponse<ExperimentalExtensionStateActionResponse>(),
     }),
     compact: defineRoute({
       path: "/threads/:id/compact",

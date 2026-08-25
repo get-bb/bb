@@ -55,6 +55,12 @@ export const interactionRequestParamsSchema = z
     turnId: z.union([z.string().min(1), z.null()]),
     payload: pendingInteractionPayloadSchema,
     /**
+     * Explicitly scopes a request to the thread when no provider turn exists.
+     * Omission preserves the established meaning of `turnId: null`: resolve
+     * the active turn at the runtime boundary.
+     */
+    experimental_scope: z.literal("thread").optional(),
+    /**
      * The request's turn id and approval-subject item ids are in the
      * provider's native id space (a `thread/delta` bridge holds no bb ids):
      * the runtime adapter translates them through the delta assembler's maps
@@ -64,7 +70,20 @@ export const interactionRequestParamsSchema = z
      */
     providerNativeIds: z.boolean().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((request, context) => {
+    if (
+      request.experimental_scope === "thread" &&
+      (request.turnId !== null || request.payload.kind !== "user_question")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Thread-scoped interactions must be user questions with a null turn id",
+        path: ["experimental_scope"],
+      });
+    }
+  });
 
 export type InteractionRequestParams = z.infer<
   typeof interactionRequestParamsSchema

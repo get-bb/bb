@@ -36,7 +36,7 @@ export function createInitialFormState(
       selected: [],
       // A question with no options is pure free text — "Other" is implicit.
       otherSelected: !questionHasOptions(question),
-      otherText: "",
+      otherText: question.experimental_prefill ?? "",
     };
   }
   return state;
@@ -50,7 +50,7 @@ export function answerStateFor(
     formState[question.id] ?? {
       selected: [],
       otherSelected: !questionHasOptions(question),
-      otherText: "",
+      otherText: question.experimental_prefill ?? "",
     }
   );
 }
@@ -69,6 +69,9 @@ export function isQuestionAnswered(
   question: PendingInteractionUserQuestionQuestion,
   state: QuestionAnswerState,
 ): boolean {
+  if (question.experimental_responseMode === "verbatim") {
+    return state.otherSelected;
+  }
   if (validSelectedValues(question, state.selected).length > 0) {
     return true;
   }
@@ -79,6 +82,13 @@ function buildQuestionAnswer(
   question: PendingInteractionUserQuestionQuestion,
   state: QuestionAnswerState,
 ): PendingInteractionUserAnswer {
+  if (question.experimental_responseMode === "verbatim") {
+    return {
+      selected: [],
+      experimental_verbatimText: state.otherText,
+    };
+  }
+
   const freeText = state.otherText.trim();
   const includeFreeText = state.otherSelected && freeText.length > 0;
   if (question.multiSelect) {

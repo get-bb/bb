@@ -29,6 +29,7 @@ import {
   listContextWindowUsageRows,
   listCompletedTurnsByThreadIds,
   listEvents,
+  listLatestExtensionStateEventRowsForThread,
   listLatestThreadStateEventRowsByThreadIds,
   listRecentStoredEventRows,
   listStoredConversationOutlineEventRows,
@@ -51,6 +52,7 @@ import {
   listThreadTurnInterruptionEventStates,
   pruneBackgroundTaskProgressEvents,
   pruneContextWindowUsageEventsBeforeSequence,
+  pruneSupersededExtensionStateEvents,
   pruneTokenUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
   pruneThreadEventsBeforeSequence,
@@ -1877,6 +1879,47 @@ describe("events", () => {
       "thread/extensionState/updated",
     );
     expect(rowsByThreadId.get(otherThread.id)?.sequence).toBe(2);
+  });
+
+  it("bounds extension-state replay to the latest snapshot of each kind", () => {
+    const { db, thread } = setup();
+    const uiUpdates = Array.from({ length: 40 }, (_, index) => ({
+      threadId: thread.id,
+      sequence: index + 1,
+      type: "thread/extensionState/updated" as const,
+      ...threadEventFields,
+      providerThreadId: "provider-thread-state",
+      data: JSON.stringify({
+        kind: "provider-pi/extension-ui",
+        payload: { revision: index + 1 },
+      }),
+    }));
+    insertEvents(db, noopNotifier, [
+      ...uiUpdates,
+      {
+        threadId: thread.id,
+        sequence: 41,
+        type: "thread/extensionState/updated",
+        ...threadEventFields,
+        providerThreadId: "provider-thread-state",
+        data: JSON.stringify({
+          kind: "provider-pi/other",
+          payload: { revision: 1 },
+        }),
+      },
+    ]);
+
+    expect(
+      listLatestExtensionStateEventRowsForThread(db, {
+        threadId: thread.id,
+      }).map((row) => row.sequence),
+    ).toEqual([40, 41]);
+    expect(
+      pruneSupersededExtensionStateEvents(db, { threadId: thread.id }),
+    ).toBe(39);
+    expect(
+      listEvents(db, { threadId: thread.id }).map((row) => row.sequence),
+    ).toEqual([40, 41]);
   });
 
   it("batches latest goal lookups above the SQLite variable limit", () => {

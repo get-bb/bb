@@ -250,6 +250,9 @@ function createFakeRuntime(): AgentRuntime {
     async stopThread() {
       return { providerCheckpointId: null };
     },
+    async applyExtensionAction() {
+      return { applied: true };
+    },
     async clearThreadGoal() {
       return { cleared: true };
     },
@@ -261,6 +264,9 @@ function createFakeRuntime(): AgentRuntime {
         models: [],
         selectedOnlyModels: [],
       };
+    },
+    async listProviderCommands() {
+      return { supported: false as const };
     },
     async providerHealth() {
       return { supported: false as const };

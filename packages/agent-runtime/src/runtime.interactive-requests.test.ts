@@ -111,6 +111,7 @@ async function answerDirectRequest(args: {
   }
   try {
     handleRuntimeProviderRequest({
+      interactiveRequestAbortControllers: new Map(),
       getActiveTurnId: args.getActiveTurnId ?? (() => "bb-turn-1"),
       getThreadExecutionOptions:
         args.getThreadExecutionOptions ?? (() => undefined),
@@ -224,6 +225,59 @@ describe("createAgentRuntime interactive requests", () => {
       },
     });
     expect(onInteractiveRequest).not.toHaveBeenCalled();
+  });
+
+  it("routes an explicitly thread-scoped user question without an active turn", async () => {
+    const onInteractiveRequest = vi.fn(
+      async (): Promise<PendingInteractionResolution> => ({
+        kind: "user_answer",
+        answers: {
+          value: { selected: [], experimental_verbatimText: "  exact  " },
+        },
+      }),
+    );
+    const answer = await answerDirectRequest({
+      rawRequest: {
+        jsonrpc: "2.0",
+        id: 82,
+        method: "interaction/request",
+        params: {
+          providerThreadId: "prov-1",
+          threadId: "t1",
+          turnId: null,
+          experimental_scope: "thread",
+          payload: {
+            kind: "user_question",
+            questions: [
+              {
+                id: "value",
+                prompt: "Value",
+                multiSelect: false,
+                allowFreeText: true,
+                experimental_responseMode: "verbatim",
+              },
+            ],
+          },
+        },
+      },
+      getActiveTurnId: () => null,
+      onInteractiveRequest,
+    });
+
+    expect(answer).toMatchObject({
+      jsonrpc: "2.0",
+      id: 82,
+      result: {
+        kind: "user_answer",
+        answers: {
+          value: { selected: [], experimental_verbatimText: "  exact  " },
+        },
+      },
+    });
+    expect(onInteractiveRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "t1", turnId: null }),
+      expect.any(AbortSignal),
+    );
   });
 
   it("denies interactive requests when permission escalation is deny", async () => {
@@ -506,6 +560,7 @@ describe("createAgentRuntime interactive requests", () => {
       expect.objectContaining({
         payload: expect.objectContaining({ kind: "secrets/secret-request" }),
       }),
+      expect.any(AbortSignal),
     );
     expect(answer).toMatchObject({
       jsonrpc: "2.0",

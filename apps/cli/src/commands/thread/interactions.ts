@@ -210,7 +210,10 @@ function printUserQuestionInteraction(
     );
     const parts = [
       ...selectedLabels,
-      ...(answer.freeText ? [answer.freeText] : []),
+      ...(answer.freeText !== undefined ? [answer.freeText] : []),
+      ...(answer.experimental_verbatimText !== undefined
+        ? [answer.experimental_verbatimText]
+        : []),
     ];
     console.log(
       `  ${question.shortLabel ?? question.prompt}: ${parts.join(", ")}`,
@@ -475,7 +478,10 @@ function validateAnswerText(
   if (trimmed.length === 0) {
     throw new Error(`Question '${question.id}' free text cannot be empty.`);
   }
-  if (answer.freeText !== undefined) {
+  if (
+    answer.freeText !== undefined ||
+    answer.experimental_verbatimText !== undefined
+  ) {
     throw new Error(
       `Question '${question.id}' has multiple free-text answers.`,
     );
@@ -527,7 +533,19 @@ function buildUserAnswerResolution({
       );
     }
     const answer = answers[textAnswer.questionId] ?? { selected: [] };
-    answer.freeText = validateAnswerText(question, answer, textAnswer.value);
+    if (question.experimental_responseMode === "verbatim") {
+      if (
+        answer.freeText !== undefined ||
+        answer.experimental_verbatimText !== undefined
+      ) {
+        throw new Error(
+          `Question '${question.id}' has multiple free-text answers.`,
+        );
+      }
+      answer.experimental_verbatimText = textAnswer.value;
+    } else {
+      answer.freeText = validateAnswerText(question, answer, textAnswer.value);
+    }
     answers[textAnswer.questionId] = answer;
   }
 
@@ -535,7 +553,9 @@ function buildUserAnswerResolution({
     const answer = answers[question.id];
     if (
       !answer ||
-      (answer.selected.length === 0 && answer.freeText === undefined)
+      (answer.selected.length === 0 &&
+        answer.freeText === undefined &&
+        answer.experimental_verbatimText === undefined)
     ) {
       throw new Error(`Missing answer for question '${question.id}'.`);
     }

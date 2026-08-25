@@ -46,7 +46,8 @@ Discovery:
   The machine/host and environment selectors are mutually exclusive. An
   environment selects its owning machine and workspace; otherwise an explicit
   machine selects that machine's project source. Omitting both intentionally
-  falls back to the primary machine's project source.
+  falls back to the primary machine's project source. The result includes
+  non-fatal discovery diagnostics alongside commands that loaded successfully.
 
 Attachments:
 

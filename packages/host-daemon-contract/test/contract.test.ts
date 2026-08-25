@@ -176,6 +176,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   "plugin.host.call": { output: { ok: true } },
   "plugin.host.cancel": { cancelled: true },
   "plugin.host.dispose": { disposed: true },
+  "provider.custom_call": { result: { ok: true } },
   "connect-tunnel.ensure-identity": {
     label: "sawyer-air",
     baseDomain: "getbb.app",
@@ -238,6 +239,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
         argumentHint: null,
       },
     ],
+    diagnostics: [],
   },
   "host.list_skills": {
     skills: [
@@ -459,6 +461,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
     appliedAs: "new-turn",
   },
   "thread.stop": { providerCheckpointId: null },
+  "thread.extension-state.action": { applied: true },
   "thread.goal.clear": { cleared: true },
   "thread.plan.cancel": { cancelled: true },
   "thread.rename": {},
@@ -642,6 +645,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "environment.provision only includes checkout instructions for unmanaged workspaces that requested a branch mutation.",
   "hostDaemonCommandSchema.targetPath":
     "project.clone omits targetPath when the daemon should derive its default checkout location for the project.",
+  "hostDaemonOnlineRpcCommandSchema.bridgeLaunch":
+    "host.list_commands omits bridgeLaunch for providers that use only static skill and command scanning.",
   "hostDaemonOnlineRpcCommandSchema.expectedSha256":
     "host.write_file may omit expectedSha256 for unconditional writes; a hash is the compare-and-swap guard and null means create-only.",
   "hostDaemonOnlineRpcCommandSchema.mode":
@@ -1013,6 +1018,11 @@ describe("host-daemon command schemas", () => {
   // completeness over the host wire. Older daemons cannot safely enforce or
   // interpret those fields, so enrolled machines must update before serving
   // workspace status and diff requests.
+  // Version 165 lets host.list_commands carry a provider bridge launch and
+  // return non-fatal diagnostics (with thread.reload, provider.custom_call,
+  // thread.extension-state.action, and thread-scoped interactions). Older
+  // daemons neither recognize the launch field nor return the required
+  // diagnostic list.
   // Version 118 rejects successful provider update results when the daemon
   // cannot verify a version change. Older daemons can report a no-op Claude
   // update as successful, so enrolled machines must update for honest results.
@@ -1047,7 +1057,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(171);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(172);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

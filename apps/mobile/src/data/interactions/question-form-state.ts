@@ -41,6 +41,9 @@ export interface InteractionFormQuestion {
   multiSelect: boolean;
   options: readonly InteractionFormOption[];
   allowFreeText: boolean;
+  experimental_responseMode?: "verbatim";
+  experimental_placeholder?: string;
+  experimental_prefill?: string;
 }
 
 export interface QuestionAnswerState {
@@ -68,6 +71,15 @@ export function normalizeUserQuestion(
         : {}),
     })),
     allowFreeText: question.allowFreeText,
+    ...(question.experimental_responseMode !== undefined
+      ? { experimental_responseMode: question.experimental_responseMode }
+      : {}),
+    ...(question.experimental_placeholder !== undefined
+      ? { experimental_placeholder: question.experimental_placeholder }
+      : {}),
+    ...(question.experimental_prefill !== undefined
+      ? { experimental_prefill: question.experimental_prefill }
+      : {}),
   };
 }
 
@@ -114,7 +126,7 @@ function initialAnswerState(
     selected: [],
     // A question with no options is pure free text — "Other" is implicit.
     otherSelected: !questionHasOptions(question),
-    otherText: "",
+    otherText: question.experimental_prefill ?? "",
   };
 }
 
@@ -147,6 +159,9 @@ export function isQuestionAnswered(
   question: InteractionFormQuestion,
   state: QuestionAnswerState,
 ): boolean {
+  if (question.experimental_responseMode === "verbatim") {
+    return state.otherSelected;
+  }
   if (validSelectedValues(question, state.selected).length > 0) return true;
   return state.otherSelected && state.otherText.trim().length > 0;
 }
@@ -199,6 +214,13 @@ function buildQuestionAnswer(
   question: InteractionFormQuestion,
   state: QuestionAnswerState,
 ): PendingInteractionUserAnswer {
+  if (question.experimental_responseMode === "verbatim") {
+    return {
+      selected: [],
+      experimental_verbatimText: state.otherText,
+    };
+  }
+
   const freeText = state.otherText.trim();
   const includeFreeText = state.otherSelected && freeText.length > 0;
   if (question.multiSelect) {

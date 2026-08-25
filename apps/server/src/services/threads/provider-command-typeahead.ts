@@ -107,6 +107,7 @@ function compareCommands(a: ProviderCommand, b: ProviderCommand): number {
 
 interface BuildCommandListResponseArgs {
   commands: HostProviderCommand[];
+  diagnostics: string[];
   includeBuiltinCompact: boolean;
   skillCatalog: readonly ResolvedSkillCatalogEntry[];
 }
@@ -127,5 +128,6 @@ export function buildCommandListResponse(
       ...args.skillCatalog.map(toSkillCommand),
       ...args.commands.map(toProviderCommand),
     ]).sort(compareCommands),
+    diagnostics: args.diagnostics,
   };
 }

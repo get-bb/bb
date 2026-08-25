@@ -2,6 +2,7 @@ import {
   availableModelSchema,
   discoveredWorkspacePropertiesSchema,
   dynamicToolSchema,
+  extensionKindSchema,
   instructionModeSchema,
   pendingInteractionResolutionSchema,
   permissionModeSchema,
@@ -392,6 +393,15 @@ export const threadStopCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
+export const threadExtensionStateActionCommandSchema =
+  hostDaemonThreadTargetSchema
+    .extend({
+      type: z.literal("thread.extension-state.action"),
+      extensionKind: extensionKindSchema,
+      action: jsonValueSchema,
+    })
+    .strict();
+
 const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.goal.clear"),
@@ -733,6 +743,12 @@ const hostListCommandsCommandSchema = z
     providerId: z.string().min(1),
     cwd: z.string().min(1).nullable(),
     nativeRoots: providerNativeRootSetSchema,
+    /**
+     * Omission requests static skill/command scanning only. With a launch the
+     * daemon also asks the provider's bridge for its own commands (`command/list`)
+     * and merges them with the static scan.
+     */
+    bridgeLaunch: hostDaemonBridgeLaunchSchema.optional(),
   })
   .strict();
 
@@ -949,6 +965,16 @@ const providerListModelsCommandSchema = z.object({
   bridgeLaunch: hostDaemonBridgeLaunchSchema,
   cwd: z.string().min(1).optional(),
 });
+
+const providerCustomCallCommandSchema = z
+  .object({
+    type: z.literal("provider.custom_call"),
+    providerId: z.string().min(1),
+    bridgeLaunch: hostDaemonBridgeLaunchSchema,
+    method: z.string().min(1),
+    input: jsonValueSchema,
+  })
+  .strict();
 
 const providerHealthCommandSchema = z
   .object({
@@ -1346,6 +1372,7 @@ const pluginHostDisposeResultSchema = z
 // full raw set across all roots and the server owns de-dup/sort/limit.
 const commandListResultSchema = z.object({
   commands: z.array(hostProviderCommandSchema),
+  diagnostics: z.array(z.string()),
 });
 
 // Like `commandListResultSchema`: the daemon returns the full raw set across
@@ -1412,6 +1439,10 @@ const providerListModelsResultSchema = z.object({
   models: z.array(availableModelSchema),
   selectedOnlyModels: z.array(availableModelSchema),
 });
+
+const providerCustomCallResultSchema = z
+  .object({ result: jsonValueSchema })
+  .strict();
 
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
@@ -1597,6 +1628,15 @@ export const hostDaemonCommandRegistry = {
     type: "thread.stop",
     schema: threadStopCommandSchema,
     resultSchema: threadStopResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: null,
+  }),
+  "thread.extension-state.action": defineHostDaemonCommandDescriptor({
+    type: "thread.extension-state.action",
+    schema: threadExtensionStateActionCommandSchema,
+    resultSchema: z.object({ applied: z.boolean() }).strict(),
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,
@@ -1968,6 +2008,15 @@ export const hostDaemonCommandRegistry = {
     resultSchema: providerListModelsResultSchema,
     transport: "onlineRpc",
     retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "provider.custom_call": defineHostDaemonCommandDescriptor({
+    type: "provider.custom_call",
+    schema: providerCustomCallCommandSchema,
+    resultSchema: providerCustomCallResultSchema,
+    transport: "onlineRpc",
+    retryable: false,
     flushEventsBeforeResult: false,
     envLane: null,
   }),

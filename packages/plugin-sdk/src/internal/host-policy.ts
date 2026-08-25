@@ -406,9 +406,7 @@ function normalizeProviderBridgeOptions(
       return current;
     }
     if (typeof current !== "object") {
-      throw new Error(
-        `provider "${providerId}" ${label}${path} must be JSON`,
-      );
+      throw new Error(`provider "${providerId}" ${label}${path} must be JSON`);
     }
     if (active.has(current)) {
       throw new Error(
@@ -449,9 +447,7 @@ function normalizeProviderBridgeOptions(
     Array.isArray(normalized) ||
     typeof normalized !== "object"
   ) {
-    throw new Error(
-      `provider "${providerId}" ${label} must be an object`,
-    );
+    throw new Error(`provider "${providerId}" ${label} must be an object`);
   }
   if (
     Buffer.byteLength(JSON.stringify(normalized), "utf8") >
@@ -632,14 +628,15 @@ function validateProviderExtensionKinds(
       Array.isArray(declaration)
     ) {
       throw new Error(
-        `provider "${providerId}" extensionKinds.${name} must be { item?, state? }`,
+        `provider "${providerId}" extensionKinds.${name} must be { item?, state?, experimental_action? }`,
       );
     }
     const item = Reflect.get(declaration, "item");
     const state = Reflect.get(declaration, "state");
-    if (item === undefined && state === undefined) {
+    const action = Reflect.get(declaration, "experimental_action");
+    if (item === undefined && state === undefined && action === undefined) {
       throw new Error(
-        `provider "${providerId}" extensionKinds.${name} must declare an item schema, a state schema, or both`,
+        `provider "${providerId}" extensionKinds.${name} must declare an item schema, a state schema, or an experimental action schema`,
       );
     }
     if (item !== undefined && !isStandardSchema(item)) {
@@ -652,9 +649,15 @@ function validateProviderExtensionKinds(
         `provider "${providerId}" extensionKinds.${name}.state must be a Standard Schema v1 validator`,
       );
     }
+    if (action !== undefined && !isStandardSchema(action)) {
+      throw new Error(
+        `provider "${providerId}" extensionKinds.${name}.experimental_action must be a Standard Schema v1 validator`,
+      );
+    }
     normalized[name] = Object.freeze({
       ...(item === undefined ? {} : { item }),
       ...(state === undefined ? {} : { state }),
+      ...(action === undefined ? {} : { experimental_action: action }),
     });
   }
   return Object.freeze(normalized);

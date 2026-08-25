@@ -5,6 +5,8 @@
  */
 export interface AsyncTtlMemo<TKey, TValue> {
   clear(): void;
+  /** Forget the settled and in-flight entries whose key the predicate selects. */
+  deleteWhere(predicate: (key: TKey) => boolean): void;
   run(key: TKey, task: () => Promise<TValue>): Promise<TValue>;
 }
 
@@ -37,6 +39,14 @@ export function createAsyncTtlMemo<TKey, TValue>({
     clear() {
       settledByKey.clear();
       pendingByKey.clear();
+    },
+    deleteWhere(predicate) {
+      for (const key of [...settledByKey.keys()]) {
+        if (predicate(key)) settledByKey.delete(key);
+      }
+      for (const key of [...pendingByKey.keys()]) {
+        if (predicate(key)) pendingByKey.delete(key);
+      }
     },
     run(key, task) {
       const currentTime = now();

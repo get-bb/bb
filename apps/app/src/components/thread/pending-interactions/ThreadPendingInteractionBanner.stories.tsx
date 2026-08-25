@@ -19,8 +19,8 @@ function PromptStage({ children }: { children: React.ReactNode }) {
 // The common fields; each story pairs its own payload with its resolution.
 function basePendingInteraction(): Omit<
   ProviderPendingInteraction,
-  "payload" | "resolution"
-> {
+  "payload" | "resolution" | "turnId"
+> & { turnId: string } {
   return {
     id: "pi_demo",
     threadId: "thr_qfk8ksbxkk",

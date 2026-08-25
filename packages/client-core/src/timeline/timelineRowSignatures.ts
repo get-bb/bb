@@ -313,6 +313,7 @@ function timelineWorkRowRenderSignature(row: TimelineViewWorkRow): string {
                   questionId,
                   answer.selected.join("\u001d"),
                   answer.freeText,
+                  answer.experimental_verbatimText,
                 ]),
               )
               .join("\u001e")

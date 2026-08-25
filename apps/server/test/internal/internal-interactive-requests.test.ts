@@ -105,6 +105,9 @@ async function postInteractiveRequest(
 function registerInteractiveRequest(
   args: RegisterInteractiveRequestArgs,
 ): Promise<Response> {
+  if (args.body.interaction.turnId === null) {
+    throw new Error("Test helper expected a turn-scoped interaction");
+  }
   seedTurnStarted(args.harness.deps, {
     threadId: args.body.interaction.threadId,
     turnId: args.body.interaction.turnId,
@@ -264,6 +267,55 @@ describe("internal interactive request lifecycle", () => {
         },
         status: "pending",
       });
+    });
+  });
+
+  it("persists an explicitly thread-scoped verbatim question without turn/started", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedThreadFixture(harness, {
+        session: { id: "host-thread-scoped-question" },
+        thread: { providerId: "pi" },
+      });
+
+      const response = await postInteractiveRequest({
+        harness,
+        body: {
+          sessionId: session.id,
+          interaction: {
+            threadId: thread.id,
+            turnId: null,
+            providerId: "pi",
+            providerThreadId: "provider-thread-question",
+            providerRequestId: "request-thread-question",
+            payload: {
+              kind: "user_question",
+              questions: [
+                {
+                  id: "value",
+                  prompt: "Value",
+                  multiSelect: false,
+                  allowFreeText: true,
+                  experimental_responseMode: "verbatim",
+                },
+              ],
+            },
+          },
+        },
+      });
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toMatchObject({
+        outcome: "created",
+        status: "pending",
+      });
+      expect(
+        harness.deps.pendingInteractions.listThreadInteractions(thread.id),
+      ).toContainEqual(
+        expect.objectContaining({
+          turnId: null,
+          payload: expect.objectContaining({ kind: "user_question" }),
+        }),
+      );
     });
   });
 

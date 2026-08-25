@@ -5,6 +5,7 @@ import {
   pruneBackgroundTaskProgressEvents,
   pruneContextWindowUsageEventsBeforeSequence,
   pruneResolvedItemDeltas,
+  pruneSupersededExtensionStateEvents,
   pruneTokenUsageEventsBeforeSequence,
   pruneThreadEventsBeforeSequence,
 } from "@bb/db";
@@ -24,6 +25,7 @@ interface ThreadEventPruningResult {
   removedAgePrunableEvents: number;
   removedBackgroundTaskProgressEvents: number;
   removedResolvedItemDeltas: number;
+  removedSupersededExtensionStates: number;
   sequenceCutoff: number;
   totalRemoved: number;
 }
@@ -44,6 +46,7 @@ type ThreadEventPruningStep =
   | "prune_context_window_usage"
   | "prune_generic_age_prunable_events"
   | "prune_resolved_item_deltas"
+  | "prune_superseded_extension_states"
   | "prune_token_usage";
 
 class ThreadEventPruningStepError extends Error {
@@ -79,6 +82,7 @@ const AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
 const ACTIVE_PRUNE_TRIGGER_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
   ...AGE_PRUNABLE_THREAD_EVENT_TYPES,
   "item/backgroundTask/progress",
+  "thread/extensionState/updated",
 ] as const;
 
 const GENERIC_AGE_PRUNABLE_THREAD_EVENT_TYPES: readonly ThreadEventType[] = [
@@ -158,6 +162,13 @@ export function pruneThreadEventHistory(
         types: GENERIC_AGE_PRUNABLE_THREAD_EVENT_TYPES,
       }),
     );
+  const removedSupersededExtensionStates = runThreadEventPruningStep(
+    "prune_superseded_extension_states",
+    () =>
+      pruneSupersededExtensionStateEvents(deps.db, {
+        threadId: args.threadId,
+      }),
+  );
   const removedResolvedItemDeltas = runThreadEventPruningStep(
     "prune_resolved_item_deltas",
     () =>
@@ -178,11 +189,13 @@ export function pruneThreadEventHistory(
     removedAgePrunableEvents,
     removedBackgroundTaskProgressEvents,
     removedResolvedItemDeltas,
+    removedSupersededExtensionStates,
     sequenceCutoff,
     totalRemoved:
       removedAgePrunableEvents +
       removedBackgroundTaskProgressEvents +
-      removedResolvedItemDeltas,
+      removedResolvedItemDeltas +
+      removedSupersededExtensionStates,
   };
 }
 

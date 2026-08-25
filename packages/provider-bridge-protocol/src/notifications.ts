@@ -13,6 +13,7 @@ export const BRIDGE_NOTIFICATION_METHODS = {
   sessionReplaced: "session/replaced",
   providerRaw: "provider/raw",
   providerRecovery: "provider/recovery",
+  experimentalInteractionCancel: "interaction/cancel",
   error: "error",
 } as const;
 
@@ -90,6 +91,18 @@ export const providerRecoveryNotificationSchema = z
 
 export type ProviderRecoveryNotification = z.infer<
   typeof providerRecoveryNotificationSchema
+>;
+
+export const experimental_interactionCancelNotificationSchema = z
+  .object({
+    requestId: z.union([z.string(), z.number()]),
+    providerThreadId: z.string().min(1),
+    threadId: z.string().min(1).optional(),
+    reason: z.string().min(1),
+  })
+  .passthrough();
+export type ExperimentalInteractionCancelNotification = z.infer<
+  typeof experimental_interactionCancelNotificationSchema
 >;
 
 export const errorNotificationSchema = z

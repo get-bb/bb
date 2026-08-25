@@ -27,6 +27,7 @@ describe("buildCommandListResponse", () => {
           argumentHint: "<target>",
         },
       ],
+      diagnostics: [],
       includeBuiltinCompact: true,
       skillCatalog: [],
     });
@@ -45,6 +46,7 @@ describe("buildCommandListResponse", () => {
   it("includes plugin provenance on canonical skill rows", () => {
     const response = buildCommandListResponse({
       commands: [],
+      diagnostics: [],
       includeBuiltinCompact: true,
       skillCatalog: [
         {
@@ -77,6 +79,7 @@ describe("buildCommandListResponse", () => {
         skill("bb-cli", { description: "Data-dir override" }),
         skill("bb-cli", { description: "Built-in default" }),
       ],
+      diagnostics: [],
       includeBuiltinCompact: true,
       skillCatalog: [],
     });
@@ -97,6 +100,7 @@ describe("buildCommandListResponse", () => {
   it("omits the built-in compact row for unsupported providers", () => {
     const response = buildCommandListResponse({
       commands: [],
+      diagnostics: [],
       includeBuiltinCompact: false,
       skillCatalog: [],
     });

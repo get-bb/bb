@@ -150,11 +150,44 @@ describe("handshake gating", () => {
     ).toMatchObject({ kind: "noop" });
   });
 
+  it("forwards opaque provider extension actions without interpreting them", () => {
+    const adapter = makeAdapter();
+    expect(
+      adapter.buildCommandPlan({
+        type: "extension/action",
+        threadId: "thr_1",
+        providerThreadId: "p_1",
+        extensionKind: "provider-pi/extension-ui",
+        action: { type: "cancel", surfaceId: "surface-1" },
+      }),
+    ).toEqual({
+      kind: "request",
+      method: "extension/action",
+      params: {
+        threadId: "thr_1",
+        providerThreadId: "p_1",
+        extensionKind: "provider-pi/extension-ui",
+        action: { type: "cancel", surfaceId: "surface-1" },
+      },
+    });
+  });
+
   it("moves approval policy ownership per the handshake", () => {
     const adapter = makeAdapter();
     expect(adapter.approvalEnforcedBy).toBe("runtime");
     completeHandshake(adapter, { approvalEnforcedBy: "provider" });
     expect(adapter.approvalEnforcedBy).toBe("provider");
+  });
+
+  it("routes cwd-bound command discovery with provider context", () => {
+    const adapter = makeAdapter();
+    expect(
+      adapter.buildCommandPlan({ type: "command/list", cwd: "/workspace" }),
+    ).toEqual({
+      kind: "request",
+      method: "command/list",
+      params: { providerId: "fake-bridge", cwd: "/workspace" },
+    });
   });
 
   it("routes declared sessionless maintenance methods with provider context", () => {
@@ -509,6 +542,28 @@ describe("inbound request decoding", () => {
         params: {},
       }),
     ).toBeNull();
+  });
+
+  it("decodes interaction cancellation notifications", () => {
+    const adapter = makeAdapter();
+
+    expect(
+      adapter.decodeInteractiveCancellation({
+        jsonrpc: "2.0",
+        method: "interaction/cancel",
+        params: {
+          requestId: "pi-interaction-1",
+          providerThreadId: "p_1",
+          threadId: "t_1",
+          reason: "Pi extensions reloaded",
+        },
+      }),
+    ).toEqual({
+      requestId: "pi-interaction-1",
+      providerThreadId: "p_1",
+      threadId: "t_1",
+      reason: "Pi extensions reloaded",
+    });
   });
 
   it("decodes canonical interaction requests with the domain payload", () => {

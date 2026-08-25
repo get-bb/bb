@@ -343,6 +343,22 @@ const commandHandlers: CommandHandlerMap = {
       release();
     }
   },
+  "thread.extension-state.action": async (command, options) => {
+    const entry = await options.runtimeManager.getOrAwait(
+      command.environmentId,
+    );
+    if (!entry) {
+      throw new ExpectedCommandDispatchError(
+        "unknown_environment",
+        `No runtime exists for environment ${command.environmentId}`,
+      );
+    }
+    return entry.runtime.applyExtensionAction({
+      threadId: command.threadId,
+      extensionKind: command.extensionKind,
+      action: command.action,
+    });
+  },
   "thread.stop": async (command, options) => {
     // Release before the target runtime lookup. A moved thread often has no
     // runtime in its new environment yet, and the old owner must still stop.
@@ -632,6 +648,19 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
       ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
       bridgeLaunch,
     });
+  },
+  "provider.custom_call": async (command, options) => {
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    const result = await options.providerCustomCall({
+      providerId: command.providerId,
+      bridgeLaunch,
+      method: command.method,
+      input: command.input,
+    });
+    return { result };
   },
   "provider.health": async (command, options) => {
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(

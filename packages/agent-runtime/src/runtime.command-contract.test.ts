@@ -101,6 +101,154 @@ describe("createAgentRuntime command contracts", () => {
     return { record, runtime };
   }
 
+  it("treats command discovery as unsupported when an older bridge lacks the optional method", async () => {
+    const { runtime } = createContractRuntime();
+
+    try {
+      await expect(
+        runtime.listProviderCommands({ providerId: "fake", cwd: tmpDir }),
+      ).resolves.toEqual({ supported: false });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("recreates an idle session with fresh config and the same provider conversation", async () => {
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      const started = await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t-reload",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+        instructions: "stale instructions",
+      });
+      const result = await runtime.reloadThread({
+        environmentId: "env-1",
+        threadId: "t-reload",
+        projectId: "p1",
+        providerId: "fake",
+        providerThreadId: started.providerThreadId,
+        options: { ...fullRuntimeOptions, model: "fresh-model" },
+        instructions: "fresh instructions",
+      });
+
+      expect(result).toEqual({
+        status: "reloaded",
+        providerThreadId: started.providerThreadId,
+      });
+      expect(runtime.getProviderSession("t-reload")).toEqual({
+        providerId: "fake",
+        providerThreadId: started.providerThreadId,
+      });
+      expect(
+        record
+          .read()
+          .filter((entry) =>
+            ["thread/stop", "thread/resume", "turn/start"].includes(
+              entry.method,
+            ),
+          ),
+      ).toEqual([
+        {
+          method: "thread/stop",
+          params: {
+            threadId: "t-reload",
+            providerThreadId: started.providerThreadId,
+            intent: "release",
+            activeTurnId: null,
+          },
+        },
+        expect.objectContaining({
+          method: "thread/resume",
+          params: expect.objectContaining({
+            threadId: "t-reload",
+            providerThreadId: started.providerThreadId,
+            options: expect.objectContaining({
+              instructions: "fresh instructions",
+              model: "fresh-model",
+            }),
+          }),
+        }),
+      ]);
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("rejects reload while a turn is active or waiting to start", async () => {
+    const activeEvents: ThreadEvent[] = [];
+    const active = createContractRuntime({
+      onEvent: (event) => activeEvents.push(event),
+    });
+    const pending = createContractRuntime({
+      launch: { scripted: { swallowTurnStart: true } },
+    });
+
+    try {
+      const activeSession = await active.runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t-active-reload",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await active.runtime.runTurn({
+        threadId: "t-active-reload",
+        input: [promptTextInput({ text: "delay:1000" })],
+        clientRequestId: "creq_222222224t",
+        options: fullRuntimeOptions,
+      });
+      await waitForThreadTurnStarted({
+        events: activeEvents,
+        runtime: active.runtime,
+        threadId: "t-active-reload",
+      });
+      await expect(
+        active.runtime.reloadThread({
+          environmentId: "env-1",
+          threadId: "t-active-reload",
+          projectId: "p1",
+          providerId: "fake",
+          providerThreadId: activeSession.providerThreadId,
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({ status: "rejected", reason: "active-turn" });
+
+      const pendingSession = await pending.runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t-pending-reload",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+      });
+      await pending.runtime.runTurn({
+        threadId: "t-pending-reload",
+        input: [promptTextInput({ text: "never starts" })],
+        clientRequestId: "creq_222222224u",
+        options: fullRuntimeOptions,
+      });
+      await expect(
+        pending.runtime.reloadThread({
+          environmentId: "env-1",
+          threadId: "t-pending-reload",
+          projectId: "p1",
+          providerId: "fake",
+          providerThreadId: pendingSession.providerThreadId,
+          options: fullRuntimeOptions,
+        }),
+      ).resolves.toEqual({
+        status: "rejected",
+        reason: "pending-turn-start",
+      });
+    } finally {
+      await active.runtime.shutdown();
+      await pending.runtime.shutdown();
+    }
+  });
+
   it("passes runtime workspace-write roots to the provider as provider options", async () => {
     const additionalWorkspaceWriteRoots = [
       "/repo/.git/worktrees/bb13",

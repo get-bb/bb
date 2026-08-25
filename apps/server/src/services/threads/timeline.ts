@@ -41,6 +41,7 @@ import {
   listStoredBufferedTextDeltaRowsByItems,
   listStoredItemLifecycleRowsByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
+  listLatestExtensionStateEventRowsForThread,
   listLatestThreadStateEventRowsByThreadIds,
   listLatestOpenBackgroundTaskStateRowsForThread,
   listStoredTimelineWindowEventRows,
@@ -1003,9 +1004,10 @@ function ensureLatestTimelineOpenBackgroundTaskStateRows(
 /**
  * Merges the rows that establish head-state banners into the latest window.
  *
- * The timeline response carries tail state (`pendingTodos`, `goal`) that
- * describes the head of the thread but is extracted by scanning whatever events
- * the window happens to contain. That is fine when the window reaches the start
+ * The timeline response carries tail state (`pendingTodos`, `goal`, provider
+ * extension state) that describes the head of the thread but is extracted by
+ * scanning whatever events the window happens to contain. That is fine when the
+ * window reaches the start
  * of the thread, which is what an unbudgeted window does on the threads where
  * this matters — but an event-budgeted window can begin *after* the turn that
  * set the goal or wrote the todos, silently dropping the banner mid-session.
@@ -1025,6 +1027,9 @@ function ensureLatestTimelineHeadStateRows(
     ...listLatestThreadStateEventRowsByThreadIds(db, {
       threadIds: [args.threadId],
       kind: LEGACY_CODEX_GOAL_EXTENSION_KIND,
+    }),
+    ...listLatestExtensionStateEventRowsForThread(db, {
+      threadId: args.threadId,
     }),
     ...listTodoSnapshotEventRowsForThread(db, { threadId: args.threadId }),
   ];
@@ -1785,6 +1790,8 @@ function buildThreadTimelineInternal(
     goal: timeline.goal,
     modelFallback:
       options.page.kind === "latest" ? timeline.modelFallback : null,
+    extensionStates:
+      options.page.kind === "latest" ? timeline.extensionStates : [],
     contextWindowUsage:
       options.page.kind === "latest"
         ? (timeline.contextWindowUsage ?? undefined)
@@ -2084,8 +2091,7 @@ export function buildTimelineTurnSummaryDetails(
   // route actually holds, so the parent expansion spends what is left rather
   // than a pre-closure estimate of it. The subtraction may go negative, which
   // is the safe direction: the parent fetch then stays inside its bounds.
-  const detailsEventDataBytes =
-    byteLengthOfStoredEventRows(wholeItemEventRows);
+  const detailsEventDataBytes = byteLengthOfStoredEventRows(wholeItemEventRows);
   const eventRowsWithParentedChildren = ensureTimelineWindowParentedRows(db, {
     maxInlineOutputChars: detailsInlineOutputLimit,
     outOfBoundsChildDataByteLimit:

@@ -3,8 +3,10 @@ import type {
   AvailableModel,
   ClientTurnRequestId,
   DynamicTool,
+  ExtensionKind,
   InstructionMode,
   JsonObject,
+  JsonValue,
   PendingInteractionCreate,
   PendingInteractionResolution,
   PromptInput,
@@ -16,6 +18,7 @@ import type {
   ToolCallResponse,
 } from "@bb/domain";
 import type {
+  ExperimentalProviderCommandListResult,
   ProviderHealthResult,
   ProviderInstallationRunResult,
   ProviderInstallationStatus,
@@ -115,6 +118,7 @@ export interface AgentRuntimeOptions {
    *  The runtime converts provider-native requests into bb's shared pending-interaction contract. */
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
+    signal?: AbortSignal,
   ) => Promise<PendingInteractionResolution>;
 
   /** Called on provider stderr lines. */
@@ -310,6 +314,12 @@ interface SteerTurnStaleResult {
 
 export type SteerTurnResult = SteerTurnAppliedResult | SteerTurnStaleResult;
 
+export interface ApplyExtensionActionArgs {
+  threadId: string;
+  extensionKind: ExtensionKind;
+  action: JsonValue;
+}
+
 export interface StopThreadArgs {
   threadId: string;
 }
@@ -377,6 +387,19 @@ export interface ListModelsArgs {
   cwd?: string;
 }
 
+export interface ProviderCustomCallArgs {
+  providerId: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  method: string;
+  input: JsonValue;
+}
+
+export interface ListProviderCommandsArgs {
+  providerId: string;
+  bridgeLaunch: AgentRuntimeBridgeLaunch;
+  cwd: string;
+}
+
 interface ProviderMaintenanceArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
@@ -422,6 +445,10 @@ export interface AgentRuntime {
    */
   stopThread(args: StopThreadArgs): Promise<StopThreadResult>;
 
+  applyExtensionAction(
+    args: ApplyExtensionActionArgs,
+  ): Promise<{ applied: boolean }>;
+
   clearThreadGoal(args: ClearThreadGoalArgs): Promise<{ cleared: boolean }>;
 
   renameThread(args: RenameThreadArgs): Promise<void>;
@@ -434,6 +461,12 @@ export interface AgentRuntime {
     models: AvailableModel[];
     selectedOnlyModels: AvailableModel[];
   }>;
+
+  providerCustomCall?(args: ProviderCustomCallArgs): Promise<JsonValue>;
+
+  listProviderCommands(
+    args: ListProviderCommandsArgs,
+  ): Promise<ExperimentalProviderCommandListResult>;
 
   providerHealth(
     args: ProviderMaintenanceArgs,

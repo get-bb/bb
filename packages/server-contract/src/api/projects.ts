@@ -350,6 +350,7 @@ export function providerCommandSectionRank(cmd: {
 
 export const commandListResponseSchema = z.object({
   commands: z.array(providerCommandSchema),
+  diagnostics: z.array(z.string()),
 });
 export type CommandListResponse = z.infer<typeof commandListResponseSchema>;
 

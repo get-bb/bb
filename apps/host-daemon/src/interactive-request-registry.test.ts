@@ -11,6 +11,7 @@ import {
 } from "./interactive-request-registry.js";
 
 interface CreateRegistryArgs {
+  onCancellation?: (request: PendingInteractionCreate, reason: string) => void;
   registerRequest: (
     request: PendingInteractionCreate,
   ) => Promise<HostDaemonInteractiveRequestResponse>;
@@ -54,6 +55,7 @@ function createCommandApprovalResolution(): PendingInteractionResolution {
 
 function createRegistry(args: CreateRegistryArgs): InteractiveRequestRegistry {
   return new InteractiveRequestRegistry({
+    onCancellation: args.onCancellation,
     registerRequest: args.registerRequest,
   });
 }
@@ -181,6 +183,43 @@ describe("InteractiveRequestRegistry", () => {
       message: "Thread is already awaiting user interaction",
       name: "InteractiveRequestRegistryError",
     });
+  });
+
+  it("cancels a registered request and rejects a late answer", async () => {
+    const request = createCommandApprovalRequest();
+    const cancellations: Array<{
+      request: PendingInteractionCreate;
+      reason: string;
+    }> = [];
+    const registry = createRegistry({
+      onCancellation: (cancelledRequest, reason) =>
+        cancellations.push({ request: cancelledRequest, reason }),
+      registerRequest: async () => ({
+        outcome: "created",
+        interactionId: "pint_registry",
+        status: "pending",
+      }),
+    });
+    const controller = new AbortController();
+    const pending = registry.registerAndWait(request, controller.signal);
+    await Promise.resolve();
+
+    controller.abort(new Error("Pi extensions reloaded"));
+
+    await expect(pending).rejects.toThrow("Pi extensions reloaded");
+    expect(cancellations).toEqual([
+      { request, reason: "Pi extensions reloaded" },
+    ]);
+    expect(() =>
+      registry.resolve({
+        interactionId: "pint_registry",
+        providerId: request.providerId,
+        providerRequestId: request.providerRequestId,
+        providerThreadId: request.providerThreadId,
+        resolution: createCommandApprovalResolution(),
+        threadId: request.threadId,
+      }),
+    ).toThrowError(InteractiveRequestRegistryError);
   });
 
   it("rejects provider waits when the provider exits", async () => {

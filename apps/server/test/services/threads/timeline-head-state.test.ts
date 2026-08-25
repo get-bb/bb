@@ -49,7 +49,8 @@ function setup(): { db: DbConnection; thread: Thread } {
 }
 
 /**
- * Turn 1 establishes head state (goal, todos, a still-running workflow), then
+ * Turn 1 establishes head state (goal, provider state, todos, a running
+ * workflow), then
  * `turns - 1` further turns bury it far above any budgeted window.
  */
 function seedThreadWithEarlyHeadState(
@@ -131,6 +132,28 @@ function seedThreadWithEarlyHeadState(
       events.push({
         threadId: thread.id,
         sequence: (sequence += 1),
+        type: "thread/extensionState/updated",
+        scope: threadScope(),
+        providerThreadId,
+        itemId: null,
+        itemKind: null,
+        parentToolCallId: null,
+        data: JSON.stringify({
+          kind: "provider-test/ui",
+          payload: {
+            terminal: {
+              id: "surface-1",
+              columns: 80,
+              rows: 24,
+              output: "\u001b[32mready\u001b[0m",
+              acceptsInput: true,
+            },
+          },
+        }),
+      });
+      events.push({
+        threadId: thread.id,
+        sequence: (sequence += 1),
         type: "item/completed",
         scope: turnScope(turnId),
         providerThreadId,
@@ -209,7 +232,7 @@ const baseOptions = {
 };
 
 describe("timeline head state under a budgeted window", () => {
-  it("keeps goal, todos, and a running workflow when the budget excludes the turn that set them", () => {
+  it("keeps provider state, goal, todos, and running work outside the budget", () => {
     // Head-state banners describe the head of the thread but are extracted by
     // scanning the window. A budgeted window starts well after turn 1 here, so
     // without thread-scoped lookups these silently disappear mid-session.
@@ -239,6 +262,21 @@ describe("timeline head state under a budgeted window", () => {
 
     expect(unbudgeted.goal).not.toBeNull();
     expect(budgeted.goal).toEqual(unbudgeted.goal);
+
+    expect(unbudgeted.extensionStates).toContainEqual({
+      kind: "provider-test/ui",
+      payload: {
+        terminal: {
+          id: "surface-1",
+          columns: 80,
+          rows: 24,
+          output: "\u001b[32mready\u001b[0m",
+          acceptsInput: true,
+        },
+      },
+      sourceSeq: expect.any(Number),
+    });
+    expect(budgeted.extensionStates).toEqual(unbudgeted.extensionStates);
 
     expect(unbudgeted.activeWorkflows).toHaveLength(1);
     expect(budgeted.activeWorkflows).toHaveLength(1);
@@ -275,6 +313,7 @@ describe("timeline head state under a budgeted window", () => {
     });
     expect(budgeted.pendingTodos).toBeNull();
     expect(budgeted.goal).toBeNull();
+    expect(budgeted.extensionStates).toEqual([]);
     expect(budgeted.activeWorkflows).toHaveLength(0);
   });
 });

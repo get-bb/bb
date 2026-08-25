@@ -33,6 +33,7 @@ function timeline(
     activeThinking: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
+    extensionStates: [],
     pendingTodos: null,
     goal: null,
     modelFallback: null,

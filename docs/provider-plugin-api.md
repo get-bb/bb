@@ -73,7 +73,7 @@ bb.providers.register({
   ],
   serviceTiers: undefined,       // optional; open list, model/list is precise
   composerActions: ["plan"],     // "plan" | "goal"
-  extensionKinds: {},            // "<name>": { item?: Schema, state?: Schema }
+  extensionKinds: {},            // "<name>": { item?: Schema, state?: Schema, experimental_action?: Schema }
   models: { fallback: [], scope: "host" }, // cold-cache placeholder; scope is
                                  // "host" | "workspace" (default): how far one
                                  // model/list answer travels

@@ -486,6 +486,15 @@ export function createPluginApi(options: {
     hostId: string;
     signal?: AbortSignal;
   }) => Promise<unknown>;
+  callProviderBridge: (args: {
+    providerId: string;
+    contract: PluginRpcContract;
+    method: string;
+    input: unknown;
+    hostId: string;
+    signal?: AbortSignal;
+  }) => Promise<unknown>;
+  providerModelsChanged: (args: { providerId: string; hostId: string }) => void;
   /** Registers one validated provider declaration with the server's provider
    * registry, bound to this plugin's id. Throws on a live id collision. */
   registerProvider: (declaration: NormalizedPluginProviderDeclaration) => {
@@ -543,6 +552,8 @@ export function createPluginApi(options: {
     declareSharedPorts,
     replaceDeclaredSharedPorts,
     callPluginHost,
+    callProviderBridge,
+    providerModelsChanged,
     registerProvider,
     registerAiService,
     isProviderIdTaken,
@@ -1408,6 +1419,53 @@ export function createPluginApi(options: {
 
   const providers: PluginProviders = {
     register: providerRegistrations.register,
+    experimental_client({ providerId, contract }) {
+      assertLive();
+      return {
+        async call(method, input, callOptions) {
+          assertLive();
+          if (!activated) {
+            throw new Error(
+              "provider bridge calls are unavailable during factory registration; call from a handler, service, or timer",
+            );
+          }
+          if (typeof method !== "string" || contract[method] === undefined) {
+            throw new Error(
+              `unknown provider bridge rpc method "${String(method)}"`,
+            );
+          }
+          if (
+            typeof callOptions !== "object" ||
+            callOptions === null ||
+            typeof callOptions.hostId !== "string" ||
+            callOptions.hostId.length === 0
+          ) {
+            throw new Error(
+              `provider bridge rpc method "${method}" requires a host id`,
+            );
+          }
+          return callProviderBridge({
+            providerId,
+            contract,
+            method,
+            input,
+            hostId: callOptions.hostId,
+            ...(callOptions.signal === undefined
+              ? {}
+              : { signal: callOptions.signal }),
+          });
+        },
+      };
+    },
+    experimental_modelsChanged(args) {
+      assertLive();
+      if (!activated) {
+        throw new Error(
+          "provider model invalidation is unavailable during factory registration",
+        );
+      }
+      providerModelsChanged(args);
+    },
   };
 
   /** AI-service registrations, staged like providers; each one binds to the

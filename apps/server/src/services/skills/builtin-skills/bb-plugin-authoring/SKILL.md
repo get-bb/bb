@@ -1308,8 +1308,9 @@ export default definePluginApp((app) => {
 });
 ```
 
-(The four first-party provider plugins ship no `app.tsx`: bb vendors their
-marks itself, so an icon-only bundle would only add fetches at boot.)
+Most first-party provider plugins ship no `app.tsx`: bb vendors their marks
+itself, so an icon-only bundle would only add fetches at boot. Pi is the
+exception because its app bundle renders Pi extension state.
 
 A provider plugin's `app.tsx` loads in the same deferred boot pass as every
 other plugin's, whether or not one of its providers is selected: everything
@@ -1327,6 +1328,28 @@ providers in plugin install order (bundled first-party plugins first); the
 user reorders them and picks a default in Settings → Providers
 (`bb settings general providerOrder '["my-agent","codex"]'` and
 `bb settings general defaultProviderId my-agent`).
+
+A provider plugin with native host-local settings can define a Standard Schema
+contract and call its own bridge without putting provider fields in shared model
+contracts:
+
+```ts
+const bridge = bb.providers.experimental_client({
+  providerId: "echo-agent",
+  contract: nativeSettingsContract,
+});
+const saved = await bridge.call("settings/write", input, { hostId });
+bb.providers.experimental_modelsChanged({
+  providerId: "echo-agent",
+  hostId,
+});
+```
+
+The host id is explicit. Core treats method names and payloads as opaque JSON;
+input and output are validated against `contract`. Call only from handlers,
+services, or timers. After a preference that changes `model/list`, call
+`experimental_modelsChanged` to clear server model memos and refetch client
+pickers. Both APIs are experimental; see `docs/api_to_audit.md`.
 
 `experimental_bridgeOptions` must be a plain JSON object no larger than 64
 KiB. It is validated and frozen at registration, then carried on every bridge
@@ -1883,9 +1906,12 @@ Slot props contracts (versioned, additive-only):
 
 - `homepageSection` → `{ projectId: string | null }` (project in view on
   the compose surface). Registration: `{ id, title, component }`.
-- `settingsSection` → `{}` (deliberately no props in V1). Rendered on the
-  plugin detail page below the host-rendered declarative settings
-  form for running, needs-configuration, and degraded plugins. Registration:
+- `settingsSection` → `{ experimental_hostId?: string | null }`. The
+  experimental host id is BB's selected primary Settings host, or null while
+  none is available; use it for host-local configuration instead of adding a
+  machine picker inside the editor. Rendered on the plugin detail page below
+  the host-rendered declarative settings form for running,
+  needs-configuration, and degraded plugins. Registration:
   `{ id, title?, description?, component }`; `title` is an optional host-rendered
   section heading and `description` is optional supporting copy rendered with
   that heading. Use the existing hooks (`useRpc`, `useRealtime`,
@@ -2221,6 +2247,20 @@ openWorkspaceFile }` — register a leaf
   One registration per provider id per plugin; if two plugins claim one
   provider id the host keeps the first by plugin id and warns. See the
   `app.tsx` example under "The icon" above.
+- `experimental_providerExtensionState` → render one local provider
+  extension-state kind above and below the active thread composer.
+  Registration: `{ name, component }`; `name` is the local `[a-z0-9-]+` name
+  from this plugin's provider declaration, not the namespaced wire kind. The
+  component receives `{ threadId, providerId, kind, payload, sourceSeq,
+placement, experimental_dispatchAction }`. `placement` is `"aboveEditor" |
+"belowEditor"`; return null on the side where the state has nothing to show.
+  The host resolves `<pluginId>/<name>` and never passes another plugin's
+  payload. Validate or narrow `payload` immediately, keep provider-specific
+  rendering here, and use `sourceSeq` only when an effect must distinguish
+  updates with equal payloads. A kind that declares an
+  `experimental_action` Standard Schema can call
+  `experimental_dispatchAction(action)`; actions target only the current
+  session and are never retried automatically.
 
 Host components:
 

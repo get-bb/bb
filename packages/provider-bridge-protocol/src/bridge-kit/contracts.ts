@@ -58,6 +58,13 @@ export interface DecodedToolCallRequest {
   threadId?: string;
 }
 
+export interface DecodedInteractiveCancellation {
+  requestId: string | number;
+  providerThreadId: string;
+  reason: string;
+  threadId?: string;
+}
+
 export interface DecodedInteractiveRequest {
   requestId: string | number;
   method: string;
@@ -68,6 +75,8 @@ export interface DecodedInteractiveRequest {
    * malformed adapter output.
    */
   turnId: string | null;
+  /** `thread` only for a user question that is not owned by a provider turn. */
+  scope: "active_turn" | "thread";
   payload: PendingInteractionPayload;
   threadId?: string;
 }

@@ -31,6 +31,7 @@ import {
 } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
+import { validateExtensionAction } from "../../internal/extension-payloads.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
   requestEnvironmentCleanup,
@@ -441,6 +442,35 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     return context.json(
       await runLiveHostCommand(deps, {
         command,
+        hostId: environment.hostId,
+        timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      }),
+    );
+  });
+
+  post(routes.experimental_extensionStateAction, async (context, payload) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const validation = await validateExtensionAction(deps, {
+      providerId: thread.providerId,
+      kind: payload.kind,
+      action: payload.action,
+    });
+    if (!validation.ok) {
+      throw new ApiError(400, "invalid_request", validation.reason);
+    }
+    const environment = requireThreadHostCommandEnvironment({
+      db: deps.db,
+      thread,
+    });
+    return context.json(
+      await runLiveHostCommand(deps, {
+        command: {
+          type: "thread.extension-state.action",
+          environmentId: environment.id,
+          threadId: thread.id,
+          extensionKind: payload.kind,
+          action: payload.action,
+        },
         hostId: environment.hostId,
         timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
       }),

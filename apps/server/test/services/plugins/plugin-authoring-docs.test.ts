@@ -5,6 +5,7 @@ import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
   type ExperimentalChangesViewProps,
+  type ExperimentalProviderExtensionStateProps,
   type ExperimentalSidebarNavigationProps,
   type PluginAppBuilder,
   type PluginAppSlots,
@@ -184,6 +185,7 @@ type SlotPropsByName = {
   // registration type is the documented surface.
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
+  experimental_providerExtensionState: ExperimentalProviderExtensionStateProps;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -237,7 +239,7 @@ void _assertAllContentScriptRegistrationFieldsListed;
 
 const FRONTEND_SLOT_PROP_FIELDS = {
   homepageSection: ["projectId"],
-  settingsSection: [],
+  settingsSection: ["experimental_hostId"],
   navPanel: ["subPath"],
   threadPanelAction: ["threadId", "params"],
   experimental_newThreadPanelAction: ["projectId", "params"],
@@ -299,6 +301,15 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "presentation",
     "thread",
     "Original",
+  ],
+  experimental_providerExtensionState: [
+    "threadId",
+    "providerId",
+    "kind",
+    "payload",
+    "sourceSeq",
+    "placement",
+    "experimental_dispatchAction",
   ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];

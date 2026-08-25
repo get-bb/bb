@@ -1109,6 +1109,10 @@ export interface ListLatestThreadStateEventRowsByThreadIdsArgs {
   kind: string;
 }
 
+export interface ListLatestExtensionStateEventRowsForThreadArgs {
+  threadId: string;
+}
+
 export interface ListOpenTurnInputAcceptedRowsByThreadIdsArgs {
   threadIds: readonly string[];
 }
@@ -1286,6 +1290,10 @@ export interface PruneBackgroundTaskProgressEventsArgs {
   threadId: string;
 }
 
+export interface PruneSupersededExtensionStateEventsArgs {
+  threadId: string;
+}
+
 export interface ListOpenBackgroundTaskItemRowsForHostArgs {
   hostId: string;
 }
@@ -1448,6 +1456,35 @@ export function listLatestThreadStateEventRowsByThreadIds(
     values: args.threadIds,
     variableCountPerValue: 1,
   });
+}
+
+export function listLatestExtensionStateEventRowsForThread(
+  db: DbQueryConnection,
+  args: ListLatestExtensionStateEventRowsForThreadArgs,
+): StoredEventRow[] {
+  const extensionStateType =
+    "thread/extensionState/updated" satisfies ThreadEventType;
+  return db
+    .select(storedEventRowFields)
+    .from(events)
+    .where(sql`${events}.rowid IN (
+      SELECT latest_extension_state.rowid
+      FROM ${events} AS latest_extension_state
+      WHERE latest_extension_state.thread_id = ${args.threadId}
+        AND latest_extension_state.type = ${extensionStateType}
+        AND latest_extension_state.sequence = (
+          SELECT MAX(candidate.sequence)
+          FROM ${events} AS candidate
+          WHERE candidate.thread_id = latest_extension_state.thread_id
+            AND candidate.type = ${extensionStateType}
+            AND json_extract(candidate.data, '$.kind') =
+              json_extract(latest_extension_state.data, '$.kind')
+        )
+      ORDER BY latest_extension_state.sequence DESC
+      LIMIT 32
+    )`)
+    .orderBy(events.sequence)
+    .all();
 }
 
 export function listOpenTurnInputAcceptedRowsByThreadIds(
@@ -3559,6 +3596,28 @@ function pruneLatestRowsForContextWindowUsageBeforeSequence(
           )`,
   );
 
+  return result.changes;
+}
+
+export function pruneSupersededExtensionStateEvents(
+  db: DbConnection,
+  args: PruneSupersededExtensionStateEventsArgs,
+): number {
+  const eventType = "thread/extensionState/updated" satisfies ThreadEventType;
+  const result = db.run(sql`
+    DELETE FROM ${events}
+    WHERE ${events.threadId} = ${args.threadId}
+      AND ${events.type} = ${eventType}
+      AND EXISTS (
+        SELECT 1
+        FROM ${events} AS newer
+        WHERE newer.thread_id = ${events.threadId}
+          AND newer.type = ${eventType}
+          AND newer.sequence > ${events.sequence}
+          AND json_extract(newer.data, '$.kind') =
+            json_extract(${events.data}, '$.kind')
+      )
+  `);
   return result.changes;
 }
 

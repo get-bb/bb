@@ -333,12 +333,24 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 171 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 172 as const;
 // Version 171 adds `thread.reload` (server → daemon): recreate an idle
 // thread's provider session from the thread's current config, answered with
 // the provider thread id. An older daemon rejects the unknown command, so the
 // bump is what moves an enrolled machine forward.
 
+// Version 172 carries provider extension UI over the wire. Server → daemon:
+// `provider.custom_call` (a plugin's own bridge RPC on a host),
+// `thread.extension-state.action` (an app action for a provider's extension
+// state), `host.list_commands` with an optional `bridgeLaunch` so the daemon
+// also asks the provider's bridge for its own commands (`command/list`) and
+// returns the required `diagnostics` list beside the scan, and
+// `interactive.resolve` resolutions that may carry
+// `experimental_verbatimText`. Daemon → server: an interactive-request
+// registration may carry `turnId: null` for a user question a provider raised
+// outside any turn, and persisted `extension.state` snapshots ride the
+// thread-delta path. An older daemon rejects the unknown commands and the
+// launch field and returns no diagnostics list.
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

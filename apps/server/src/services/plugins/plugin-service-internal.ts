@@ -167,6 +167,22 @@ export interface PluginServiceDeps {
     timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
   }) => Promise<unknown>;
+  /** Generic typed provider-bridge RPC transport supplied by the server. */
+  callProviderBridge?: (args: {
+    pluginId: string;
+    providerId: string;
+    contract: import("@get-bb/plugin-sdk").PluginRpcContract;
+    method: string;
+    input: unknown;
+    hostId: string;
+    signal?: AbortSignal;
+  }) => Promise<unknown>;
+  /** Clears server model memos and notifies clients after a native write. */
+  providerModelsChanged?: (args: {
+    pluginId: string;
+    providerId: string;
+    hostId: string;
+  }) => void;
   /** Stops this plugin's workers on connected hosts during reload/disable. */
   disposePluginHost?: (args: {
     pluginId: string;

@@ -14,7 +14,10 @@ import {
 } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { EXTENSION_PAYLOAD_MAX_BYTES } from "../../src/internal/extension-payloads.js";
+import {
+  EXTENSION_PAYLOAD_MAX_BYTES,
+  validateExtensionAction,
+} from "../../src/internal/extension-payloads.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { internalAuthHeaders } from "../helpers/commands.js";
@@ -89,6 +92,7 @@ async function setup() {
       goal: {
         item: z.object({ objective: z.string().min(1) }),
         state: z.object({ status: z.enum(["active", "done"]) }),
+        experimental_action: z.object({ type: z.literal("advance") }),
       },
     },
   });
@@ -356,6 +360,38 @@ describe("extension payload ingest validation", () => {
           },
         },
       ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("accepts only bounded actions declared by the thread provider", async () => {
+    const { harness } = await setup();
+    try {
+      await expect(
+        validateExtensionAction(harness.deps, {
+          providerId: PROVIDER_ID,
+          kind: GOAL_KIND,
+          action: { type: "advance" },
+        }),
+      ).resolves.toEqual({ ok: true });
+      await expect(
+        validateExtensionAction(harness.deps, {
+          providerId: PROVIDER_ID,
+          kind: GOAL_KIND,
+          action: { type: "other" },
+        }),
+      ).resolves.toMatchObject({ ok: false });
+      await expect(
+        validateExtensionAction(harness.deps, {
+          providerId: PROVIDER_ID,
+          kind: GOAL_KIND,
+          action: {
+            type: "advance",
+            data: "x".repeat(EXTENSION_PAYLOAD_MAX_BYTES),
+          },
+        }),
+      ).resolves.toMatchObject({ ok: false });
     } finally {
       await harness.cleanup();
     }

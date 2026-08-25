@@ -12,7 +12,9 @@ import type { JsonValue } from "./json-value.js";
 import type {
   PluginRpcContract,
   PluginRpcHandlers,
+  PluginRpcResult,
   StandardSchemaV1,
+  StandardSchemaV1InferInput,
 } from "./rpc-contract.js";
 import type {
   ExperimentalHostClient,
@@ -653,13 +655,16 @@ export interface PluginProviderOptionDescriptor {
  * Payload schemas for one extension kind this provider emits, keyed by the
  * kind's local name (the server prefixes the plugin id to form the
  * namespaced `"<pluginId>/<name>"`). `item` validates `item.open` payloads
- * with `type: "extension"`, `state` validates `extension.state` payloads;
- * each is optional so a kind can be item-only or state-only. Schemas are
- * Standard Schema v1 validators (zod 4 schemas qualify).
+ * with `type: "extension"`, `state` validates `extension.state` payloads,
+ * and `experimental_action` validates app-to-bridge actions for that state.
+ * Each is optional so a kind declares only the surfaces it supports. Schemas
+ * are Standard Schema v1 validators (zod 4 schemas qualify).
  */
 export interface PluginProviderExtensionKindDeclaration {
   item?: StandardSchemaV1;
   state?: StandardSchemaV1;
+  /** Experimental: see docs/api_to_audit.md. */
+  experimental_action?: StandardSchemaV1;
 }
 
 /**
@@ -988,6 +993,16 @@ export interface PluginAgents {
  * registration; `bb.agents` keeps `configure`, `registerTool`, and
  * `contributeInstructions`.
  */
+export interface ExperimentalProviderBridgeClient<
+  Contract extends PluginRpcContract,
+> {
+  call<MethodName extends keyof Contract & string>(
+    method: MethodName,
+    input: StandardSchemaV1InferInput<Contract[MethodName]["input"]>,
+    options: { readonly hostId: string; readonly signal?: AbortSignal },
+  ): Promise<PluginRpcResult<Contract[MethodName]>>;
+}
+
 export interface PluginProviders {
   /**
    * Register an agent provider this plugin contributes (see
@@ -1005,6 +1020,25 @@ export interface PluginProviders {
   register(declaration: PluginProviderDeclaration): {
     dispose(): void;
   };
+  /**
+   * Create a typed client for one provider this plugin owns. Calls route to
+   * that provider's bridge on an explicit host; core validates JSON framing
+   * but never interprets the provider-owned method or payload.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_client<Contract extends PluginRpcContract>(args: {
+    providerId: string;
+    contract: Contract;
+  }): ExperimentalProviderBridgeClient<Contract>;
+  /**
+   * Clear cached model catalogs and notify clients after this plugin changes
+   * native model preferences on one host.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_modelsChanged(args: {
+    providerId: string;
+    hostId: string;
+  }): void;
 }
 
 // ---------------------------------------------------------------------------

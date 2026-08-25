@@ -198,6 +198,8 @@ interface ThreadDetailPromptAreaProps {
   activePromptMode: ThreadTimelineActivePromptMode | null;
   /** Current provider goal from the timeline projection. Null when no goal is active. */
   goal: ThreadTimelineGoal | null;
+  /** Latest plugin-declared provider state, one snapshot per kind. */
+  extensionStates: ThreadTimelineResponse["extensionStates"];
   /** Active provider fallback; controls the next model selection until another turn is requested. */
   modelFallback: ThreadTimelineModelFallback | null;
   /**
@@ -436,6 +438,7 @@ export function ThreadDetailPromptArea({
   pendingTodos,
   activePromptMode,
   goal,
+  extensionStates,
   modelFallback,
   activeWorkflows,
   activeBackgroundCommands,
@@ -1775,6 +1778,11 @@ export function ThreadDetailPromptArea({
       composer={shouldHideComposer ? null : bottomComposerConfig}
       pluginComposerHost={normalPluginComposerHost}
       pluginComposerScope={normalPluginComposerHost.scope}
+      providerExtensionState={{
+        extensionStates,
+        providerId: thread.providerId,
+        threadId: thread.id,
+      }}
       textEffects={promptTextEffects}
       collapseResetKey={thread.id}
       focusEndKey={bottomFocusEndKey}

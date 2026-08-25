@@ -134,7 +134,9 @@ function QuestionOptionRow({
         {checked ? <Icon name="Check" className="size-3" aria-hidden /> : null}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-medium text-foreground">{label}</span>
+        <span className="block text-sm font-medium text-foreground">
+          {label}
+        </span>
         {description ? (
           <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
             {description}
@@ -212,12 +214,7 @@ function QuestionInputBlock({
   useLayoutEffect(() => {
     if (!state.otherSelected) return;
     resizeFreeTextArea();
-  }, [
-    question.id,
-    resizeFreeTextArea,
-    state.otherSelected,
-    state.otherText,
-  ]);
+  }, [question.id, resizeFreeTextArea, state.otherSelected, state.otherText]);
 
   const handleFreeTextKeyDown = (
     event: KeyboardEvent<HTMLTextAreaElement>,
@@ -275,7 +272,9 @@ function QuestionInputBlock({
             resizeFreeTextArea(event.target);
           }}
           onKeyDown={handleFreeTextKeyDown}
-          placeholder="Type your own answer…"
+          placeholder={
+            question.experimental_placeholder ?? "Type your own answer…"
+          }
           className="mt-2 w-full resize-none overflow-y-auto rounded-md border border-border bg-surface-raised px-3 py-2 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:border-ring/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/40"
           style={{
             minHeight: `${USER_QUESTION_FREE_TEXT_MIN_HEIGHT}px`,

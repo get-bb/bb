@@ -2,7 +2,9 @@ import {
   availableModelSchema,
   clientTurnRequestIdSchema,
   dynamicToolSchema,
+  extensionKindSchema,
   instructionModeSchema,
+  jsonValueSchema,
   promptInputSchema,
 } from "@bb/domain";
 import { z } from "zod";
@@ -18,6 +20,8 @@ import { bridgeExecutionOptionsSchema } from "./execution-options.js";
 export const BRIDGE_REQUEST_METHODS = {
   initialize: "initialize",
   modelList: "model/list",
+  experimentalCustomCall: "provider/custom",
+  experimentalProviderCommandList: "command/list",
   providerHealth: "provider/health",
   providerUsage: "provider/usage",
   providerInstallationStatus: "provider/installation/status",
@@ -31,6 +35,7 @@ export const BRIDGE_REQUEST_METHODS = {
   threadArchive: "thread/archive",
   threadUnarchive: "thread/unarchive",
   threadGoalClear: "thread/goal/clear",
+  experimentalExtensionAction: "extension/action",
   turnStart: "turn/start",
   turnSteer: "turn/steer",
   skillsConfigure: "skills/configure",
@@ -48,6 +53,17 @@ const sessionConstructionFields = {
 export const modelListParamsSchema = z
   .object({ cwd: z.string().min(1).optional() })
   .passthrough();
+
+export const experimental_providerCustomCallParamsSchema = z
+  .object({
+    method: z.string().min(1),
+    input: jsonValueSchema,
+  })
+  .strict();
+
+export const experimental_providerCustomCallResultSchema = z
+  .object({ result: jsonValueSchema })
+  .strict();
 
 export const threadStartParamsSchema = z
   .object({
@@ -103,6 +119,24 @@ export const threadDiscardParamsSchema = threadRefParams;
 export const threadArchiveParamsSchema = threadRefParams;
 export const threadUnarchiveParamsSchema = threadRefParams;
 export const threadGoalClearParamsSchema = threadRefParams;
+
+export const experimental_extensionActionParamsSchema = threadRefParams
+  .extend({
+    extensionKind: extensionKindSchema,
+    action: jsonValueSchema,
+  })
+  .passthrough();
+
+export const experimental_extensionActionResultSchema = z
+  .object({ applied: z.boolean() })
+  .passthrough();
+
+export type ExperimentalExtensionActionParams = z.infer<
+  typeof experimental_extensionActionParamsSchema
+>;
+export type ExperimentalExtensionActionResult = z.infer<
+  typeof experimental_extensionActionResultSchema
+>;
 
 export const threadNameSetParamsSchema = z
   .object({

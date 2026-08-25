@@ -9,6 +9,8 @@ import type {
 import { commandListResponseSchema } from "@bb/server-contract";
 import type { ExperimentalNativeRootsResolveAnswer } from "@get-bb/plugin-sdk/host";
 import { describe, expect, it, vi } from "vitest";
+import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
+import { resolveBridgeLaunchForProviderId } from "../../src/services/system/provider-bridge-launch.js";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import {
@@ -75,6 +77,7 @@ interface RegisterCommandRpcArgs {
   hostId: string;
   sessionId: string;
   commands: HostProviderCommand[];
+  diagnostics?: string[];
   skills?: DiscoveredSkill[];
   /** What the plugin's `resolveNativeRoots` answers. */
   resolved?: ExperimentalNativeRootsResolveAnswer;
@@ -121,7 +124,13 @@ function registerCommandRpc(
       }
       if (request.command.type === "host.list_commands") {
         stub.requests.push(request);
-        return { ok: true, result: { commands: stub.commands } };
+        return {
+          ok: true,
+          result: {
+            commands: stub.commands,
+            diagnostics: args.diagnostics ?? [],
+          },
+        };
       }
       if (request.command.type === "host.list_skills") {
         stub.skillRequests.push(request);
@@ -161,6 +170,19 @@ function legacyCommand(
     description: overrides.description ?? null,
     argumentHint: overrides.argumentHint ?? null,
   };
+}
+
+
+/**
+ * The launch the route attaches so the daemon can ask the provider's bridge
+ * for its own commands (`command/list`); absent for a provider without one.
+ */
+function expectedBridgeLaunch(
+  deps: Parameters<typeof resolveBridgeLaunchForProviderId>[0],
+  providerId: string,
+): { bridgeLaunch?: HostDaemonBridgeLaunch } {
+  const bridgeLaunch = resolveBridgeLaunchForProviderId(deps, providerId);
+  return bridgeLaunch === null ? {} : { bridgeLaunch };
 }
 
 describe("public project command typeahead route", () => {
@@ -263,6 +285,7 @@ describe("public project command typeahead route", () => {
 
         expect(response.status).toBe(200);
         expect(stub.requests[0]?.command).toEqual({
+          ...expectedBridgeLaunch(harness.deps, "acp-amp"),
           type: "host.list_commands",
           providerId: "acp-amp",
           cwd: "/tmp/custom-acp-skills",
@@ -341,6 +364,7 @@ describe("public project command typeahead route", () => {
         ]);
         // Its answer rides the daemon command, defaults filled per side.
         expect(stub.requests[0]?.command).toEqual({
+          ...expectedBridgeLaunch(harness.deps, "resolving"),
           type: "host.list_commands",
           providerId: "resolving",
           cwd: "/tmp/resolving-project",
@@ -533,6 +557,7 @@ describe("public project command typeahead route", () => {
         argumentHint: null,
       });
       expect(stub.requests[0]?.command).toEqual({
+        ...expectedBridgeLaunch(harness.deps, "codex"),
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/tmp/remote-commands-env",
@@ -626,6 +651,7 @@ describe("public project command typeahead route", () => {
       // Exactly one RPC, carrying the requested provider + resolved env cwd.
       expect(stub.requests.map((request) => request.command)).toEqual([
         {
+          ...expectedBridgeLaunch(harness.deps, "claude-code"),
           type: "host.list_commands",
           providerId: "claude-code",
           cwd: "/tmp/claude-commands-env",
@@ -673,6 +699,7 @@ describe("public project command typeahead route", () => {
         "skill-installer",
       ]);
       expect(stub.requests[0]?.command).toEqual({
+        ...expectedBridgeLaunch(harness.deps, "codex"),
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/tmp/codex-commands-env",
@@ -716,6 +743,7 @@ describe("public project command typeahead route", () => {
           "stories",
         ]);
         expect(stub.requests[0]?.command).toEqual({
+          ...expectedBridgeLaunch(harness.deps, "codex"),
           type: "host.list_commands",
           providerId: "codex",
           cwd: "/tmp/inherited-skills-project",
@@ -788,13 +816,13 @@ describe("public project command typeahead route", () => {
 
       expect(response.status).toBe(200);
       const body = commandListResponseSchema.parse(await readJson(response));
-      expect(body).toEqual({ commands: [] });
+      expect(body).toEqual({ commands: [], diagnostics: [] });
       // No daemon roundtrip for a provider without a command surface.
       expect(stub.requests).toEqual([]);
     });
   });
 
-  it("lists skills for pi via the shared command surface", async () => {
+  it("returns Pi extension commands and diagnostics beside existing skills", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-pi",
@@ -810,7 +838,19 @@ describe("public project command typeahead route", () => {
       const stub = registerCommandRpc(harness, {
         hostId: host.id,
         sessionId: session.id,
-        commands: [skill("bb-cli", "user", { description: "Use the bb CLI" })],
+        commands: [
+          skill("bb-cli", "user", { description: "Use the bb CLI" }),
+          {
+            name: "project-smoke",
+            source: "command",
+            origin: "project",
+            description: "Project smoke command",
+            argumentHint: null,
+          },
+        ],
+        diagnostics: [
+          'Failed to load Pi extension "/tmp/pi-commands-env/.pi/extensions/broken.ts": syntax error',
+        ],
       });
 
       const response = await harness.app.request(
@@ -822,10 +862,12 @@ describe("public project command typeahead route", () => {
       expect(body.commands.map((command) => command.name)).toEqual([
         "compact",
         "bb-cli",
+        "project-smoke",
       ]);
       // Pi's roots are the plugin's declaration, forwarded as declared
       // (the daemon holds no pi skill policy of its own).
       expect(stub.requests[0]?.command).toEqual({
+        ...expectedBridgeLaunch(harness.deps, "pi"),
         type: "host.list_commands",
         providerId: "pi",
         cwd: "/tmp/pi-commands-env",
@@ -865,6 +907,7 @@ describe("public project command typeahead route", () => {
       // Falls back to the project source path on the primary host, since the
       // project has a local-path source even though no environment is given.
       expect(stub.requests[0]?.command).toEqual({
+        ...expectedBridgeLaunch(harness.deps, "claude-code"),
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/no-env-project",
@@ -913,6 +956,7 @@ describe("public project command typeahead route", () => {
       ]);
       // Not the provisioning env path; the project source path on the primary host.
       expect(stub.requests[0]?.command).toEqual({
+        ...expectedBridgeLaunch(harness.deps, "claude-code"),
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: "/tmp/provisioning-project",
@@ -954,6 +998,7 @@ describe("public project command typeahead route", () => {
         "user-only",
       ]);
       expect(stub.requests[0]?.command).toEqual({
+        ...expectedBridgeLaunch(harness.deps, "claude-code"),
         type: "host.list_commands",
         providerId: "claude-code",
         cwd: null,
@@ -988,6 +1033,7 @@ describe("public project command typeahead route", () => {
         "home-skill",
       ]);
       expect(stub.requests[0]?.command).toEqual({
+        ...expectedBridgeLaunch(harness.deps, "codex"),
         type: "host.list_commands",
         providerId: "codex",
         cwd: null,

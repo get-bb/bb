@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
-import type { Host } from "@bb/domain";
 import type {
+  HostResponse,
   ThreadResponse,
   ThreadWithIncludesResponse,
 } from "@bb/server-contract";
@@ -11,11 +11,11 @@ import {
   threadQueryKey,
 } from "../queries/query-keys";
 
-type HostList = Host[];
+type HostList = HostResponse[];
 type HostListQueryData = HostList | undefined;
 
 interface UpsertHostListArgs {
-  host: Host;
+  host: HostResponse;
   hosts: HostListQueryData;
 }
 

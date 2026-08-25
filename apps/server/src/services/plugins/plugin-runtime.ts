@@ -1550,6 +1550,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         deps.sharedPorts?.replaceDeclarationsForOwner(row.id, declarations);
       },
+      callProviderBridge: (args) => {
+        if (!deps.callProviderBridge) {
+          throw new Error("provider bridge rpc transport is unavailable");
+        }
+        return deps.callProviderBridge({ pluginId: row.id, ...args });
+      },
+      providerModelsChanged: (args) => {
+        if (!deps.providerModelsChanged) {
+          throw new Error("provider model invalidation is unavailable");
+        }
+        deps.providerModelsChanged({ pluginId: row.id, ...args });
+      },
       callPluginHost: (args) => {
         if (hostArtifactCandidate === null) {
           throw new Error(

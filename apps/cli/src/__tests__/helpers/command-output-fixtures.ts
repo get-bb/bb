@@ -41,9 +41,11 @@ interface MakeEnvironmentArgs extends Partial<Environment> {
  * mismatched pair is a fixture bug and throws.
  */
 type MakePendingInteractionArgs = Partial<
-  Omit<ProviderPendingInteraction, "payload" | "resolution">
+  Omit<ProviderPendingInteraction, "payload" | "resolution" | "turnId">
 > & {
   id: string;
+  /** A fixture's question is turn-scoped unless a test says otherwise. */
+  turnId?: string;
   providerId: string;
   threadId: string;
   payload?: ProviderPendingInteraction["payload"];
@@ -81,6 +83,7 @@ export function makeTimelineResponse(
     activeThinking: null,
     activeWorkflows: [],
     activeBackgroundCommands: [],
+    extensionStates: [],
     pendingTodos: null,
     goal: null,
     modelFallback: null,

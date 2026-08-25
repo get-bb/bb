@@ -119,6 +119,7 @@ export function decodeCodexInteractiveRequest(
         method: request.method,
         providerThreadId: parsed.data.threadId,
         turnId: parsed.data.turnId,
+        scope: "active_turn",
         payload: {
           kind: "approval",
           subject: {
@@ -161,6 +162,7 @@ export function decodeCodexInteractiveRequest(
         method: request.method,
         providerThreadId: parsed.data.threadId,
         turnId: parsed.data.turnId,
+        scope: "active_turn",
         payload: {
           kind: "approval",
           subject: {
@@ -192,6 +194,7 @@ export function decodeCodexInteractiveRequest(
         method: request.method,
         providerThreadId: parsed.data.threadId,
         turnId: parsed.data.turnId,
+        scope: "active_turn",
         payload: {
           kind: "approval",
           subject: {

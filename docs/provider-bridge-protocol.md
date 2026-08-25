@@ -64,6 +64,14 @@ Hygiene rules (each traces to incident #853):
 - Anything written to stdout that is not protocol traffic is ignored by the
   reader; bridges must guard stdout against stray writes.
 
+A provider plugin may define typed native settings operations behind the
+additive `provider/custom` request. Its payload is `{method, input}` and its
+result is `{result}`; both values are JSON. The owning plugin shares a Standard
+Schema contract between its server entry and bridge, while core treats the
+method and payload as opaque. Calls are host-explicit and ownership-checked.
+This is for provider-native behavior such as Pi's global `enabledModels`, not
+for adding provider fields to shared model or execution contracts.
+
 ## Versioning and capabilities
 
 `initialize` exchanges `{protocolVersion, capabilities}` in both directions.
@@ -95,6 +103,19 @@ capability-gated method to a bridge that did not advertise it. A handshake
 fact may only _narrow_ what the provider's declaration advertises (a
 declared fork affordance can turn out unavailable for this agent), never
 widen it.
+
+The optional sessionless `command/list` method loads cwd-bound provider
+resources and returns command metadata plus non-fatal diagnostics. Its explicit
+cwd prevents project resources from leaking across workspaces. Core currently
+uses it for Pi extension commands and prompt templates: the Pi bridge asks the
+`pi --mode rpc` catalog child it keeps per cwd (`get_commands`), so pi loads
+the resources under its own project-trust policy; the daemon retains its
+static skill scan and never imports Pi extensions itself. The diagnostics a
+bridge returns are its own failures to answer (pi not installed, the catalog
+child failing to start); a broken extension is pi's stderr, which the runtime
+logs. Bridges that do not implement the method answer `METHOD_NOT_FOUND`; the
+runtime treats that as unsupported, and the daemon keeps its static scan when
+the bridge errors, with the error as a diagnostic.
 
 The sessionless `provider/health`, `provider/usage`,
 `provider/installation/status`, and `provider/installation/run` methods are
@@ -352,6 +373,26 @@ undeclared kind, or a schema miss is persisted as a
 `provider/unhandled` in the same batch slot, never dropped and never stored
 unvalidated.
 
+Pi projects its serializable extension UI through one
+`provider-pi/extension-ui` state kind, built from the `extension_ui_request`
+lines pi's RPC mode emits for `ctx.ui.setStatus`, `setWidget`, `notify`,
+`setTitle`, and `setEditorText`. Each snapshot is bounded to 16 statuses, 16
+widgets (32 lines each and 12 KiB combined text), eight notifications, and
+bounded title/editor text; generic ingest adds the 64 KiB payload cap. The
+server replays at most one latest row per kind (32 kinds maximum), and
+maintenance prunes superseded snapshots. Pi emits `null` when a live session
+stops or is replaced, so app reload restores only the current session's state.
+Pi's RPC mode has no `ctx.ui.custom()` (component factories are ignored) and
+no working-message control, so neither appears in the snapshot.
+
+The optional `extension/action` request is the reverse path for interactive
+state. Core carries only `{ threadId, providerThreadId, extensionKind, action }`;
+the provider declaration validates `action` (its `experimental_action` schema)
+before the server sends it, and the bridge translates it. Requests are never
+retried because input may not be idempotent. A kind that declares no action
+schema accepts no actions: the server rejects them before any bridge is asked.
+No first-party provider declares one today.
+
 ## Identifiers
 
 Three identifier families, three owners:
@@ -368,6 +409,27 @@ persistence are always minted by bb-owned assembler code. Bridges forward
 provider-native ids as vouched join keys on deltas; the assembler translates
 in both directions, so a bridge does zero id translation — including for a
 provider that mints its own turn ids (codex).
+
+## Interaction requests
+
+A bridge asks for user input through the generic `interaction/request` JSON-RPC
+request. Its payload and response are the canonical pending-interaction shapes;
+provider-native dialog protocols do not cross this boundary. By default,
+`turnId: null` means the runtime must resolve the active turn. The experimental
+`experimental_scope: "thread"` form instead means that no turn exists and is
+valid only for a `user_question` payload. Pi uses that form when an extension
+command calls `ctx.ui.select`, `ctx.ui.confirm`, `ctx.ui.input`, or
+`ctx.ui.editor` before Pi accepts the command as model-turn input. Editor
+requests use the existing verbatim user question with
+`experimental_prefill`; the response remains `experimental_verbatimText`, so
+leading spaces, empty lines, and trailing whitespace are not normalized.
+
+Thread-scoped questions are still owned by the live provider session. Stop,
+reload, replacement, failed startup, and process shutdown cancel its outstanding
+requests through the generic `interaction/cancel` notification. The runtime
+aborts the matching host registration, and the host interrupts the persisted
+interaction. Request ids are never reused by Pi, so a late response cannot
+resolve a successor session's question.
 
 ## Turn lifecycle
 
@@ -550,7 +612,7 @@ on the same two provider lanes, each message wrapped as
 `{ "bbChannel": <message> }`, so a replay can route it back onto the fds.
 
 Layout: `<dir>/<threadId>/<direction>.ndjson`, with `_process` for lines that
-belong to no thread (`initialize`, `model/list`, provider health, and the
+belong to no thread (`initialize`, `model/list`, `command/list`, provider health, and the
 children those spawn). The four directions are `runtime→bridge`,
 `bridge→runtime`, `provider→bridge`, and `bridge→provider`. One entry per
 line: `{ "ts", "run", "seq", "dir", "line" }`. `seq` is one counter across

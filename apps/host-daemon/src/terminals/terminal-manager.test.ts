@@ -212,11 +212,13 @@ function createFakeRuntime(): AgentRuntime {
     runTurn: vi.fn(async () => undefined),
     steerTurn: vi.fn(async () => steerTurnResult),
     stopThread: vi.fn(async () => ({ providerCheckpointId: null })),
+    applyExtensionAction: vi.fn(async () => ({ applied: true })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     renameThread: vi.fn(async () => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),
     listModels: vi.fn(async () => ({ models: [], selectedOnlyModels: [] })),
+    listProviderCommands: vi.fn(async () => ({ supported: false as const })),
     providerHealth: vi.fn(async () => ({ supported: false as const })),
     providerUsage: vi.fn(async () => ({ supported: false as const })),
     providerInstallationStatus: vi.fn(async () => {
