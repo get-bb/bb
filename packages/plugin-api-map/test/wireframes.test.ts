@@ -143,10 +143,18 @@ describe("guide fixture boundaries", () => {
     const markup = renderWireframe(createElement(CommandPaletteWireframe));
 
     expect(markup).toContain("Search");
+    expect(markup).toContain('data-guide-fixture="command-palette-thread"');
+    expect(markup).toContain('data-guide-fixture="command-palette-overlay"');
+    expect(markup).toContain('data-guide-fixture="command-palette-shortcut"');
     expect(markup).toContain('data-guide-region="command-palette-actions"');
     expect(markup).toContain('data-guide-fixture="command-palette-action"');
+    expect(markup).toContain('role="option" aria-selected="true"');
     expect(markup).toContain("Run release checklist");
     expect(markup).toContain("Plugins");
+    expect(markup).toContain("⇧⌘P");
+    expect(markup).not.toContain(
+      'data-guide-fixture="release-checklist-panel"',
+    );
   });
 
   it("attaches the mention annotation to the rendered mention pill", () => {

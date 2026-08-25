@@ -246,6 +246,76 @@ function Mark({
 }
 
 /**
+ * The palette row has two real jobs: its row runs the command, while its
+ * numbered badge opens the Guide card. They must be sibling targets so
+ * reading the annotation never fires the example action, and running the
+ * action never covers its visible outcome with the card.
+ */
+function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
+  const id = "command-palette-actions";
+  const label = "Plugin actions in bb's quick command palette";
+  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
+    useSurfaceMap();
+  const active = activeId === id || expandedId === id || spotlightId === id;
+  const outlined =
+    activeId !== null
+      ? activeId === id
+      : expandedId === id || spotlightId === id;
+  const dimmed = Boolean(spotlightId) && spotlightId !== id;
+
+  return (
+    <div
+      data-guide-region={id}
+      onMouseEnter={() => setActiveId(id)}
+      onMouseLeave={() => setActiveId(null)}
+      className={cn(
+        "relative rounded-md bg-state-hover text-foreground ring-1 ring-inset transition-all",
+        outlined ? "ring-surface-selected-border" : "ring-transparent",
+        dimmed && "opacity-25",
+      )}
+    >
+      <button
+        type="button"
+        role="option"
+        aria-selected="true"
+        onClick={onRun}
+        onFocus={() => setActiveId(id)}
+        onBlur={() => setActiveId(null)}
+        data-guide-fixture="command-palette-action"
+        className="flex h-9 w-full cursor-pointer items-center px-2.5 text-left"
+      >
+        <span>Run release checklist</span>
+        <span className="ml-auto text-xs text-subtle-foreground">Plugins</span>
+      </button>
+      <a
+        data-guide-badge={id}
+        href={`#surface-${id}`}
+        aria-label={`${label} — jump to details`}
+        onClick={
+          onSelect
+            ? (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onSelect(id);
+              }
+            : undefined
+        }
+        onFocus={() => setActiveId(id)}
+        onBlur={() => setActiveId(null)}
+        className="absolute -left-3 top-1/2 z-50 -translate-y-1/2"
+      >
+        <span
+          aria-hidden
+          className={annotationChipClass(active, "ring-2 ring-card")}
+        >
+          {numberOf(id)}
+        </span>
+      </a>
+    </div>
+  );
+}
+
+/**
  * An annotation whose boundary is the fixture element it describes.
  *
  * Unlike OverlayMark, this component does not measure a rectangle against a
@@ -540,53 +610,203 @@ export type AppShellRightPanelTab =
   | "code-renderers";
 
 /**
- * The command palette is a whole-window modal, not part of an open thread's
- * anatomy. Its own page gives the action a realistic search field, sibling
- * commands, and ranking context without covering the app-window annotations.
+ * A whole-window command-palette flow. The fixture starts with the palette
+ * open over a real thread-shaped backdrop; running the plugin row closes it
+ * and opens the plugin's thread-panel tab, just as the registered action can.
  */
 export function CommandPaletteWireframe() {
+  const [paletteOpen, setPaletteOpen] = useState(true);
+  const [releasePanelOpen, setReleasePanelOpen] = useState(false);
+
+  const openPalette = () => setPaletteOpen(true);
+  const runReleaseChecklist = () => {
+    setPaletteOpen(false);
+    setReleasePanelOpen(true);
+  };
+
   return (
-    <div className="relative px-7 pb-2 pt-4">
+    <div
+      data-guide-fixture="command-palette-flow"
+      data-guide-state={paletteOpen ? "palette-open" : "release-checklist-open"}
+      className="relative px-7 pb-2 pt-4"
+    >
       <WindowFrame>
-        <div className="flex min-h-[500px] items-start justify-center bg-surface-recessed/40 px-10 pt-14">
-          <div className="w-full max-w-xl overflow-visible rounded-xl border border-border bg-popover shadow-lg">
-            <div className="flex h-11 items-center gap-2 border-b border-border-hairline px-3 text-sm">
-              <MiniIcon icon={Search01Icon} className="size-4" />
-              <input
-                aria-label="Search commands"
-                readOnly
-                value="release"
-                className="min-w-0 flex-1 bg-transparent text-foreground outline-none"
-              />
-            </div>
-            <div className="space-y-0.5 p-1 text-sm">
-              <span className="flex h-9 items-center rounded-md px-2.5">
-                Open release notes
-                <span className="ml-auto text-xs text-subtle-foreground">
-                  Navigation
+        <div className="relative min-h-[500px]">
+          <div
+            data-guide-fixture="command-palette-thread"
+            className="flex min-h-[500px] bg-background"
+          >
+            <aside className="flex w-48 shrink-0 flex-col border-r border-border-seam bg-sidebar px-2.5 py-3">
+              <div className="flex items-center gap-1.5 px-1 text-foreground">
+                <TrafficLights />
+                <span className="ml-auto" />
+                <MiniIcon icon={SidebarLeftIcon} className="size-3.5" />
+              </div>
+              <div className="mt-5 flex items-center gap-2 rounded-md px-2 py-1.5 text-foreground">
+                <MiniIcon icon={PlusSignIcon} className="size-3.5" />
+                New thread
+              </div>
+              <div className="flex items-center gap-2 rounded-md px-2 py-1.5">
+                <MiniIcon icon={Search01Icon} className="size-3.5" />
+                Search
+              </div>
+              <div className="mt-3 px-2 text-2xs font-medium uppercase tracking-wide text-subtle-foreground">
+                Threads
+              </div>
+              <div className="mt-1 rounded-md bg-state-hover px-2 py-2 text-foreground">
+                Ship release candidate
+              </div>
+              <div className="px-2 py-2">Fix flaky checkout tests</div>
+              <div className="px-2 py-2">Update onboarding copy</div>
+              <div className="mt-auto flex items-center gap-2 border-t border-border-hairline px-2 pt-3">
+                <MiniIcon icon={Settings02Icon} className="size-3.5" />
+                Settings
+              </div>
+            </aside>
+
+            <main className="flex min-w-0 flex-1 flex-col">
+              <header className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
+                <span className="truncate text-foreground">
+                  Ship release candidate
                 </span>
-              </span>
-              <Mark
-                id="command-palette-actions"
-                label="Plugin actions in bb's quick command palette"
-                className="flex h-9 items-center px-2.5"
-                chipClassName="-left-3 top-1/2 -translate-y-1/2"
+                <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+                <span className="flex-1" />
+                <button
+                  type="button"
+                  onClick={openPalette}
+                  aria-label="Open Quick palette (Shift Command P)"
+                  data-guide-fixture="command-palette-shortcut"
+                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border-hairline px-2 text-subtle-foreground hover:bg-state-hover hover:text-foreground"
+                >
+                  <MiniIcon icon={Search01Icon} className="size-3.5" />
+                  <span>Quick palette</span>
+                  <kbd className="rounded bg-surface-recessed px-1.5 py-0.5 font-mono text-2xs text-foreground">
+                    ⇧⌘P
+                  </kbd>
+                </button>
+              </header>
+
+              <div className="flex-1 space-y-5 px-6 py-6">
+                <div className="flex justify-end">
+                  <span className="max-w-[76%] rounded-xl border border-border-seam bg-surface-recessed px-3 py-2 leading-relaxed text-foreground">
+                    Prepare this branch for the release candidate.
+                  </span>
+                </div>
+                <div className="max-w-[88%] space-y-3 leading-relaxed">
+                  <p className="text-foreground">
+                    The release build is ready for final checks. I verified the
+                    focused tests and collected the latest UI evidence.
+                  </p>
+                  <div className="space-y-2 rounded-lg border border-border-hairline bg-surface-raised-solid p-3">
+                    <div className="flex items-center gap-2 text-foreground">
+                      <MiniIcon icon={GitBranchIcon} className="size-3.5" />
+                      release/2026-08-25
+                    </div>
+                    <div className="h-1.5 w-4/5 rounded-sm bg-muted/60" />
+                    <div className="h-1.5 w-3/5 rounded-sm bg-muted/60" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mx-5 mb-5 rounded-xl border border-border bg-card px-3 py-3 text-subtle-foreground shadow-sm">
+                Ask for a follow-up…
+              </div>
+            </main>
+
+            {releasePanelOpen ? (
+              <aside
+                data-guide-fixture="release-checklist-panel"
+                className="flex w-60 shrink-0 flex-col border-l border-border-seam bg-sidebar"
               >
-                <span data-guide-fixture="command-palette-action">
-                  Run release checklist
-                </span>
-                <span className="ml-auto text-xs text-subtle-foreground">
-                  Plugins
-                </span>
-              </Mark>
-              <span className="flex h-9 items-center rounded-md px-2.5">
-                Copy thread link
-                <span className="ml-auto text-xs text-subtle-foreground">
-                  Thread
-                </span>
-              </span>
-            </div>
+                <div className="flex h-12 items-center gap-1.5 border-b border-border-hairline px-3">
+                  <span className="flex size-7 items-center justify-center rounded-md">
+                    <MiniIcon
+                      icon={InformationCircleIcon}
+                      className="size-3.5"
+                    />
+                  </span>
+                  <span
+                    role="tab"
+                    aria-selected="true"
+                    data-guide-fixture="release-checklist-tab"
+                    className="flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground"
+                  >
+                    <PluginGlyph className="size-3.5" />
+                    Release checklist
+                  </span>
+                </div>
+                <div className="space-y-4 p-4">
+                  <div>
+                    <p className="font-medium text-foreground">
+                      Release checklist
+                    </p>
+                    <p className="mt-1 leading-relaxed text-subtle-foreground">
+                      Final checks for this thread and branch.
+                    </p>
+                  </div>
+                  {[
+                    ["Tests and typecheck", "Passed"],
+                    ["UI evidence", "Ready"],
+                    ["Mergeability", "Clean"],
+                  ].map(([label, status]) => (
+                    <div
+                      key={label}
+                      className="flex items-center gap-2 border-t border-border-hairline pt-3"
+                    >
+                      <span className="size-2 rounded-full bg-success" />
+                      <span className="min-w-0 flex-1 text-foreground">
+                        {label}
+                      </span>
+                      <span className="text-2xs text-subtle-foreground">
+                        {status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            ) : null}
           </div>
+
+          {paletteOpen ? (
+            <div
+              data-guide-fixture="command-palette-overlay"
+              className="absolute inset-0 z-10 flex items-start justify-center bg-background/60 px-10 pt-14 backdrop-blur-[1px]"
+            >
+              <div className="w-full max-w-xl overflow-visible rounded-xl border border-border bg-popover shadow-lg">
+                <div className="flex h-11 items-center gap-2 border-b border-border-hairline px-3 text-sm">
+                  <MiniIcon icon={Search01Icon} className="size-4" />
+                  <input
+                    aria-label="Search commands"
+                    readOnly
+                    value="release"
+                    className="min-w-0 flex-1 bg-transparent text-foreground outline-none"
+                  />
+                  <kbd className="rounded bg-surface-recessed px-1.5 py-1 font-mono text-2xs text-subtle-foreground">
+                    ⇧⌘P
+                  </kbd>
+                </div>
+                <div
+                  role="listbox"
+                  aria-label="Commands"
+                  className="space-y-0.5 p-1 text-sm"
+                >
+                  <span className="flex h-9 items-center rounded-md px-2.5">
+                    Open release notes
+                    <span className="ml-auto text-xs text-subtle-foreground">
+                      Navigation
+                    </span>
+                  </span>
+                  <CommandPaletteActionMark onRun={runReleaseChecklist} />
+                  <span className="flex h-9 items-center rounded-md px-2.5">
+                    Copy thread link
+                    <span className="ml-auto text-xs text-subtle-foreground">
+                      Thread
+                    </span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </WindowFrame>
     </div>
