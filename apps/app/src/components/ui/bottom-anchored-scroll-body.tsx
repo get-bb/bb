@@ -103,9 +103,11 @@ const SCROLL_ANCHOR_RESTORE_MAX_ATTEMPTS = 8;
 const TIMELINE_ROW_ID_SELECTOR = "[data-timeline-row-id]";
 const TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR =
   '[data-timeline-row-list="top-level"]';
+const TIMELINE_VIRTUAL_SPACER_SELECTOR =
+  ":scope > [data-timeline-virtual-spacer]";
 const DIRECT_TIMELINE_ROW_SELECTOR = [
   `:scope > ${TIMELINE_ROW_ID_SELECTOR}`,
-  `:scope > [data-timeline-virtual-spacer] > ${TIMELINE_ROW_ID_SELECTOR}`,
+  `${TIMELINE_VIRTUAL_SPACER_SELECTOR} > ${TIMELINE_ROW_ID_SELECTOR}`,
 ].join(", ");
 const SCROLL_INTENT_KEYS = new Set([
   "ArrowDown",
@@ -174,18 +176,32 @@ interface TopMostVisibleRow {
   offsetWithinRow: number;
 }
 
-function getScrollAnchorRows(scrollArea: HTMLElement): NodeListOf<HTMLElement> {
+interface ScrollAnchorRowQuery {
+  rows: NodeListOf<HTMLElement>;
+  // A windowed timeline mounts only the rows near the viewport (plus a few
+  // pinned ones) inside a fixed-height spacer.
+  windowed: boolean;
+}
+
+function getScrollAnchorRows(scrollArea: HTMLElement): ScrollAnchorRowQuery {
   const topLevelList = scrollArea.querySelector<HTMLElement>(
     TOP_LEVEL_TIMELINE_ROW_LIST_SELECTOR,
   );
   if (topLevelList) {
-    return topLevelList.querySelectorAll<HTMLElement>(
-      DIRECT_TIMELINE_ROW_SELECTOR,
-    );
+    return {
+      rows: topLevelList.querySelectorAll<HTMLElement>(
+        DIRECT_TIMELINE_ROW_SELECTOR,
+      ),
+      windowed:
+        topLevelList.querySelector(TIMELINE_VIRTUAL_SPACER_SELECTOR) !== null,
+    };
   }
   // Embedded/test surfaces may render timeline rows without the app's
   // top-level list wrapper.
-  return scrollArea.querySelectorAll<HTMLElement>(TIMELINE_ROW_ID_SELECTOR);
+  return {
+    rows: scrollArea.querySelectorAll<HTMLElement>(TIMELINE_ROW_ID_SELECTOR),
+    windowed: false,
+  };
 }
 
 // The top-most timeline row whose bottom edge is below the scroll area's top
@@ -340,11 +356,11 @@ export function BottomAnchoredScrollBody({
     scrollAreaClientHeight: number | null;
     scrollContentHeight: number | null;
   }>({ scrollAreaClientHeight: null, scrollContentHeight: null });
-  // The row NodeList behind scroll-anchor capture, so throttled samples don't
-  // repeat a querySelectorAll over the scroll subtree. Row-set changes surface
-  // as content size changes, so the ResizeObserver invalidates it; the
-  // connectivity check in getScrollAnchorRowsCached guards the windowed
-  // timeline, where a row swap at a window edge can keep the size constant.
+  // The row NodeList behind scroll-anchor capture on an unwindowed timeline,
+  // so throttled samples don't repeat a querySelectorAll over the whole
+  // thread. Row-set changes surface as content size changes there, so the
+  // ResizeObserver invalidates it. getScrollAnchorRowsCached never fills it
+  // for a windowed timeline, whose row swaps change no observed size.
   const scrollAnchorRowsRef = useRef<NodeListOf<HTMLElement> | null>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const initialScrollRestoreRowId = useMemo(() => {
@@ -577,8 +593,14 @@ export function BottomAnchoredScrollBody({
     ) {
       return cached;
     }
-    const rows = getScrollAnchorRows(scrollArea);
-    scrollAnchorRowsRef.current = rows;
+    const { rows, windowed } = getScrollAnchorRows(scrollArea);
+    // A windowed timeline slides its row window inside a fixed-height spacer:
+    // rows mount and unmount with no observed size change, and its last row
+    // is force-mounted, so neither the ResizeObserver nor the edge-row
+    // connectivity check above sees the swap. Only the rows near the viewport
+    // are mounted there, so querying on every capture is cheap; the cache is
+    // for the unwindowed timeline, where the query spans the whole thread.
+    scrollAnchorRowsRef.current = windowed ? null : rows;
     return rows;
   }, []);
 
