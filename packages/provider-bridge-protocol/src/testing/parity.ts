@@ -27,7 +27,7 @@
  * injected.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -471,7 +471,10 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const stateDir = mkdtempSync(join(tmpdir(), "bb-parity-replay-"));
   // The replayed session's workspace: the recording's cwd belongs to the
   // machine that recorded it, and nothing in a replay runs real commands.
-  const workspaceDir = mkdtempSync(join(tmpdir(), "bb-parity-ws-"));
+  // Resolved to its real path: macOS's `tmpdir()` is a symlink, and the Agent
+  // SDK names a project directory after the real path, so a fork's seeded
+  // transcript must sit under that name.
+  const workspaceDir = realpathSync(mkdtempSync(join(tmpdir(), "bb-parity-ws-")));
   const replayCommand = [
     process.execPath,
     REPLAY_CHILD_PATH,

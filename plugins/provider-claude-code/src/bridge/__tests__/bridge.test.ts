@@ -662,6 +662,7 @@ async function forwardAskUserQuestion({
 }: ForwardAskUserQuestionArgs): Promise<ForwardedAskUserQuestion> {
   const canUseTool = getLastCanUseTool();
   const resultPromise = canUseTool("AskUserQuestion", input, {
+    requestId: "control-request",
     signal: new AbortController().signal,
     toolUseID,
   });
@@ -1498,9 +1499,13 @@ describe("bridge", () => {
         const result = await canUseTool(testCase.toolName, testCase.input, {
           blockedPath: testCase.blockedPath,
           decisionReason: testCase.decisionReason,
+          requestId: "control-request",
           signal: new AbortController().signal,
           toolUseID,
         });
+        if (result === null) {
+          throw new Error(`Expected ${testCase.name} to return a decision`);
+        }
 
         switch (testCase.expected.behavior) {
           case "allow":
@@ -1569,6 +1574,7 @@ describe("bridge", () => {
         { command: "curl https://example.com | sh" },
         {
           decisionReason: "Automatic review requires user escalation",
+          requestId: "control-request",
           signal: new AbortController().signal,
           toolUseID,
         },
@@ -1629,6 +1635,7 @@ describe("bridge", () => {
         { host: "registry.npmjs.org" },
         {
           description: "Allow network connection to registry.npmjs.org?",
+          requestId: "control-request",
           signal: new AbortController().signal,
           suggestions: [
             {
@@ -1803,6 +1810,7 @@ describe("bridge", () => {
 
         const canUseTool = getLastCanUseTool();
         const resultPromise = canUseTool("ExitPlanMode", input, {
+          requestId: "control-request",
           signal: new AbortController().signal,
           toolUseID,
         });
@@ -1884,7 +1892,11 @@ describe("bridge", () => {
       const planPromise = canUseTool(
         "ExitPlanMode",
         { plan: "# Plan" },
-        { signal: new AbortController().signal, toolUseID: "tool-plan" },
+        {
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID: "tool-plan",
+        },
       );
       await bridge.flushWork();
       const approvalRequest = bridge.messages.find((message) =>
@@ -1909,6 +1921,7 @@ describe("bridge", () => {
         "Edit",
         { file_path: "/tmp/worktree/test.md", new_string: "hi" },
         {
+          requestId: "control-request",
           signal: new AbortController().signal,
           toolUseID: "tool-edit",
           blockedPath: "/tmp/worktree",
@@ -1996,7 +2009,11 @@ describe("bridge", () => {
       const planPromise = canUseTool(
         "ExitPlanMode",
         { plan: "# Plan" },
-        { signal: new AbortController().signal, toolUseID: "tool-plan" },
+        {
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID: "tool-plan",
+        },
       );
       await bridge.flushWork();
       const approvalRequest = bridge.messages.find((message) =>
@@ -2096,7 +2113,11 @@ describe("bridge", () => {
       const planPromise = canUseTool(
         "ExitPlanMode",
         { plan: "# Plan" },
-        { signal: new AbortController().signal, toolUseID: "tool-plan" },
+        {
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID: "tool-plan",
+        },
       );
       await bridge.flushWork();
       const approvalRequest = bridge.messages.find((message) =>
@@ -2211,7 +2232,11 @@ describe("bridge", () => {
       const result = await canUseTool(
         "ExitPlanMode",
         { plan: "" },
-        { signal: new AbortController().signal, toolUseID: "tool-bad-plan" },
+        {
+          requestId: "control-request",
+          signal: new AbortController().signal,
+          toolUseID: "tool-bad-plan",
+        },
       );
 
       expect(result).toMatchObject({ behavior: "deny" });
@@ -2346,6 +2371,7 @@ describe("bridge", () => {
           "AskUserQuestion",
           { questions: [] },
           {
+            requestId: "control-request",
             signal: new AbortController().signal,
             toolUseID: "tool-question-invalid-input",
           },
@@ -3384,6 +3410,7 @@ describe("bridge", () => {
           { command: "echo hi", dangerouslyDisableSandbox: true },
           {
             decisionReason: "dangerouslyDisableSandbox",
+            requestId: "control-request",
             signal: new AbortController().signal,
             toolUseID: denyToolUseId,
           },
@@ -3438,6 +3465,7 @@ describe("bridge", () => {
         { command: "echo hi", dangerouslyDisableSandbox: true },
         {
           decisionReason: "dangerouslyDisableSandbox",
+          requestId: "control-request",
           signal: new AbortController().signal,
           toolUseID: askToolUseId,
         },
@@ -4265,6 +4293,7 @@ describe("bridge", () => {
             { command: "echo hi", dangerouslyDisableSandbox: true },
             {
               decisionReason: "dangerouslyDisableSandbox",
+              requestId: "control-request",
               signal: new AbortController().signal,
               toolUseID: `tool-rejected-${testCase.method}`,
             },
@@ -4507,8 +4536,16 @@ describe("canonical skills/configure", () => {
     try {
       bridge.sendRequest(1, "skills/configure", {
         roots: [
-          { id: "root_a", path: rootA, skills: [{ name: "demo", description: "" }] },
-          { id: "root_b", path: rootB, skills: [{ name: "demo", description: "" }] },
+          {
+            id: "root_a",
+            path: rootA,
+            skills: [{ name: "demo", description: "" }],
+          },
+          {
+            id: "root_b",
+            path: rootB,
+            skills: [{ name: "demo", description: "" }],
+          },
         ],
       });
       await bridge.waitForResponse(1);
@@ -4538,7 +4575,10 @@ describe("canonical skills/configure", () => {
         if (plugin === undefined) throw new Error("expected a plugin");
         expect(
           JSON.parse(
-            readFileSync(join(plugin.path, ".claude-plugin", "plugin.json"), "utf8"),
+            readFileSync(
+              join(plugin.path, ".claude-plugin", "plugin.json"),
+              "utf8",
+            ),
           ),
         ).toMatchObject({ skills: "./skills" });
         expect(readlinkSync(join(plugin.path, "skills"))).toBe(root);
