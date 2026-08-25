@@ -12,6 +12,7 @@ import {
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
+  getDatabaseCompactionStatsFreelistFirst,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   isDatabaseMaintenanceIdle,
@@ -269,6 +270,76 @@ describe("database maintenance", () => {
     expect(preparedSql.some((source) => source.includes("dbstat"))).toBe(false);
     // Reclaiming pages must not change the auto-vacuum mode.
     expect(getDatabaseAutoVacuumMode(db)).toBe("incremental");
+  });
+
+  it("skips the dbstat scan when the freelist alone justifies compaction", () => {
+    const { db } = setup();
+
+    // Build a freelist the same way the incremental-vacuum test does.
+    db.$client.exec(
+      "CREATE TABLE scratch_blobs (id INTEGER PRIMARY KEY, blob TEXT)",
+    );
+    const insert = db.$client.prepare(
+      "INSERT INTO scratch_blobs (blob) VALUES (?)",
+    );
+    const blob = "x".repeat(8 * 1024);
+    const insertMany = db.$client.transaction((count: number) => {
+      for (let index = 0; index < count; index += 1) {
+        insert.run(blob);
+      }
+    });
+    insertMany(3_000);
+    db.$client.exec("DELETE FROM scratch_blobs");
+
+    const freelistStats = getDatabaseFreelistStats(db);
+    expect(freelistStats.freelistBytes).toBeGreaterThan(0);
+
+    const preparedSql: string[] = [];
+    const raw = db.$client;
+    const originalPrepare = raw.prepare.bind(raw);
+    Object.defineProperty(raw, "prepare", {
+      configurable: true,
+      value: (source: string) => {
+        preparedSql.push(source);
+        return originalPrepare(source);
+      },
+      writable: true,
+    });
+    let freelistOnly: ReturnType<typeof getDatabaseCompactionStatsFreelistFirst>;
+    let fullScan: ReturnType<typeof getDatabaseCompactionStatsFreelistFirst>;
+    let dbstatPreparedAfterFreelistShortCircuit: boolean;
+    try {
+      // Thresholds beneath the freelist: the decision is already made, so
+      // no dbstat statement may be prepared.
+      freelistOnly = getDatabaseCompactionStatsFreelistFirst(db, {
+        minReclaimableBytes: 1,
+        minReclaimableRatio: 0.000_001,
+      });
+      dbstatPreparedAfterFreelistShortCircuit = preparedSql.some((source) =>
+        source.includes("dbstat"),
+      );
+      // Thresholds above anything reclaimable: the freelist alone cannot
+      // decide, so the full dbstat-backed stats are computed.
+      fullScan = getDatabaseCompactionStatsFreelistFirst(db, {
+        minReclaimableBytes: Number.MAX_SAFE_INTEGER,
+        minReclaimableRatio: 1,
+      });
+    } finally {
+      Object.defineProperty(raw, "prepare", {
+        configurable: true,
+        value: originalPrepare,
+        writable: true,
+      });
+    }
+
+    expect(dbstatPreparedAfterFreelistShortCircuit).toBe(false);
+    expect(freelistOnly.unusedBytes).toBe(0);
+    expect(freelistOnly.reclaimableBytes).toBe(freelistOnly.freelistBytes);
+
+    expect(preparedSql.some((source) => source.includes("dbstat"))).toBe(true);
+    expect(fullScan.reclaimableBytes).toBe(
+      fullScan.freelistBytes + fullScan.unusedBytes,
+    );
   });
 
   it("does not schedule incremental vacuum for internal fragmentation without enough freelist pages", () => {

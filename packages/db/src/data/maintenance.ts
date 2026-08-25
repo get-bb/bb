@@ -360,6 +360,38 @@ export function getDatabaseCompactionStats(
   };
 }
 
+/**
+ * Compaction stats with the freelist checked first. The freelist/page
+ * counters are O(1) PRAGMAs, while the dbstat unused-bytes scan walks every
+ * page of the file — seconds of synchronous work on a multi-hundred-MB
+ * database. When the freelist alone already crosses the caller's compaction
+ * thresholds the decision cannot change (dbstat's unused bytes only add
+ * reclaimable space), so the scan is skipped and the returned stats carry
+ * `unusedBytes: 0`. Only when the freelist alone is below the thresholds is
+ * the full dbstat scan needed to decide.
+ */
+export function getDatabaseCompactionStatsFreelistFirst(
+  db: DbConnection,
+  args: Omit<DatabaseCompactionDecisionArgs, "stats">,
+): DatabaseCompactionStats {
+  const freelistStats = getDatabaseFreelistStats(db);
+  const freelistOnlyStats: DatabaseCompactionStats = {
+    ...freelistStats,
+    reclaimableBytes: freelistStats.freelistBytes,
+    unusedBytes: 0,
+  };
+  if (
+    shouldCompactDatabase({
+      minReclaimableBytes: args.minReclaimableBytes,
+      minReclaimableRatio: args.minReclaimableRatio,
+      stats: freelistOnlyStats,
+    })
+  ) {
+    return freelistOnlyStats;
+  }
+  return getDatabaseCompactionStats(db);
+}
+
 export function shouldCompactDatabase(
   args: DatabaseCompactionDecisionArgs,
 ): boolean {

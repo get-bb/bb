@@ -19,7 +19,7 @@ import {
   DESTROYED_ENVIRONMENT_TTL_MS,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
-  getDatabaseCompactionStats,
+  getDatabaseCompactionStatsFreelistFirst,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   isDatabaseMaintenanceIdle,
@@ -362,7 +362,15 @@ export function runDatabaseMaintenanceSweep(
     return;
   }
 
-  const stats = getDatabaseCompactionStats(deps.db);
+  // Freelist first: the O(1) counters can justify compaction on their own,
+  // and only when they cannot is the whole-file dbstat scan worth running.
+  // The sync wrapper attributes that scan in event-loop stall snapshots.
+  const stats = runEventLoopWorkSync("db-maintenance:compaction-stats", () =>
+    getDatabaseCompactionStatsFreelistFirst(deps.db, {
+      minReclaimableBytes: DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,
+      minReclaimableRatio: DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
+    }),
+  );
   if (
     !shouldCompactDatabase({
       minReclaimableBytes: DATABASE_COMPACTION_MIN_RECLAIMABLE_BYTES,

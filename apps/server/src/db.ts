@@ -1,4 +1,10 @@
-import { createConnection, ensurePersonalProject, migrate } from "@bb/db";
+import {
+  createConnection,
+  ensurePersonalProject,
+  getDatabaseAutoVacuumMode,
+  getDatabaseFreelistStats,
+  migrate,
+} from "@bb/db";
 import type {
   DbConnection,
   MigrationWarningLogger,
@@ -42,5 +48,16 @@ export function initDb(
     logger: options.logger,
   });
   ensurePersonalProject(db);
+  // A legacy auto_vacuum=NONE file never shrinks until a full VACUUM
+  // converts it; surface the resolved mode and the O(1) freelist counters at
+  // startup so an operator can see which regime this database is in without
+  // waiting for the hourly maintenance sweep to log.
+  options.logger?.info(
+    {
+      autoVacuumMode: getDatabaseAutoVacuumMode(db),
+      freelist: getDatabaseFreelistStats(db),
+    },
+    "Database auto-vacuum state",
+  );
   return db;
 }

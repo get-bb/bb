@@ -422,6 +422,7 @@ export {
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_MAINTENANCE_BUSY_TIMEOUT_MS,
   getDatabaseCompactionStats,
+  getDatabaseCompactionStatsFreelistFirst,
   getDatabaseFreelistStats,
   getDatabaseMaintenanceActivity,
   isDatabaseMaintenanceIdle,
