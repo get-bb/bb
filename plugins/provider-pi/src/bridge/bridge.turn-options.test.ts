@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
 import type {
   BridgeJsonRpcObject,
@@ -208,6 +208,32 @@ it("fails a turn whose model cannot be resolved and keeps the live session", asy
   expect((await turnStart(3, threadId, "third", MINI)).error).toBeUndefined();
   await harness.waitForTurnBoundary(threadId, seen);
   expect(contextWindowSizes(threadId).at(-1)).toBe(32_000);
+}, TURN_OPTIONS_TEST_TIMEOUT_MS);
+
+it("keeps serving the thread when the replacement child never starts", async () => {
+  const threadId = "thr_turn_options_dead_replacement";
+  await harness.startThread(threadId, { options: MINI });
+
+  expect((await turnStart(1, threadId, "first", MINI)).error).toBeUndefined();
+  const seen = await harness.waitForTurnBoundary(threadId, 0);
+
+  // The next child dies at spawn: a `provider/id` pi accepts but cannot run,
+  // a readiness timeout, a crash. The live child must not be closed for it.
+  vi.stubEnv("FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE", "1");
+  const failed = await turnStart(2, threadId, "second", FULL_MODEL);
+  vi.stubEnv("FAKE_PI_EXIT_BEFORE_FIRST_RESPONSE", undefined);
+
+  expect(failed.error).toMatchObject({ code: -32000 });
+  expect(sessionReplacements(threadId)).toEqual([]);
+
+  // The turn failed, the thread did not. Without keeping the previous child
+  // this answers "No active pi session" for the rest of the thread's life:
+  // the runtime still holds the thread, so nothing resumes it.
+  const recovered = await turnStart(3, threadId, "third", MINI);
+  expect(recovered.error).toBeUndefined();
+  await harness.waitForTurnBoundary(threadId, seen);
+  expect(contextWindowSizes(threadId).at(-1)).toBe(32_000);
+  expect(sessionReplacements(threadId)).toEqual([]);
 }, TURN_OPTIONS_TEST_TIMEOUT_MS);
 
 it("steers the running turn without rebuilding on its options", async () => {

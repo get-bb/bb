@@ -728,18 +728,17 @@ async function buildSessionOptions(args: {
   };
 }
 
-async function startPiThreadSession(
+/**
+ * Construct one pi child for a thread, register it, and start it. The
+ * registration precedes `start()` so the child's own startup events reach
+ * the thread; a start that fails takes the registration back out, so the
+ * caller decides what serves the thread next.
+ */
+async function constructPiThreadSession(
   threadId: string,
   providerThreadId: string,
   params: PiSessionParams,
-): Promise<void> {
-  const existing = sessions.get(threadId);
-  if (existing) {
-    await closeThreadSession({
-      message: "Pi thread session replaced while tool call was pending",
-      threadId,
-    });
-  }
+): Promise<ThreadSession> {
   const sessionSerial = nextSessionSerial();
   const sessionOptions = await buildSessionOptions({
     params,
@@ -773,6 +772,7 @@ async function startPiThreadSession(
         { id: liveModel.id, provider: liveModel.provider, contextWindow: liveModel.contextWindow },
       ]);
     }
+    return threadSession;
   } catch (error) {
     if (sessions.get(threadId) === threadSession) {
       sessions.delete(threadId);
@@ -780,6 +780,80 @@ async function startPiThreadSession(
     session.kill();
     throw error;
   }
+}
+
+async function startPiThreadSession(
+  threadId: string,
+  providerThreadId: string,
+  params: PiSessionParams,
+): Promise<void> {
+  const existing = sessions.get(threadId);
+  if (existing) {
+    await closeThreadSession({
+      message: "Pi thread session replaced while tool call was pending",
+      threadId,
+    });
+  }
+  await constructPiThreadSession(threadId, providerThreadId, params);
+}
+
+/**
+ * Retire the child a verified replacement took over from. It is idle and no
+ * longer registered, so nothing waits on its close: holding the turn for the
+ * old child's abort/leaf exchange would spend the runtime's request budget
+ * on a session that no longer serves anything.
+ */
+function retireReplacedPiChild(replaced: ThreadSession): void {
+  replaced.closing = true;
+  resolvePendingToolCalls(
+    replaced,
+    "Pi thread session replaced while tool call was pending",
+  );
+  void replaced.session
+    .closeGracefully(THREAD_STOP_CLOSE_TIMEOUT_MS)
+    .catch(() => undefined);
+}
+
+/**
+ * Swap a thread's pi child for one built from `params`, keeping the thread
+ * servable if the replacement never starts.
+ *
+ * The replacement is constructed, started and verified (`start()` answers
+ * `get_state`, waits for the extension's `ready`, and refuses a child that
+ * came up on another model) BEFORE the child it replaces is closed. Two pi
+ * children may hold one session file: the file is append-only, the outgoing
+ * child is idle, and pi takes no lock (verified against pi 0.84.3). So a
+ * replacement that dies at spawn — an unstartable `provider/id`, a
+ * readiness timeout, a crash — costs the turn and nothing else: the
+ * previous child never stopped serving, and the next turn runs on it.
+ *
+ * Closing first is what stranded the thread: `sessions` had no entry, every
+ * later turn answered "No active pi session", and the runtime still held the
+ * thread, so nothing resumed it (#2221 review).
+ */
+async function rebuildThreadSession(
+  threadId: string,
+  previous: ThreadSession,
+  params: PiSessionParams,
+): Promise<ThreadSession> {
+  let replacement: ThreadSession;
+  try {
+    replacement = await constructPiThreadSession(
+      threadId,
+      previous.providerThreadId,
+      params,
+    );
+  } catch (error) {
+    // The failed construction removed its own registration. Put the child
+    // that is still alive back in front of the thread, unless something
+    // else (a resume, a discard) already claimed it.
+    if (!sessions.has(threadId) && !previous.closing) {
+      sessions.set(threadId, previous);
+    }
+    throw error;
+  }
+  retireReplacedPiChild(previous);
+  return replacement;
 }
 
 /**
@@ -923,8 +997,10 @@ function recordAcceptedTurnInput(params: TurnStartParams): void {
  * instead of starting a turn on it, and a steer joins the turn that is
  * already running on the model it started with. Reconciliation runs ahead of
  * every dispatch, including manual compaction, so the summarization request
- * also goes to the selected model. A model that does not resolve fails the
- * turn instead of silently keeping the old one.
+ * also goes to the selected model. A selection the rebuild cannot serve —
+ * a model that does not resolve, a child that will not start on it — fails
+ * the turn alone: `rebuildThreadSession` keeps the live child until a
+ * replacement is verified, so the thread stays servable either way.
  */
 async function reconcileTurnOptions(
   threadId: string,
@@ -963,17 +1039,13 @@ async function reconcileTurnOptions(
   if (!modelChanged && !thinkingLevelChanged) {
     return threadSession;
   }
-  await startPiThreadSession(threadId, threadSession.providerThreadId, {
+  const replacement = await rebuildThreadSession(threadId, threadSession, {
     ...construction,
     ...(turnOptions.model === undefined ? {} : { model: turnOptions.model }),
     ...(turnOptions.thinkingLevel === undefined
       ? {}
       : { thinkingLevel: turnOptions.thinkingLevel }),
   });
-  const replacement = sessions.get(threadId);
-  if (!replacement) {
-    throw new Error("No active pi session");
-  }
   // A replacement session re-reports its identity and restorability, and
   // its boundary deltas go out before the notification that explains them.
   sendThreadIdentity(threadId, replacement.providerThreadId);
