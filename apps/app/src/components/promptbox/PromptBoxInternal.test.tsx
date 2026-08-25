@@ -2812,6 +2812,20 @@ describe("PromptBoxInternal mention triggers", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
+  it("keeps a dismissed multiword occurrence closed as its query extends", async () => {
+    const { changes, promptBoxRef } = renderPromptBox("@asdf qwe", {
+      mentionSuggestions: [githubIssueSuggestion],
+    });
+    await focusPromptEnd(promptBoxRef);
+    await screen.findByRole("button", { name: /Fix login bug/u });
+
+    fireEvent.keyDown(getPromptEditorElement(), { key: "Escape" });
+    await act(async () => promptBoxRef.current?.insertTextAtCursor("rt"));
+
+    await waitFor(() => expect(latestValue(changes)).toBe("@asdf qwe rt"));
+    expect(screen.queryByRole("button", { name: /Fix login bug/u })).toBeNull();
+  });
+
   it("reports the queued editor typeahead's open state and measured height", async () => {
     const layouts: Array<{ height: number; isOpen: boolean }> = [];
     const nativeGetBoundingClientRect =

@@ -1619,11 +1619,23 @@ export function PromptBoxInternal({
   const syncTriggerState = useCallback(
     (editor: Editor) => {
       const caretPosition = editor.state.selection.from;
-      const dismissedTrigger = dismissedTriggerRef.current;
+      let dismissedTrigger = dismissedTriggerRef.current;
       const isRestoringAppliedMention =
         isRestoringAppliedMentionRef.current && dismissedTrigger !== null;
-
+      const detectedTrigger = findActiveTrigger(editor, triggers);
       if (dismissedTrigger && !isRestoringAppliedMention) {
+        if (
+          !dismissedTrigger.hasLeftRange &&
+          detectedTrigger?.from === dismissedTrigger.start
+        ) {
+          // Continuing to type extends the same trigger occurrence. Grow the
+          // dismissed range before checking whether the caret left it.
+          dismissedTrigger = {
+            ...dismissedTrigger,
+            end: Math.max(dismissedTrigger.end, caretPosition),
+          };
+          dismissedTriggerRef.current = dismissedTrigger;
+        }
         const isWithinDismissedRange =
           caretPosition >= dismissedTrigger.start &&
           caretPosition <= dismissedTrigger.end;
@@ -1646,9 +1658,7 @@ export function PromptBoxInternal({
             caretPosition <= dismissedTriggerRef.current.end)),
       );
 
-      const nextTrigger = shouldSuppressTrigger
-        ? null
-        : findActiveTrigger(editor, triggers);
+      const nextTrigger = shouldSuppressTrigger ? null : detectedTrigger;
       const nextKey = nextTrigger
         ? `${nextTrigger.kind}:${nextTrigger.from}:${nextTrigger.to}:${nextTrigger.query}`
         : "";
