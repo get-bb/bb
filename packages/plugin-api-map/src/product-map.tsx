@@ -236,42 +236,58 @@ function Slide({
 }) {
   switch (group.id) {
     case "app-shell":
-      return (
-        <FitDiagram>
-          <AppShellWireframe />
-        </FitDiagram>
-      );
+      // This is the densest diagram in the Guide. Keep it at a readable
+      // product-like size and let its own stage scroll horizontally in a
+      // narrow bb pane; shrinking the whole window makes every label and
+      // annotation harder to understand at once.
+      return <AppShellWireframe />;
     case "composer":
       // Inside bb, the diagram is the real host composer rendered inert —
       // authentic proportions, no interactivity, with both menus drawn as
       // static popovers. The docs site has no host, so it keeps the mock.
       // Not scaled: the live composer is a real interactive component, and a
       // CSS transform would blur its text and offset its menus.
-      return annotatedComposer ? (
-        <RealComposerAnnotated composer={annotatedComposer} />
-      ) : (
-        <FitDiagram>
-          <ComposerWireframe />
-        </FitDiagram>
+      return (
+        <div className="mx-auto max-w-5xl">
+          {annotatedComposer ? (
+            <RealComposerAnnotated composer={annotatedComposer} />
+          ) : (
+            <FitDiagram>
+              <ComposerWireframe />
+            </FitDiagram>
+          )}
+        </div>
       );
     case "home":
-      return <ComposeScreenWireframe composer={realComposer} />;
+      return (
+        <div className="mx-auto max-w-5xl">
+          <ComposeScreenWireframe composer={realComposer} />
+        </div>
+      );
     case "settings":
       return (
-        <FitDiagram>
-          <SettingsWireframe />
-        </FitDiagram>
+        <div className="mx-auto max-w-5xl">
+          <FitDiagram>
+            <SettingsWireframe />
+          </FitDiagram>
+        </div>
       );
     case "extensions":
       return (
-        <FitDiagram>
-          <ExtensionsPluginPageWireframe />
-        </FitDiagram>
+        <div className="mx-auto max-w-5xl">
+          <FitDiagram>
+            <ExtensionsPluginPageWireframe />
+          </FitDiagram>
+        </div>
       );
     // The capability grid reflows on its own; scaling it would only shrink
     // text that has room to wrap instead.
     case "headless":
-      return <PlatformSlide group={group} />;
+      return (
+        <div className="mx-auto max-w-5xl">
+          <PlatformSlide group={group} />
+        </div>
+      );
   }
 }
 
@@ -523,7 +539,7 @@ export function ProductMap({
   return (
     <SurfaceMapContext.Provider value={mapState}>
       <div ref={containerRef} className="relative">
-        <div data-map-column className="mx-auto max-w-5xl">
+        <div data-map-column className="mx-auto max-w-7xl">
           {header}
 
           <section
@@ -634,7 +650,9 @@ export function ProductMap({
 
             {/* The detail card, when no gutter can hold it: in flow, tight
                 under the diagram, never covering it. */}
-            {cardNode ? <div className="mt-2">{cardNode}</div> : null}
+            {cardNode ? (
+              <div className="mx-auto mt-2 max-w-5xl">{cardNode}</div>
+            ) : null}
           </section>
         </div>
       </div>

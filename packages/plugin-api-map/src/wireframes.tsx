@@ -148,6 +148,7 @@ function Mark({
   label,
   className,
   chipClassName,
+  showChip = true,
   edge = false,
   onActivate,
   children,
@@ -156,6 +157,8 @@ function Mark({
   label: string;
   className?: string;
   chipClassName?: string;
+  /** Whether this region renders its own numbered chip. */
+  showChip?: boolean;
   /**
    * Anchor the chip to the diagram's gutter instead of to this mark, for a
    * region that hugs an outer edge — those chips crowd the diagram's own
@@ -219,20 +222,22 @@ function Mark({
       {/* Markers ship in the prominent ink fill so they read as the page's
           interactive layer; the selected one switches to the timeline file
           accent. The ring punches the chip out of the mockup's grey bones. */}
-      <span
-        aria-hidden
-        className={annotationChipClass(
-          active,
-          // The ring is the only addition: it keeps the chip legible where it
-          // overlaps the mockup's own grey bones.
-          cn(
-            "absolute z-50 ring-2 ring-card",
-            chipClassName ?? "-right-2 -top-2",
-          ),
-        )}
-      >
-        {numberOf(id)}
-      </span>
+      {showChip ? (
+        <span
+          aria-hidden
+          className={annotationChipClass(
+            active,
+            // The ring is the only addition: it keeps the chip legible where it
+            // overlaps the mockup's own grey bones.
+            cn(
+              "absolute z-50 ring-2 ring-card",
+              chipClassName ?? "-right-2 -top-2",
+            ),
+          )}
+        >
+          {numberOf(id)}
+        </span>
+      ) : null}
       {children}
     </a>
   );
@@ -251,12 +256,15 @@ function RegionMark({
   label,
   className,
   chipClassName,
+  showChip = true,
   children,
 }: {
   id: string;
   label: string;
   className?: string;
   chipClassName?: string;
+  /** Whether this region renders its own numbered chip. */
+  showChip?: boolean;
   children: ReactNode;
 }) {
   const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
@@ -295,18 +303,20 @@ function RegionMark({
             : "ring-transparent hover:bg-state-hover",
         )}
       >
-        <span
-          aria-hidden
-          className={annotationChipClass(
-            active,
-            cn(
-              "absolute z-50 ring-2 ring-card",
-              chipClassName ?? "-right-2 -top-2",
-            ),
-          )}
-        >
-          {numberOf(id)}
-        </span>
+        {showChip ? (
+          <span
+            aria-hidden
+            className={annotationChipClass(
+              active,
+              cn(
+                "absolute z-50 ring-2 ring-card",
+                chipClassName ?? "-right-2 -top-2",
+              ),
+            )}
+          >
+            {numberOf(id)}
+          </span>
+        ) : null}
       </a>
       {children}
     </div>
@@ -421,8 +431,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       id="nav-panel"
       label="Plugin nav panels, above the thread list"
       className="mx-1.5 px-1.5 pb-2.5 pt-1"
-      edge
-      chipClassName="left-1 top-[124px]"
+      showChip={false}
     >
       <span className="flex h-6.5 items-center gap-2 rounded-md px-2">
         <MiniIcon icon={ToolboxIcon} />
@@ -441,7 +450,7 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       id="thread-list"
       label="The thread list, replaceable by one plugin"
       className="mx-1.5 flex-1 px-1.5 py-1.5"
-      chipClassName="left-0 top-[68px]"
+      showChip={false}
     >
       <span className="block px-2 pb-1 pt-1.5 text-xs text-subtle-foreground/75">
         Pinned
@@ -536,19 +545,33 @@ export function AppShellWireframe() {
     // The padding is the annotation gutter: edge-hugging markers anchor to
     // this box and sit outside the frame, so they ring the diagram instead
     // of crowding its chrome.
-    <div className="relative px-7 pb-2 pt-4">
-      {/* Content scripts have no slot of their own — they run across the
-          whole window, so the marker annotates the frame itself. */}
-      <OverlayMark
-        id="content-scripts"
-        label="App-wide plugin scripts, running in the whole window"
-        className="left-1/2 top-0.5 -translate-x-1/2"
-        region="inset-x-7 bottom-2 top-4"
-      />
-      {/* Three fixed-ish columns need ~720px; small windows scroll the
-          mockup horizontally instead of losing the panel and its markers. */}
-      <div className="overflow-x-auto">
-        <div className="min-w-[720px]">
+    // Unlike the simpler slides, this dense three-column anatomy stays at a
+    // readable minimum size. The whole annotated object scrolls together in
+    // a narrow pane, so the exterior sidebar badges do not detach from it.
+    <div className="overflow-x-auto">
+      <div className="relative min-w-[1120px] px-10 pb-4 pt-4">
+        {/* The first two surfaces belong to the sidebar as a whole. Keep their
+            chips in the exterior annotation gutter, matching the shipped Guide,
+            while the in-frame regions remain independently clickable. */}
+        <OverlayMark
+          id="nav-panel"
+          label="Plugin nav panels, above the thread list"
+          className="left-4 top-[124px]"
+        />
+        <OverlayMark
+          id="thread-list"
+          label="The thread list, replaceable by one plugin"
+          className="left-4 top-[190px]"
+        />
+        {/* Content scripts have no slot of their own — they run across the
+            whole window, so the marker annotates the frame itself. */}
+        <OverlayMark
+          id="content-scripts"
+          label="App-wide plugin scripts, running in the whole window"
+          className="left-1/2 top-0.5 -translate-x-1/2"
+          region="inset-x-10 bottom-4 top-4"
+        />
+        <div className="min-w-[1040px]">
           <AppShellWireframeBody
             rightPanelTab={rightPanelTab}
             onRightPanelTabSelect={setRightPanelTab}
@@ -587,14 +610,14 @@ function AppShellWireframeBody({
           </div>
         </div>
       </RegionMark>
-      {/* Sized to the real window's aspect: at the diagram's 832px width, a
-          ~523px frame matches the ~1.6:1 footprint of an actual bb window.
+      {/* Sized to the real window's aspect: at the diagram's 1100px width, a
+          650px frame matches the ~1.7:1 footprint of an actual bb window.
           The thread list and timeline are flex-1, so the height lands there
           as open canvas. The timeline's explicit minimum keeps this loaded
           fixture aligned with the same taller skeleton geometry. */}
-      <div className="flex min-h-[523px] items-stretch">
+      <div className="flex min-h-[650px] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
-        <div className="flex w-[264px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
+        <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
             <Fragment key={key}>{SIDEBAR_SECTION_RENDERERS[key]?.()}</Fragment>
           ))}
@@ -603,7 +626,7 @@ function AppShellWireframeBody({
         {/* ── thread view ── */}
         <div className="flex min-w-0 flex-1 flex-col">
           {/* header: title left; plugin action leads the right action row */}
-          <div className="flex h-10 items-center gap-2 border-b border-border-hairline px-3">
+          <div className="flex h-12 items-center gap-2 border-b border-border-hairline px-4">
             <span className="truncate text-foreground">
               Fix flaky checkout tests
             </span>
@@ -625,7 +648,7 @@ function AppShellWireframeBody({
           {/* timeline */}
           <div
             data-guide-fixture="app-window-timeline"
-            className="min-h-[400px] flex-1 space-y-5 overflow-hidden px-3 py-4"
+            className="min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
           >
             {/* user message: right-aligned bubble */}
             <div className="flex justify-end">
@@ -718,7 +741,7 @@ function AppShellWireframeBody({
           </div>
 
           {/* pending interaction: replaces the prompt box, not the timeline */}
-          <div className="space-y-2 border-t border-border-hairline p-2.5">
+          <div className="space-y-2 border-t border-border-hairline p-4">
             <Mark
               id="pending-interaction"
               label="A plugin ask-the-user form, shown in place of the composer"
@@ -773,8 +796,8 @@ export function AppShellRightPanel({
     // Plain bg-sidebar, like the real ThreadSecondaryPanel — the real panel
     // is not the app's `.fixed.bg-sidebar` element, so it does not receive
     // the themed sidebar overlay.
-    <div className="flex w-[248px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
-      <div className="flex h-10 items-center gap-1 border-b border-border-hairline px-2">
+    <div className="flex w-[300px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
+      <div className="flex h-12 items-center gap-1.5 border-b border-border-hairline px-3">
         <span className="flex h-6 items-center rounded-md px-1.5">
           <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
         </span>
@@ -819,7 +842,7 @@ export function AppShellRightPanel({
         <MiniIcon icon={PlusSignIcon} className="size-3.5" />
         <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
       </div>
-      <div data-guide-tab-body={activeTab} className="m-2 flex-1 p-2.5">
+      <div data-guide-tab-body={activeTab} className="m-3 flex-1 p-3.5">
         {activeTab === "thread-panel" ? (
           <div data-guide-fixture="thread-panel" className="space-y-2">
             <div className="flex items-center gap-1.5 text-foreground">
@@ -1060,6 +1083,7 @@ function OverlayMark({
         />
       ) : null}
       <a
+        data-guide-badge={id}
         href={`#surface-${id}`}
         aria-label={`${label} — jump to details`}
         onClick={

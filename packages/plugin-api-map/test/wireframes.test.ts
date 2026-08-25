@@ -67,15 +67,19 @@ describe("guide fixture boundaries", () => {
     expect(codeTab).toContain("-top-2");
   });
 
-  it("keeps the thread-list badge inside the sidebar's clipped edge", () => {
+  it("places the first two sidebar badges in the exterior annotation gutter", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
-    const threadList = markup.slice(
-      markup.indexOf('data-guide-region="thread-list"'),
-      markup.indexOf("Pinned"),
-    );
 
-    expect(threadList).toContain("left-0 top-[68px]");
-    expect(threadList).not.toContain("-left-3");
+    expect(markup).toMatch(
+      /data-guide-badge="nav-panel"[\s\S]*left-4 top-\[124px\]/,
+    );
+    expect(markup).toMatch(
+      /data-guide-badge="thread-list"[\s\S]*left-4 top-\[190px\]/,
+    );
+    expect(markup).toContain("overflow-x-auto");
+    expect(markup).toContain(
+      "relative min-w-[1120px] px-10 pb-4 pt-4",
+    );
   });
 
   it("gives the app-window timeline taller, looser skeleton geometry", () => {
@@ -85,9 +89,11 @@ describe("guide fixture boundaries", () => {
       markup.indexOf("Fix the flaky checkout tests"),
     );
 
-    expect(markup).toContain("flex min-h-[523px] items-stretch");
-    expect(timeline).toContain("min-h-[400px] flex-1 space-y-5");
-    expect(timeline).toContain("px-3 py-4");
+    expect(markup).toContain("min-w-[1040px]");
+    expect(markup).toContain("flex min-h-[650px] items-stretch");
+    expect(markup).toContain("flex w-[300px] shrink-0 flex-col");
+    expect(timeline).toContain("min-h-[510px] flex-1 space-y-7");
+    expect(timeline).toContain("px-5 py-6");
   });
 
   it.each([
