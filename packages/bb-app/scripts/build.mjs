@@ -60,6 +60,12 @@ await buildNodeEsmEntry({
   packageRoot,
 });
 await buildPublicSdkDeclarations();
+await buildNodeEsmEntry({
+  cleanDist: false,
+  entryPoint: resolve(scriptsDir, "prune-bb-chunks.mjs"),
+  outfile: resolve(packageRoot, "dist", "prune-bb-chunks.mjs"),
+  packageRoot,
+});
 
 await copyBuildOutput({
   from: resolve(workspaceRoot, "apps", "app", "dist"),
@@ -107,7 +113,7 @@ await assertPathExists(
 );
 const pruneRun = await execFileAsync(
   "node",
-  [resolve(scriptsDir, "prune-bb-chunks.mjs")],
+  [resolve(packageRoot, "dist", "prune-bb-chunks.mjs")],
   { cwd: packageRoot },
 );
 process.stderr.write(pruneRun.stderr);

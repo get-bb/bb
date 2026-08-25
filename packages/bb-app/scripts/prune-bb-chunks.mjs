@@ -5,10 +5,10 @@ import { pruneUnreferencedChunks } from "../../../scripts/build-utils.mjs";
 /**
  * Delete the bb CLI chunks that host-daemon/dist/bb does not reach.
  *
- * Runs from scripts/build.mjs after copying apps/host-daemon/dist.
+ * Bundled into dist/prune-bb-chunks.mjs: the build runs that copy after
+ * assembling the package, and npm prepack runs it again at the pack boundary.
  *
- * The package root is the working directory, as for every package script:
- * npm runs lifecycle hooks, and turbo the build, from the package directory.
+ * The package root is the working directory, as for every package script.
  */
 const packageRoot = process.cwd();
 const distDir = resolve(packageRoot, "host-daemon", "dist");

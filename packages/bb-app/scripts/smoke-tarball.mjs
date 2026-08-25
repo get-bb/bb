@@ -1,6 +1,13 @@
 import { fork, spawn } from "node:child_process";
 import { mkdirSync, readdirSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -268,25 +275,44 @@ function createNpxArgs(tarballPath, bin, args) {
 }
 
 async function packTarball() {
-  const stdout = await runCommand({
-    args: ["pack", packageRoot, "--pack-destination", tempRoot, "--json"],
-    command: "npm",
-    label: "npm pack",
-  });
-  const packed = JSON.parse(stdout);
-  if (!Array.isArray(packed) || packed.length !== 1) {
-    throw new Error(`Unexpected npm pack output: ${stdout}`);
+  const chunkDir = join(packageRoot, "host-daemon", "dist", "bb-chunks");
+  const liveChunk = readdirSync(chunkDir).find((name) => name.endsWith(".js"));
+  if (liveChunk === undefined) {
+    throw new Error("Built bb-app has no CLI chunk to exercise");
   }
-  const [entry] = packed;
-  if (
-    typeof entry !== "object" ||
-    entry === null ||
-    !("filename" in entry) ||
-    typeof entry.filename !== "string"
-  ) {
-    throw new Error(`Unexpected npm pack entry: ${stdout}`);
+  // Model a Turbo cache restore over existing output: a dead hashed chunk can
+  // remain beside the current generation immediately before source npm pack.
+  const staleChunkName = "chunk-SLOP-CACHE-STALE.js";
+  const staleChunk = join(chunkDir, staleChunkName);
+  await copyFile(join(chunkDir, liveChunk), staleChunk);
+  try {
+    const stdout = await runCommand({
+      args: ["pack", packageRoot, "--pack-destination", tempRoot, "--json"],
+      command: "npm",
+      label: "npm pack",
+    });
+    const packed = JSON.parse(stdout);
+    if (!Array.isArray(packed) || packed.length !== 1) {
+      throw new Error(`Unexpected npm pack output: ${stdout}`);
+    }
+    const [entry] = packed;
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !("filename" in entry) ||
+      typeof entry.filename !== "string" ||
+      !Array.isArray(entry.files)
+    ) {
+      throw new Error(`Unexpected npm pack entry: ${stdout}`);
+    }
+    const staleChunkPath = `host-daemon/dist/bb-chunks/${staleChunkName}`;
+    if (entry.files.some((file) => file.path === staleChunkPath)) {
+      throw new Error(`npm pack included stale CLI chunk ${staleChunkPath}`);
+    }
+    return join(tempRoot, entry.filename);
+  } finally {
+    await rm(staleChunk, { force: true });
   }
-  return join(tempRoot, entry.filename);
 }
 
 function waitForJsonRpcResponse({ childProcess, id, label, output }) {
