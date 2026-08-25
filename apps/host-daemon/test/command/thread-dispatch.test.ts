@@ -172,6 +172,56 @@ describe("thread command dispatch", () => {
     expect(harness.runtimeState.resumedThreadId).toBeUndefined();
   });
 
+  it("reloads an idle runtime with the command's current config", async () => {
+    const harness = createHarness({ workspacePath: "/tmp/env-reload" });
+    const command: Extract<HostDaemonCommand, { type: "thread.reload" }> = {
+      type: "thread.reload",
+      environmentId: "env-reload",
+      threadId: "thread-reload",
+      workspaceContext: {
+        workspacePath: "/tmp/env-reload",
+        workspaceProvisionType: "unmanaged",
+      },
+      projectId: "project-reload",
+      providerId: "fake",
+      providerThreadId: "provider-reload",
+      bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
+      options: {
+        model: "fresh-model",
+        serviceTier: "default",
+        reasoningLevel: "medium",
+        providerOptions: {},
+        permissionMode: "full",
+        permissionScope: "full",
+        approvalReviewer: null,
+        permissionEscalation: null,
+      },
+      instructions: "Fresh startup instructions",
+      dynamicTools: [],
+      injectedSkillSources: [],
+      instructionMode: "append",
+    };
+
+    await expect(
+      dispatchCommand(command, harness.dispatchOptions()),
+    ).resolves.toEqual({ status: "reloaded" });
+    expect(harness.runtimeState.reloadedThreadId).toBe("thread-reload");
+    expect(harness.runtimeState.reloadedProviderThreadId).toBe(
+      "provider-reload",
+    );
+    expect(harness.runtimeState.reloadedInstructions).toBe(
+      "Fresh startup instructions",
+    );
+
+    harness.threadControls.setActiveTurn("thread-reload", "turn-active");
+    await expect(
+      dispatchCommand(command, harness.dispatchOptions()),
+    ).rejects.toMatchObject({
+      code: "thread_active",
+      message: expect.stringContaining("active turn"),
+    });
+  });
+
   it("stages uploaded thread.start attachments before runtime input", async () => {
     const threadStorageRootPath = await makeTempDir(
       "bb-thread-start-attachments-",

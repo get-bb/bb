@@ -826,6 +826,13 @@ export type TimelineTurnSummaryDetailsResponse = z.infer<
   typeof timelineTurnSummaryDetailsResponseSchema
 >;
 
+export const experimental_threadReloadResponseSchema = z
+  .object({ status: z.literal("reloaded") })
+  .strict();
+export type ExperimentalThreadReloadResponse = z.infer<
+  typeof experimental_threadReloadResponseSchema
+>;
+
 export const threadTimelineResponseSchema = z.object({
   rows: z.array(timelineRowSchema),
   activePromptMode: threadTimelineActivePromptModeSchema.nullable(),

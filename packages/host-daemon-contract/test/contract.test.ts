@@ -454,6 +454,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "thread.start": {
     providerThreadId: "provider-thread-123",
   },
+  "thread.reload": { status: "reloaded" },
   "turn.submit": {
     appliedAs: "new-turn",
   },
@@ -1046,7 +1047,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(170);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(171);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 

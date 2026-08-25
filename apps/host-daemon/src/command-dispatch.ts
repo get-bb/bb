@@ -62,6 +62,7 @@ import {
   discardThreadRewind,
   ensureThreadRuntime,
   prepareThreadRewind,
+  reloadThread,
   startThread,
   submitTurn,
 } from "./command-handlers/thread.js";
@@ -328,6 +329,7 @@ const commandHandlers: CommandHandlerMap = {
       release();
     }
   },
+  "thread.reload": reloadThread,
   "turn.submit": async (command, options) => {
     const release =
       await options.runtimeManager.retainEnvironmentForThreadCommand(

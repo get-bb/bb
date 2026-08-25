@@ -521,6 +521,10 @@ For review or fix pipelines, get the environment ID from
   the retry.
 - For interrupted or stopped threads, inspect first. If the user stopped the
   thread, treat that as intentional unless they ask you to continue.
+- Use `bb thread reload <id>` to recreate an idle provider session after its
+  extension or startup configuration changes. Reload keeps the provider
+  conversation id, starts no turn, and adds no timeline message. It rejects
+  active or pending work.
 - Use `bb thread stop <id>` when a thread is stuck or no longer needed.
 - `bb thread stop <id>` also releases an idle or stuck agent runtime. The
   command is idempotent and preserves thread history.

@@ -250,6 +250,20 @@ observation event is needed instead of weakening short-circuit behavior. Audit
 whether raw tool input needs a size limit before plugins inspect it. Confirm
 that provider-native tools should remain a provider-extension concern.
 
+## Provider session reload (`bb.sdk.threads.experimental_reload`)
+
+**What it does.** Recreates an idle provider session from current startup
+configuration while retaining the provider conversation id. It starts no turn
+and adds no user or assistant timeline message. The operation rejects active
+turns, pending turn starts, background work, queued messages, and pending user
+interactions.
+
+**Audit before stabilizing.** Confirm reload remains one session-replacement
+operation across every provider; verify which idle provider-owned work must
+block replacement; review failure recovery after the old session closes but the
+new session fails to start; and confirm the `{ status: "reloaded" }` result is
+sufficient before dropping the prefix.
+
 ## `experimental_buildBridgeToolCallContent`
 
 **Kept experimental (2026-08-22).** it still accepts two input shapes (ordered `contentBlocks` and the legacy aggregate `{ content, images }`) though every first-party caller now passes the ordered form, and no image MIME/size policy exists at the server boundary; drop the legacy input and settle the policy, then stabilize.

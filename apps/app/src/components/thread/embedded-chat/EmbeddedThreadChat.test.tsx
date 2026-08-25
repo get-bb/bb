@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   }>,
   queuedMessages: [] as Array<{ id: string }>,
   readTrackingThreads: [] as Array<unknown>,
+  reloadThreadMutateAsync: vi.fn(),
   sendThreadMessageMutateAsync: vi.fn(),
   threadRuntimeDisplayStatus: "idle" as string,
   // Stands in for the realtime-updated timeline query cache: rows appended here
@@ -278,6 +279,10 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     mutate: vi.fn(),
     isPending: false,
   }),
+  useReloadThread: () => ({
+    mutateAsync: mocks.reloadThreadMutateAsync,
+    isPending: false,
+  }),
   useSendThreadMessage: () => ({
     mutateAsync: mocks.sendThreadMessageMutateAsync,
     isPending: false,
@@ -373,6 +378,9 @@ describe("EmbeddedThreadChat", () => {
   beforeEach(() => {
     window.localStorage.clear();
     mocks.createQueuedMessageMutateAsync.mockReset().mockResolvedValue({});
+    mocks.reloadThreadMutateAsync
+      .mockReset()
+      .mockResolvedValue({ status: "reloaded" });
     mocks.sendThreadMessageMutateAsync.mockReset().mockResolvedValue({});
     mocks.markThreadReadMutate.mockReset();
     mocks.onOpenLink.mockReset();
@@ -498,6 +506,40 @@ describe("EmbeddedThreadChat", () => {
       screen.getByTestId<HTMLInputElement>("embedded-chat-composer").value,
     ).toBe("");
   });
+
+  it("reloads the provider session for exact /reload without sending a message", async () => {
+    renderEmbeddedChat();
+    fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+      target: { value: "/reload" },
+    });
+    fireEvent.click(screen.getByText("Send"));
+
+    await vi.waitFor(() => {
+      expect(mocks.reloadThreadMutateAsync).toHaveBeenCalledWith("thr_child");
+    });
+    expect(mocks.sendThreadMessageMutateAsync).not.toHaveBeenCalled();
+    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it.each(["/reload now", " /reload", "/reload ", "\\/reload"])(
+    "sends non-exact reload text to the model: %s",
+    async (text) => {
+      renderEmbeddedChat();
+      fireEvent.change(screen.getByTestId("embedded-chat-composer"), {
+        target: { value: text },
+      });
+      fireEvent.click(screen.getByText("Send"));
+
+      await vi.waitFor(() => {
+        expect(mocks.sendThreadMessageMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({
+            input: [{ type: "text", text: text.trim(), mentions: [] }],
+          }),
+        );
+      });
+      expect(mocks.reloadThreadMutateAsync).not.toHaveBeenCalled();
+    },
+  );
 
   it("sends directly when the thread runtime is idle", async () => {
     mocks.threadRuntimeDisplayStatus = "idle";

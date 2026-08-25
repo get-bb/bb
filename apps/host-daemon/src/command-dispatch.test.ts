@@ -176,6 +176,15 @@ function createRuntime(): FakeDispatchRuntime {
       hostedThreadIds.add(args.threadId);
       return { providerThreadId: "provider-thread-1" };
     }),
+    reloadThread: vi.fn(
+      async (args: { providerThreadId: string; threadId: string }) => {
+        hostedThreadIds.add(args.threadId);
+        return {
+          status: "reloaded" as const,
+          providerThreadId: args.providerThreadId,
+        };
+      },
+    ),
     runTurn: vi.fn(async () => undefined),
     steerTurn: vi.fn(async () => ({ status: "steered" as const })),
     stopThread: vi.fn(async (args: { threadId: string }) => {

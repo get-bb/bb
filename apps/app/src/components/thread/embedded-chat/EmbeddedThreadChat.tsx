@@ -55,6 +55,7 @@ import { useThreadDefaultExecutionOptions } from "@/hooks/queries/thread-default
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import {
   useCreateThreadQueuedMessage,
+  useReloadThread,
   useSendThreadMessage,
   useStopThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
@@ -74,6 +75,7 @@ import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
 import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
+import { isExactThreadReloadCommand } from "./thread-reload-command";
 
 /**
  * A thread that awaits a user interaction cannot take a prompt, so the server
@@ -261,6 +263,7 @@ function EmbeddedThreadChatWithComposer({
   const surfaceKey = threadId;
   const markThreadRead = useMarkThreadRead();
   const stopThread = useStopThread();
+  const reloadThread = useReloadThread();
   const sendThreadMessage = useSendThreadMessage();
   const createQueuedMessage = useCreateThreadQueuedMessage();
   const threadQuery = useThread(threadId);
@@ -502,10 +505,45 @@ function EmbeddedThreadChatWithComposer({
       threadId,
     ],
   );
+  const submitReloadIfExact = useCallback(
+    (submittedDraft: typeof currentPromptDraft): boolean => {
+      if (!isExactThreadReloadCommand(submittedDraft)) {
+        return false;
+      }
+      promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      setIsTurnSubmitting(true);
+      void reloadThread
+        .mutateAsync(threadId)
+        .catch((error) => {
+          if (!isMountedRef.current) {
+            return;
+          }
+          promptDraft.restoreIfEmpty(submittedDraft);
+          appToast.error(
+            getMutationErrorMessage({
+              error,
+              fallbackMessage: "Failed to reload provider session",
+            }),
+          );
+        })
+        .finally(() => {
+          if (isMountedRef.current) {
+            setIsTurnSubmitting(false);
+          }
+        });
+      return true;
+    },
+    [promptDraft, reloadThread, setBottomAttachmentError, threadId],
+  );
+
   const handleSubmit = useCallback(() => {
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
     if (submittedInput.length === 0 || isTurnSubmitting) {
+      return;
+    }
+    if (submitReloadIfExact(submittedDraft)) {
       return;
     }
     promptDraft.clearIfCurrentMatches(submittedDraft);
@@ -541,6 +579,7 @@ function EmbeddedThreadChatWithComposer({
     labels.sendError,
     promptDraft,
     setBottomAttachmentError,
+    submitReloadIfExact,
   ]);
 
   const isQueueMutationPending =
@@ -561,6 +600,9 @@ function EmbeddedThreadChatWithComposer({
 
     const submittedDraft = currentPromptDraft;
     const submittedInput = currentPromptDraftInput;
+    if (submitReloadIfExact(submittedDraft)) {
+      return;
+    }
     if (submittedInput.length === 0) {
       const nextQueuedMessage = queuedMessages[0];
       if (nextQueuedMessage) {
@@ -611,6 +653,7 @@ function EmbeddedThreadChatWithComposer({
     queuedMessages,
     sendThreadMessage,
     setBottomAttachmentError,
+    submitReloadIfExact,
     threadId,
   ]);
 

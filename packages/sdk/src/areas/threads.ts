@@ -10,10 +10,14 @@ import {
   type ThreadQueuedMessage,
   type ThreadStatus,
 } from "@bb/domain";
-import { threadTabsResponseSchema } from "@bb/server-contract";
+import {
+  experimental_threadReloadResponseSchema,
+  threadTabsResponseSchema,
+} from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
+  ExperimentalThreadReloadResponse,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -122,6 +126,7 @@ export type ThreadDeleteResult = { ok: true };
 export type ThreadSendResult = SendMessageResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
 export type ThreadStopResult = { ok: true };
+export type ExperimentalThreadReloadResult = ExperimentalThreadReloadResponse;
 export type ThreadCompactResult = { ok: true };
 export type ThreadBannerActionResult = { ok: true };
 export type ThreadUnarchiveResult = { ok: true };
@@ -443,6 +448,9 @@ export interface ThreadsArea {
   ): Promise<ThreadDefaultExecutionOptionsResult>;
   delete(args: ThreadDeleteArgs): Promise<ThreadDeleteResult>;
   editMessage(args: ThreadEditMessageArgs): Promise<ThreadEditMessageResult>;
+  experimental_reload(
+    args: ThreadStatusArgs,
+  ): Promise<ExperimentalThreadReloadResult>;
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
@@ -1068,6 +1076,15 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           json: spawnJson(input),
         }),
       );
+    },
+    async experimental_reload(input) {
+      const body = await transport.readJson(
+        transport.api.v1.threads[":id"].reload.$post(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return experimental_threadReloadResponseSchema.parse(body);
     },
     async stop(input) {
       await transport.readVoid(

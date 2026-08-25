@@ -42,6 +42,7 @@ type ProvisionWorkspaceMockArgs = Parameters<
 type EnsureProviderArgs = Parameters<AgentRuntime["ensureProvider"]>[0];
 type StartThreadArgs = Parameters<AgentRuntime["startThread"]>[0];
 type ResumeThreadArgs = Parameters<AgentRuntime["resumeThread"]>[0];
+type ReloadThreadArgs = Parameters<AgentRuntime["reloadThread"]>[0];
 type RunTurnArgs = Parameters<AgentRuntime["runTurn"]>[0];
 type SteerTurnArgs = Parameters<AgentRuntime["steerTurn"]>[0];
 type StopThreadArgs = Parameters<AgentRuntime["stopThread"]>[0];
@@ -257,6 +258,10 @@ function createFakeRuntime() {
     discardThreadRewind: vi.fn(async () => undefined),
     resumeThread: vi.fn(async (_args: ResumeThreadArgs) => ({
       providerThreadId: "provider-1",
+    })),
+    reloadThread: vi.fn(async (args: ReloadThreadArgs) => ({
+      status: "reloaded" as const,
+      providerThreadId: args.providerThreadId,
     })),
     runTurn: vi.fn(async (_args: RunTurnArgs) => undefined),
     steerTurn: vi.fn(async (_args: SteerTurnArgs) => ({

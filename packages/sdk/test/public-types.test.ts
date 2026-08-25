@@ -361,6 +361,7 @@ type ExpectedThreadsKey =
   | "delete"
   | "editMessage"
   | "events"
+  | "experimental_reload"
   | "fork"
   | "get"
   | "interactions"

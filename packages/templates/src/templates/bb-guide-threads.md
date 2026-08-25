@@ -207,11 +207,17 @@ Messaging:
   `createBuiltinPlanCommandTextInput(text)` from `@bb/sdk` and pass it as
   `input` to `threads.spawn` or `threads.send`.
 
+  bb thread reload [id]                    Recreate an idle provider session from current configuration
   bb thread stop [id]                      Stop work and release the agent runtime
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
   bb thread clear-goal [id]                Clear the provider's active Goal
     --self                                 Target current thread
+
+  `thread reload` keeps the provider conversation id, starts no turn, and adds
+  no timeline message. It rejects active work, queued messages, and pending
+  user interactions. The composer runs the same operation only for exact
+  `/reload`; other text remains model input.
 
   `thread compact` enqueues the same structured /compact turn used by the
   composer. Follow the thread timeline for the eventual compaction result.

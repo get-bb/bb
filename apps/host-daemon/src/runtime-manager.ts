@@ -10,12 +10,7 @@ import {
 } from "@bb/agent-runtime";
 import type { Logger } from "@bb/logger";
 import { killProcessesWithCwdUnder } from "@bb/process-utils";
-import type {
-  PendingInteractionCreate,
-  PendingInteractionResolution,
-  ThreadEvent,
-  WorkspaceProvisionType,
-} from "@bb/domain";
+import type { ThreadEvent, WorkspaceProvisionType } from "@bb/domain";
 import { threadScope, turnScope } from "@bb/domain";
 import type {
   HostDaemonActiveThread,
@@ -221,9 +216,7 @@ export interface RuntimeManagerOptions {
     changeKinds: HostDaemonEnvironmentChange[];
     environmentId: string;
   }) => void;
-  onInteractiveRequest?: (
-    request: PendingInteractionCreate,
-  ) => Promise<PendingInteractionResolution>;
+  onInteractiveRequest?: AgentRuntimeOptions["onInteractiveRequest"];
   onToolCall?: AgentRuntimeOptions["onToolCall"];
   onStderr?: AgentRuntimeOptions["onStderr"];
   onProcessExit?: AgentRuntimeOptions["onProcessExit"];

@@ -315,6 +315,11 @@ const threadStartCommandSchema = hostDaemonThreadTargetSchema
     refineGroupedInputMatchesFlatInput(value, ctx);
   });
 
+const threadReloadCommandSchema = hostDaemonThreadTargetSchema
+  .merge(hostDaemonExistingThreadRuntimeContextSchema)
+  .extend({ type: z.literal("thread.reload") })
+  .strict();
+
 const threadRewindPrepareCommandSchema = hostDaemonThreadTargetSchema
   .merge(hostDaemonThreadRuntimeContextSchema)
   .extend({
@@ -1411,6 +1416,9 @@ const providerListModelsResultSchema = z.object({
 const threadStartResultSchema = z.object({
   providerThreadId: z.string().min(1),
 });
+const threadReloadResultSchema = z
+  .object({ status: z.literal("reloaded") })
+  .strict();
 const turnSubmitResultSchema = z.object({
   appliedAs: z.enum(["new-turn", "steer"]),
 });
@@ -1562,6 +1570,15 @@ export const hostDaemonCommandRegistry = {
     type: "thread.start",
     schema: threadStartCommandSchema,
     resultSchema: threadStartResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
+  }),
+  "thread.reload": defineHostDaemonCommandDescriptor({
+    type: "thread.reload",
+    schema: threadReloadCommandSchema,
+    resultSchema: threadReloadResultSchema,
     transport: "settled",
     retryable: false,
     flushEventsBeforeResult: true,
@@ -2059,7 +2076,9 @@ type HostDaemonRetryableOnlineRpcCommandSchema =
 type HostDaemonResultSchemaMapForTransport<
   Transport extends HostDaemonCommandTransport,
 > = {
-  [Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]]: Descriptor["resultSchema"];
+  [
+    Descriptor in HostDaemonCommandDescriptorForTransport<Transport> as Descriptor["type"]
+  ]: Descriptor["resultSchema"];
 };
 
 type HostDaemonCommandResultSchemaMap =

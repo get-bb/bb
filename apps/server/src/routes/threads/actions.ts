@@ -3,6 +3,8 @@ import {
   getEnvironment,
   getQueuedThreadMessage,
   listActiveVisiblePinnedThreadRootsWithPendingInteractionState,
+  listPendingInteractionsByThread,
+  listQueuedThreadMessages,
   pinThread,
   reorderPinnedThread,
   reorderQueuedThreadMessage,
@@ -52,6 +54,7 @@ import { acceptThreadSendRequest } from "../../services/threads/thread-send-requ
 import { editThreadMessage } from "../../services/threads/thread-edit-message.js";
 import {
   buildExecutionOptions,
+  buildThreadReloadCommand,
   dispatchThreadUnarchiveCommand,
   prepareTurnSubmitCommandPayload,
 } from "../../services/threads/thread-commands.js";
@@ -117,6 +120,48 @@ function toQueuedMessageOrderResponse(
         "Queued messages with different execution options cannot be grouped",
       );
   }
+}
+
+function requireReloadableThread(deps: AppDeps, thread: Thread): string {
+  ensureThreadIsWritable(thread);
+  // An errored thread has no work in flight either, and a fresh session is
+  // exactly what it needs; only a running or starting turn is in the way.
+  if (thread.status !== "idle" && thread.status !== "error") {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Provider sessions can only be reloaded while the thread is idle or errored",
+    );
+  }
+  if (listQueuedThreadMessages(deps.db, thread.id).length > 0) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Provider sessions cannot be reloaded while the thread has queued messages",
+    );
+  }
+  if (
+    listPendingInteractionsByThread(deps.db, {
+      threadId: thread.id,
+      statuses: ["pending", "resolving"],
+      limit: 1,
+    }).length > 0
+  ) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      "Provider sessions cannot be reloaded while the thread has a pending interaction",
+    );
+  }
+  const providerThreadId = getLastProviderThreadId(deps, thread.id);
+  if (providerThreadId === null) {
+    throw new ApiError(
+      409,
+      "invalid_request",
+      `Thread ${thread.id} has no provider session to reload`,
+    );
+  }
+  return providerThreadId;
 }
 
 async function compactThreadContext(
@@ -362,6 +407,44 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
     });
     await stopThreadForCurrentState(deps, thread, environment);
     return context.json({ ok: true });
+  });
+
+  post(routes.experimental_reload, async (context) => {
+    const thread = requirePublicThread(deps.db, context.req.param("id"));
+    const providerThreadId = requireReloadableThread(deps, thread);
+    const environment = await requireThreadCommandEnvironment(deps, { thread });
+    const execution = await buildExecutionOptions(
+      deps,
+      {},
+      { threadId: thread.id },
+    );
+    const command = await buildThreadReloadCommand(deps, {
+      environment,
+      execution,
+      providerThreadId,
+      thread,
+    });
+
+    const currentThread = requirePublicThread(deps.db, thread.id);
+    const currentProviderThreadId = requireReloadableThread(
+      deps,
+      currentThread,
+    );
+    if (currentProviderThreadId !== providerThreadId) {
+      throw new ApiError(
+        409,
+        "invalid_request",
+        "The provider session changed while reload was being prepared; retry the operation",
+      );
+    }
+
+    return context.json(
+      await runLiveHostCommand(deps, {
+        command,
+        hostId: environment.hostId,
+        timeoutMs: LIVE_DAEMON_COMMAND_TIMEOUT_MS,
+      }),
+    );
   });
 
   post(routes.compact, async (context) => {

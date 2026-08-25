@@ -333,7 +333,12 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 170 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 171 as const;
+// Version 171 adds `thread.reload` (server → daemon): recreate an idle
+// thread's provider session from the thread's current config, answered with
+// the provider thread id. An older daemon rejects the unknown command, so the
+// bump is what moves an enrolled machine forward.
+
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

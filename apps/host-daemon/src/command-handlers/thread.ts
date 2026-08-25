@@ -278,6 +278,86 @@ export async function startThread(
   }
 }
 
+export async function reloadThread(
+  command: CommandOf<"thread.reload">,
+  options: CommandDispatchOptions,
+): Promise<HostDaemonCommandResult<"thread.reload">> {
+  const release =
+    await options.runtimeManager.retainEnvironmentForThreadCommand(
+      command.environmentId,
+      command.threadId,
+    );
+  try {
+    const released =
+      await options.runtimeManager.releaseThreadFromOtherEnvironments({
+        activeTurn: "keep",
+        environmentId: command.environmentId,
+        threadId: command.threadId,
+      });
+    const [busyEnvironmentId] = released.activeTurnEnvironmentIds;
+    if (busyEnvironmentId !== undefined) {
+      throw new ExpectedCommandDispatchError(
+        "thread_active_in_other_environment",
+        `Thread ${command.threadId} is active in environment ${busyEnvironmentId} and cannot be reloaded`,
+      );
+    }
+
+    const bridgeLaunch = await resolveRuntimeBridgeLaunch(
+      command.bridgeLaunch,
+      options,
+    );
+    const entry = await requireResolvedWorkspaceForCommand({
+      dataDir: options.dataDir,
+      environmentId: command.environmentId,
+      injectedSkillSources: command.injectedSkillSources,
+      runtimeManager: options.runtimeManager,
+      targetThreadId: command.threadId,
+      workspaceContext: command.workspaceContext,
+    });
+    const result = await entry.runtime.reloadThread({
+      bridgeLaunch,
+      environmentId: command.environmentId,
+      threadId: command.threadId,
+      projectId: command.projectId,
+      providerThreadId: command.providerThreadId,
+      providerId: command.providerId,
+      options: command.options,
+      instructions: command.instructions,
+      dynamicTools: command.dynamicTools,
+      disallowedTools: command.disallowedTools,
+      instructionMode: command.instructionMode,
+    });
+    if (result.status === "reloaded") {
+      return { status: "reloaded" };
+    }
+
+    switch (result.reason) {
+      case "active-turn":
+        throw new ExpectedCommandDispatchError(
+          "thread_active",
+          `Thread ${command.threadId} has an active turn and cannot be reloaded`,
+        );
+      case "pending-turn-start":
+        throw new ExpectedCommandDispatchError(
+          "thread_pending",
+          `Thread ${command.threadId} is starting a turn and cannot be reloaded`,
+        );
+      case "background-work":
+        throw new ExpectedCommandDispatchError(
+          "thread_pending",
+          `Thread ${command.threadId} has pending background work and cannot be reloaded`,
+        );
+      case "session-mismatch":
+        throw new ExpectedCommandDispatchError(
+          "stale_thread_session",
+          `Thread ${command.threadId} changed provider sessions before it could be reloaded; retry the operation`,
+        );
+    }
+  } finally {
+    release();
+  }
+}
+
 export async function prepareThreadRewind(
   command: CommandOf<"thread.rewind.prepare">,
   options: CommandDispatchOptions,

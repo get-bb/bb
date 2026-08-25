@@ -47,6 +47,13 @@ import {
 
 type ExecutionOptionsRequest = ExistingThreadExecutionInputRequest;
 
+export interface ThreadReloadCommandArgs {
+  environment: ThreadRuntimeCommandEnvironment;
+  execution: ResolvedThreadExecutionOptions;
+  providerThreadId: string;
+  thread: Thread;
+}
+
 export interface ThreadStopCommandArgs {
   environmentId: string;
   hostId: string;
@@ -320,6 +327,48 @@ export async function buildThreadStartCommand(
     instructionMode: runtimeContext.instructionMode,
     threadStoragePath: runtimeContext.threadStoragePath,
     ...(args.fork ? { fork: args.fork } : {}),
+  };
+}
+
+export async function buildThreadReloadCommand(
+  deps: LoggedWorkSessionDeps,
+  args: ThreadReloadCommandArgs,
+): Promise<Extract<HostDaemonCommand, { type: "thread.reload" }>> {
+  await deps.providerRegistry.whenRegistrationsSettled();
+  const runtimeContext = await resolveThreadRuntimeCommandConfig(deps, {
+    thread: args.thread,
+    environment: args.environment,
+    model: args.execution.model,
+  });
+  return {
+    type: "thread.reload",
+    environmentId: args.environment.id,
+    threadId: args.thread.id,
+    workspaceContext: workspaceContextFromPath({
+      path: runtimeContext.workspacePath,
+      workspaceProvisionType: runtimeContext.workspaceProvisionType,
+    }),
+    projectId: runtimeContext.projectId,
+    providerId: runtimeContext.providerId,
+    providerThreadId: args.providerThreadId,
+    bridgeLaunch: requireBridgeLaunchForProviderId(
+      deps,
+      runtimeContext.providerId,
+    ),
+    options: toRuntimeExecutionOptions({
+      deps,
+      execution: args.execution,
+      hostId: args.environment.hostId,
+      input: [],
+      permissionEscalation: "ask",
+      projectId: runtimeContext.projectId,
+      providerId: runtimeContext.providerId,
+      threadId: args.thread.id,
+    }),
+    instructions: runtimeContext.instructions,
+    dynamicTools: runtimeContext.dynamicTools,
+    injectedSkillSources: runtimeContext.injectedSkillSources,
+    instructionMode: runtimeContext.instructionMode,
   };
 }
 

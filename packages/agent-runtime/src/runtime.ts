@@ -2131,6 +2131,43 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
+    async reloadThread(args) {
+      return runThreadOperation({
+        threadId: args.threadId,
+        work: async () => {
+          if (turnState.getActiveTurnId(args.threadId) !== null) {
+            return { status: "rejected", reason: "active-turn" };
+          }
+          if (pendingTurnStarts.has(args.threadId)) {
+            return { status: "rejected", reason: "pending-turn-start" };
+          }
+          if (backgroundWorkState.hasOpenThreadWork(args.threadId)) {
+            return { status: "rejected", reason: "background-work" };
+          }
+
+          const currentSession = threadIdentityRegistry.getProviderSession(
+            args.threadId,
+          );
+          if (
+            currentSession !== null &&
+            (currentSession.providerId !== args.providerId ||
+              currentSession.providerThreadId !== args.providerThreadId)
+          ) {
+            return { status: "rejected", reason: "session-mismatch" };
+          }
+          if (currentSession !== null) {
+            await runtime.stopThread({ threadId: args.threadId });
+          }
+
+          const resumed = await runtime.resumeThread(args);
+          return {
+            status: "reloaded",
+            providerThreadId: resumed.providerThreadId,
+          };
+        },
+      });
+    },
+
     async runTurn({
       threadId,
       input,

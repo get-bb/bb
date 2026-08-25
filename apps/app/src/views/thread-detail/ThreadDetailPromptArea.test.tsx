@@ -514,6 +514,10 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
     isPending: false,
     mutateAsync: mocks.createQueuedMessageMutateAsync,
   }),
+  useReloadThread: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
   useDeleteThreadQueuedMessage: () => ({
     isPending: false,
     mutateAsync: mocks.deleteQueuedMessageMutateAsync,

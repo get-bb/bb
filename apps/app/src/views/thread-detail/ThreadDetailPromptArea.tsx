@@ -83,6 +83,7 @@ import {
   useCancelThreadPlan,
   useClearThreadGoal,
   useStopThread,
+  useReloadThread,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
 import {
@@ -97,6 +98,7 @@ import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
+import { isExactThreadReloadCommand } from "@/components/thread/embedded-chat/thread-reload-command";
 import { appToast } from "@/components/ui/app-toast";
 import {
   emptyPromptDraftState,
@@ -514,6 +516,7 @@ export function ThreadDetailPromptArea({
     },
   );
   const createQueuedMessage = useCreateThreadQueuedMessage();
+  const reloadThread = useReloadThread();
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
   const clearThreadGoal = useClearThreadGoal();
@@ -875,6 +878,24 @@ export function ThreadDetailPromptArea({
     ) {
       return;
     }
+    // An exact `/reload` is the reload operation, not model input — the same
+    // rule the embedded composer applies.
+    if (isExactThreadReloadCommand(submittedDraft)) {
+      promptDraft.clearIfCurrentMatches(submittedDraft);
+      setBottomAttachmentError(null);
+      try {
+        await reloadThread.mutateAsync(thread.id);
+      } catch (nextError) {
+        promptDraft.restoreIfEmpty(submittedDraft);
+        appToast.error(
+          getMutationErrorMessage({
+            error: nextError,
+            fallbackMessage: "Failed to reload provider session",
+          }),
+        );
+      }
+      return;
+    }
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
@@ -920,6 +941,7 @@ export function ThreadDetailPromptArea({
     followUpExecutionSelection,
     isDefaultExecutionOptionsLoading,
     promptDraft,
+    reloadThread,
     sendMessage,
     setBottomAttachmentError,
     thread.id,

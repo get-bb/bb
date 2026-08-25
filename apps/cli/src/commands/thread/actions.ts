@@ -463,6 +463,21 @@ export function registerActionsCommands(
     );
 
   parent
+    .command("reload [id]")
+    .description("Recreate an idle provider session from current configuration")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.threads.experimental_reload({ threadId });
+        if (outputJson(opts, { threadId, ...result })) return;
+        console.log(`Thread ${threadId} provider session reloaded`);
+      }),
+    );
+
+  parent
     .command("stop [id]")
     .description("Stop work and release the loaded agent runtime")
     .option("--self", "Target the current thread (from BB_THREAD_ID)")

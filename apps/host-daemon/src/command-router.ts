@@ -472,6 +472,7 @@ export class CommandRouter {
       case "thread.archive":
       case "interactive.resolve":
       case "thread.stop":
+      case "thread.reload":
       case "thread.plan.cancel":
       case "thread.goal.clear":
         return `${command.environmentId}\0thread:${command.threadId}`;

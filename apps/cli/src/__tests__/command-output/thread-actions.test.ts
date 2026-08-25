@@ -381,6 +381,22 @@ describe("bb thread action command output", () => {
     });
   });
 
+  it("bb thread reload reports the recreated provider session", async () => {
+    const post = vi.fn(async () => ({ status: "reloaded" }));
+    stubServerApi({ "v1.threads.:id.reload.$post": post });
+
+    await runCommand(["thread", "reload", "thread-reload", "--json"], register);
+
+    expect(post).toHaveBeenCalledWith({ param: { id: "thread-reload" } });
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      JSON.stringify(
+        { threadId: "thread-reload", status: "reloaded" },
+        null,
+        2,
+      ),
+    );
+  });
+
   it("bb thread stop lets the server no-op when the thread is already idle", async () => {
     const get = vi.fn(async () =>
       fixtures.makeThread({

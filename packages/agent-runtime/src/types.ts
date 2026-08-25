@@ -270,6 +270,16 @@ export interface ResumeThreadResult {
   providerThreadId: string;
 }
 
+export type ReloadThreadRejectedReason =
+  | "active-turn"
+  | "background-work"
+  | "pending-turn-start"
+  | "session-mismatch";
+
+export type ReloadThreadResult =
+  | { status: "reloaded"; providerThreadId: string }
+  | { status: "rejected"; reason: ReloadThreadRejectedReason };
+
 export interface RunTurnArgs {
   threadId: string;
   input: PromptInput[];
@@ -389,6 +399,16 @@ export interface AgentRuntime {
   discardThreadRewind(args: DiscardThreadRewindArgs): Promise<void>;
 
   resumeThread(args: ResumeThreadArgs): Promise<ResumeThreadResult>;
+
+  /**
+   * Replaces an idle provider session with a fresh session bound to the same
+   * provider conversation. The caller supplies newly resolved startup config.
+   */
+  reloadThread(
+    args: ResumeThreadArgs & {
+      providerThreadId: string;
+    },
+  ): Promise<ReloadThreadResult>;
 
   runTurn(args: RunTurnArgs): Promise<void>;
 

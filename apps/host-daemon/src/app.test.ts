@@ -240,6 +240,9 @@ function createFakeRuntime(): AgentRuntime {
     async resumeThread() {
       return { providerThreadId: "provider-thread-app-test" };
     },
+    async reloadThread(args) {
+      return { status: "reloaded", providerThreadId: args.providerThreadId };
+    },
     async runTurn() {},
     async steerTurn() {
       return { status: "steered" };

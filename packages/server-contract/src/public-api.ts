@@ -167,6 +167,7 @@ import type {
   TerminalResizeRequest,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ExperimentalThreadReloadResponse,
   ThreadEventWaitQuery,
   ThreadEventsQuery,
   ThreadSectionMutationResponse,
@@ -1073,6 +1074,12 @@ export const publicApiRoutes = {
       method: "post",
       request: noRequest<PathId>(),
       response: jsonResponse<{ ok: true }>(),
+    }),
+    experimental_reload: defineRoute({
+      path: "/threads/:id/reload",
+      method: "post",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ExperimentalThreadReloadResponse>(),
     }),
     compact: defineRoute({
       path: "/threads/:id/compact",

@@ -480,6 +480,17 @@ export function useDeleteThreadQueuedMessage() {
   });
 }
 
+export function useReloadThread() {
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to reload provider session.",
+      showErrorToast: false,
+    },
+    mutationFn: (threadId: string) =>
+      sdk.threads.experimental_reload({ threadId }),
+  });
+}
+
 export function useStopThread() {
   const queryClient = useQueryClient();
 
