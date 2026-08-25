@@ -8,11 +8,12 @@ import {
 import { refreshAccountSessionCookie } from "./account-session.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
+  invalidateSessionCookie,
   parseCookie,
   markMachineSeen,
   resolveLabel,
   verifyMachineCredentialDetails,
-  verifySessionCookie,
+  verifySessionCookieDetails,
 } from "./session.js";
 import {
   handleCreateDesktopSession,
@@ -469,9 +470,10 @@ export default {
     const appUrl = runtime.accountAppUrl;
     if (!cookie && !desktopCookie)
       return signInPage(label, appUrl, url.toString());
-    const sessionUserId = cookie
-      ? await verifySessionCookie(cookie, env.BETTER_AUTH_SECRET, db)
+    const verifiedSession = cookie
+      ? await verifySessionCookieDetails(cookie, env.BETTER_AUTH_SECRET, db)
       : null;
+    const sessionUserId = verifiedSession?.userId ?? null;
     const desktopUserId = desktopCookie
       ? await verifyDesktopSessionCookie(desktopCookie, env.BETTER_AUTH_SECRET)
       : null;
@@ -516,14 +518,21 @@ export default {
       );
     }
 
-    // Edge-cacheable responses do not count as session activity. Refresh both
-    // the D1 row and browser cookie only on a non-cacheable HTTP response so
-    // their expiry stays in sync without rebuilding a pre-encoded cache hit.
+    // Edge-cacheable responses do not count as session activity. Once Better
+    // Auth's update-age boundary arrives, refresh both the D1 row and browser
+    // cookie on a non-cacheable HTTP response. This keeps their expiry in sync
+    // without rebuilding a pre-encoded cache hit or calling the account worker
+    // on every dynamic request.
     if (
       !cached.cacheable &&
       cookie !== null &&
-      sessionUserId === resolved.userId
+      sessionUserId === resolved.userId &&
+      verifiedSession?.needsRefresh === true
     ) {
+      // The account worker will re-read D1. Drop this isolate's old expiration
+      // hint so the next request observes the renewed row instead of repeating
+      // the cross-worker check for the rest of the short verification TTL.
+      invalidateSessionCookie(cookie);
       const setCookie = await refreshAccountSessionCookie(
         `${runtime.sessionCookieName}=${cookie}`,
         runtime.accountAppUrl,

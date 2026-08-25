@@ -24,6 +24,7 @@ import {
   markMachineSeen,
   resolveLabel,
   verifyMachineCredentialDetails,
+  verifySessionCookieDetails,
 } from "./session.js";
 import { refreshAccountSessionCookie } from "./account-session.js";
 import { assignMachineLabel } from "./machine-label.js";
@@ -417,6 +418,39 @@ describe("account session refresh", () => {
     });
     return (request: Request) => auth.handler(request);
   }
+
+  it("reports Better Auth's update-age boundary from the session expiry", async () => {
+    const checkedAt = Date.now();
+    const freshToken = `fresh-${crypto.randomUUID()}`;
+    const dueToken = `due-${crypto.randomUUID()}`;
+    seedSession(freshToken, checkedAt, checkedAt + expiresInMs);
+    seedSession(
+      dueToken,
+      checkedAt,
+      checkedAt + expiresInMs - updateAgeMs - 1000,
+    );
+
+    await expect(
+      verifySessionCookieDetails(
+        await signedSessionCookie(freshToken, secret),
+        secret,
+        db,
+      ),
+    ).resolves.toEqual({
+      userId: `user-${freshToken}`,
+      needsRefresh: false,
+    });
+    await expect(
+      verifySessionCookieDetails(
+        await signedSessionCookie(dueToken, secret),
+        secret,
+        db,
+      ),
+    ).resolves.toEqual({
+      userId: `user-${dueToken}`,
+      needsRefresh: true,
+    });
+  });
 
   it("lets Better Auth renew the database session and production cookie", async () => {
     const refreshAt = Date.now();

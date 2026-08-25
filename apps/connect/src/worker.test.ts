@@ -106,11 +106,12 @@ describe("parseClientProtocolVersion", () => {
 // ── gate worker (mocked session + DO stub) ──────────────────────────────────
 
 vi.mock("./session.js", () => ({
+  invalidateSessionCookie: vi.fn(),
   markMachineSeen: vi.fn(),
   parseCookie: vi.fn(),
   resolveLabel: vi.fn(),
   verifyMachineCredentialDetails: vi.fn(),
-  verifySessionCookie: vi.fn(),
+  verifySessionCookieDetails: vi.fn(),
 }));
 
 vi.mock("./account-session.js", () => ({
@@ -151,11 +152,12 @@ vi.mock("drizzle-orm/d1", () => ({
 import { drizzle } from "drizzle-orm/d1";
 
 import {
+  invalidateSessionCookie,
   markMachineSeen,
   parseCookie,
   resolveLabel,
   verifyMachineCredentialDetails,
-  verifySessionCookie,
+  verifySessionCookieDetails,
 } from "./session.js";
 import { refreshAccountSessionCookie } from "./account-session.js";
 import {
@@ -171,17 +173,22 @@ import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
 
 const mockParseCookie = vi.mocked(parseCookie);
+const mockInvalidateSession = vi.mocked(invalidateSessionCookie);
 const mockRefreshAccountSession = vi.mocked(refreshAccountSessionCookie);
 const mockResolveLabel = vi.mocked(resolveLabel);
 const mockMarkMachineSeen = vi.mocked(markMachineSeen);
 const mockVerifyMachine = vi.mocked(verifyMachineCredentialDetails);
-const mockVerifySession = vi.mocked(verifySessionCookie);
+const mockVerifySessionDetails = vi.mocked(verifySessionCookieDetails);
 const mockServeWithCache = vi.mocked(serveWithCache);
 const mockHandleListAccountServers = vi.mocked(handleListAccountServers);
 const mockHandleCreateDesktopSession = vi.mocked(handleCreateDesktopSession);
 const mockHandleDisconnectServer = vi.mocked(handleDisconnectServer);
 const mockVerifyDesktopSession = vi.mocked(verifyDesktopSessionCookie);
 const mockHandleAssignMachineLabel = vi.mocked(handleAssignMachineLabel);
+
+function sessionDetails(userId = OWNER, needsRefresh = false) {
+  return { userId, needsRefresh };
+}
 
 /** A resolved server row; overrides let a test tweak one field. */
 function resolvedServer(
@@ -719,7 +726,7 @@ describe("bb mobile app-link association files", () => {
       expect(response.headers.get("content-type")).toBe("application/json");
       expect(captured).toHaveLength(0);
       expect(mockResolveLabel).not.toHaveBeenCalled();
-      expect(mockVerifySession).not.toHaveBeenCalled();
+      expect(mockVerifySessionDetails).not.toHaveBeenCalled();
     },
   );
 
@@ -808,7 +815,7 @@ describe("gate worker share hosts", () => {
     vi.clearAllMocks();
     mockResolveLabel.mockResolvedValue(resolvedServer());
     mockParseCookie.mockReturnValue("session-token");
-    mockVerifySession.mockResolvedValue(OWNER);
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails());
     mockRefreshAccountSession.mockResolvedValue(null);
   });
 
@@ -837,6 +844,7 @@ describe("gate worker share hosts", () => {
   });
 
   it("renews an active owner session on an ordinary HTTP response", async () => {
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
     mockRefreshAccountSession.mockResolvedValue(
       "__Secure-better-auth.session_token=renewed; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
     );
@@ -852,14 +860,30 @@ describe("gate worker share hosts", () => {
       "https://getbb.app",
       expect.any(Function),
     );
+    expect(mockInvalidateSession).toHaveBeenCalledWith("session-token");
     expect(response.headers.get("set-cookie")).toBe(
       "__Secure-better-auth.session_token=renewed; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
     );
   });
 
+  it("does not call the account worker before the update-age boundary", async () => {
+    const { env, ctx } = makeEnv(() => new Response("ok"));
+    const response = await worker.fetch(
+      visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
+      env as never,
+      ctx,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mockInvalidateSession).not.toHaveBeenCalled();
+    expect(mockRefreshAccountSession).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
   it.each(["hit", "miss"] as const)(
     "does not renew an owner session on an edge-cache %s",
     async (cacheStatus) => {
+      mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
       mockRefreshAccountSession.mockResolvedValue("should-not-be-used");
       mockServeWithCache.mockResolvedValueOnce({
         cacheable: true,
@@ -883,6 +907,7 @@ describe("gate worker share hosts", () => {
   );
 
   it("reissues the local Cloud cookie without the Secure attribute", async () => {
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
     mockRefreshAccountSession.mockResolvedValue(
       "better-auth.session_token=renewed; Max-Age=604800; Domain=.bb.localhost; Path=/; HttpOnly; SameSite=Lax",
     );
@@ -929,7 +954,7 @@ describe("gate worker share hosts", () => {
     expect(html).toContain("sawyer-air--&lt;port&gt;.getbb.app");
     expect(html).toContain("sawyer.getbb.app");
     expect(captured).toHaveLength(0);
-    expect(mockVerifySession).not.toHaveBeenCalled();
+    expect(mockVerifySessionDetails).not.toHaveBeenCalled();
   });
 
   it("renders local machine links with HTTP and the shared gateway port", async () => {
@@ -973,7 +998,7 @@ describe("gate worker share hosts", () => {
       expect.any(Function),
     );
 
-    mockVerifySession.mockResolvedValue(OTHER);
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
     const otherEnv = makeEnv(() => new Response("machine-origin"));
     const otherResponse = await worker.fetch(
       visitorRequest("sawyer-air--3000.getbb.app", "/"),
@@ -1019,7 +1044,7 @@ describe("gate worker share hosts", () => {
     expect(blockedEnv.routingKeys).toEqual(["shared-machine:generation-b"]);
     expect(blockedEnv.captured).toHaveLength(0);
 
-    mockVerifySession.mockResolvedValue(OTHER);
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
     const newEnv = makeEnv(() => new Response("owner-b"));
     const newResponse = await worker.fetch(
       visitorRequest("shared-machine--3000.getbb.app", "/asset.js"),
@@ -1141,7 +1166,7 @@ describe("gate worker share hosts", () => {
   });
 
   it("returns 403 when share host session is a different user", async () => {
-    mockVerifySession.mockResolvedValue(OTHER);
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const res = await worker.fetch(
       visitorRequest("sawyer--8000.getbb.app", "/"),
@@ -1177,7 +1202,7 @@ describe("gate worker share hosts", () => {
     mockParseCookie.mockImplementation((_header, name) =>
       name === DESKTOP_SESSION_COOKIE ? "desktop-token" : "github-token",
     );
-    mockVerifySession.mockResolvedValue(OTHER);
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OTHER));
     mockVerifyDesktopSession.mockResolvedValue(OWNER);
     const { env, ctx, captured } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
@@ -1229,6 +1254,7 @@ describe("gate worker share hosts", () => {
   });
 
   it("forwards websocket upgrades on share hosts with the target header", async () => {
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
     // Node's Response rejects status 101; the gate only needs the upgrade path.
     const { env, ctx, captured } = makeEnv(
       () => new Response("upgraded", { status: 200 }),
@@ -1297,7 +1323,7 @@ describe("gate offline page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockParseCookie.mockReturnValue("session-token");
-    mockVerifySession.mockResolvedValue(OWNER);
+    mockVerifySessionDetails.mockResolvedValue(sessionDetails());
   });
 
   it("renders the styled offline page on a browser navigation, using last-seen", async () => {
