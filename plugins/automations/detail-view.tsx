@@ -8,7 +8,6 @@ import type {
   AutomationRunStatus,
   AgentExecutionUpdate,
 } from "./src/rpc-types";
-import { AUTOMATION_PROMPT_MAX_LENGTH } from "./src/limits";
 import {
   experimental_PermissionModePicker as PermissionModePicker,
   experimental_ProviderModelPicker as ProviderModelPicker,
@@ -628,7 +627,6 @@ function AgentAutomationDefinition({
       <Textarea
         value={prompt}
         onChange={(event) => setPrompt(event.target.value)}
-        maxLength={AUTOMATION_PROMPT_MAX_LENGTH}
         aria-label="Automation prompt"
         disabled={pending}
         className="min-h-28 resize-none border-0 bg-transparent px-4 pb-1 pr-14 pt-3 text-sm leading-relaxed shadow-none focus-visible:ring-0"
