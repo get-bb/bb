@@ -47,7 +47,7 @@
     "to print the static chain that pulled a package into the closure."
   ],
   "maxBootBytes": 1723617,
-  "maxBootBrotliBytes": 479067,
+  "maxBootBrotliBytes": 429072,
   "forbiddenBootPackages": [
     "@pierre/diffs",
     "@pierre/theming",
