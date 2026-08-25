@@ -45,7 +45,10 @@ describe("Plugin Guide agent references", () => {
     const document = new DOMParser().parseFromString(content.html, "text/html");
     const pill = document.querySelector("[data-prompt-mention='true']");
 
-    expect(content.text).toBe("@Inline actions ");
+    expect(content.text).toBe(
+      "Build a plugin capability like @Inline actions using bb's Plugin Guide. ",
+    );
+    expect(document.body.textContent).toBe(content.text);
     expect(pill?.textContent).toBe("@Inline actions");
     expect(pill?.getAttribute("data-prompt-mention-serialized-text")).toBe(
       "@Inline actions",
@@ -80,6 +83,10 @@ describe("Plugin Guide agent references", () => {
       "surface:composer-actions",
       "surface:thread-panel",
     ]);
+    expect(document.body.textContent).toBe(
+      "Build a plugin capability like @Inline actions using bb's Plugin Guide. " +
+        "Build a plugin capability like @Thread side-panel tabs using bb's Plugin Guide. ",
+    );
   });
 
   it("writes both rich and plain clipboard representations", async () => {
@@ -101,5 +108,11 @@ describe("Plugin Guide agent references", () => {
       "text/html",
       "text/plain",
     ]);
+    await expect(items[0]?.["text/plain"]?.text()).resolves.toBe(
+      "Build a plugin capability like @Inline actions using bb's Plugin Guide. ",
+    );
+    await expect(items[0]?.["text/html"]?.text()).resolves.toContain(
+      'Build a plugin capability like <span data-prompt-mention="true"',
+    );
   });
 });

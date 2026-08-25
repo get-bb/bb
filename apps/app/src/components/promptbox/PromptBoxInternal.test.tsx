@@ -3126,14 +3126,19 @@ describe("PromptBoxInternal prompt actions", () => {
 
   it("keeps multiple pasted plugin references as distinct pills", async () => {
     const { changes, promptBoxRef } = renderPromptBox("");
-    const reference = (id: string, label: string) =>
-      promptMentionClipboardContent({
+    const reference = (id: string, label: string) => {
+      const pill = promptMentionClipboardContent({
         kind: "plugin",
         pluginId: "plugin-api-docs",
         icon: null,
         itemId: `surface:${id}`,
         label,
       });
+      return {
+        text: `Build a plugin capability like ${pill.text.trimEnd()} using bb's Plugin Guide. `,
+        html: `Build a plugin capability like ${pill.html.trimEnd()} using bb's Plugin Guide. `,
+      };
+    };
 
     await focusPromptEnd(promptBoxRef);
     const actions = reference("composer-actions", "Inline actions");
@@ -3157,6 +3162,10 @@ describe("PromptBoxInternal prompt actions", () => {
     expect(
       getPromptEditorElement().querySelectorAll(".prompt-mention-pill"),
     ).toHaveLength(2);
+    expect(latestValue(changes)).toBe(
+      "Build a plugin capability like @Inline actions using bb's Plugin Guide. " +
+        "Build a plugin capability like @Thread side-panel tabs using bb's Plugin Guide. ",
+    );
   });
 
   it("opens the file picker from the prompt actions menu", async () => {

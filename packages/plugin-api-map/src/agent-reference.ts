@@ -30,6 +30,9 @@ export interface PluginSurfaceAgentClipboardContent {
   html: string;
 }
 
+const AGENT_REFERENCE_PREFIX = "Build a plugin capability like ";
+const AGENT_REFERENCE_SUFFIX = " using bb's Plugin Guide. ";
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -55,8 +58,8 @@ export function pluginSurfaceAgentClipboardContent(
     label: mention.label,
   };
   return {
-    text: `${serializedText} `,
-    html: `<span data-prompt-mention="true" data-prompt-mention-resource="${escapeHtml(JSON.stringify(resource))}" data-prompt-mention-serialized-text="${escapeHtml(serializedText)}">${escapeHtml(serializedText)}</span> `,
+    text: `${AGENT_REFERENCE_PREFIX}${serializedText}${AGENT_REFERENCE_SUFFIX}`,
+    html: `${escapeHtml(AGENT_REFERENCE_PREFIX)}<span data-prompt-mention="true" data-prompt-mention-resource="${escapeHtml(JSON.stringify(resource))}" data-prompt-mention-serialized-text="${escapeHtml(serializedText)}">${escapeHtml(serializedText)}</span>${escapeHtml(AGENT_REFERENCE_SUFFIX)}`,
   };
 }
 
