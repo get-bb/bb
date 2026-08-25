@@ -13,6 +13,7 @@ import {
   type DbConnection,
 } from "@bb/db";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -74,6 +75,7 @@ describe("plugin background services", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-bg-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -139,6 +141,7 @@ describe("plugin background services", () => {
     }));
     const interruptPluginInteractions = vi.fn(() => []);
     const local = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -150,6 +153,7 @@ describe("plugin background services", () => {
       pendingInteractions: {
         requestPluginInteraction,
         interruptPluginInteractions,
+        setPluginDirectory: () => {},
       },
       dataDir: join(workDir, "data-dispose-request"),
       appVersion: "0.9.0",
@@ -200,6 +204,7 @@ describe("plugin background services", () => {
     // Own instance: the stop bound must exceed the service's stop delay so
     // the slow stop is a legitimate (non-hung) dispose in progress.
     const local = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -517,6 +522,7 @@ describe("plugin schedules", () => {
     migrate(db);
     workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sched-test-"));
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {

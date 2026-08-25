@@ -1,8 +1,9 @@
 import type {
+  ApprovalPendingInteraction,
   PendingInteraction,
   PluginPendingInteraction,
-  ProviderPendingInteraction,
   ThreadQueuedMessage,
+  UserQuestionPendingInteraction,
 } from "@bb/domain";
 
 /**
@@ -15,11 +16,7 @@ import type {
 
 export const DEV_THREAD_ID = "dev-thread";
 
-function provider(
-  id: string,
-  payload: ProviderPendingInteraction["payload"],
-  overrides: Partial<ProviderPendingInteraction> = {},
-): ProviderPendingInteraction {
+function providerBase(id: string) {
   return {
     id,
     threadId: DEV_THREAD_ID,
@@ -27,14 +24,29 @@ function provider(
     providerId: "fake",
     providerThreadId: "pt-dev",
     providerRequestId: `req-${id}`,
-    status: "pending",
+    status: "pending" as const,
     statusReason: null,
     createdAt: Date.now(),
     resolvedAt: null,
-    payload,
-    resolution: null,
-    ...overrides,
   };
+}
+
+/** An approval with its paired resolution (null while it waits). */
+function approval(
+  id: string,
+  payload: ApprovalPendingInteraction["payload"],
+  overrides: Partial<
+    Pick<ApprovalPendingInteraction, "status" | "resolution">
+  > = {},
+): ApprovalPendingInteraction {
+  return { ...providerBase(id), payload, resolution: null, ...overrides };
+}
+
+function question(
+  id: string,
+  payload: UserQuestionPendingInteraction["payload"],
+): UserQuestionPendingInteraction {
+  return { ...providerBase(id), payload, resolution: null };
 }
 
 function plugin(
@@ -67,7 +79,7 @@ export function buildInteractionFixtures(): InteractionFixture[] {
   return [
     {
       title: "Approval: command",
-      interaction: provider("dev-approval-command", {
+      interaction: approval("dev-approval-command", {
         kind: "approval",
         reason: null,
         availableDecisions: ["allow_once", "allow_for_session", "deny"],
@@ -93,7 +105,7 @@ export function buildInteractionFixtures(): InteractionFixture[] {
     },
     {
       title: "Approval: command (resolving)",
-      interaction: provider(
+      interaction: approval(
         "dev-approval-resolving",
         {
           kind: "approval",
@@ -116,7 +128,7 @@ export function buildInteractionFixtures(): InteractionFixture[] {
     },
     {
       title: "Approval: file change",
-      interaction: provider("dev-approval-file", {
+      interaction: approval("dev-approval-file", {
         kind: "approval",
         reason: null,
         availableDecisions: ["allow_once", "allow_for_session", "deny"],
@@ -133,7 +145,7 @@ export function buildInteractionFixtures(): InteractionFixture[] {
     },
     {
       title: "Approval: permission grant",
-      interaction: provider("dev-approval-grant", {
+      interaction: approval("dev-approval-grant", {
         kind: "approval",
         reason: null,
         availableDecisions: ["allow_once", "deny"],
@@ -150,7 +162,7 @@ export function buildInteractionFixtures(): InteractionFixture[] {
     },
     {
       title: "Approval: plan",
-      interaction: provider("dev-approval-plan", {
+      interaction: approval("dev-approval-plan", {
         kind: "approval",
         reason: null,
         availableDecisions: ["allow_once", "deny"],
@@ -174,7 +186,7 @@ export function buildInteractionFixtures(): InteractionFixture[] {
     },
     {
       title: "User question: single select + Other",
-      interaction: provider("dev-question-single", {
+      interaction: question("dev-question-single", {
         kind: "user_question",
         questions: [
           {
@@ -202,7 +214,7 @@ export function buildInteractionFixtures(): InteractionFixture[] {
     },
     {
       title: "User question: several questions, multi select, free text",
-      interaction: provider("dev-question-multi", {
+      interaction: question("dev-question-multi", {
         kind: "user_question",
         questions: [
           {

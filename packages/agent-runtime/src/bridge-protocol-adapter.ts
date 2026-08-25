@@ -9,10 +9,9 @@
  * maintenance methods are gated by the provider registration before a command
  * reaches this adapter.
  *
- * This adapter never diffs execution options (`classifyExecutionSettingsChange`
- * always reports "live"): options ride every command and the bridge
- * reconciles internally, reporting any session rebuild via the mandatory
- * `session/replaced` notification.
+ * Execution options ride every command and the bridge reconciles them
+ * internally, reporting any session rebuild via the mandatory
+ * `session/replaced` notification; the runtime never diffs them.
  */
 import type {
   AvailableModel,
@@ -34,7 +33,6 @@ import {
   providerRecoveryNotificationSchema,
   threadDeltaNotificationParamsSchema,
   type BridgeCapabilities,
-  type SkillsConfigureRoot,
 } from "@bb/provider-bridge-protocol";
 import {
   ASSEMBLER_GRAMMAR_VERSIONS,
@@ -43,10 +41,7 @@ import {
 import { z } from "zod";
 import type {
   AdapterCommand,
-  ClassifyProviderExecutionSettingsChangeArgs,
-  ProviderAcceptedCommandTranslationArgs,
   ProviderExecutionContext,
-  ProviderExecutionSettingsChange,
 } from "./provider-adapter.js";
 import type {
   DecodedInteractiveRequest,
@@ -60,10 +55,7 @@ import type {
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import { decodeNormalizedProviderToolCallRequest } from "@bb/provider-bridge-protocol/bridge-kit";
 import { parseAvailableModelList } from "./shared/available-models.js";
-import type {
-  AgentRuntimeProviderRecoveryHint,
-  AgentRuntimeSkillRoot,
-} from "./types.js";
+import type { AgentRuntimeProviderRecoveryHint } from "./types.js";
 
 /** A decoded recovery hint before the runtime stamps the provider id. */
 export type ProviderRecoveryHint = Omit<
@@ -73,8 +65,8 @@ export type ProviderRecoveryHint = Omit<
 
 /**
  * The one adapter the runtime drives: the Provider Bridge Protocol speaker.
- * Every provider — first-party plugin bridges, the daemon-bundled pi bridge,
- * third-party plugin bridges, the test harness's scripted echo bridge — runs
+ * Every provider — first-party plugin bridges, third-party plugin bridges,
+ * the test harness's scripted echo bridge — runs
  * behind this contract, so there is no provider-specific implementation and
  * no interface for one to hide behind. The runtime owns the command plane
  * (it builds requests through `buildCommandPlan`, sends them, and reads the
@@ -83,7 +75,7 @@ export type ProviderRecoveryHint = Omit<
  */
 export interface BridgeProtocolAdapter {
   id: string;
-  capabilities: ProviderCapabilities;
+  capabilities: BridgeEnforcedCapabilities;
   /**
    * Where approval escalation is enforced, as the handshake reported it.
    * `runtime`: the runtime applies the thread's current policy to every
@@ -93,14 +85,6 @@ export interface BridgeProtocolAdapter {
    */
   readonly approvalEnforcedBy: "runtime" | "provider";
   process: { command: string; args: string[]; env?: Record<string, string> };
-  /**
-   * Classifies execution-setting drift. `live` settings ride the next turn
-   * command; `session` settings require rebuilding the provider session.
-   * Bridges reconcile options internally, so the answer is always `live`.
-   */
-  classifyExecutionSettingsChange(
-    args: ClassifyProviderExecutionSettingsChangeArgs,
-  ): ProviderExecutionSettingsChange;
   buildCommandPlan(command: AdapterCommand): ProviderCommandPlan;
   /** The `initialize` handshake, sent before any thread work starts. */
   buildPostInitializeRequests(): readonly ProviderPostInitializeRequest[];
@@ -116,10 +100,6 @@ export interface BridgeProtocolAdapter {
    * the runtime to `onProviderRecovery` — never a timeline event.
    */
   decodeRecoveryHint(event: ProviderRuntimeEvent): ProviderRecoveryHint | null;
-  /** Events implied by a successful command; the bridge protocol has none. */
-  translateAcceptedCommand(
-    args: ProviderAcceptedCommandTranslationArgs,
-  ): ThreadEvent[];
   decodeToolCallRequest(
     request: ProviderInboundRequest,
   ): DecodedToolCallRequest | null;
@@ -138,8 +118,19 @@ export interface BridgeProtocolAdapter {
  * public {@link BridgeProtocolAdapter.capabilities}, and keeps the ladder to
  * bound what the initialize handshake may claim.
  */
-interface BridgeAdapterCapabilities extends Omit<
+/**
+ * The capabilities the daemon ENFORCES: every provider capability except
+ * `modelCatalogScope`, which says how far one `model/list` answer travels.
+ * The server memoizes on it and the app routes on it; no command the adapter
+ * gates depends on it, so it never crosses to the daemon.
+ */
+export type BridgeEnforcedCapabilities = Omit<
   ProviderCapabilities,
+  "modelCatalogScope"
+>;
+
+interface BridgeAdapterCapabilities extends Omit<
+  BridgeEnforcedCapabilities,
   "supportsFork" | "supportsSessionRewind"
 > {
   fork: ProviderFork;
@@ -243,38 +234,12 @@ function toBridgeWireOptions(
   };
 }
 
-/**
- * Provider-flavored skill roots → the canonical `skills/configure` roots. The
- * runtime has already filtered the roots to the target provider, so each root
- * contributes the one directory its provider consumes; ACP additionally names
- * its skills because they ride the session instructions rather than a scanned
- * directory.
- */
-function toBridgeSkillRoots(
-  skillRoots: readonly AgentRuntimeSkillRoot[],
-): SkillsConfigureRoot[] {
-  return skillRoots.map((skillRoot) => ({
-    id: skillRoot.id,
-    path:
-      skillRoot.providerId === "claude-code"
-        ? skillRoot.localPluginPath
-        : skillRoot.skillDirectoryRootPath,
-    skills:
-      skillRoot.providerId === "acp"
-        ? skillRoot.skills.map((skill) => ({
-            name: skill.name,
-            description: skill.description,
-          }))
-        : [],
-  }));
-}
-
 export function createBridgeProtocolAdapter(
   options: BridgeProtocolAdapterOptions,
 ): BridgeProtocolAdapter {
   let handshake: BridgeCapabilities = bridgeCapabilitiesSchema.parse({});
   const { fork: declaredFork, ...declaredCapabilities } = options.capabilities;
-  const capabilities: ProviderCapabilities = {
+  const capabilities: BridgeEnforcedCapabilities = {
     ...declaredCapabilities,
     supportsFork: declaredFork !== "none",
     supportsSessionRewind: declaredFork === "checkpoint",
@@ -315,16 +280,8 @@ export function createBridgeProtocolAdapter(
     },
     process: options.process,
 
-    // Options ride every command; the bridge reconciles internally.
-    classifyExecutionSettingsChange: () => "live",
-
     buildCommandPlan(command: AdapterCommand): ProviderCommandPlan {
       switch (command.type) {
-        case "initialize":
-          // The real initialize runs as a post-initialize request so the
-          // handshake result can be captured (the plain initialize path
-          // discards results).
-          return { kind: "noop", reason: "initialize handled post-spawn" };
         case "model/list":
           return {
             kind: "request",
@@ -342,7 +299,7 @@ export function createBridgeProtocolAdapter(
         case "provider/health":
           return {
             kind: "request",
-            method: BRIDGE_REQUEST_METHODS.experimentalProviderHealth,
+            method: BRIDGE_REQUEST_METHODS.providerHealth,
             params: {
               providerId: options.id,
               ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
@@ -354,7 +311,7 @@ export function createBridgeProtocolAdapter(
         case "provider/usage":
           return {
             kind: "request",
-            method: BRIDGE_REQUEST_METHODS.experimentalProviderUsage,
+            method: BRIDGE_REQUEST_METHODS.providerUsage,
             params: {
               providerId: options.id,
               ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
@@ -367,7 +324,7 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method:
-              BRIDGE_REQUEST_METHODS.experimentalProviderInstallationStatus,
+              BRIDGE_REQUEST_METHODS.providerInstallationStatus,
             params: {
               providerId: options.id,
               ...(command.requirement !== undefined
@@ -382,7 +339,7 @@ export function createBridgeProtocolAdapter(
         case "provider/installation/run":
           return {
             kind: "request",
-            method: BRIDGE_REQUEST_METHODS.experimentalProviderInstallationRun,
+            method: BRIDGE_REQUEST_METHODS.providerInstallationRun,
             params: {
               providerId: options.id,
               action: command.action,
@@ -393,10 +350,16 @@ export function createBridgeProtocolAdapter(
             },
           };
         case "skills/configure":
+          // Sent only to a bridge that declared it at the handshake; every
+          // other bridge runs without injected skills instead of failing to
+          // start on a METHOD_NOT_FOUND.
+          if (!handshake.skills.configure) {
+            return { kind: "noop", reason: "skills.configure not advertised" };
+          }
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.skillsConfigure,
-            params: { roots: toBridgeSkillRoots(command.skillRoots) },
+            params: { roots: command.skillRoots },
           };
         case "thread/start":
           return {
@@ -766,10 +729,6 @@ export function createBridgeProtocolAdapter(
         retryable: parsed.data.retryable,
       };
     },
-
-    // Input acceptance rides `input.accepted` deltas through the assembler;
-    // the adapter synthesizes nothing on command dispatch.
-    translateAcceptedCommand: () => [],
 
     decodeToolCallRequest(
       request: ProviderInboundRequest,

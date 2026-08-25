@@ -28,7 +28,10 @@ import {
 } from "@/hooks/mutations/host-mutations";
 import { useHosts } from "@/hooks/queries/host-queries";
 import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
-import { useSystemConfig } from "@/hooks/queries/system-queries";
+import {
+  useSystemConfig,
+  useSystemProviders,
+} from "@/hooks/queries/system-queries";
 import { isProviderCliUpdateIssue } from "@/components/provider-cli/provider-cli-install";
 import { useUpdateInventory } from "@/hooks/useUpdateInventory";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
@@ -39,10 +42,8 @@ import {
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { formatRelativeTime } from "@/lib/relative-time";
-import {
-  getProviderIconColorClass,
-  getProviderIconInfo,
-} from "@/lib/provider-icon";
+import { ProviderIconMark } from "@/components/settings/ProviderIconMark";
+import { getProviderIconInfo } from "@/lib/provider-icon";
 import {
   getProjectSettingsRoutePath,
   getSettingsRoutePath,
@@ -205,20 +206,25 @@ export function MachineSettingsView() {
   const updateIssueCount = (machine?.issues ?? []).filter(
     isProviderCliUpdateIssue,
   ).length;
+  const providerRoster = useSystemProviders().data;
   const installedProviders = useMemo(() => {
     const status = machine?.providerStatus;
     if (!status) return [];
     return Object.entries(status).flatMap(([providerId, entry]) => {
       if (!entry.installed) return [];
+      const provider = providerRoster?.find(
+        (candidate) => candidate.id === providerId,
+      );
       return [
         {
           ...entry,
           providerId,
-          ProviderIcon: getProviderIconInfo(providerId)?.icon,
+          provider,
+          ProviderIcon: getProviderIconInfo(providerId, provider ?? null)?.icon,
         },
       ];
     });
-  }, [machine?.providerStatus]);
+  }, [machine?.providerStatus, providerRoster]);
 
   const now = Date.now();
   const platformLabel =
@@ -355,11 +361,16 @@ export function MachineSettingsView() {
                             <span
                               data-provider-icon={entry.providerId}
                               aria-hidden
-                              className={getProviderIconColorClass(
-                                entry.providerId,
-                              )}
                             >
-                              <entry.ProviderIcon className="size-3.5" />
+                              {entry.provider === undefined ? (
+                                <entry.ProviderIcon className="size-3.5" />
+                              ) : (
+                                <ProviderIconMark
+                                  provider={entry.provider}
+                                  icon={entry.ProviderIcon}
+                                  className="size-3.5"
+                                />
+                              )}
                             </span>
                           ) : null}
                           <span>{entry.displayName}</span>

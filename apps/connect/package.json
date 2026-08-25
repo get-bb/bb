@@ -16,10 +16,12 @@
   },
   "devDependencies": {
     "@bb/tsconfig": "workspace:*",
+    "@better-auth/drizzle-adapter": "^1.6.23",
     "@cloudflare/workers-types": "^4.20260610.0",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.0.0",
     "better-sqlite3": "12.10.0",
+    "better-auth": "^1.6.23",
     "esbuild": "^0.28.1",
     "miniflare": "^4.20260701.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2",

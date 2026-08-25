@@ -46,6 +46,7 @@ import type {
   ResolveThreadMentionsRequest,
   ResolveThreadMentionsResponse,
   SendMessageRequest,
+  SendMessageResponse,
   SendQueuedMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
   ThreadEventsQuery,
@@ -118,7 +119,7 @@ export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
 export type ThreadDeleteResult = { ok: true };
-export type ThreadSendResult = { ok: true };
+export type ThreadSendResult = SendMessageResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
 export type ThreadStopResult = { ok: true };
 export type ThreadCompactResult = { ok: true };
@@ -142,8 +143,7 @@ export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
 export type ThreadStorageLocationResult = ThreadStorageLocationResponse;
 export type ThreadStoragePathsResult = ThreadStoragePathListResponse;
 export type ThreadChildSummaryResult = ThreadChildSummaryResponse;
-export type ThreadDefaultExecutionOptionsResult =
-  ResolvedThreadExecutionOptions | null;
+export type ThreadDefaultExecutionOptionsResult = ResolvedThreadExecutionOptions | null;
 export type ThreadConversationOutlineResult = ThreadConversationOutlineResponse;
 export type ThreadTimelineTurnSummaryDetailsResult =
   TimelineTurnSummaryDetailsResponse;
@@ -1055,13 +1055,12 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async send(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].send.$post({
           param: { id: input.threadId },
           json: sendJson(input),
         }),
       );
-      return { ok: true };
     },
     async spawn(input) {
       return transport.readJson(

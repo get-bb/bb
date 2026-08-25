@@ -1217,23 +1217,16 @@ describe("fork branch point and inherited history", () => {
     });
   });
 
-  const TIP_ONLY_PROVIDER_HARNESS = {
-    customAcpAgents: [
-      {
-        id: "test-agent",
-        displayName: "Test Agent",
-        command: "test-agent",
-        args: ["acp"],
-        env: {},
-        supportsManualCompaction: false,
-      },
-    ],
-  };
+  // A shipped ACP agent that declares `fork: "tip"`: it can clone a whole
+  // session but not recreate one at an earlier checkpoint, so
+  // `supportsSessionRewind` is false. A user-configured agent cannot stand in
+  // for it (the plugin declares every configured agent `fork: "none"`).
+  const TIP_ONLY_PROVIDER_ID = "acp-opencode";
 
   it("clones the tip of a mid-turn source when the provider cannot branch at a checkpoint", async () => {
-    await withTestHarness(TIP_ONLY_PROVIDER_HARNESS, async (harness) => {
+    await withTestHarness({}, async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness, {
-        providerId: "acp-test-agent",
+        providerId: TIP_ONLY_PROVIDER_ID,
       });
 
       const response = await postFork(harness, {
@@ -1257,9 +1250,9 @@ describe("fork branch point and inherited history", () => {
   });
 
   it("lets a tip-only provider fork at its latest turn but not earlier", async () => {
-    await withTestHarness(TIP_ONLY_PROVIDER_HARNESS, async (harness) => {
+    await withTestHarness({}, async (harness) => {
       const { sourceThread } = seedConversationForkSource(harness, {
-        providerId: "acp-test-agent",
+        providerId: TIP_ONLY_PROVIDER_ID,
         runningThirdTurn: false,
       });
 

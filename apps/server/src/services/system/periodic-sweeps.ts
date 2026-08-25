@@ -9,6 +9,8 @@ import {
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
+  DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  DESTROYED_ENVIRONMENT_TTL_MS,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
   getDatabaseCompactionStats,
@@ -47,8 +49,9 @@ import {
 import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
+import { runDeferredThreadMessageSweep } from "../threads/thread-send-request.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
-import { runEventLoopWork } from "./event-loop-work.js";
+import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
 
@@ -510,10 +513,40 @@ function runClosedSessionPruneSweep(
   });
 }
 
-function runDestroyedEnvironmentPruneSweep(
+async function runDestroyedEnvironmentPruneSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
-): void {
-  pruneDestroyedEnvironments(deps.db, deps.hub);
+  now: number,
+): Promise<void> {
+  // One environment per event-loop turn. Each DELETE runs its ON DELETE SET
+  // NULL cascade synchronously, and that cost scales with the environment's
+  // event count (~756 ms measured for 101k events), so a batch of ten deleted
+  // back-to-back could stall the loop longer than the backlog this sweep was
+  // bounded to avoid. The `running` guard in runPeriodicSweepJob keeps the next
+  // tick from overlapping while this one is parked on setImmediate.
+  //
+  // Each prune runs in its own blocking frame: the enclosing async
+  // `sweep:destroyed-environment-prune` frame is non-blocking, and the stall
+  // monitor only credits blocking frames as `slowestWork`, so without this a
+  // single large cascade that crosses the stall threshold would be logged
+  // against whatever unrelated sync unit ran in the same window.
+  for (
+    let pruned = 0;
+    pruned < DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE;
+    pruned += 1
+  ) {
+    const { deleted } = runEventLoopWorkSync(
+      "sweep:destroyed-environment-prune:delete",
+      () =>
+        pruneDestroyedEnvironments(deps.db, deps.hub, {
+          updatedBefore: now - DESTROYED_ENVIRONMENT_TTL_MS,
+          limit: 1,
+        }),
+    );
+    if (deleted === 0) {
+      break;
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
 
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
@@ -558,6 +591,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "queued-message-auto-send",
     run: runQueuedMessageAutoSendSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "deferred-thread-message-flush",
+    run: runDeferredThreadMessageSweep,
   },
   {
     cadenceMs: 0,

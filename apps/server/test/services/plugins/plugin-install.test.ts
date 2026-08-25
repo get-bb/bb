@@ -15,7 +15,10 @@ import {
 } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -39,6 +42,7 @@ import {
   parsePluginSource,
   runInstallCommand,
 } from "../../../src/services/plugins/install-sources.js";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginService,
@@ -48,6 +52,42 @@ import { createNoopTelemetryService } from "../../../src/services/system/telemet
 
 const logger = testLogger as unknown as Logger;
 const run = promisify(execFile);
+
+/**
+ * The scaffold's vendored components import real npm packages that
+ * `bb plugin new` installs for authors. This offline test links them from the
+ * repo's own install (resolved the way apps/app sees them) so the path:
+ * install's frontend bundle build can resolve every import.
+ */
+async function linkScaffoldDependencies(targetDir: string): Promise<void> {
+  const manifest = JSON.parse(
+    await readFile(join(targetDir, "package.json"), "utf8"),
+  ) as { dependencies: Record<string, string> };
+  const testDir = dirname(fileURLToPath(import.meta.url));
+  const appRequire = createRequire(
+    join(testDir, "..", "..", "..", "..", "app", "package.json"),
+  );
+  for (const name of Object.keys(manifest.dependencies)) {
+    let packageRoot = dirname(appRequire.resolve(name));
+    while (true) {
+      const candidate = join(packageRoot, "package.json");
+      if (existsSync(candidate)) {
+        const parsed = JSON.parse(readFileSync(candidate, "utf8")) as {
+          name?: string;
+        };
+        if (parsed.name === name) break;
+      }
+      const parent = dirname(packageRoot);
+      if (parent === packageRoot) {
+        throw new Error(`could not find package root for ${name}`);
+      }
+      packageRoot = parent;
+    }
+    const linkPath = join(targetDir, "node_modules", name);
+    await mkdir(dirname(linkPath), { recursive: true });
+    await symlink(packageRoot, linkPath, "dir");
+  }
+}
 
 async function hasBinary(command: string): Promise<boolean> {
   try {
@@ -391,6 +431,7 @@ describe("plugin install flows", () => {
     afterArtifactPromoted = undefined;
     materializationCount = 0;
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       hub: {
@@ -1032,6 +1073,7 @@ describe("plugin install flows", () => {
 
       // The same db and dataDir, so the checkout and its artifact row survive.
       service = createPluginService({
+      aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -1155,6 +1197,7 @@ describe("plugin install flows", () => {
       await mkdir(`${entry.rootDir}.promoting`, { recursive: true });
       await writeFile(join(`${entry.rootDir}.promoting`, "partial"), "copy");
       service = createPluginService({
+      aiServices: createAiServiceRegistry(),
         telemetry: createNoopTelemetryService(),
         db,
         hub: {
@@ -1828,10 +1871,14 @@ describe("plugin install flows", () => {
       packageName: "bb-plugin-scaffolded",
       bbVersion: "0.9.0",
     });
-    await stat(join(targetDir, "skills", "example-skill", "SKILL.md"));
+    await stat(join(targetDir, "skills", "example-todos", "SKILL.md"));
     await stat(join(targetDir, ".gitignore"));
     await stat(join(targetDir, "README.md"));
+    await linkScaffoldDependencies(targetDir);
 
+    // A path: install of a plugin with `bb.app` builds the frontend bundle
+    // from the vendored components, so this also proves the scaffold's
+    // component set and dependency list agree.
     const entry = await service.install(`path:${targetDir}`, { kind: "root" });
     expect(entry.id).toBe("scaffolded");
     expect(entry.status).toBe("running");

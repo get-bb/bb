@@ -11,13 +11,23 @@
  * replay the same recording, and `compareParity` diffs the two runs against an
  * explicit allowlist whose entries name their PR and reason.
  *
+ * Provider-agnostic on purpose: the caller names the recording, the bridge
+ * process to launch (`resolveProviderBridgeLaunch` builds one from a bridge
+ * module path), and — when the bridge spawns a provider child — a
+ * `ReplayProviderProfile` that points that child at the replay script. Nothing
+ * here knows which providers bb ships; `first-party-replay.ts` holds the
+ * first-party profiles and module paths, and `@bb/provider-parity` wires the
+ * real assembler and projector for the CLI. Published to plugins through
+ * `@get-bb/plugin-sdk/provider-bridge/testing`, so a third-party bridge can
+ * record in bb (docs/provider-bridge-protocol.md, "Record mode") and replay
+ * its own recordings with the same oracle the first-party bridges use.
+ *
  * This module is deliberately free of `@bb/agent-runtime` and `@bb/thread-view`
  * (both depend on this package): the delta assembler and the row projector are
- * injected. `@bb/provider-parity` wires the real ones and owns the CLI.
+ * injected.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,7 +43,6 @@ import {
 } from "./calibration-diff.js";
 import type { RecordedCellReplay } from "../conformance/recorded.js";
 import {
-  COMMITTED_RECORDINGS_ROOT,
   listRecordedCells,
   readBridgeRecording,
   withCurrentBridgeLane,
@@ -62,54 +71,128 @@ export type ParityRowProjector = (args: {
 // Bridge launch
 // ---------------------------------------------------------------------------
 
-/** Where each first-party bridge lives inside a checkout. */
-export const FIRST_PARTY_BRIDGE_MODULES: Readonly<
-  Record<string, { modulePath: string; pluginId: string }>
-> = {
-  codex: {
-    modulePath: "plugins/provider-codex/src/bridge/bridge.ts",
-    pluginId: "provider-codex",
-  },
-  "claude-code": {
-    modulePath: "plugins/provider-claude-code/src/bridge/bridge.ts",
-    pluginId: "provider-claude-code",
-  },
-  acp: {
-    modulePath: "plugins/provider-acp/src/bridge/bridge.ts",
-    pluginId: "provider-acp",
-  },
-  pi: {
-    modulePath: "packages/agent-runtime/src/pi/bridge/bridge.ts",
-    pluginId: "pi",
-  },
-};
-
-const BRIDGE_WORKER_ENTRY = "packages/provider-bridge-protocol/src/bridge-worker-entry.ts";
-
-export interface ParityBridgeSpec {
-  /** A bb checkout root (the pre-migration worktree, or `.`). */
-  checkoutRoot: string;
-  providerId: string;
-  /** Override the bridge module; defaults to the provider's first-party path. */
-  modulePath?: string;
-  pluginId?: string;
+/** A bridge process, ready to spawn: the bootstrap, the module, its scope. */
+export interface ProviderBridgeLaunch {
+  command: string;
+  args: string[];
+  cwd: string;
+  /** Added to the harness's own environment for the bridge process. */
+  env: Record<string, string>;
 }
 
-export type ReplayDialect = "json-rpc" | "claude-cli";
+export interface ResolveProviderBridgeLaunchOptions {
+  /**
+   * The bridge module: the file whose `experimental_providerBridge` export the
+   * bootstrap runs. Absolute; a built artifact (`host.mjs`) or, with a
+   * TypeScript loader among `nodeArgs`, the source file.
+   */
+  modulePath: string;
+  /** The plugin the bridge belongs to (its data and temp directories). */
+  pluginId: string;
+  /** Working directory of the bridge process; defaults to the caller's. */
+  cwd?: string;
+  /**
+   * The plugin data directory the bootstrap hands the bridge; defaults to a
+   * fresh temp directory per launch.
+   */
+  dataDir?: string;
+  /**
+   * The provider-bridge bootstrap (`bridge-worker-entry`) that runs the
+   * module; defaults to the kit's own — the source entry in a bb checkout,
+   * the bundled one in the published SDK.
+   */
+  bootstrapPath?: string;
+  /**
+   * Node flags before the bootstrap. Defaults: in a bb checkout (source
+   * bootstrap) `--conditions=source` plus the tsx loader; otherwise the tsx
+   * loader for a TypeScript module and nothing for a built one.
+   */
+  nodeArgs?: string[];
+}
+
+const SOURCE_BOOTSTRAP = fileURLToPath(new URL("../bridge-worker-entry.ts", import.meta.url));
+const BUNDLED_BOOTSTRAP = fileURLToPath(new URL("./provider-bridge-worker-entry.mjs", import.meta.url));
+
+/**
+ * The bootstrap this kit ships. From a checkout the protocol package's own
+ * TypeScript entry; from the published SDK the bundle built beside this
+ * module (`packages/plugin-sdk/scripts/build-runtime.mjs`).
+ */
+export function resolveProviderBridgeBootstrapPath(): string {
+  if (existsSync(SOURCE_BOOTSTRAP)) return SOURCE_BOOTSTRAP;
+  if (existsSync(BUNDLED_BOOTSTRAP)) return BUNDLED_BOOTSTRAP;
+  throw new Error(
+    `provider-bridge bootstrap not found at ${SOURCE_BOOTSTRAP} or ${BUNDLED_BOOTSTRAP}`,
+  );
+}
+
+function isTypeScriptPath(path: string): boolean {
+  return /\.[cm]?tsx?$/u.test(path);
+}
+
+function tsxSpecifier(): string {
+  return import.meta.resolve("tsx");
+}
+
+function defaultNodeArgs(bootstrapPath: string, modulePath: string): string[] {
+  if (isTypeScriptPath(bootstrapPath)) {
+    // A checkout: workspace packages resolve to their sources.
+    return ["--conditions=source", "--import", tsxSpecifier()];
+  }
+  return isTypeScriptPath(modulePath) ? ["--import", tsxSpecifier()] : [];
+}
+
+/**
+ * The process that runs one bridge module through the bootstrap — exactly the
+ * shape the runtime spawns, so a replayed bridge sees the argv, stdin framing
+ * and signal handling it gets in production.
+ */
+export function resolveProviderBridgeLaunch(
+  options: ResolveProviderBridgeLaunchOptions,
+): ProviderBridgeLaunch {
+  if (!isAbsolute(options.modulePath)) {
+    throw new Error(`bridge module path must be absolute: ${options.modulePath}`);
+  }
+  const bootstrapPath = options.bootstrapPath ?? resolveProviderBridgeBootstrapPath();
+  const dataDir = options.dataDir ?? mkdtempSync(join(tmpdir(), "bb-parity-data-"));
+  return {
+    command: process.execPath,
+    args: [
+      ...(options.nodeArgs ?? defaultNodeArgs(bootstrapPath, options.modulePath)),
+      bootstrapPath,
+      options.modulePath,
+      options.pluginId,
+      dataDir,
+    ],
+    cwd: options.cwd ?? process.cwd(),
+    env: {},
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Replay profile: how a bridge reaches the replay child
+// ---------------------------------------------------------------------------
+
+export type ReplayDialect = "json-rpc" | "claude-cli" | "pi-rpc";
 
 /**
  * How a provider's bridge is pointed at the replay child. Codex reads its
- * app-server command from env, Claude its CLI path from env, and an ACP
- * bridge its agent command from the launch spec inside `thread/start`.
+ * app-server command from env, Claude its CLI path from env, pi its RPC
+ * command from env (`pi-rpc`: JSON lines plus the extension channel on fds
+ * 3/4), and an ACP bridge its agent command from the launch spec inside
+ * `thread/start`. A bridge with no provider child (the echo example) needs no
+ * profile at all.
  */
 export interface ReplayProviderProfile {
+  /** The protocol the replay child speaks on its pipe. */
   dialect: ReplayDialect;
-  bridgeFamily: keyof typeof FIRST_PARTY_BRIDGE_MODULES;
+  /** Environment the bridge reads the child's command from. */
   env(args: {
     replayCommand: string[];
     wrapperPath: string;
     stateDir: string;
   }): Record<string, string>;
+  /** Rewrite a recorded runtime request that carries the child's command. */
   rewriteRuntimeLine?(line: string, args: { replayCommand: string[] }): string;
   /**
    * Provider state a bridge reads outside its provider pipe, seeded before
@@ -123,157 +206,11 @@ export interface ReplayProviderProfile {
   }): void;
 }
 
-export class UnreplayableProviderError extends Error {
-  constructor(providerId: string, reason: string) {
-    super(`provider "${providerId}" cannot be replayed: ${reason}`);
-    this.name = "UnreplayableProviderError";
-  }
-}
-
-export function resolveReplayProfile(providerId: string): ReplayProviderProfile {
-  if (providerId === "codex") {
-    return {
-      dialect: "json-rpc",
-      bridgeFamily: "codex",
-      env: ({ replayCommand }) => ({
-        BB_CODEX_BRIDGE_APP_SERVER_COMMAND: replayCommand[0],
-        BB_CODEX_BRIDGE_APP_SERVER_ARGS: JSON.stringify(replayCommand.slice(1)),
-      }),
-    };
-  }
-  if (providerId === "claude-code") {
-    return {
-      dialect: "claude-cli",
-      bridgeFamily: "claude-code",
-      // The Agent SDK runs a `.mjs` executable through node itself, so the
-      // wrapper module (which bakes the replay arguments in) is the "CLI".
-      // The config dir is the replay's own: the SDK reads and writes session
-      // transcripts under it, and a replay must not touch the user's.
-      env: ({ wrapperPath, stateDir }) => ({
-        BB_CLAUDE_CODE_EXECUTABLE: wrapperPath,
-        CLAUDE_CONFIG_DIR: claudeConfigDir(stateDir),
-      }),
-      prepareState: seedClaudeForkTranscripts,
-    };
-  }
-  if (providerId.startsWith("acp-")) {
-    return {
-      dialect: "json-rpc",
-      bridgeFamily: "acp",
-      env: () => ({}),
-      rewriteRuntimeLine: (line, { replayCommand }) =>
-        rewriteAcpLaunchSpec(line, replayCommand),
-    };
-  }
-  if (providerId === "pi") {
-    throw new UnreplayableProviderError(
-      providerId,
-      "pi runs its SDK in-process; its recordings capture the SDK boundary and have no provider child to replay",
-    );
-  }
-  throw new UnreplayableProviderError(providerId, "no replay profile");
-}
-
-function claudeConfigDir(stateDir: string): string {
-  return join(stateDir, "claude-config");
-}
-
-/** The Agent SDK's project directory name for a workspace path. */
-function claudeProjectDirName(workspaceDir: string): string {
-  return workspaceDir.replace(/[^a-zA-Z0-9]/g, "-");
-}
-
-/**
- * `forkSession` in the Agent SDK is a local file operation: it reads the
- * source session's transcript from the config dir's project directory and
- * writes the forked copy beside it. The transcript of the recorded source
- * session lives on the machine that recorded it, and its content does not
- * reach the replay (the forked "CLI" is the replay child), so every recorded
- * `thread/fork` gets a minimal transcript for its source session: one user
- * and one assistant entry, the assistant carrying the checkpoint id the fork
- * names, if any.
- */
-function seedClaudeForkTranscripts(args: {
-  recording: BridgeRecording;
-  stateDir: string;
-  workspaceDir: string;
-}): void {
-  const projectDir = join(
-    claudeConfigDir(args.stateDir),
-    "projects",
-    claudeProjectDirName(args.workspaceDir),
-  );
-  for (const entry of args.recording.entries) {
-    if (entry.dir !== "runtime→bridge") continue;
-    const message = parseWire(entry.line);
-    if (message === null || message.method !== "thread/fork") continue;
-    const params = message.params as
-      | { sourceProviderThreadId?: unknown; sourceProviderCheckpointId?: unknown }
-      | undefined;
-    const sessionId = params?.sourceProviderThreadId;
-    if (typeof sessionId !== "string") continue;
-    const checkpointId =
-      typeof params?.sourceProviderCheckpointId === "string"
-        ? params.sourceProviderCheckpointId
-        : randomUUID();
-    const userUuid = randomUUID();
-    const timestamp = "2026-01-01T00:00:00.000Z";
-    const transcript = [
-      {
-        type: "user",
-        uuid: userUuid,
-        parentUuid: null,
-        sessionId,
-        timestamp,
-        cwd: args.workspaceDir,
-        message: { role: "user", content: "recorded source session" },
-      },
-      {
-        type: "assistant",
-        uuid: checkpointId,
-        parentUuid: userUuid,
-        sessionId,
-        timestamp,
-        cwd: args.workspaceDir,
-        message: { role: "assistant", content: [{ type: "text", text: "ready" }] },
-      },
-    ];
-    mkdirSync(projectDir, { recursive: true });
-    writeFileSync(
-      join(projectDir, `${sessionId}.jsonl`),
-      `${transcript.map((line) => JSON.stringify(line)).join("\n")}\n`,
-    );
-  }
-}
-
-function rewriteAcpLaunchSpec(line: string, replayCommand: string[]): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(line);
-  } catch {
-    return line;
-  }
-  if (typeof parsed !== "object" || parsed === null) {
-    return line;
-  }
-  const message = parsed as { params?: { options?: { providerOptions?: Record<string, unknown> } } };
-  const providerOptions = message.params?.options?.providerOptions;
-  const spec = providerOptions?.acpLaunchSpec;
-  if (providerOptions === undefined || typeof spec !== "object" || spec === null) {
-    return line;
-  }
-  // The replay child is the whole agent: no model CLI to probe, no model flag
-  // to splice into its argv (`modelCli` would have the bridge run
-  // `node --list-models` and insert `--model` before the script path).
-  const { modelCli: _modelCli, ...rest } = spec as Record<string, unknown>;
-  providerOptions.acpLaunchSpec = {
-    ...rest,
-    command: replayCommand[0],
-    args: replayCommand.slice(1),
-    env: {},
-  };
-  return JSON.stringify(parsed);
-}
+/** A bridge that spawns no provider, or one whose child command is fixed. */
+export const DEFAULT_REPLAY_PROFILE: ReplayProviderProfile = {
+  dialect: "json-rpc",
+  env: () => ({}),
+};
 
 /**
  * A recorded request carries the recording machine's facts a replay must not
@@ -311,34 +248,15 @@ function rewriteRecordedMachineFacts(line: string, workspaceDir: string): string
   return changed ? JSON.stringify(parsed) : line;
 }
 
-function tsxSpecifier(): string {
-  return import.meta.resolve("tsx");
-}
-
-export function resolveBridgeLaunch(spec: ParityBridgeSpec): {
-  command: string;
-  args: string[];
-  cwd: string;
-} {
-  const checkoutRoot = resolve(spec.checkoutRoot);
-  const profile = resolveReplayProfile(spec.providerId);
-  const defaults = FIRST_PARTY_BRIDGE_MODULES[profile.bridgeFamily];
-  const modulePath = spec.modulePath ?? defaults.modulePath;
-  const pluginId = spec.pluginId ?? defaults.pluginId;
-  const dataDir = mkdtempSync(join(tmpdir(), "bb-parity-data-"));
-  return {
-    command: process.execPath,
-    args: [
-      "--conditions=source",
-      "--import",
-      tsxSpecifier(),
-      join(checkoutRoot, BRIDGE_WORKER_ENTRY),
-      isAbsolute(modulePath) ? modulePath : join(checkoutRoot, modulePath),
-      pluginId,
-      dataDir,
-    ],
-    cwd: checkoutRoot,
-  };
+/** The workspace the recording's session ran in: the first recorded `cwd`. */
+function recordedWorkspaceDir(recording: BridgeRecording): string | null {
+  for (const entry of recording.entries) {
+    if (entry.dir !== "runtime→bridge") continue;
+    const message = parseWire(entry.line);
+    const cwd = (message?.params as { cwd?: unknown } | undefined)?.cwd;
+    if (typeof cwd === "string" && cwd.length > 0) return cwd;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -347,7 +265,12 @@ export function resolveBridgeLaunch(spec: ParityBridgeSpec): {
 
 export interface ReplayRecordingOptions {
   recordingDir: string;
-  bridge: ParityBridgeSpec;
+  /** The provider the recording belongs to; keys the assembler's ids. */
+  providerId: string;
+  /** The bridge process to replay through (see `resolveProviderBridgeLaunch`). */
+  bridge: ProviderBridgeLaunch;
+  /** How the bridge reaches the replay child; `DEFAULT_REPLAY_PROFILE` when omitted. */
+  profile?: ReplayProviderProfile;
   createAssembler: CreateParityAssembler;
   /**
    * The assembler that plans the replay's gates from the recorded
@@ -368,7 +291,13 @@ export interface ReplayRecordingOptions {
   /**
    * The quiet period after which a request is sent even though the bridge
    * has emitted fewer lines than the recording had before it — a divergent
-   * bridge pays this once per request instead of stalling.
+   * bridge pays this once per request instead of stalling. Only a plan from
+   * the recorded lane can be short for that reason: a plan from the current
+   * lane (`planFromCurrentLane`) was written by this very bridge, so a
+   * shortfall there is latency, never divergence, and the request waits for
+   * its events up to `timeoutMs` instead — a starved bridge (a loaded CI
+   * runner) still has provider lines to read, and a request sent on quiet
+   * alone lands before them, at a point the recording never had.
    */
   orderTimeoutMs?: number;
   /** Quiet period after the last request before the bridge is closed. */
@@ -535,8 +464,8 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const orderTimeoutMs = options.orderTimeoutMs ?? 5_000;
   const settleMs = options.settleMs ?? 750;
   const drainMs = options.drainMs ?? 300;
-  const providerId = options.bridge.providerId;
-  const profile = resolveReplayProfile(providerId);
+  const providerId = options.providerId;
+  const profile = options.profile ?? DEFAULT_REPLAY_PROFILE;
   const recording = readBridgeRecording(options.recordingDir);
 
   const stateDir = mkdtempSync(join(tmpdir(), "bb-parity-replay-"));
@@ -576,15 +505,28 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   );
 
   profile.prepareState?.({ recording, stateDir, workspaceDir });
-  const launch = resolveBridgeLaunch(options.bridge);
+  const launch = options.bridge;
   const child: ChildProcess = spawn(launch.command, launch.args, {
     cwd: launch.cwd,
     env: {
       ...process.env,
+      ...launch.env,
       ...profile.env({ replayCommand, wrapperPath, stateDir }),
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
+
+  // A bridge that derives paths from the runtime's `cwd` (a command's cwd,
+  // a file it reads) names this replay's workspace where the recording
+  // names the recorded one. Restore the recorded path in its output, so the
+  // replay compares with the recording and a re-recorded lane keeps the
+  // recording's paths. The replay workspace is a unique temp path, so the
+  // substitution cannot touch anything else.
+  const recordedCwd = recordedWorkspaceDir(recording);
+  const restoreRecordedWorkspace = (line: string): string =>
+    recordedCwd === null || recordedCwd === workspaceDir
+      ? line
+      : line.split(workspaceDir).join(recordedCwd);
 
   const initializeId = PARITY_INITIALIZE_ID;
   const startedAt = Date.now();
@@ -599,8 +541,9 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
   const grammar = new ThreadEventGrammar();
   const liveAssembler = options.createAssembler(providerId);
   const planAssembler = (options.createPlanAssembler ?? options.createAssembler)(providerId);
+  const exactPlan = options.planFromCurrentLane === true;
   const steps = planRuntimeSteps(
-    options.planFromCurrentLane === true ? withCurrentBridgeLane(recording) : recording,
+    exactPlan ? withCurrentBridgeLane(recording) : recording,
     planAssembler,
   );
 
@@ -653,7 +596,8 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
 
   readBoundedLines({
     input: child.stdout!,
-    onLine: (line) => {
+    onLine: (rawLine) => {
+      const line = restoreRecordedWorkspace(rawLine);
       lastOutputAt = Date.now();
       lines.push(line);
       lineTimes.push(lastOutputAt - startedAt);
@@ -760,15 +704,17 @@ export async function replayRecording(options: ReplayRecordingOptions): Promise<
     // (the cursor set after the previous send), and the bridge must have
     // assembled as many events as the recording had before it. Events rather
     // than lines, so identity or metadata chatter cannot shift the point.
-    // Best effort for a divergent bridge — the wait ends once the bridge has
-    // been quiet for orderTimeoutMs — and never a stall.
+    // A plan from the current lane is exact for this bridge, so the wait is
+    // strict and a timeout is a stall. A plan from the recorded lane is best
+    // effort for a divergent bridge — the wait ends once the bridge has been
+    // quiet for orderTimeoutMs — and never a stall.
     await waitFor(
       `${step.eventsBefore} events before ${method}`,
       () =>
         events.length >= step.eventsBefore ||
-        Date.now() - lastOutputAt >= orderTimeoutMs,
+        (!exactPlan && Date.now() - lastOutputAt >= orderTimeoutMs),
       timeoutMs,
-      false,
+      exactPlan,
     );
     await waitFor(
       `the stream to drain before ${method}`,
@@ -990,9 +936,20 @@ function pointerSegments(path: string): string[] {
  * Delete every value under a wildcard JSON pointer. Returns how many values
  * the mask removed, so an allowlist entry that touches nothing is reported
  * stale.
+ *
+ * The root pointer (`/`) empties the whole layer. A pointer cannot describe
+ * a change that inserts or removes a list entry (every later index shifts),
+ * so an entry that needs this must say in its reason why the layer is not
+ * comparable for that cell and what re-records it out of the allowlist.
  */
 export function maskPath(value: unknown, path: string): number {
   const segments = pointerSegments(path);
+  if (segments.length === 0) {
+    if (!Array.isArray(value)) return 0;
+    const removed = value.length;
+    value.length = 0;
+    return removed;
+  }
   let removed = 0;
   const visit = (node: unknown, index: number): void => {
     if (index >= segments.length || node === null || typeof node !== "object") {
@@ -1102,30 +1059,29 @@ export function describeParityValue(value: unknown): string {
 // ---------------------------------------------------------------------------
 
 export interface ReplayRecordedCellsOptions {
+  /** The `<provider>/<cell>` tree to read (see `listRecordedCells`). */
+  recordingsRoot: string;
   /** Which recorded providers this bridge serves (`acp` serves `acp-*`). */
   servesProvider: (providerId: string) => boolean;
-  /** Cell names to replay; defaults to every committed cell of those providers. */
+  /** Cell names to replay; defaults to every cell of those providers. */
   cells?: readonly string[];
-  /** The checkout whose bridge replays; defaults to the recordings' own. */
-  checkoutRoot?: string;
-  recordingsRoot?: string;
+  /** The bridge process and replay profile for one cell's provider. */
+  bridge: (cell: RecordedCell) => { launch: ProviderBridgeLaunch; profile?: ReplayProviderProfile };
   createAssembler: CreateParityAssembler;
   timeoutMs?: number;
   onStderr?: (text: string) => void;
 }
 
 /**
- * Replay this bridge's recorded cells for `checkRecordedCellReplay`: each
- * cell through the bridge of the checkout, with the recording's own assembled
+ * Replay a bridge's recorded cells for `checkRecordedCellReplay`: each cell
+ * through the bridge the caller launches, with the recording's own assembled
  * events beside the replay's. Cells run concurrently — each is its own bridge
  * process with its own replay state.
  */
 export async function replayRecordedCells(
   options: ReplayRecordedCellsOptions,
 ): Promise<RecordedCellReplay[]> {
-  const recordingsRoot = options.recordingsRoot ?? COMMITTED_RECORDINGS_ROOT;
-  const checkoutRoot = options.checkoutRoot ?? resolve(recordingsRoot, "../../..");
-  const cells = listRecordedCells(recordingsRoot).filter(
+  const cells = listRecordedCells(options.recordingsRoot).filter(
     (cell: RecordedCell) =>
       options.servesProvider(cell.provider) &&
       (options.cells === undefined || options.cells.includes(cell.cell)) &&
@@ -1141,9 +1097,12 @@ export async function replayRecordedCells(
         options.createAssembler,
         cell.provider,
       );
+      const bridge = options.bridge(cell);
       const run = await replayRecording({
         recordingDir: cell.dir,
-        bridge: { checkoutRoot, providerId: cell.provider },
+        providerId: cell.provider,
+        bridge: bridge.launch,
+        ...(bridge.profile === undefined ? {} : { profile: bridge.profile }),
         createAssembler: options.createAssembler,
         planFromCurrentLane: true,
         ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),

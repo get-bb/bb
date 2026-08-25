@@ -38,7 +38,10 @@ import {
   registerHostRpcResponder,
   type HostRpcResponder,
 } from "../helpers/host-rpc.js";
-import { stubHostArtifact } from "../helpers/provider-registry.js";
+import {
+  configuredAcpProvider,
+  stubHostArtifact,
+} from "../helpers/provider-registry.js";
 import type { TestAppHarness } from "../helpers/test-app.js";
 import { textInput } from "../helpers/prompt-input.js";
 import { withTestHarness } from "../helpers/test-app.js";
@@ -154,24 +157,26 @@ function registerRemoteRuntimeFileResponder(
 }
 
 describe("thread runtime config", () => {
-  it("attaches custom ACP launch specs to thread start and turn submit commands", async () => {
+  // A configured agent's launch spec reaches the bridge the way every
+  // provider's static options do: on the registration, inside the opaque
+  // `bridgeLaunch.providerOptions` bag.
+  it("carries a configured ACP agent's launch spec on thread start and turn submit", async () => {
     await withTestHarness(
       {
-        customAcpAgents: [
-          {
+        extraProviders: [
+          await configuredAcpProvider({
             id: "custom",
             displayName: "Custom ACP",
             command: "custom-agent",
             args: ["serve"],
             env: { CUSTOM_AGENT_TOKEN: "token" },
-            supportsManualCompaction: false,
             cwd: "/agent-home",
             modelCli: {
               listArgs: ["models", "list"],
               selectFlag: "--model",
               primaryModels: ["model-a"],
             },
-          },
+          }),
         ],
       },
       async (harness) => {
@@ -228,7 +233,9 @@ describe("thread runtime config", () => {
           syncGeneratedTitle: false,
           thread,
         });
-        expect(startCommand.acpLaunchSpec).toEqual(expectedSpec);
+        expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
+          acpLaunchSpec: expectedSpec,
+        });
         expect(startCommand.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -249,8 +256,12 @@ describe("thread runtime config", () => {
             thread,
           },
         );
-        expect(submitCommand.acpLaunchSpec).toEqual(expectedSpec);
-        expect(submitCommand.resumeContext.acpLaunchSpec).toEqual(expectedSpec);
+        expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
+          acpLaunchSpec: expectedSpec,
+        });
+        expect(
+          submitCommand.resumeContext.bridgeLaunch.providerOptions,
+        ).toMatchObject({ acpLaunchSpec: expectedSpec });
         expect(submitCommand.resumeContext.dynamicTools).toEqual([
           expect.objectContaining({
             name: "update_environment_directory",
@@ -364,7 +375,6 @@ describe("thread runtime config", () => {
           syncGeneratedTitle: false,
           thread,
         });
-        expect(startCommand.acpLaunchSpec).toBeUndefined();
         expect(startCommand.bridgeLaunch.providerOptions).toMatchObject({
           acpLaunchSpec: expectedSpec,
         });
@@ -388,11 +398,9 @@ describe("thread runtime config", () => {
             thread,
           },
         );
-        expect(submitCommand.acpLaunchSpec).toBeUndefined();
         expect(submitCommand.bridgeLaunch.providerOptions).toMatchObject({
           acpLaunchSpec: expectedSpec,
         });
-        expect(submitCommand.resumeContext.acpLaunchSpec).toBeUndefined();
         expect(
           submitCommand.resumeContext.bridgeLaunch.providerOptions,
         ).toMatchObject({ acpLaunchSpec: expectedSpec });
@@ -903,10 +911,8 @@ describe("thread runtime config", () => {
         declaration: validatePluginProviderDeclaration({
           id: "hooked",
           displayName: "Hooked",
+          maintenance: { health: false, usage: false, installation: false },
           capabilities: {
-            experimental_providerHealth: false,
-            experimental_providerUsage: false,
-            experimental_providerInstallation: false,
             supportsServiceTier: false,
             supportsNativeUserQuestion: false,
             fork: "none",
@@ -917,7 +923,7 @@ describe("thread runtime config", () => {
             reasoningLevels: ["medium"],
           },
           composerActions: ["plan"],
-          experimental_deriveProviderOptions: (context) => ({
+          deriveProviderOptions: (context) => ({
             seen: {
               threadId: context.threadId,
               projectId: context.projectId,
@@ -930,7 +936,11 @@ describe("thread runtime config", () => {
         }),
         readSettings: () => ({ verbose: true }),
       });
-      harness.deps.providerRegistry.register({ ...registration, pluginId });
+      harness.deps.providerRegistry.register({
+        ...registration,
+        pluginId,
+        iconNames: new Set<string>(),
+      });
       harness.deps.pluginHostArtifacts.set(pluginId, stubHostArtifact(pluginId));
 
       const { host } = seedHostSession(harness.deps, {

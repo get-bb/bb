@@ -1,4 +1,8 @@
-import type { ThreadEvent, ThreadEventFileChange } from "@bb/domain";
+import type {
+  ThreadEvent,
+  ThreadEventFileChange,
+  ThreadEventItemPresentation,
+} from "@bb/domain";
 import {
   itemStatusToApprovalStatus,
   itemStatusToExecStatus,
@@ -38,6 +42,7 @@ interface FileEditChangesPartial extends FileEditPartialBase {
   changes: EventProjectionFileEditChange[];
   approvalStatus: EventProjectionApprovalLifecycleStatus | null;
   status: FileEditStatus;
+  presentation?: ThreadEventItemPresentation;
 }
 
 export type FileEditPartial = FileEditOutputPartial | FileEditChangesPartial;
@@ -76,6 +81,9 @@ export function parseFileEditFromItemEvent(
     changes,
     approvalStatus: itemStatusToApprovalStatus(decoded.item.approvalStatus),
     status: itemStatusToExecStatus(decoded.item.status),
+    ...(decoded.item.presentation
+      ? { presentation: decoded.item.presentation }
+      : {}),
     ...(parentToolCallId ? { parentToolCallId } : {}),
   };
 }

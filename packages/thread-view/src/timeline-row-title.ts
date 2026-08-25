@@ -7,11 +7,16 @@ import type {
   TimelineActivityIntent,
   TimelineApprovalStatus,
   TimelineCommandWorkRow,
+  TimelineExtensionWorkRow,
   TimelineFileChange,
   TimelineFileChangeWorkRow,
+  TimelineFileReadWorkRow,
   TimelineImageViewWorkRow,
   TimelineParentChangeSystemRow,
+  TimelinePlanStepsWorkRow,
+  TimelineRowPresentation,
   TimelineRowStatus,
+  TimelineSearchWorkRow,
   TimelineToolWorkRow,
   TimelineWebFetchWorkRow,
   TimelineWebSearchWorkRow,
@@ -34,9 +39,13 @@ import {
   formatTimelineActivityIntentDetailParts,
   getTimelineActivityIntentDetailDedupeKey,
   hasTimelineExplorationIntent,
+  timelineRowActivityIntents,
   type TimelineExplorationWorkRow,
 } from "./timeline-activity-intents.js";
-import { fileNameFromPath } from "./timeline-path-display.js";
+import {
+  fileNameFromPath,
+  formatTimelinePath,
+} from "./timeline-path-display.js";
 import {
   buildTimelineWorkSummaryLabelParts,
   type ThreadTimelineViewRow,
@@ -414,6 +423,79 @@ function displayStatus({
 }
 
 // ---------------------------------------------------------------------------
+// Presentation-driven titles
+// ---------------------------------------------------------------------------
+
+/**
+ * The bridge's label for the row's lifecycle state: the present-tense label
+ * while pending, the past-tense label once settled. A failed or interrupted
+ * row keeps the settled label and says how it ended through a status
+ * decoration, so the row stays identifiable without a second verb table.
+ */
+function presentationLabel(
+  presentation: TimelineRowPresentation,
+  status: TimelineRowStatus,
+): string {
+  return status === "pending"
+    ? presentation.label.pending
+    : presentation.label.completed;
+}
+
+interface PresentedTitleArgs {
+  presentation: TimelineRowPresentation;
+  status: TimelineRowStatus;
+  startedAt: number;
+  completedAt: number | null;
+  /** Row content beside the label; defaults to the presentation's headline. */
+  content?: string | null;
+  /** CLI plain-text override for `content`. */
+  plainContent?: string;
+  /** Emphasize the content segment (a path, a command), not plain prose. */
+  em?: boolean;
+}
+
+/**
+ * Label + content + lifecycle decoration, the one shape every row with a
+ * bridge presentation renders through. Core kinds pass their own structured
+ * content (a path, a query, a child description) so a generic bridge label
+ * such as "Read file" still names what was read.
+ */
+function presentedTitle({
+  presentation,
+  status,
+  startedAt,
+  completedAt,
+  content,
+  plainContent,
+  em = true,
+}: PresentedTitleArgs): TimelineTitle {
+  const resolvedContent = content === undefined ? presentation.title : content;
+  const segments: TimelineTitleSegment[] = [
+    segment(presentationLabel(presentation, status), {
+      shimmer: status === "pending",
+      truncate: resolvedContent ? false : true,
+    }),
+  ];
+  if (resolvedContent) {
+    segments.push(
+      segment(resolvedContent, {
+        em,
+        truncate: true,
+        ...(plainContent === undefined ? {} : { plainText: plainContent }),
+      }),
+    );
+  }
+  const durationMs = completedAt !== null ? completedAt - startedAt : null;
+  const decorations: TimelineTitleDecoration[] =
+    status === "error"
+      ? [statusDecoration("error", durationMs)]
+      : status === "interrupted"
+        ? [statusDecoration("interrupted", durationMs)]
+        : filterNull([durationDecoration(startedAt, completedAt)]);
+  return makeTitle({ segments, decorations });
+}
+
+// ---------------------------------------------------------------------------
 // Mappers — one per row kind. Each produces a structured Title.
 // ---------------------------------------------------------------------------
 
@@ -423,31 +505,33 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
     status: row.status,
   });
   const isCommand = row.workKind === "command";
-  // Keyed by BB's own row status, so a state with no plugin label (error,
-  // interrupted, waiting, denied) falls through to the standard rendering
-  // and the failing tool stays identifiable.
-  const statusLabels = isCommand ? undefined : row.statusLabels;
-  const label =
-    statusLabels && (status === "pending" || status === "completed")
-      ? statusLabels[status]
-      : null;
-  if (label !== null) {
-    return makeTitle({
-      segments: [
-        segment(label, { shimmer: status === "pending", truncate: true }),
-      ],
-      decorations: filterNull([
-        durationDecoration(row.startedAt, row.completedAt),
-      ]),
+  // Approval states keep the core phrasing: the bridge's label describes the
+  // work, not the gate bb put in front of it.
+  if (
+    row.presentation &&
+    status !== "waiting" &&
+    status !== "denied" &&
+    // A command's own text already says what ran; the bridge label would
+    // only repeat "Ran command".
+    !isCommand
+  ) {
+    // The bridge's label already names the tool, and its headline (when it
+    // set one) is the content; the raw arguments stay in the expanded body.
+    return presentedTitle({
+      presentation: row.presentation,
+      status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
     });
-  }
-  const explorationTitle = mapSingleExplorationIntentTitle(row);
-  if (explorationTitle !== null) {
-    return explorationTitle;
   }
   const content = isCommand
     ? row.command
     : formatToolCallCommand(row.toolName, row.toolArgs);
+  const explorationTitle =
+    row.workKind === "command" ? mapSingleExplorationIntentTitle(row) : null;
+  if (explorationTitle !== null) {
+    return explorationTitle;
+  }
   switch (status) {
     case "waiting":
       return makeTitle({
@@ -519,12 +603,12 @@ function mapExecutionTitle(row: TimelineExecutionWorkRow): TimelineTitle {
 }
 
 function mapSingleExplorationIntentTitle(
-  row: TimelineExecutionWorkRow,
+  row: TimelineExplorationWorkRow,
 ): TimelineTitle | null {
   if (!hasTimelineExplorationIntent(row)) {
     return null;
   }
-  const knownIntents = row.activityIntents.filter(
+  const knownIntents = timelineRowActivityIntents(row).filter(
     (intent) => intent.type !== "unknown",
   );
   if (knownIntents.length !== 1) {
@@ -535,7 +619,7 @@ function mapSingleExplorationIntentTitle(
     return null;
   }
   const status = displayStatus({
-    approvalStatus: row.approvalStatus,
+    approvalStatus: row.workKind === "command" ? row.approvalStatus : null,
     status: row.status,
   });
   const pending = status === "pending";
@@ -691,6 +775,16 @@ function mapFileChangeTitle(row: TimelineFileChangeWorkRow): TimelineTitle {
 }
 
 function mapWebSearchTitle(row: TimelineWebSearchWorkRow): TimelineTitle {
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      content: row.queries.join(", "),
+      em: false,
+    });
+  }
   const query = row.queries.join(", ") || "web search";
   const querySegment = segment(query, {
     em: false,
@@ -738,6 +832,16 @@ function mapWebSearchTitle(row: TimelineWebSearchWorkRow): TimelineTitle {
 }
 
 function mapWebFetchTitle(row: TimelineWebFetchWorkRow): TimelineTitle {
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      content: row.url,
+      em: false,
+    });
+  }
   const urlSegment = segment(row.url, { em: false, truncate: true });
   switch (row.status) {
     case "pending":
@@ -778,6 +882,16 @@ function mapWebFetchTitle(row: TimelineWebFetchWorkRow): TimelineTitle {
 }
 
 function mapImageViewTitle(row: TimelineImageViewWorkRow): TimelineTitle {
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      content: fileNameFromPath(row.path),
+      plainContent: row.path,
+    });
+  }
   const pathSegment = segment(fileNameFromPath(row.path), {
     em: false,
     plainText: row.path,
@@ -840,6 +954,15 @@ function delegationVerbForStatus(status: TimelineRowStatus): {
 
 function mapDelegationTitle(row: TimelineViewDelegationWorkRow): TimelineTitle {
   const description = row.description ?? (row.output.trim() || row.toolName);
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      content: description,
+    });
+  }
   const verb = delegationVerbForStatus(row.status);
   const segments: TimelineTitleSegment[] = [
     segment(verb.text, { shimmer: verb.shimmer }),
@@ -1193,6 +1316,118 @@ function mapQuestionTitle(row: TimelineQuestionViewWorkRow): TimelineTitle {
   }
 }
 
+function mapFileReadTitle(row: TimelineFileReadWorkRow): TimelineTitle {
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      content: formatTimelinePath({ path: row.path, mode: "compact" }),
+      plainContent: row.path,
+    });
+  }
+  return (
+    mapSingleExplorationIntentTitle(row) ??
+    makeTitle({
+      segments: [
+        segment(row.status === "pending" ? "Reading" : "Read", {
+          shimmer: row.status === "pending",
+        }),
+        segment(row.path, { em: true, truncate: true }),
+      ],
+    })
+  );
+}
+
+/** What a search row searched, phrased to follow the bridge's label. */
+function searchContent(row: TimelineSearchWorkRow): string {
+  const root = row.path ? ` in ${row.path}` : "";
+  switch (row.mode) {
+    case "content":
+      return `for ${row.query}${root}`;
+    case "path":
+      return `matching ${row.query}${root}`;
+    case "list":
+      return row.path
+        ? `in ${row.path}`
+        : row.query.length > 0
+          ? `in ${row.query}`
+          : "";
+    default:
+      return assertNever(row.mode);
+  }
+}
+
+function mapSearchTitle(row: TimelineSearchWorkRow): TimelineTitle {
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      content: searchContent(row),
+      em: false,
+    });
+  }
+  return (
+    mapSingleExplorationIntentTitle(row) ??
+    makeTitle({
+      segments: [
+        segment(row.status === "pending" ? "Searching" : "Searched", {
+          shimmer: row.status === "pending",
+        }),
+        segment(searchContent(row), { truncate: true }),
+      ],
+    })
+  );
+}
+
+function activePlanStep(row: TimelinePlanStepsWorkRow): string | null {
+  const active = row.steps.find((step) => step.status === "active");
+  return active?.step ?? row.explanation;
+}
+
+function mapPlanStepsTitle(row: TimelinePlanStepsWorkRow): TimelineTitle {
+  const content = activePlanStep(row);
+  if (row.presentation) {
+    return presentedTitle({
+      presentation: row.presentation,
+      status: row.status,
+      startedAt: row.startedAt,
+      completedAt: row.completedAt,
+      content: row.presentation.title ?? content,
+      em: false,
+    });
+  }
+  const completedSteps = row.steps.filter(
+    (step) => step.status === "completed",
+  ).length;
+  return makeTitle({
+    segments: [
+      segment(row.status === "pending" ? "Updating plan" : "Updated plan", {
+        shimmer: row.status === "pending",
+      }),
+      segment(content ?? `${completedSteps}/${row.steps.length} steps done`, {
+        truncate: true,
+      }),
+    ],
+    decorations: filterNull([
+      durationDecoration(row.startedAt, row.completedAt),
+    ]),
+  });
+}
+
+function mapExtensionTitle(row: TimelineExtensionWorkRow): TimelineTitle {
+  return presentedTitle({
+    presentation: row.presentation,
+    status: row.status,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    em: false,
+  });
+}
+
 function mapWorkTitle(
   row: TimelineViewWorkRow,
   options: BuildTimelineRowTitleOptions,
@@ -1202,6 +1437,14 @@ function mapWorkTitle(
       case "command":
       case "tool":
         return mapExecutionTitle(row);
+      case "file-read":
+        return mapFileReadTitle(row);
+      case "search":
+        return mapSearchTitle(row);
+      case "plan-steps":
+        return mapPlanStepsTitle(row);
+      case "extension":
+        return mapExtensionTitle(row);
       case "file-change":
         return mapFileChangeTitle(row);
       case "web-search":
@@ -1515,7 +1758,7 @@ export function buildTimelineActivityIntentTitles(
         ? "interrupted"
         : undefined;
 
-  row.activityIntents.forEach((intent, index) => {
+  timelineRowActivityIntents(row).forEach((intent, index) => {
     if (intent.type === "unknown") {
       return;
     }

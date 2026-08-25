@@ -429,6 +429,9 @@ function createFileEditMessage({
     ...(partial.parentToolCallId
       ? { parentToolCallId: partial.parentToolCallId }
       : {}),
+    ...("presentation" in partial && partial.presentation
+      ? { presentation: partial.presentation }
+      : {}),
     callId,
     changes: change ? [{ ...change }] : [],
     stdout,
@@ -643,6 +646,9 @@ function updateFileEditMessage(
 
   if (!existing.parentToolCallId && partial.parentToolCallId) {
     existing.parentToolCallId = partial.parentToolCallId;
+  }
+  if ("presentation" in partial && partial.presentation) {
+    existing.presentation = partial.presentation;
   }
 
   if (change) {

@@ -1,10 +1,9 @@
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { createProviderForId } from "./provider-registry.js";
-import type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
 import type { AgentRuntimeBridgeLaunch } from "./types.js";
 
-const dynamicAcpLaunchSpec: HostDaemonAcpLaunchSpec = {
+const dynamicAcpLaunchSpec = {
   displayName: "Custom ACP",
   command: "custom-agent",
   args: ["serve"],
@@ -37,7 +36,7 @@ const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
   },
   envPassthrough: [],
   capabilities: {
-    experimental_providerInstallation: false,
+    providerInstallation: false,
     supportsServiceTier: true,
     permissionModes: ["accept-edits", "full"],
     supportsThreadArchive: false,
@@ -46,16 +45,20 @@ const ACP_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
   },
 };
 
-/** What the server sends for Pi: the bridge inside the daemon's own bundle,
- * plus Pi's declared capabilities. */
+/** What the server sends for Pi: the provider-pi plugin's artifact, plus
+ * Pi's declared capabilities. */
 const PI_BRIDGE_LAUNCH: AgentRuntimeBridgeLaunch = {
   pluginId: "provider-fixture",
   dataDir: "/data/plugins/provider-fixture/bridge-data",
-  source: { kind: "daemon-bundled", id: "pi" },
+  source: {
+    kind: "artifact",
+    digest: "b".repeat(64),
+    artifactPath: "/data/provider-bridges/pi.mjs",
+  },
   providerOptions: {},
   envPassthrough: [],
   capabilities: {
-    experimental_providerInstallation: false,
+    providerInstallation: false,
     supportsServiceTier: false,
     permissionModes: ["full"],
     supportsThreadArchive: false,
@@ -131,7 +134,7 @@ describe("provider registry", () => {
     });
   });
 
-  it("passes the configured bridge bundle directory to bundled providers", () => {
+  it("runs the packaged bootstrap from the configured bridge bundle directory", () => {
     const piProvider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
       bridgeBundleDir: "/tmp",
@@ -139,36 +142,29 @@ describe("provider registry", () => {
     });
 
     expectBridgeSpawn(piProvider, {
-      module: "/tmp/bb-pi-bridge.mjs",
+      module: "/data/provider-bridges/pi.mjs",
       bundleDir: "/tmp",
     });
   });
 
-  it("passes the configured bridge node runtime to bundled providers", () => {
+  it("runs the bridge under the configured bridge node runtime", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
-    const piProvider = createProviderForId("pi", {
+    const provider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
       bridgeLaunch: PI_BRIDGE_LAUNCH,
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
     });
-    const acpProvider = createProviderForId("acp-cursor", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeLaunch: ACP_BRIDGE_LAUNCH,
-      bridgeNodeEnv,
-      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
-    });
 
-    expect(piProvider.process.command).toBe(
+    expect(provider.process.command).toBe(
       "/Applications/bb.app/Contents/MacOS/bb",
     );
-    expect(piProvider.process.env).toEqual(bridgeNodeEnv);
-    expect(acpProvider.process.command).toBe(
-      "/Applications/bb.app/Contents/MacOS/bb",
-    );
-    expect(acpProvider.process.env).toEqual(bridgeNodeEnv);
+    expect(provider.process.env).toEqual(bridgeNodeEnv);
   });
 
+  // A first-party id is no longer a special case here — reservation of
+  // first-party ids is server-side policy, and the daemon has already
+  // verified the artifact bytes.
   it("creates pi provider with expected process config", () => {
     const provider = createProviderForId("pi", {
       additionalWorkspaceWriteRoots: [],
@@ -176,10 +172,8 @@ describe("provider registry", () => {
     });
     expect(provider.id).toBe("pi");
     expect(provider.process.command).toBe("node");
-    expectBridgeSpawn(provider, {
-      module: /agent-runtime\/src\/pi\/bridge\/bridge\.ts$/u,
-    });
-    expect(existsSync(provider.process.args.at(-3) ?? "")).toBe(true);
+    expectBridgeSpawn(provider, { module: "/data/provider-bridges/pi.mjs" });
+    expect(existsSync(provider.process.args.at(-4) ?? "")).toBe(true);
   });
 
   it("passes the requested workspace to Pi model listing", () => {
@@ -201,15 +195,17 @@ describe("provider registry", () => {
   });
 
   it("runs every acp id on the acp plugin's verified artifact", () => {
-    // Only `acp-cursor` is plugin-declared; known and custom ACP agents are
-    // resolved from launch specs at request time and never registered. The
-    // server serves the ACP plugin's artifact for all of them, so the daemon
-    // must route each one onto the generic artifact adapter.
+    // Every ACP agent — bb's known list and the ones a user configures in the
+    // plugin's settings — is registered by the ACP plugin and carries that
+    // plugin's artifact, so the daemon routes each one onto the generic
+    // artifact adapter.
     for (const providerId of ["acp-cursor", "acp-opencode", "acp-custom"]) {
       const provider = createProviderForId(providerId, {
         additionalWorkspaceWriteRoots: [],
-        acpLaunchSpec: dynamicAcpLaunchSpec,
-        bridgeLaunch: ACP_BRIDGE_LAUNCH,
+        bridgeLaunch: {
+          ...ACP_BRIDGE_LAUNCH,
+          providerOptions: { acpLaunchSpec: dynamicAcpLaunchSpec },
+        },
       });
       expect(provider.id).toBe(providerId);
       expectBridgeSpawn(provider, {
@@ -260,11 +256,15 @@ describe("provider registry", () => {
     });
   });
 
-  it("creates a dynamic acp provider from a launch spec", () => {
+  // A user-configured agent is a registration like any other: its launch
+  // spec is declared bridge options, beside the host-local write roots.
+  it("carries a configured acp agent's declared launch spec", () => {
     const provider = createProviderForId("acp-custom", {
       additionalWorkspaceWriteRoots: ["/extra-root"],
-      acpLaunchSpec: dynamicAcpLaunchSpec,
-      bridgeLaunch: ACP_BRIDGE_LAUNCH,
+      bridgeLaunch: {
+        ...ACP_BRIDGE_LAUNCH,
+        providerOptions: { acpLaunchSpec: dynamicAcpLaunchSpec },
+      },
     });
 
     expect(provider.id).toBe("acp-custom");
@@ -306,59 +306,6 @@ describe("provider registry", () => {
     });
   });
 
-  // Pi is the last bridge bb delivers in the daemon bundle: its launch names
-  // that bundled bridge instead of carrying an artifact hash.
-  it("routes pi to its bundled canonical bridge", () => {
-    const provider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeLaunch: PI_BRIDGE_LAUNCH,
-    });
-
-    expect(provider.process.command).toBe("node");
-    const bridgeEntry = provider.process.args.at(-3) ?? "";
-    expect(bridgeEntry).toMatch(/agent-runtime\/src\/pi\/bridge\/bridge\.ts$/u);
-    expect(existsSync(bridgeEntry)).toBe(true);
-  });
-
-  // Every bridge-bound command carries a launch, so a missing one means the
-  // caller has no bridge for this provider at all — not a lookup miss.
-  it("rejects a provider with no bridge launch", () => {
-    expect(() => createProviderForId("pi-mono")).toThrow(
-      'Unsupported provider "pi-mono"',
-    );
-  });
-
-  it("routes a plugin-delivered bridge artifact onto the generic adapter", () => {
-    const provider = createProviderForId("echo-agent", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeLaunch: {
-        pluginId: "provider-fixture",
-        dataDir: "/data/plugins/provider-fixture/bridge-data",
-        providerOptions: {},
-        envPassthrough: [],
-        source: {
-          kind: "artifact",
-          digest: "a".repeat(64),
-          artifactPath: "/data/provider-bridges/artifact.mjs",
-        },
-        capabilities: {
-          experimental_providerInstallation: false,
-          supportsServiceTier: false,
-          permissionModes: ["full"],
-          supportsThreadArchive: false,
-          supportsThreadRename: false,
-          fork: "none",
-        },
-      },
-    });
-
-    expect(provider.id).toBe("echo-agent");
-    expect(provider.process.command).toBe("node");
-    expectBridgeSpawn(provider, {
-      module: "/data/provider-bridges/artifact.mjs",
-    });
-  });
-
   // Codex graduated onto this route, where its environment-level write roots
   // and its declared thread capabilities have to survive: both used to come
   // from the bundled-bridge branch this replaced. The write roots are a
@@ -378,7 +325,7 @@ describe("provider registry", () => {
           artifactPath: "/data/provider-bridges/codex.mjs",
         },
         capabilities: {
-          experimental_providerInstallation: false,
+          providerInstallation: false,
           supportsServiceTier: true,
           permissionModes: ["accept-edits", "auto", "full"],
           supportsThreadArchive: true,
@@ -422,81 +369,8 @@ describe("provider registry", () => {
     });
   });
 
-  it("runs plugin bridge artifacts under the configured bridge node runtime", () => {
-    const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
-    const provider = createProviderForId("echo-agent", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeNodeEnv,
-      bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
-      bridgeLaunch: {
-        pluginId: "provider-fixture",
-        dataDir: "/data/plugins/provider-fixture/bridge-data",
-        source: {
-          kind: "artifact",
-          digest: "b".repeat(64),
-          artifactPath: "/data/provider-bridges/artifact.mjs",
-        },
-        providerOptions: {},
-        envPassthrough: [],
-        capabilities: {
-          experimental_providerInstallation: false,
-          supportsServiceTier: false,
-          permissionModes: ["full"],
-          supportsThreadArchive: false,
-          supportsThreadRename: false,
-          fork: "none",
-        },
-      },
-    });
-    expect(provider.process.command).toBe(
-      "/Applications/bb.app/Contents/MacOS/bb",
-    );
-    expect(provider.process.env).toEqual(bridgeNodeEnv);
-  });
-
   // The launch source, not the provider id, decides which binary runs: the
-  // server states the delivery path and the runtime obeys it. A first-party id
-  // is no longer a special case here — reservation of first-party ids is
-  // server-side policy, and the daemon has already verified the artifact bytes.
-  it("runs the artifact a launch names even for a first-party id", () => {
-    const provider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
-      bridgeBundleDir: "/tmp",
-      bridgeLaunch: {
-        pluginId: "provider-fixture",
-        dataDir: "/data/plugins/provider-fixture/bridge-data",
-        source: {
-          kind: "artifact",
-          digest: "c".repeat(64),
-          artifactPath: "/data/provider-bridges/graduated-pi.mjs",
-        },
-        providerOptions: {},
-        envPassthrough: [],
-        capabilities: PI_BRIDGE_LAUNCH.capabilities,
-      },
-    });
-    expectBridgeSpawn(provider, {
-      module: "/data/provider-bridges/graduated-pi.mjs",
-      bundleDir: "/tmp",
-    });
-  });
-
-  it("refuses a bundled bridge id the daemon does not ship", () => {
-    expect(() =>
-      createProviderForId("pi", {
-        additionalWorkspaceWriteRoots: [],
-        bridgeLaunch: {
-          pluginId: "provider-fixture",
-          dataDir: "/data/plugins/provider-fixture/bridge-data",
-          providerOptions: {},
-          envPassthrough: [],
-          source: { kind: "daemon-bundled", id: "not-bundled" },
-          capabilities: PI_BRIDGE_LAUNCH.capabilities,
-        },
-      }),
-    ).toThrow(/"not-bundled" is not a bridge this daemon bundles/u);
-  });
-
+  // server states the delivery path and the runtime obeys it.
   it("honors a verified bridge launch for an id the registry does not know", () => {
     // The hash-verified artifact is its own routing authority: the server only
     // attaches a bridgeLaunch to providers it has routed onto the bridge
@@ -514,7 +388,7 @@ describe("provider registry", () => {
         providerOptions: {},
         envPassthrough: [],
         capabilities: {
-          experimental_providerInstallation: false,
+          providerInstallation: false,
           supportsServiceTier: true,
           permissionModes: ["accept-edits", "full"],
           supportsThreadArchive: false,

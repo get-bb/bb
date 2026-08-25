@@ -164,7 +164,7 @@ describe("desktop shell PATH loading", () => {
       PATH: "/usr/bin:/bin",
       SHELL: "/usr/bin/fish",
     };
-    const shellPath = "/home/sawyer/.local/bin:/usr/bin:/bin";
+    const shellPath = "/home/user/.local/bin:/usr/bin:/bin";
     const fakeSpawn = createFakeSpawn({
       result: createSpawnResult({ stdout: shellPath }),
     });
@@ -191,7 +191,7 @@ describe("desktop shell PATH loading", () => {
   it("falls back to bash when Linux SHELL is unset", () => {
     const env: NodeJS.ProcessEnv = { PATH: "/usr/bin:/bin" };
     const fakeSpawn = createFakeSpawn({
-      result: createSpawnResult({ stdout: "/home/sawyer/bin:/usr/bin:/bin" }),
+      result: createSpawnResult({ stdout: "/home/user/bin:/usr/bin:/bin" }),
     });
 
     ensurePackagedUserShellPath({

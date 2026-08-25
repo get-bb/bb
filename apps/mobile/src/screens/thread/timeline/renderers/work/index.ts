@@ -8,17 +8,26 @@ import { CommandWorkRow } from "./CommandWorkRow";
 import { DelegationWorkRow } from "./DelegationWorkRow";
 import { FileChangeWorkRow } from "./FileChangeWorkRow";
 import { ImageViewWorkRow } from "./ImageViewWorkRow";
+import {
+  ExtensionWorkRow,
+  PlanStepsWorkRow,
+  TitleOnlyWorkRow,
+} from "./PresentationWorkRows";
 import { QuestionWorkRow } from "./QuestionWorkRow";
 import { ToolWorkRow } from "./ToolWorkRow";
-import { WebFetchWorkRow, WebSearchWorkRow } from "./WebWorkRows";
+import { WebFetchWorkRow } from "./WebWorkRows";
 import { WorkflowWorkRow } from "./WorkflowWorkRow";
 
 registerTimelineRowRenderer("work:command", CommandWorkRow);
 registerTimelineRowRenderer("work:tool", ToolWorkRow);
 registerTimelineRowRenderer("work:file-change", FileChangeWorkRow);
-registerTimelineRowRenderer("work:web-search", WebSearchWorkRow);
+registerTimelineRowRenderer("work:web-search", TitleOnlyWorkRow);
 registerTimelineRowRenderer("work:web-fetch", WebFetchWorkRow);
 registerTimelineRowRenderer("work:image-view", ImageViewWorkRow);
+registerTimelineRowRenderer("work:file-read", TitleOnlyWorkRow);
+registerTimelineRowRenderer("work:search", TitleOnlyWorkRow);
+registerTimelineRowRenderer("work:plan-steps", PlanStepsWorkRow);
+registerTimelineRowRenderer("work:extension", ExtensionWorkRow);
 registerTimelineRowRenderer("work:approval", ApprovalWorkRow);
 registerTimelineRowRenderer("work:question", QuestionWorkRow);
 registerTimelineRowRenderer("work:delegation", DelegationWorkRow);

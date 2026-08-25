@@ -172,15 +172,16 @@ describe("internal event and tool-call routes", () => {
     });
   });
 
-  it("snapshots native plugin status labels into tool-call events", async () => {
+  it("persists a native plugin tool call as the bridge sent it: no server-side label enrichment", async () => {
     await withTestHarness(async (harness) => {
-      const statusLabels = {
-        pending: "Reading project overview",
-        completed: "Read project overview",
-      };
       const record = {
         name: "repository_context",
-        experimentalStatusLabels: statusLabels,
+        presentation: {
+          label: {
+            pending: "Reading project overview",
+            completed: "Read project overview",
+          },
+        },
       } as PluginAgentToolRecord;
       setPluginAgentContributions({
         listSkillRootContributions: () => [],
@@ -255,11 +256,14 @@ describe("internal event and tool-call routes", () => {
               event.type === "item/started" || event.type === "item/completed",
           );
         expect(storedToolEvents).toHaveLength(2);
-        expect(
-          storedToolEvents.map(
-            (event) => JSON.parse(event.data).item.statusLabels,
-          ),
-        ).toEqual([statusLabels, statusLabels]);
+        // The plugin's labels reach the row only through the presentation
+        // the bridge stamps on the item (resolved onto the tool definition
+        // it receives); the server no longer writes a `statusLabels` key.
+        for (const event of storedToolEvents) {
+          const item = JSON.parse(event.data).item;
+          expect(item.tool).toBe(record.name);
+          expect(item).not.toHaveProperty("statusLabels");
+        }
       } finally {
         setPluginAgentContributions(undefined);
       }
@@ -597,7 +601,10 @@ describe("internal event and tool-call routes", () => {
       );
 
       expect(sendResponse.status).toBe(200);
-      await expect(readJson(sendResponse)).resolves.toEqual({ ok: true });
+      await expect(readJson(sendResponse)).resolves.toEqual({
+        ok: true,
+        delivery: "queued",
+      });
       const queuedRows = listQueuedThreadMessages(harness.db, thread.id);
       expect(queuedRows).toHaveLength(1);
       expect(JSON.parse(queuedRows[0]?.content ?? "null")).toEqual([

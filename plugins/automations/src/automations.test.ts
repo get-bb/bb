@@ -1533,7 +1533,10 @@ async function isProcessRunning(pid: number): Promise<boolean> {
     // A zombie cannot execute and therefore satisfies process containment.
     return state !== "Z" && state !== "X";
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    // The process can exit between the signal probe above and this read;
+    // Linux then answers ESRCH (not ENOENT) for the vanished /proc entry.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ESRCH") return false;
     throw error;
   }
 }

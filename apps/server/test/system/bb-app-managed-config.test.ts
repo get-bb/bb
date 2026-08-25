@@ -63,7 +63,6 @@ function createRuntimeConfig(): ServerRuntimeConfig {
     appUrl: "https://ambient-app.example.test",
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: "/tmp/bb-test/builtin-skills",
-    customAcpAgents: [],
     customModels: [],
     dataDir: "/tmp/bb-test",
     marketplaceUrl: "https://marketplace.invalid/marketplace.json",
@@ -192,71 +191,6 @@ describe("bb-app managed config", () => {
     });
   });
 
-  it("applies custom ACP agents over the ambient runtime config", () => {
-    const baseConfig = createRuntimeConfig();
-    const targetConfig = createRuntimeConfig();
-
-    applyBbAppManagedConfig({
-      baseConfig,
-      managedConfig: {
-        customAcpAgents: [
-          {
-            id: "my-agent",
-            displayName: "My Agent",
-            command: "my-agent",
-            args: ["acp"],
-            env: { MY_AGENT_HOME: "/tmp/my-agent" },
-            supportsManualCompaction: false,
-          },
-        ],
-      },
-      managedEnvFile: {},
-      targetConfig,
-    });
-
-    expect(targetConfig.customAcpAgents).toEqual([
-      {
-        id: "my-agent",
-        displayName: "My Agent",
-        command: "my-agent",
-        args: ["acp"],
-        env: { MY_AGENT_HOME: "/tmp/my-agent" },
-        supportsManualCompaction: false,
-      },
-    ]);
-  });
-
-  it("restores base custom ACP agents when the key is removed", () => {
-    const baseConfig = createRuntimeConfig();
-    const targetConfig = createRuntimeConfig();
-
-    applyBbAppManagedConfig({
-      baseConfig,
-      managedConfig: {
-        customAcpAgents: [
-          {
-            id: "my-agent",
-            displayName: "My Agent",
-            command: "my-agent",
-            args: [],
-            env: {},
-            supportsManualCompaction: false,
-          },
-        ],
-      },
-      managedEnvFile: {},
-      targetConfig,
-    });
-    applyBbAppManagedConfig({
-      baseConfig,
-      managedConfig: {},
-      managedEnvFile: {},
-      targetConfig,
-    });
-
-    expect(targetConfig.customAcpAgents).toEqual([]);
-  });
-
   it("restores base custom models when the key is removed", () => {
     const baseConfig = createRuntimeConfig();
     const targetConfig = createRuntimeConfig();
@@ -359,7 +293,11 @@ describe("bb-app managed config", () => {
     }
   });
 
-  it("reloads mixed valid and invalid custom ACP agents with per-entry warnings and notification", async () => {
+  // The deprecated `customAcpAgents` array is no longer the server's: the ACP
+  // plugin reads it from the same file for its migration window. The server
+  // must still parse a config file that has it, warn about a malformed entry,
+  // and notify — without carrying the agents anywhere.
+  it("reloads a config that still carries deprecated ACP agents, with per-entry warnings and notification", async () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-managed-config-"));
     const socket = createMockHubSocket();
     const config = {
@@ -392,21 +330,15 @@ describe("bb-app managed config", () => {
               command: "bad-agent",
             },
           ],
+          customModels: [{ providerId: "codex", model: "gpt-5.5-codex" }],
         })}\n`,
         "utf8",
       );
 
       await reloader.reload({ notify: true });
 
-      expect(config.customAcpAgents).toEqual([
-        {
-          id: "valid-agent",
-          displayName: "Valid Agent",
-          command: "valid-agent",
-          args: [],
-          env: {},
-          supportsManualCompaction: false,
-        },
+      expect(config.customModels).toEqual([
+        { providerId: "codex", model: "gpt-5.5-codex" },
       ]);
       expect(logger.warnings()).toEqual([
         expect.objectContaining({

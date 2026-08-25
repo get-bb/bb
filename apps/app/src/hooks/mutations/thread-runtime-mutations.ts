@@ -166,7 +166,7 @@ export function useSendThreadMessage() {
       senderThreadId,
       executionInputSources,
     }: SendThreadMessageMutationRequest) => {
-      await sdk.threads.send({
+      return await sdk.threads.send({
         threadId: id,
         input,
         model,
@@ -192,8 +192,11 @@ export function useSendThreadMessage() {
         transaction: context,
       });
     },
-    onSuccess: (_data, variables, context) => {
+    onSuccess: (data, variables, context) => {
       applySendThreadMessageSuccess({
+        // An older server answers a send with a bare `{ ok: true }`; treat that
+        // as the send it used to be.
+        delivery: data.delivery ?? "sent",
         queryClient,
         realtimeConnected: wsManager.getConnectionState() === "connected",
         request: variables,

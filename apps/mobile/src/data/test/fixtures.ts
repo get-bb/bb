@@ -1,13 +1,14 @@
 import {
   PERSONAL_PROJECT_ID,
+  type ApprovalPendingInteraction,
   type ApprovalPendingInteractionPayload,
   type Host,
   type JsonValue,
   type PendingInteractionApprovalDecision,
   type PluginPendingInteraction,
-  type ProviderPendingInteraction,
   type ThreadListEntry,
   type ThreadQueuedMessage,
+  type UserQuestionPendingInteraction,
   type UserQuestionPendingInteractionPayload,
 } from "@bb/domain";
 import type {
@@ -169,13 +170,13 @@ export function timelineResponse(
 }
 
 export function approvalInteraction(
-  overrides: Partial<ProviderPendingInteraction> & {
+  overrides: Partial<ApprovalPendingInteraction> & {
     id: string;
     subject?: ApprovalPendingInteractionPayload["subject"];
     availableDecisions?: PendingInteractionApprovalDecision[];
     reason?: string | null;
   },
-): ProviderPendingInteraction {
+): ApprovalPendingInteraction {
   const {
     subject = {
       kind: "command",
@@ -206,11 +207,11 @@ export function approvalInteraction(
 }
 
 export function userQuestionInteraction(
-  overrides: Partial<ProviderPendingInteraction> & {
+  overrides: Partial<UserQuestionPendingInteraction> & {
     id: string;
     questions?: UserQuestionPendingInteractionPayload["questions"];
   },
-): ProviderPendingInteraction {
+): UserQuestionPendingInteraction {
   const {
     questions = [
       {

@@ -340,6 +340,13 @@ export const pluginMarketplaces = sqliteTable("plugin_marketplaces", {
   /** Commit the last successful "git" refresh read the manifest from. */
   sourceGitCommit: text("source_git_commit"),
   manifestJson: text("manifest_json").notNull(),
+  /**
+   * Last-known-good install-count sidecar (`stats.json`) of the curated
+   * marketplace, verbatim; null when it was never fetched or never parsed.
+   * It refreshes on its own cadence: the counts move while the manifest sits
+   * unchanged behind a 304, so it cannot live inside `manifest_json`.
+   */
+  statsJson: text("stats_json"),
   etag: text("etag"),
   lastModified: text("last_modified"),
   lastSuccessfulRefreshAt: integer("last_successful_refresh_at"),
@@ -739,10 +746,6 @@ export const events = sqliteTable(
     itemKind: text("item_kind").$type<ThreadEventItemType>(),
     parentToolCallId: text("parent_tool_call_id"),
     data: text("data").notNull().default("{}"),
-    toolName: text("tool_name").generatedAlwaysAs(
-      sql`CASE WHEN json_valid(data) THEN json_extract(data, '$.item.tool') END`,
-      { mode: "virtual" },
-    ),
     createdAt: integer("created_at").notNull(),
   },
   (table) => [
@@ -751,19 +754,24 @@ export const events = sqliteTable(
       table.sequence,
     ),
     // Timeline in-turn pagination checks whether a delegated child above a
-    // candidate cut belongs to a tool call below it. Keep that parent probe on
-    // the small tool-call subset rather than walking the thread/sequence index
-    // and fetching scattered event payload rows.
-    index("events_tool_call_parent_lookup_idx")
-      .on(table.threadId, table.itemId, table.sequence)
-      .where(sql`${table.itemKind} = 'toolCall'`),
-    // The latest timeline page restores todo/task head state by tool name.
-    // Keep that lookup on a tiny generated-column index instead of parsing every
-    // tool-call payload in a long-running thread on every timeline refresh.
-    index("events_todo_tool_call_thread_tool_sequence_idx")
-      .on(table.threadId, table.toolName, table.sequence)
+    // candidate cut belongs to a delegating item below it, and parent
+    // closure fetches the parent's own rows. A delegating item is a tool
+    // call or a grammar v3 `delegation` item; keep that probe on their small
+    // subset rather than walking the thread/sequence index and fetching
+    // scattered event payload rows.
+    index("events_delegating_item_lookup_idx")
+      // `item_kind` trails so the parent probe's EXISTS stays a covering
+      // lookup: the kind predicate is answered from the index entry.
+      .on(table.threadId, table.itemId, table.sequence, table.itemKind)
+      .where(sql`${table.itemKind} IN ('toolCall', 'delegation')`),
+    // The latest timeline page restores the plan head state (the todo banner)
+    // from the newest planSteps snapshot, keyed by kind — never by a tool
+    // name. Persisted codex plan notifications convert to the same item at
+    // read time, so their type sits beside it.
+    index("events_plan_steps_thread_sequence_idx")
+      .on(table.threadId, table.sequence)
       .where(
-        sql`${table.itemKind} = 'toolCall' AND ${table.type} IN ('item/started', 'item/completed')`,
+        sql`(${table.itemKind} = 'planSteps' AND ${table.type} = 'item/completed') OR ${table.type} = 'turn/plan/updated'`,
       ),
     index("events_parent_tool_call_thread_parent_sequence_idx")
       .on(table.threadId, table.parentToolCallId, table.sequence)
@@ -876,6 +884,32 @@ export const promptHistoryEntries = sqliteTable(
       table.scope,
       table.createdAt,
       table.requestSequence,
+      table.id,
+    ),
+  ],
+);
+
+// Messages addressed to a thread while it awaited user interaction (an
+// AskUserQuestion, a command approval, a plugin input request). A blocked thread
+// cannot take a prompt, and refusing the message dropped it with no trace on the
+// recipient side (#1650). The row holds the message until the thread's pending
+// interactions settle, then the server delivers it in the mode the sender asked
+// for. `payload` is the JSON-encoded deferred message, discriminated by `kind`.
+export const deferredThreadMessages = sqliteTable(
+  "deferred_thread_messages",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    payload: text("payload").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [
+    index("deferred_thread_messages_thread_created_idx").on(
+      table.threadId,
+      table.createdAt,
       table.id,
     ),
   ],

@@ -17,6 +17,7 @@ import type {
   ThreadEventRowOfType,
   SystemThreadInterruptedReason,
   ThreadEventWarningCategory,
+  ThreadTimelinePendingTodos,
   ThreadTurnInitiator,
   TurnRequestTarget,
 } from "@bb/domain";
@@ -48,6 +49,7 @@ export interface RenderTimelineFixtureArgs {
 }
 
 export interface RenderedTimelineFixture {
+  pendingTodos: ThreadTimelinePendingTodos | null;
   events: ThreadEventRow[];
   messages: EventProjectionMessage[];
   projection: EventProjection;
@@ -145,6 +147,7 @@ interface FileReadEventArgs extends ProviderTurnEventOptions {
   itemId?: string;
   path: string;
   cmd?: string;
+  presentation?: ThreadEventItemPresentation;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
 
@@ -154,6 +157,7 @@ interface SearchEventArgs extends ProviderTurnEventOptions {
   query: string;
   path?: string;
   cmd?: string;
+  presentation?: ThreadEventItemPresentation;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
 
@@ -163,6 +167,26 @@ interface DelegationEventArgs extends ProviderTurnEventOptions {
   label: string;
   background?: boolean;
   summary?: string;
+  presentation?: ThreadEventItemPresentation;
+  status?: "pending" | "completed" | "failed" | "interrupted";
+}
+
+interface PlanStepsEventArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  steps: Array<{
+    step: string;
+    status?: "pending" | "active" | "completed" | "failed";
+  }>;
+  explanation?: string;
+  presentation?: ThreadEventItemPresentation;
+  status?: "pending" | "completed" | "failed" | "interrupted";
+}
+
+interface ExtensionEventArgs extends ProviderTurnEventOptions {
+  itemId?: string;
+  kind: `${string}/${string}`;
+  payload: JsonValue;
+  presentation: ThreadEventItemPresentation;
   status?: "pending" | "completed" | "failed" | "interrupted";
 }
 
@@ -334,7 +358,7 @@ export interface TimelineEventFactory {
   ): ThreadEventRowOfType<"system/manager/user_message">;
   permissionGrantLifecycle(
     args?: PermissionGrantLifecycleArgs,
-  ): ThreadEventRowOfType<"system/permissionGrant/lifecycle">;
+  ): ThreadEventRowOfType<"system/interaction/lifecycle">;
   providerError(
     args: ProviderErrorArgs,
   ): ThreadEventRowOfType<"provider/error">;
@@ -384,6 +408,18 @@ export interface TimelineEventFactory {
   searchStarted(args: SearchEventArgs): ThreadEventRowOfType<"item/started">;
   searchCompleted(
     args: SearchEventArgs,
+  ): ThreadEventRowOfType<"item/completed">;
+  planStepsStarted(
+    args: PlanStepsEventArgs,
+  ): ThreadEventRowOfType<"item/started">;
+  planStepsCompleted(
+    args: PlanStepsEventArgs,
+  ): ThreadEventRowOfType<"item/completed">;
+  extensionStarted(
+    args: ExtensionEventArgs,
+  ): ThreadEventRowOfType<"item/started">;
+  extensionCompleted(
+    args: ExtensionEventArgs,
   ): ThreadEventRowOfType<"item/completed">;
   threadCompacted(
     args?: ProviderTurnEventOptions,
@@ -777,25 +813,34 @@ export function createTimelineEventFactory(
       );
       return {
         ...base,
-        type: "system/permissionGrant/lifecycle",
+        type: "system/interaction/lifecycle",
         data: {
-          interactionId: args.interactionId ?? "pi_123",
-          providerId: args.providerId ?? "codex",
-          providerRequestId: args.providerRequestId ?? "request-123",
-          status: args.status ?? "pending",
-          resolution: args.resolution ?? null,
-          statusReason: args.statusReason ?? null,
-          subject: {
-            kind: "permission_grant",
-            itemId: args.itemId ?? "item_123",
-            toolName: args.toolName ?? "Bash",
-            permissions: {
-              network: null,
-              fileSystem: {
-                read: ["/tmp/project"],
-                write: [],
+          interaction: {
+            id: args.interactionId ?? "pi_123",
+            status: args.status ?? "pending",
+            statusReason: args.statusReason ?? null,
+            origin: {
+              kind: "provider",
+              providerId: args.providerId ?? "codex",
+              providerRequestId: args.providerRequestId ?? "request-123",
+            },
+            payload: {
+              kind: "approval",
+              reason: null,
+              subject: {
+                kind: "permission_grant",
+                itemId: args.itemId ?? "item_123",
+                toolName: args.toolName ?? "Bash",
+                permissions: {
+                  network: null,
+                  fileSystem: {
+                    read: ["/tmp/project"],
+                    write: [],
+                  },
+                },
               },
             },
+            resolution: args.resolution ?? null,
           },
         },
       };
@@ -934,6 +979,9 @@ export function createTimelineEventFactory(
             status: args.status ?? "pending",
             background: args.background ?? false,
             ...(args.summary === undefined ? {} : { summary: args.summary }),
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -953,6 +1001,9 @@ export function createTimelineEventFactory(
             status: args.status ?? "completed",
             background: args.background ?? false,
             ...(args.summary === undefined ? {} : { summary: args.summary }),
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -992,6 +1043,9 @@ export function createTimelineEventFactory(
             path: args.path,
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "pending",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -1009,6 +1063,9 @@ export function createTimelineEventFactory(
             path: args.path,
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "completed",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -1028,6 +1085,9 @@ export function createTimelineEventFactory(
             ...(args.path === undefined ? {} : { path: args.path }),
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "pending",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
           },
         },
       };
@@ -1047,6 +1107,89 @@ export function createTimelineEventFactory(
             ...(args.path === undefined ? {} : { path: args.path }),
             ...(args.cmd === undefined ? {} : { cmd: args.cmd }),
             status: args.status ?? "completed",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
+          },
+        },
+      };
+    },
+    planStepsStarted(args) {
+      const base = nextProviderTurnScopedRowBase("plan-steps-started", args);
+      return {
+        ...base,
+        type: "item/started",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "planSteps",
+            id: args.itemId ?? `plan-steps-${base.seq}`,
+            steps: args.steps,
+            ...(args.explanation === undefined
+              ? {}
+              : { explanation: args.explanation }),
+            status: args.status ?? "pending",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
+          },
+        },
+      };
+    },
+    planStepsCompleted(args) {
+      const base = nextProviderTurnScopedRowBase("plan-steps-completed", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "planSteps",
+            id: args.itemId ?? `plan-steps-${base.seq}`,
+            steps: args.steps,
+            ...(args.explanation === undefined
+              ? {}
+              : { explanation: args.explanation }),
+            status: args.status ?? "completed",
+            ...(args.presentation === undefined
+              ? {}
+              : { presentation: args.presentation }),
+          },
+        },
+      };
+    },
+    extensionStarted(args) {
+      const base = nextProviderTurnScopedRowBase("extension-started", args);
+      return {
+        ...base,
+        type: "item/started",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "extension",
+            id: args.itemId ?? `extension-${base.seq}`,
+            kind: args.kind,
+            payload: args.payload,
+            status: args.status ?? "pending",
+            presentation: args.presentation,
+          },
+        },
+      };
+    },
+    extensionCompleted(args) {
+      const base = nextProviderTurnScopedRowBase("extension-completed", args);
+      return {
+        ...base,
+        type: "item/completed",
+        data: {
+          ...providerFields(args),
+          item: {
+            type: "extension",
+            id: args.itemId ?? `extension-${base.seq}`,
+            kind: args.kind,
+            payload: args.payload,
+            status: args.status ?? "completed",
+            presentation: args.presentation,
           },
         },
       };
@@ -1268,6 +1411,7 @@ export function renderTimelineFixture(
   return {
     events: args.events,
     messages,
+    pendingTodos: timeline.pendingTodos,
     projection,
     rows,
     text,

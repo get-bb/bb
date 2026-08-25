@@ -2,7 +2,7 @@ import {
   resolveContextProjectId,
   resolveContextThreadId,
 } from "./context-env.js";
-import type { Dispatcher } from "undici";
+import { Agent, type Dispatcher } from "undici";
 import { cliFetch } from "./client.js";
 
 /**
@@ -339,21 +339,6 @@ export function findPluginCliCommand(
   return contributions.find((entry) => entry.name === name);
 }
 
-/**
- * The first CLI token is a plugin-proxy candidate only when it looks like a
- * command (not a flag) and no core command claims it. Core commands always
- * win: commander resolved them before this path runs.
- */
-export function pluginProxyCandidate(
-  firstArg: string | undefined,
-  knownCommandNames: ReadonlySet<string>,
-): string | null {
-  if (firstArg === undefined || firstArg.length === 0) return null;
-  if (firstArg.startsWith("-")) return null;
-  if (knownCommandNames.has(firstArg)) return null;
-  return firstArg;
-}
-
 interface PluginCliOutputStream {
   write(chunk: string, callback: (error?: Error | null) => void): boolean;
 }
@@ -388,15 +373,15 @@ async function writePluginCliOutput(
  * interaction (`ui.requestInput` allows at most 60 minutes), so the server's
  * own deadline decides first, but keep it finite: the server has no general
  * plugin-command deadline, and a plugin that never resolves must not hold the
- * CLI process and its socket forever. undici is imported lazily so built-in
- * `bb` commands do not pay its startup cost.
+ * CLI process and its socket forever. This module is imported lazily so
+ * built-in `bb` commands do not pay undici's startup cost.
  */
 export const PLUGIN_CLI_HEADERS_TIMEOUT_MS = 65 * 60 * 1000;
-let pluginCliDispatcher: Promise<Dispatcher> | undefined;
-function getPluginCliDispatcher(): Promise<Dispatcher> {
-  pluginCliDispatcher ??= import("undici").then(
-    ({ Agent }) => new Agent({ headersTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS }),
-  );
+let pluginCliDispatcher: Dispatcher | undefined;
+function getPluginCliDispatcher(): Dispatcher {
+  pluginCliDispatcher ??= new Agent({
+    headersTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS,
+  });
   return pluginCliDispatcher;
 }
 
@@ -429,7 +414,7 @@ export async function runPluginCliCommand(
         ...(threadId ? { threadId } : {}),
         ...(projectId ? { projectId } : {}),
       }),
-      dispatcher: await getPluginCliDispatcher(),
+      dispatcher: getPluginCliDispatcher(),
     },
   );
   const result = (await response.json().catch(() => null)) as {

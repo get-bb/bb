@@ -2,15 +2,20 @@ import { z } from "zod";
 import {
   backgroundTaskStatusSchema,
   backgroundTaskUsageSchema,
+  extensionKindSchema,
   jsonValueSchema,
   pendingInteractionUserAnswerSchema,
   pendingInteractionUserQuestionQuestionSchema,
   promptTextMentionSchema,
   systemMessageKindSchema,
   systemMessageSubjectSchema,
+  threadEventItemPresentationSchema,
+  threadEventPlanStepSchema,
+  threadEventSearchModeSchema,
   threadTurnInitiatorSchema,
   workflowProgressSnapshotSchema,
   type JsonObject,
+  type ThreadEventItemPresentation,
 } from "@bb/domain";
 
 export const timelineRowStatusValues = [
@@ -258,6 +263,23 @@ interface TimelineWorkRowBase extends TimelineRowBase {
 }
 
 /**
+ * The declarative presentation the provider bridge attached to the item a
+ * work row projects from (`ThreadEventItemPresentation`, persisted with the
+ * item). Clients render the row's label, icon, headline and detail from it;
+ * core kinds keep their core renderer and use it for customization only.
+ *
+ * Absent on rows projected from events persisted before presentation existed
+ * (grammar v2) and on rows bb authors itself (approvals, questions); those
+ * render through the legacy per-kind derivation.
+ */
+export const timelineRowPresentationSchema = threadEventItemPresentationSchema;
+export type TimelineRowPresentation = ThreadEventItemPresentation;
+
+const timelineRowPresentationField = {
+  presentation: timelineRowPresentationSchema.optional(),
+};
+
+/**
  * Marks a command/tool row whose `output` the server replaced with a head+tail
  * preview. The latest window caps the inline outputs of its running turn so a
  * long tool session does not ship hundreds of kilobytes on every poll; the
@@ -282,6 +304,7 @@ export const timelineCommandWorkRowSchema = timelineWorkRowBaseSchema.extend({
   completedAt: z.number().nullable(),
   approvalStatus: timelineApprovalStatusSchema,
   activityIntents: z.array(timelineActivityIntentSchema),
+  ...timelineRowPresentationField,
 });
 export type TimelineCommandWorkRow = z.infer<
   typeof timelineCommandWorkRowSchema
@@ -292,15 +315,11 @@ export const timelineToolWorkRowSchema = timelineWorkRowBaseSchema.extend({
   callId: z.string(),
   toolName: z.string(),
   toolArgs: z.record(z.string(), jsonValueSchema).nullable(),
-  /** Optional plugin-supplied labels for the native pending/completed title. */
-  statusLabels: z
-    .object({ pending: z.string(), completed: z.string() })
-    .optional(),
   output: z.string(),
   outputPreview: timelineOutputPreviewSchema.optional(),
   completedAt: z.number().nullable(),
   approvalStatus: timelineApprovalStatusSchema,
-  activityIntents: z.array(timelineActivityIntentSchema),
+  ...timelineRowPresentationField,
 });
 export type TimelineToolWorkRow = z.infer<typeof timelineToolWorkRowSchema>;
 
@@ -312,6 +331,7 @@ export const timelineFileChangeWorkRowSchema = timelineWorkRowBaseSchema.extend(
     stdout: z.string().nullable(),
     stderr: z.string().nullable(),
     approvalStatus: timelineApprovalStatusSchema,
+    ...timelineRowPresentationField,
   },
 );
 export type TimelineFileChangeWorkRow = z.infer<
@@ -323,6 +343,7 @@ export const timelineWebSearchWorkRowSchema = timelineWorkRowBaseSchema.extend({
   callId: z.string(),
   queries: z.array(z.string()),
   completedAt: z.number().nullable(),
+  ...timelineRowPresentationField,
 });
 export type TimelineWebSearchWorkRow = z.infer<
   typeof timelineWebSearchWorkRowSchema
@@ -335,6 +356,7 @@ export const timelineWebFetchWorkRowSchema = timelineWorkRowBaseSchema.extend({
   prompt: z.string().nullable(),
   pattern: z.string().nullable(),
   completedAt: z.number().nullable(),
+  ...timelineRowPresentationField,
 });
 export type TimelineWebFetchWorkRow = z.infer<
   typeof timelineWebFetchWorkRowSchema
@@ -345,9 +367,85 @@ export const timelineImageViewWorkRowSchema = timelineWorkRowBaseSchema.extend({
   callId: z.string(),
   path: z.string(),
   completedAt: z.number().nullable(),
+  ...timelineRowPresentationField,
 });
 export type TimelineImageViewWorkRow = z.infer<
   typeof timelineImageViewWorkRowSchema
+>;
+
+/**
+ * A file the agent read (grammar v3 `fileRead`). `cmd` is the native shell
+ * form when the provider read through a command rather than a structured
+ * tool; null for a structured read.
+ */
+export const timelineFileReadWorkRowSchema = timelineWorkRowBaseSchema.extend({
+  workKind: z.literal("file-read"),
+  callId: z.string(),
+  path: z.string(),
+  cmd: z.string().nullable(),
+  completedAt: z.number().nullable(),
+  ...timelineRowPresentationField,
+});
+export type TimelineFileReadWorkRow = z.infer<
+  typeof timelineFileReadWorkRowSchema
+>;
+
+/**
+ * An exploration search (grammar v3 `search`): `content` searches inside
+ * files, `path` matches file names, `list` enumerates a directory. `query`
+ * is the pattern (empty for a whole-directory listing); `path` is the root
+ * the search ran under when the provider named one.
+ */
+export const timelineSearchWorkRowSchema = timelineWorkRowBaseSchema.extend({
+  workKind: z.literal("search"),
+  callId: z.string(),
+  mode: threadEventSearchModeSchema,
+  query: z.string(),
+  path: z.string().nullable(),
+  cmd: z.string().nullable(),
+  completedAt: z.number().nullable(),
+  ...timelineRowPresentationField,
+});
+export type TimelineSearchWorkRow = z.infer<typeof timelineSearchWorkRowSchema>;
+
+/**
+ * A structured plan snapshot the agent maintains (grammar v3 `planSteps`:
+ * codex `update_plan`, the Claude TodoWrite/Task family). Each row carries
+ * the full step list of one snapshot; the todo banner reads the latest.
+ */
+export const timelinePlanStepsWorkRowSchema = timelineWorkRowBaseSchema.extend(
+  {
+    workKind: z.literal("plan-steps"),
+    callId: z.string(),
+    steps: z.array(threadEventPlanStepSchema),
+    explanation: z.string().nullable(),
+    completedAt: z.number().nullable(),
+    ...timelineRowPresentationField,
+  },
+);
+export type TimelinePlanStepsWorkRow = z.infer<
+  typeof timelinePlanStepsWorkRowSchema
+>;
+
+/**
+ * A plugin-defined item kind outside the core vocabulary
+ * (`extensionKind` is `"<pluginId>/<name>"`). The payload is the plugin's
+ * declared shape, validated at ingest and opaque here. `presentation` is
+ * required: the declarative base is the only thing every client can render,
+ * and a plugin web renderer registered for the kind is an upgrade on top.
+ */
+export const timelineExtensionWorkRowSchema = timelineWorkRowBaseSchema.extend(
+  {
+    workKind: z.literal("extension"),
+    callId: z.string(),
+    extensionKind: extensionKindSchema,
+    payload: jsonValueSchema,
+    completedAt: z.number().nullable(),
+    presentation: timelineRowPresentationSchema,
+  },
+);
+export type TimelineExtensionWorkRow = z.infer<
+  typeof timelineExtensionWorkRowSchema
 >;
 
 export const timelineFileEditApprovalLifecycleValues = [
@@ -426,15 +524,24 @@ export type TimelineQuestionWorkRow = z.infer<
   typeof timelineQuestionWorkRowSchema
 >;
 
+/**
+ * Work the agent delegated to a child agent. `childRef` is the provider-
+ * native id of the child (grammar v3 `delegation`); null for rows projected
+ * from a legacy delegation tool call, whose child is linked by turn parentage
+ * alone. `background` marks a delegation that outlives its spawning turn.
+ */
 export interface TimelineDelegationWorkRow extends TimelineWorkRowBase {
   workKind: "delegation";
   callId: string;
   toolName: string;
+  childRef: string | null;
+  background: boolean;
   subagentType: string | null;
   description: string | null;
   output: string;
   completedAt: number | null;
   childRows: TimelineRow[];
+  presentation?: TimelineRowPresentation;
 }
 
 export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRow> =
@@ -442,11 +549,14 @@ export const timelineDelegationWorkRowSchema: z.ZodType<TimelineDelegationWorkRo
     workKind: z.literal("delegation"),
     callId: z.string(),
     toolName: z.string(),
+    childRef: z.string().nullable(),
+    background: z.boolean(),
     subagentType: z.string().nullable(),
     description: z.string().nullable(),
     output: z.string(),
     completedAt: z.number().nullable(),
     childRows: z.array(z.lazy(() => timelineRowSchema)),
+    ...timelineRowPresentationField,
   });
 
 /**
@@ -473,6 +583,7 @@ export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   summary: z.string().nullable(),
   error: z.string().nullable(),
   completedAt: z.number().nullable(),
+  ...timelineRowPresentationField,
 });
 export type TimelineWorkflowWorkRow = z.infer<
   typeof timelineWorkflowWorkRowSchema
@@ -485,6 +596,10 @@ export type TimelineWorkRow =
   | TimelineWebSearchWorkRow
   | TimelineWebFetchWorkRow
   | TimelineImageViewWorkRow
+  | TimelineFileReadWorkRow
+  | TimelineSearchWorkRow
+  | TimelinePlanStepsWorkRow
+  | TimelineExtensionWorkRow
   | TimelineApprovalWorkRow
   | TimelineQuestionWorkRow
   | TimelineDelegationWorkRow
@@ -497,6 +612,10 @@ export const timelineWorkRowSchema: z.ZodType<TimelineWorkRow> = z.union([
   timelineWebSearchWorkRowSchema,
   timelineWebFetchWorkRowSchema,
   timelineImageViewWorkRowSchema,
+  timelineFileReadWorkRowSchema,
+  timelineSearchWorkRowSchema,
+  timelinePlanStepsWorkRowSchema,
+  timelineExtensionWorkRowSchema,
   timelineApprovalWorkRowSchema,
   timelineQuestionWorkRowSchema,
   timelineDelegationWorkRowSchema,

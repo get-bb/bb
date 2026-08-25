@@ -43,6 +43,8 @@ function plugin(overrides: Partial<InstalledPlugin> = {}): InstalledPlugin {
     app: { hasApp: false, bundle: null },
     logoUrl: null,
     logoDarkUrl: null,
+    providerIds: [],
+    icons: {},
     ...overrides,
   };
 }
@@ -211,6 +213,7 @@ describe("groupCatalogEntries", () => {
       category: "Misc",
       source: "npm:e",
       repositoryUrl: null,
+      installs: null,
       marketplace: "zeta",
       marketplaceDisplayName: "Zeta",
       publisherKey: "zeta",

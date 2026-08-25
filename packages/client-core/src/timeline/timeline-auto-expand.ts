@@ -30,8 +30,24 @@ export function isWorkRowExpandable(row: TimelineViewWorkRow): boolean {
       // body-collapse rule in QuestionWorkRowBody.
       return row.lifecycle === "answered" || row.lifecycle === "resolving";
     case "command":
-    case "tool":
       return !hasTimelineExplorationIntent(row);
+    case "tool":
+      return true;
+    case "file-read":
+    case "search":
+      // Exploration rows are title-only, like the legacy Read/Grep bundles.
+      return false;
+    case "plan-steps":
+      return row.steps.length > 0;
+    case "extension":
+      // The declarative base shows the bridge's detail in the body; a row
+      // without one, or with a blank one, stays title-only (a plugin
+      // renderer may still expand). Same rule as the `system` case and the
+      // body renderers, so a chevron never opens onto an empty body.
+      return (
+        row.presentation.detail !== undefined &&
+        row.presentation.detail.trim().length > 0
+      );
     case "file-change":
       return true;
     case "delegation":

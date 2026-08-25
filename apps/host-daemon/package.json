@@ -37,10 +37,6 @@
     "@bb/templates": "workspace:*",
     "@bb/tunnel-client": "workspace:*",
     "@bb/tunnel-contract": "workspace:*",
-    "@earendil-works/pi-agent-core": "0.84.0",
-    "@earendil-works/pi-ai": "0.84.0",
-    "@earendil-works/pi-coding-agent": "0.84.0",
-    "@earendil-works/pi-tui": "0.84.0",
     "@hono/node-server": "^1.19.11",
     "@parcel/watcher": "2.5.6",
     "better-sqlite3": "12.10.0",
@@ -55,9 +51,7 @@
     "pino-roll": "^4.0.0",
     "proper-lockfile": "^4.1.2",
     "semver": "^7.7.4",
-    "smol-toml": "^1.7.1",
     "ws": "^8.19.0",
-    "yaml": "^2.9.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {

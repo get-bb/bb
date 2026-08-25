@@ -221,6 +221,7 @@ describe("PromptBoxActionsMenu", () => {
             compactIconUrl: null,
             logoUrl: null,
             logoDarkUrl: null,
+            icons: new Map(),
           },
         ],
         [
@@ -231,6 +232,7 @@ describe("PromptBoxActionsMenu", () => {
             compactIconUrl: null,
             logoUrl: null,
             logoDarkUrl: null,
+            icons: new Map(),
           },
         ],
       ]),

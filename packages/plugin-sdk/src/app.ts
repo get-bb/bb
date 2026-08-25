@@ -49,7 +49,7 @@ export const definePluginApp = runtime.definePluginApp;
 export const ThreadChat = runtime.ThreadChat;
 export const Markdown = runtime.Markdown;
 export const experimental_FileLink = runtime.experimental_FileLink;
-export const experimental_UrlLink = runtime.experimental_UrlLink;
+export const UrlLink = runtime.UrlLink;
 export const experimental_NewThreadComposer =
   runtime.experimental_NewThreadComposer;
 export const experimental_ProviderModelPicker =

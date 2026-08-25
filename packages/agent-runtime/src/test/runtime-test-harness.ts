@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { JsonObject } from "@bb/domain";
+import type { JsonObject, ProviderRecoveryKind } from "@bb/domain";
 import { createAgentRuntime } from "../runtime.js";
 import type {
   AgentRuntime,
@@ -42,16 +42,19 @@ export function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const prebuiltTestBridgeDir = fileURLToPath(
+  new URL("../../dist/test-bridges/", import.meta.url),
+);
+
 /**
- * The scripted echo bridge's TypeScript entry, used as the artifact directly:
- * from source the bridge bootstrap runs under tsx, which imports `.ts`
- * modules, so no build step stands between a test and the bridge.
+ * Turbo builds the bridge worker and scripted echo artifact once before the
+ * unit suite. Keeping the generated path explicit makes a missing Turbo task
+ * fail instead of silently falling back to transforming TypeScript on every
+ * bridge spawn and restart.
  */
-export const scriptedEchoBridgeModulePath = fileURLToPath(
-  new URL(
-    "../../../../tests/scripted-echo-provider/src/provider-bridge.ts",
-    import.meta.url,
-  ),
+export const scriptedEchoBridgeModulePath = join(
+  prebuiltTestBridgeDir,
+  "scripted-echo-provider.mjs",
 );
 
 /**
@@ -62,7 +65,6 @@ export const scriptedEchoBridgeModulePath = fileURLToPath(
  */
 export interface ScriptedEchoLaunchScript {
   startDelayMs?: number;
-  identityFromThreadId?: boolean;
   answerStartWithoutIdentity?: boolean;
   archivedSession?: boolean;
   unarchiveFails?: boolean;
@@ -73,13 +75,16 @@ export interface ScriptedEchoLaunchScript {
   unsupportedMethods?: string[];
   /**
    * `code` is the JSON-RPC error code (default -32000); `times` bounds the
-   * failure to the first that many calls (per process).
+   * failure to the first that many calls (per process). Entries for one
+   * method apply in order once the earlier ones are exhausted.
    */
   failMethods?: {
     method: string;
     message: string;
     code?: number;
     times?: number;
+    /** A typed recovery hint on the rejection (`error.data.recovery`). */
+    recovery?: { kind: ProviderRecoveryKind; retryable: boolean };
   }[];
   goalClearNotifyDelayMs?: number;
   /** The `cleared` value `thread/goal/clear` answers (default true). */
@@ -89,6 +94,8 @@ export interface ScriptedEchoLaunchScript {
   warnOnTurn?: boolean;
   /** The bb thread id hint the bridge puts on its tool-call requests. */
   toolCallThreadIdHint?: string;
+  /** The bb thread id the bridge names on its unsolicited recovery hints. */
+  recoveryThreadIdHint?: string;
   /** Handshake `approvalEnforcedBy`; process-level (`scriptedEchoProcessEnv`). */
   approvalEnforcedBy?: "runtime" | "provider";
   /** Provider thread ids `prov-<pid>-<n>` and answers prefixed `pid:<pid>:`. */
@@ -128,7 +135,7 @@ export function createScriptedEchoLaunch(
       artifactPath: options.modulePath ?? scriptedEchoBridgeModulePath,
     },
     capabilities: {
-      experimental_providerInstallation: false,
+      providerInstallation: false,
       supportsServiceTier: false,
       permissionModes: ["accept-edits", "auto", "full"],
       supportsThreadArchive: true,
@@ -165,14 +172,50 @@ export function scriptedEchoProcessEnv(
   return { SCRIPTED_ECHO_OPTIONS: JSON.stringify(script) };
 }
 
+/** The runtime entry points that carry a bridge launch. */
+type LaunchBearingMethod =
+  | "ensureProvider"
+  | "startThread"
+  | "prepareThreadRewind"
+  | "resumeThread"
+  | "archiveThread"
+  | "unarchiveThread"
+  | "listModels"
+  | "providerHealth"
+  | "providerUsage"
+  | "providerInstallationStatus"
+  | "providerInstallationRun";
+
+type WithDefaultBridgeLaunch<TMethod extends (args: never) => unknown> = (
+  args: Omit<Parameters<TMethod>[0], "bridgeLaunch"> & {
+    bridgeLaunch?: AgentRuntimeBridgeLaunch;
+  },
+) => ReturnType<TMethod>;
+
 /**
- * Attach a bridge launch to every runtime entry point that can start a
- * provider, as the server does on every command it sends the daemon.
+ * An {@link AgentRuntime} whose launch-bearing entry points default to one
+ * bridge launch. The runtime itself requires a launch on every such call
+ * (the server attaches one to every command); the harness plays the
+ * server's part so a test names the launch only when it wants another one.
+ * Structurally an `AgentRuntime`, so it passes wherever one is expected.
+ */
+export type LaunchBoundAgentRuntime = Omit<
+  AgentRuntime,
+  LaunchBearingMethod
+> & {
+  [TMethod in LaunchBearingMethod]: WithDefaultBridgeLaunch<
+    AgentRuntime[TMethod]
+  >;
+};
+
+/**
+ * Attach a bridge launch to every runtime entry point that carries one, as
+ * the server does on every command it sends the daemon.
  */
 export function withBridgeLaunch(
   runtime: AgentRuntime,
   bridgeLaunch: AgentRuntimeBridgeLaunch,
-): AgentRuntime {
+): LaunchBoundAgentRuntime {
   return {
     ...runtime,
     ensureProvider: (args) => runtime.ensureProvider({ bridgeLaunch, ...args }),
@@ -180,7 +223,16 @@ export function withBridgeLaunch(
     prepareThreadRewind: (args) =>
       runtime.prepareThreadRewind({ bridgeLaunch, ...args }),
     resumeThread: (args) => runtime.resumeThread({ bridgeLaunch, ...args }),
+    archiveThread: (args) => runtime.archiveThread({ bridgeLaunch, ...args }),
+    unarchiveThread: (args) =>
+      runtime.unarchiveThread({ bridgeLaunch, ...args }),
     listModels: (args) => runtime.listModels({ bridgeLaunch, ...args }),
+    providerHealth: (args) => runtime.providerHealth({ bridgeLaunch, ...args }),
+    providerUsage: (args) => runtime.providerUsage({ bridgeLaunch, ...args }),
+    providerInstallationStatus: (args) =>
+      runtime.providerInstallationStatus({ bridgeLaunch, ...args }),
+    providerInstallationRun: (args) =>
+      runtime.providerInstallationRun({ bridgeLaunch, ...args }),
   };
 }
 
@@ -197,9 +249,12 @@ export interface CreateScriptedEchoRuntimeArgs {
  */
 export function createScriptedEchoRuntime(
   args: CreateScriptedEchoRuntimeArgs,
-): AgentRuntime {
+): LaunchBoundAgentRuntime {
   const runtime = createAgentRuntime({
     onToolCall: async () => ({ contentItems: [], success: true }),
+    ...(args.launch?.modulePath === undefined
+      ? { bridgeBundleDir: prebuiltTestBridgeDir }
+      : {}),
     ...args.runtime,
   });
   return withBridgeLaunch(runtime, createScriptedEchoLaunch(args.launch));

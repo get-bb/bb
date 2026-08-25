@@ -11,6 +11,7 @@ import {
 } from "@bb/shared-ui/dropdown-menu";
 import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
+import { Textarea } from "@bb/shared-ui/textarea";
 import { Link } from "react-router-dom";
 import { SettingsWithControl } from "@/components/ui/settings-section.js";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
@@ -38,12 +39,38 @@ import { usePluginSlots } from "@/lib/plugin-slots";
  * Declarative settings remain host-rendered, while `settingsSection` slots
  * can provide richer plugin-owned controls. Secrets are write-only: the
  * server reports only `{ set }`, and an empty secret input leaves it unchanged.
+ * A string marked `experimental_multiline` is a monospace textarea below its
+ * label at full width; every other control sits beside its label.
  */
 
 const DROPDOWN_TRIGGER_CLASS =
   "h-7 w-full justify-between border-border/60 bg-card px-2 text-xs sm:w-44";
 const DROPDOWN_CONTENT_CLASS =
   "min-w-[var(--radix-dropdown-menu-trigger-width)]";
+
+/**
+ * A multi-line field sizes itself to its content between six and twenty-four
+ * rows where `field-sizing: content` is supported (the min/max heights), and
+ * falls back to a `rows` count derived from the value elsewhere: one row per
+ * line plus one to type into, within the same bounds.
+ */
+const MULTILINE_MIN_ROWS = 6;
+const MULTILINE_MAX_ROWS = 24;
+const MULTILINE_TEXTAREA_CLASS =
+  "max-h-96 min-h-32 w-full resize-y overflow-y-auto font-mono text-xs field-sizing-content";
+
+function multilineRows(value: string): number {
+  const lines = value.split("\n").length;
+  return Math.min(MULTILINE_MAX_ROWS, Math.max(MULTILINE_MIN_ROWS, lines + 1));
+}
+
+function isMultilineSetting(descriptor: PluginSettingFieldDescriptor): boolean {
+  return (
+    descriptor.type === "string" &&
+    descriptor.experimental_multiline === true &&
+    descriptor.secret !== true
+  );
+}
 
 interface SettingOptionPickerProps {
   ariaLabel: string;
@@ -184,6 +211,20 @@ function PluginSettingField({
       : !isSecret && typeof storedValue === "string"
         ? storedValue
         : "";
+  if (isMultilineSetting(descriptor)) {
+    return (
+      <Textarea
+        value={value}
+        aria-label={descriptor.label}
+        rows={multilineRows(value)}
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        onChange={(event) => onChange(event.target.value)}
+        className={MULTILINE_TEXTAREA_CLASS}
+      />
+    );
+  }
   return (
     <Input
       type={isSecret ? "password" : "text"}
@@ -249,6 +290,7 @@ export function PluginSettingsForm({ pluginId }: { pluginId: string }) {
               ? "secret"
               : undefined
           }
+          controlPlacement={isMultilineSetting(descriptor) ? "below" : "inline"}
           {...(descriptor.description !== undefined
             ? { description: descriptor.description }
             : {})}

@@ -4,7 +4,7 @@
  *
  * - the plugin's `server.ts` (loaded by the bb server, where only the SDK
  *   root specifier resolves) declares it as the provider's cold-cache
- *   fallback (`experimental_models.fallback`);
+ *   fallback (`models.fallback`);
  * - the bridge (`model-catalog.ts`, run on the host) filters it against the
  *   account-scoped probe so only models the account can run reach the picker.
  *

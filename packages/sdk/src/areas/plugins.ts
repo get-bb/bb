@@ -1,5 +1,6 @@
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
+  installedPluginSchema,
   pluginCatalogInstallPlanResponseSchema,
   pluginCatalogInstallRequestSchema,
   pluginCatalogSearchResponseSchema,
@@ -13,10 +14,7 @@ import {
   pluginMarketplaceRemoveResponseSchema,
   pluginApplyUpdateRequestSchema,
   pluginApplyUpdateResultSchema,
-  pluginInstallResponseSchema,
   pluginInstallSourceRequestSchema,
-  pluginListResponseSchema,
-  pluginReloadResponseSchema,
   pluginRemoveResponseSchema,
   pluginSettingsResponseSchema,
   pluginSettingsUpdateRequestSchema,
@@ -44,6 +42,43 @@ import {
 } from "@bb/server-contract";
 import { z } from "zod";
 import type { CreateSdkAreaArgs } from "./common.js";
+
+/**
+ * A server older than `providerIds` (bb-app < 0.39) or `icons` answers with
+ * the installed-plugin shape minus those fields. The contract keeps them
+ * required — the server fills them once at its boundary — so the tolerance
+ * lives here, on the response side only: the SDK never sends this shape,
+ * and a default on the contract would leak into request bodies.
+ */
+const installedPluginResponseSchema = installedPluginSchema.extend({
+  providerIds: z.array(z.string()).default([]),
+  icons: z.record(z.string(), z.string()).default({}),
+});
+const pluginListResponseSchema = z.object({
+  plugins: z.array(installedPluginResponseSchema),
+});
+const pluginInstallResponseSchema = z.object({
+  ok: z.literal(true),
+  plugin: installedPluginResponseSchema,
+});
+const pluginReloadResponseSchema = z.object({
+  ok: z.literal(true),
+  plugins: z.array(installedPluginResponseSchema),
+});
+
+/**
+ * The plugin mutation routes' answer as a CLI reads it: `ok` either way, an
+ * `error` on failure, the affected plugin(s) on success — with the same
+ * response-side tolerance for `providerIds`. The CLI parses through this
+ * instead of re-declaring the contract shape beside it.
+ */
+export const pluginMutationResponseSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  plugin: installedPluginResponseSchema.optional(),
+  plugins: z.array(installedPluginResponseSchema).optional(),
+});
+export type PluginMutationResponse = z.infer<typeof pluginMutationResponseSchema>;
 
 export interface PluginIdArgs {
   pluginId: string;

@@ -944,7 +944,7 @@ export function SettingsView() {
         }
         generalSettings={generalSettings}
         onGeneralSettingsChange={(next) =>
-          updateGeneralSettingsMutation.mutate(next)
+          updateGeneralSettingsMutation.mutateAsync(next)
         }
       />
     );

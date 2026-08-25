@@ -209,7 +209,7 @@ describe("machine permission ceiling", () => {
       const thread = await seedCappedThread(harness, {
         id: "host-ceiling-acp",
         maxPermissionMode: "auto",
-        providerId: "acp-gemini",
+        providerId: "acp-cursor",
       });
 
       const plan = await resolveExistingThreadExecutionPlan(harness.deps, {

@@ -9,21 +9,27 @@ import {
   summarizePendingInteractionRequestedPermissions,
 } from "@bb/core-ui";
 import {
+  isApprovalPendingInteraction,
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
+  isPluginPendingInteraction,
+  isPluginPendingInteractionPayload,
+  isUserQuestionPendingInteraction,
   isUserQuestionPendingInteractionPayload,
-  isUserQuestionPendingInteractionResolution,
+  jsonValueSchema,
+  parseExtensionKind,
   PendingInteraction,
-  type ProviderPendingInteraction,
+  type ApprovalPendingInteraction,
+  type JsonValue,
+  type PluginExtensionPendingInteraction,
+  type PluginPendingInteraction,
   type PendingInteractionUserAnswer,
-  type ApprovalPendingInteractionPayload,
-  type ApprovalPendingInteractionResolution,
   type PendingInteractionApprovalDecision,
   type PendingInteractionGrantablePermissionProfile,
   type PendingInteractionRequestedPermissionProfile,
   PendingInteractionResolution,
+  type UserQuestionPendingInteraction,
   type UserQuestionPendingInteractionPayload,
-  type UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
@@ -48,21 +54,23 @@ interface ThreadInteractionAnswerOptions extends ThreadInteractionTargetOptions 
   text?: string[];
 }
 
+interface ThreadInteractionRespondOptions extends ThreadInteractionTargetOptions {
+  value: string;
+}
+
+function parseRespondValue(raw: string): JsonValue {
+  try {
+    return jsonValueSchema.parse(JSON.parse(raw));
+  } catch {
+    throw new Error("Invalid --value. Expected a JSON value.");
+  }
+}
+
 type PrintablePermissionProfile =
   | PendingInteractionGrantablePermissionProfile
   | PendingInteractionRequestedPermissionProfile;
 type UserQuestionQuestion =
   UserQuestionPendingInteractionPayload["questions"][number];
-
-interface ApprovalPendingInteraction extends ProviderPendingInteraction {
-  payload: ApprovalPendingInteractionPayload;
-  resolution: ApprovalPendingInteractionResolution | null;
-}
-
-interface UserQuestionPendingInteraction extends ProviderPendingInteraction {
-  payload: UserQuestionPendingInteractionPayload;
-  resolution: UserQuestionPendingInteractionResolution | null;
-}
 
 interface FetchInteractionArgs {
   getUrl: () => string;
@@ -121,8 +129,12 @@ function formatInteractionKind(interaction: PendingInteraction): string {
     return "question";
   }
 
-  if (!isApprovalPendingInteractionPayload(interaction.payload)) {
+  if (isPluginPendingInteractionPayload(interaction.payload)) {
     return "plugin";
+  }
+  if (!isApprovalPendingInteractionPayload(interaction.payload)) {
+    // A provider's plugin-defined request: the namespaced kind names the form.
+    return interaction.payload.kind;
   }
 
   switch (interaction.payload.subject.kind) {
@@ -134,7 +146,6 @@ function formatInteractionKind(interaction: PendingInteraction): string {
       return "permission";
     case "plan":
       return "plan";
-    // Declarative base only: no producer emits this subject until WS5.
     case "tool_use":
       return "tool-use";
     default:
@@ -142,30 +153,10 @@ function formatInteractionKind(interaction: PendingInteraction): string {
   }
 }
 
-function isApprovalInteraction(
-  interaction: PendingInteraction,
-): interaction is ApprovalPendingInteraction {
-  return (
-    isApprovalPendingInteractionPayload(interaction.payload) &&
-    (interaction.resolution === null ||
-      isApprovalPendingInteractionResolution(interaction.resolution))
-  );
-}
-
-function isUserQuestionInteraction(
-  interaction: PendingInteraction,
-): interaction is UserQuestionPendingInteraction {
-  return (
-    isUserQuestionPendingInteractionPayload(interaction.payload) &&
-    (interaction.resolution === null ||
-      isUserQuestionPendingInteractionResolution(interaction.resolution))
-  );
-}
-
 function requireApprovalInteraction(
   interaction: PendingInteraction,
 ): ApprovalPendingInteraction {
-  if (isApprovalInteraction(interaction)) {
+  if (isApprovalPendingInteraction(interaction)) {
     return interaction;
   }
   throw new Error(
@@ -176,7 +167,7 @@ function requireApprovalInteraction(
 function requireUserQuestionInteraction(
   interaction: PendingInteraction,
 ): UserQuestionPendingInteraction {
-  if (isUserQuestionInteraction(interaction)) {
+  if (isUserQuestionPendingInteraction(interaction)) {
     return interaction;
   }
   throw new Error(
@@ -255,7 +246,8 @@ function printApprovalInteraction(
       }
       break;
     case "tool_use":
-      // Declarative base only: no producer emits this subject until WS5.
+      // The bridge's presentation is the whole description (§4): tool name,
+      // headline, and detail, the same lines the child-thread blocker prints.
       for (const line of formatPendingInteractionSubjectDetailLines(
         interaction,
       )) {
@@ -317,12 +309,43 @@ function printInteraction(interaction: PendingInteraction): void {
     console.log("  Delivery: waiting for provider acknowledgement");
   }
 
-  if (isUserQuestionInteraction(interaction)) {
+  if (isUserQuestionPendingInteraction(interaction)) {
     printUserQuestionInteraction(interaction);
     return;
   }
+  if (isApprovalPendingInteraction(interaction)) {
+    printApprovalInteraction(interaction);
+    return;
+  }
+  printPluginRequestInteraction(interaction);
+}
 
-  printApprovalInteraction(requireApprovalInteraction(interaction));
+/**
+ * A plugin form, raised by a plugin or by the agent through a provider: the
+ * title, the form that renders it, and its data, which the plugin defines.
+ */
+function printPluginRequestInteraction(
+  interaction: PluginPendingInteraction | PluginExtensionPendingInteraction,
+): void {
+  const form = isPluginPendingInteraction(interaction)
+    ? {
+        pluginId: interaction.origin.pluginId,
+        rendererId: interaction.origin.rendererId,
+        raisedBy: "plugin",
+      }
+    : {
+        pluginId: parseExtensionKind(interaction.payload.kind).pluginId,
+        rendererId: parseExtensionKind(interaction.payload.kind).name,
+        raisedBy: "agent",
+      };
+  console.log(`  Title: ${interaction.payload.title}`);
+  console.log(
+    `  Form: ${form.pluginId}/${form.rendererId} (raised by ${form.raisedBy})`,
+  );
+  console.log(`  Data: ${JSON.stringify(interaction.payload.data)}`);
+  console.log(
+    "  Answer: bb thread interactions respond <interactionId> --value '<json>'",
+  );
 }
 
 async function fetchInteraction(
@@ -875,6 +898,47 @@ export function registerInteractionCommands(
                 updated,
               }),
           });
+        },
+      ),
+    );
+
+  interactions
+    .command("respond <interactionId> [id]")
+    .description(
+      "Answer a plugin form (a plugin's request or a provider's plugin-defined request) with a JSON value",
+    )
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .requiredOption(
+      "--value <json>",
+      "The form's answer as JSON, in the shape the plugin's form defines",
+    )
+    .action(
+      action(
+        async (
+          interactionId: string,
+          id: string | undefined,
+          opts: ThreadInteractionRespondOptions,
+        ) => {
+          const threadId = requireThreadIdOrSelf(id, opts);
+          const value = parseRespondValue(opts.value);
+          const sdk = createCliBbSdk(getUrl());
+          const updated = await sdk.threads.interactions
+            .respond({ interactionId, threadId, value })
+            .catch((error: unknown) => {
+              throw prependErrorContext(
+                `Failed to respond to interaction ${interactionId}`,
+                error,
+              );
+            });
+          if (outputJson(opts, updated)) {
+            return;
+          }
+          console.log(
+            updated.status === "resolving"
+              ? `Interaction ${interactionId} submitted (answered); delivering to provider`
+              : `Interaction ${interactionId} answered`,
+          );
         },
       ),
     );

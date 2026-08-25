@@ -19,6 +19,33 @@ describe("secondary panel tab-strip edge fades", () => {
     expect(SECONDARY_PANEL_TAB_STRIP_FADE_TONE).toBe("sidebar");
   });
 
+  it("keeps the desktop tab viewport outside the window drag region", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const tabStrip = (usesDesktopChrome: boolean) =>
+      createElement(SecondaryPanelTabStrip, {
+        activeTabId: null,
+        tabs: [],
+        onReorderTab: vi.fn(),
+        usesDesktopChrome,
+        isPanelOpen: true,
+      });
+    const view = render(tabStrip(true));
+    const viewport = view.container.querySelector(".no-scrollbar");
+    expect(viewport?.className).toContain("[app-region:no-drag]");
+    expect(viewport?.className).toContain("[-webkit-app-region:no-drag]");
+
+    view.rerender(tabStrip(false));
+    expect(
+      view.container.querySelector(".no-scrollbar")?.className,
+    ).not.toContain("app-region");
+  });
+
   it("observes the intrinsic tab row so async title changes refresh overflow", () => {
     const observed: Element[] = [];
     let resizeCallback: ResizeObserverCallback | undefined;

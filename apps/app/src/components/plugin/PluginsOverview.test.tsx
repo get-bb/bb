@@ -15,15 +15,10 @@ import {
   useLocation,
   useSearchParams,
 } from "react-router-dom";
-import type { SystemConfigResponse } from "@bb/server-contract";
-import {
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { focusManager } from "@tanstack/react-query";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { makeSystemConfig } from "@/test/fixtures/system-config";
 import { SidebarHistoryNavigationControls } from "@/components/sidebar/SidebarHistoryNavigationControls";
 import { resetAppRouteHistoryForTest } from "@/lib/app-route-history";
 import { PluginsOverview } from "./PluginsOverview";
@@ -59,27 +54,6 @@ function responseJson(body: unknown, status = 200): Response {
     status,
     headers: { "content-type": "application/json" },
   });
-}
-
-function systemConfig(): SystemConfigResponse {
-  return {
-    generalSettings: defaultAppSettings,
-    keybindings: [],
-    defaultKeybindings: [],
-    keybindingOverrides: [],
-    experiments: defaultExperiments,
-    appearance: defaultAppTheme,
-    customThemes: [],
-    pluginThemes: [],
-    featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-    hostDaemonPort: null,
-    localHelperPorts: [],
-    serverUrl: "http://localhost:38886",
-    primaryHostId: null,
-    primaryHostPlatform: null,
-    voiceTranscriptionEnabled: false,
-    dataDir: "/tmp/bb-test",
-  };
 }
 
 const AUTOMATIONS_PLUGIN = {
@@ -168,7 +142,7 @@ function installFetch(plugins: readonly unknown[] = [AUTOMATIONS_PLUGIN]) {
             : input.url;
       const url = new URL(rawUrl, "http://localhost");
       if (url.pathname === "/api/v1/system/config") {
-        return responseJson(systemConfig());
+        return responseJson(makeSystemConfig());
       }
       if (url.pathname === "/api/v1/plugins") {
         return responseJson({ plugins });

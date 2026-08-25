@@ -18,6 +18,8 @@ vi.mock("@/lib/sdk", () => ({
   sdk: {
     threads: { get: vi.fn() },
     environments: { get: vi.fn() },
+    // The chat resolves the thread's provider plugin from the roster.
+    providers: { list: vi.fn(async () => []) },
   },
   BbHttpError: class BbHttpError extends Error {
     status: number;
@@ -32,6 +34,7 @@ vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadDetailRealtimeSubscription: vi.fn(),
   useThreadListRealtimeSubscription: vi.fn(),
   useEnvironmentDetailRealtimeSubscription: vi.fn(),
+  useSystemRealtimeSubscription: vi.fn(),
 }));
 
 vi.mock("@/hooks/useHostDaemon", () => ({

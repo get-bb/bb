@@ -12,9 +12,9 @@ import { parsePromptInput } from "./user-message-parsing.js";
 /**
  * The provider's declared `plan` composer action, or null when it declares
  * none. Eligibility and command syntax both come from the declaration — this
- * used to be a `providerId === "claude-code" || providerId === "codex"` gate
- * plus a hardcoded `{ trigger: "/", name: "plan" }` selector, which no plugin
- * provider could ever join.
+ * used to be a gate on two first-party provider ids plus a hardcoded
+ * `{ trigger: "/", name: "plan" }` selector, which no plugin provider could
+ * ever join.
  */
 export type PlanCommand = Pick<ProviderComposerCommand, "trigger" | "name">;
 

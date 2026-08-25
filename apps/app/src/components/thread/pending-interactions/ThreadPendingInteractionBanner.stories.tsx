@@ -16,7 +16,11 @@ function PromptStage({ children }: { children: React.ReactNode }) {
   return <div className="w-full max-w-[760px]">{children}</div>;
 }
 
-function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
+// The common fields; each story pairs its own payload with its resolution.
+function basePendingInteraction(): Omit<
+  ProviderPendingInteraction,
+  "payload" | "resolution"
+> {
   return {
     id: "pi_demo",
     threadId: "thr_qfk8ksbxkk",
@@ -25,7 +29,6 @@ function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
     providerThreadId: "provider-thread-demo",
     providerRequestId: "request-demo",
     status: "pending",
-    resolution: null,
     statusReason: null,
     createdAt: 1,
     resolvedAt: null,
@@ -34,6 +37,7 @@ function basePendingInteraction(): Omit<ProviderPendingInteraction, "payload"> {
 
 const commandApproval: PendingInteraction = {
   ...basePendingInteraction(),
+  resolution: null,
   payload: {
     kind: "approval",
     subject: {
@@ -51,6 +55,7 @@ const commandApproval: PendingInteraction = {
 
 const longCommandApproval: PendingInteraction = {
   ...basePendingInteraction(),
+  resolution: null,
   id: "pi_demo_long",
   payload: {
     kind: "approval",
@@ -80,6 +85,7 @@ const resolvingCommandApproval: PendingInteraction = {
 
 const fileChange: PendingInteraction = {
   ...basePendingInteraction(),
+  resolution: null,
   id: "pi_demo_file",
   payload: {
     kind: "approval",
@@ -96,6 +102,7 @@ const fileChange: PendingInteraction = {
 
 const permissionGrant: PendingInteraction = {
   ...basePendingInteraction(),
+  resolution: null,
   id: "pi_demo_perm",
   payload: {
     kind: "approval",
@@ -117,6 +124,30 @@ const permissionGrant: PendingInteraction = {
       },
     },
     reason: "Need promptbox write access for the banner refactor",
+    availableDecisions: ["allow_once", "allow_for_session", "deny"],
+  },
+};
+
+const toolUse: PendingInteraction = {
+  ...basePendingInteraction(),
+  resolution: null,
+  id: "pi_demo_tool_use",
+  providerId: "acp",
+  payload: {
+    kind: "approval",
+    subject: {
+      kind: "tool_use",
+      itemId: "call_tool_use",
+      tool: "mcp__github__create_issue",
+      presentation: {
+        label: { pending: "Creating issue", completed: "Created issue" },
+        icon: { glyph: "Globe" },
+        title: "get-bb/bb · Banner clips long titles",
+        detail: "Opens a **bug** issue with the repro steps from this thread.",
+        tint: { light: "#2563eb", dark: "#93c5fd" },
+      },
+    },
+    reason: null,
     availableDecisions: ["allow_once", "allow_for_session", "deny"],
   },
 };
@@ -223,6 +254,17 @@ export function Overview() {
           <ThreadPendingInteractionBanner
             interaction={permissionGrant}
             threadId={permissionGrant.threadId}
+          />
+        </PromptStage>
+      </StoryRow>
+      <StoryRow
+        label="tool use"
+        hint="a generic tool call (MCP, provider-native) described by the bridge's presentation alone"
+      >
+        <PromptStage>
+          <ThreadPendingInteractionBanner
+            interaction={toolUse}
+            threadId={toolUse.threadId}
           />
         </PromptStage>
       </StoryRow>

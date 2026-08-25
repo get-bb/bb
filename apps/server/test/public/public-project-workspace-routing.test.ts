@@ -2,6 +2,7 @@ import { createProjectSource } from "@bb/db";
 import type { HostProviderCommand } from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import { declaredNativeRootSet } from "../helpers/provider-registry.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -71,6 +72,9 @@ describe("public project workspace routing", () => {
           if (request.command.type === "host.list_commands") {
             return { ok: true, result: { commands: [primaryCommand] } };
           }
+          if (request.command.type === "plugin.host.call") {
+            return { ok: true, result: { output: { skills: [], commands: [] } } };
+          }
           if (request.command.type === "host.read_file") {
             return {
               ok: true,
@@ -113,6 +117,9 @@ describe("public project workspace routing", () => {
           }
           if (request.command.type === "host.list_commands") {
             return { ok: true, result: { commands: [remoteCommand] } };
+          }
+          if (request.command.type === "plugin.host.call") {
+            return { ok: true, result: { output: { skills: [], commands: [] } } };
           }
           if (request.command.type === "host.read_file") {
             return {
@@ -186,6 +193,7 @@ describe("public project workspace routing", () => {
         type: "host.list_commands",
         providerId: "codex",
         cwd: "/remote/project",
+        nativeRoots: declaredNativeRootSet(harness.deps.providerRegistry, "codex"),
       });
 
       const content = await harness.app.request(

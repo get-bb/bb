@@ -1,5 +1,13 @@
-import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import {
   createServer,
   type IncomingMessage,
@@ -13,6 +21,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { resolvePortFromEnv } from "@bb/config/runtime";
 import {
+  assertBbAppArtifacts,
   completeFullStackSupervision,
   createDaemonEnv,
   createHostEnrollKeyRequestBody,
@@ -2136,7 +2145,87 @@ describe("bb-app launcher", () => {
     expect(metadata.files).toContain(
       "host-daemon/dist/bb-plugin-host-worker.mjs",
     );
+    // The CLI entry imports its command groups from this chunk directory.
+    expect(metadata.files).toContain("host-daemon/dist/bb");
+    expect(metadata.files).toContain("host-daemon/dist/bb-chunks");
     expect(metadata.os).toEqual(["darwin", "linux"]);
+  });
+
+  it("requires the bundled CLI's chunk directory next to host-daemon/dist/bb", () => {
+    // A packaged layout (entrypoint under <packageRoot>/dist) with every
+    // artifact the launcher checked before the CLI was code-split. Without
+    // bb-chunks the artifact check used to pass and `bb --version` then died
+    // in Node's ESM loader with a raw ERR_MODULE_NOT_FOUND stack.
+    const packageRoot = mkdtempSync(join(tmpdir(), "bb-app-artifacts-"));
+    try {
+      const context = resolveBbAppStartContext({
+        entrypointUrl: pathToFileURL(join(packageRoot, "dist", "bb.js")).href,
+        env: {},
+        homeDir: join(packageRoot, "home"),
+      });
+      for (const artifact of [
+        context.serverEntry,
+        context.daemonEntry,
+        join(context.daemonBundleDir, "bb"),
+        join(context.daemonBundleDir, "bb-provider-bridge-worker.mjs"),
+        join(context.daemonBundleDir, "bb-parcel-watcher-child.mjs"),
+        join(context.daemonBundleDir, "bb-plugin-host-worker.mjs"),
+        join(context.appDistDir, "index.html"),
+      ]) {
+        mkdirSync(dirname(artifact), { recursive: true });
+        writeFileSync(artifact, "");
+      }
+
+      const missingChunks =
+        /^Missing bundled bb CLI chunks at .*\/host-daemon\/dist\/bb-chunks\. Rebuild bb-app/;
+      expect(() => assertBbAppArtifacts(context)).toThrow(missingChunks);
+
+      // An empty directory (a copy interrupted after mkdir, say) fails the
+      // entry's static chunk import exactly like a missing one.
+      const chunkDir = join(context.daemonBundleDir, "bb-chunks");
+      mkdirSync(chunkDir);
+      expect(() => assertBbAppArtifacts(context)).toThrow(missingChunks);
+
+      writeFileSync(join(chunkDir, "chunk-AAAAAAAA.js"), "");
+      expect(() => assertBbAppArtifacts(context)).not.toThrow();
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("prunes stale bb CLI chunks from package build output", () => {
+    // `bb-app#build` runs this cleanup after copying the host-daemon output.
+    // Keep the graph tiny here so the expected publication inventory is clear.
+    const pruneScript = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "scripts",
+      "prune-bb-chunks.mjs",
+    );
+    const packageRoot = mkdtempSync(join(tmpdir(), "bb-app-prune-"));
+    try {
+      const chunkDir = join(packageRoot, "host-daemon", "dist", "bb-chunks");
+      mkdirSync(chunkDir, { recursive: true });
+      writeFileSync(
+        join(packageRoot, "host-daemon", "dist", "bb"),
+        'import"./bb-chunks/chunk-LIVE.js";\n',
+      );
+      writeFileSync(join(chunkDir, "chunk-LIVE.js"), "export var a=1;\n");
+      writeFileSync(join(chunkDir, "chunk-STALE.js"), "export var s=1;\n");
+      writeFileSync(
+        join(packageRoot, "package.json"),
+        JSON.stringify({
+          name: "bb-app-prune-fixture",
+          version: "0.0.1",
+          files: ["host-daemon/dist/bb", "host-daemon/dist/bb-chunks"],
+        }),
+      );
+
+      execFileSync("node", [pruneScript], { cwd: packageRoot });
+      expect(readdirSync(chunkDir)).toEqual(["chunk-LIVE.js"]);
+    } finally {
+      rmSync(packageRoot, { recursive: true, force: true });
+    }
   });
 
   it("keeps the desktop app surface the desktop shell passes to the server", () => {

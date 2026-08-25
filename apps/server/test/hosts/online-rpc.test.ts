@@ -6,7 +6,7 @@ import {
 } from "@bb/host-daemon-contract";
 import { hostDaemonSessions } from "@bb/db";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../src/errors.js";
 import {
   callHostOnlineRpc,
@@ -205,6 +205,182 @@ describe("host online RPC retry semantics", () => {
         "provider.list_models",
         "provider.list_models",
       ]);
+    });
+  });
+
+  it("retries read-only online RPCs when the first response times out", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-timeout-retry",
+      });
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+      const socket: TestHostRpcSocket = {
+        close() {},
+        send(data) {
+          const request = parseHostRpcRequest(data);
+          requests.push(request);
+          if (requests.length === 1) return;
+          const firstRequest = requests[0];
+          if (firstRequest === undefined) {
+            throw new Error("Expected the timed-out first host RPC request");
+          }
+          expect(
+            harness.hub.recordHostOnlineRpcResponse({
+              sessionId: session.id,
+              message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                type: "host-rpc.response",
+                requestId: firstRequest.requestId,
+                commandType: firstRequest.command.type,
+                ok: true,
+                result: { models: [], selectedOnlyModels: [] },
+              }),
+            }),
+          ).toEqual({ handled: false, reason: "stale" });
+          expect(
+            harness.hub.recordHostOnlineRpcResponse({
+              sessionId: session.id,
+              message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+                type: "host-rpc.response",
+                requestId: request.requestId,
+                commandType: request.command.type,
+                ok: true,
+                result: { models: [], selectedOnlyModels: [] },
+              }),
+            }),
+          ).toEqual({ handled: true });
+        },
+      };
+      harness.hub.registerDaemon(session.id, host.id, socket);
+
+      vi.useFakeTimers();
+      try {
+        const result = expect(
+          callHostRetryableOnlineRpc(harness.deps, {
+            hostId: host.id,
+            timeoutMs: 10,
+            command: {
+              type: "provider.list_models",
+              providerId: "codex",
+              bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+            },
+          }),
+        ).resolves.toEqual({ models: [], selectedOnlyModels: [] });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(requests).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(5);
+        await result;
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(requests.map((request) => request.command.type)).toEqual([
+        "provider.list_models",
+        "provider.list_models",
+      ]);
+      expect(requests[0]?.requestId).not.toBe(requests[1]?.requestId);
+    });
+  });
+
+  it("does not retry ordinary online RPCs when the response times out", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-timeout-no-retry",
+      });
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+      const socket: TestHostRpcSocket = {
+        close() {},
+        send(data) {
+          requests.push(parseHostRpcRequest(data));
+        },
+      };
+      harness.hub.registerDaemon(session.id, host.id, socket);
+
+      vi.useFakeTimers();
+      try {
+        const result = expect(
+          callHostOnlineRpc(harness.deps, {
+            hostId: host.id,
+            timeoutMs: 10,
+            command: {
+              type: "provider.list_models",
+              providerId: "codex",
+              bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+            },
+          }),
+        ).rejects.toMatchObject({
+          status: 504,
+          body: { code: "command_timeout" },
+        });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(requests).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(10);
+        await result;
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(requests).toHaveLength(1);
+    });
+  });
+
+  it("spends one timeout budget across both response attempts", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-online-rpc-timeout-budget",
+      });
+      const requests: HostDaemonOnlineRpcRequestMessage[] = [];
+      const socket: TestHostRpcSocket = {
+        close() {},
+        send(data) {
+          requests.push(parseHostRpcRequest(data));
+        },
+      };
+      harness.hub.registerDaemon(session.id, host.id, socket);
+
+      vi.useFakeTimers();
+      try {
+        let outcome:
+          | "pending"
+          | "resolved"
+          | "command_timeout"
+          | "other_error" = "pending";
+        void callHostRetryableOnlineRpc(harness.deps, {
+          hostId: host.id,
+          timeoutMs: 10,
+          command: {
+            type: "provider.list_models",
+            providerId: "codex",
+            bridgeLaunch: TRANSPORT_TEST_BRIDGE_LAUNCH,
+          },
+        }).then(
+          () => {
+            outcome = "resolved";
+          },
+          (error) => {
+            outcome =
+              error instanceof ApiError &&
+              error.status === 504 &&
+              error.body.code === "command_timeout"
+                ? "command_timeout"
+                : "other_error";
+          },
+        );
+
+        await vi.advanceTimersByTimeAsync(0);
+        expect(requests).toHaveLength(1);
+        await vi.advanceTimersByTimeAsync(4);
+        expect(requests).toHaveLength(1);
+        expect(outcome).toBe("pending");
+        await vi.advanceTimersByTimeAsync(1);
+        expect(requests).toHaveLength(2);
+        expect(outcome).toBe("pending");
+        await vi.advanceTimersByTimeAsync(4);
+        expect(outcome).toBe("pending");
+        await vi.advanceTimersByTimeAsync(1);
+        expect(outcome).toBe("command_timeout");
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -82,7 +82,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsManualCompaction: true,
     supportsUsage: false,
     visibility: "installed",
-    hasLogo: false,
+    hasLogo: true,
   },
   {
     builtinName: "provider-acp",
@@ -95,7 +95,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsManualCompaction: false,
     supportsUsage: false,
     visibility: "installed",
-    hasLogo: false,
+    hasLogo: true,
   },
   {
     builtinName: "provider-acp",
@@ -108,7 +108,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsManualCompaction: false,
     supportsUsage: false,
     visibility: "installed",
-    hasLogo: false,
+    hasLogo: true,
   },
   {
     builtinName: "provider-acp",
@@ -121,7 +121,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     supportsManualCompaction: false,
     supportsUsage: false,
     visibility: "installed",
-    hasLogo: false,
+    hasLogo: true,
   },
 ] as const;
 
@@ -178,14 +178,15 @@ describe("first-party provider plugins", () => {
             throw new Error(`missing expectation at index ${index}`);
           }
           const label = plugin.providerId;
-          expect(registration.source, label).toEqual({
-            kind: "plugin",
-            pluginId: plugin.pluginId,
-          });
+          expect(registration.pluginId, label).toBe(plugin.pluginId);
           expect(registration.info.displayName, label).toBe(plugin.displayName);
           expect(registration.info.logoUrl, label).toBe(
             plugin.hasLogo ? expectedLogoUrl(plugin.providerId) : null,
           );
+          // The URL alone proves nothing: the route serves the byte snapshot
+          // taken at registration, and a declared icon whose file is absent
+          // leaves the snapshot empty behind a well-formed URL.
+          expect(registration.icon !== undefined, label).toBe(plugin.hasLogo);
           expect(registration.visibility, label).toBe(plugin.visibility);
           // The facts the takeover merge used to carry over from the seed.
           expect(
@@ -209,11 +210,11 @@ describe("first-party provider plugins", () => {
           expect(registry.supportsFork(plugin.providerId), label).toBe(
             plugin.fork !== "none",
           );
-          expect(registration.info.experimental_providerUsage, label).toBe(
+          expect(registration.info.maintenance.usage, label).toBe(
             plugin.supportsUsage,
           );
           // The implementation and its static options ride the plugin's own
-          // bridge artifact (pi's is daemon-bundled).
+          // bridge artifact.
           expect(registration.info.id, label).toBe(plugin.providerId);
         }
 
@@ -255,9 +256,7 @@ describe("first-party provider plugins", () => {
             displayName,
             logoUrl,
             available,
-            experimental_providerHealth,
-            experimental_providerUsage,
-            experimental_providerInstallation,
+            maintenance,
             capabilities,
             composerActions,
           } = info;
@@ -266,9 +265,7 @@ describe("first-party provider plugins", () => {
             displayName,
             logoUrl,
             available,
-            experimental_providerHealth,
-            experimental_providerUsage,
-            experimental_providerInstallation,
+            maintenance,
             capabilities,
             composerActions,
           };
@@ -288,9 +285,7 @@ describe("first-party provider plugins", () => {
           displayName: "Codex",
           logoUrl: expectedLogoUrl("codex"),
           available: true,
-          experimental_providerHealth: true,
-          experimental_providerUsage: true,
-          experimental_providerInstallation: true,
+          maintenance: { health: true, usage: true, installation: true },
           capabilities: {
             supportsThreadArchive: true,
             supportsThreadRename: true,
@@ -299,6 +294,7 @@ describe("first-party provider plugins", () => {
             permissionModes: ["accept-edits", "auto", "full"],
             supportsFork: true,
             supportsSessionRewind: true,
+            modelCatalogScope: "host",
           },
           composerActions: [skills, plan, goal],
         });
@@ -307,9 +303,7 @@ describe("first-party provider plugins", () => {
           displayName: "Claude Code",
           logoUrl: expectedLogoUrl("claude-code"),
           available: true,
-          experimental_providerHealth: true,
-          experimental_providerUsage: true,
-          experimental_providerInstallation: true,
+          maintenance: { health: true, usage: true, installation: true },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
@@ -318,6 +312,7 @@ describe("first-party provider plugins", () => {
             permissionModes: ["accept-edits", "auto", "full"],
             supportsFork: true,
             supportsSessionRewind: true,
+            modelCatalogScope: "host",
           },
           composerActions: [skills, plan],
         });
@@ -326,9 +321,7 @@ describe("first-party provider plugins", () => {
           displayName: "Pi",
           logoUrl: expectedLogoUrl("pi"),
           available: true,
-          experimental_providerHealth: true,
-          experimental_providerUsage: false,
-          experimental_providerInstallation: false,
+          maintenance: { health: true, usage: false, installation: true },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
@@ -337,6 +330,7 @@ describe("first-party provider plugins", () => {
             permissionModes: ["full"],
             supportsFork: true,
             supportsSessionRewind: true,
+            modelCatalogScope: "workspace",
           },
           composerActions: [skills],
         });
@@ -345,9 +339,7 @@ describe("first-party provider plugins", () => {
           displayName: "Cursor",
           logoUrl: expectedLogoUrl("acp-cursor"),
           available: true,
-          experimental_providerHealth: true,
-          experimental_providerUsage: true,
-          experimental_providerInstallation: true,
+          maintenance: { health: true, usage: true, installation: true },
           capabilities: {
             supportsThreadArchive: false,
             supportsThreadRename: false,
@@ -357,6 +349,7 @@ describe("first-party provider plugins", () => {
             // cursor-agent does not advertise ACP session/fork (#1833).
             supportsFork: false,
             supportsSessionRewind: false,
+            modelCatalogScope: "host",
           },
           composerActions: [skills],
         });
@@ -391,10 +384,7 @@ describe("first-party provider plugins", () => {
       async (harness) => {
         const registry = harness.deps.providerRegistry;
         await installFirstPartyProviderPlugins(harness);
-        expect(registry.get("pi")?.source).toEqual({
-          kind: "plugin",
-          pluginId: "provider-pi",
-        });
+        expect(registry.get("pi")?.pluginId).toBe("provider-pi");
 
         // With the seed deleted there is nothing to degrade to: the provider
         // is gone, and every policy accessor says so rather than keeping a
@@ -420,10 +410,7 @@ describe("first-party provider plugins", () => {
 
         // Re-enabling restores it in its install position, not at the end.
         await harness.pluginService.setEnabled("provider-pi", true);
-        expect(registry.get("pi")?.source).toEqual({
-          kind: "plugin",
-          pluginId: "provider-pi",
-        });
+        expect(registry.get("pi")?.pluginId).toBe("provider-pi");
         expect(registry.list().map((entry) => entry.info.id)).toEqual(
           PROVIDER_IDS,
         );

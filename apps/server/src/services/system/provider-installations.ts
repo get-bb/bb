@@ -10,7 +10,6 @@ import {
   callHostRetryableOnlineRpc,
   isHostUnavailableApiError,
 } from "../hosts/online-rpc.js";
-import { resolveAcpLaunchSpecForProviderId } from "./acp-launch-spec.js";
 import { listSystemProviderInfos } from "./execution-options.js";
 import { resolveBridgeLaunchForProviderId } from "./provider-bridge-launch.js";
 import { mapProviderMaintenanceRequests } from "./provider-maintenance-concurrency.js";
@@ -53,10 +52,6 @@ export async function getProviderInstallations(
         );
         return null;
       }
-      const acpLaunchSpec = resolveAcpLaunchSpecForProviderId(
-        deps,
-        provider.id,
-      );
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
         deps.logger.warn(
@@ -77,7 +72,6 @@ export async function getProviderInstallations(
             type: "provider.installation.status",
             providerId: provider.id,
             bridgeLaunch,
-            ...(acpLaunchSpec === undefined ? {} : { acpLaunchSpec }),
           },
         });
         return [

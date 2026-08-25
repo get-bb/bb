@@ -86,6 +86,49 @@ describe("bb thread interactions command output", () => {
     ]);
   });
 
+  it("bb thread interactions show prints a tool-use approval from its presentation", async () => {
+    const getInteraction = vi.fn(async () =>
+      fixtures.makePendingInteraction({
+        id: "int-tool-use",
+        providerId: "acp-cursor",
+        threadId: "thread-tool-use",
+        payload: {
+          kind: "approval",
+          reason: null,
+          availableDecisions: ["allow_once", "deny"],
+          subject: {
+            kind: "tool_use",
+            itemId: "call-1",
+            tool: "mcp__github__create_issue",
+            presentation: {
+              label: { pending: "Creating issue", completed: "Created issue" },
+              icon: { glyph: "Globe" },
+              title: "get-bb/bb#42",
+              detail: "Opens a bug issue",
+            },
+          },
+        },
+      }),
+    );
+    stubServerApi({
+      "v1.threads.:id.interactions.:interactionId.$get": getInteraction,
+    });
+
+    await runCommand(
+      ["thread", "interactions", "show", "int-tool-use", "thread-tool-use"],
+      register,
+    );
+
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("  Kind: tool-use");
+    expect(lines.slice(5)).toEqual([
+      "  Tool: mcp__github__create_issue",
+      "  get-bb/bb#42",
+      "  Opens a bug issue",
+      "  Decisions: allow_once, deny",
+    ]);
+  });
+
   it("bb thread interactions show prints user question details", async () => {
     vi.stubEnv("BB_THREAD_ID", "thread-show-question");
     const getInteraction = vi.fn(async () =>
@@ -399,6 +442,101 @@ describe("bb thread interactions command output", () => {
     const errorOutput = collectLogLines(vi.mocked(console.error)).join("\n");
     expect(errorOutput).toContain("cannot be answered with this command");
     expect(errorOutput).toContain("does not offer choice 'qa'");
+  });
+
+  it("bb thread interactions show prints a provider's plugin-defined request with its form and data", async () => {
+    const getInteraction = vi.fn(async () =>
+      fixtures.makePendingInteraction({
+        id: "int-plugin-request",
+        providerId: "acp-cursor",
+        threadId: "thread-plugin-request",
+        payload: {
+          kind: "secrets/secret-request",
+          title: "Add a token",
+          data: { fields: ["TOKEN"] },
+        },
+      }),
+    );
+    stubServerApi({
+      "v1.threads.:id.interactions.:interactionId.$get": getInteraction,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "interactions",
+        "show",
+        "int-plugin-request",
+        "thread-plugin-request",
+      ],
+      register,
+    );
+
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toContain("  Kind: secrets/secret-request");
+    expect(lines).toContain("  Title: Add a token");
+    expect(lines).toContain("  Form: secrets/secret-request (raised by agent)");
+    expect(lines).toContain('  Data: {"fields":["TOKEN"]}');
+  });
+
+  it("bb thread interactions respond posts the form's JSON value", async () => {
+    const respond = vi.fn(async () =>
+      fixtures.makePendingInteraction({
+        id: "int-plugin-request",
+        providerId: "acp-cursor",
+        threadId: "thread-plugin-request",
+        status: "resolving",
+        payload: {
+          kind: "secrets/secret-request",
+          title: "Add a token",
+          data: { fields: ["TOKEN"] },
+        },
+        resolution: { kind: "request_answer", value: { TOKEN: "x" } },
+      }),
+    );
+    stubServerApi({
+      "v1.threads.:id.interactions.:interactionId.respond.$post": respond,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "interactions",
+        "respond",
+        "int-plugin-request",
+        "thread-plugin-request",
+        "--value",
+        '{"TOKEN":"x"}',
+      ],
+      register,
+    );
+
+    expect(respond).toHaveBeenCalledWith(
+      expect.objectContaining({ json: { value: { TOKEN: "x" } } }),
+    );
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Interaction int-plugin-request submitted (answered); delivering to provider",
+    ]);
+  });
+
+  it("bb thread interactions respond rejects a value that is not JSON", async () => {
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "interactions",
+          "respond",
+          "int-plugin-request",
+          "thread-plugin-request",
+          "--value",
+          "not json",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
+      "Invalid --value. Expected a JSON value.",
+    );
   });
 
   it("bb thread interactions show indicates when resolution delivery is in progress", async () => {

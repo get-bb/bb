@@ -11,6 +11,7 @@ import type {
   PermissionMode,
   ProviderComposerAction,
   ProviderInfo,
+  ProviderModelCatalogScope,
   ReasoningLevel,
   ServiceTier,
 } from "@bb/domain";
@@ -28,12 +29,14 @@ import { parseEnvironmentValue } from "@/components/pickers/environment-picker-v
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
 import { getProviderIconInfo } from "@/lib/provider-icon";
+import { fastServiceTierLabel } from "@/lib/reasoning-labels";
 import {
   permissionModeRank,
   providerModelCatalogDependsOnWorkspace,
 } from "@bb/domain";
 import { selectPrimaryHost, useHosts } from "./queries/host-queries";
 import {
+  useKnownProviderModelCatalogScope,
   useSystemProviderStates,
   useSystemConfig,
   useSystemExecutionOptions,
@@ -127,6 +130,8 @@ interface UseThreadCreationOptionsResult<TExecutionInputSources> {
   permissionModeIsVerified: boolean;
   supportsServiceTier: boolean;
   serviceTierSupportByProvider: Record<string, boolean>;
+  /** The committed provider's declared label for its fast tier. */
+  serviceTierFastLabel: string;
   executionInputSources: TExecutionInputSources;
 }
 
@@ -134,7 +139,12 @@ interface ResolveThreadCreationProviderRoutingArgs {
   environmentId?: string;
   environmentHostId?: string;
   environmentSelectionValue: string;
-  providerId: string;
+  /**
+   * The selected provider's declared catalog scope, when this render already
+   * knows it. It is undefined on the first pass: this routing decides the
+   * query key of the request that fetches the providers in the first place.
+   */
+  modelCatalogScope?: ProviderModelCatalogScope;
   scope: "component-local" | "new-thread";
 }
 
@@ -142,7 +152,7 @@ function resolveThreadCreationProviderRouting({
   environmentId,
   environmentHostId,
   environmentSelectionValue,
-  providerId,
+  modelCatalogScope,
   scope,
 }: ResolveThreadCreationProviderRoutingArgs): SystemProvidersQuery {
   if (scope === "component-local") {
@@ -156,7 +166,7 @@ function resolveThreadCreationProviderRouting({
     // environment so the server can pass the workspace path through.
     if (
       environmentHostId !== undefined &&
-      !providerModelCatalogDependsOnWorkspace(providerId)
+      !providerModelCatalogDependsOnWorkspace(modelCatalogScope)
     ) {
       return { hostId: environmentHostId };
     }
@@ -315,6 +325,12 @@ export function useThreadCreationOptions(
       : renderedThreadSelections.environmentSelectionValue;
 
   // --- Provider selection ---
+  // The scope of the selected provider, from whatever provider list this
+  // render already has. Undefined on a cold cache, which routes by
+  // environment — one redundant probe, never a stale catalog.
+  const knownModelCatalogScope = useKnownProviderModelCatalogScope(
+    selectedProviderIdBeforeReadyFallback,
+  );
   const executionOptionsQueryEnabled = enabled;
   const executionOptionsRouting = resolveProviderRouting
     ? resolveProviderRouting(rawEnvironmentSelectionValue)
@@ -322,7 +338,9 @@ export function useThreadCreationOptions(
         environmentId,
         environmentHostId,
         environmentSelectionValue: rawEnvironmentSelectionValue,
-        providerId: selectedProviderIdBeforeReadyFallback,
+        ...(knownModelCatalogScope === undefined
+          ? {}
+          : { modelCatalogScope: knownModelCatalogScope }),
         scope,
       });
   const canResolveReadyProvider =
@@ -450,7 +468,7 @@ export function useThreadCreationOptions(
       providers.map((p) => ({
         value: p.id,
         label: p.displayName,
-        icon: getProviderIconInfo(p.id, p.logoUrl ?? null)?.icon,
+        icon: getProviderIconInfo(p.id, p)?.icon,
         ...(p.strings?.brandPrefix === undefined
           ? {}
           : { brandPrefix: p.strings.brandPrefix }),
@@ -532,6 +550,7 @@ export function useThreadCreationOptions(
     }
     return supportByProvider;
   }, [providers]);
+  const serviceTierFastLabel = fastServiceTierLabel(selectedProviderInfo);
 
   const {
     selectedModel,
@@ -549,6 +568,7 @@ export function useThreadCreationOptions(
           executionOptionsQuery.data?.selectedOnlyModels ?? [],
         selectedModel: rawSelectedModel,
         preferredReasoningLevel,
+        provider: selectedProviderInfo,
         catalogIsVerified: modelCatalogIsVerified,
         formatModelLabel,
       }),
@@ -558,6 +578,7 @@ export function useThreadCreationOptions(
       modelCatalogIsVerified,
       preferredReasoningLevel,
       rawSelectedModel,
+      selectedProviderInfo,
     ],
   );
   const serviceTier = useMemo(
@@ -927,6 +948,7 @@ export function useThreadCreationOptions(
     permissionModeIsVerified,
     supportsServiceTier,
     serviceTierSupportByProvider,
+    serviceTierFastLabel,
     executionInputSources,
   };
 }

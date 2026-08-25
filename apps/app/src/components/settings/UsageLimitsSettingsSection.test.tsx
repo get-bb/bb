@@ -33,12 +33,11 @@ function provider(
 ): ProviderInfo {
   return {
     id,
+    pluginId: `provider-${id}`,
     displayName,
     logoUrl: null,
     available: true,
-    experimental_providerHealth: true,
-    experimental_providerUsage: supportsUsage,
-    experimental_providerInstallation: false,
+    maintenance: { health: true, usage: supportsUsage, installation: false },
     capabilities: {
       supportsThreadArchive: false,
       supportsThreadRename: false,
@@ -46,6 +45,7 @@ function provider(
       supportsNativeUserQuestion: false,
       supportsFork: false,
       supportsSessionRewind: false,
+      modelCatalogScope: "workspace",
       permissionModes: ["full"],
     },
     composerActions: [],
@@ -310,5 +310,27 @@ describe("UsageLimitsSettingsSectionContent", () => {
     expect(
       screen.queryByRole("button", { name: "Usage limits machine" }),
     ).toBeNull();
+  });
+});
+
+describe("UsageLimitsSettingsSectionContent marks", () => {
+  it("draws each provider's declared logo beside its usage block", () => {
+    // Core vendors no brand marks: the block draws the logo the provider's
+    // plugin declared (served as logoUrl), passed through from the roster.
+    renderContent({
+      providers: [
+        { ...provider("codex", "Codex"), logoUrl: "/api/v1/system/providers/codex/logo" },
+      ],
+      usage: {},
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      onRefresh: () => {},
+    });
+    expect(
+      document.querySelector(
+        '[data-provider-logo="/api/v1/system/providers/codex/logo"]',
+      ),
+    ).not.toBeNull();
   });
 });

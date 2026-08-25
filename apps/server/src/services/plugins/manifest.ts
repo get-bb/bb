@@ -9,7 +9,10 @@ import {
   type UiCodeThemeDeclaration,
 } from "@bb/domain";
 import { resolvePluginCodeThemePath } from "../system/code-themes.js";
-import { assertValidPluginCompactIconSvg } from "@bb/plugin-build";
+import {
+  assertValidPluginCompactIconSvg,
+  assertValidPluginIconSvg,
+} from "@bb/plugin-build";
 
 export interface PluginManifest {
   /** Sanitized plugin id derived from the package name. */
@@ -31,6 +34,13 @@ export interface PluginManifest {
       lightPath: string;
       darkPath?: string;
     };
+    /**
+     * `bb.branding.experimental_icons`, declared name → resolved absolute
+     * SVG path, validated (grammar, filesystem containment, byte cap, SVG
+     * contents) so a later reader can trust every entry. Rows and provider
+     * branding reference an entry as `"<pluginId>/<name>"`.
+     */
+    icons: ReadonlyMap<string, string>;
   };
   /** semver range from engines.bb, when declared. */
   bbEngineRange: string | undefined;
@@ -220,9 +230,45 @@ export async function readPluginManifest(
         `manifest ${label} escapes the plugin directory through a symlink`,
       );
     }
+    // Only the compact icon is parsed at load. A logo is taken as declared:
+    // `bb plugin build` checks an SVG logo for script vectors, and the
+    // response headers keep the served document inert, so an installed
+    // plugin's tool-export logo never fails its load here.
     if (label === "bb.branding.icon") {
       assertValidPluginCompactIconSvg(await readFile(realAsset), label);
     }
+  }
+  // Declared icons (`bb.branding.experimental_icons`): the grammar was
+  // checked by the schema; here the file must exist inside the plugin root
+  // (through any symlink) and its exact bytes must pass the icon validator.
+  // Every failure names the icon, and fails the load like a bad
+  // `bb.branding.icon` does.
+  const brandingIcons = new Map<string, string>();
+  for (const [name, entry] of Object.entries(
+    bb.branding.experimental_icons ?? {},
+  )) {
+    const label = `bb.branding.experimental_icons["${name}"]`;
+    const assetPath = resolveEntry(rootDir, entry, label);
+    let assetStat;
+    try {
+      assetStat = await stat(assetPath);
+    } catch {
+      throw new Error(`manifest ${label} points at a missing file`);
+    }
+    if (!assetStat.isFile()) {
+      throw new Error(`manifest ${label} must point at a file`);
+    }
+    const [realRoot, realAsset] = await Promise.all([
+      realpath(rootDir),
+      realpath(assetPath),
+    ]);
+    if (realAsset !== realRoot && !realAsset.startsWith(realRoot + "/")) {
+      throw new Error(
+        `manifest ${label} escapes the plugin directory through a symlink`,
+      );
+    }
+    assertValidPluginIconSvg(await readFile(realAsset), label);
+    brandingIcons.set(name, realAsset);
   }
   const themeIds = new Set<string>();
   const themes = (bb.themes ?? []).map((theme) => {
@@ -295,6 +341,7 @@ export async function readPluginManifest(
         ? {}
         : { compactIconPath: brandingCompactIconPath }),
       ...(brandingLogo === undefined ? {} : { logo: brandingLogo }),
+      icons: brandingIcons,
     },
     bbEngineRange: engines?.bb,
     bbPluginSdkRange: engines?.bbPluginSdk,

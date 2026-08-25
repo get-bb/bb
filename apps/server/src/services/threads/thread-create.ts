@@ -334,12 +334,20 @@ function requireLiveSourceThread(
  * relates to origin; the default spec and a plain name that is the default
  * branch both prefer origin when local is equal or behind. A fork names the
  * branch its source environment is on, so it keeps that branch verbatim.
+ * Origin-qualified names are already authoritative and are fetched by
+ * provisioning, so they do not need this inspection.
  */
 async function resolveManagedBaseBranchForCreate(
   deps: ThreadCreateDeps,
   args: ResolveManagedBaseBranchForCreateArgs,
 ): Promise<BaseBranchSpec> {
-  if (args.baseBranch.kind === "named" && args.originKind !== null) {
+  if (
+    args.baseBranch.kind === "named" &&
+    (args.originKind !== null || args.baseBranch.name.startsWith("origin/"))
+  ) {
+    // Forks continue from their source ref verbatim. An origin-qualified ref is
+    // already unambiguous and provisioning fetches that exact remote branch, so
+    // neither case needs the default-branch relationship inspection below.
     return args.baseBranch;
   }
 

@@ -11,13 +11,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  buildPluginHost,
-  HOST_ARTIFACT_RUNTIME_STUBS,
-} from "./build-plugin-host.js";
+import { buildPluginHost } from "./build-plugin-host.js";
 import { resolvePluginBuildToolchain } from "./toolchain.js";
-
-const SECOND_CONSUMER_SDK_SPECIFIER = "@get-bb/host-artifact-consumer";
 
 function testToolchain() {
   return resolvePluginBuildToolchain(join(process.cwd(), ".unused-toolchain"));
@@ -27,7 +22,6 @@ describe("plugin host build", () => {
   const tempDirs: string[] = [];
 
   afterEach(async () => {
-    delete HOST_ARTIFACT_RUNTIME_STUBS[SECOND_CONSUMER_SDK_SPECIFIER];
     await Promise.all(
       tempDirs
         .splice(0)
@@ -63,25 +57,24 @@ describe("plugin host build", () => {
     await writeFile(
       join(dir, "host.ts"),
       [
-        'import { experimental_defineHostEntry } from "@get-bb/plugin-sdk/host";',
+        // The type specifier must not trip the fallback's import check: esbuild
+        // erases it, and the stub only has to serve the runtime name.
+        'import { experimental_defineHostEntry, type ExperimentalHostEntry } from "@get-bb/plugin-sdk/host";',
         'import { defineRpcContract } from "@get-bb/plugin-sdk";',
-        `import { defineConsumer } from "${SECOND_CONSUMER_SDK_SPECIFIER}";`,
         'const schema = { "~standard": { validate(value: unknown) { return { value }; } } };',
         "const contract = defineRpcContract({ echo: {",
         "  input: schema,",
         "  output: schema,",
         "} });",
-        "export default experimental_defineHostEntry({",
+        "const entry: ExperimentalHostEntry<typeof contract> = experimental_defineHostEntry({",
         "  contract,",
         "  experimental_signals: { changed: { payload: schema } },",
         "  handlers: { echo: (input) => input },",
         "});",
-        'export const consumer = defineConsumer("provider-bridge");',
+        "export default entry;",
         "",
       ].join("\n"),
     );
-    HOST_ARTIFACT_RUNTIME_STUBS[SECOND_CONSUMER_SDK_SPECIFIER] =
-      "export function defineConsumer(value) { return value; }";
 
     const result = await buildPluginHost(
       dir,
@@ -114,11 +107,9 @@ describe("plugin host build", () => {
         experimental_signals: { changed: { payload: unknown } };
         handlers: { echo: (input: string) => string };
       };
-      consumer: string;
     };
     expect(builtEntry.default.experimental_apiVersion).toBe(1);
     expect(builtEntry.default.experimental_signals).toHaveProperty("changed");
-    expect(builtEntry.consumer).toBe("provider-bridge");
     expect(builtEntry.default.handlers.echo("from-artifact")).toBe(
       "from-artifact",
     );
@@ -284,10 +275,6 @@ describe("plugin host build", () => {
         "export default {};",
       ].join("\n"),
     );
-
-    expect(Object.keys(HOST_ARTIFACT_RUNTIME_STUBS)).not.toContain(
-      "@get-bb/plugin-sdk/provider-bridge",
-    );
     const result = await buildPluginHost(
       dir,
       "0.9.0-test",
@@ -298,6 +285,91 @@ describe("plugin host build", () => {
     // an installed plugin never needs them on disk.
     expect(bundle).not.toMatch(/from\s*"@bb\//u);
     expect(bundle).toContain("experimental_apiVersion");
+  });
+
+  /**
+   * The `/host` fallback stub serves `experimental_defineHostEntry` only.
+   * Without the real SDK, a host entry that imports a published host contract
+   * used to fail with esbuild's "No matching export in
+   * bb-host-sdk-fallback:@get-bb/plugin-sdk/host", which points the author at
+   * the import instead of the missing dependency.
+   */
+  describe("host contract imports without a usable SDK", () => {
+    const manifest = {
+      name: "bb-plugin-host-contract-fixture",
+      version: "1.0.0",
+      engines: { bb: ">=0.0" },
+      bb: {
+        name: "Host contract fixture",
+        description: "Imports a host contract from the SDK.",
+        branding: { icon: "Cpu" },
+        server: "./server.ts",
+        host: "./host.ts",
+      },
+    };
+    const hostSource = [
+      "import {",
+      "  experimental_defineHostEntry,",
+      "  experimental_nativeRootsHostContract,",
+      "  type ExperimentalHostEntry,",
+      '} from "@get-bb/plugin-sdk/host";',
+      "export default experimental_defineHostEntry({",
+      "  contract: experimental_nativeRootsHostContract,",
+      "  handlers: { resolveNativeRoots: () => ({ roots: [] }) },",
+      "});",
+      "",
+    ].join("\n");
+
+    async function writeFixture(dir: string): Promise<void> {
+      await writeFile(join(dir, "package.json"), JSON.stringify(manifest));
+      await writeFile(
+        join(dir, "server.ts"),
+        "export default function plugin() {}\n",
+      );
+      await writeFile(join(dir, "host.ts"), hostSource);
+    }
+
+    it("names the missing SDK dependency when the plugin has no node_modules", async () => {
+      // Outside the workspace, so nothing above the fixture resolves the SDK.
+      const dir = await mkdtemp(join(tmpdir(), "bb-host-no-sdk-test-"));
+      tempDirs.push(dir);
+      await writeFixture(dir);
+
+      await expect(
+        buildPluginHost(dir, "0.9.0-test", await testToolchain()),
+      ).rejects.toThrow(
+        '"@get-bb/plugin-sdk/host" is not installed for this plugin (no node_modules/@get-bb/plugin-sdk); a host entry that imports experimental_nativeRootsHostContract needs the SDK as a dependency',
+      );
+    });
+
+    it("names the unbuilt SDK dist when the package is installed without it", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "bb-host-unbuilt-sdk-test-"));
+      tempDirs.push(dir);
+      await writeFixture(dir);
+      const sdkDir = join(dir, "node_modules", "@get-bb", "plugin-sdk");
+      await mkdir(sdkDir, { recursive: true });
+      await writeFile(
+        join(sdkDir, "package.json"),
+        JSON.stringify({
+          name: "@get-bb/plugin-sdk",
+          version: "0.0.0-test",
+          type: "module",
+          exports: {
+            "./host": {
+              types: "./bundled-types/bb-plugin-sdk-host.d.ts",
+              import: "./dist/host.js",
+              default: "./dist/host.js",
+            },
+          },
+        }),
+      );
+
+      await expect(
+        buildPluginHost(dir, "0.9.0-test", await testToolchain()),
+      ).rejects.toThrow(
+        `"@get-bb/plugin-sdk/host" is installed for this plugin but its dist is not built: run the SDK build (${join(sdkDir, "dist", "host.js")} is missing); a host entry that imports experimental_nativeRootsHostContract needs the built SDK`,
+      );
+    });
   });
 
   it("rejects relative type imports into private BB workspace packages", async () => {

@@ -1,36 +1,7 @@
-import type { ComponentType } from "react";
-import { useState } from "react";
+import type { CSSProperties } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { BotIcon } from "@hugeicons/core-free-icons";
 import type { CommentProvider } from "../../shared/contract.js";
-import {
-  ClaudeIcon,
-  CursorIcon,
-  GrokIcon,
-  OmpIcon,
-  OpenAiIcon,
-  OpencodeIcon,
-  PiIcon,
-} from "./provider-icons.js";
-import { HermesAgentIcon } from "./provider-hermes-icon.js";
-
-/**
- * Brand glyphs for well-known built-in and ACP providers, keyed by the live
- * `providerId`. Mirrors the app's canonical mapping in
- * `apps/app/src/lib/provider-icon.ts`. Providers absent here (or whose brand
- * mark is not vendored) fall back to the generic bot glyph — the byline still
- * names the provider for screen readers.
- */
-const BRAND_ICONS: Record<string, ComponentType<{ className?: string }>> = {
-  codex: OpenAiIcon,
-  "claude-code": ClaudeIcon,
-  pi: PiIcon,
-  "acp-cursor": CursorIcon,
-  "acp-grok": GrokIcon,
-  "acp-hermes-agent": HermesAgentIcon,
-  "acp-opencode": OpencodeIcon,
-  "acp-omp": OmpIcon,
-};
 
 const AVATAR_LAYOUT_CLASS =
   "z-[1] mt-px flex size-[22px] shrink-0 items-center justify-center";
@@ -38,62 +9,59 @@ const PROVIDER_AVATAR_CLASS = `${AVATAR_LAYOUT_CLASS} rounded-full border border
 const FALLBACK_AVATAR_CLASS = `${AVATAR_LAYOUT_CLASS} rounded-full bg-primary text-primary-foreground outline outline-2 outline-background`;
 
 /**
- * Renders a served provider logo (custom ACP agents expose a `logoUrl`) in the
- * same subtle chip as bundled provider marks. Falls back to the brand glyph /
- * bot avatar if the image fails to load.
+ * A served provider logo as a CSS mask filled with `currentColor`, the way
+ * the app draws the same assets: an SVG in an `<img>` is a separate document
+ * where `currentColor` is black, so the logo is the mask's alpha and takes
+ * the chip's text color in light and dark. Core vendors no brand marks; the
+ * logo is the one the provider's plugin declared.
  */
-function ProviderLogoImage({ provider }: { provider: CommentProvider }) {
-  const [failed, setFailed] = useState(false);
-  if (failed || provider.logoUrl === null) {
-    return <ProviderBrandAvatar provider={provider} />;
-  }
+function providerLogoMaskStyle(logoUrl: string): CSSProperties {
+  const image = `url("${logoUrl.replace(/["\\]/gu, "\\$&")}")`;
+  return {
+    maskImage: image,
+    WebkitMaskImage: image,
+    maskRepeat: "no-repeat",
+    WebkitMaskRepeat: "no-repeat",
+    maskPosition: "center",
+    WebkitMaskPosition: "center",
+    maskSize: "contain",
+    WebkitMaskSize: "contain",
+  };
+}
+
+/** Renders the provider's served logo in a subtle chip (one fetch per mark). */
+function ProviderLogoImage({
+  provider,
+  logoUrl,
+}: {
+  provider: CommentProvider;
+  logoUrl: string;
+}) {
   return (
     <span
       role="img"
       aria-label={provider.name}
       className={PROVIDER_AVATAR_CLASS}
     >
-      <img
-        src={provider.logoUrl}
-        alt=""
+      <span
         aria-hidden
-        className="size-4 object-contain"
-        onError={() => setFailed(true)}
+        data-provider-logo={logoUrl}
+        className="size-4 bg-current"
+        style={providerLogoMaskStyle(logoUrl)}
       />
     </span>
   );
 }
 
 /**
- * Known provider marks use a subtle background and hairline border so the
- * activity timeline does not show through transparent glyphs. The generic bot
- * for unknown/unavailable providers keeps the stronger legacy avatar chip so
- * it remains recognizable as a fallback. Kept SDK-free so it renders in a
+ * The generic bot avatar for a provider with no served logo and for an
+ * unresolved provider. Keeps the stronger legacy avatar
+ * chip so it remains recognizable as a fallback. SDK-free so it renders in a
  * plain jsdom test.
  */
-function ProviderBrandAvatar({
-  provider,
-}: {
-  provider: CommentProvider | null;
-}) {
-  const Brand = provider ? BRAND_ICONS[provider.id] : undefined;
-  if (Brand) {
-    return (
-      <span
-        role="img"
-        aria-label={provider?.name ?? "Agent"}
-        className={PROVIDER_AVATAR_CLASS}
-      >
-        <Brand className="size-4" />
-      </span>
-    );
-  }
+function GenericAgentAvatar({ name }: { name: string }) {
   return (
-    <span
-      role="img"
-      aria-label={provider?.name ?? "Agent"}
-      className={FALLBACK_AVATAR_CLASS}
-    >
+    <span role="img" aria-label={name} className={FALLBACK_AVATAR_CLASS}>
       <HugeiconsIcon icon={BotIcon} className="size-3.5" aria-hidden />
     </span>
   );
@@ -111,7 +79,7 @@ export function CommentProviderAvatar({
   provider: CommentProvider | null;
 }) {
   if (provider?.logoUrl != null) {
-    return <ProviderLogoImage provider={provider} />;
+    return <ProviderLogoImage provider={provider} logoUrl={provider.logoUrl} />;
   }
-  return <ProviderBrandAvatar provider={provider} />;
+  return <GenericAgentAvatar name={provider?.name ?? "Agent"} />;
 }

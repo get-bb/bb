@@ -26,9 +26,21 @@ import { AddPluginSheet } from "./AddPluginSheet";
 import { SettingsSection } from "./plugin-ui";
 import { PluginIcon } from "./ServerSvgIcon";
 
+/** Store counts are read at a glance: "1.2k installs", not the exact number. */
+const INSTALL_COUNT_FORMATTER = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
 function entrySubtitle(entry: PluginCatalogSearchResult): string {
   const parts = [entry.category];
   if (!entry.official) parts.push(entry.marketplaceDisplayName);
+  // Null for every third-party listing, which publishes no counts.
+  if (entry.installs !== null) {
+    parts.push(
+      `${INSTALL_COUNT_FORMATTER.format(entry.installs)} ${entry.installs === 1 ? "install" : "installs"}`,
+    );
+  }
   if (!entry.compatible) {
     parts.push(entry.incompatibleReason ?? "Incompatible with this bb");
   }

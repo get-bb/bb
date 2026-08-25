@@ -1,16 +1,10 @@
 import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  PERSONAL_PROJECT_ID,
-  defaultAppSettings,
-  defaultAppTheme,
-  defaultExperiments,
-} from "@bb/domain";
+import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { UPDATE_ACTION_ICON } from "@bb/domain/update-state";
 import type {
   SidebarBootstrapResponse,
-  SystemConfigResponse,
   SystemVersionResponse,
 } from "@bb/server-contract";
 import type { ProviderCliStatusResponse } from "@bb/host-daemon-contract";
@@ -28,6 +22,7 @@ import {
   type UpdateInventoryMachine,
 } from "../src/hooks/useUpdateInventory";
 import { createAppQueryClient } from "../src/lib/query-client";
+import { makeSystemConfig } from "../src/test/fixtures/system-config";
 import { getSettingsRoutePath } from "../src/lib/route-paths";
 import {
   BbAppUpdateRows,
@@ -129,24 +124,12 @@ const sidebarNavigation = {
   },
 } satisfies SidebarBootstrapResponse;
 
-const systemConfig = {
-  generalSettings: defaultAppSettings,
-  keybindings: [],
-  defaultKeybindings: [],
-  keybindingOverrides: [],
-  experiments: defaultExperiments,
-  appearance: defaultAppTheme,
-  customThemes: [],
-  pluginThemes: [],
-  featureFlags: { placeholder: false, timelineWindowEventBudget: 1_500 },
-  hostDaemonPort: null,
-  localHelperPorts: [],
-  serverUrl: "http://localhost:38886",
+const systemConfig = makeSystemConfig({
   primaryHostId: HOST_IDS.local,
   primaryHostPlatform: "darwin",
   voiceTranscriptionEnabled: true,
   dataDir: "/Users/michael/.bb",
-} satisfies SystemConfigResponse;
+});
 
 const systemVersion = {
   currentVersion: "0.39.0",

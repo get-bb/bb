@@ -8,6 +8,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
+import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { SourceCodeHost } from "./SourceCodeHost";
 
@@ -54,6 +55,7 @@ beforeEach(() => {
   bbSourceCode.lastProps = null;
   received.length = 0;
   resetPluginSlotStoreForTest();
+  resetDeprecatedAliasWarningsForTests();
 });
 
 afterEach(() => {
@@ -109,7 +111,7 @@ describe("SourceCodeHost", () => {
   });
 
   it("loads BB's renderer only when the replacement delegates", async () => {
-    registerSourceCodeRenderer(({ path, experimental_Original: Original }) =>
+    registerSourceCodeRenderer(({ path, Original }) =>
       path.endsWith(".md") ? <div>plugin source</div> : <Original />,
     );
 
@@ -163,5 +165,53 @@ describe("experimental_SourceCode", () => {
     expect(received.at(-1)?.content).toBe(CONTENT);
     expect(received.at(-1)?.highlightedLines).toBeNull();
     expect(bbSourceCode.loaded).toBe(false);
+  });
+});
+
+/**
+ * A bundle built against an SDK before 0.4.16 reads `experimental_Original`
+ * (renamed `Original` in 0.4.16). The host passes both for one release.
+ */
+describe("SourceCodeHost experimental_Original alias", () => {
+  it("delegates to BB's renderer through the alias and warns once across renders", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let renders = 0;
+    registerSourceCodeRenderer(({ experimental_Original: LegacyOriginal }) => {
+      renders += 1;
+      return LegacyOriginal === undefined ? (
+        <div>alias missing</div>
+      ) : (
+        <LegacyOriginal />
+      );
+    });
+
+    const { rerender } = render(
+      <SourceCodeHost content={CONTENT} path="src/app.ts" />,
+    );
+    expect(await screen.findByTestId("bb-source-code")).toBeDefined();
+    expect(bbSourceCode.lastProps?.overflow).toBe("scroll");
+
+    rerender(
+      <SourceCodeHost content={CONTENT} path="src/app.ts" overflow="wrap" />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(bbSourceCode.lastProps?.overflow).toBe("wrap");
+    expect(renders).toBe(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "experimental_Original is deprecated; use Original. Removed in bb 0.42",
+    );
+  });
+
+  it("never warns for a renderer that reads Original", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    registerSourceCodeRenderer(({ Original }) => <Original />);
+
+    render(<SourceCodeHost content={CONTENT} path="src/app.ts" />);
+
+    expect(await screen.findByTestId("bb-source-code")).toBeDefined();
+    expect(warn).not.toHaveBeenCalled();
   });
 });

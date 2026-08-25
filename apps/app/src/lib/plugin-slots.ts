@@ -17,6 +17,7 @@ import type {
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
+  PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
 
 /**
@@ -58,6 +59,8 @@ export interface PluginRegistrationSet {
   commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
   /** Optional for the same reason as `threadLists`: bundles built earlier. */
   providerIcons?: readonly PluginProviderIconRegistration[];
+  /** Optional for the same reason as `threadLists`: bundles built earlier. */
+  timelineRenderers?: readonly PluginTimelineRendererRegistration[];
 }
 
 interface PluginSlotBase {
@@ -105,6 +108,8 @@ export interface PluginCommandPaletteActionSlot
   extends PluginCommandPaletteActionRegistration, PluginSlotBase {}
 interface PluginProviderIconSlot
   extends PluginProviderIconRegistration, PluginSlotBase {}
+export interface PluginTimelineRendererSlot
+  extends PluginTimelineRendererRegistration, PluginSlotBase {}
 
 /** Flattened view across plugins, ordered by plugin id (deterministic). */
 export interface PluginSlotSnapshot {
@@ -125,6 +130,7 @@ export interface PluginSlotSnapshot {
   messageActions: readonly PluginMessageActionSlot[];
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
+  timelineRenderers: readonly PluginTimelineRendererSlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -145,6 +151,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   messageActions: [],
   commandPaletteActions: [],
   providerIcons: [],
+  timelineRenderers: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -172,6 +179,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "messageActions",
   "commandPaletteActions",
   "providerIcons",
+  "timelineRenderers",
 ];
 
 /**
@@ -220,6 +228,7 @@ function flattenRegistrations(
     messageActions: stamp(set.messageActions),
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
+    timelineRenderers: stamp(set.timelineRenderers),
   };
 }
 
@@ -275,6 +284,32 @@ function collectProviderIcons(
 }
 
 /**
+ * A plugin renders only its own rows: an extension kind whose namespace is
+ * the plugin's id, or `"tool"` (scoped at resolve time to the providers the
+ * plugin registered). A kind in another plugin's namespace is dropped with a
+ * warning rather than letting one plugin restyle another's rows.
+ */
+function collectTimelineRenderers(
+  pluginIds: readonly string[],
+): PluginTimelineRendererSlot[] {
+  const collected: PluginTimelineRendererSlot[] = [];
+  for (const pluginId of pluginIds) {
+    const flattened = flattenedByPluginId.get(pluginId);
+    if (flattened === undefined) continue;
+    for (const slot of flattened.timelineRenderers) {
+      if (slot.kind !== "tool" && !slot.kind.startsWith(`${pluginId}/`)) {
+        console.warn(
+          `plugin ${pluginId}: timeline renderer for "${slot.kind}" ignored — a plugin renders only its own extension kinds ("${pluginId}/<name>") and "tool"`,
+        );
+        continue;
+      }
+      collected.push(slot);
+    }
+  }
+  return collected;
+}
+
+/**
  * Rebuild the flattened snapshot with per-kind structural sharing: a kind
  * whose slot sequence equals the previous snapshot's keeps the previous
  * array, and a rebuild that changes no kind returns the previous snapshot
@@ -290,7 +325,9 @@ function buildSnapshot(previous: PluginSlotSnapshot): PluginSlotSnapshot {
     const collected =
       kind === "providerIcons"
         ? collectProviderIcons(pluginIds)
-        : collectKind(kind, pluginIds);
+        : kind === "timelineRenderers"
+          ? collectTimelineRenderers(pluginIds)
+          : collectKind(kind, pluginIds);
     if (sameSlotSequence(previous[kind], collected)) continue;
     changed = true;
     // `collected` came from `collectKind(kind)`, so it has the element type

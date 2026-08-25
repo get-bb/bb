@@ -1,5 +1,6 @@
 import { Suspense, lazy, type ReactNode } from "react";
 import { PluginReplacementSlot } from "@/components/plugin/PluginReplacementSlot";
+import { deprecatedOriginalAlias } from "@/lib/plugin-sdk-deprecated-aliases";
 import { useSourceCodeRendererReplacement } from "./codeRendererProvider";
 import {
   DEFAULT_CODE_OVERFLOW,
@@ -71,7 +72,8 @@ export function SourceCodeHost({
             path={path}
             overflow={overflow}
             highlightedLines={highlightedLines}
-            experimental_Original={BoundOriginal}
+            Original={BoundOriginal}
+            experimental_Original={deprecatedOriginalAlias(BoundOriginal)}
           />
         </div>
       )}

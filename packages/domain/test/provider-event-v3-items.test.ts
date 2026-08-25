@@ -143,12 +143,27 @@ describe("grammar v3 item variants", () => {
         tint: { light: "#112233", dark: "#ddeeff" },
       }).success,
     ).toBe(true);
-    // Persisted icons are host glyphs only: a plugin-relative asset path
+    // Persisted icons are names, never paths: a plugin-relative asset path
     // cannot survive the plugin's removal (see item-presentation.ts).
     expect(
       threadEventItemPresentationSchema.safeParse({
         ...presentation,
         icon: { asset: "./icons/tool.svg" },
+      }).success,
+    ).toBe(false);
+    // A plugin-declared icon is referenced by its namespaced glyph; the
+    // schema keeps accepting any non-blank name so persisted rows parse
+    // forever, whatever the plugin's map looks like later.
+    const namespaced = threadEventItemPresentationSchema.safeParse({
+      ...presentation,
+      icon: { glyph: "echo-provider/receipt" },
+    });
+    expect(namespaced.success).toBe(true);
+    expect(namespaced.data?.icon.glyph).toBe("echo-provider/receipt");
+    expect(
+      threadEventItemPresentationSchema.safeParse({
+        ...presentation,
+        icon: { glyph: "" },
       }).success,
     ).toBe(false);
   });

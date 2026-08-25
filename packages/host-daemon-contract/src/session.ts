@@ -224,22 +224,6 @@ const hostDaemonWireEventSchema = z
         path: ["sequence"],
       });
     }
-    // Plugin status labels are server-owned presentation metadata, snapshotted
-    // during ingest. Without this guard a daemon could set them directly on
-    // MCP, unknown, and unlabeled tool calls, which the enrichment step leaves
-    // untouched.
-    const item: unknown = (value as { item?: unknown }).item;
-    if (
-      typeof item === "object" &&
-      item !== null &&
-      Object.hasOwn(item, "statusLabels")
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Daemon events must not provide server-owned status labels",
-        path: ["item", "statusLabels"],
-      });
-    }
   })
   .pipe(threadEventSchema);
 
@@ -479,8 +463,6 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("thread.archive"),
     commandRpcResponseSuccessSchemaFor("thread.unarchive"),
     commandRpcResponseSuccessSchemaFor("interactive.resolve"),
-    commandRpcResponseSuccessSchemaFor("codex.inference.complete"),
-    commandRpcResponseSuccessSchemaFor("codex.voice.transcribe"),
     commandRpcResponseSuccessSchemaFor("environment.provision"),
     commandRpcResponseSuccessSchemaFor("project.clone"),
     commandRpcResponseSuccessSchemaFor("environment.provision.cancel"),
@@ -608,6 +590,11 @@ export const hostDaemonServerWsMessageSchema = z.discriminatedUnion("type", [
     .object({
       type: z.literal("session-close"),
       reason: hostDaemonSessionCloseReasonSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("heartbeat-ack"),
     })
     .strict(),
   hostDaemonOnlineRpcRequestMessageSchema,

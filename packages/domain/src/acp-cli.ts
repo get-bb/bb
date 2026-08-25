@@ -1,21 +1,14 @@
 import { z } from "zod";
+import { isRelativeProviderSkillRootPath } from "./provider-skill-roots.js";
 import { reasoningLevelSchema } from "./shared-types.js";
 
 const providerSkillRootPathSchema = z
   .string()
   .min(1)
-  .refine((value) => {
-    const normalized = value.replaceAll("\\", "/");
-    return (
-      !normalized.startsWith("/") &&
-      !/^[a-zA-Z]:\//u.test(normalized) &&
-      normalized
-        .split("/")
-        .every(
-          (segment) => segment !== "" && segment !== "." && segment !== "..",
-        )
-    );
-  }, "Skill roots must be relative paths without dot segments");
+  .refine(
+    isRelativeProviderSkillRootPath,
+    "Skill roots must be relative paths without dot segments",
+  );
 
 const uniqueProviderSkillRootPathsSchema = z
   .array(providerSkillRootPathSchema)
@@ -28,7 +21,10 @@ const uniqueProviderSkillRootPathsSchema = z
     }
   });
 
-/** Provider-native skill roots relative to the target host or workspace. */
+/**
+ * Provider-native skill roots: relative to the target host's home (`user`)
+ * or to the workspace (`project`).
+ */
 export const providerNativeSkillRootsSchema = z
   .object({
     user: uniqueProviderSkillRootPathsSchema.default([]),

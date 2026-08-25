@@ -152,18 +152,22 @@ describe("prepareThreadRewind", () => {
     }
   });
 
-  it("discards a staged fork when its response does not identify an adoptable provider thread", async () => {
-    // The fork answers `{ threadId }` — the staging thread's own bb id, which
-    // is not a provider identity the runtime may adopt.
+  it("releases a staged fork whose result carries no providerThreadId", async () => {
+    // The fork answers `{ threadId }` only: a non-conformant result, so the
+    // staging session is never adopted. There is no provider identity to
+    // discard by, so the bridge is told to release the staging thread under
+    // its bb id, exactly as a failed thread/start is released.
+    const events: ThreadEvent[] = [];
     const { record, runtime } = createRewindRuntime({
+      onEvent: (event) => events.push(event),
       scripted: { answerStartWithoutIdentity: true },
     });
     const request = {
       environmentId: "env-1",
       threadId: "thread-1",
-      leaseId: "lease-ambiguous-identity",
+      leaseId: "lease-no-identity",
       projectId: "project-1",
-      providerId: "pi",
+      providerId: "codex",
       sourceProviderThreadId: "provider-source-1",
       retainThroughProviderCheckpoint: "turn-before-edit",
       options: fullRuntimeOptions,
@@ -171,22 +175,28 @@ describe("prepareThreadRewind", () => {
     };
     try {
       await expect(runtime.prepareThreadRewind(request)).rejects.toThrow(
-        "pi did not return a provider thread for rewind lease lease-ambiguous-identity",
+        /Invalid JSON-RPC result for thread\/fork: providerThreadId/,
       );
-      const stagingThreadId = "thread-1:rewind:lease-ambiguous-identity";
+      const stagingThreadId = "thread-1:rewind:lease-no-identity";
       const requests = record.read();
       expect(requests).toContainEqual({
         method: "thread/fork",
         params: expect.objectContaining({ threadId: stagingThreadId }),
       });
       expect(requests).toContainEqual({
-        method: "thread/discard",
+        method: "thread/stop",
         params: expect.objectContaining({
-          providerThreadId: stagingThreadId,
           threadId: stagingThreadId,
+          intent: "release",
         }),
       });
+      // No discard: the bridge never named a session to discard.
+      expect(requests.some((entry) => entry.method === "thread/discard")).toBe(
+        false,
+      );
       expect(runtime.hasThread(stagingThreadId)).toBe(false);
+      // The staging thread's event stream stayed suppressed throughout.
+      expect(events).toEqual([]);
     } finally {
       await runtime.shutdown();
     }

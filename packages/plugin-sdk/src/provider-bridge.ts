@@ -83,27 +83,29 @@ export {
   deltaProgressSnapshotSchema,
   deltaSearchShapeSchema,
   deltaTextChannelSchema,
+  providerRecoveryHintSchema,
   providerRecoveryNotificationSchema,
+  bridgeErrorDataSchema,
   threadDeltaNotificationParamsSchema,
   threadDeltaSchema,
   initializeParamsSchema,
   modelListParamsSchema,
-  experimental_providerHealthResultSchema,
-  experimental_providerHealthSchema,
-  experimental_providerInstallationActionKindSchema,
-  experimental_providerInstallationActionSchema,
-  experimental_providerInstallationCommandSchema,
-  experimental_providerInstallationRunParamsSchema,
-  experimental_providerInstallationStatusParamsSchema,
-  experimental_providerInstallationRequirementSchema,
-  experimental_providerInstallationRunResultSchema,
-  experimental_providerInstallationSourceSchema,
-  experimental_providerInstallationStatusSchema,
-  experimental_providerInstallationVerificationSchema,
-  experimental_providerMaintenanceParamsSchema,
-  experimental_providerUsageResultSchema,
-  experimental_providerUsageSchema,
-  experimental_providerUsageWindowSchema,
+  providerHealthResultSchema,
+  providerHealthSchema,
+  providerInstallationActionKindSchema,
+  providerInstallationActionSchema,
+  providerInstallationCommandSchema,
+  providerInstallationRunParamsSchema,
+  providerInstallationStatusParamsSchema,
+  providerInstallationRequirementSchema,
+  providerInstallationRunResultSchema,
+  providerInstallationSourceSchema,
+  providerInstallationStatusSchema,
+  providerInstallationVerificationSchema,
+  providerMaintenanceParamsSchema,
+  providerUsageResultSchema,
+  providerUsageSchema,
+  providerUsageWindowSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
@@ -137,23 +139,25 @@ export type {
   DeltaProgressSnapshot,
   DeltaSearchShape,
   DeltaTextChannel,
+  ProviderRecoveryHint,
   ProviderRecoveryNotification,
-  ExperimentalProviderHealth,
-  ExperimentalProviderHealthResult,
-  ExperimentalProviderInstallationAction,
-  ExperimentalProviderInstallationActionKind,
-  ExperimentalProviderInstallationCommand,
-  ExperimentalProviderInstallationRunParams,
-  ExperimentalProviderInstallationRunResult,
-  ExperimentalProviderInstallationRequirement,
-  ExperimentalProviderInstallationSource,
-  ExperimentalProviderInstallationStatus,
-  ExperimentalProviderInstallationStatusParams,
-  ExperimentalProviderInstallationVerification,
-  ExperimentalProviderMaintenanceParams,
-  ExperimentalProviderUsage,
-  ExperimentalProviderUsageResult,
-  ExperimentalProviderUsageWindow,
+  BridgeErrorData,
+  ProviderHealth,
+  ProviderHealthResult,
+  ProviderInstallationAction,
+  ProviderInstallationActionKind,
+  ProviderInstallationCommand,
+  ProviderInstallationRunParams,
+  ProviderInstallationRunResult,
+  ProviderInstallationRequirement,
+  ProviderInstallationSource,
+  ProviderInstallationStatus,
+  ProviderInstallationStatusParams,
+  ProviderInstallationVerification,
+  ProviderMaintenanceParams,
+  ProviderUsage,
+  ProviderUsageResult,
+  ProviderUsageWindow,
   InitializeResult,
   ThreadDelta,
   ThreadDeltaKind,
@@ -165,9 +169,15 @@ export type {
 // ---------------------------------------------------------------------------
 
 export {
+  COMPACTION_PRESENTATION as experimental_COMPACTION_PRESENTATION,
+  REASONING_PRESENTATION as experimental_REASONING_PRESENTATION,
   ZERO_TOKEN_USAGE,
   addTokenUsage,
   bashArgsSchema,
+  BridgeRecoveryError as experimental_BridgeRecoveryError,
+  clampPercent as experimental_clampPercent,
+  commandOutput as experimental_commandOutput,
+  compareVersions as experimental_compareVersions,
   bridgeRequestEnvelopeSchema,
   buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
   buildShellEnvOverrides,
@@ -177,19 +187,36 @@ export {
   createProviderVisibilityMetadata,
   decodeBridgeJsonRpcResponse,
   decodeToolCallResponsePayload,
+  downloadedInstallerCommand as experimental_downloadedInstallerCommand,
   errorEnvelopeSchema,
   experimental_isProviderBridgeRecording,
   experimental_recordProviderChildIo,
   extractResultText,
+  fileReadPresentation as experimental_fileReadPresentation,
+  formatCommand as experimental_formatCommand,
   getRawSdkMessage,
   getRecordProperty,
   getStringProperty,
+  installationVerification as experimental_installationVerification,
   isRecord,
   jsonRpcEnvelopeSchema,
   mimeTypeFromExtension,
   normalizeProviderCommandOutput,
+  npmCommand as experimental_npmCommand,
+  npmGlobalInstallCommand as experimental_npmGlobalInstallCommand,
+  npmGlobalInstallSource as experimental_npmGlobalInstallSource,
+  npmLatestVersion as experimental_npmLatestVersion,
+  planStepsPresentation as experimental_planStepsPresentation,
+  presentationDetail as experimental_presentationDetail,
+  presentationFileName as experimental_presentationFileName,
+  presentationTitle as experimental_presentationTitle,
+  probeNpmGlobalPackage as experimental_probeNpmGlobalPackage,
+  readBoundedLines as experimental_readBoundedLines,
+  readCliVersion as experimental_readCliVersion,
+  resolveExecutablePath as experimental_resolveExecutablePath,
   runBridgeRequest,
   sdkMessageEnvelopeSchema,
+  searchPresentation as experimental_searchPresentation,
   shouldAutoDenyInteractiveRequest,
   textBlockSchema,
   threadContextWindowUsageEnvelopeSchema,
@@ -197,12 +224,20 @@ export {
   toNonNegativeNumber,
   toOptionalRecord,
   toOptionalString,
+  toolPresentation as experimental_toolPresentation,
+  versionFrom as experimental_versionFrom,
+  webFetchPresentation as experimental_webFetchPresentation,
+  webSearchPresentation as experimental_webSearchPresentation,
+  withTitle as experimental_withTitle,
   withoutBridgeRuntimeEnv,
   ProviderRequestDecodeError,
   ProviderResponseEncodeError,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 export type {
+  BoundedLineReaderArgs,
   BridgeJsonRpcResponse,
+  NpmGlobalPackageProbe,
+  BridgeSendError,
   BridgeToolCallRequest,
   BuildInteractiveResponseArgs,
   DecodedInteractiveRequest,
@@ -223,18 +258,6 @@ export type {
  */
 export { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
 
-/**
- * The ACP launch spec: the one core wire shape a bridge parses directly. It
- * arrives as provider-scoped static options (opaque to the runtime, meaningful
- * only to the bridge that declares the ACP tier), so its schema has to be
- * reachable from bridge code.
- */
-export {
-  hostDaemonAcpLaunchSpecSchema,
-  normalizeHostDaemonAcpLaunchSpec,
-} from "@bb/host-daemon-contract";
-export type { HostDaemonAcpLaunchSpec } from "@bb/host-daemon-contract";
-
 // ---------------------------------------------------------------------------
 // 4. The domain vocabulary the protocol's payloads reference
 // ---------------------------------------------------------------------------
@@ -254,10 +277,10 @@ export {
   acpPermissionCliSchema,
   acpReasoningCliSchema,
   backgroundTaskItemStatus,
-  claudeTaskToolNameSchema,
-  claudeTaskToolOutputSchema,
   dynamicToolSchema,
   instructionModeValues,
+  approvalInteractionOutcomeSchema,
+  isApprovalInteractionOutcome,
   isApprovalPendingInteractionPayload,
   isApprovalPendingInteractionResolution,
   isBackgroundAgentTaskType,
@@ -272,6 +295,8 @@ export {
   pendingInteractionNetworkPermissionsSchema,
   pendingInteractionRequestedPermissionProfileSchema,
   pendingInteractionResolutionSchema,
+  providerInteractionOutcomeSchema,
+  userQuestionInteractionOutcomeSchema,
   permissionEscalationValues,
   extensionKindSchema,
   interactionRequestPayloadSchema,
@@ -289,16 +314,18 @@ export {
   toPositiveNumber,
 } from "@bb/domain";
 export type {
+  ApprovalInteractionOutcome,
   ApprovalPendingInteractionPayload,
   AvailableModel,
   BackgroundTaskStatus,
   BackgroundTaskUsage,
-  ClaudeTaskToolOutput,
   ClientTurnRequestId,
   DynamicTool,
   ExtensionKind,
   InstructionMode,
   InteractionRequestPayload,
+  ProviderInteractionOutcome,
+  UserQuestionInteractionOutcome,
   JsonObject,
   JsonValue,
   ModelReasoningEffort,
@@ -340,3 +367,37 @@ export type {
   WorkflowPhaseSnapshot,
   WorkflowProgressSnapshot,
 } from "@bb/domain";
+
+// ---------------------------------------------------------------------------
+// 5. Scheduled removals (next major)
+// ---------------------------------------------------------------------------
+//
+// Names 0.4.x published on this subpath that no longer have a consumer in
+// this repository. Each stays an alias of its current definition until the
+// next major version: a bridge compiled against an earlier SDK may import it,
+// and dropping a published name is a breaking change (docs/api_to_audit.md,
+// "Scheduled removals"). The unprefixed domain re-exports listed there sit in
+// section 4 with their neighbours; these are the ones whose definition moved.
+
+/**
+ * The ACP launch spec and its normalizer, once a host-daemon wire shape. The
+ * schema now lives with the ACP bridge kit — a plugin that declares an ACP
+ * agent reads `experimental_acpLaunchSpecSchema` / `AcpLaunchSpec` from
+ * `@get-bb/plugin-sdk/provider-bridge/acp` instead.
+ */
+export {
+  acpLaunchSpecSchema as hostDaemonAcpLaunchSpecSchema,
+  normalizeAcpLaunchSpec as normalizeHostDaemonAcpLaunchSpec,
+} from "@bb/provider-bridge-acp/launch-spec";
+export type { AcpLaunchSpec as HostDaemonAcpLaunchSpec } from "@bb/provider-bridge-acp/launch-spec";
+
+/**
+ * The Claude Code task-tool names and outputs core once shared with the
+ * claude-code runtime. The claude-code plugin owns its own vocabulary now;
+ * there is no replacement.
+ */
+export {
+  claudeTaskToolNameSchema,
+  claudeTaskToolOutputSchema,
+} from "./claude-task-tools.js";
+export type { ClaudeTaskToolOutput } from "./claude-task-tools.js";

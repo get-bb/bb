@@ -26,6 +26,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { dispatchCommand } from "../../src/command-dispatch.js";
 import {
   noopEventSink,
+  resolveRuntimeBridgeLaunch,
   type CommandDispatchOptions,
   type CommandOf,
 } from "../../src/command-dispatch-support.js";
@@ -37,6 +38,8 @@ import {
   makeDispatchOptions,
   makeTempDir,
   unexpectedProjectAttachmentFetch,
+  unexpectedProviderMaintenance,
+  fetchDispatchTestArtifact,
 } from "./dispatch-helpers.js";
 
 /**
@@ -53,10 +56,10 @@ const THREAD_STOP_ACTIVE_TURN_WAIT_MS = 5_000;
 interface RaceHarness {
   dispatchOptions: CommandDispatchOptions;
   events: ThreadEvent[];
-  exits: AgentRuntimeProcessExitInfo[];
   /** The scripted echo bridge launch every command in this harness carries. */
   launch: HostDaemonBridgeLaunch;
   manager: RuntimeManager;
+  unexpectedProcessExit: Promise<AgentRuntimeProcessExitInfo>;
   /** Every request the bridge processes handled (the provider's view). */
   record: ScriptedEchoRequestRecord;
   requireRuntime: () => AgentRuntime;
@@ -153,7 +156,7 @@ async function scriptedEchoDispatchLaunch(
         : { scripted: JSON.parse(JSON.stringify(options.scripted)) },
     envPassthrough: [],
     capabilities: {
-      experimental_providerInstallation: false,
+      providerInstallation: false,
       supportsServiceTier: false,
       permissionModes: ["accept-edits", "auto", "full"],
       supportsThreadArchive: true,
@@ -166,8 +169,15 @@ async function scriptedEchoDispatchLaunch(
 async function createRaceHarness(): Promise<RaceHarness> {
   const workspacePath = await makeTempDir("bb-stop-race-workspace-");
   const events: ThreadEvent[] = [];
-  const exits: AgentRuntimeProcessExitInfo[] = [];
   const record = createScriptedEchoRequestRecord();
+  let resolveUnexpectedProcessExit: (
+    info: AgentRuntimeProcessExitInfo,
+  ) => void = () => undefined;
+  const unexpectedProcessExit = new Promise<AgentRuntimeProcessExitInfo>(
+    (resolve) => {
+      resolveUnexpectedProcessExit = resolve;
+    },
+  );
   let runtime: AgentRuntime | null = null;
   const manager = new RuntimeManager({
     provisionWorkspace: async () =>
@@ -183,7 +193,9 @@ async function createRaceHarness(): Promise<RaceHarness> {
       events.push(event);
     },
     onProcessExit: (info) => {
-      exits.push(info);
+      if (!info.expected) {
+        resolveUnexpectedProcessExit(info);
+      }
     },
   });
   managers.push(manager);
@@ -204,7 +216,6 @@ async function createRaceHarness(): Promise<RaceHarness> {
       },
     }),
     events,
-    exits,
     launch: await scriptedEchoDispatchLaunch(),
     manager,
     record,
@@ -214,6 +225,7 @@ async function createRaceHarness(): Promise<RaceHarness> {
       }
       return runtime;
     },
+    unexpectedProcessExit,
     workspacePath,
   };
 }
@@ -418,13 +430,24 @@ describe("thread.stop race semantics", () => {
       pluginId: "provider-crasher",
       scripted: { exitAfter: "turn/start" },
     });
-    // A healthy sibling provider keeps the environment entry alive across
-    // the crash, so the follow-up stop exercises the dispatch path.
-    await dispatchCommand(
-      threadStartCommand(harness, { threadId: "t-healthy" }),
+    const entry = await harness.manager.ensureEnvironment({
+      environmentId: ENVIRONMENT_ID,
+      workspacePath: harness.workspacePath,
+      workspaceProvisionType: "unmanaged",
+    });
+    const healthyLaunch = await resolveRuntimeBridgeLaunch(
+      harness.launch,
       harness.dispatchOptions,
     );
-    await dispatchCommand(
+    // A healthy sibling process keeps this same environment runtime loaded,
+    // so the later stop exercises its unknown-thread dispatch path. Start its
+    // independent bootstrap beside the crasher instead of serializing two
+    // real Node process startups under the test's wall-clock budget.
+    const healthyStart = entry.runtime.ensureProvider({
+      providerId: "fake",
+      bridgeLaunch: healthyLaunch,
+    });
+    const crashStart = dispatchCommand(
       threadStartCommand(harness, {
         threadId: "t-crash",
         providerId: "crasher",
@@ -433,21 +456,12 @@ describe("thread.stop race semantics", () => {
       }),
       harness.dispatchOptions,
     );
-    const runtime = harness.requireRuntime();
+    await Promise.all([healthyStart, crashStart]);
 
-    await vi.waitFor(
-      () => {
-        expect(
-          harness.exits.some((info) => info.providerId === "crasher"),
-        ).toBe(true);
-      },
-      { timeout: 5_000 },
-    );
-    const crashExit = harness.exits.find(
-      (info) => info.providerId === "crasher",
-    );
+    const crashExit = await harness.unexpectedProcessExit;
+    expect(crashExit.providerId).toBe("crasher");
     // The exit snapshot proves the thread was mid-turn when the process died.
-    expect(crashExit?.threads).toEqual([
+    expect(crashExit.threads).toEqual([
       expect.objectContaining({
         threadId: "t-crash",
         providerThreadId: "prov-1",
@@ -455,6 +469,7 @@ describe("thread.stop race semantics", () => {
       }),
     ]);
     // The runtime's own exit handling is the only clearing of that state.
+    const runtime = harness.requireRuntime();
     expect(runtime.getActiveTurnId("t-crash")).toBeNull();
     expect(runtime.hasThread("t-crash")).toBe(false);
     // The daemon synthesized the failure for the orphaned turn.
@@ -465,6 +480,7 @@ describe("thread.stop race semantics", () => {
         status: "failed",
       }),
     );
+    expect(await harness.manager.getOrAwait(ENVIRONMENT_ID)).toBe(entry);
 
     await expect(
       dispatchCommand(threadStopCommand("t-crash"), harness.dispatchOptions),
@@ -479,6 +495,8 @@ describe("thread.stop race semantics", () => {
       dataDir: "/tmp/bb-stop-race-data",
       eventSink: noopEventSink,
       fetchProjectAttachment: unexpectedProjectAttachmentFetch,
+      fetchPluginHostArtifact: fetchDispatchTestArtifact,
+      ...unexpectedProviderMaintenance,
       logger: { debug: () => undefined, warn: () => undefined },
       runtimeManager: harness.manager,
       threadStorageRootPath: "/tmp/bb-stop-race-thread-storage",

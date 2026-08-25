@@ -8,8 +8,8 @@ import {
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
-import { ApiError } from "../../src/errors.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
+import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
@@ -37,10 +37,8 @@ function registerInstallationProviders(
         declaration: validatePluginProviderDeclaration({
           id: providerId,
           displayName: providerId,
+          maintenance: { health: false, usage: false, installation: true },
           capabilities: {
-            experimental_providerHealth: false,
-            experimental_providerUsage: false,
-            experimental_providerInstallation: true,
             supportsServiceTier: false,
             supportsNativeUserQuestion: false,
             fork: "none",
@@ -55,6 +53,7 @@ function registerInstallationProviders(
         readSettings: () => ({}),
       }),
       pluginId,
+      iconNames: new Set<string>(),
     });
     harness.deps.pluginHostArtifacts.set(pluginId, bridgeArtifact);
   }
@@ -66,7 +65,9 @@ function installationStatus(providerId: string) {
       ? "claude"
       : providerId === "acp-cursor"
         ? "cursor-agent"
-        : "codex";
+        : providerId === "pi"
+          ? "pi"
+          : "codex";
   return {
     executableName,
     executablePath: `/usr/local/bin/${executableName}`,
@@ -153,10 +154,11 @@ describe("public provider installation routes", () => {
 
       expect(response.status).toBe(200);
       const body = (await readJson(response)) as ProviderCliStatusResponse;
-      expect(Object.keys(body)).toEqual(["codex", "claude-code", "acp-cursor"]);
+      expect(Object.keys(body)).toEqual(["codex", "claude-code", "pi", "acp-cursor"]);
       expect(Object.values(body).map((status) => status.displayName)).toEqual([
         "Codex",
         "Claude Code",
+        "Pi",
         "Cursor",
       ]);
       expect(
@@ -179,7 +181,7 @@ describe("public provider installation routes", () => {
               ? request.command.providerId
               : null,
           ),
-      ).toEqual(["codex", "claude-code", "acp-cursor"]);
+      ).toEqual(["codex", "claude-code", "pi", "acp-cursor"]);
     });
   });
 
@@ -214,9 +216,10 @@ describe("public provider installation routes", () => {
 
       expect(response.status).toBe(200);
       const body = (await readJson(response)) as ProviderCliStatusResponse;
-      expect(Object.keys(body)).toEqual(["codex", "acp-cursor"]);
+      expect(Object.keys(body)).toEqual(["codex", "pi", "acp-cursor"]);
       expect(Object.values(body).map((status) => status.displayName)).toEqual([
         "Codex",
+        "Pi",
         "Cursor",
       ]);
       expect(warn).toHaveBeenCalledWith(
@@ -278,13 +281,7 @@ describe("public provider installation routes", () => {
           return new Promise((_, reject) => {
             setTimeout(
               () =>
-                reject(
-                  new ApiError(
-                    504,
-                    "command_timeout",
-                    "Timed out waiting for command result",
-                  ),
-                ),
+                reject(new HostOnlineRpcTimeoutError()),
               args.timeoutMs,
             );
           });
@@ -313,7 +310,7 @@ describe("public provider installation routes", () => {
         expect(resolvedAt! - startedAt).toBeLessThan(
           DEFAULT_BB_REQUEST_TIMEOUT_MS,
         );
-        expect(statusTimeouts).toHaveLength(9);
+        expect(statusTimeouts).toHaveLength(18);
         expect(statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS))
           .toBe(true);
       } finally {
@@ -360,7 +357,8 @@ describe("public provider installation routes", () => {
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ provider: "pi", actionKind: "install" }),
+          // A provider id nothing registered.
+          body: JSON.stringify({ provider: "no-such-provider", actionKind: "install" }),
         },
       );
       expect(unsupported.status).toBe(404);

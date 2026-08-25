@@ -24,7 +24,7 @@ installTestPluginRuntime();
 const {
   definePluginApp,
   experimental_FileLink: FileLink,
-  experimental_UrlLink: UrlLink,
+  UrlLink: UrlLink,
   experimental_ProviderModelPicker: ProviderModelPicker,
   experimental_PermissionModePicker: PermissionModePicker,
   experimental_useAppPanel,
@@ -251,7 +251,7 @@ function UrlNavigationProbe() {
       <button
         type="button"
         onClick={() =>
-          navigate.experimental_openUrl("https://example.com/imperative")
+          navigate.openUrl("https://example.com/imperative")
         }
       >
         Open imperatively
@@ -852,7 +852,7 @@ describe("loadPluginApp", () => {
           icon: "ListTodo",
           path: "tasks",
           component: Panel,
-          experimental_fixedTabs: [
+          fixedTabs: [
             {
               panelId: "tasks",
               id: "navigation",
@@ -867,7 +867,7 @@ describe("loadPluginApp", () => {
       }),
     );
 
-    expect(captured.navPanels[0]?.experimental_fixedTabs).toEqual([
+    expect(captured.navPanels[0]?.fixedTabs).toEqual([
       {
         panelId: "tasks",
         id: "navigation",
@@ -890,7 +890,7 @@ describe("loadPluginApp", () => {
             icon: "ListTodo",
             path: "tasks",
             component: Panel,
-            experimental_fixedTabs: [
+            fixedTabs: [
               {
                 panelId: "tasks",
                 id: "details",
@@ -921,7 +921,7 @@ describe("loadPluginApp", () => {
             icon: "ListTodo",
             path: "tasks",
             component: Panel,
-            experimental_fixedTabs: [
+            fixedTabs: [
               {
                 panelId: "other-page",
                 id: "navigation",
@@ -948,7 +948,7 @@ describe("loadPluginApp", () => {
             icon: "ListTodo",
             path: "tasks",
             component: Panel,
-            experimental_fixedTabs: [
+            fixedTabs: [
               // @ts-expect-error Runtime collector coverage for malformed JS.
               {
                 id: "navigation",
@@ -973,7 +973,7 @@ describe("loadPluginApp", () => {
             icon: "ListTodo",
             path: "tasks",
             component: Panel,
-            experimental_fixedTabs: [
+            fixedTabs: [
               {
                 panelId: "tasks",
                 id: "navigation",
@@ -1300,9 +1300,9 @@ describe("renderSlot", () => {
     expect(fireEvent.click(explicitTargetLink)).toBe(true);
     fireEvent.click(slot.getByRole("button", { name: "Open imperatively" }));
     expect(slot.inspection.navigateCalls).toEqual([
-      { method: "experimental_openUrl", url: "https://example.com/from-link" },
+      { method: "openUrl", url: "https://example.com/from-link" },
       {
-        method: "experimental_openUrl",
+        method: "openUrl",
         url: "https://example.com/imperative",
       },
     ]);

@@ -148,7 +148,7 @@ bb uses whichever providers you have configured. Common providers:
 | `codex`        | Install the [Codex CLI](https://developers.openai.com/codex/cli). Then run `codex login` or configure credentials per the Codex docs.                                                     |
 | `claude-code`  | Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and authenticate per its docs.                                                                                      |
 | `cursor`       | Install [Cursor's agent CLI](https://cursor.com/cli) (`cursor-agent`) and authenticate per Cursor's docs.                                                                                 |
-| `pi`           | See the [Pi coding agent docs](https://github.com/earendil-works/pi/tree/main/packages/coding-agent). BB includes a pinned Pi runtime, so it does not require an installed Pi executable. |
+| `pi`           | Install [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent) with `npm install -g @earendil-works/pi-coding-agent` (0.84.0 or newer) and authenticate per its docs; BB can run the install from Settings.          |
 | `opencode`     | Install [opencode](https://opencode.ai/) and authenticate per its docs.                                                                                                                   |
 | `grok`         | Install [Grok Build](https://docs.x.ai/build/overview) and authenticate with `grok login` or `XAI_API_KEY`.                                                                               |
 | `hermes-agent` | Install [Hermes Agent](https://hermes-agent.nousresearch.com/docs/getting-started/installation), configure credentials with `hermes model`, then verify ACP with `hermes acp --check`.    |
@@ -169,13 +169,15 @@ the workspace. An unresolved `ask` decision stays untrusted because BB has no Pi
 trust prompt.
 You can still use the Pi CLI and `/login` to create this configuration.
 
-Custom ACP agents can be configured through `customAcpAgents` in
-`~/.bb/config.json`; see the configuration docs for optional `modelCli` and
-`reasoningCli` or `nativeReasoning` reasoning settings. A `logo`
-field accepts an SVG, PNG, or WebP path for the provider picker icon.
-The optional `nativeSkillRoots` field adds provider-native skills to the
-composer. Its `user` paths resolve from the target host home directory. Its
-`project` paths resolve from the selected workspace.
+Custom ACP agents are configured through the ACP providers plugin's
+`customAgents` setting: `bb plugin config provider-acp set customAgents
+'[...]'`. See the configuration docs for the optional `modelCli` and
+`reasoningCli` or `nativeReasoning` reasoning settings. The optional
+`nativeSkillRoots` field adds provider-native skills to the composer. Its
+`user` paths resolve from the target host home directory. Its `project` paths
+resolve from the selected workspace. The `customAcpAgents` array in
+`~/.bb/config.json` is the deprecated form of the same list; bb reads it, warns
+about each entry, and stops reading it in 0.41.
 Top-level `sharedSkillRoots` uses the same `user` and `project` path format.
 BB lists these sources as read-only skills. BB injects them into Codex, Claude,
 Pi, and ACP threads. This permits one physical skill collection for BB and a

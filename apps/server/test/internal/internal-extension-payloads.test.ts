@@ -19,6 +19,7 @@ import { buildPluginProviderRegistration } from "../../src/services/providers/pl
 import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
+import { minimalProviderRegistration } from "../helpers/provider-registry.js";
 import {
   seedEnvironment,
   seedHostSession,
@@ -36,21 +37,27 @@ const PRESENTATION = {
   icon: { glyph: "Target" },
 };
 
-async function setup() {
-  const harness = await createTestAppHarness();
-  // A provider plugin that declares one extension kind with both surfaces:
-  // `goal` items carry an objective, `goal` state carries a status.
+/** Registers a provider plugin with the extension kinds it declares. */
+function registerExtensionProvider(
+  harness: TestAppHarness,
+  args: {
+    pluginId: string;
+    providerId: string;
+    displayName: string;
+    extensionKinds: Parameters<
+      typeof validatePluginProviderDeclaration
+    >[0]["extensionKinds"];
+  },
+) {
   harness.deps.providerRegistry.register({
     ...buildPluginProviderRegistration({
       available: true,
-      pluginId: PLUGIN_ID,
+      pluginId: args.pluginId,
       declaration: validatePluginProviderDeclaration({
-        id: PROVIDER_ID,
-        displayName: "Widgets",
+        id: args.providerId,
+        displayName: args.displayName,
+        maintenance: { health: false, usage: false, installation: false },
         capabilities: {
-          experimental_providerHealth: false,
-          experimental_providerUsage: false,
-          experimental_providerInstallation: false,
           supportsServiceTier: false,
           supportsNativeUserQuestion: false,
           fork: "none",
@@ -61,16 +68,29 @@ async function setup() {
           reasoningLevels: ["medium"],
         },
         composerActions: [],
-        experimental_extensionKinds: {
-          goal: {
-            item: z.object({ objective: z.string().min(1) }),
-            state: z.object({ status: z.enum(["active", "done"]) }),
-          },
-        },
+        extensionKinds: args.extensionKinds,
       }),
       readSettings: () => ({}),
     }),
+    pluginId: args.pluginId,
+    iconNames: new Set<string>(),
+  });
+}
+
+async function setup() {
+  const harness = await createTestAppHarness();
+  // A provider plugin that declares one extension kind with both surfaces:
+  // `goal` items carry an objective, `goal` state carries a status.
+  registerExtensionProvider(harness, {
     pluginId: PLUGIN_ID,
+    providerId: PROVIDER_ID,
+    displayName: "Widgets",
+    extensionKinds: {
+      goal: {
+        item: z.object({ objective: z.string().min(1) }),
+        state: z.object({ status: z.enum(["active", "done"]) }),
+      },
+    },
   });
   const { host, session } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, { hostId: host.id });
@@ -147,6 +167,24 @@ function extensionItemEvent(
         presentation: PRESENTATION,
         parentToolCallId: "parent-1",
       },
+    },
+  };
+}
+
+function extensionStateEvent(
+  threadId: string,
+  payload: unknown,
+  kind: ExtensionKind = GOAL_KIND,
+): HostDaemonEventEnvelope {
+  return {
+    threadId,
+    event: {
+      type: "thread/extensionState/updated",
+      threadId,
+      providerThreadId: "prov-1",
+      scope: threadScope(),
+      kind,
+      payload: payload as never,
     },
   };
 }
@@ -273,7 +311,8 @@ describe("extension payload ingest validation", () => {
     try {
       const response = await post(harness, session.id, [
         turnStarted(thread.id),
-        // No plugin "provider-nobody" is registered.
+        // No plugin "provider-nobody" is registered — and whatever it
+        // declares, it is not the plugin behind this thread's provider.
         extensionItemEvent(
           thread.id,
           { objective: "x" },
@@ -301,7 +340,9 @@ describe("extension payload ingest validation", () => {
       expect(rows.slice(1).map((row) => row.data)).toMatchObject([
         {
           rawEvent: {
-            params: { reason: expect.stringContaining("declares no") },
+            params: {
+              reason: `extension kind "provider-nobody/goal" is owned by plugin "provider-nobody", but the thread's provider "${PROVIDER_ID}" is registered by plugin "${PLUGIN_ID}"`,
+            },
           },
         },
         {
@@ -330,12 +371,14 @@ describe("extension payload ingest validation", () => {
       ).toBe(registration?.extensionKinds.goal);
       // Re-register under a fresh handle so the test owns the disposer.
       const handle = harness.deps.providerRegistry.register({
-        info: { ...registration!.info, id: "widgets-2" },
-        serverCapabilities: registration!.serverCapabilities,
+        ...minimalProviderRegistration({
+          pluginId: PLUGIN_ID,
+          info: { ...registration!.info, id: "widgets-2" },
+          serverCapabilities: registration!.serverCapabilities,
+        }),
         extensionKinds: {
           badge: { item: z.object({ text: z.string() }) },
         },
-        pluginId: PLUGIN_ID,
       });
       expect(
         harness.deps.providerRegistry.getExtensionKindSchemas(
@@ -357,6 +400,160 @@ describe("extension payload ingest validation", () => {
       expect(storedRows(harness, thread.id).map((row) => row.type)).toEqual([
         "turn/started",
         "provider/unhandled",
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+});
+
+/**
+ * An extension kind belongs to the plugin whose id prefixes it, and only a
+ * thread of that plugin's own provider may carry it. The declared schema says
+ * what a payload looks like, not who may write one: clients pick the kind's
+ * renderer by the kind alone, so a bridge of another plugin that emits the
+ * kind would persist a row rendered as the owning plugin's UI. It is refused
+ * the way a foreign presentation glyph is — replaced by a `provider/unhandled`
+ * whose reason names the kind and the plugins on both sides.
+ */
+describe("extension kind ownership at ingest", () => {
+  const OTHER_PLUGIN_ID = "provider-gadgets";
+  const OTHER_PROVIDER_ID = "gadgets";
+
+  it("refuses another plugin's kind on a thread of this provider, and keeps it on the owner's own thread", async () => {
+    const { harness, session, thread } = await setup();
+    try {
+      // A second plugin registers its own provider; it declares nothing.
+      registerExtensionProvider(harness, {
+        pluginId: OTHER_PLUGIN_ID,
+        providerId: OTHER_PROVIDER_ID,
+        displayName: "Gadgets",
+        extensionKinds: {},
+      });
+      const other = seedThread(harness.deps, {
+        projectId: thread.projectId,
+        environmentId: thread.environmentId,
+        providerId: OTHER_PROVIDER_ID,
+        status: "active",
+      });
+      // Schema-valid payloads: only ownership can refuse them.
+      const foreign = await post(harness, session.id, [
+        turnStarted(other.id),
+        extensionItemEvent(other.id, { objective: "Ship it" }),
+        extensionStateEvent(other.id, { status: "active" }),
+      ]);
+      expect(foreign.status).toBe(200);
+      // Every slot was accepted: the replacement keeps the batch shape.
+      await expect(readJson(foreign)).resolves.toMatchObject({
+        acceptedEvents: [
+          { eventIndex: 0 },
+          { eventIndex: 1 },
+          { eventIndex: 2 },
+        ],
+        rejectedEvents: [],
+      });
+      const foreignRows = storedRows(harness, other.id);
+      expect(foreignRows.map((row) => row.type)).toEqual([
+        "turn/started",
+        "provider/unhandled",
+        "provider/unhandled",
+      ]);
+      const reason = `extension kind "${GOAL_KIND}" is owned by plugin "${PLUGIN_ID}", but the thread's provider "${OTHER_PROVIDER_ID}" is registered by plugin "${OTHER_PLUGIN_ID}"`;
+      expect(foreignRows[1]).toMatchObject({
+        itemKind: null,
+        scopeKind: "turn",
+        turnId: "turn-1",
+        data: {
+          // Counted under the emitting thread's provider, not the kind's.
+          providerId: OTHER_PROVIDER_ID,
+          rawType: `extension/item:${GOAL_KIND}`,
+          rawEvent: {
+            method: "item/started",
+            params: {
+              kind: GOAL_KIND,
+              payload: { objective: "Ship it" },
+              reason,
+            },
+          },
+          parentToolCallId: "parent-1",
+        },
+      });
+      expect(foreignRows[2]).toMatchObject({
+        scopeKind: "thread",
+        turnId: null,
+        data: {
+          providerId: OTHER_PROVIDER_ID,
+          rawType: `extension/state:${GOAL_KIND}`,
+          rawEvent: {
+            method: "thread/extensionState/updated",
+            params: { kind: GOAL_KIND, payload: { status: "active" }, reason },
+          },
+        },
+      });
+
+      // The same events on the owning plugin's own thread persist as sent.
+      const own = await post(harness, session.id, [
+        turnStarted(thread.id),
+        extensionItemEvent(thread.id, { objective: "Ship it" }),
+        extensionStateEvent(thread.id, { status: "active" }),
+      ]);
+      expect(own.status).toBe(200);
+      expect(storedRows(harness, thread.id)).toMatchObject([
+        { type: "turn/started" },
+        {
+          type: "item/started",
+          itemKind: "extension",
+          data: {
+            item: { kind: GOAL_KIND, payload: { objective: "Ship it" } },
+          },
+        },
+        {
+          type: "thread/extensionState/updated",
+          data: { kind: GOAL_KIND, payload: { status: "active" } },
+        },
+      ]);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("refuses every extension kind on a thread whose provider has no live registration", async () => {
+    const { harness, session, thread } = await setup();
+    try {
+      // No plugin registers a provider by this id, so nothing can vouch for
+      // the thread's rows — the same rule a namespaced glyph is held to.
+      const orphan = seedThread(harness.deps, {
+        projectId: thread.projectId,
+        environmentId: thread.environmentId,
+        providerId: "unregistered",
+        status: "active",
+      });
+      const response = await post(harness, session.id, [
+        turnStarted(orphan.id),
+        extensionItemEvent(orphan.id, { objective: "Ship it" }),
+        extensionStateEvent(orphan.id, { status: "active" }),
+      ]);
+      expect(response.status).toBe(200);
+      const rows = storedRows(harness, orphan.id);
+      expect(rows.map((row) => row.type)).toEqual([
+        "turn/started",
+        "provider/unhandled",
+        "provider/unhandled",
+      ]);
+      const reason = `extension kind "${GOAL_KIND}" names plugin "${PLUGIN_ID}", but the thread's provider "unregistered" has no live registration to check it against`;
+      expect(rows.slice(1)).toMatchObject([
+        {
+          data: {
+            providerId: "unregistered",
+            rawEvent: { params: { kind: GOAL_KIND, reason } },
+          },
+        },
+        {
+          data: {
+            providerId: "unregistered",
+            rawEvent: { params: { kind: GOAL_KIND, reason } },
+          },
+        },
       ]);
     } finally {
       await harness.cleanup();

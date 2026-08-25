@@ -1,9 +1,16 @@
 import type {
+  ApprovalInteractionLifecycle,
+  PendingInteractionPermissionGrantApprovalSubject,
   ThreadEvent,
   SystemThreadProvisioningStatus,
   SystemThreadInterruptedReason,
+  UserQuestionInteractionLifecycle,
 } from "@bb/domain";
-import { ownershipChangeOperationMetadataSchema } from "@bb/domain";
+import {
+  isApprovalInteractionLifecycle,
+  isUserQuestionInteractionLifecycle,
+  ownershipChangeOperationMetadataSchema,
+} from "@bb/domain";
 import { assertNever } from "./assert-never.js";
 import { getCompactionKey } from "./compaction-lifecycle.js";
 import { OWNERSHIP_CHANGE_VERBS } from "./family-a-verbs.js";
@@ -45,13 +52,9 @@ function withThreadName(threadName: string, verb: string): string {
   return name.length > 0 ? `${name} ${verb}` : capitalize(verb);
 }
 
-type PermissionGrantLifecycleEvent = Extract<
+type InteractionLifecycleEvent = Extract<
   ThreadEvent,
-  { type: "system/permissionGrant/lifecycle" }
->;
-type UserQuestionLifecycleEvent = Extract<
-  ThreadEvent,
-  { type: "system/userQuestion/lifecycle" }
+  { type: "system/interaction/lifecycle" }
 >;
 
 /**
@@ -241,19 +244,19 @@ function provisioningOperationStatus(
 }
 
 function permissionGrantLifecycle(
-  decoded: PermissionGrantLifecycleEvent,
+  interaction: ApprovalInteractionLifecycle,
 ): EventProjectionPermissionGrantLifecycle {
-  switch (decoded.status) {
+  switch (interaction.status) {
     case "pending":
       return "pending";
     case "resolving":
       return "resolving";
     case "resolved":
-      return decoded.resolution?.decision === "deny" ? "denied" : "granted";
+      return interaction.resolution?.decision === "deny" ? "denied" : "granted";
     case "interrupted":
       return "interrupted";
     default:
-      return assertNever(decoded.status);
+      return assertNever(interaction.status);
   }
 }
 
@@ -275,9 +278,9 @@ function permissionGrantLifecycleStatus(
 }
 
 function permissionGrantScope(
-  decoded: PermissionGrantLifecycleEvent,
+  interaction: ApprovalInteractionLifecycle,
 ): EventProjectionPermissionGrantGrantScope | null {
-  const decision = decoded.resolution?.decision;
+  const decision = interaction.resolution?.decision;
   switch (decision) {
     case "allow_once":
       return "turn";
@@ -292,35 +295,37 @@ function permissionGrantScope(
 }
 
 function buildPermissionGrantLifecycleMessage(
-  decoded: PermissionGrantLifecycleEvent,
+  decoded: InteractionLifecycleEvent,
+  interaction: ApprovalInteractionLifecycle,
+  subject: PendingInteractionPermissionGrantApprovalSubject,
   meta: EventMeta,
 ): EventProjectionPermissionGrantLifecycleMessage {
-  const lifecycle = permissionGrantLifecycle(decoded);
+  const lifecycle = permissionGrantLifecycle(interaction);
   return {
     kind: "permission-grant-lifecycle",
-    id: messageId(decoded.threadId, "approval", decoded.interactionId),
+    id: messageId(decoded.threadId, "approval", interaction.id),
     threadId: decoded.threadId,
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
     startedAt: meta.createdAt,
     scope: decoded.scope,
-    interactionId: decoded.interactionId,
+    interactionId: interaction.id,
     lifecycle,
     status: permissionGrantLifecycleStatus(lifecycle),
     approvalTarget: {
-      itemId: decoded.subject.itemId,
-      toolName: decoded.subject.toolName,
+      itemId: subject.itemId,
+      toolName: subject.toolName,
     },
-    grantScope: permissionGrantScope(decoded),
-    statusReason: decoded.statusReason,
+    grantScope: permissionGrantScope(interaction),
+    statusReason: interaction.statusReason,
   };
 }
 
 function userQuestionLifecycle(
-  decoded: UserQuestionLifecycleEvent,
+  interaction: UserQuestionInteractionLifecycle,
 ): EventProjectionUserQuestionLifecycle {
-  switch (decoded.status) {
+  switch (interaction.status) {
     case "pending":
       return "pending";
     case "resolving":
@@ -330,7 +335,7 @@ function userQuestionLifecycle(
     case "interrupted":
       return "interrupted";
     default:
-      return assertNever(decoded.status);
+      return assertNever(interaction.status);
   }
 }
 
@@ -351,26 +356,54 @@ function userQuestionLifecycleStatus(
 }
 
 function buildUserQuestionLifecycleMessage(
-  decoded: UserQuestionLifecycleEvent,
+  decoded: InteractionLifecycleEvent,
+  interaction: UserQuestionInteractionLifecycle,
   meta: EventMeta,
 ): EventProjectionUserQuestionLifecycleMessage {
-  const lifecycle = userQuestionLifecycle(decoded);
+  const lifecycle = userQuestionLifecycle(interaction);
   return {
     kind: "user-question-lifecycle",
-    id: messageId(decoded.threadId, "question", decoded.interactionId),
+    id: messageId(decoded.threadId, "question", interaction.id),
     threadId: decoded.threadId,
     sourceSeqStart: meta.seq,
     sourceSeqEnd: meta.seq,
     createdAt: meta.createdAt,
     startedAt: meta.createdAt,
     scope: decoded.scope,
-    interactionId: decoded.interactionId,
+    interactionId: interaction.id,
     lifecycle,
     status: userQuestionLifecycleStatus(lifecycle),
-    questions: decoded.payload.questions,
-    answers: decoded.resolution?.answers ?? null,
-    statusReason: decoded.statusReason,
+    questions: interaction.payload.questions,
+    answers: interaction.resolution?.answers ?? null,
+    statusReason: interaction.statusReason,
   };
+}
+
+/**
+ * The row an interaction's lifecycle event contributes. A permission grant
+ * and a user question get a row of their own. Every other interaction shows
+ * elsewhere — a command or file-change approval on the provider's item, a
+ * plan review on its plan tool call, a tool use on its tool call, a plugin
+ * request on the plugin's form — so its event contributes no row.
+ */
+function buildInteractionLifecycleMessage(
+  decoded: InteractionLifecycleEvent,
+  meta: EventMeta,
+):
+  | EventProjectionPermissionGrantLifecycleMessage
+  | EventProjectionUserQuestionLifecycleMessage
+  | null {
+  const { interaction } = decoded;
+  if (isUserQuestionInteractionLifecycle(interaction)) {
+    return buildUserQuestionLifecycleMessage(decoded, interaction, meta);
+  }
+  if (!isApprovalInteractionLifecycle(interaction)) {
+    return null;
+  }
+  const subject = interaction.payload.subject;
+  return subject.kind === "permission_grant"
+    ? buildPermissionGrantLifecycleMessage(decoded, interaction, subject, meta)
+    : null;
 }
 
 /** Build the common scaffolding shared by all operation messages. */
@@ -523,9 +556,10 @@ export function parseOperationMessage(
   }
 
   if (decoded.type === "system/operation") {
-    // Plugin interaction lifecycle events drive composer/realtime state, but
-    // their generic operation rows duplicate the plugin form and briefly
-    // linger as "Plugin interaction pending" after submission.
+    // `plugin_interaction` is the legacy persisted form of a plugin
+    // interaction's lifecycle (now `system/interaction/lifecycle`, which
+    // contributes no row either): its generic operation row would duplicate
+    // the plugin form and linger as "Plugin interaction pending".
     if (
       decoded.operation === "plugin_interaction" ||
       decoded.operation === "edit_message"
@@ -557,12 +591,8 @@ export function parseOperationMessage(
     });
   }
 
-  if (decoded.type === "system/permissionGrant/lifecycle") {
-    return buildPermissionGrantLifecycleMessage(decoded, meta);
-  }
-
-  if (decoded.type === "system/userQuestion/lifecycle") {
-    return buildUserQuestionLifecycleMessage(decoded, meta);
+  if (decoded.type === "system/interaction/lifecycle") {
+    return buildInteractionLifecycleMessage(decoded, meta);
   }
 
   if (decoded.type === "thread/compacted") {

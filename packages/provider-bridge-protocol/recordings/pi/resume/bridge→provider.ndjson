@@ -1,3 +1,10 @@
-{"ts":1787277372856,"run":1787275055276,"seq":1305,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Reply with the single word ready.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
-{"ts":1787277384463,"run":1787275055276,"seq":1326,"dir":"bridge→provider","line":"{\"method\":\"abort\"}"}
-{"ts":1787277393637,"run":1787275055276,"seq":1333,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"What word did you reply with in your previous message? Reply with that word only.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787347920204,"run":1787347884248,"seq":617,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347920725,"run":1787347884248,"seq":624,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Reply with the single word ready.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347922156,"run":1787347884248,"seq":642,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1787347922157,"run":1787347884248,"seq":649,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-4\"}"}
+{"ts":1787347922158,"run":1787347884248,"seq":651,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}
+{"ts":1787347922162,"run":1787347884248,"seq":655,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347922675,"run":1787347884248,"seq":662,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"What word did you reply with in your previous message? Reply with that word only.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347923961,"run":1787347884248,"seq":680,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":861,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-4\"}"}
+{"ts":1787347931344,"run":1787347884248,"seq":877,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}

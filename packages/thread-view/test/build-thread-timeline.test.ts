@@ -62,13 +62,6 @@ interface ToolCallItemEventArgs {
   type: "item/completed" | "item/started";
 }
 
-interface LowercaseStructuredToolCase {
-  expectedIntent: JsonObject;
-  expectedTitle: string;
-  tool: string;
-  toolArgs: JsonObject;
-}
-
 interface ImageViewItemEventArgs {
   itemId?: string;
   path?: string;
@@ -595,23 +588,32 @@ function permissionGrantLifecycleEvent({
 }: PermissionGrantLifecycleEventArgs): ThreadEventWithMeta {
   return {
     event: {
-      type: "system/permissionGrant/lifecycle",
+      type: "system/interaction/lifecycle",
       threadId: "thread-1",
       scope: turnScope("turn-1"),
-      interactionId,
-      providerId: "codex",
-      providerRequestId: "request-permission-grant",
-      status,
-      resolution,
-      statusReason,
-      subject: {
-        kind: "permission_grant",
-        itemId: "item-permission-grant",
-        toolName,
-        permissions: {
-          network: { enabled: true },
-          fileSystem: null,
+      interaction: {
+        id: interactionId,
+        status,
+        statusReason,
+        origin: {
+          kind: "provider",
+          providerId: "codex",
+          providerRequestId: "request-permission-grant",
         },
+        payload: {
+          kind: "approval",
+          reason: null,
+          subject: {
+            kind: "permission_grant",
+            itemId: "item-permission-grant",
+            toolName,
+            permissions: {
+              network: { enabled: true },
+              fileSystem: null,
+            },
+          },
+        },
+        resolution,
       },
     },
     meta: {
@@ -632,30 +634,35 @@ function userQuestionLifecycleEvent({
 }: UserQuestionLifecycleEventArgs): ThreadEventWithMeta {
   return {
     event: {
-      type: "system/userQuestion/lifecycle",
+      type: "system/interaction/lifecycle",
       threadId: "thread-1",
       scope: turnScope("turn-1"),
-      interactionId,
-      providerId: "claude-code",
-      providerRequestId: "request-user-question",
-      status,
-      resolution,
-      statusReason,
-      payload: {
-        kind: "user_question",
-        questions: [
-          {
-            id: "question-1",
-            prompt: questionPrompt ?? "Which deployment target should I use?",
-            shortLabel: "Target",
-            multiSelect: false,
-            options: [
-              { value: "staging", label: "Staging" },
-              { value: "production", label: "Production" },
-            ],
-            allowFreeText: true,
-          },
-        ],
+      interaction: {
+        id: interactionId,
+        status,
+        statusReason,
+        origin: {
+          kind: "provider",
+          providerId: "claude-code",
+          providerRequestId: "request-user-question",
+        },
+        payload: {
+          kind: "user_question",
+          questions: [
+            {
+              id: "question-1",
+              prompt: questionPrompt ?? "Which deployment target should I use?",
+              shortLabel: "Target",
+              multiSelect: false,
+              options: [
+                { value: "staging", label: "Staging" },
+                { value: "production", label: "Production" },
+              ],
+              allowFreeText: true,
+            },
+          ],
+        },
+        resolution,
       },
     },
     meta: {
@@ -966,49 +973,19 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectToolRows(rows)).toHaveLength(1);
   });
 
-  const lowercaseStructuredToolCases: LowercaseStructuredToolCase[] = [
-    {
-      expectedIntent: {
-        type: "read",
-        name: "read",
-        path: "src/app.ts",
-      },
-      expectedTitle: "Read src/app.ts",
-      tool: "read",
-      toolArgs: { path: "src/app.ts", offset: 1, limit: 20 },
-    },
-    {
-      expectedIntent: {
-        type: "search",
-        query: "TODO",
-        path: "src",
-      },
-      expectedTitle: "Searched for TODO in src",
-      tool: "grep",
-      toolArgs: { pattern: "TODO", path: "src" },
-    },
-    {
-      expectedIntent: {
-        type: "list_files",
-        path: "src/**/*.ts",
-      },
-      expectedTitle: "Listed files in src/**/*.ts",
-      tool: "glob",
-      toolArgs: { pattern: "src/**/*.ts" },
-    },
-  ];
-
-  it.each(lowercaseStructuredToolCases)(
-    "humanizes Pi's lowercase $tool tool calls",
-    ({ expectedIntent, expectedTitle, tool, toolArgs }) => {
+  it.each(["read", "grep", "glob", "Read", "Grep", "Glob"])(
+    "renders a %s tool call as a generic tool row: no tool-name table derives an intent",
+    (tool) => {
+      // The provider's bridge emits fileRead/search items for its reads and
+      // searches (Claude's translation maps Read/Grep/Glob). A bare tool
+      // call persisted before that, or from a bridge that has not migrated
+      // (pi's read/grep/find/ls rows carry no presentation), is reshaped by
+      // the legacy adapter when the stored row is parsed, never here: fed
+      // straight to the projection it is a tool row titled by its name.
+      const toolArgs = { path: "src/app.ts", pattern: "TODO" };
       const rows = buildTimelineRows([
         turnStartedEvent({ seq: 1 }),
-        toolCallItemEvent({
-          seq: 2,
-          tool,
-          toolArgs,
-          type: "item/started",
-        }),
+        toolCallItemEvent({ seq: 2, tool, toolArgs, type: "item/started" }),
         toolCallItemEvent({
           result: "ok",
           seq: 3,
@@ -1018,51 +995,40 @@ describe("buildThreadTimelineFromEvents", () => {
         }),
       ]);
       const [row] = collectToolRows(rows);
-
       expect(row).toBeDefined();
       if (!row) {
         throw new Error(`Expected a projected ${tool} tool row`);
       }
-      expect(row.activityIntents).toEqual([
-        expect.objectContaining(expectedIntent),
-      ]);
       expect(
         buildTimelineRowTitle(row, {
           summaryStyle: "bundle",
           workStyle: "default",
         }).plain,
-      ).toBe(expectedTitle);
+      ).toBe(`Ran tool ${tool} { path: src/app.ts, pattern: TODO }`);
     },
   );
 
-  it("preserves server-enriched plugin status labels on a tool row", () => {
-    const statusLabels = {
-      pending: "Reading project overview",
-      completed: "Read project overview",
-    };
+  it("drops a statusLabels key a row persisted before the field was deleted", () => {
+    // Rows enriched by the old server keep decoding; the key is stripped and
+    // the row titles from its name (the bridge's presentation is the only
+    // label source now).
     const rows = buildTimelineRows([
       turnStartedEvent({ seq: 1 }),
       toolCallItemEvent({
-        statusLabels,
+        statusLabels: { pending: "Reading", completed: "Read" },
         seq: 2,
-        tool: "repository_context",
-        type: "item/started",
-      }),
-      toolCallItemEvent({
-        statusLabels,
-        seq: 3,
         tool: "repository_context",
         type: "item/completed",
       }),
     ]);
-
-    expect(collectToolRows(rows)).toEqual([
+    const [row] = collectToolRows(rows);
+    expect(row).toEqual(
       expect.objectContaining({
-        statusLabels,
         status: "completed",
         toolName: "repository_context",
       }),
-    ]);
+    );
+    expect(row).not.toHaveProperty("statusLabels");
   });
 
   it("extracts the exact active Plan turn id from the accepted input scope", () => {
@@ -1269,6 +1235,229 @@ describe("buildThreadTimelineFromEvents", () => {
     });
 
     expect(timeline.activePromptMode).toBeNull();
+  });
+
+  it("makes a persisted call a delegation when rows name it as their parent, whatever its tool name", () => {
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const parentToolCallId = "call-helper-1";
+    const rows = buildTimelineRows(
+      fromRows([
+        event.turnStarted({ seq: 1 }),
+        event.toolCallStarted({
+          seq: 2,
+          itemId: parentToolCallId,
+          tool: "spawn_helper",
+          arguments: {
+            description: "Audit the docs",
+            subagent_type: "reviewer",
+            model: "fast",
+          },
+        }),
+        event.assistantCompleted({
+          seq: 3,
+          itemId: "helper-progress",
+          parentToolCallId,
+          text: "Read 3 files",
+        }),
+        event.toolCallCompleted({
+          seq: 4,
+          itemId: parentToolCallId,
+          tool: "spawn_helper",
+          result: "done",
+        }),
+      ]),
+    );
+
+    const [delegation] = collectDelegationRows(rows);
+    expect(delegation).toMatchObject({
+      // The row id is minted under the delegation kind, as a bridge-declared
+      // delegation would be, so persisted threads keep stable row ids.
+      id: "thread-1:delegation:call-helper-1",
+      toolName: "spawn_helper",
+      description: "Audit the docs",
+      subagentType: "reviewer",
+      childRef: null,
+      background: false,
+      status: "completed",
+    });
+    expect(delegation?.childRows).toEqual([
+      expect.objectContaining({
+        kind: "conversation",
+        role: "assistant",
+        text: "Read 3 files",
+      }),
+    ]);
+    // A call nothing refers to stays a plain tool row.
+    expect(
+      buildTimelineRows(
+        fromRows([
+          event.turnStarted({ seq: 1 }),
+          event.toolCallCompleted({
+            seq: 2,
+            itemId: "lonely",
+            tool: "spawn_helper",
+          }),
+        ]),
+      ).some((row) => row.kind === "work" && row.workKind === "delegation"),
+    ).toBe(false);
+  });
+
+  it("keeps a persisted, presentation-less Agent call a delegation when no row names it as parent", () => {
+    // A Claude `Agent` call the SDK rejected at input validation: the tool
+    // result is the validation error and no subagent ever started, so no
+    // persisted row carries this call id as its parentToolCallId. Before the
+    // tool-name tables were deleted, the Agent/Task/spawnAgent/resumeAgent
+    // name rule made this a delegation row; the legacy adapter keeps that
+    // rule for presentation-less rows so the row, its id and its title are
+    // what they were. A childless call that completed (an old thread whose
+    // subagent events were never persisted) reads the same way.
+    const event = createTimelineEventFactory({
+      threadId: "thread-1",
+      turnId: "turn-1",
+    });
+    const childless: ReadonlyArray<{
+      status: "failed" | "completed";
+      result: string;
+      verb: string;
+    }> = [
+      {
+        status: "failed",
+        result:
+          "InputValidationError: Agent failed due to the following issue:\nThe required parameter `prompt` is missing",
+        verb: "Failed subagent:",
+      },
+      {
+        status: "completed",
+        result: "agentId: a1\nDone.",
+        verb: "Ran subagent:",
+      },
+    ];
+    for (const { status, result, verb } of childless) {
+      const rows = buildTimelineRows(
+        fromRows([
+          event.turnStarted({ seq: 1 }),
+          event.toolCallStarted({
+            seq: 2,
+            itemId: "toolu_agent_1",
+            tool: "Agent",
+            arguments: {
+              description: "Review the diff",
+              subagent_type: "reviewer",
+              model: "fast",
+            },
+          }),
+          event.toolCallCompleted({
+            seq: 3,
+            itemId: "toolu_agent_1",
+            tool: "Agent",
+            arguments: {
+              description: "Review the diff",
+              subagent_type: "reviewer",
+              model: "fast",
+            },
+            status,
+            result,
+          }),
+        ]),
+      );
+      const [delegation] = collectDelegationRows(rows);
+      expect(delegation, status).toMatchObject({
+        // Same id prefix as a delegation the bridge declared, so persisted
+        // threads keep stable row ids.
+        id: "thread-1:delegation:toolu_agent_1",
+        toolName: "Agent",
+        description: "Review the diff",
+        subagentType: "reviewer",
+        childRef: null,
+        background: false,
+        status: status === "failed" ? "error" : "completed",
+        childRows: [],
+      });
+      expect(
+        buildTimelineRowTitle(delegation!, {
+          summaryStyle: "bundle",
+          workStyle: "default",
+        }).segments.map((segment) => segment.text),
+      ).toEqual([verb, "Review the diff", "(reviewer)"]);
+      // Nothing is left behind as a plain tool row.
+      expect(collectToolRows(rows)).toEqual([]);
+    }
+
+    // A childful call reads exactly as before: the child nests under it and
+    // its label metadata still comes from the arguments.
+    const childful = collectDelegationRows(
+      buildTimelineRows(
+        fromRows([
+          event.turnStarted({ seq: 1 }),
+          event.toolCallStarted({
+            seq: 2,
+            itemId: "toolu_agent_2",
+            tool: "Agent",
+            arguments: {
+              description: "Audit the docs",
+              subagent_type: "reviewer",
+            },
+          }),
+          event.assistantCompleted({
+            seq: 3,
+            itemId: "child-text",
+            parentToolCallId: "toolu_agent_2",
+            text: "Read 3 files",
+          }),
+          event.toolCallCompleted({
+            seq: 4,
+            itemId: "toolu_agent_2",
+            tool: "Agent",
+            result: "done",
+          }),
+        ]),
+      ),
+    );
+    expect(childful).toHaveLength(1);
+    expect(childful[0]).toMatchObject({
+      id: "thread-1:delegation:toolu_agent_2",
+      toolName: "Agent",
+      description: "Audit the docs",
+      subagentType: "reviewer",
+      childRef: null,
+      status: "completed",
+    });
+    expect(childful[0]?.childRows).toEqual([
+      expect.objectContaining({ kind: "conversation", text: "Read 3 files" }),
+    ]);
+
+    // The rule is keyed on the absence of a presentation, never on the name
+    // alone: a bridge that presents a tool it happens to call `Agent` gets
+    // the generic tool row it asked for, and a plain legacy tool stays one.
+    const presented = buildTimelineRows(
+      fromRows([
+        event.turnStarted({ seq: 1 }),
+        event.toolCallCompleted({
+          seq: 2,
+          itemId: "presented-agent",
+          tool: "Agent",
+          arguments: { description: "Not a delegation" },
+          presentation: {
+            label: { pending: "Running Agent", completed: "Ran Agent" },
+            icon: { glyph: "Toolbox" },
+          },
+        }),
+        event.toolCallCompleted({
+          seq: 3,
+          itemId: "plain-bash",
+          tool: "Bash",
+          arguments: { command: "ls" },
+        }),
+      ]),
+    );
+    expect(collectDelegationRows(presented)).toEqual([]);
+    expect(collectToolRows(presented).map((row) => row.id)).toEqual([
+      "thread-1:tool:presented-agent",
+      "thread-1:tool:plain-bash",
+    ]);
   });
 
   it("omits duplicated background-agent lifecycle rows from delegation children", () => {
@@ -1999,7 +2188,65 @@ describe("buildThreadTimelineFromEvents", () => {
     expect(collectSystemRows(rows)[0]).not.toHaveProperty("parentChange");
   });
 
-  it("suppresses internal plugin interaction lifecycle operations", () => {
+  it("contributes no row for an interaction that shows elsewhere (a command approval, a plugin request)", () => {
+    const rows = buildTimelineRows([
+      {
+        event: {
+          type: "system/interaction/lifecycle",
+          threadId: "thread-1",
+          scope: turnScope("turn-1"),
+          interaction: {
+            id: "pi-command",
+            status: "pending",
+            statusReason: null,
+            origin: {
+              kind: "provider",
+              providerId: "codex",
+              providerRequestId: "request-command",
+            },
+            payload: {
+              kind: "approval",
+              reason: null,
+              subject: {
+                kind: "command",
+                itemId: "item-command",
+                command: "git push",
+                cwd: null,
+                actions: [],
+                sessionGrant: null,
+              },
+            },
+            resolution: null,
+          },
+        },
+        meta: { id: "event-1", seq: 1, createdAt: 1 },
+      },
+      {
+        event: {
+          type: "system/interaction/lifecycle",
+          threadId: "thread-1",
+          scope: threadScope(),
+          interaction: {
+            id: "pint-plugin",
+            status: "resolved",
+            statusReason: null,
+            origin: {
+              kind: "plugin",
+              pluginId: "secrets",
+              rendererId: "secret-request",
+            },
+            payload: { kind: "plugin", title: "Add secrets" },
+            resolution: { kind: "plugin_submitted" },
+          },
+        },
+        meta: { id: "event-2", seq: 2, createdAt: 2 },
+      },
+    ]);
+    expect(rows.filter((row) => row.kind === "work")).toEqual([]);
+    expect(collectSystemRows(rows)).toEqual([]);
+  });
+
+  it("suppresses the legacy plugin interaction lifecycle operations", () => {
     const rows = buildTimelineRows([
       systemOperationEvent({
         message: "Plugin interaction lifecycle changed",
@@ -2375,96 +2622,33 @@ describe("buildThreadTimelineFromEvents", () => {
     },
   );
 
-  it("suppresses low-value ToolSearch rows", () => {
-    const rows = buildTimelineRows([
-      turnStartedEvent({ seq: 0 }),
-      toolCallItemEvent({
-        seq: 1,
-        tool: "ToolSearch",
-        toolArgs: { query: "select:TodoWrite", max_results: 1 },
-        type: "item/started",
-      }),
-      toolCallItemEvent({
-        result: "Matched tools: TodoWrite",
-        seq: 2,
-        tool: "ToolSearch",
-        toolArgs: { query: "select:TodoWrite", max_results: 1 },
-        type: "item/completed",
-      }),
-    ]);
-
-    expect(collectToolRows(rows)).toEqual([]);
-  });
-
-  it.each(["TaskCreate", "TaskGet", "TaskList", "TaskUpdate"])(
-    "suppresses pending and completed %s rows",
+  it.each(["ToolSearch", "TaskCreate", "TaskUpdate", "AskUserQuestion"])(
+    "keeps a bare %s tool row: suppression comes from the bridge's presentation, not a name table",
     (tool) => {
+      // The bridges mark these low-value calls `suppress` in their
+      // presentation (see plugins/provider-claude-code/src/presentation.ts);
+      // a row persisted without one renders like any other tool call.
       const rows = buildTimelineRows([
         turnStartedEvent({ seq: 0 }),
         toolCallItemEvent({
           seq: 1,
           tool,
-          toolArgs: { subject: "Hidden task tool" },
+          toolArgs: { subject: "Visible without presentation" },
           type: "item/started",
         }),
         toolCallItemEvent({
           result: "ok",
           seq: 2,
           tool,
-          toolArgs: { subject: "Hidden task tool" },
+          toolArgs: { subject: "Visible without presentation" },
           type: "item/completed",
         }),
       ]);
-
-      expect(collectToolRows(rows)).toEqual([]);
-    },
-  );
-
-  it.each(["TaskCreate", "TaskGet", "TaskList", "TaskUpdate"])(
-    "keeps failed %s rows visible",
-    (tool) => {
-      const rows = buildTimelineRows([
-        turnStartedEvent({ seq: 0 }),
-        toolCallItemEvent({
-          result: "Task tool failed",
-          seq: 1,
-          status: "failed",
-          tool,
-          toolArgs: { subject: "Failed task tool" },
-          type: "item/completed",
-        }),
-      ]);
-
       expect(collectToolRows(rows)).toEqual([
-        expect.objectContaining({
-          output: "Task tool failed",
-          status: "error",
-          toolName: tool,
-        }),
+        expect.objectContaining({ status: "completed", toolName: tool }),
       ]);
     },
   );
-
-  it("suppresses the generic AskUserQuestion tool row in favor of the question row", () => {
-    const rows = buildTimelineRows([
-      turnStartedEvent({ seq: 0 }),
-      toolCallItemEvent({
-        seq: 1,
-        tool: "AskUserQuestion",
-        toolArgs: { questions: [{ question: "Which path?" }] },
-        type: "item/started",
-      }),
-      toolCallItemEvent({
-        result: "ok",
-        seq: 2,
-        tool: "AskUserQuestion",
-        toolArgs: { questions: [{ question: "Which path?" }] },
-        type: "item/completed",
-      }),
-    ]);
-
-    expect(collectToolRows(rows)).toEqual([]);
-  });
 
   it("extracts context-window usage from ordered events", () => {
     expect(

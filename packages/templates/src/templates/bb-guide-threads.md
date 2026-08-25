@@ -191,7 +191,12 @@ Messaging:
 
   Tell steers by default, delivering the message immediately into the active
   turn. Use --mode queue for non-urgent follow-ups that can wait until the agent
-  is free.
+  is free. A target that is awaiting user interaction (an open question or
+  approval) cannot take a prompt; tell then holds the message and delivers it
+  in the requested mode once the interaction settles. That outcome is not a
+  failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
+  or `deferred`. A held message waits for a thread that failed while it was
+  held, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
@@ -231,6 +236,28 @@ Ownership:
   bb thread read [id]                      Mark read
   bb thread unread [id]                    Mark unread
   bb thread reorder-pinned <id> [--after <id>] [--before <id>]
+
+Interactions:
+
+  bb thread interactions list [id]         List a thread's pending and past interactions
+  bb thread interactions show <interaction-id> [id]
+                                           Show one interaction (approval details, questions, or a plugin form's data)
+  bb thread interactions approve <interaction-id> [id]
+                                           Allow a command, file-change, plan, or tool-use approval
+  bb thread interactions deny <interaction-id> [id]
+                                           Deny an approval
+  bb thread interactions grant <interaction-id> [id] --scope turn|session
+                                           Grant a permission interaction
+  bb thread interactions answer <interaction-id> [id] --choice <questionId=value> --text <questionId=text>
+                                           Answer a provider's user question
+  bb thread interactions respond <interaction-id> [id] --value '<json>'
+                                           Answer a plugin form: a plugin's own request, or a request the agent raised through a provider (kind `<pluginId>/<name>`)
+    --self                                 Target current thread (every subcommand)
+    --json                                 Machine-readable output (every subcommand)
+
+  `show` prints a plugin form's `Data` so you can shape the `--value` JSON.
+  A provider's plugin-defined request cannot be cancelled; stop the thread to
+  back out of it.
 
 Queued messages:
 

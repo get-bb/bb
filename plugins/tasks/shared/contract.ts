@@ -158,11 +158,12 @@ const commentSchema = z
 /**
  * Identity of the provider (agent) that authored an agent comment, resolved at
  * read time from the authoring thread's live `providerId`. `name` and
- * `logoUrl` come from the host provider list; `logoUrl` is populated only for
- * providers that serve a logo asset (custom ACP agents) — built-in providers
- * carry a null `logoUrl` and the UI renders a bundled brand glyph keyed by
- * `id`. `name` falls back to the raw provider id when the provider is no longer
- * installed. See `commentProviderSchema` usages in `displayCommentSchema`.
+ * `logoUrl` come from the host provider list; `logoUrl` is the logo the
+ * provider's plugin declared (every provider bb ships declares one), drawn
+ * as a currentColor mask, and null for a provider that declared none — the
+ * UI then shows the generic agent glyph. `name` falls back to the raw
+ * provider id when the provider is no longer installed. See
+ * `commentProviderSchema` usages in `displayCommentSchema`.
  */
 const commentProviderSchema = z
   .object({

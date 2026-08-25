@@ -12,9 +12,7 @@ import type {
   ProviderCliStatus,
 } from "@bb/host-daemon-contract";
 import type { ProjectResponse } from "@bb/server-contract";
-import { ClaudeIcon } from "../src/components/icons/ClaudeIcon";
-import { OpenAiIcon } from "../src/components/icons/OpenAiIcon";
-import { PiIcon } from "../src/components/icons/PiIcon";
+import { getProviderIconInfo } from "../src/lib/provider-icon";
 import type { PickerOption } from "../src/components/pickers/OptionPicker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
@@ -114,10 +112,21 @@ export function makeAttachmentsConfig(
 // need to pre-format.
 // ---------------------------------------------------------------------------
 
+// Core vendors no brand marks (they come from the provider plugins' declared
+// logos), so stories draw each provider through a declared host glyph.
+function storyProviderIcon(providerId: string, glyph: string) {
+  return getProviderIconInfo(providerId, { logoUrl: null, icon: { glyph } })
+    ?.icon;
+}
+
 export const STORY_PROVIDER_OPTIONS: readonly PickerOption<string>[] = [
-  { value: "codex", label: "Codex", icon: OpenAiIcon },
-  { value: "claude-code", label: "Claude Code", icon: ClaudeIcon },
-  { value: "pi", label: "Pi", icon: PiIcon },
+  { value: "codex", label: "Codex", icon: storyProviderIcon("codex", "Code") },
+  {
+    value: "claude-code",
+    label: "Claude Code",
+    icon: storyProviderIcon("claude-code", "Sparkles"),
+  },
+  { value: "pi", label: "Pi", icon: storyProviderIcon("pi", "Zap") },
 ];
 
 export const STORY_CODEX_MODELS: readonly PickerOption<string>[] = [

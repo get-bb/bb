@@ -214,6 +214,23 @@ export const sendMessageRequestSchema = z.object({
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
+/**
+ * How a `send` request was taken:
+ * - `sent`: dispatched now (a new turn or a steer into the active turn).
+ * - `queued`: placed in the thread queue; it sends when the thread is next idle.
+ * - `deferred`: the thread awaits user interaction, which a prompt cannot
+ *   interrupt. The server holds the message and delivers it in the requested
+ *   mode as soon as the interaction settles.
+ */
+export const sendMessageDeliverySchema = z.enum(["sent", "queued", "deferred"]);
+export type SendMessageDelivery = z.infer<typeof sendMessageDeliverySchema>;
+
+export const sendMessageResponseSchema = z.object({
+  ok: z.literal(true),
+  delivery: sendMessageDeliverySchema,
+});
+export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
+
 export const editMessageRequestSchema = sendMessageRequestSchema
   .omit({ mode: true })
   .extend({

@@ -21,9 +21,9 @@ Any mounted plugin component can use
 same plugin's registered thread-panel actions; it returns false when the
 current surface has no thread side panel.
 
-Use `experimental_UrlLink` for a real anchor that applies BB's current
+Use `UrlLink` for a real anchor that applies BB's current
 in-app/external-browser preference on ordinary HTTP(S) activation, or
-`useBbNavigate().experimental_openUrl(url)` for a button or menu. Internal app
+`useBbNavigate().openUrl(url)` for a button or menu. Internal app
 routes, modifier clicks, explicit anchor targets, and unsupported schemes stay
 browser-owned. A `_blank` or named target preserves supplied `rel` tokens but
 adds `noopener noreferrer` unless `rel` explicitly contains `opener`, so a
@@ -44,7 +44,7 @@ the current host accepted the intent. Targets never infer an ambient workspace.
 The frontend harness records both methods and accepts `openFilePreview` and
 `openFileExternally` behavior options.
 
-A nav panel's `experimental_fixedTabs` entries must include the containing nav
+A nav panel's `fixedTabs` entries must include the containing nav
 panel's `id` as `panelId`; each entry is also a stable reference to that
 plugin's own tab. Give a targeted tab an `experimental_target.validate` type guard, call
 `experimental_useAppPanel().openFixedTab({ surface: { kind:

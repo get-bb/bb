@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   systemErrorEventDataSchema,
+  systemInteractionLifecycleEventDataSchema,
   systemPermissionGrantLifecycleEventDataSchema,
   systemLegacyUserMessageEventDataSchema,
   systemOperationEventDataSchema,
@@ -499,10 +500,6 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     server: z.string().optional(),
     tool: z.string(),
     arguments: z.record(z.string(), z.unknown()).optional(),
-    /** Server-enriched labels for a native plugin tool's timeline row. */
-    statusLabels: z
-      .object({ pending: z.string(), completed: z.string() })
-      .optional(),
     status: threadEventItemStatusSchema,
     result: z.unknown().optional(),
     error: z.string().optional(),
@@ -510,8 +507,7 @@ export const threadEventItemSchema = z.discriminatedUnion("type", [
     truncation: threadEventItemTruncationSchema.optional(),
     /**
      * The escape hatch for tools with no core kind: the bridge says how the
-     * row reads. Supersedes the server-enriched `statusLabels` when both are
-     * present (WS3 deletes `statusLabels`).
+     * row reads (label, glyph, headline, suppression).
      */
     ...itemPresentationField,
     parentToolCallId: z.string().optional(),
@@ -931,6 +927,12 @@ const unscopedSystemEventSchema = z.discriminatedUnion("type", [
     .merge(systemOperationEventDataSchema),
   z
     .object({
+      type: z.literal("system/interaction/lifecycle"),
+      threadId: z.string(),
+    })
+    .merge(systemInteractionLifecycleEventDataSchema),
+  z
+    .object({
       type: z.literal("system/permissionGrant/lifecycle"),
       threadId: z.string(),
     })
@@ -1013,6 +1015,44 @@ export const threadEventSchema = rejectLegacyClientRequestSequenceSchema.pipe(
 );
 export type ThreadEvent = z.infer<typeof threadEventSchema>;
 export type ThreadEventType = ThreadEvent["type"];
+
+/**
+ * The events that carry a full item snapshot (`event.item`, presentation
+ * included): the turn-scoped open/close pair and the thread-scoped
+ * progress/terminal snapshots of background delegations and tasks. A rule
+ * over an item's fields — its presentation glyph, its payload — has to look
+ * at all six, not only `item/started` and `item/completed`: the assembler
+ * stamps the close's presentation on the thread-scoped terminal snapshot,
+ * so a glyph that never appears on the turn-scoped pair still persists.
+ */
+export type ThreadEventWithItem = Extract<
+  ThreadEvent,
+  {
+    type:
+      | "item/started"
+      | "item/completed"
+      | "item/delegation/progress"
+      | "item/delegation/completed"
+      | "item/backgroundTask/progress"
+      | "item/backgroundTask/completed";
+  }
+>;
+
+export function isThreadEventWithItem(
+  event: ThreadEvent,
+): event is ThreadEventWithItem {
+  switch (event.type) {
+    case "item/started":
+    case "item/completed":
+    case "item/delegation/progress":
+    case "item/delegation/completed":
+    case "item/backgroundTask/progress":
+    case "item/backgroundTask/completed":
+      return true;
+    default:
+      return false;
+  }
+}
 export const threadEventTypeValues = [
   ...providerEventTypeValues,
   ...systemEventTypeValues,

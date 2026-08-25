@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  experimental_UrlLink as UrlLink,
+  UrlLink as UrlLink,
   useBbNavigate,
   useRpc,
 } from "@get-bb/plugin-sdk/app";

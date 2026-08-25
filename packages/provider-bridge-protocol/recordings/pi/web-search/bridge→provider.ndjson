@@ -1,1 +1,6 @@
-{"ts":1787279445965,"run":1787275055276,"seq":1383,"dir":"bridge→provider","line":"{\"method\":\"prompt\",\"params\":{\"text\":\"Search the web for the current Node.js LTS major version number and reply with just that number. Use your web search or web fetch tool; if you have none, fetch https://nodejs.org/dist/index.json with curl and read the first entry with lts set.\",\"streamingBehavior\":\"followUp\",\"imageCount\":0}}"}
+{"ts":1787347926857,"run":1787347884248,"seq":724,"dir":"bridge→provider","line":"{\"type\":\"get_state\",\"id\":\"bb-1\"}"}
+{"ts":1787347927375,"run":1787347884248,"seq":731,"dir":"bridge→provider","line":"{\"type\":\"prompt\",\"message\":\"Search the web for the current Node.js LTS major version number and reply with just that number. Use your web search or web fetch tool; if you have none, fetch https://nodejs.org/dist/index.json with curl and read the first entry with lts set.\",\"streamingBehavior\":\"followUp\",\"id\":\"bb-2\"}"}
+{"ts":1787347930536,"run":1787347884248,"seq":823,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-3\"}"}
+{"ts":1787347931335,"run":1787347884248,"seq":833,"dir":"bridge→provider","line":"{\"type\":\"get_session_stats\",\"id\":\"bb-4\"}"}
+{"ts":1787347931343,"run":1787347884248,"seq":863,"dir":"bridge→provider","line":"{\"type\":\"abort\",\"id\":\"bb-5\"}"}
+{"ts":1787347931344,"run":1787347884248,"seq":879,"dir":"bridge→provider","line":"{\"bbChannel\":{\"kind\":\"request\",\"id\":\"cr-1\",\"method\":\"leaf\"}}"}

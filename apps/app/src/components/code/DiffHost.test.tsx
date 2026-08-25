@@ -14,6 +14,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
+import { resetDeprecatedAliasWarningsForTests } from "@/lib/plugin-sdk-deprecated-aliases";
 import { parseGitDiffFiles } from "@/components/git-diff/git-diff-parsing";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import {
@@ -112,6 +113,7 @@ beforeEach(() => {
   bbDiff.lastProps = null;
   receivedProps.length = 0;
   resetPluginSlotStoreForTest();
+  resetDeprecatedAliasWarningsForTests();
   applyResolvedCodeTheme(defaultResolvedCodeTheme);
 });
 
@@ -203,7 +205,7 @@ describe("DiffHost", () => {
   });
 
   it("loads BB's renderer only when the replacement delegates", async () => {
-    registerDiffRenderer(({ path, experimental_Original: Original }) =>
+    registerDiffRenderer(({ path, Original }) =>
       path.endsWith(".ts") ? <Original /> : <div>plugin diff</div>,
     );
 
@@ -376,5 +378,65 @@ describe("experimental_Diff", () => {
     expect(screen.getByText("not a patch at all")).toBeDefined();
     expect(screen.queryByTestId("bb-diff")).toBeNull();
     expect(bbDiff.loaded).toBe(false);
+  });
+});
+
+/**
+ * A bundle built against an SDK before 0.4.16 reads `experimental_Original`
+ * (renamed `Original` in 0.4.16). The host passes both for one release.
+ */
+describe("DiffHost experimental_Original alias", () => {
+  it("delegates to BB's renderer through the alias and warns once across renders", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let renders = 0;
+    registerDiffRenderer(({ experimental_Original: LegacyOriginal }) => {
+      renders += 1;
+      return LegacyOriginal === undefined ? (
+        <div>alias missing</div>
+      ) : (
+        <LegacyOriginal />
+      );
+    });
+
+    const { rerender } = render(
+      <DiffHost
+        file={parseFixture()}
+        patchText={PATCH}
+        fullFileContents={null}
+      />,
+    );
+    expect(await screen.findByTestId("bb-diff")).toBeDefined();
+    expect(bbDiff.lastProps?.view).toBe("unified");
+
+    rerender(
+      <DiffHost
+        file={parseFixture()}
+        patchText={PATCH}
+        fullFileContents={null}
+        view="split"
+      />,
+    );
+    expect(await screen.findByText("bb diff split/scroll")).toBeDefined();
+    expect(renders).toBe(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      "experimental_Original is deprecated; use Original. Removed in bb 0.42",
+    );
+  });
+
+  it("never warns for a renderer that reads Original", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    registerDiffRenderer(({ Original }) => <Original />);
+
+    render(
+      <DiffHost
+        file={parseFixture()}
+        patchText={PATCH}
+        fullFileContents={null}
+      />,
+    );
+
+    expect(await screen.findByTestId("bb-diff")).toBeDefined();
+    expect(warn).not.toHaveBeenCalled();
   });
 });

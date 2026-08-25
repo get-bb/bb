@@ -10,8 +10,6 @@ const commitMessageSchema = Type.Object({
   message: Type.String({ minLength: 1 }),
 });
 
-type CommitMessageGenerationDeps = LoggedWorkSessionDeps;
-
 interface GenerateCommitMessageArgs {
   diffDescription: string;
   shortstat: string;
@@ -20,7 +18,7 @@ interface GenerateCommitMessageArgs {
 }
 
 export async function generateCommitMessage(
-  deps: CommitMessageGenerationDeps,
+  deps: LoggedWorkSessionDeps,
   args: GenerateCommitMessageArgs,
 ): Promise<string | null> {
   const prompt = renderTemplate("generateCommitMessage", {

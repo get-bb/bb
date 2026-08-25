@@ -1,11 +1,5 @@
 import { expect, it } from "vitest";
-import {
-  checkRecordedCellReplay,
-  formatConformanceReport,
-  RECORDED_CONFORMANCE_CELLS,
-} from "@bb/provider-bridge-protocol/conformance";
-import { replayRecordedCells } from "@bb/provider-bridge-protocol/testing";
-import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/testing";
+import { runFirstPartyRecordedConformance } from "@bb/provider-bridge-protocol/testing";
 
 /**
  * Recorded-traffic conformance for the claude-code bridge: every committed recording
@@ -17,25 +11,11 @@ import { createBridgeDeltaEventCollector } from "@bb/provider-bridge-protocol/te
  * day of the recording (see each cell's manifest.json for the version).
  */
 it("reproduces every recorded matrix cell", async () => {
-  const replays = await replayRecordedCells({
+  const run = await runFirstPartyRecordedConformance({
     servesProvider: (providerId) => providerId === "claude-code",
-    cells: RECORDED_CONFORMANCE_CELLS,
-    createAssembler: (providerId) => {
-      const collector = createBridgeDeltaEventCollector(providerId);
-      return { assembleMessage: (message) => collector.assembleMessage(message) };
-    },
-    timeoutMs: 60_000,
-    onStderr: (text) => process.stderr.write(`[bridge] ${text}`),
+    label: "claude-code",
   });
-  expect(replays.length).toBeGreaterThan(0);
-
-  const results = replays.flatMap((replay) => checkRecordedCellReplay(replay));
-  const report = { results, passed: results.every((result) => result.status === "pass") };
-  console.info(`claude-code recorded conformance:\n${formatConformanceReport(report)}`);
-
-  expect(
-    report.results
-      .filter((result) => result.status !== "pass")
-      .map((result) => `${result.id}: ${result.detail}`),
-  ).toEqual([]);
+  expect(run.cells.length).toBeGreaterThan(0);
+  console.info(run.report);
+  expect(run.failures).toEqual([]);
 }, 240_000);

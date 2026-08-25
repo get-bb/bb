@@ -204,6 +204,23 @@ export function useScrollToSearchedMessage(
   const olderLoadAttemptKeyRef = useRef<string | null>(null);
   const locationKeyRef = useRef(location.key);
   locationKeyRef.current = location.key;
+  // The follow-up reveal timers outlive the effect run that scheduled them on
+  // purpose (a rows change inside the settle window must not cancel them), but
+  // not the component: a reveal firing after unmount has nothing to reveal and
+  // touches a document the owner may already have torn down.
+  const pendingRevealTimersRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    const pendingRevealTimers = pendingRevealTimersRef.current;
+    return () => {
+      for (const timer of pendingRevealTimers) {
+        window.clearTimeout(timer);
+      }
+      pendingRevealTimers.clear();
+      // A StrictMode remount re-runs the reveal effect; let it handle the
+      // location key again instead of finding the key already handled.
+      handledKeyRef.current = null;
+    };
+  }, []);
   const target = readSearchMessageTarget(location.state);
   const targetSeq = target?.seq ?? null;
   const targetThreadId = target?.threadId ?? null;
@@ -287,10 +304,18 @@ export function useScrollToSearchedMessage(
       }
     };
 
+    const scheduleReveal = (delayMs: number) => {
+      const timer = window.setTimeout(() => {
+        pendingRevealTimersRef.current.delete(timer);
+        revealTarget();
+      }, delayMs);
+      pendingRevealTimersRef.current.add(timer);
+    };
+
     // Reveal after initial layout and again after idle placeholder correction.
     const frame = requestAnimationFrame(revealTarget);
-    window.setTimeout(revealTarget, 320);
-    window.setTimeout(revealTarget, POST_WINDOW_SETTLE_REVEAL_MS);
+    scheduleReveal(320);
+    scheduleReveal(POST_WINDOW_SETTLE_REVEAL_MS);
     return () => {
       cancelAnimationFrame(frame);
     };

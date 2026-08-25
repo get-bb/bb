@@ -8,7 +8,9 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import { hostsQueryKey } from "./queries/query-keys";
+import type { ProviderModelCatalogScope } from "@bb/domain";
+import type { QueryClient } from "@tanstack/react-query";
+import { hostsQueryKey, systemProvidersQueryKey } from "./queries/query-keys";
 import { getProjectScopedStorageKey } from "@/lib/project-scoped-storage";
 import { useThreadCreationOptions } from "./useThreadCreationOptions";
 import {
@@ -49,6 +51,36 @@ function readyProviderStates(providerId: string): SystemProviderStatesResponse {
   };
 }
 
+/**
+ * Puts one provider's declared catalog scope in the cache. Routing reads the
+ * scope from a roster, so a test that asserts on routing must declare it the
+ * way a plugin would rather than rely on the provider's id.
+ */
+function seedDeclaredCatalogScope(
+  queryClient: QueryClient,
+  providerId: string,
+  modelCatalogScope: ProviderModelCatalogScope,
+): void {
+  const template = executionOptionsResponse().providers[0];
+  if (template === undefined) {
+    throw new Error("fixture has no provider to clone");
+  }
+  queryClient.setQueryData(
+    systemProvidersQueryKey({
+      capability: null,
+      environmentId: null,
+      hostId: null,
+    }),
+    [
+      {
+        ...template,
+        id: providerId,
+        capabilities: { ...template.capabilities, modelCatalogScope },
+      },
+    ],
+  );
+}
+
 /** A last-known provider list that includes codex beside the fixture provider. */
 function rememberedProviders() {
   const base = executionOptionsResponse().providers;
@@ -56,7 +88,16 @@ function rememberedProviders() {
   if (template === undefined) {
     throw new Error("execution-options fixture has no provider");
   }
-  return [{ ...template, id: "codex", displayName: "Codex" }, ...base];
+  // The mark is the plugin's declared logo, served by the host.
+  return [
+    {
+      ...template,
+      id: "codex",
+      displayName: "Codex",
+      logoUrl: "/api/v1/system/providers/codex/logo",
+    },
+    ...base,
+  ];
 }
 
 function executionOptionsResponse(): SystemExecutionOptionsResponse {
@@ -64,12 +105,11 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
     providers: [
       {
         id: GLOBAL_PROVIDER_ID,
+        pluginId: `provider-${GLOBAL_PROVIDER_ID}`,
         displayName: "Global Provider",
         logoUrl: null,
         available: true,
-        experimental_providerHealth: true,
-        experimental_providerUsage: true,
-        experimental_providerInstallation: false,
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [
           { kind: "skills", trigger: "/" },
           {
@@ -84,17 +124,17 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
           supportsNativeUserQuestion: true,
           supportsFork: true,
           supportsSessionRewind: true,
+          modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
       },
       {
         id: PROJECT_PROVIDER_ID,
+        pluginId: `provider-${PROJECT_PROVIDER_ID}`,
         displayName: "Project Provider",
         logoUrl: null,
         available: true,
-        experimental_providerHealth: true,
-        experimental_providerUsage: true,
-        experimental_providerInstallation: false,
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [{ kind: "skills", trigger: "/" }],
         capabilities: {
           supportsThreadArchive: true,
@@ -103,6 +143,7 @@ function executionOptionsResponse(): SystemExecutionOptionsResponse {
           supportsNativeUserQuestion: true,
           supportsFork: true,
           supportsSessionRewind: true,
+          modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
       },
@@ -182,12 +223,11 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
     providers: [
       {
         id: "claude-code",
+        pluginId: "provider-claude-code",
         displayName: "Claude Code",
         logoUrl: null,
         available: true,
-        experimental_providerHealth: true,
-        experimental_providerUsage: true,
-        experimental_providerInstallation: false,
+        maintenance: { health: true, usage: true, installation: false },
         composerActions: [],
         capabilities: {
           supportsThreadArchive: true,
@@ -196,6 +236,7 @@ function claudeExecutionOptionsResponse(): SystemExecutionOptionsResponse {
           supportsNativeUserQuestion: true,
           supportsFork: true,
           supportsSessionRewind: true,
+          modelCatalogScope: "workspace",
           permissionModes: ["accept-edits", "auto", "full"],
         },
       },
@@ -325,6 +366,7 @@ describe("useThreadCreationOptions", () => {
           {
             ...templateProvider,
             id: "codex",
+            pluginId: "provider-codex",
             displayName: "Codex",
             available: false,
           },
@@ -794,7 +836,8 @@ describe("useThreadCreationOptions", () => {
   });
 
   it("routes a host-scoped component-local catalog by the environment's host", async () => {
-    const { wrapper } = createQueryClientTestHarness();
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    seedDeclaredCatalogScope(queryClient, "claude-code", "host");
 
     const { result } = renderHook(
       () =>
@@ -825,8 +868,52 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("keeps a workspace-scoped component-local catalog routed by environment", async () => {
+  it("re-routes to the host once the first probe's own roster declares host scope", async () => {
+    // The cold path, and the only one a component-local surface has: nothing
+    // fetches a provider list, so the scope can be learned only from the
+    // execution-options response this hook itself asked for.
+    const hostScoped = executionOptionsResponse();
+    const [provider] = hostScoped.providers;
+    if (provider === undefined) throw new Error("fixture has no provider");
+    provider.capabilities = {
+      ...provider.capabilities,
+      modelCatalogScope: "host",
+    };
+    vi.mocked(sdk.system.executionOptions).mockResolvedValue(hostScoped);
+
     const { wrapper } = createQueryClientTestHarness();
+    const { result } = renderHook(
+      () =>
+        useThreadCreationOptions({
+          scope: "component-local",
+          environmentId: "env_follow_up",
+          environmentHostId: "host_follow_up",
+          resetKey: "thr_cold_cache",
+          initialProviderId: GLOBAL_PROVIDER_ID,
+          initialModel: "model-a",
+          initialReasoningLevel: "medium",
+          initialPermissionMode: "full",
+        }),
+      { wrapper },
+    );
+
+    // First read: scope unknown, so the workspace-safe route wins.
+    await waitFor(() => {
+      expect(sdk.system.executionOptions).toHaveBeenCalledWith(
+        expect.objectContaining({ environmentId: "env_follow_up" }),
+      );
+    });
+    // That answer taught it the scope; the next read shares the host key.
+    await waitFor(() => {
+      expect(result.current.executionOptionsRouting).toEqual({
+        hostId: "host_follow_up",
+      });
+    });
+  });
+
+  it("keeps a workspace-scoped component-local catalog routed by environment", async () => {
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    seedDeclaredCatalogScope(queryClient, "pi", "workspace");
 
     const { result } = renderHook(
       () =>

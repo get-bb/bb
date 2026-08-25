@@ -14,17 +14,30 @@ import {
   type PendingInteractionApprovalDecision,
   type PendingInteractionApprovalSubject,
   type PendingInteractionGrantedPermissionProfile,
-  type PendingInteractionPayload,
-  type PendingInteractionResolution,
   type PendingInteractionUserQuestionQuestion,
+  type ApprovalInteractionOutcome,
+  type UserQuestionInteractionOutcome,
   type UserQuestionPendingInteractionPayload,
   type UserQuestionPendingInteractionResolution,
-  isApprovalPendingInteractionPayload,
-  isApprovalPendingInteractionResolution,
-  isUserQuestionPendingInteractionPayload,
-  isUserQuestionPendingInteractionResolution,
+  approvalInteractionOutcomeSchema,
+  isApprovalInteractionOutcome,
+  userQuestionInteractionOutcomeSchema,
   ProviderResponseEncodeError,
 } from "@get-bb/plugin-sdk/provider-bridge";
+import { z } from "zod";
+
+/**
+ * The outcomes this bridge can encode: it raises approvals and user
+ * questions only, so the wire resolution is parsed against exactly those
+ * two pairs. A plugin-defined request never originates here.
+ */
+export const claudeInteractionOutcomeSchema = z.union([
+  approvalInteractionOutcomeSchema,
+  userQuestionInteractionOutcomeSchema,
+]);
+export type ClaudeInteractionOutcome =
+  | ApprovalInteractionOutcome
+  | UserQuestionInteractionOutcome;
 import {
   buildClaudePlanRejectionMessage,
   buildClaudeSessionPermissionUpdates,
@@ -297,29 +310,29 @@ function getClaudePermissionUpdateToolName(
     // A plan verdict grants nothing, so it never reaches a session update.
     case "plan":
       return null;
-    // Unsupported until WS5: this bridge raises no tool_use subject yet, so a
+    // This bridge raises generic tools as `permission_grant` (the subject
+    // carries the session grant Claude can apply), never as `tool_use`, so a
     // resolution for one can only be a wiring bug upstream.
     case "tool_use":
       throw new ProviderResponseEncodeError(
-        "tool_use approval subjects are not produced by the Claude bridge until WS5",
+        "tool_use approval subjects are not produced by the Claude bridge",
       );
   }
 }
 
 /**
  * Map a canonical resolution back onto the Claude interactive response the
- * request payload calls for. Throws `ProviderResponseEncodeError` when the
- * resolution kind does not match the payload — the adapter surfaces that as
- * an encode error, the bridge as a denied request.
+ * request payload calls for. The outcome pairs the resolution with the
+ * payload it answers (`providerInteractionOutcomeSchema` parsed it at the
+ * wire), so a user answer never meets an approval subject here. Throws
+ * `ProviderResponseEncodeError` only for an encodable-but-invalid answer
+ * (a session grant with no permissions), which the bridge settles as a
+ * denied request.
  */
-export function buildClaudeInteractiveResponse(args: {
-  payload: PendingInteractionPayload;
-  resolution: PendingInteractionResolution;
-}): ClaudeInteractiveResponse {
-  if (
-    isUserQuestionPendingInteractionPayload(args.payload) &&
-    isUserQuestionPendingInteractionResolution(args.resolution)
-  ) {
+export function buildClaudeInteractiveResponse(
+  args: ClaudeInteractionOutcome,
+): ClaudeInteractiveResponse {
+  if (!isApprovalInteractionOutcome(args)) {
     return {
       kind: "user_question",
       behavior: "allow",
@@ -328,15 +341,6 @@ export function buildClaudeInteractiveResponse(args: {
         args.resolution,
       ),
     };
-  }
-
-  if (
-    !isApprovalPendingInteractionPayload(args.payload) ||
-    !isApprovalPendingInteractionResolution(args.resolution)
-  ) {
-    throw new ProviderResponseEncodeError(
-      "Claude Code interactive response kind does not match the request payload",
-    );
   }
 
   if (args.resolution.decision === "deny") {

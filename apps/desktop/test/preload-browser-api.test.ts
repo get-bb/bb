@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppCommandId } from "@bb/domain";
 import type {
   BbDesktopApi,
@@ -166,8 +166,15 @@ function emitIpcPayload(args: EmitIpcPayloadArgs): void {
 }
 
 describe("desktop preload browser API", () => {
+  let api: BbDesktopApi;
+
+  // Vitest does not cancel a timed-out test body. Keep module loading in a
+  // hook so a slow transform cannot release stale commands into the next test.
+  beforeEach(async () => {
+    api = await loadPreload();
+  }, 30_000);
+
   it("exposes only the typed browser commands and forwards them over fixed channels", async () => {
-    const api = await loadPreload();
     const attachRequest = {
       tabId: "browser:a",
       url: "http://localhost:5173/",
@@ -305,8 +312,7 @@ describe("desktop preload browser API", () => {
     );
   }, 10_000);
 
-  it("converts zoomed renderer bounds to native window coordinates", async () => {
-    const api = await loadPreload();
+  it("converts zoomed renderer bounds to native window coordinates", () => {
     electronMock.setZoomFactor(1.25);
 
     api.browser.attach({
@@ -340,8 +346,7 @@ describe("desktop preload browser API", () => {
     ]);
   });
 
-  it("validates browser event payloads before notifying renderer listeners", async () => {
-    const api = await loadPreload();
+  it("validates browser event payloads before notifying renderer listeners", () => {
     const states: BbDesktopBrowserState[] = [];
     const openTabs: BbDesktopBrowserOpenTabRequest[] = [];
     const scopedOpenTabs: BbDesktopBrowserScopedOpenTabRequest[] = [];
@@ -506,8 +511,6 @@ describe("desktop preload browser API", () => {
   });
 
   it("routes the log viewer request to main and mirrors its availability", async () => {
-    const api = await loadPreload();
-
     await api.openServerDaemonLogs?.();
     expect(electronMock.invokeCalls).toContain(
       BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL,
@@ -532,9 +535,7 @@ describe("desktop preload browser API", () => {
     expect(api.serverDaemonLogsAvailable).toBe(true);
   });
 
-  it("answers unhandled close-window requests so main closes the window", async () => {
-    await loadPreload();
-
+  it("answers unhandled close-window requests so main closes the window", () => {
     emitIpcPayload({
       channel: BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
       payload: null,

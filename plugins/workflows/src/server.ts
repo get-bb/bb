@@ -139,7 +139,7 @@ export default async function plugin(bb: BbPluginApi) {
 
   bb.agents.registerTool({
     name: "bb_workflow_run",
-    experimental_presentation: {
+    presentation: {
       label: { pending: "Starting workflow", completed: "Started workflow" },
       icon: { glyph: "Workflow" },
     },
@@ -175,7 +175,7 @@ export default async function plugin(bb: BbPluginApi) {
     name: "bb_workflow_result",
     // The structured result is the turn's deliverable; its tool row is
     // bookkeeping beside it, so clients collapse the row by default.
-    experimental_presentation: {
+    presentation: {
       label: {
         pending: "Returning structured result",
         completed: "Returned structured result",

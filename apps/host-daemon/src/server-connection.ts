@@ -146,6 +146,7 @@ export class ServerConnection {
   private session: HostDaemonSessionOpenResponse | null = null;
   private websocket: ReconnectingWebSocketLike | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private lastHeartbeatAcknowledgedAt: number | null = null;
   private lastHeartbeatTickAt: number | null = null;
   private stopped = false;
   private sessionCloseHandler: SessionCloseHandler | undefined;
@@ -608,6 +609,13 @@ export class ServerConnection {
       return;
     }
 
+    if (message.data.type === "heartbeat-ack") {
+      if (this.session !== null) {
+        this.lastHeartbeatAcknowledgedAt = Date.now();
+      }
+      return;
+    }
+
     if (message.data.type === "host-rpc.request") {
       const rpcRequest = message.data;
       void Promise.resolve(this.options.onHostRpcRequest?.(rpcRequest)).catch(
@@ -726,7 +734,9 @@ export class ServerConnection {
       return;
     }
 
-    this.lastHeartbeatTickAt = Date.now();
+    const startedAt = Date.now();
+    this.lastHeartbeatAcknowledgedAt = startedAt;
+    this.lastHeartbeatTickAt = startedAt;
     this.heartbeatInterval = setInterval(() => {
       const session = this.session;
       if (!session) {
@@ -737,12 +747,16 @@ export class ServerConnection {
       if (lastTickAt !== null) {
         const gapMs = now - lastTickAt;
         const thresholdMs = session.leaseTimeoutMs / 2;
-        if (
-          isLikelySystemSuspensionDelay({
-            gapMs,
-            intervalMs: session.heartbeatIntervalMs,
-          })
-        ) {
+        if (gapMs > session.leaseTimeoutMs) {
+          // The timer could not test liveness while it was delayed. Give the
+          // return path one fresh lease regardless of how the gap is logged.
+          this.lastHeartbeatAcknowledgedAt = now;
+        }
+        const resumedAfterSuspension = isLikelySystemSuspensionDelay({
+          gapMs,
+          intervalMs: session.heartbeatIntervalMs,
+        });
+        if (resumedAfterSuspension) {
           this.options.logger.info(
             {
               gapMs,
@@ -772,16 +786,34 @@ export class ServerConnection {
         return;
       }
 
+      const lastAcknowledgedAt = this.lastHeartbeatAcknowledgedAt;
+      if (
+        lastAcknowledgedAt !== null &&
+        now - lastAcknowledgedAt > session.leaseTimeoutMs
+      ) {
+        this.options.logger.warn(
+          {
+            lastAcknowledgedAt,
+            leaseTimeoutMs: session.leaseTimeoutMs,
+            sessionId: session.sessionId,
+          },
+          "Server heartbeat acknowledgements stopped; reconnecting",
+        );
+        this.clearHeartbeat();
+        this.websocket.reconnect(1013, "heartbeat-ack-timeout");
+        return;
+      }
+
       this.sendMessage({ type: "heartbeat" });
     }, this.session.heartbeatIntervalMs);
   }
 
   private clearHeartbeat(): void {
-    if (!this.heartbeatInterval) {
-      return;
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
     }
-    clearInterval(this.heartbeatInterval);
-    this.heartbeatInterval = null;
+    this.lastHeartbeatAcknowledgedAt = null;
     this.lastHeartbeatTickAt = null;
   }
 

@@ -271,7 +271,7 @@ export {
   scopedItemRefKey,
   listStoredThreadProvisioningRowsByProvisioningId,
   listStoredTimelineWindowEventRows,
-  listStoredToolCallRowsByItemIds,
+  listStoredDelegatingItemRowsByItemIds,
   listStoredTurnInputAcceptedRowsByClientRequestIds,
   listStoredTurnRejectedRowsByClientRequestIds,
   listStoredTurnCompletedRowsByTurnIds,
@@ -368,6 +368,18 @@ export {
   setQueuedThreadMessageGroupBoundary,
   updateQueuedThreadMessage,
 } from "./queued-thread-messages.js";
+export {
+  createDeferredThreadMessage,
+  deleteDeferredThreadMessage,
+  deleteDeferredThreadMessagesForThread,
+  listDeferredThreadMessages,
+  listThreadIdsWithDeliverableDeferredThreadMessages,
+  listThreadIdsWithUndeliverableDeferredThreadMessages,
+} from "./deferred-thread-messages.js";
+export type {
+  CreateDeferredThreadMessageInput,
+  DeferredThreadMessageRow,
+} from "./deferred-thread-messages.js";
 export type {
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,
@@ -379,6 +391,8 @@ export {
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
+  DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  DESTROYED_ENVIRONMENT_TTL_MS,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
   truncateCompletedEventItemOutputs,

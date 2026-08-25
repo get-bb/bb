@@ -367,6 +367,44 @@ describe("desktop auto-update service", () => {
     });
   });
 
+  it("holds a downloaded update by skipping re-checks that would tear down its staging", async () => {
+    const updater = new DesktopAutoUpdaterAdapterStub();
+    updater.updateCheckResult = createUpdateCheckResult("0.0.2");
+    let currentTime = Date.parse(checkedAt);
+    const service = createDesktopAutoUpdateService({
+      currentVersion: "0.0.1",
+      enabled: true,
+      forceDevUpdateConfig: false,
+      logger: createLogger(createLoggerMessages()),
+      now: () => currentTime,
+      platform: "macos",
+      updater,
+    });
+
+    await service.checkForUpdates();
+    expect(updater.checkForUpdatesCalls).toBe(1);
+
+    updater.emitUpdateDownloaded(createDownloadedEvent("0.0.2"));
+    await service.checkForUpdates();
+    // Advance past the active-check throttle so this reaches checkForUpdates.
+    currentTime += 16 * 60 * 1000;
+    await service.checkAfterActive();
+
+    // The staged ShipIt install stays untouched: no further checks run and
+    // the info keeps reporting the downloaded update.
+    expect(updater.checkForUpdatesCalls).toBe(1);
+    expect(service.getInfo()).toEqual({
+      downloadState: "downloaded",
+      lastCheckedAt: checkedAt,
+      latestVersion: "0.0.2",
+      pendingVersion: "0.0.2",
+      platform: "macos",
+      updateAvailable: true,
+      updateDownloaded: true,
+      version: "0.0.1",
+    });
+  });
+
   it("does not initialize electron-updater in dev mode without the override", async () => {
     const updater = new DesktopAutoUpdaterAdapterStub();
     const enabled = shouldEnableDesktopAutoUpdate({

@@ -684,6 +684,13 @@ function dropMarketplaceCatalogSchema(db: DbConnection): void {
 }
 
 function dropEventToolNameColumn(db: DbConnection): void {
+  // A rewind before 0104 leaves neither the generated tool-name column nor
+  // the kind-based indexes 0107 replaced it with, so 0104 → 0107 replay from
+  // the same starting point a real database had.
+  db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
+  db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
+  // The same rewind also rewinds the later deferred-message table (0108).
+  db.$client.prepare("DROP TABLE IF EXISTS deferred_thread_messages").run();
   // Generated columns are omitted from table_info but included in table_xinfo.
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")
@@ -708,6 +715,22 @@ function dropEventParentToolCallIdColumn(db: DbConnection): void {
     );
     db.$client
       .prepare("ALTER TABLE events DROP COLUMN parent_tool_call_id")
+      .run();
+  }
+}
+
+/**
+ * Migration 0109 adds the marketplace install-count sidecar column. A rewind
+ * that clears journal rows from before it must drop the column, or migrate()
+ * replays the ADD against a table that already has it.
+ */
+function dropMarketplaceStatsColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(plugin_marketplaces)")
+    .all();
+  if (columns.some((column) => column.name === "stats_json")) {
+    db.$client
+      .prepare("ALTER TABLE plugin_marketplaces DROP COLUMN stats_json")
       .run();
   }
 }
@@ -4060,16 +4083,16 @@ describe("migrate", () => {
       expect(eventIndexNames).toEqual([
         "events_background_task_thread_type_item_sequence_idx",
         "events_completed_item_truncation_idx",
+        "events_delegating_item_lookup_idx",
         "events_environment_idx",
         "events_item_lifecycle_thread_item_sequence_idx",
         "events_parent_tool_call_thread_parent_sequence_idx",
+        "events_plan_steps_thread_sequence_idx",
         "events_thread_sequence_idx",
         "events_thread_state_thread_sequence_idx",
         "events_thread_turn_type_item_sequence_idx",
         "events_thread_type_item_kind_sequence_idx",
         "events_thread_type_sequence_idx",
-        "events_todo_tool_call_thread_tool_sequence_idx",
-        "events_tool_call_parent_lookup_idx",
       ]);
 
       const migrationCreatedAts = db.$client
@@ -5110,6 +5133,7 @@ describe("migrate", () => {
       });
 
       dropEventParentToolCallIdColumn(db);
+      dropMarketplaceStatsColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

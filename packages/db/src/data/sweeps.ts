@@ -3,7 +3,7 @@ import {
   and,
   sql,
   lt,
-  inArray,
+  asc,
 } from "drizzle-orm";
 import { type ThreadEventItemType } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
@@ -11,7 +11,7 @@ import type { DbNotifier } from "../notifier.js";
 import { environments, maintenanceScanCursors } from "../schema.js";
 
 /** Destroyed environments are hard-deleted after 7 days. */
-const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
+export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
 
 /** Closed daemon session rows are retained briefly for debugging/history. */
 export const CLOSED_SESSION_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
@@ -25,6 +25,9 @@ export const COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS = 2 * 1024;
 const COMPLETED_EVENT_OUTPUT_TRUNCATION_CURSOR_VERSION = 1;
 export const DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE = 1_000;
 export const DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE = 250;
+// Each environment delete cascades ON DELETE SET NULL over its events and
+// threads (~0.007 ms/event), so the per-tick budget is environments, not rows.
+export const DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE = 10;
 
 const COMPLETED_EVENT_OUTPUT_TRUNCATION_MARKER =
   "\n\n[... output truncated by retention policy; showing beginning and end ...]\n\n";
@@ -85,6 +88,18 @@ export interface PruneClosedSessionsArgs {
 }
 
 export interface PruneClosedSessionsResult {
+  deleted: number;
+}
+
+export interface PruneDestroyedEnvironmentsArgs {
+  // Compared against `environments.updatedAt`: the table has no destroy
+  // timestamp, and any metadata write (e.g. PATCH /environments/:id) moves
+  // this clock, restarting the retention window for a destroyed row.
+  updatedBefore: number;
+  limit: number;
+}
+
+export interface PruneDestroyedEnvironmentsResult {
   deleted: number;
 }
 
@@ -365,33 +380,42 @@ export function sweepManagedEnvironments(db: DbConnection) {
 export function pruneDestroyedEnvironments(
   db: DbConnection,
   notifier: DbNotifier,
-  now?: number,
-) {
-  const currentTime = now ?? Date.now();
+  args: PruneDestroyedEnvironmentsArgs,
+): PruneDestroyedEnvironmentsResult {
+  if (args.limit <= 0) {
+    return { deleted: 0 };
+  }
+
+  // Oldest first so a backlog drains deterministically and every call makes
+  // progress even when a later batch is cut short.
   const staleEnvironmentIds = db
     .select({ id: environments.id })
     .from(environments)
     .where(
       and(
         eq(environments.status, "destroyed"),
-        lt(environments.updatedAt, currentTime - DESTROYED_ENVIRONMENT_TTL_MS),
+        lt(environments.updatedAt, args.updatedBefore),
       ),
     )
+    .orderBy(asc(environments.updatedAt), asc(environments.id))
+    .limit(args.limit)
     .all()
     .map((environment) => environment.id);
 
-  if (staleEnvironmentIds.length === 0) {
-    return { deleted: 0 };
-  }
-
-  db.delete(environments)
-    .where(inArray(environments.id, staleEnvironmentIds))
-    .run();
+  // `limit` on the SELECT above is what bounds a call: each environment's
+  // ON DELETE SET NULL cascade over its events and threads runs synchronously
+  // inside the DELETE and this loop never yields, so a call costs `limit`
+  // cascades whether they run as one `id IN (...)` statement or one statement
+  // each (a restart backlog with no LIMIT held the event loop for seconds).
+  // One DELETE per environment only keeps each implicit transaction to a
+  // single environment, so a failure mid-batch leaves already-pruned rows
+  // pruned and each notification follows its own commit. Keeping the event
+  // loop responsive across environments is the caller's job: the server sweep
+  // calls this with `limit: 1` and yields between calls.
   for (const environmentId of staleEnvironmentIds) {
+    db.delete(environments).where(eq(environments.id, environmentId)).run();
     notifier.notifyEnvironment(environmentId, ["environment-deleted"]);
   }
 
-  return {
-    deleted: staleEnvironmentIds.length,
-  };
+  return { deleted: staleEnvironmentIds.length };
 }

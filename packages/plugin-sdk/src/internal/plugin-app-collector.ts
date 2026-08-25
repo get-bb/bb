@@ -18,6 +18,7 @@ import type {
   PluginThreadHeaderActionRegistration,
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
+  PluginTimelineRendererRegistration,
 } from "@get-bb/plugin-sdk";
 import {
   collectComposerCustomization,
@@ -28,12 +29,57 @@ import {
   requireOptionalString,
   requireProviderId,
   requireSlotId,
+  requireTimelineRendererKind,
   requireUniqueId,
 } from "./composer-customization-validation.js";
 
 type PluginNavPanelFixedTabRegistration = NonNullable<
-  PluginNavPanelRegistration["experimental_fixedTabs"]
+  PluginNavPanelRegistration["fixedTabs"]
 >[number];
+
+/**
+ * The keys a navPanel registration may carry, pinned to the contract so a
+ * renamed or removed field cannot drift out of this list unnoticed.
+ */
+const NAV_PANEL_REGISTRATION_KEYS: ReadonlySet<string> = new Set(
+  Object.keys({
+    id: true,
+    title: true,
+    icon: true,
+    path: true,
+    component: true,
+    fixedTabs: true,
+    experimental_sidebarAccessory: true,
+    headerContent: true,
+  } satisfies Record<keyof PluginNavPanelRegistration, true>),
+);
+
+/** Old navPanel keys and the names that replaced them (SDK 0.4.16). */
+const RENAMED_NAV_PANEL_KEYS: ReadonlyMap<string, string> = new Map([
+  ["experimental_fixedTabs", "fixedTabs"],
+]);
+
+/**
+ * A plugin built against an SDK before 0.4.16 still passes
+ * `experimental_fixedTabs`. Silently dropping it would leave the panel
+ * without its tabs and no error (accepted-but-ignored fields are forbidden),
+ * so a renamed key fails with its new name and any other stale
+ * `experimental_` key fails as unknown.
+ */
+function rejectStaleNavPanelKeys(kind: string, registration: object): void {
+  for (const key of Object.keys(registration)) {
+    if (NAV_PANEL_REGISTRATION_KEYS.has(key)) continue;
+    const renamedTo = RENAMED_NAV_PANEL_KEYS.get(key);
+    if (renamedTo !== undefined) {
+      throw new Error(
+        `${kind}: "${key}" was renamed to "${renamedTo}" in SDK 0.4.16`,
+      );
+    }
+    if (key.startsWith("experimental_")) {
+      throw new Error(`${kind}: unknown field "${key}"`);
+    }
+  }
+}
 
 /** Validated registrations produced by one plugin app setup execution. */
 export interface CollectedPluginAppRegistrations {
@@ -54,6 +100,7 @@ export interface CollectedPluginAppRegistrations {
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];
+  timelineRenderers: PluginTimelineRendererRegistration[];
   contentScripts: PluginContentScriptRegistration[];
 }
 
@@ -86,6 +133,7 @@ export function collectPluginAppRegistrations(
     messageActions: [],
     commandPaletteActions: [],
     providerIcons: [],
+    timelineRenderers: [],
     contentScripts: [],
   };
   const seenIds = {
@@ -106,6 +154,7 @@ export function collectPluginAppRegistrations(
     messageAction: new Set<string>(),
     commandPaletteAction: new Set<string>(),
     providerIcon: new Set<string>(),
+    timelineRenderer: new Set<string>(),
     contentScript: new Set<string>(),
   };
 
@@ -142,6 +191,7 @@ export function collectPluginAppRegistrations(
         const kind = "slots.navPanel";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.navPanel, id);
+        rejectStaleNavPanelKeys(kind, registration);
         const panelId = id;
         const path = requireNonEmptyString(kind, "path", registration.path);
         if (!PLUGIN_SLOT_ID_PATTERN.test(path)) {
@@ -165,87 +215,78 @@ export function collectPluginAppRegistrations(
             `${kind}: "experimental_sidebarAccessory" must be a React component function when set`,
           );
         }
-        const experimentalFixedTabs: PluginNavPanelFixedTabRegistration[] =
-          (() => {
-            if (registration.experimental_fixedTabs === undefined) return [];
-            if (!Array.isArray(registration.experimental_fixedTabs)) {
+        const fixedTabs: PluginNavPanelFixedTabRegistration[] = (() => {
+          if (registration.fixedTabs === undefined) return [];
+          if (!Array.isArray(registration.fixedTabs)) {
+            throw new Error(`${kind}: "fixedTabs" must be an array when set`);
+          }
+          const seenFixedTabIds = new Set<string>();
+          return registration.fixedTabs.map((value, index) => {
+            const fixedTabKind = `${kind}.fixedTabs[${index}]`;
+            const fixedTab = value as Record<string, unknown> | null;
+            const id = requireSlotId(fixedTabKind, fixedTab?.id);
+            requireUniqueId(fixedTabKind, seenFixedTabIds, id);
+            const layout = fixedTab?.layout;
+            if (
+              layout !== undefined &&
+              layout !== "padded" &&
+              layout !== "flush"
+            ) {
               throw new Error(
-                `${kind}: "experimental_fixedTabs" must be an array when set`,
+                `${fixedTabKind}: "layout" must be "padded" or "flush" when set`,
               );
             }
-            const seenFixedTabIds = new Set<string>();
-            return registration.experimental_fixedTabs.map((value, index) => {
-              const fixedTabKind = `${kind}.experimental_fixedTabs[${index}]`;
-              const fixedTab = value as Record<string, unknown> | null;
-              const id = requireSlotId(fixedTabKind, fixedTab?.id);
-              requireUniqueId(fixedTabKind, seenFixedTabIds, id);
-              const layout = fixedTab?.layout;
-              if (
-                layout !== undefined &&
-                layout !== "padded" &&
-                layout !== "flush"
-              ) {
-                throw new Error(
-                  `${fixedTabKind}: "layout" must be "padded" or "flush" when set`,
-                );
-              }
-              const fixedTabPanelId = requireNonEmptyString(
-                fixedTabKind,
-                "panelId",
-                fixedTab?.panelId,
+            const fixedTabPanelId = requireNonEmptyString(
+              fixedTabKind,
+              "panelId",
+              fixedTab?.panelId,
+            );
+            if (fixedTabPanelId !== panelId) {
+              throw new Error(
+                `${fixedTabKind}: "panelId" must match its containing navPanel id ${JSON.stringify(panelId)}`,
               );
-              if (fixedTabPanelId !== panelId) {
-                throw new Error(
-                  `${fixedTabKind}: "panelId" must match its containing navPanel id ${JSON.stringify(panelId)}`,
-                );
-              }
-              const experimentalTarget = fixedTab?.experimental_target;
-              if (
-                experimentalTarget !== undefined &&
-                (typeof experimentalTarget !== "object" ||
-                  experimentalTarget === null ||
-                  typeof Reflect.get(experimentalTarget, "validate") !==
-                    "function")
-              ) {
-                throw new Error(
-                  `${fixedTabKind}: "experimental_target.validate" must be a function when set`,
-                );
-              }
-              return {
-                id,
-                panelId: fixedTabPanelId,
-                title: requireNonEmptyString(
-                  fixedTabKind,
-                  "title",
-                  fixedTab?.title,
-                ),
-                icon: requireNonEmptyString(
-                  fixedTabKind,
-                  "icon",
-                  fixedTab?.icon,
-                ),
-                component: requireComponent<
-                  PluginNavPanelFixedTabRegistration["component"]
-                >(fixedTabKind, fixedTab?.component),
-                ...(layout === undefined ? {} : { layout }),
-                ...(experimentalTarget === undefined
-                  ? {}
-                  : {
-                      experimental_target:
-                        experimentalTarget as PluginNavPanelFixedTabRegistration["experimental_target"],
-                    }),
-              };
-            });
-          })();
+            }
+            const experimentalTarget = fixedTab?.experimental_target;
+            if (
+              experimentalTarget !== undefined &&
+              (typeof experimentalTarget !== "object" ||
+                experimentalTarget === null ||
+                typeof Reflect.get(experimentalTarget, "validate") !==
+                  "function")
+            ) {
+              throw new Error(
+                `${fixedTabKind}: "experimental_target.validate" must be a function when set`,
+              );
+            }
+            return {
+              id,
+              panelId: fixedTabPanelId,
+              title: requireNonEmptyString(
+                fixedTabKind,
+                "title",
+                fixedTab?.title,
+              ),
+              icon: requireNonEmptyString(fixedTabKind, "icon", fixedTab?.icon),
+              component: requireComponent<
+                PluginNavPanelFixedTabRegistration["component"]
+              >(fixedTabKind, fixedTab?.component),
+              ...(layout === undefined ? {} : { layout }),
+              ...(experimentalTarget === undefined
+                ? {}
+                : {
+                    experimental_target:
+                      experimentalTarget as PluginNavPanelFixedTabRegistration["experimental_target"],
+                  }),
+            };
+          });
+        })();
         collected.navPanels.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           icon: requireNonEmptyString(kind, "icon", registration.icon),
           path,
           component: requireComponent(kind, registration.component),
-          ...(experimentalFixedTabs.length > 0
-            ? { experimental_fixedTabs: experimentalFixedTabs }
-            : {}),
+          ...(fixedTabs.length > 0 ? { fixedTabs } : {}),
           ...(registration.experimental_sidebarAccessory !== undefined
             ? {
                 experimental_sidebarAccessory:
@@ -483,6 +524,15 @@ export function collectPluginAppRegistrations(
         collected.providerIcons.push({
           providerId,
           icon: requireComponent(kind, registration.icon),
+        });
+      },
+      experimental_timelineRenderer(registration) {
+        const kind = "slots.experimental_timelineRenderer";
+        const itemKind = requireTimelineRendererKind(kind, registration?.kind);
+        requireUniqueId(kind, seenIds.timelineRenderer, itemKind);
+        collected.timelineRenderers.push({
+          kind: itemKind,
+          component: requireComponent(kind, registration.component),
         });
       },
     },

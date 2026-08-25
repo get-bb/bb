@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
+import { pluginCliCall } from "@bb/domain/plugin-cli";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
@@ -391,7 +392,7 @@ export function PluginIncludes({ plugin }: { plugin: PluginListItem }) {
         ? [
             {
               key: plugin.cliCommand.name,
-              label: `bb ${plugin.cliCommand.name}`,
+              label: pluginCliCall(plugin.id, plugin.cliCommand.name),
               detail: plugin.cliCommand.summary || undefined,
               mono: true,
             },

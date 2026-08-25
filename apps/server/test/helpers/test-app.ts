@@ -10,10 +10,14 @@ import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
 import { createMachineAuthService } from "../../src/services/machine-auth.js";
 import { createProviderRegistryService } from "../../src/services/providers/provider-registry.js";
-import { resolveAcpAgentCapabilitiesForProviderId } from "../../src/services/system/acp-launch-spec.js";
 import { registerFirstPartyProviders } from "./provider-registry.js";
+import { validatePluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
+import { createProviderNativeRootsCache } from "../../src/services/providers/native-roots.js";
+import { createAiServiceRegistry } from "../../src/services/ai/ai-service-registry.js";
 import {
   createAppVersionService,
   type AppVersionService,
@@ -66,6 +70,8 @@ export async function installTestBuiltinPlugin(
 export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   appVersionService?: AppVersionService;
   terminalCloseTimeoutMs?: number;
+  /** Clock for the plugin-resolved native roots cache; defaults to Date.now. */
+  nativeRootsClock?: () => number;
   /**
    * Start with an EMPTY provider registry. Providers come only from plugin
    * declarations now, so the harness pre-registers the four first-party ones
@@ -74,6 +80,15 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
    * registration collides with the pre-registered copy.
    */
   seedFirstPartyProviders?: boolean;
+  /**
+   * Extra provider registrations, exactly as a plugin would make them. The
+   * ACP plugin registers a user's configured agents this way from its own
+   * settings, so a test that needs one registers it here.
+   */
+  extraProviders?: readonly {
+    declaration: PluginProviderDeclaration;
+    pluginId: string;
+  }[];
 };
 
 export const testLogger = {
@@ -141,6 +156,7 @@ export async function createTestAppHarness(
   const {
     appVersionService,
     terminalCloseTimeoutMs,
+    nativeRootsClock,
     seedFirstPartyProviders = true,
     ...configOverrides
   } = overrides;
@@ -150,11 +166,23 @@ export async function createTestAppHarness(
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const workspaceReadCaches = new WorkspaceReadCaches({ hub });
-  const providerRegistry = createProviderRegistryService({
-    resolveAcpAgentCapabilities: (providerId) =>
-      resolveAcpAgentCapabilitiesForProviderId({ config }, providerId),
-  });
+  const providerRegistry = createProviderRegistryService({});
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
+  const providerNativeRoots = createProviderNativeRootsCache(
+    nativeRootsClock === undefined ? {} : { now: nativeRootsClock },
+  );
+  for (const extra of overrides.extraProviders ?? []) {
+    providerRegistry.register({
+      ...buildPluginProviderRegistration({
+        available: true,
+        pluginId: extra.pluginId,
+        declaration: validatePluginProviderDeclaration(extra.declaration),
+        readSettings: () => ({}),
+      }),
+      pluginId: extra.pluginId,
+      iconNames: new Set<string>(),
+    });
+  }
   if (seedFirstPartyProviders) {
     await registerFirstPartyProviders(providerRegistry, {
       artifacts: pluginHostArtifacts,
@@ -183,7 +211,6 @@ export async function createTestAppHarness(
   const config: ServerRuntimeConfig = {
     appVersion: "0.0.0-test",
     builtinSkillsRootPath: join(dataDir, "builtin-skills"),
-    customAcpAgents: [],
     customModels: [],
     dataDir,
     featureFlags: defaultFeatureFlags,
@@ -219,6 +246,7 @@ export async function createTestAppHarness(
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
+  const aiServices = createAiServiceRegistry();
   const pendingInteractions = new PendingInteractionLifecycle({
     config,
     db,
@@ -228,6 +256,7 @@ export async function createTestAppHarness(
     machineAuth: testMachineAuth,
     providerRegistry,
     pluginHostArtifacts,
+    aiServices,
     skillTreeRegistry,
     telemetry,
     terminalSessions,
@@ -251,6 +280,8 @@ export async function createTestAppHarness(
     pendingInteractions,
     providerRegistry,
     pluginHostArtifacts,
+    providerNativeRoots,
+    aiServices,
     skillTreeRegistry,
     telemetry,
     terminalSessions,

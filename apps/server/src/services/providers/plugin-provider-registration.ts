@@ -14,7 +14,12 @@
  * a registration that carries it invites consumers to read around the
  * projection, and then there are two answers to every capability question.
  */
-import { isPluginOwnedIconPath } from "@bb/domain";
+import {
+  EMPTY_PROVIDER_NATIVE_ROOTS,
+  isNamespacedGlyph,
+  isPluginOwnedIconPath,
+} from "@bb/domain";
+import type { NormalizedPluginProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
 import type {
   AvailableModel,
   ProviderComposerAction,
@@ -36,7 +41,7 @@ import type {
 /**
  * Picker labels for the coarse reasoning ladder. A declaration that gives
  * only the ladder (ids) gets these labels; one that declares
- * `experimental_reasoningLevels` supplies its own. The same labels the app
+ * `reasoningLevels` supplies its own. The same labels the app
  * rendered from its own table before providers declared them.
  */
 const REASONING_LEVEL_LABELS: Readonly<Record<string, string>> = {
@@ -52,7 +57,7 @@ const REASONING_LEVEL_LABELS: Readonly<Record<string, string>> = {
 
 /**
  * The two service tiers BB's execution options carry today. A provider that
- * declares `supportsServiceTier` without `experimental_serviceTiers` gets
+ * declares `supportsServiceTier` without `serviceTiers` gets
  * this pair, which is what the fast-mode toggle offers.
  */
 const DEFAULT_SERVICE_TIERS: readonly ProviderOptionDescriptor[] = [
@@ -75,8 +80,8 @@ function toOptionDescriptors(
 function projectReasoningLevels(
   declaration: PluginProviderDeclaration,
 ): ProviderOptionDescriptor[] {
-  if (declaration.experimental_reasoningLevels !== undefined) {
-    return toOptionDescriptors(declaration.experimental_reasoningLevels);
+  if (declaration.reasoningLevels !== undefined) {
+    return toOptionDescriptors(declaration.reasoningLevels);
   }
   return declaration.capabilities.reasoningLevels.map((level) => ({
     id: level,
@@ -87,8 +92,8 @@ function projectReasoningLevels(
 function projectServiceTiers(
   declaration: PluginProviderDeclaration,
 ): ProviderOptionDescriptor[] | undefined {
-  if (declaration.experimental_serviceTiers !== undefined) {
-    return toOptionDescriptors(declaration.experimental_serviceTiers);
+  if (declaration.serviceTiers !== undefined) {
+    return toOptionDescriptors(declaration.serviceTiers);
   }
   return declaration.capabilities.supportsServiceTier
     ? [...DEFAULT_SERVICE_TIERS]
@@ -99,7 +104,7 @@ function projectExtensionKinds(
   pluginId: string,
   declaration: PluginProviderDeclaration,
 ): ProviderExtensionKinds | undefined {
-  const declared = declaration.experimental_extensionKinds;
+  const declared = declaration.extensionKinds;
   if (declared === undefined) return undefined;
   const kinds: ProviderExtensionKinds = {};
   for (const [name, kind] of Object.entries(declared)) {
@@ -115,7 +120,7 @@ function projectExtensionKinds(
 export function projectFallbackModels(
   declaration: PluginProviderDeclaration,
 ): AvailableModel[] {
-  const fallback = declaration.experimental_models?.fallback ?? [];
+  const fallback = declaration.models?.fallback ?? [];
   return fallback.map((model) => ({
     id: model.id,
     model: model.id,
@@ -135,18 +140,15 @@ export function projectFallbackModels(
 export function buildPluginProviderRegistration(args: {
   available: boolean;
   pluginId: string;
-  declaration: PluginProviderDeclaration;
+  declaration: NormalizedPluginProviderDeclaration;
   /** The owning plugin's current non-secret settings, read per command. */
   readSettings: () => PluginProviderOptionsContext["settings"];
-}): Omit<ProviderRegistration, "source"> {
+}): Omit<ProviderRegistration, "pluginId" | "iconNames"> {
   const { declaration } = args;
   const { capabilities } = declaration;
   // The declaration and `ProviderInfo` share one noun set, so these carry over
   // by name; only `fork` still needs a projection (below).
   const {
-    experimental_providerHealth,
-    experimental_providerUsage,
-    experimental_providerInstallation,
     supportsThreadArchive,
     supportsThreadRename,
     supportsServiceTier,
@@ -174,30 +176,37 @@ export function buildPluginProviderRegistration(args: {
     );
   }
 
-  const strings = declaration.experimental_strings;
+  const strings = declaration.strings;
   const serviceTiers = projectServiceTiers(declaration);
   const extensionKinds = projectExtensionKinds(args.pluginId, declaration);
 
   const info: ProviderInfo = {
     id: declaration.id,
+    pluginId: args.pluginId,
     displayName: declaration.displayName,
-    ...(declaration.experimental_family === undefined
+    ...(declaration.family === undefined
       ? {}
-      : { family: declaration.experimental_family }),
+      : { family: declaration.family }),
     available: args.available,
-    experimental_providerHealth,
-    experimental_providerUsage,
-    experimental_providerInstallation,
+    maintenance: { ...declaration.maintenance },
     // Served by the provider-logo route from the icon byte snapshot on the
     // registration (see registerProvider in plugin-runtime.ts). The raw
     // plugin-assets route serves only branding variants and built bundles, so
-    // declared icon paths are never exposed as URLs directly. A named host
-    // glyph has no bytes, so it gets no URL — the client falls back the same
-    // way it does for a provider with no icon at all.
+    // declared icon paths are never exposed as URLs directly. A plugin
+    // declared icon (`"<pluginId>/<name>"`) is snapshotted the same way and
+    // projects to the same URL. A named host glyph has no bytes, so it gets
+    // no URL and travels by name instead.
     logoUrl:
-      declaration.icon !== undefined && isPluginOwnedIconPath(declaration.icon)
+      declaration.icon !== undefined &&
+      (isPluginOwnedIconPath(declaration.icon) ||
+        isNamespacedGlyph(declaration.icon))
         ? `/api/v1/system/providers/${declaration.id}/logo`
         : null,
+    ...(declaration.icon !== undefined &&
+    !isPluginOwnedIconPath(declaration.icon) &&
+    !isNamespacedGlyph(declaration.icon)
+      ? { icon: { glyph: declaration.icon } }
+      : {}),
     capabilities: {
       supportsThreadArchive,
       supportsThreadRename,
@@ -210,6 +219,10 @@ export function buildPluginProviderRegistration(args: {
       // earlier point.
       supportsFork: capabilities.fork !== "none",
       supportsSessionRewind: capabilities.fork === "checkpoint",
+      // Filled once, at the plugin boundary: the validator normalizes every
+      // declaration before it reaches here, so a second default would only
+      // hide a declaration that skipped it.
+      modelCatalogScope: declaration.models.scope,
     },
     composerActions,
     ...(strings === undefined
@@ -247,10 +260,17 @@ export function buildPluginProviderRegistration(args: {
     bridgeOptions: declaration.experimental_bridgeOptions ?? {},
     // The validators themselves, for the ingest route; clients learn only
     // which kinds exist (`ProviderInfo.extensionKinds`, projected by WS2a).
-    extensionKinds: declaration.experimental_extensionKinds ?? {},
+    extensionKinds: declaration.extensionKinds ?? {},
     visibility: declaration.experimental_visibility ?? "always",
     fallbackModels: projectFallbackModels(declaration),
-    envPassthrough: declaration.experimental_env?.passthrough ?? [],
+    envPassthrough: declaration.env?.passthrough ?? [],
+    // Normalized by the declaration validator; absent means no roots.
+    nativeSkillRoots:
+      declaration.experimental_nativeSkillRoots ?? EMPTY_PROVIDER_NATIVE_ROOTS,
+    nativeCommandRoots:
+      declaration.experimental_nativeCommandRoots ??
+      EMPTY_PROVIDER_NATIVE_ROOTS,
+    resolvesNativeRoots: declaration.experimental_resolvesNativeRoots,
     deriveProviderOptions: (context) =>
       deriveValidatedProviderOptions({
         declaration,

@@ -1,3 +1,4 @@
+import type { AiServiceRegistry } from "../ai/ai-service-registry.js";
 import type { DbConnection } from "@bb/db";
 import type { DynamicTool, Thread } from "@bb/domain";
 import type { HostDaemonConnectTunnelIdentity } from "@bb/host-daemon-contract";
@@ -87,6 +88,14 @@ export interface PluginServiceDeps {
    * tests, which then get a private one.
    */
   pluginHostArtifacts?: PluginHostArtifactRegistry;
+  /** The AI services plugins serve (`bb.experimental_aiServices.register`). */
+  aiServices: AiServiceRegistry;
+  /**
+   * Fired after a plugin's effective settings values changed and its own
+   * `onChange` listeners ran. Server-side caches keyed by plugin settings
+   * (plugin-resolved native roots) invalidate here.
+   */
+  onSettingsChanged?: (pluginId: string) => void;
   /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
    * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
@@ -98,7 +107,9 @@ export interface PluginServiceDeps {
   telemetry: TelemetryService;
   pendingInteractions?: Pick<
     import("../interactions/pending-interactions.js").PendingInteractionLifecycle,
-    "requestPluginInteraction" | "interruptPluginInteractions"
+    | "requestPluginInteraction"
+    | "interruptPluginInteractions"
+    | "setPluginDirectory"
   >;
   /** BB data dir: plugin database files and secrets live under <dataDir>/plugins/<id>/. */
   dataDir: string;
@@ -152,6 +163,8 @@ export interface PluginServiceDeps {
     input: unknown;
     hostId: string;
     signal?: AbortSignal;
+    /** The call's own budget; defaults to the common command timeout. */
+    timeoutMs?: number;
     artifact: PluginHostArtifactSnapshot;
   }) => Promise<unknown>;
   /** Stops this plugin's workers on connected hosts during reload/disable. */

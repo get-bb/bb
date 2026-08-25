@@ -733,6 +733,36 @@ describe("collectPluginAppRegistrations", () => {
       /"headerContent" must be a React component/,
     ],
     [
+      "nav panel with the pre-0.4.16 SDK experimental_fixedTabs key",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            experimental_fixedTabs: [],
+          } as never);
+        }),
+      'slots.navPanel: "experimental_fixedTabs" was renamed to "fixedTabs" in SDK 0.4.16',
+    ],
+    [
+      "nav panel with an unknown experimental_ key",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            experimental_badge: Component,
+          } as never);
+        }),
+      'slots.navPanel: unknown field "experimental_badge"',
+    ],
+    [
       "nav panel with a non-component experimental sidebar accessory",
       () =>
         definePluginApp((app) => {

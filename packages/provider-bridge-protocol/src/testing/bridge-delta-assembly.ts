@@ -11,7 +11,6 @@ import {
   THREAD_DELTA_NOTIFICATION_METHOD,
   threadDeltaNotificationParamsSchema,
 } from "../thread-delta.js";
-import { CONFORMANCE_ASSEMBLED_EVENT_METHOD } from "../conformance/types.js";
 import {
   createDeltaAssembler,
   type DeltaAssembler,
@@ -78,28 +77,14 @@ export function assembleCapturedThreadEvents(
 }
 
 /**
- * Map one captured bridge message for the conformance kit's transport: a
- * `thread/delta` notification is assembled (statefully, through the
- * collector's real assembler — hold one collector for the whole run) and each
- * assembled event is re-emitted on the kit's internal assembled-event lane;
- * every other message passes through untouched.
+ * Removed (SDK 0.4.16): the conformance kit assembles `thread/delta` itself.
+ * A transport hands `runBridgeConformance` the raw captured messages
+ * (`CapturedBridgeJsonRpcOutput.takeMessages`) and the run names its
+ * `providerId`; this stub stays one release so a suite written against the
+ * old transport shape fails with the replacement named, not a missing export.
  */
-export function toConformanceMessages(
-  message: CapturedBridgeNotification,
-  collector: BridgeDeltaEventCollector,
-): unknown[] {
-  if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
-    return [message];
-  }
-  const threadId =
-    typeof (message.params as { threadId?: unknown } | undefined)?.threadId ===
-    "string"
-      ? (message.params as { threadId: string }).threadId
-      : "";
-  return collector.assembleMessage(message).map((event) => ({
-    jsonrpc: "2.0" as const,
-    method: CONFORMANCE_ASSEMBLED_EVENT_METHOD,
-    // ThreadEvents are JSON data; the capture type demands JsonValue.
-    params: JSON.parse(JSON.stringify({ threadId, event })) as unknown,
-  }));
+export function toConformanceMessages(): never {
+  throw new Error(
+    "experimental_toConformanceMessages was removed: experimental_runBridgeConformance assembles thread/delta itself. Hand it a transport whose takeMessages returns the raw captured messages (CapturedBridgeJsonRpcOutput.takeMessages) and pass the bridge's providerId.",
+  );
 }

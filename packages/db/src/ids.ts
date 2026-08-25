@@ -50,6 +50,10 @@ export function createQueuedThreadMessageId(): string {
   return createId("qmsg");
 }
 
+export function createDeferredThreadMessageId(): string {
+  return createId("dmsg");
+}
+
 export function createQueuedThreadMessageClaimToken(): string {
   return createId("qclaim");
 }

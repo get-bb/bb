@@ -187,13 +187,15 @@ export function onDaemonSocketMessage(
         });
         return;
       }
-      if (result.data.type !== "heartbeat") {
-        deps.terminalSessions.handleDaemonTerminalMessage({
-          hostId: args.hostId,
-          message: result.data,
-          sessionId: args.sessionId,
-        });
+      if (result.data.type === "heartbeat") {
+        args.socket.send(JSON.stringify({ type: "heartbeat-ack" }));
+        return;
       }
+      deps.terminalSessions.handleDaemonTerminalMessage({
+        hostId: args.hostId,
+        message: result.data,
+        sessionId: args.sessionId,
+      });
     });
   } catch (error) {
     if (error instanceof ApiError && error.body.code === "inactive_session") {

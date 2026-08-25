@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { extname, resolve } from "node:path";
-import { formatCustomAcpAgentProviderId } from "@bb/config/bb-app-managed-config";
 import {
   getAppSettings,
   getAppKeybindingOverrides,
@@ -27,6 +24,7 @@ import {
   type PublicApiSchema,
 } from "@bb/server-contract";
 import type { Hono } from "hono";
+import { pluginImageResponse } from "./plugin-image-response.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../types.js";
 import type { PluginService } from "../services/plugins/plugin-service.js";
 import { ApiError } from "../errors.js";
@@ -54,12 +52,6 @@ import {
 } from "../services/skills/global-skill-install.js";
 import { DEFAULT_APP_KEYBINDINGS } from "../services/system/app-keybindings.js";
 import { resolvePrimaryHostId } from "../services/hosts/primary-host.js";
-
-const CUSTOM_ACP_LOGO_CONTENT_TYPES = {
-  ".png": "image/png",
-  ".svg": "image/svg+xml",
-  ".webp": "image/webp",
-} as const;
 
 interface SystemConfigRequest {
   url: string;
@@ -185,6 +177,17 @@ export function registerSystemRoutes(
           ? null
           : deps.hub.getDaemonPlatformForHost(primaryHostId),
       voiceTranscriptionEnabled: resolveVoiceTranscriptionEnabled(deps),
+      aiServices: {
+        inference: deps.config.inferenceModel,
+        inferenceFallback: deps.config.inferenceFallbackModel,
+        transcription: deps.config.transcriptionModel,
+        services: deps.aiServices.list().map((service) => ({
+          id: service.id,
+          displayName: service.displayName,
+          kinds: [...service.kinds],
+          pluginId: service.pluginId,
+        })),
+      },
       dataDir: deps.config.dataDir,
     };
   }
@@ -285,56 +288,17 @@ export function registerSystemRoutes(
   get(routes.providerLogo, async (context) => {
     const providerId = context.req.param("id");
     // Plugin-registered providers serve the icon snapshot captured at
-    // registration; a disabled plugin's registration (and icon) is gone, so
-    // the app falls back to its vendored brand marks.
+    // registration; a disabled plugin's registration (and icon) is gone with
+    // it, and clients draw the display name's initial.
     const registration = deps.providerRegistry.get(providerId);
     if (registration?.icon !== undefined) {
-      return context.body(new Uint8Array(registration.icon.bytes), 200, {
-        "cache-control": "no-store",
-        "content-type": registration.icon.contentType,
-        "x-content-type-options": "nosniff",
-      });
+      return pluginImageResponse(context, registration.icon, "no-store");
     }
-    const agent = deps.config.customAcpAgents.find(
-      (candidate) =>
-        formatCustomAcpAgentProviderId(candidate.id) === providerId,
+    throw new ApiError(
+      404,
+      "provider_logo_not_found",
+      `Provider '${providerId}' has no logo.`,
     );
-    if (agent?.logo === undefined) {
-      throw new ApiError(
-        404,
-        "provider_logo_not_found",
-        `Provider '${providerId}' has no configured logo.`,
-      );
-    }
-
-    const extension = extname(agent.logo).toLowerCase();
-    const contentType =
-      CUSTOM_ACP_LOGO_CONTENT_TYPES[
-        extension as keyof typeof CUSTOM_ACP_LOGO_CONTENT_TYPES
-      ];
-    if (contentType === undefined) {
-      throw new ApiError(
-        415,
-        "unsupported_provider_logo",
-        `Provider '${providerId}' has an unsupported logo format.`,
-      );
-    }
-
-    let bytes: Buffer;
-    try {
-      bytes = await readFile(resolve(deps.config.dataDir, agent.logo));
-    } catch {
-      throw new ApiError(
-        404,
-        "provider_logo_not_found",
-        `Provider '${providerId}' logo file was not found.`,
-      );
-    }
-    return context.body(new Uint8Array(bytes), 200, {
-      "cache-control": "no-store",
-      "content-type": contentType,
-      "x-content-type-options": "nosniff",
-    });
   });
 
   get(routes.providerStates, async (context, query) =>

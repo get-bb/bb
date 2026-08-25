@@ -1,8 +1,9 @@
-import type { AvailableModel } from "@bb/domain";
+import type { AvailableModel, ProviderInfo } from "@bb/domain";
 import type { SystemExecutionOptionsResponse } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import {
   buildPermissionModeOptions,
+  buildProviderOptions,
   buildReasoningOptions,
   formatModelLabel,
   resolveModelSelection,
@@ -201,6 +202,42 @@ describe("permission modes", () => {
         ceiling: "accept-edits",
       }),
     ).toBe("full");
+  });
+});
+
+describe("buildProviderOptions", () => {
+  it("carries the declared glyph beside the logo so the picker can draw either", () => {
+    const base: Omit<ProviderInfo, "id" | "displayName" | "logoUrl"> = {
+      pluginId: "provider-test",
+      available: true,
+      maintenance: { health: false, usage: false, installation: false },
+      capabilities: {
+        supportsThreadArchive: false,
+        supportsThreadRename: false,
+        supportsServiceTier: false,
+        supportsNativeUserQuestion: false,
+        supportsFork: false,
+        supportsSessionRewind: false,
+        modelCatalogScope: "workspace",
+        permissionModes: ["full"],
+      },
+      composerActions: [],
+    };
+    expect(
+      buildProviderOptions([
+        { ...base, id: "codex", displayName: "Codex", logoUrl: "/logo" },
+        {
+          ...base,
+          id: "echo-agent",
+          displayName: "Echo",
+          logoUrl: null,
+          icon: { glyph: "Zap" },
+        },
+      ]).map(({ value, logoUrl, glyph }) => ({ value, logoUrl, glyph })),
+    ).toEqual([
+      { value: "codex", logoUrl: "/logo", glyph: null },
+      { value: "echo-agent", logoUrl: null, glyph: "Zap" },
+    ]);
   });
 });
 

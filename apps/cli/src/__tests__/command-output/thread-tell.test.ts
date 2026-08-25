@@ -14,7 +14,7 @@ describe("bb thread tell command output", () => {
     registerThreadCommands(program, () => "http://server");
 
   it("bb thread tell --json prints the raw response plus thread id", async () => {
-    const post = vi.fn(async () => ({ ok: true }));
+    const post = vi.fn(async () => ({ ok: true, delivery: "sent" }));
     stubServerApi({ "v1.threads.:id.send.$post": post });
 
     await runCommand(
@@ -27,8 +27,31 @@ describe("bb thread tell command output", () => {
     ).toEqual({
       threadId: "thread-json-tell",
       ok: true,
+      delivery: "sent",
       mode: "steer",
     });
+  });
+
+  it("bb thread tell says when the target is awaiting user interaction and the message is held", async () => {
+    const post = vi.fn(async () => ({ ok: true, delivery: "deferred" }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(["thread", "tell", "thread-blocked", "hello"], register);
+
+    expect(vi.mocked(console.log).mock.calls[0]?.[0]).toBe(
+      "Thread thread-blocked is awaiting user interaction; message held and delivers once the interaction settles",
+    );
+  });
+
+  it("bb thread tell keeps the steered wording for servers that only report ok", async () => {
+    const post = vi.fn(async () => ({ ok: true }));
+    stubServerApi({ "v1.threads.:id.send.$post": post });
+
+    await runCommand(["thread", "tell", "thread-legacy", "hello"], register);
+
+    expect(vi.mocked(console.log).mock.calls[0]?.[0]).toBe(
+      "Thread thread-legacy steered",
+    );
   });
 
   it("bb thread tell --mode queue preserves non-urgent queued delivery", async () => {

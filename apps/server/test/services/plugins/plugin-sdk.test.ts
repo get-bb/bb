@@ -11,6 +11,7 @@ import {
 } from "@bb/db";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type { Logger } from "@bb/logger";
+import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import {
   createPluginService,
   type PluginServiceDeps,
@@ -106,6 +107,7 @@ describe("plugin bb.sdk bind gate", () => {
     disposePluginHost.mockClear();
     pluginHostArtifacts = new PluginHostArtifactRegistry();
     service = createPluginService({
+      aiServices: createAiServiceRegistry(),
       telemetry: createNoopTelemetryService(),
       db,
       pluginHostArtifacts,
@@ -544,7 +546,7 @@ describe("plugin bb.sdk against a running server", () => {
           mode: "auto",
           input: [{ type: "text", text: "Continue", mentions: [] }],
         }),
-      ).resolves.toEqual({ ok: true });
+      ).resolves.toEqual({ ok: true, delivery: "sent" });
       const stopPromise = api.sdk.threads.stop({ threadId: operable.id });
       const stop = await waitForQueuedCommand(
         server,
