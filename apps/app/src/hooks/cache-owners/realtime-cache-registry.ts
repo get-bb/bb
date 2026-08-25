@@ -980,7 +980,9 @@ function dirtyThreadSearchQueries(): QueryKey[] {
  * `events-appended` batches. Re-issuing (and, by default, aborting) the open
  * search request on each 50-100 ms flush can starve it forever on a slow link,
  * so search only goes stale when a turn completes, once per flush, and without
- * cancelling a request in flight. Thread list changes cover the rest.
+ * cancelling a request in flight — a request already running read the index
+ * before the turn settled, so one trailing refetch follows it. Thread list
+ * changes cover the rest.
  */
 function dirtyThreadSearchQueriesForCompletedTurn({
   eventTypes,
@@ -993,10 +995,10 @@ function dirtyThreadSearchQueriesForCompletedTurn({
   if (!flushOnce("thread-search:turn-completed")) {
     return;
   }
-  queryClient.invalidateQueries(
-    { queryKey: threadSearchQueryKeyPrefix() },
-    { cancelRefetch: false },
-  );
+  invalidateQueryKeysWithoutCancelingActiveFetches({
+    queryClient,
+    queryKeys: [threadSearchQueryKeyPrefix()],
+  });
 }
 
 function dirtyThreadTimelineQueries({

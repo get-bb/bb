@@ -506,7 +506,7 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("refreshes an open search once per flush without aborting the request in flight", async () => {
+  it("refreshes an open search once per flush without aborting the request in flight, then once it settles", async () => {
     vi.useFakeTimers();
     const visibility = createFakeVisibility();
     const { effects, queryClient } =
@@ -560,11 +560,26 @@ describe("createRealtimeCacheEffects", () => {
     expect(signals[0]?.aborted).toBe(false);
     expect(searchQueryFn).toHaveBeenCalledTimes(1);
 
+    // That request read the index before the turns completed, and landing
+    // it clears the invalidation: one trailing refetch picks up the newly
+    // indexed content.
     resolveFetches[0]?.({
       active: { results: [], total: 0 },
       archived: { results: [], total: 0 },
     });
     await vi.advanceTimersByTimeAsync(0);
+    expect(searchQueryFn).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(false);
+
+    resolveFetches[1]?.({
+      active: { results: [], total: 0 },
+      archived: { results: [], total: 0 },
+    });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+
     invalidateSpy.mockRestore();
     unsubscribeSearch();
     effects.dispose();
