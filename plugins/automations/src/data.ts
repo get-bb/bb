@@ -248,7 +248,7 @@ function serializeTrigger(trigger: AutomationTrigger): string {
 }
 
 function serializeExecution(execution: AutomationExecution): string {
-  return JSON.stringify(execution);
+  return JSON.stringify(automationExecutionSchema.parse(execution));
 }
 
 export function parseAutomationTrigger(
