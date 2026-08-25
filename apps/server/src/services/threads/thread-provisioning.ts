@@ -11,6 +11,7 @@ import {
 } from "@bb/domain";
 import type { StartedOnBehalfOf } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
+import { settleReprovisionDispatchHolds } from "./dispatch-hold-core.js";
 import {
   appendClientTurnEvent,
   appendPreparedClientTurnRequestedEventWithNotificationInTransaction,
@@ -40,6 +41,7 @@ import {
   rememberActiveThreadProvisionContext,
 } from "./thread-provisioning-active-context.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
+import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
 import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
 
 interface RequestThreadProvisionArgs {
@@ -156,6 +158,15 @@ async function startThreadIfEnvironmentReady(
   if (!workspaceReady.reached) {
     throw new Error("Thread did not reach workspace-ready provisioning state");
   }
+
+  // The workspace exists, so a turn parked by a reprovision is about to replay
+  // below. Settle its tracking hold here rather than after the dispatch: the
+  // wait is over at this line, and the `run.succeeded` branch below returns
+  // without dispatching anything. A cold start has no such hold and no-ops.
+  settleReprovisionDispatchHolds(deps, {
+    releaseKind: "owner",
+    threadId: args.thread.id,
+  });
 
   if (
     args.context.request.seedWithoutRun &&
@@ -377,4 +388,28 @@ export async function advanceThreadProvisioning(
   await deps.lifecycleDedupers.threadProvisionAdvance.run(args.threadId, () =>
     advanceThreadProvisioningOnce(deps, args),
   );
+}
+
+/**
+ * Drives provisioning off the caller's stack. Creation returns the thread row
+ * before the workspace exists, and a released cold-start hold returns to its
+ * sweep or route the same way, so neither waits on the daemon.
+ */
+export function scheduleThreadProvisioningAdvance(
+  deps: ThreadProvisioningDeps & Pick<AppDeps, "config" | "logger">,
+  context: ThreadProvisionContext,
+  threadId: string,
+): void {
+  void advanceThreadProvisioning(deps, {
+    context,
+    threadId,
+  }).catch((error) => {
+    deps.logger.warn(
+      {
+        threadId,
+        ...runtimeErrorLogFields(deps.config, error),
+      },
+      "Failed to advance thread provisioning",
+    );
+  });
 }

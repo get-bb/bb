@@ -108,6 +108,14 @@ export const createThreadRequestSchema = z
     sourceSeqEnd: z.number().int().nonnegative().optional(),
     startedOnBehalfOf: startedOnBehalfOfSchema.nullable().default(null),
     originKind: threadOriginKindSchema.nullable().default(null),
+    /**
+     * Epoch ms at which this thread's first turn should dispatch. Present ⇒
+     * the thread is created idle with no turn and no environment work, and the
+     * first turn becomes a user-owned dispatch hold that core's timer releases.
+     * Absent ⇒ dispatch now; no hold row is created and creation runs exactly
+     * as it did before holds existed.
+     */
+    holdUntil: z.number().int().nonnegative().optional(),
   })
   .superRefine((value, ctx) => {
     if (value.origin === "plugin" && value.originPluginId === undefined) {
@@ -185,10 +193,31 @@ export const sendMessageRequestSchema = z.object({
   executionInputSources: existingThreadExecutionInputSourcesSchema.optional(),
   mode: sendMessageModeSchema,
   senderThreadId: z.string().min(1).optional(),
+  /**
+   * Epoch ms at which this message should dispatch. Present ⇒ nothing is sent
+   * or queued now; the message becomes a user-owned dispatch hold that core's
+   * timer releases into the normal send path. Absent ⇒ send now, exactly as
+   * before holds existed.
+   */
+  holdUntil: z.number().int().nonnegative().optional(),
 });
 export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
 
-export const sendMessageDeliverySchema = z.enum(["sent", "queued", "deferred"]);
+/**
+ * How a `send` request was taken:
+ * - `sent`: dispatched now (a new turn or a steer into the active turn).
+ * - `queued`: placed in the thread queue; it sends when the thread is next idle.
+ * - `deferred`: the thread awaits user interaction, which a prompt cannot
+ *   interrupt. The server holds the message and delivers it in the requested
+ *   mode as soon as the interaction settles.
+ */
+export const sendMessageDeliverySchema = z.enum([
+  "sent",
+  "queued",
+  "deferred",
+  // Parked in a dispatch hold: nothing runs until the hold releases.
+  "held",
+]);
 export type SendMessageDelivery = z.infer<typeof sendMessageDeliverySchema>;
 
 export const sendMessageResponseSchema = z.object({
@@ -197,8 +226,10 @@ export const sendMessageResponseSchema = z.object({
 });
 export type SendMessageResponse = z.infer<typeof sendMessageResponseSchema>;
 
+// `holdUntil` is deliberately dropped: an edit rewrites a message that has
+// already been dispatched, so there is nothing left to defer.
 export const editMessageRequestSchema = sendMessageRequestSchema
-  .omit({ mode: true })
+  .omit({ mode: true, holdUntil: true })
   .extend({
     operationId: z.string().min(1),
     expectedRequestSequence: z.number().int().nonnegative().optional(),
@@ -352,6 +383,10 @@ export type ThreadSearchResponse = z.infer<typeof threadSearchResponseSchema>;
 export const threadResponseSchema = threadWithRuntimeSchema.extend({
   activeBackgroundAgentCount: z.number().int().nonnegative(),
   canSpawnChild: z.boolean(),
+  // How many dispatches are parked on this thread right now. The count alone
+  // drives the pending-region and thread-row badges; `GET /threads/:id/holds`
+  // supplies the reasons once a surface actually renders them.
+  liveDispatchHoldCount: z.number().int().nonnegative(),
 });
 export type ThreadResponse = z.infer<typeof threadResponseSchema>;
 

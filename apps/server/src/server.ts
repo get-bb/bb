@@ -18,6 +18,7 @@ import { registerThreadSectionRoutes } from "./routes/thread-sections.js";
 import { registerSystemRoutes } from "./routes/system.js";
 import { registerTerminalRoutes } from "./routes/terminals.js";
 import { registerThreadRoutes } from "./routes/threads/index.js";
+import { registerHoldRoutes } from "./routes/holds.js";
 import { registerPluginRoutes } from "./routes/plugins.js";
 import { registerPluginCatalogRoutes } from "./routes/plugin-catalog.js";
 import { registerSkillsRegistryRoutes } from "./routes/skills-registry.js";
@@ -28,6 +29,7 @@ import {
 import { setPluginAgentContributions } from "./services/plugins/plugin-agent-contributions.js";
 import { setPluginThreadEventEmitter } from "./services/plugins/plugin-thread-events.js";
 import { requestDeferredThreadMessageFlush } from "./services/threads/thread-send-request.js";
+import { releaseDispatchHoldsForUnregisteredPlugin } from "./services/threads/dispatch-hold-sweeps.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
 import { registerInternalHostRoutes } from "./internal/hosts.js";
 import { registerInternalInteractiveRequestRoutes } from "./internal/interactive-requests.js";
@@ -563,6 +565,16 @@ export function createApp(
       deps.providerNativeRoots.invalidate(pluginId);
       deps.providerRegistry.forgetAllInstalled();
     },
+    onPluginUnregistered: (pluginId) => {
+      void releaseDispatchHoldsForUnregisteredPlugin(deps, pluginId).catch(
+        (error: unknown) => {
+          deps.logger.warn(
+            { err: error, pluginId },
+            "Failed to release dispatch holds for an unregistered plugin",
+          );
+        },
+      );
+    },
     watchBuiltinPluginSources:
       process.env.BB_MANAGED_DEV_BUILTIN_PLUGIN_HOT_RELOAD === "1",
   });
@@ -598,6 +610,7 @@ export function createApp(
   registerTerminalRoutes(publicApi, deps);
   registerEnvironmentRoutes(publicApi, deps);
   registerThreadRoutes(publicApi, deps);
+  registerHoldRoutes(publicApi, deps);
   registerSystemRoutes(publicApi, deps, pluginService);
   registerPluginCatalogRoutes(publicApi, pluginCatalogService);
   registerPluginRoutes(publicApi, deps, pluginService);

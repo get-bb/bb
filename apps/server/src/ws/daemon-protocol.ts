@@ -5,8 +5,13 @@ import {
 } from "@bb/host-daemon-contract";
 import { ApiError } from "../errors.js";
 import { verifyAuthenticatedDaemon } from "../internal/auth.js";
-import type { AppDeps } from "../types.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../types.js";
 import { runtimeErrorLogFields } from "../services/lib/error-log-fields.js";
+import { deferAfterResponse } from "../services/lib/response-deferral.js";
+import { releaseDispatchHoldsForConnectedHost } from "../services/threads/dispatch-hold-release.js";
 import {
   getInactiveSessionLogFields,
   requireAuthorizedOpenSession,
@@ -68,7 +73,8 @@ export async function validateDaemonWebSocket(
 }
 
 export function onDaemonSocketOpen(
-  deps: Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions">,
+  deps: LoggedPendingInteractionWorkSessionDeps &
+    Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions">,
   args: { hostId: string; sessionId: string; socket: DaemonSocket },
 ): void {
   deps.logger.info(
@@ -80,6 +86,17 @@ export function onDaemonSocketOpen(
   deps.terminalSessions.expireDisconnectedHostTerminals({
     daemonSessionId: args.sessionId,
     hostId: args.hostId,
+  });
+  // Host connectivity derives from the registration above, not from the open
+  // session row, so this is the first moment a dispatch parked as
+  // `core:host-offline` can actually reach the host. Deferred off this stack:
+  // the socket must not wait on a turn dispatching.
+  deferAfterResponse({
+    config: deps.config,
+    context: { hostId: args.hostId },
+    logger: deps.logger,
+    name: "Host-offline dispatch hold release",
+    work: () => releaseDispatchHoldsForConnectedHost(deps, args.hostId),
   });
 }
 

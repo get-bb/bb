@@ -96,7 +96,7 @@ export function threadResponse(
     environmentWorkspaceDisplayKind: _environmentWorkspaceDisplayKind,
     ...thread
   } = threadListEntry(view, now);
-  return { ...thread, activeBackgroundAgentCount: 0, canSpawnChild: true };
+  return { ...thread, activeBackgroundAgentCount: 0, canSpawnChild: true, liveDispatchHoldCount: 0 };
 }
 
 const PROJECT_DEFAULT_EXECUTION_OPTIONS = {

@@ -151,6 +151,12 @@ export function createThreadRecord(
   args: {
     environmentId: string | null;
     request: ThreadCreateServiceRequest;
+    /**
+     * `starting` for a normal create, whose first turn dispatches right away.
+     * `idle` for a held create: nothing is running, nothing is provisioning,
+     * and the first turn waits in a dispatch hold.
+     */
+    status: "starting" | "idle";
   },
 ) {
   const sectionId = args.request.sectionId ?? null;
@@ -171,7 +177,7 @@ export function createThreadRecord(
       originKind: args.request.originKind,
       originPluginId: args.request.originPluginId ?? null,
       visibility: args.request.visibility,
-      status: "starting",
+      status: args.status,
     });
     emitPluginThreadCreated(thread);
     return thread;

@@ -232,7 +232,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
       ),
     ).toEqual({
       displayStatus: "active",
@@ -252,7 +252,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
@@ -274,7 +274,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
       ),
     ).toEqual({
       displayStatus: "host-reconnecting",
@@ -296,7 +296,7 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, now, threadId: "thr_absent", status: "active" },
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
@@ -310,7 +310,12 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now: 1_000, status: "idle" },
+        {
+          environmentHostId: hostId,
+          now: 1_000,
+          threadId: "thr_absent",
+          status: "idle",
+        },
       ),
     ).toEqual({
       displayStatus: "idle",
@@ -324,7 +329,12 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: null, now: 1_000, status: "active" },
+        {
+          environmentHostId: null,
+          now: 1_000,
+          threadId: "thr_absent",
+          status: "active",
+        },
       ),
     ).toEqual({
       displayStatus: "active",

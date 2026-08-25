@@ -6,6 +6,7 @@ import {
   listLatestThreadStateEventRowsByThreadIds,
   listLatestSessionsForHosts,
   listOpenTurnInputAcceptedRowsByThreadIds,
+  listStoredEventRows,
   listStoredClientTurnRequestRowsByKeys,
   type DbConnection,
   type HostDaemonSessionRow,
@@ -33,6 +34,7 @@ import { DAEMON_ACTIVE_WORK_DISCONNECT_GRACE_MS } from "../../constants.js";
 import type { NotificationHub } from "../../ws/hub.js";
 import { resolveProviderPlanCommand } from "../providers/provider-plan-command.js";
 import type { ProviderRegistryService } from "../providers/provider-registry.js";
+import { liveDispatchHoldCountsByThreadId } from "./dispatch-holds.js";
 import { canThreadSpawnChild } from "./thread-parent.js";
 import { toThreadEventWithMeta } from "./timeline.js";
 
@@ -54,10 +56,14 @@ interface ResolveThreadRuntimeStateArgs {
   environmentHostId: string | null;
   now?: number;
   status: ThreadStatus;
+  /** The thread whose first turn is parked in a live hold, for `held`. */
+  threadId: string;
 }
 
 interface ResolveThreadRuntimeStateFromLatestSessionArgs {
   environmentHostId: string | null;
+  /** True when this thread's only pending turn is a live hold. */
+  heldBeforeStart: boolean;
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
@@ -80,6 +86,7 @@ interface ToThreadListEntryResponsesArgs {
 
 interface ToThreadListEntryResponseFromLatestSessionArgs {
   activity: ThreadActivityState;
+  heldBeforeStart: boolean;
   hostConnected: boolean;
   latestSession: HostDaemonSessionRow | null;
   now?: number;
@@ -178,12 +185,55 @@ function toPublicThread(thread: Thread): Thread {
   };
 }
 
+/**
+ * True when the thread is quiescent but a dispatch is parked on it *and* it
+ * has never run a turn — the "held before start" case the `held` display
+ * status exists for. A thread that already has turns and a scheduled follow-up
+ * is genuinely idle; its hold shows in the pending region, not the status.
+ *
+ * The turn lookup only runs for the handful of idle threads that actually have
+ * a live hold, and it stops at the first `client/turn/requested` row.
+ */
+function isThreadHeldBeforeStart(
+  deps: ThreadRuntimeDisplayDeps,
+  args: { liveHoldCount: number; status: ThreadStatus; threadId: string },
+): boolean {
+  if (args.status !== "idle" || args.liveHoldCount === 0) {
+    return false;
+  }
+  return (
+    listStoredEventRows(deps.db, {
+      threadId: args.threadId,
+      types: ["client/turn/requested"],
+      order: "asc",
+      limit: 1,
+    }).length === 0
+  );
+}
+
 export function resolveThreadRuntimeState(
   deps: ThreadRuntimeDisplayDeps,
   args: ResolveThreadRuntimeStateArgs,
 ): ThreadRuntimeState {
+  const heldBeforeStart = isThreadHeldBeforeStart(deps, {
+    liveHoldCount:
+      args.status === "idle"
+        ? (liveDispatchHoldCountsByThreadId(deps, [args.threadId]).get(
+            args.threadId,
+          ) ?? 0)
+        : 0,
+    status: args.status,
+    threadId: args.threadId,
+  });
   if (args.status !== "active" || args.environmentHostId === null) {
-    return threadStatusRuntimeState(args.status);
+    return resolveThreadRuntimeStateFromLatestSession({
+      environmentHostId: args.environmentHostId,
+      heldBeforeStart,
+      hostConnected: false,
+      latestSession: null,
+      now: args.now,
+      status: args.status,
+    });
   }
 
   const hostConnected = hasOpenDaemonSessionForHost(
@@ -197,6 +247,7 @@ export function resolveThreadRuntimeState(
       });
   return resolveThreadRuntimeStateFromLatestSession({
     environmentHostId: args.environmentHostId,
+    heldBeforeStart,
     hostConnected,
     latestSession,
     now: args.now,
@@ -207,6 +258,12 @@ export function resolveThreadRuntimeState(
 function resolveThreadRuntimeStateFromLatestSession(
   args: ResolveThreadRuntimeStateFromLatestSessionArgs,
 ): ThreadRuntimeState {
+  if (args.heldBeforeStart) {
+    return {
+      displayStatus: "held",
+      hostReconnectGraceExpiresAt: null,
+    };
+  }
   if (args.status !== "active" || args.environmentHostId === null) {
     return threadStatusRuntimeState(args.status);
   }
@@ -254,6 +311,7 @@ export function buildThreadStatusChangeMetadata(
     runtime: resolveThreadRuntimeState(deps, {
       environmentHostId: resolveThreadEnvironmentHostId(deps, thread),
       status: thread.status,
+      threadId: thread.id,
     }),
     thread,
   });
@@ -277,6 +335,12 @@ export function buildThreadStatusChangeMetadataByThreadId(
   const latestSession = hostConnected
     ? null
     : getLatestSessionForHost(deps.db, { hostId: args.environmentHostId });
+  // One grouped count for the whole fan-out; the per-thread turn lookup behind
+  // `held` then only runs for threads that actually have a live hold.
+  const liveHoldCountByThreadId = liveDispatchHoldCountsByThreadId(
+    deps,
+    args.threads.map((thread) => thread.id),
+  );
   return new Map(
     args.threads.map((thread) => [
       thread.id,
@@ -284,6 +348,11 @@ export function buildThreadStatusChangeMetadataByThreadId(
         activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
         runtime: resolveThreadRuntimeStateFromLatestSession({
           environmentHostId: args.environmentHostId,
+          heldBeforeStart: isThreadHeldBeforeStart(deps, {
+            liveHoldCount: liveHoldCountByThreadId.get(thread.id) ?? 0,
+            status: thread.status,
+            threadId: thread.id,
+          }),
           hostConnected,
           latestSession,
           status: thread.status,
@@ -320,6 +389,7 @@ function toThreadResponseWithHost(
       environmentHostId: args.environmentHostId,
       now: args.now,
       status: thread.status,
+      threadId: thread.id,
     }),
   };
 }
@@ -339,6 +409,10 @@ export function toThreadResponseFromThread(
         threadIds: [args.thread.id],
       })[0]?.activeBackgroundAgentCount ?? 0,
     canSpawnChild: canThreadSpawnChild(deps, { thread: args.thread }),
+    liveDispatchHoldCount:
+      liveDispatchHoldCountsByThreadId(deps, [args.thread.id]).get(
+        args.thread.id,
+      ) ?? 0,
   };
 }
 
@@ -518,10 +592,21 @@ export function toThreadListEntryResponses(
       ),
     }).map((session) => [session.hostId, session]),
   );
+  // One grouped count for the whole page; the per-thread turn lookup behind
+  // `held` then only runs for threads that actually have a live hold.
+  const liveHoldCountByThreadId = liveDispatchHoldCountsByThreadId(
+    deps,
+    args.threads.map((thread) => thread.id),
+  );
 
   return args.threads.map((thread) => {
     return toThreadListEntryResponseFromLatestSession({
       activity: activityByThreadId.get(thread.id) ?? EMPTY_THREAD_ACTIVITY,
+      heldBeforeStart: isThreadHeldBeforeStart(deps, {
+        liveHoldCount: liveHoldCountByThreadId.get(thread.id) ?? 0,
+        status: thread.status,
+        threadId: thread.id,
+      }),
       hostConnected:
         thread.environmentHostId !== null &&
         connectedActiveHostIds.has(thread.environmentHostId),
@@ -551,6 +636,7 @@ function toThreadListEntryResponseFromLatestSession(
     hasPendingInteraction: args.thread.hasPendingInteraction,
     runtime: resolveThreadRuntimeStateFromLatestSession({
       environmentHostId: args.thread.environmentHostId,
+      heldBeforeStart: args.heldBeforeStart,
       hostConnected: args.hostConnected,
       latestSession: args.latestSession,
       now: args.now,

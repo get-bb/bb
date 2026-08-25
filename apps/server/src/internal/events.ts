@@ -221,6 +221,7 @@ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
     case "system/permissionGrant/lifecycle":
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":
+    case "system/dispatch-hold":
     case "system/provider-turn-watchdog":
       return { providerThreadId: null };
     case "thread/identity":

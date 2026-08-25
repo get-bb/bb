@@ -22,6 +22,7 @@ import { advanceEnvironmentProvisioning } from "../environments/environment-prov
 import { applyLoggedEnvironmentLifecycleEventInTransaction } from "../environments/lifecycle-outcome.js";
 import type { EnvironmentProvisionRequest } from "../environments/environment-provision-request.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import { settleReprovisionDispatchHolds } from "./dispatch-hold-core.js";
 import {
   appendSystemErrorEvent,
   appendThreadProvisioningEvent,
@@ -359,6 +360,13 @@ export function failThreadProvisioning(
   args: FailThreadProvisioningArgs,
 ): void {
   forgetActiveThreadProvisionContext(args.thread.id);
+  // The parked turn is gone with the provisioning that was going to replay it,
+  // so the wait ends here too rather than leaving a live hold on a thread that
+  // has already landed in `error`.
+  settleReprovisionDispatchHolds(deps, {
+    releaseKind: "cancelled",
+    threadId: args.thread.id,
+  });
   appendSystemErrorEvent(deps, {
     threadId: args.thread.id,
     environmentId: args.environmentId,

@@ -14,6 +14,11 @@ import type {
 export interface ThreadCreateServiceRequestInput {
   environment: CreateThreadEnvironmentArgs;
   executionInputSources?: CreateThreadRequest["executionInputSources"];
+  /**
+   * Epoch ms the first turn should dispatch at. Present ⇒ the thread is
+   * created idle with no turn and the first turn becomes a dispatch hold.
+   */
+  holdUntil?: CreateThreadRequest["holdUntil"];
   input: PromptInput[];
   sectionId?: CreateThreadRequest["sectionId"];
   model?: CreateThreadRequest["model"];

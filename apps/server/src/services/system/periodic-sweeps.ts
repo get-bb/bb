@@ -50,6 +50,11 @@ import { hasLiveThreadStartInFlight } from "../threads/thread-lifecycle.js";
 import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { runDeferredThreadMessageSweep } from "../threads/thread-send-request.js";
+import {
+  runDueDispatchHoldSweep,
+  runOrphanedDispatchHoldSweep,
+  type DispatchHoldPluginDirectory,
+} from "../threads/dispatch-hold-sweeps.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
@@ -61,6 +66,8 @@ interface PluginScheduleSweeper {
 
 type PeriodicSweepDeps = LoggedPendingInteractionWorkSessionDeps & {
   pluginSchedules: PluginScheduleSweeper;
+  /** Liveness directory for `plugin:<id>` hold owners. */
+  plugins: DispatchHoldPluginDirectory;
 };
 
 const DATABASE_MAINTENANCE_CHECK_INTERVAL_MS = 60 * 60_000;
@@ -556,6 +563,20 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "durable-intent-retry",
     name: "deferred-thread-message-flush",
     run: runDeferredThreadMessageSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "due-dispatch-hold-release",
+    run: (deps, now) => runDueDispatchHoldSweep(deps, now),
+  },
+  {
+    cadenceMs: 0,
+    category: "durable-intent-retry",
+    name: "orphaned-dispatch-hold-release",
+    // Staleness needs no sweep: it is `lastReportAt + staleAfterMs` against
+    // the clock, computed by whoever renders the hold.
+    run: (deps) => runOrphanedDispatchHoldSweep(deps, deps.plugins),
   },
   {
     cadenceMs: 0,

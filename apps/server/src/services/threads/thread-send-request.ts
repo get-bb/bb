@@ -8,7 +8,7 @@ import {
   listThreadIdsWithUndeliverableDeferredThreadMessages,
   type DeferredThreadMessageRow,
 } from "@bb/db";
-import type { Thread } from "@bb/domain";
+import { DISPATCH_HOLD_USER_HOLDER, type Thread } from "@bb/domain";
 import type {
   SendMessageRequest,
   SendMessageResponse,
@@ -25,6 +25,11 @@ import {
 import { goneThreadEnvironmentDetails } from "../lib/lifecycle-api-errors.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
+import {
+  createThreadDispatchHold,
+  SCHEDULED_DISPATCH_HOLD_REASON,
+} from "./dispatch-holds.js";
+import { buildExecutionOptions } from "./thread-commands.js";
 import {
   deferThreadMessage,
   parseDeferredThreadMessagePayload,
@@ -48,11 +53,88 @@ interface AcceptThreadSendRequestArgs {
   thread: Thread;
 }
 
+interface HoldThreadSendRequestArgs {
+  holdUntil: number;
+  payload: SendMessageRequest;
+  thread: Thread;
+}
+
+/**
+ * Parks a send in a user-owned dispatch hold instead of sending or queueing
+ * it. The execution tuple is resolved and frozen here, exactly as a queued
+ * message freezes one, so the model the user picked when they scheduled the
+ * message is the model that runs when it releases. The attachment check runs
+ * now for the same reason it runs on a queued message: a request that can
+ * never deliver should fail while its sender is still listening.
+ *
+ * Nothing enters the queue: the queue drains on idle, and a scheduled message
+ * must not run early just because the thread went quiet.
+ *
+ * The request's `mode` does not survive the wait. A steer targets the turn
+ * that is running right now, and by release time that turn is long gone, so a
+ * released hold always dispatches as `queue-if-active`.
+ */
+async function holdThreadSendRequest(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: HoldThreadSendRequestArgs,
+): Promise<void> {
+  const { payload, thread } = args;
+  ensureThreadIsWritable(thread);
+  resolveMessageSenderThreadId(deps, {
+    senderThreadId: payload.senderThreadId,
+    targetThread: thread,
+  });
+  await validatePromptAttachmentReferences({
+    dataDir: deps.config.dataDir,
+    input: payload.input,
+    projectId: thread.projectId,
+  });
+  const execution = await buildExecutionOptions(deps, payload, {
+    threadId: thread.id,
+  });
+  createThreadDispatchHold(deps, {
+    threadId: thread.id,
+    environmentId: thread.environmentId,
+    holder: DISPATCH_HOLD_USER_HOLDER,
+    payload: {
+      kind: "inline",
+      input: payload.input,
+      execution,
+      pluginInputs: {},
+    },
+    reason: SCHEDULED_DISPATCH_HOLD_REASON,
+    resumeAt: args.holdUntil,
+    userReleasable: true,
+  });
+  deps.hub.notifyThread(thread.id, ["queue-changed"]);
+}
+
+/**
+ * Takes a public `send` request (the `/threads/:id/send` route, `bb thread
+ * tell`, `sdk.threads.send`) and decides how it reaches the thread:
+ *
+ * - the thread queue when the sender asked for `queue-if-active` on an active
+ *   thread, or the thread is compacting;
+ * - a deferred message when the thread awaits user interaction (#1650): a
+ *   prompt cannot interrupt an open question or approval, so the message waits
+ *   and {@link flushDeferredThreadMessages} delivers it through this same
+ *   function once the interaction settles. `start` is the exception: it asks
+ *   for a fresh turn on an idle thread and keeps its 409.
+ * - otherwise an immediate start or steer.
+ */
 export async function acceptThreadSendRequest(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: AcceptThreadSendRequestArgs,
 ): Promise<SendMessageResponse> {
   const { payload, thread } = args;
+  if (payload.holdUntil !== undefined) {
+    await holdThreadSendRequest(deps, {
+      holdUntil: payload.holdUntil,
+      payload,
+      thread,
+    });
+    return { ok: true, delivery: "held" };
+  }
   const shouldQueue =
     thread.status === "active" &&
     (payload.mode === "queue-if-active" ||

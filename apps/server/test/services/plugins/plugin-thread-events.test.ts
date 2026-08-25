@@ -221,7 +221,7 @@ describe("plugin thread lifecycle events", () => {
       };
       const thread = createThreadRecord(
         { db: harness.db, hub: harness.hub },
-        { environmentId: environment.id, request },
+        { environmentId: environment.id, request, status: "starting" },
       );
 
       await vi.waitFor(() => expect(recorded).toHaveLength(1));
@@ -250,6 +250,7 @@ describe("plugin thread lifecycle events", () => {
           { db: harness.db, hub: harness.hub },
           {
             environmentId: environment.id,
+            status: "starting",
             request: {
               environment: { type: "reuse", environmentId: environment.id },
               input: [],

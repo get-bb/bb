@@ -205,6 +205,18 @@ export interface PluginService {
   ): Promise<PluginListEntry | undefined>;
   reload(id?: string): Promise<PluginReloadOutcome>;
   getApi(id: string): BbPluginApi | undefined;
+  /**
+   * Whether this plugin's runtime is live right now. Core uses it to decide
+   * whether a `plugin:<id>` owner still exists — a dispatch hold whose owner
+   * is gone is released as `orphaned` rather than stranding the user's turn.
+   */
+  isPluginLoaded(id: string): boolean;
+  /**
+   * On-disk asset backing GET /plugins/:id/assets/app.{js,css}: file path
+   * plus the current content hash (the route compares ?h against it for
+   * cache policy). Undefined when the plugin has no loadable bundle, or no
+   * CSS for kind "css".
+   */
   getAppAsset(
     id: string,
     kind: "js" | "css",
@@ -1539,6 +1551,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             : deleteInstalledPlugin(deps.db, id)
           : false;
         if (removed && row) {
+          deps.onPluginUnregistered?.(id);
+          // The uninstalled tree is no longer reloadable, so stop the module
+          // resolve hook from scanning it on every later import.
           forgetMutableRoot(row.rootDir);
           deletePluginSchedules(deps.db, id);
           deleteAllPluginSettings(deps.db, id);
@@ -1588,6 +1603,9 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             }
           });
         }
+        if (!enabled) {
+          deps.onPluginUnregistered?.(id);
+        }
         await syncCliSkill();
         notifyPluginsChanged();
         return list().find((p) => p.id === id);
@@ -1615,6 +1633,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     getApi(id) {
       return loaded.get(id)?.handle.api;
+    },
+
+    isPluginLoaded(id) {
+      return loaded.has(id);
     },
 
     getAppAsset(id, kind) {

@@ -11,6 +11,7 @@ import type {
   ThreadOriginKind,
   ThreadVisibility,
 } from "@bb/domain";
+import { DISPATCH_HOLD_USER_HOLDER } from "@bb/domain";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { COMMAND_TIMEOUT_MS } from "../../constants.js";
@@ -33,6 +34,10 @@ import {
 } from "./project-execution-defaults.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import { resolvePluginMentionContextInputs } from "../plugins/plugin-mentions.js";
+import {
+  createThreadDispatchHold,
+  SCHEDULED_DISPATCH_HOLD_REASON,
+} from "./dispatch-holds.js";
 import { emitPluginThreadDeleted } from "../plugins/plugin-thread-events.js";
 import {
   createThreadRecord,
@@ -57,6 +62,7 @@ import { deriveTitleFallback } from "./title-generation.js";
 import {
   advanceThreadProvisioning,
   requestThreadProvision,
+  scheduleThreadProvisioningAdvance,
 } from "./thread-provisioning.js";
 import type {
   ThreadProvisionContext,
@@ -212,25 +218,6 @@ interface ResolveManagedBaseBranchForCreateArgs {
   baseBranch: BaseBranchSpec;
   hostId: string;
   sourcePath: string;
-}
-
-function scheduleThreadProvisioningAdvance(
-  deps: ThreadCreateDeps,
-  context: ThreadProvisionContext,
-  threadId: string,
-): void {
-  void advanceThreadProvisioning(deps, {
-    context,
-    threadId,
-  }).catch((error) => {
-    deps.logger.warn(
-      {
-        threadId,
-        ...runtimeErrorLogFields(deps.config, error),
-      },
-      "Failed to advance thread provisioning after thread creation",
-    );
-  });
 }
 
 function shouldAdvanceProvisioningBeforeResponse(
@@ -435,6 +422,7 @@ async function createProvisioningThread(
   const thread = createThreadRecord(deps, {
     request: args.request,
     environmentId: args.environmentId,
+    status: "starting",
   });
   let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
   let context: ThreadProvisionContext;
@@ -490,6 +478,92 @@ async function createProvisioningThread(
   } else {
     scheduleThreadProvisioningAdvance(deps, context, thread.id);
   }
+  return getThreadSafe(deps, thread.id);
+}
+
+/**
+ * Held creation: everything the normal path resolves (provider, model,
+ * permission ceiling, environment intent, fork point) is resolved and frozen,
+ * but nothing is dispatched. The thread inserts `idle` with no turn, no
+ * environment work and no provisioning intent, and the first turn becomes a
+ * user-owned hold.
+ *
+ * No provisioning context is parked. The live context
+ * (`rememberActiveThreadProvisionContext`) is in-memory and only valid while
+ * the thread is `starting`, so a parked one would not survive the wait, let
+ * alone a restart. The hold carries the resolved intent instead and
+ * {@link releaseDispatchHoldAndDispatch} builds the context when it releases —
+ * which is also what makes "release schedules provisioning" true after a
+ * server restart.
+ */
+async function createHeldThread(
+  deps: ThreadCreateDeps,
+  args: CreateProvisioningThreadArgs & {
+    environmentIntent: ThreadProvisionEnvironmentIntent;
+    holdUntil: number;
+  },
+) {
+  const thread = createThreadRecord(deps, {
+    request: args.request,
+    environmentId: args.environmentId,
+    status: "idle",
+  });
+  let execution: Awaited<ReturnType<typeof buildExecutionOptions>>;
+  try {
+    if (
+      args.fork !== null &&
+      args.fork.historyEndSequence !== null &&
+      args.request.visibility === "visible"
+    ) {
+      copyForkSourceHistory(deps, {
+        fork: thread,
+        historyEndSequence: args.fork.historyEndSequence,
+        sourceThreadId: args.fork.sourceThreadId,
+      });
+    }
+    execution = await buildExecutionOptions(deps, args.request, {
+      ...(args.executionDefaults
+        ? { projectDefaults: args.executionDefaults }
+        : {}),
+      hostId: intentHostId(deps, args.environmentIntent),
+      threadId: thread.id,
+    });
+    createThreadDispatchHold(deps, {
+      threadId: thread.id,
+      environmentId: args.environmentId,
+      holder: DISPATCH_HOLD_USER_HOLDER,
+      payload: {
+        kind: "inline",
+        input: args.request.input,
+        execution,
+        pluginInputs: {},
+      },
+      reason: SCHEDULED_DISPATCH_HOLD_REASON,
+      resumeAt: args.holdUntil,
+      userReleasable: true,
+      threadStartContext: {
+        environmentIntent: args.environmentIntent,
+        fork: args.fork?.descriptor ?? null,
+        ...(args.providerInput !== undefined
+          ? { providerInput: args.providerInput }
+          : {}),
+        startedOnBehalfOf: args.request.startedOnBehalfOf,
+        titleProvided: Boolean(args.request.title),
+      },
+    });
+  } catch (error) {
+    emitPluginThreadDeleted({
+      ...thread,
+      deletedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    deleteThread(deps.db, deps.hub, thread.id);
+    throw error;
+  }
+  rememberProjectExecutionDefaultsForCreate(deps, {
+    execution,
+    request: args.request,
+  });
   return getThreadSafe(deps, thread.id);
 }
 
@@ -805,7 +879,7 @@ export async function createThreadFromRequest(
     );
   }
 
-  const thread = await createProvisioningThread(deps, {
+  const createArgs = {
     environmentId,
     environmentIntent,
     executionDefaults: resolvedExecutionDefaults,
@@ -814,7 +888,14 @@ export async function createThreadFromRequest(
       ? { providerInput: options.providerInput }
       : {}),
     request,
-  });
+  };
+  const thread =
+    request.holdUntil === undefined
+      ? await createProvisioningThread(deps, createArgs)
+      : await createHeldThread(deps, {
+          ...createArgs,
+          holdUntil: request.holdUntil,
+        });
   deps.telemetry.capture({
     name: "thread_created",
     properties: {

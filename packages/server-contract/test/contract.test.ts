@@ -272,6 +272,30 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
       "Uploaded attachments may omit mime type when the client could not determine one.",
     fields: ["uploadedPromptAttachmentSchema.mimeType"],
   },
+  {
+    reason:
+      "holdUntil is present only when the caller is scheduling the dispatch; omission means dispatch now and allocates no hold row at all.",
+    fields: [
+      "createThreadRequestSchema.holdUntil",
+      "sendMessageRequestSchema.holdUntil",
+    ],
+  },
+  {
+    reason:
+      "The hold list is unfiltered by default: omitting threadId or holder means every live hold, which is what a cross-thread pending view asks for.",
+    fields: [
+      "dispatchHoldListQuerySchema.threadId",
+      "dispatchHoldListQuerySchema.holder",
+    ],
+  },
+  {
+    reason:
+      "Editing a hold is a genuine partial update: omitting input reschedules without touching the draft, and omitting resumeAt edits the draft without moving the timer.",
+    fields: [
+      "updateDispatchHoldRequestSchema.input",
+      "updateDispatchHoldRequestSchema.resumeAt",
+    ],
+  },
 ];
 
 function buildIntentionalOptionalServerFields(
@@ -1775,6 +1799,9 @@ describe("server-contract clients", () => {
       createQueuedMessageRequestSchema:
         contract.createQueuedMessageRequestSchema,
       createThreadRequestSchema: contract.createThreadRequestSchema,
+      dispatchHoldListQuerySchema: contract.dispatchHoldListQuerySchema,
+      updateDispatchHoldRequestSchema:
+        contract.updateDispatchHoldRequestSchema,
       forkThreadRequestSchema: contract.forkThreadRequestSchema,
       environmentActionApiErrorSchema: contract.environmentActionApiErrorSchema,
       environmentStatusResponseSchema: contract.environmentStatusResponseSchema,

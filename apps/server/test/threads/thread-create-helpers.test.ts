@@ -120,6 +120,7 @@ describe("createThreadRecord", () => {
 
       try {
         createThreadRecord(deps, {
+          status: "starting",
           environmentId: environment.id,
           request: {
             environment: {

@@ -72,6 +72,14 @@ export interface PluginServiceDeps {
   pluginHostArtifacts?: PluginHostArtifactRegistry;
   aiServices: AiServiceRegistry;
   onSettingsChanged?: (pluginId: string) => void;
+  /**
+   * Fired after a plugin stops being a registered owner — disabled or
+   * uninstalled, but *not* reloaded. Core state keyed by `plugin:<id>`
+   * (dispatch holds it owns) is released here instead of waiting for a sweep.
+   */
+  onPluginUnregistered?: (pluginId: string) => void;
+  /** Thread DTO assembly for lifecycle events + plugin-signal broadcast +
+   * the `plugins-changed` system broadcast on lifecycle completion. */
   hub: Pick<
     NotificationHub,
     "getDaemonSessionIdForHost" | "notifyPluginSignal" | "notifySystem"

@@ -43,6 +43,10 @@ import {
 import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
 import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
 import {
+  listLiveThreadDispatchHolds,
+  toDispatchHoldResponse,
+} from "../../services/threads/dispatch-holds.js";
+import {
   buildThreadConversationOutlineProjectionKey,
   buildThreadTimelineWithProfile,
   buildTimelineTurnSummaryDetails,
@@ -458,6 +462,14 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     requirePublicThread(deps.db, threadId);
     return context.json(
       listQueuedThreadMessages(deps.db, threadId).map(toThreadQueuedMessage),
+    );
+  });
+
+  get(routes.holds, (context) => {
+    const threadId = context.req.param("id");
+    requirePublicThread(deps.db, threadId);
+    return context.json(
+      listLiveThreadDispatchHolds(deps, threadId).map(toDispatchHoldResponse),
     );
   });
 
