@@ -3,7 +3,7 @@ import { Fragment, type ReactNode } from "react";
 import { cn } from "./cn";
 
 /**
- * The numbered annotation chip. Shared by the skeleton markers and anything
+ * The numbered annotation chip. Shared by the surface-fixture markers and anything
  * that lists surfaces, so the two can never drift apart: same size, same
  * fill, same idle/selected tokens.
  *

@@ -84,7 +84,7 @@ export function firstPartyPluginId(displayName: string): string | null {
 }
 
 /**
- * The capability glyph for a pixel-less surface, or null for one a skeleton
+ * The capability glyph for a pixel-less surface, or null for one a fixture
  * draws (those are identified by their numbered marker instead).
  *
  * One definition, two readers: the capability card on the "Plugin backend"

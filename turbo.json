@@ -52,6 +52,9 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types"],
       "cache": false
     },
+    "@bb/plugin-api-map#scaffold:surface-entry": {
+      "cache": false
+    },
     "@bb/app#build": {
       "dependsOn": ["topo"],
       "inputs": [

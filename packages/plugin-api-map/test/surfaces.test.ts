@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { ANATOMY_MANIFEST as anatomy } from "../src/index";
-import { SURFACE_GROUPS, SURFACE_NUMBERS, SURFACES_BY_ID } from "../src/index";
+import {
+  fixtureResponsiveStrategy,
+  SURFACE_GROUPS,
+  SURFACE_NUMBERS,
+  SURFACES_BY_ID,
+} from "../src/index";
 import {
   ANATOMY_RENDERER_KEYS,
   APP_SHELL_MARKS,
@@ -54,9 +59,9 @@ describe("product-map surfaces", () => {
     expect(SURFACES_BY_ID.size).toBe(all.length);
   });
 
-  it("marks every visual-group surface on its wireframe exactly once", () => {
-    // One skeleton per carousel slide, so each group's surfaces must all be
-    // marked on that group's own wireframe.
+  it("marks every visual-group surface on its fixture exactly once", () => {
+    // One surface fixture per carousel slide, so each group's surfaces must all
+    // be marked on that group's own fixture.
     expect([...APP_SHELL_MARKS].sort()).toEqual(surfaceIds("app-shell").sort());
     expect([...COMMAND_PALETTE_MARKS].sort()).toEqual(
       surfaceIds("command-palette").sort(),
@@ -69,7 +74,7 @@ describe("product-map surfaces", () => {
     );
   });
 
-  it("numbers the surfaces a skeleton draws, and only those", () => {
+  it("numbers the surfaces a fixture draws, and only those", () => {
     // A numbered surface with no marker would print a number the diagram
     // never shows; an unnumbered marked surface renders an empty chip.
     for (const group of SURFACE_GROUPS) {
@@ -84,8 +89,28 @@ describe("product-map surfaces", () => {
     }
   });
 
+  it("derives one responsive strategy from each group's fixture kind", () => {
+    for (const group of SURFACE_GROUPS) {
+      expect(fixtureResponsiveStrategy(group), group.id).toBe(
+        group.fixtureKind === "spatial" ? "scroll-together" : "reflow",
+      );
+    }
+    expect(
+      SURFACE_GROUPS.filter(
+        (group) => fixtureResponsiveStrategy(group) === "scroll-together",
+      ).map((group) => group.id),
+    ).toEqual([
+      "app-shell",
+      "command-palette",
+      "composer",
+      "home",
+      "settings",
+      "extensions",
+    ]);
+  });
+
   it("renders every anatomy-manifest region and nothing else", () => {
-    // The skeletons draw these regions by mapping over the manifest, so a
+    // The fixtures draw these regions by mapping over the manifest, so a
     // manifest key without a renderer would silently drop UI, and a stale
     // renderer key would be dead code hiding a manifest drift.
     for (const area of [
@@ -96,6 +121,25 @@ describe("product-map surfaces", () => {
       expect([...ANATOMY_RENDERER_KEYS[area]].sort()).toEqual(
         [...anatomy[area]].sort(),
       );
+    }
+  });
+
+  it("ties every deterministic fixture contract to its visual surface group", () => {
+    for (const [surfaceId, contract] of Object.entries(
+      anatomy.surfaceFixtures,
+    )) {
+      const group = groupById.get(contract.groupId as never);
+      expect(
+        group,
+        `${surfaceId}: unknown group ${contract.groupId}`,
+      ).toBeDefined();
+      expect(
+        group?.surfaces.some((surface) => surface.id === surfaceId),
+        `${surfaceId}: missing from ${contract.groupId}`,
+      ).toBe(true);
+      expect(["anchor", "state", "flow"]).toContain(contract.fidelity);
+      expect(contract.responsiveStrategy).toBe("scroll-together");
+      expect(contract.sources.length).toBeGreaterThan(0);
     }
   });
 
@@ -110,7 +154,7 @@ describe("product-map surfaces", () => {
     expect(new Set(sectioned).size).toBe(sectioned.length);
   });
 
-  it("keeps the headless group off the wireframes", () => {
+  it("keeps the headless group off the surface fixtures", () => {
     const marked = new Set<string>([
       ...APP_SHELL_MARKS,
       ...COMMAND_PALETTE_MARKS,

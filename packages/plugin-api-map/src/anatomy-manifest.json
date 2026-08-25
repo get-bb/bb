@@ -1,5 +1,5 @@
 {
-  "$comment": "Shared UI-anatomy contract between the plugin API docs and the real app. The docs skeletons (wireframes.tsx) render these regions in this order, and apps/app/src/components/plugin/docs-anatomy-manifest.test.tsx renders the real components and asserts the same DOM order. Reordering the app fails that test until this file, and therefore the docs, is updated.",
+  "$comment": "Shared UI-anatomy contract between the Plugin Guide surface fixtures (wireframes.tsx) and the real app. Ordered regions are rendered by both sides. surfaceFixtures records authoritative source anchors plus the minimum deterministic fidelity and states for interaction-heavy fixtures.",
   "appSidebar": [
     "top-reserve",
     "primary-actions",
@@ -15,5 +15,64 @@
     "send-to-main-thread",
     "fork",
     "plugin-actions"
-  ]
+  ],
+  "surfaceFixtures": {
+    "command-palette-actions": {
+      "groupId": "command-palette",
+      "fidelity": "flow",
+      "responsiveStrategy": "scroll-together",
+      "requiredStates": ["anchor", "triggered", "outcome"],
+      "labels": {
+        "anchor": ["Quick palette", "⇧⌘P"],
+        "triggered": ["Search commands", "Plugins", "Run release checklist"],
+        "outcome": ["Release checklist"]
+      },
+      "fixtureClassAnchors": [
+        "top-[12%]",
+        "max-w-xl",
+        "bg-black/40",
+        "bg-background",
+        "shadow-sm",
+        "h-11",
+        "rounded",
+        "px-2",
+        "py-1.5",
+        "bg-state-hover",
+        "text-foreground"
+      ],
+      "sources": [
+        {
+          "path": "apps/app/src/components/commands/CommandPalette.tsx",
+          "anchors": [
+            "top-[12%] max-w-xl translate-y-0 gap-0 p-0",
+            "aria-label={PALETTE_PLACEHOLDER}",
+            "role=\"listbox\"",
+            "aria-selected={isActive}",
+            "LAUNCHER_ACTION_ROW_BASE_CLASS",
+            "bg-state-hover text-foreground"
+          ]
+        },
+        {
+          "path": "apps/app/src/lib/command-palette/palette-plugin-actions.ts",
+          "anchors": ["group: \"Plugins\"", "run: () =>"]
+        },
+        {
+          "path": "apps/app/src/components/commands/CommandPalette.test.tsx",
+          "anchors": [
+            "lists a plugin's commandPaletteAction and runs it",
+            "expect(testState.calls).toEqual([\"plugin-ran\"])",
+            "expect(screen.queryByRole(\"combobox\")).toBeNull()"
+          ]
+        },
+        {
+          "path": "packages/shared-ui/src/components/ui/dialog.tsx",
+          "anchors": [
+            "fixed inset-0 z-50 bg-black/40",
+            "bg-background p-6 shadow-sm",
+            "sm:rounded-lg"
+          ]
+        }
+      ]
+    }
+  }
 }

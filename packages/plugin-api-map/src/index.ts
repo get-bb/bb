@@ -1,6 +1,7 @@
 export { cn } from "./cn";
 export {
   copyPluginSurfaceAgentReference,
+  createPluginSurfaceAgentReference,
   PLUGIN_GUIDE_PLUGIN_ID,
   PLUGIN_GUIDE_SURFACE_PROVIDER_ID,
   pluginSurfaceAgentClipboardContent,
@@ -8,6 +9,8 @@ export {
   pluginSurfaceAgentMention,
   type PluginSurfaceAgentClipboardContent,
   type PluginSurfaceAgentMention,
+  type PluginSurfaceAgentReference,
+  type PluginSurfaceAgentResource,
 } from "./agent-reference";
 export {
   annotationChipClass,
@@ -33,9 +36,11 @@ export {
   type UsedByScrollTarget,
 } from "./used-by";
 export {
+  fixtureResponsiveStrategy,
   GROUP_BY_SURFACE_ID,
   SURFACE_GROUPS,
   SURFACES_BY_ID,
+  type FixtureResponsiveStrategy,
   type PluginSurface,
   type SurfaceGroup,
 } from "./surfaces";

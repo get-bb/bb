@@ -16,11 +16,7 @@ export interface PluginSurfaceAgentMention {
 export function pluginSurfaceAgentMention(
   surface: PluginSurface,
 ): PluginSurfaceAgentMention {
-  return {
-    provider: PLUGIN_GUIDE_SURFACE_PROVIDER_ID,
-    id: surface.id,
-    label: surface.title,
-  };
+  return createPluginSurfaceAgentReference(surface).identity;
 }
 
 export interface PluginSurfaceAgentClipboardContent {
@@ -28,6 +24,22 @@ export interface PluginSurfaceAgentClipboardContent {
   text: string;
   /** bb's existing structured mention markup, consumed by composer paste. */
   html: string;
+}
+
+export interface PluginSurfaceAgentResource {
+  kind: "plugin";
+  pluginId: typeof PLUGIN_GUIDE_PLUGIN_ID;
+  icon: null;
+  itemId: string;
+  label: string;
+}
+
+/** One canonical object owns every representation of a Guide reference. */
+export interface PluginSurfaceAgentReference {
+  identity: PluginSurfaceAgentMention;
+  resource: PluginSurfaceAgentResource;
+  clipboard: PluginSurfaceAgentClipboardContent;
+  context: string;
 }
 
 const AGENT_REFERENCE_PREFIX = "Build a plugin capability like ";
@@ -42,25 +54,46 @@ function escapeHtml(value: string): string {
 }
 
 /**
+ * Derive identity, clipboard bytes, and send-time context from one canonical
+ * surface record. No transient UI state, timestamps, prose bullets, or random
+ * ids enter the result, so equal surface data produces equal output.
+ */
+export function createPluginSurfaceAgentReference(
+  surface: PluginSurface,
+): PluginSurfaceAgentReference {
+  const identity: PluginSurfaceAgentMention = {
+    provider: PLUGIN_GUIDE_SURFACE_PROVIDER_ID,
+    id: surface.id,
+    label: surface.title,
+  };
+  const serializedText = `@${identity.label}`;
+  const resource: PluginSurfaceAgentResource = {
+    kind: "plugin",
+    pluginId: PLUGIN_GUIDE_PLUGIN_ID,
+    icon: null,
+    itemId: `${identity.provider}:${identity.id}`,
+    label: identity.label,
+  };
+  const clipboard = {
+    text: `${AGENT_REFERENCE_PREFIX}${serializedText}${AGENT_REFERENCE_SUFFIX}`,
+    html: `${escapeHtml(AGENT_REFERENCE_PREFIX)}<span data-prompt-mention="true" data-prompt-mention-resource="${escapeHtml(JSON.stringify(resource))}" data-prompt-mention-serialized-text="${escapeHtml(serializedText)}">${escapeHtml(serializedText)}</span>${escapeHtml(AGENT_REFERENCE_SUFFIX)}`,
+  };
+  const context = [
+    `bb Plugin Guide surface: ${surface.title} (${surface.id}).`,
+    `Relevant @get-bb/plugin-sdk symbols: ${surface.apiSymbols.join(", ")}.`,
+    "Use the bb-plugin-authoring skill and the authoritative @get-bb/plugin-sdk declarations to build a similar plugin capability.",
+  ].join("\n");
+  return { identity, resource, clipboard, context };
+}
+
+/**
  * Serialize one Guide surface with bb's existing composer-pill clipboard
  * contract. This is private first-party integration, not a Plugin SDK API.
  */
 export function pluginSurfaceAgentClipboardContent(
   surface: PluginSurface,
 ): PluginSurfaceAgentClipboardContent {
-  const mention = pluginSurfaceAgentMention(surface);
-  const serializedText = `@${mention.label}`;
-  const resource = {
-    kind: "plugin",
-    pluginId: PLUGIN_GUIDE_PLUGIN_ID,
-    icon: null,
-    itemId: `${mention.provider}:${mention.id}`,
-    label: mention.label,
-  };
-  return {
-    text: `${AGENT_REFERENCE_PREFIX}${serializedText}${AGENT_REFERENCE_SUFFIX}`,
-    html: `${escapeHtml(AGENT_REFERENCE_PREFIX)}<span data-prompt-mention="true" data-prompt-mention-resource="${escapeHtml(JSON.stringify(resource))}" data-prompt-mention-serialized-text="${escapeHtml(serializedText)}">${escapeHtml(serializedText)}</span>${escapeHtml(AGENT_REFERENCE_SUFFIX)}`,
-  };
+  return createPluginSurfaceAgentReference(surface).clipboard;
 }
 
 function copyWithEditingCommand(
@@ -138,9 +171,5 @@ export async function copyPluginSurfaceAgentReference(
 export function pluginSurfaceAgentContext(surfaceId: string): string | null {
   const surface = SURFACES_BY_ID.get(surfaceId);
   if (!surface) return null;
-  return [
-    `bb Plugin Guide surface: ${surface.title} (${surface.id}).`,
-    `Relevant @get-bb/plugin-sdk symbols: ${surface.apiSymbols.join(", ")}.`,
-    "Use the bb-plugin-authoring skill and the authoritative @get-bb/plugin-sdk declarations to build a similar plugin capability.",
-  ].join("\n");
+  return createPluginSurfaceAgentReference(surface).context;
 }

@@ -12,6 +12,7 @@ import {
 } from "vitest";
 
 import { SURFACE_NUMBERS } from "../src/product-map";
+import anatomy from "../src/anatomy-manifest.json";
 import { CommandPaletteWireframe, SurfaceMapContext } from "../src/wireframes";
 
 function InteractiveCommandPalette() {
@@ -61,11 +62,16 @@ describe("command palette guide interaction", () => {
   });
 
   it("closes the palette and opens the release-checklist tab, then reopens from the shortcut", () => {
+    const contract = anatomy.surfaceFixtures["command-palette-actions"];
     const action = container.querySelector<HTMLButtonElement>(
       '[data-guide-fixture="command-palette-action"]',
     );
     const badge = container.querySelector<HTMLAnchorElement>(
       '[data-guide-badge="command-palette-actions"]',
+    );
+    const listbox = container.querySelector('[role="listbox"]');
+    const annotationLayer = container.querySelector(
+      '[data-guide-annotation-layer="command-palette-actions"]',
     );
 
     expect(action?.getAttribute("aria-selected")).toBe("true");
@@ -77,6 +83,11 @@ describe("command palette guide interaction", () => {
     expect(
       container.querySelector('[data-guide-fixture="command-palette-overlay"]'),
     ).not.toBeNull();
+    expect(annotationLayer?.parentElement).toBe(
+      container.querySelector('[data-guide-fixture="command-palette-dialog"]'),
+    );
+    expect(listbox?.contains(badge ?? null)).toBe(false);
+    expect(annotationLayer?.contains(action ?? null)).toBe(false);
 
     act(() => badge?.click());
 
@@ -92,6 +103,9 @@ describe("command palette guide interaction", () => {
     expect(
       container.querySelector('[data-guide-fixture="release-checklist-panel"]'),
     ).not.toBeNull();
+    for (const label of contract.labels.outcome) {
+      expect(container.textContent).toContain(label);
+    }
     expect(
       container
         .querySelector('[data-guide-fixture="release-checklist-tab"]')

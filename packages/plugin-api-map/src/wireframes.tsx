@@ -1,5 +1,5 @@
 /**
- * Miniature mockups of the real bb UI with every pluggable surface marked.
+ * Deterministic fixtures of the real bb UI with every pluggable surface marked.
  * Layout and ordering mirror the real components in apps/app (audited against
  * AppSidebar, ThreadDetailHeader, ConversationMessageContent, MessageActionBar,
  * FollowUpPromptBox/PromptBoxInternal, ThreadSecondaryPanel, RootComposeView,
@@ -9,7 +9,7 @@
  * The regions covered by anatomy-manifest.json (sidebar sections, sidebar
  * footer, message action bar) render FROM the manifest, and a test in
  * apps/app renders the real components and asserts the same DOM order, so an
- * app-side reorder fails tests until the manifest, and these skeletons,
+ * app-side reorder fails tests until the manifest, and these fixtures,
  * update.
  *
  * Marks are anchors that expand the matching sidebar row and sync hover state
@@ -67,7 +67,7 @@ export interface SurfaceMapState {
   expandedId?: string | null;
   /**
    * When set, only this surface's marker stays lit; every other region of the
-   * skeleton recedes. Lets one diagram serve as a per-surface illustration
+   * fixture recedes. Lets one diagram serve as a per-surface illustration
    * instead of shipping a cropped image per surface.
    */
   spotlightId?: string | null;
@@ -170,9 +170,9 @@ function Mark({
    * the chip resolve against the nearest positioned ancestor, which is the
    * `relative` gutter wrapper outside the frame. An absolutely positioned
    * box is not clipped by an ancestor whose descendant its containing block
-   * is not, so the chip escapes both the frame's `overflow-hidden` and the
-   * scroll wrapper's `overflow-x-auto` — and `chipClassName` is then read as
-   * coordinates on the gutter, not on the mark.
+   * is not, so the chip escapes the frame's `overflow-hidden`.
+   * `chipClassName` is then read as coordinates on the gutter, not the mark;
+   * ProductMap scrolls that entire annotated object together.
    */
   edge?: boolean;
   /** Runs the fixture interaction represented by this marker. */
@@ -246,17 +246,52 @@ function Mark({
 }
 
 /**
- * The palette row has two real jobs: its row runs the command, while its
- * numbered badge opens the Guide card. They must be sibling targets so
- * reading the annotation never fires the example action, and running the
- * action never covers its visible outcome with the card.
+ * The numbered Guide control lives in a separate overlay outside the
+ * palette's clipping listbox. This keeps the source palette's padding and row
+ * alignment intact while preserving a distinct target for reading the card.
  */
-function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
+function CommandPaletteActionBadge() {
   const id = "command-palette-actions";
   const label = "Plugin actions in bb's quick command palette";
   const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
     useSurfaceMap();
   const active = activeId === id || expandedId === id || spotlightId === id;
+
+  return (
+    <a
+      data-guide-badge={id}
+      data-guide-badge-placement="outside-before"
+      href={`#surface-${id}`}
+      aria-label={`${label} — jump to details`}
+      onClick={
+        onSelect
+          ? (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect(id);
+            }
+          : undefined
+      }
+      onMouseEnter={() => setActiveId(id)}
+      onMouseLeave={() => setActiveId(null)}
+      onFocus={() => setActiveId(id)}
+      onBlur={() => setActiveId(null)}
+      className="pointer-events-auto row-start-2 self-center justify-self-start -ml-5 -translate-x-full"
+    >
+      <span
+        aria-hidden
+        className={annotationChipClass(active, "ring-2 ring-card")}
+      >
+        {numberOf(id)}
+      </span>
+    </a>
+  );
+}
+
+/** The palette row remains the real product action, separate from the badge. */
+function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
+  const id = "command-palette-actions";
+  const { activeId, setActiveId, expandedId, spotlightId } = useSurfaceMap();
   const outlined =
     activeId !== null
       ? activeId === id
@@ -264,54 +299,26 @@ function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
   const dimmed = Boolean(spotlightId) && spotlightId !== id;
 
   return (
-    <div
+    <button
       data-guide-region={id}
+      type="button"
+      role="option"
+      aria-selected="true"
+      onClick={onRun}
       onMouseEnter={() => setActiveId(id)}
       onMouseLeave={() => setActiveId(null)}
+      onFocus={() => setActiveId(id)}
+      onBlur={() => setActiveId(null)}
+      data-guide-fixture="command-palette-action"
       className={cn(
-        "relative rounded-md bg-state-hover text-foreground ring-1 ring-inset transition-all",
+        "flex w-full cursor-pointer items-center gap-1.5 rounded bg-state-hover px-2 py-1.5 text-left text-foreground ring-1 ring-inset transition-all",
         outlined ? "ring-surface-selected-border" : "ring-transparent",
         dimmed && "opacity-25",
       )}
     >
-      <button
-        type="button"
-        role="option"
-        aria-selected="true"
-        onClick={onRun}
-        onFocus={() => setActiveId(id)}
-        onBlur={() => setActiveId(null)}
-        data-guide-fixture="command-palette-action"
-        className="flex h-9 w-full cursor-pointer items-center px-2.5 text-left"
-      >
-        <span>Run release checklist</span>
-        <span className="ml-auto text-xs text-subtle-foreground">Plugins</span>
-      </button>
-      <a
-        data-guide-badge={id}
-        href={`#surface-${id}`}
-        aria-label={`${label} — jump to details`}
-        onClick={
-          onSelect
-            ? (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onSelect(id);
-              }
-            : undefined
-        }
-        onFocus={() => setActiveId(id)}
-        onBlur={() => setActiveId(null)}
-        className="absolute -left-3 top-1/2 z-50 -translate-y-1/2"
-      >
-        <span
-          aria-hidden
-          className={annotationChipClass(active, "ring-2 ring-card")}
-        >
-          {numberOf(id)}
-        </span>
-      </a>
-    </div>
+      <span>Run release checklist</span>
+      <span className="ml-auto text-xs text-subtle-foreground">Plugins</span>
+    </button>
   );
 }
 
@@ -482,15 +489,19 @@ const FOOTER_ITEM_RENDERERS: Record<string, () => ReactNode> = {
  */
 const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
   "top-reserve": () => (
-    <div className="flex items-center px-2.5 pt-2">
-      <MiniIcon icon={SidebarLeftIcon} />
-      <span className="flex-1" />
+    <div
+      data-guide-fixture="sidebar-top-reserve"
+      className="flex h-12 items-center justify-end px-2"
+    >
       <MiniIcon icon={ArrowLeft01Icon} className="size-3.5" />
       <MiniIcon icon={ArrowRight01Icon} className="ml-1.5 size-3.5" />
     </div>
   ),
   "primary-actions": () => (
-    <div className="flex items-center gap-2 px-2.5 py-2.5">
+    <div
+      data-guide-fixture="sidebar-primary-actions"
+      className="flex items-center gap-2 px-2.5 py-2.5"
+    >
       <span className="flex h-6.5 flex-1 items-center gap-2 rounded-md px-2 text-foreground">
         <MiniIcon icon={PlusSignIcon} className="text-foreground" />
         New thread
@@ -608,6 +619,96 @@ export type AppShellRightPanelTab =
   | "thread-panel"
   | "file-opener"
   | "code-renderers";
+
+function RightPanelTabBadge({
+  id,
+  label,
+  onActivate,
+  children,
+}: {
+  id: AppShellRightPanelTab;
+  label: string;
+  onActivate: () => void;
+  children: ReactNode;
+}) {
+  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
+    useSurfaceMap();
+  const active = activeId === id || expandedId === id || spotlightId === id;
+
+  return (
+    <span className="relative flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap pl-1.5 pr-2">
+      {/* Invisible source-sized content keeps this Guide-owned column aligned
+          with its real tab without moving or padding the host tab strip. */}
+      <span aria-hidden className="invisible contents">
+        {children}
+      </span>
+      <a
+        data-guide-badge={id}
+        data-guide-badge-placement="outside-before"
+        href={`#surface-${id}`}
+        aria-label={`${label} — jump to details`}
+        onClick={(event) => {
+          onActivate();
+          if (!onSelect) return;
+          event.preventDefault();
+          event.stopPropagation();
+          onSelect(id);
+        }}
+        onMouseEnter={() => setActiveId(id)}
+        onMouseLeave={() => setActiveId(null)}
+        onFocus={() => setActiveId(id)}
+        onBlur={() => setActiveId(null)}
+        className="pointer-events-auto absolute left-1/2 top-0 -translate-x-1/2"
+      >
+        <span
+          aria-hidden
+          className={annotationChipClass(active, "ring-2 ring-card")}
+        >
+          {numberOf(id)}
+        </span>
+      </a>
+    </span>
+  );
+}
+
+function RightPanelTabAnnotationLayer({
+  onTabSelect,
+}: {
+  onTabSelect: (tab: AppShellRightPanelTab) => void;
+}) {
+  return (
+    <div
+      data-guide-annotation-layer="right-panel-tabs"
+      className="absolute right-10 top-0.5 z-50 flex h-7 w-[380px] items-center gap-1.5 px-3 text-xs leading-none"
+    >
+      <span aria-hidden className="w-[26px] shrink-0" />
+      <RightPanelTabBadge
+        id="thread-panel"
+        label="A plugin tab in the thread side panel"
+        onActivate={() => onTabSelect("thread-panel")}
+      >
+        <PluginGlyph className="size-3.5" />
+        <span>Your tab</span>
+      </RightPanelTabBadge>
+      <RightPanelTabBadge
+        id="file-opener"
+        label="A plugin file viewer or editor tab"
+        onActivate={() => onTabSelect("file-opener")}
+      >
+        <MiniIcon icon={File01Icon} className="size-3.5" />
+        <span>retry-notes.md</span>
+      </RightPanelTabBadge>
+      <RightPanelTabBadge
+        id="code-renderers"
+        label="Plugin code and diff renderers on bb's Diff tab"
+        onActivate={() => onTabSelect("code-renderers")}
+      >
+        <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
+        <span>Diff</span>
+      </RightPanelTabBadge>
+    </div>
+  );
+}
 
 /**
  * A whole-window command-palette flow. The fixture starts with the palette
@@ -770,39 +871,48 @@ export function CommandPaletteWireframe() {
           {paletteOpen ? (
             <div
               data-guide-fixture="command-palette-overlay"
-              className="absolute inset-0 z-10 flex items-start justify-center bg-background/60 px-10 pt-14 backdrop-blur-[1px]"
+              className="absolute inset-0 z-10 bg-black/40"
             >
-              <div className="w-full max-w-xl overflow-visible rounded-xl border border-border bg-popover shadow-lg">
-                <div className="flex h-11 items-center gap-2 border-b border-border-hairline px-3 text-sm">
-                  <MiniIcon icon={Search01Icon} className="size-4" />
+              <div
+                data-guide-fixture="command-palette-dialog"
+                className="absolute left-1/2 top-[12%] grid w-full max-w-xl -translate-x-1/2 grid-cols-[minmax(0,1fr)] gap-0 overflow-visible rounded-lg border border-border bg-background shadow-sm"
+              >
+                <div className="flex items-center gap-2 border-b px-3 text-sm">
+                  <MiniIcon
+                    icon={Search01Icon}
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
                   <input
                     aria-label="Search commands"
                     readOnly
                     value="release"
-                    className="min-w-0 flex-1 bg-transparent text-foreground outline-none"
+                    className="h-11 min-w-0 flex-1 bg-transparent text-foreground outline-none"
                   />
-                  <kbd className="rounded bg-surface-recessed px-1.5 py-1 font-mono text-2xs text-subtle-foreground">
-                    ⇧⌘P
-                  </kbd>
                 </div>
                 <div
                   role="listbox"
                   aria-label="Commands"
-                  className="space-y-0.5 p-1 text-sm"
+                  className="max-h-[min(24rem,50dvh)] overflow-y-auto p-1 text-sm"
                 >
-                  <span className="flex h-9 items-center rounded-md px-2.5">
+                  <span className="flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left">
                     Open release notes
-                    <span className="ml-auto text-xs text-subtle-foreground">
+                    <span className="ml-auto text-muted-foreground">
                       Navigation
                     </span>
                   </span>
                   <CommandPaletteActionMark onRun={runReleaseChecklist} />
-                  <span className="flex h-9 items-center rounded-md px-2.5">
+                  <span className="flex w-full min-w-0 items-center gap-1.5 rounded px-2 py-1.5 text-left">
                     Copy thread link
-                    <span className="ml-auto text-xs text-subtle-foreground">
+                    <span className="ml-auto text-muted-foreground">
                       Thread
                     </span>
                   </span>
+                </div>
+                <div
+                  data-guide-annotation-layer="command-palette-actions"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 top-11 z-50 grid grid-rows-3 p-1"
+                >
+                  <CommandPaletteActionBadge />
                 </div>
               </div>
             </div>
@@ -836,37 +946,36 @@ export function AppShellWireframe() {
     // this box and sit outside the frame, so they ring the diagram instead
     // of crowding its chrome.
     // Unlike the simpler slides, this dense three-column anatomy stays at a
-    // readable minimum size. The whole annotated object scrolls together in
-    // a narrow pane, so the exterior sidebar badges do not detach from it.
-    <div className="overflow-x-auto">
-      <div className="relative min-w-[1260px] px-10 pb-4 pt-5">
-        {/* The first two surfaces belong to the sidebar as a whole. Keep their
+    // readable minimum size. ProductMap supplies the single scroll owner so
+    // the exterior gutter and all badges move with the frame.
+    <div className="relative min-w-[1260px] px-10 pb-4 pt-5">
+      {/* The first two surfaces belong to the sidebar as a whole. Keep their
             chips in the exterior annotation gutter, matching the shipped Guide,
             while the in-frame regions remain independently clickable. */}
-        <OverlayMark
-          id="nav-panel"
-          label="Plugin nav panels, above the thread list"
-          className="left-4 top-[124px]"
-        />
-        <OverlayMark
-          id="thread-list"
-          label="The thread list, replaceable by one plugin"
-          className="left-4 top-[190px]"
-        />
-        {/* Content scripts have no slot of their own — they run across the
+      <OverlayMark
+        id="nav-panel"
+        label="Plugin nav panels, above the thread list"
+        className="left-4 top-[124px]"
+      />
+      <OverlayMark
+        id="thread-list"
+        label="The thread list, replaceable by one plugin"
+        className="left-4 top-[190px]"
+      />
+      {/* Content scripts have no slot of their own — they run across the
             whole window, so the marker annotates the frame itself. */}
-        <OverlayMark
-          id="content-scripts"
-          label="App-wide plugin scripts, running in the whole window"
-          className="left-1/2 top-0.5 -translate-x-1/2"
-          region="inset-x-10 bottom-4 top-5"
+      <OverlayMark
+        id="content-scripts"
+        label="App-wide plugin scripts, running in the whole window"
+        className="left-1/2 top-0.5 -translate-x-1/2"
+        region="inset-x-10 bottom-4 top-5"
+      />
+      <RightPanelTabAnnotationLayer onTabSelect={setRightPanelTab} />
+      <div className="min-w-[1180px]">
+        <AppShellWireframeBody
+          rightPanelTab={rightPanelTab}
+          onRightPanelTabSelect={setRightPanelTab}
         />
-        <div className="min-w-[1180px]">
-          <AppShellWireframeBody
-            rightPanelTab={rightPanelTab}
-            onRightPanelTabSelect={setRightPanelTab}
-          />
-        </div>
       </div>
     </div>
   );
@@ -887,11 +996,20 @@ function AppShellWireframeBody({
 
   return (
     <WindowFrame className="relative">
+      {/* AppLayout owns this trigger as a pinned overlay. AppSidebar's top
+          reserve deliberately contains only history navigation. */}
+      <span
+        aria-hidden
+        data-guide-fixture="sidebar-trigger-overlay"
+        className="absolute left-2 top-2.5 z-[4] flex size-7 items-center justify-center rounded-md"
+      >
+        <MiniIcon icon={SidebarLeftIcon} className="size-4" />
+      </span>
       {/* Sized to the real window's aspect: at the diagram's 1100px width, a
           650px frame matches the ~1.7:1 footprint of an actual bb window.
           The thread list and timeline are flex-1, so the height lands there
           as open canvas. The timeline's explicit minimum keeps this loaded
-          fixture aligned with the same taller skeleton geometry. */}
+          fixture aligned with the same taller loading-placeholder geometry. */}
       <div className="flex min-h-[650px] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
         <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
@@ -1079,9 +1197,11 @@ function AppShellWireframeBody({
 }
 
 /**
- * The three annotated right-panel capabilities are tabs in the product. Each
- * marker selects its tab before opening the corresponding Guide card, so the
- * diagram and the explanation always describe the same visible body.
+ * The three annotated right-panel capabilities are tabs in the product. Their
+ * numbered controls live in AppShellWireframe's exterior top layer; the host
+ * row below stays at the product's real 48px height. Each marker selects its
+ * tab before opening the corresponding Guide card, so the diagram and the
+ * explanation always describe the same visible body.
  */
 export function AppShellRightPanel({
   activeTab,
@@ -1101,7 +1221,10 @@ export function AppShellRightPanel({
     // is not the app's `.fixed.bg-sidebar` element, so it does not receive
     // the themed sidebar overlay.
     <div className="flex w-[380px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
-      <div className="flex h-16 items-end gap-1.5 border-b border-border-hairline px-3 pb-2">
+      <div
+        data-guide-fixture="right-panel-tab-strip"
+        className="flex h-12 items-center gap-1.5 border-b border-border-hairline px-3"
+      >
         <span className="flex h-6 items-center rounded-md px-1.5">
           <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
         </span>
@@ -1112,7 +1235,7 @@ export function AppShellRightPanel({
             tabClass("thread-panel"),
             "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
           )}
-          chipClassName="left-1/2 -top-6 -translate-x-1/2"
+          showChip={false}
           onActivate={() => onTabSelect("thread-panel")}
         >
           <span data-guide-tab="thread-panel" className="contents">
@@ -1127,7 +1250,7 @@ export function AppShellRightPanel({
             tabClass("file-opener"),
             "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
           )}
-          chipClassName="left-1/2 -top-6 -translate-x-1/2"
+          showChip={false}
           onActivate={() => onTabSelect("file-opener")}
         >
           <span data-guide-tab="file-opener" className="contents">
@@ -1142,7 +1265,7 @@ export function AppShellRightPanel({
             tabClass("code-renderers"),
             "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
           )}
-          chipClassName="left-1/2 -top-6 -translate-x-1/2"
+          showChip={false}
           onActivate={() => onTabSelect("code-renderers")}
         >
           <span data-guide-tab="code-renderers" className="contents">
@@ -1396,7 +1519,7 @@ export function ComposerWireframe() {
 /**
  * Marker for a real host component: the numbered chip, plus an optional
  * highlight rectangle over the region it points at. The highlight uses the
- * same selected-surface tokens the skeleton `Mark` regions use, so a live
+ * same selected-surface tokens the fixture `Mark` regions use, so a live
  * component and a mockup light up the same way.
  */
 function OverlayMark({
@@ -1483,196 +1606,193 @@ export function RealComposerAnnotated() {
     // The same gutter geometry as the other window slides, so the nav above
     // and the card below sit the same distance from every frame.
     <div className="relative px-7 pb-2 pt-4">
-      {/* Below ~720px the annotated composer scrolls sideways rather than
-          reflowing: the overlay markers are measured against the full-width
-          layout, so the diagram keeps that layout at every panel width. */}
-      <div className="overflow-x-auto">
-        <div className="mx-auto w-full min-w-[720px] max-w-3xl select-none text-xs leading-none text-muted-foreground">
-          <WindowFrame>
-            <div className="flex min-h-[506px] flex-col">
-              {/* thread chrome: header and a short exchange, unannotated */}
-              {/* Full-scale chrome (text-sm rows, 44px header, 16px icons): the
+      {/* ProductMap keeps the full-width anatomy and its markers inside the
+          same scroll-together wrapper at every panel width. */}
+      <div className="mx-auto w-full min-w-[720px] max-w-3xl select-none text-xs leading-none text-muted-foreground">
+        <WindowFrame>
+          <div className="flex min-h-[506px] flex-col">
+            {/* thread chrome: header and a short exchange, unannotated */}
+            {/* Full-scale chrome (text-sm rows, 44px header, 16px icons): the
               real composer renders at product size below, so the drawn
               thread around it holds the same scale instead of miniature. */}
-              <div
-                aria-hidden
-                className="flex h-11 items-center gap-2 border-b border-border-hairline px-4 text-sm"
-              >
-                <span className="truncate text-foreground">
-                  Ship the release notes
+            <div
+              aria-hidden
+              className="flex h-11 items-center gap-2 border-b border-border-hairline px-4 text-sm"
+            >
+              <span className="truncate text-foreground">
+                Ship the release notes
+              </span>
+              <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
+              <span className="flex-1" />
+            </div>
+            <div
+              aria-hidden
+              className="flex-1 space-y-4 px-4 py-4 text-sm leading-relaxed"
+            >
+              <div className="flex justify-end">
+                <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-3 py-2 text-foreground">
+                  Draft the release notes
                 </span>
-                <MiniIcon icon={MoreHorizontalIcon} className="size-3.5" />
-                <span className="flex-1" />
               </div>
-              <div
-                aria-hidden
-                className="flex-1 space-y-4 px-4 py-4 text-sm leading-relaxed"
-              >
-                <div className="flex justify-end">
-                  <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-3 py-2 text-foreground">
-                    Draft the release notes
-                  </span>
-                </div>
-                <p className="w-[88%]">
-                  Drafted. Two rough edges left in checkout — reply with what to
-                  fold in.
-                </p>
-              </div>
+              <p className="w-[88%]">
+                Drafted. Two rough edges left in checkout — reply with what to
+                fold in.
+              </p>
+            </div>
 
-              {/* the reply box, pinned to the bottom like the real one, at the
+            {/* the reply box, pinned to the bottom like the real one, at the
               real product's footprint: the actual composer spans ~two thirds
               of the thread column, not edge to edge. */}
-              <div className="px-4 pb-4">
-                {/* banner: a plugin banner renders in this slot, above the box */}
-                <Mark
-                  id="composer-banners"
-                  label="Plugin composer banners, above the prompt box"
-                  className="mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm"
-                  // Flush with the banner's right edge rather than hanging
-                  // past it: the typeahead below opens at the prompt box's
-                  // exact width, and a chip poking out beyond that edge reads
-                  // as the menu failing to cover it.
-                  chipClassName="right-0 -top-2"
-                >
-                  <PluginGlyph className="size-3.5" />
-                  <span className="text-foreground">Your banner</span>
-                </Mark>
+            <div className="px-4 pb-4">
+              {/* banner: a plugin banner renders in this slot, above the box */}
+              <Mark
+                id="composer-banners"
+                label="Plugin composer banners, above the prompt box"
+                className="mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm"
+                // Flush with the banner's right edge rather than hanging
+                // past it: the typeahead below opens at the prompt box's
+                // exact width, and a chip poking out beyond that edge reads
+                // as the menu failing to cover it.
+                chipClassName="right-0 -top-2"
+              >
+                <PluginGlyph className="size-3.5" />
+                <span className="text-foreground">Your banner</span>
+              </Mark>
 
-                <div className="relative">
-                  <StaticEmbeddedComposer />
+              <div className="relative">
+                <StaticEmbeddedComposer />
 
-                  {/* The drawn draft, covering the editor's first line: a real
+                {/* The drawn draft, covering the editor's first line: a real
                   mention pill and a plugin-painted range. Its fill matches
                   the prompt box's own background, so it disappears into the
                   product chrome instead of reading as a pasted-on strip. */}
-                  <div className="absolute left-4 right-12 top-[13px] flex h-7 items-center bg-[var(--background)] text-sm leading-none text-foreground">
-                    <span aria-hidden className="whitespace-pre">
-                      Summarize{" "}
-                    </span>
-                    <RegionMark
-                      id="mention-provider"
-                      label="Plugin mention results in the @ typeahead"
-                      className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
-                      chipClassName="left-1/2 -top-4 -translate-x-1/2"
-                    >
-                      <span aria-hidden>@release-notes</span>
-                    </RegionMark>
-                    <span aria-hidden className="whitespace-pre">
-                      {" "}
-                      and fix the{" "}
-                    </span>
-                    <RegionMark
-                      id="composer-rich-text"
-                      label="Plugin highlighting, painted over the draft prompt"
-                      className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
-                      chipClassName="left-1/2 -top-4 -translate-x-1/2"
-                    >
-                      <span aria-hidden>TODO</span>
-                    </RegionMark>
-                    <span aria-hidden className="whitespace-pre">
-                      {" "}
-                      in checkout.
-                    </span>
-                  </div>
-
-                  {/* the draft itself: what useComposer reads and locks */}
-                  <OverlayMark
-                    id="composer-state"
-                    label="The draft prompt a plugin can read and lock"
-                    className="-left-2 top-4"
-                    region="left-[12px] right-[40px] top-[9px] h-9"
-                  />
-                  {/* The mention pill and highlighted range carry their own
-                      RegionMarks above, so their boundaries follow the
-                      rendered fixture text rather than slide coordinates. */}
-                  {engaged("mention-provider") ? (
-                    <div
-                      aria-hidden
-                      // Placed like the real MentionMenu in a bottom-pinned
-                      // composer: the prompt box's full width (-left-px /
-                      // -right-px, over its 1px border) and above every
-                      // annotation. The extra gap keeps the menu clear of the
-                      // two badges over the draft line.
-                      className="pointer-events-none absolute -left-px -right-px bottom-full z-20 mb-5 overflow-hidden rounded-md border border-border bg-popover pb-1 shadow-md"
-                    >
-                      <span className="block px-3 pb-1 pt-1.5 text-xs text-muted-foreground">
-                        Your plugin
-                      </span>
-                      <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
-                        <PluginGlyph className="size-3.5" />
-                        release-notes
-                      </span>
-                      <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
-                        <PluginGlyph className="size-3.5 opacity-60" />
-                        roadmap
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {/* + menu: chip on the + itself; opens upward while engaged,
-                  the direction the real menu takes at the window's bottom */}
-                  <OverlayMark
-                    id="composer-plus-menu"
-                    label="Plugin rows in the composer's + menu"
-                    // On the button's corner but below 81px, where the +
-                    // menu's bottom edge lands when it opens; higher and the
-                    // menu would cut the chip in half.
-                    className="left-[35px] top-[83px]"
-                    region="left-[5px] top-[85px] size-10"
-                  />
-                  {engaged("composer-plus-menu") ? (
-                    <div
-                      aria-hidden
-                      // Placed like the real PromptBoxActionsMenu (Radix,
-                      // align="start", sideOffset 4, flipped upward at the
-                      // window's bottom): left edge on the + button, bottom
-                      // edge 4px above its top (the button region starts at
-                      // 85px), above every annotation.
-                      className="pointer-events-none absolute bottom-[calc(100%-81px)] left-[5px] z-20 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
-                    >
-                      <span className="flex h-6 items-center gap-1.5 px-1.5">
-                        <MiniIcon icon={File01Icon} className="size-3.5" />
-                        Attach files
-                      </span>
-                      <span className="flex h-6 items-center gap-1.5 px-1.5">
-                        <MiniIcon icon={ToolboxIcon} className="size-3.5" />
-                        Skills
-                      </span>
-                      <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
-                        <PluginGlyph className="size-3.5" />
-                        Your action
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {/* agent providers: one annotation for the whole picker */}
-                  <OverlayMark
-                    id="provider-picker"
-                    label="Your agent provider and its mark, in the model picker"
-                    className="left-[184px] top-[71px]"
-                    region="left-[41px] top-[85px] h-10 w-[157px]"
-                  />
-                  {/* Draw this fixture-owned icon in the documented slot so
-                      the annotation points at a recognizable plugin action. */}
+                <div className="absolute left-4 right-12 top-[13px] flex h-7 items-center bg-[var(--background)] text-sm leading-none text-foreground">
+                  <span aria-hidden className="whitespace-pre">
+                    Summarize{" "}
+                  </span>
                   <RegionMark
-                    id="composer-actions"
-                    label="Plugin composer actions, before voice and send"
-                    className="absolute right-[81px] top-[87px] z-[5] flex size-9 items-center justify-center"
+                    id="mention-provider"
+                    label="Plugin mention results in the @ typeahead"
+                    className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
                     chipClassName="left-1/2 -top-4 -translate-x-1/2"
                   >
-                    <span
-                      aria-hidden
-                      data-guide-fixture="plugin-composer-action"
-                      className="flex size-7 items-center justify-center rounded-md bg-state-hover"
-                    >
-                      <PluginGlyph className="size-3.5" />
-                    </span>
+                    <span aria-hidden>@release-notes</span>
                   </RegionMark>
+                  <span aria-hidden className="whitespace-pre">
+                    {" "}
+                    and fix the{" "}
+                  </span>
+                  <RegionMark
+                    id="composer-rich-text"
+                    label="Plugin highlighting, painted over the draft prompt"
+                    className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
+                    chipClassName="left-1/2 -top-4 -translate-x-1/2"
+                  >
+                    <span aria-hidden>TODO</span>
+                  </RegionMark>
+                  <span aria-hidden className="whitespace-pre">
+                    {" "}
+                    in checkout.
+                  </span>
                 </div>
+
+                {/* the draft itself: what useComposer reads and locks */}
+                <OverlayMark
+                  id="composer-state"
+                  label="The draft prompt a plugin can read and lock"
+                  className="-left-2 top-4"
+                  region="left-[12px] right-[40px] top-[9px] h-9"
+                />
+                {/* The mention pill and highlighted range carry their own
+                      RegionMarks above, so their boundaries follow the
+                      rendered fixture text rather than slide coordinates. */}
+                {engaged("mention-provider") ? (
+                  <div
+                    aria-hidden
+                    // Placed like the real MentionMenu in a bottom-pinned
+                    // composer: the prompt box's full width (-left-px /
+                    // -right-px, over its 1px border) and above every
+                    // annotation. The extra gap keeps the menu clear of the
+                    // two badges over the draft line.
+                    className="pointer-events-none absolute -left-px -right-px bottom-full z-20 mb-5 overflow-hidden rounded-md border border-border bg-popover pb-1 shadow-md"
+                  >
+                    <span className="block px-3 pb-1 pt-1.5 text-xs text-muted-foreground">
+                      Your plugin
+                    </span>
+                    <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
+                      <PluginGlyph className="size-3.5" />
+                      release-notes
+                    </span>
+                    <span className="mx-1 flex h-7 items-center gap-1.5 px-2">
+                      <PluginGlyph className="size-3.5 opacity-60" />
+                      roadmap
+                    </span>
+                  </div>
+                ) : null}
+
+                {/* + menu: chip on the + itself; opens upward while engaged,
+                  the direction the real menu takes at the window's bottom */}
+                <OverlayMark
+                  id="composer-plus-menu"
+                  label="Plugin rows in the composer's + menu"
+                  // On the button's corner but below 81px, where the +
+                  // menu's bottom edge lands when it opens; higher and the
+                  // menu would cut the chip in half.
+                  className="left-[35px] top-[83px]"
+                  region="left-[5px] top-[85px] size-10"
+                />
+                {engaged("composer-plus-menu") ? (
+                  <div
+                    aria-hidden
+                    // Placed like the real PromptBoxActionsMenu (Radix,
+                    // align="start", sideOffset 4, flipped upward at the
+                    // window's bottom): left edge on the + button, bottom
+                    // edge 4px above its top (the button region starts at
+                    // 85px), above every annotation.
+                    className="pointer-events-none absolute bottom-[calc(100%-81px)] left-[5px] z-20 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+                  >
+                    <span className="flex h-6 items-center gap-1.5 px-1.5">
+                      <MiniIcon icon={File01Icon} className="size-3.5" />
+                      Attach files
+                    </span>
+                    <span className="flex h-6 items-center gap-1.5 px-1.5">
+                      <MiniIcon icon={ToolboxIcon} className="size-3.5" />
+                      Skills
+                    </span>
+                    <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+                      <PluginGlyph className="size-3.5" />
+                      Your action
+                    </span>
+                  </div>
+                ) : null}
+
+                {/* agent providers: one annotation for the whole picker */}
+                <OverlayMark
+                  id="provider-picker"
+                  label="Your agent provider and its mark, in the model picker"
+                  className="left-[184px] top-[71px]"
+                  region="left-[41px] top-[85px] h-10 w-[157px]"
+                />
+                {/* Draw this fixture-owned icon in the documented slot so
+                      the annotation points at a recognizable plugin action. */}
+                <RegionMark
+                  id="composer-actions"
+                  label="Plugin composer actions, before voice and send"
+                  className="absolute right-[81px] top-[87px] z-[5] flex size-9 items-center justify-center"
+                  chipClassName="left-1/2 -top-4 -translate-x-1/2"
+                >
+                  <span
+                    aria-hidden
+                    data-guide-fixture="plugin-composer-action"
+                    className="flex size-7 items-center justify-center rounded-md bg-state-hover"
+                  >
+                    <PluginGlyph className="size-3.5" />
+                  </span>
+                </RegionMark>
               </div>
             </div>
-          </WindowFrame>
-        </div>
+          </div>
+        </WindowFrame>
       </div>
     </div>
   );
@@ -1729,10 +1849,8 @@ export function ComposeScreenWireframe({
   return (
     // Padded for the same annotation gutter as the app-window diagram.
     <div className="relative px-7 pb-2 pt-4">
-      <div className="overflow-x-auto">
-        <div className="min-w-[560px]">
-          <ComposeScreenWireframeBody composer={composer} />
-        </div>
+      <div className="min-w-[560px]">
+        <ComposeScreenWireframeBody composer={composer} />
       </div>
     </div>
   );

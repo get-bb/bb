@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "type": "module",
   "private": true,
-  "description": "The bb plugin-surface map: annotated skeletons of the bb UI plus the annotation cards that explain each pluggable surface.",
+  "description": "The bb plugin-surface map: annotated surface fixtures plus the cards that explain each pluggable surface.",
   "exports": {
     ".": {
       "source": "./src/index.ts",
@@ -19,6 +19,7 @@
   "types": "./src/index.ts",
   "scripts": {
     "clean": "rimraf tsconfig.tsbuildinfo",
+    "scaffold:surface-entry": "node scripts/scaffold-surface-entry.mjs",
     "update:sdk-inventory": "node scripts/sdk-api-inventory.mjs --write",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts"

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   copyPluginSurfaceAgentReference,
+  createPluginSurfaceAgentReference,
   PLUGIN_GUIDE_PLUGIN_ID,
   pluginSurfaceAgentClipboardContent,
   pluginSurfaceAgentContext,
@@ -17,6 +18,30 @@ afterEach(() => {
 });
 
 describe("Plugin Guide agent references", () => {
+  it("derives the complete reference from canonical surface data", () => {
+    const surface = SURFACES_BY_ID.get("code-renderers");
+    if (!surface) throw new Error("code-renderers surface missing");
+
+    const reference = createPluginSurfaceAgentReference(surface);
+    expect(reference).toEqual(createPluginSurfaceAgentReference(surface));
+    expect(reference.identity).toEqual({
+      provider: "surface",
+      id: "code-renderers",
+      label: "Code & diff renderers",
+    });
+    expect(reference.resource).toEqual({
+      kind: "plugin",
+      pluginId: PLUGIN_GUIDE_PLUGIN_ID,
+      icon: null,
+      itemId: "surface:code-renderers",
+      label: "Code & diff renderers",
+    });
+    expect(reference.context.split("\n")).toHaveLength(3);
+    expect(reference.clipboard.text).toBe(
+      "Build a plugin capability like @Code & diff renderers using bb's Plugin Guide. ",
+    );
+  });
+
   it("uses the stable surface id and concise card label", () => {
     const surface = SURFACES_BY_ID.get("composer-actions");
     if (!surface) throw new Error("composer-actions surface missing");
@@ -87,6 +112,21 @@ describe("Plugin Guide agent references", () => {
       "Build a plugin capability like @Inline actions using bb's Plugin Guide. " +
         "Build a plugin capability like @Thread side-panel tabs using bb's Plugin Guide. ",
     );
+  });
+
+  it("gives every surface a byte-stable, globally distinct pill identity", () => {
+    const itemIds = [...SURFACES_BY_ID.values()].map((surface) => {
+      const first = createPluginSurfaceAgentReference(surface);
+      const second = createPluginSurfaceAgentReference(surface);
+      expect(first).toEqual(second);
+      expect(first.clipboard.html).not.toContain(surface.summary);
+      for (const bullet of surface.bullets) {
+        expect(first.clipboard.html).not.toContain(bullet);
+      }
+      return first.resource.itemId;
+    });
+
+    expect(new Set(itemIds).size).toBe(itemIds.length);
   });
 
   it("writes both rich and plain clipboard representations", async () => {

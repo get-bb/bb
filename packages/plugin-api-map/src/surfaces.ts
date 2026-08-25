@@ -47,6 +47,8 @@ export interface SurfaceGroup {
     | "headless";
   title: string;
   blurb: string;
+  /** Product anatomy stays spatial; non-spatial documentation can reflow. */
+  fixtureKind: "spatial" | "capability-grid";
   surfaces: PluginSurface[];
   /**
    * Named clusters for a group that lists its surfaces instead of drawing
@@ -59,10 +61,24 @@ export interface SurfaceGroup {
   }[];
 }
 
+export type FixtureResponsiveStrategy = "scroll-together" | "reflow";
+
+/**
+ * Responsive behavior follows fixture meaning, never an author's per-page
+ * preference. Product anatomy scrolls as one readable object; the one
+ * non-spatial capability grid uses ordinary document reflow.
+ */
+export function fixtureResponsiveStrategy(
+  group: Pick<SurfaceGroup, "fixtureKind">,
+): FixtureResponsiveStrategy {
+  return group.fixtureKind === "spatial" ? "scroll-together" : "reflow";
+}
+
 export const SURFACE_GROUPS: SurfaceGroup[] = [
   {
     id: "app-shell",
     title: "The bb app window",
+    fixtureKind: "spatial",
     blurb:
       "The main bb window, containing the sidebar, the conversation, and the side panel. A plugin can add rows, controls, panel tabs, and message content to the numbered regions.",
     surfaces: [
@@ -259,6 +275,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   {
     id: "command-palette",
     title: "Command palette",
+    fixtureKind: "spatial",
     blurb:
       "bb's searchable command menu. A plugin can add actions that match, rank, and run alongside bb's own commands.",
     surfaces: [
@@ -282,6 +299,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   {
     id: "composer",
     title: "The composer",
+    fixtureKind: "spatial",
     blurb:
       "The prompt box used to start a thread and to reply inside one. A plugin can add banners, menu entries, and action buttons to it, answer mention searches, highlight the draft prompt, and supply the agent that runs the message.",
     surfaces: [
@@ -394,6 +412,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   {
     id: "home",
     title: "Home page",
+    fixtureKind: "spatial",
     blurb:
       "The screen bb opens on, holding the new-thread composer and a side panel. A plugin can add a section below the composer, and an action in that panel that opens its own tab.",
     surfaces: [
@@ -427,6 +446,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   {
     id: "settings",
     title: "Plugin settings page",
+    fixtureKind: "spatial",
     blurb:
       "The settings page bb creates for every installed plugin. A plugin can declare fields for bb to render and add its own section below them.",
     surfaces: [
@@ -471,6 +491,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   {
     id: "extensions",
     title: "Plugin page in Extensions",
+    fixtureKind: "spatial",
     blurb:
       "The page bb shows for an installed plugin under Extensions: what it is, what it registers, and whether it is healthy. A plugin can report that it needs configuring, and bb says so at the top of this page.",
     surfaces: [
@@ -491,6 +512,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
   {
     id: "headless",
     title: "Plugin backend",
+    fixtureKind: "capability-grid",
     // The grid below names all ten capabilities with their own taglines, so
     // the blurb does not list them again.
     blurb: "The parts of the plugin API with no interface of their own.",

@@ -2,7 +2,7 @@
 /**
  * Guards the Plugin Guide UI-anatomy manifest against the real app.
  *
- * The Plugin Guide product-map skeletons (packages/plugin-api-map) render the
+ * The Plugin Guide surface fixtures (packages/plugin-api-map) render the
  * sidebar sections, the sidebar footer, and the message action bar in the
  * order declared by anatomy-manifest.json. This test renders the real
  * components and asserts the same DOM order, so reordering the app fails here
@@ -32,18 +32,24 @@ import {
 } from "@/lib/plugin-slots";
 import { sidebarNavigationQueryKey } from "@/hooks/queries/query-keys";
 
+const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
+
 const manifest = JSON.parse(
   readFileSync(
-    resolve(
-      import.meta.dirname,
-      "../../../../../packages/plugin-api-map/src/anatomy-manifest.json",
-    ),
+    resolve(REPO_ROOT, "packages/plugin-api-map/src/anatomy-manifest.json"),
     "utf8",
   ),
 ) as {
   appSidebar: string[];
   sidebarFooter: string[];
   messageActionBar: string[];
+  surfaceFixtures: Record<
+    string,
+    {
+      responsiveStrategy: "scroll-together";
+      sources: Array<{ path: string; anchors: string[] }>;
+    }
+  >;
 };
 
 const TEST_PLUGIN_ID = "docs-anatomy-test";
@@ -161,6 +167,25 @@ function renderAppSidebar() {
 }
 
 describe("docs anatomy manifest", () => {
+  it("keeps every surface fixture anchored to current product source", () => {
+    for (const [fixtureId, fixture] of Object.entries(
+      manifest.surfaceFixtures,
+    )) {
+      for (const source of fixture.sources) {
+        const sourceText = readFileSync(
+          resolve(REPO_ROOT, source.path),
+          "utf8",
+        );
+        for (const anchor of source.anchors) {
+          expect(
+            sourceText,
+            `${fixtureId}: missing ${JSON.stringify(anchor)} in ${source.path}`,
+          ).toContain(anchor);
+        }
+      }
+    }
+  });
+
   it("matches AppSidebar's section order", () => {
     registerTestPlugin();
     const { container } = renderAppSidebar();

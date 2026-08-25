@@ -1,13 +1,13 @@
 // bb-plugin-plugin-api-docs frontend.
 //
 // The plugin API docs, inside bb. It renders the same product map the docs
-// site does, one annotated skeleton of the bb UI at a time, from the shared
+// site does, one annotated surface fixture at a time, from the shared
 // @bb/plugin-api-map package, so the two can never disagree about what bb can
 // be extended with. Composer illustrations are deterministic fixtures, so
 // globally installed plugins cannot rewrite the Guide's example UI.
 //
 // One surface, which the map itself documents: `navPanel`, the map as its own
-// full-window page in the sidebar. The skeletons want the whole window, so
+// full-window page in the sidebar. The fixtures want the whole window, so
 // there is deliberately no thread-panel tab.
 import {
   copyPluginSurfaceAgentReference,
@@ -86,7 +86,7 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     // flex column, so without this the part of the page below the fold (the
     // detail card, on a short window) is cut off rather than scrollable.
     // Full width, no reading-column cap: the wider the page, the more room
-    // the annotation cards have to open beside the skeleton instead of below.
+    // the annotation cards have to open beside the fixture instead of below.
     <div className="h-full min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6 pt-5">
       <ProductMap
         pluginPageHref={pluginPageHref}

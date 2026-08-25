@@ -1,5 +1,5 @@
 /**
- * The whole product map: one annotated skeleton of the bb UI at a time, panned
+ * The whole product map: one annotated surface fixture at a time, panned
  * through with the arrows, with a click on any numbered annotation opening its
  * card in the nearest gutter (or directly below the diagram when no gutter
  * fits).
@@ -29,6 +29,7 @@ import { cn } from "./cn";
 import { SurfaceCard, useSurfaceCard } from "./surface-card";
 import { surfaceIcon } from "./plugin-icons";
 import {
+  fixtureResponsiveStrategy,
   GROUP_BY_SURFACE_ID,
   SURFACE_GROUPS,
   SURFACES_BY_ID,
@@ -48,8 +49,8 @@ import {
 } from "./wireframes";
 
 /**
- * Marker numbers restart per slide, matching each skeleton's own markers.
- * "Plugin backend" is absent on purpose: it has no skeleton, so a number there
+ * Marker numbers restart per slide, matching each fixture's own markers.
+ * "Plugin backend" is absent on purpose: it has no fixture, so a number there
  * would point at nothing.
  */
 export const SURFACE_NUMBERS: ReadonlyMap<string, number> = new Map(
@@ -82,7 +83,7 @@ export function annotationNeighbors(
 /**
  * One capability row in the platform grid: icon, title, one-line tagline.
  * The prose lives in the detail card a click opens, so the grid stays
- * scannable. Same anchor as a skeleton marker, same measurement path.
+ * scannable. Same anchor as a fixture marker, same measurement path.
  */
 function PlatformCard({ surface }: { surface: PluginSurface }) {
   const { activeId, setActiveId, expandedId, onSelect } = useSurfaceMap();
@@ -166,126 +167,57 @@ function PlatformSlide({ group }: { group: SurfaceGroup }) {
   );
 }
 
-/**
- * The width the skeletons are drawn at. Below it they scale down as a whole
- * rather than reflowing: the diagrams teach proportion — where a region sits
- * relative to the rest of the window — and letting fixed-width regions
- * collapse independently would draw a bb that does not exist.
- */
 /** Matches the stage's `duration-300` pan, so a followed reference opens
  * its card only once the target slide has actually arrived. */
 const SLIDE_PAN_MS = 300;
 
-const DIAGRAM_WIDTH = 900;
-
-/**
- * Scales a skeleton to fit its column when the column is narrower than the
- * width it is drawn at, so a diagram in a half-width split pane shrinks
- * instead of running off the edge.
- */
-function FitDiagram({ children }: { children: ReactNode }) {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(1);
-  const [height, setHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    const host = hostRef.current;
-    const content = contentRef.current;
-    if (!host || !content) return;
-    const measure = () => {
-      const available = host.clientWidth;
-      if (available === 0) return;
-      const next = Math.min(1, available / DIAGRAM_WIDTH);
-      setScale(next);
-      // The transform does not affect layout, so the host has to carry the
-      // scaled height itself or it would reserve the full untransformed one.
-      setHeight(next === 1 ? null : Math.round(content.offsetHeight * next));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(host);
-    observer.observe(content);
-    return () => observer.disconnect();
-  }, []);
-
+/** One owner for every spatial fixture's responsive geometry. */
+function SpatialFixture({ children }: { children: ReactNode }) {
   return (
     <div
-      ref={hostRef}
-      className="min-w-0"
-      style={height === null ? undefined : { height }}
+      data-guide-responsive-strategy="scroll-together"
+      className="overflow-x-auto"
     >
-      <div
-        ref={contentRef}
-        style={
-          scale === 1
-            ? undefined
-            : {
-                width: DIAGRAM_WIDTH,
-                transform: `scale(${scale})`,
-                transformOrigin: "top left",
-              }
-        }
-      >
-        {children}
-      </div>
+      <div className="mx-auto w-full min-w-[720px] max-w-5xl">{children}</div>
     </div>
   );
 }
 
-function Slide({ group }: { group: SurfaceGroup }) {
+function SlideContent({ group }: { group: SurfaceGroup }) {
   switch (group.id) {
     case "app-shell":
-      // This is the densest diagram in the Guide. Keep it at a readable
-      // product-like size and let its own stage scroll horizontally in a
-      // narrow bb pane; shrinking the whole window makes every label and
-      // annotation harder to understand at once.
       return <AppShellWireframe />;
     case "command-palette":
-      return (
-        <div className="mx-auto max-w-5xl">
-          <FitDiagram>
-            <CommandPaletteWireframe />
-          </FitDiagram>
-        </div>
-      );
+      return <CommandPaletteWireframe />;
     case "composer":
-      return (
-        <div className="mx-auto max-w-5xl">
-          <RealComposerAnnotated />
-        </div>
-      );
+      return <RealComposerAnnotated />;
     case "home":
-      return (
-        <div className="mx-auto max-w-5xl">
-          <ComposeScreenWireframe />
-        </div>
-      );
+      return <ComposeScreenWireframe />;
     case "settings":
-      return (
-        <div className="mx-auto max-w-5xl">
-          <FitDiagram>
-            <SettingsWireframe />
-          </FitDiagram>
-        </div>
-      );
+      return <SettingsWireframe />;
     case "extensions":
-      return (
-        <div className="mx-auto max-w-5xl">
-          <FitDiagram>
-            <ExtensionsPluginPageWireframe />
-          </FitDiagram>
-        </div>
-      );
-    // The capability grid reflows on its own; scaling it would only shrink
-    // text that has room to wrap instead.
+      return <ExtensionsPluginPageWireframe />;
     case "headless":
-      return (
-        <div className="mx-auto max-w-5xl">
-          <PlatformSlide group={group} />
-        </div>
-      );
+      return <PlatformSlide group={group} />;
   }
+}
+
+function Slide({ group }: { group: SurfaceGroup }) {
+  if (fixtureResponsiveStrategy(group) === "reflow") {
+    return (
+      <div
+        data-guide-responsive-strategy="reflow"
+        className="mx-auto max-w-5xl"
+      >
+        <SlideContent group={group} />
+      </div>
+    );
+  }
+  return (
+    <SpatialFixture>
+      <SlideContent group={group} />
+    </SpatialFixture>
+  );
 }
 
 /**
@@ -354,7 +286,7 @@ function PanButton({
 }
 
 /**
- * Keeps the stage exactly as tall as the slide on show, so a short skeleton
+ * Keeps the stage exactly as tall as the slide on show, so a short fixture
  * does not leave the tallest one's empty space below it.
  */
 function useStageHeight(
