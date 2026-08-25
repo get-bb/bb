@@ -1,6 +1,6 @@
 import { changedMessageSchema, type ThreadChangedMessage } from "@bb/domain";
-import { getThread } from "@bb/db";
-import { describe, expect, it } from "vitest";
+import { getThread, markThreadDeleted } from "@bb/db";
+import { describe, expect, it, vi } from "vitest";
 import {
   handleDaemonSocketClosed,
   handleHostRemoved,
@@ -16,8 +16,10 @@ import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 interface HostThreadsFixture {
   activeThreadId: string;
+  environmentId: string;
   hostId: string;
   idleThreadId: string;
+  projectId: string;
   sessionId: string;
 }
 
@@ -50,10 +52,49 @@ function seedHostThreadsFixture(
   });
   return {
     activeThreadId: activeThread.id,
+    environmentId: environment.id,
     hostId: host.id,
     idleThreadId: idleThread.id,
+    projectId: project.id,
     sessionId: session.id,
   };
+}
+
+function seedHostThreads(
+  harness: TestAppHarness,
+  args: {
+    count: number;
+    fixture: Pick<HostThreadsFixture, "environmentId" | "projectId">;
+    status: "active" | "idle";
+  },
+): string[] {
+  return Array.from(
+    { length: args.count },
+    () =>
+      seedThread(harness.deps, {
+        projectId: args.fixture.projectId,
+        environmentId: args.fixture.environmentId,
+        status: args.status,
+      }).id,
+  );
+}
+
+/**
+ * Drizzle and the raw data helpers prepare every statement through the
+ * better-sqlite3 client, so the number of `prepare` calls is the number of
+ * SQL statements `work` issued.
+ */
+function countPreparedStatements(
+  harness: TestAppHarness,
+  work: () => void,
+): number {
+  const prepare = vi.spyOn(harness.db.$client, "prepare");
+  try {
+    work();
+    return prepare.mock.calls.length;
+  } finally {
+    prepare.mockRestore();
+  }
 }
 
 function statusChangedMessagesFor(
@@ -83,7 +124,7 @@ function lastStatusChange(
 }
 
 describe("host thread runtime status notifications", () => {
-  it("carries a statusChange snapshot for every host thread when the daemon socket closes", async () => {
+  it("carries a statusChange snapshot for the active host threads when the daemon socket closes", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedHostThreadsFixture(harness, 1);
       const socket = createMockHubSocket();
@@ -94,9 +135,9 @@ describe("host thread runtime status notifications", () => {
       // them so the harness does not fire interruptions after cleanup.
       harness.hub.cancelPendingDaemonDisconnect(fixture.sessionId);
 
-      // Bare notifications here would make every client refetch every active
-      // thread list once per host thread; the snapshot is what lets them
-      // patch rows in place.
+      // Host connectivity only changes an active row's displayed runtime. A
+      // bare notification there would make every client refetch every active
+      // thread list; the snapshot is what lets them patch the row in place.
       const activeMessage = lastStatusChange(
         socket.messages,
         fixture.activeThreadId,
@@ -108,20 +149,85 @@ describe("host thread runtime status notifications", () => {
           hostReconnectGraceExpiresAt: expect.any(Number),
         },
       });
+      // An idle row renders the same whether or not its host is connected, so
+      // it keeps the bare notification it always received rather than a
+      // snapshot that costs per-thread queries and bytes on every disconnect.
       const idleMessage = lastStatusChange(
         socket.messages,
         fixture.idleThreadId,
       );
-      expect(idleMessage.metadata?.statusChange).toMatchObject({
+      expect(idleMessage.metadata?.statusChange).toBeUndefined();
+    });
+  });
+
+  it("publishes the disconnect fan-out in a statement count that does not grow with the host's thread count", async () => {
+    await withTestHarness(async (harness) => {
+      const small = seedHostThreadsFixture(harness, 2);
+      const large = seedHostThreadsFixture(harness, 3);
+      const largeActiveThreadIds = [
+        large.activeThreadId,
+        ...seedHostThreads(harness, {
+          count: 2,
+          fixture: large,
+          status: "active",
+        }),
+      ];
+      const largeIdleThreadIds = seedHostThreads(harness, {
+        count: 300,
+        fixture: large,
         status: "idle",
-        runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
       });
+      // Joined to the host like any other row, but never rendered: no snapshot.
+      const deletedActiveThread = seedThread(harness.deps, {
+        projectId: large.projectId,
+        environmentId: large.environmentId,
+        status: "active",
+      });
+      markThreadDeleted(harness.db, harness.hub, {
+        threadId: deletedActiveThread.id,
+      });
+      const socket = createMockHubSocket();
+      harness.hub.subscribe(socket, { kind: "thread-list" });
+
+      const largeStatements = countPreparedStatements(harness, () =>
+        handleDaemonSocketClosed(harness.deps, { sessionId: large.sessionId }),
+      );
+      harness.hub.cancelPendingDaemonDisconnect(large.sessionId);
+      const largeMessages = [...socket.messages];
+      socket.messages.length = 0;
+
+      const smallStatements = countPreparedStatements(harness, () =>
+        handleDaemonSocketClosed(harness.deps, { sessionId: small.sessionId }),
+      );
+      harness.hub.cancelPendingDaemonDisconnect(small.sessionId);
+
+      // The daemon WebSocket close handler runs this synchronously on the
+      // event loop: the snapshot inputs must come from a fixed handful of
+      // batched statements, not ~6 statements per thread on the host.
+      expect(largeStatements).toBe(smallStatements);
+
+      for (const threadId of largeActiveThreadIds) {
+        expect(
+          lastStatusChange(largeMessages, threadId).metadata?.statusChange,
+        ).toMatchObject({
+          status: "active",
+          runtime: { displayStatus: "host-reconnecting" },
+        });
+      }
+      for (const threadId of [...largeIdleThreadIds, deletedActiveThread.id]) {
+        expect(
+          lastStatusChange(largeMessages, threadId).metadata?.statusChange,
+        ).toBeUndefined();
+      }
+      expect(
+        statusChangedMessagesFor(largeMessages, small.activeThreadId),
+      ).toEqual([]);
     });
   });
 
   it("carries the settled post-interruption snapshot when the host is removed", async () => {
     await withTestHarness(async (harness) => {
-      const fixture = seedHostThreadsFixture(harness, 2);
+      const fixture = seedHostThreadsFixture(harness, 4);
       const socket = createMockHubSocket();
       harness.hub.subscribe(socket, { kind: "thread-list" });
 
@@ -131,32 +237,27 @@ describe("host thread runtime status notifications", () => {
       });
 
       // Removal interrupts the active thread (run.failed) before the runtime
-      // fan-out, so every status-changed for it must carry a snapshot and the
-      // final one must show the settled error state.
-      const activeMessages = statusChangedMessagesFor(
+      // fan-out. The interruption publishes the settled error snapshot; by the
+      // time the fan-out runs the row is no longer active, so it gets the same
+      // bare notification as every other non-active thread on the host.
+      const activeSnapshots = statusChangedMessagesFor(
         socket.messages,
         fixture.activeThreadId,
+      ).flatMap((message) =>
+        message.metadata?.statusChange ? [message.metadata.statusChange] : [],
       );
-      expect(activeMessages.length).toBeGreaterThan(0);
-      for (const message of activeMessages) {
-        expect(message.metadata?.statusChange).toBeDefined();
-      }
+      expect(activeSnapshots.length).toBeGreaterThan(0);
       expect(getThread(harness.db, fixture.activeThreadId)?.status).toBe(
         "error",
       );
-      expect(
-        activeMessages.at(-1)?.metadata?.statusChange,
-      ).toMatchObject({
+      expect(activeSnapshots.at(-1)).toMatchObject({
         status: "error",
         runtime: { displayStatus: "error" },
       });
       expect(
         lastStatusChange(socket.messages, fixture.idleThreadId).metadata
           ?.statusChange,
-      ).toMatchObject({
-        status: "idle",
-        runtime: { displayStatus: "idle" },
-      });
+      ).toBeUndefined();
     });
   });
 });

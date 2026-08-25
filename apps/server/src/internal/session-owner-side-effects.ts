@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import {
   closeSession,
-  getThread,
   hostDaemonSessions,
+  listActiveHostThreads,
   listHostThreadIds,
   type HostDaemonSessionRow,
 } from "@bb/db";
@@ -19,7 +19,7 @@ import {
   interruptActiveThreadsForHost,
   reconcileDaemonReportedThreads,
 } from "../services/threads/thread-lifecycle.js";
-import { buildThreadStatusChangeMetadata } from "../services/threads/thread-runtime-display.js";
+import { buildThreadStatusChangeMetadataByThreadId } from "../services/threads/thread-runtime-display.js";
 import { settleDanglingBackgroundTasks } from "../services/threads/background-task-reconciliation.js";
 
 const DAEMON_RESTARTED_PENDING_INTERACTION_REASON =
@@ -261,25 +261,28 @@ function completeDaemonActiveWorkDisconnectGrace(
 }
 
 /**
- * Host connectivity is part of every thread row's displayed runtime, so each
- * notification carries the post-change `statusChange` snapshot: without it,
- * every client falls back to refetching every active thread list once per
- * thread on this host, twice per disconnect (close + grace).
+ * Host connectivity is part of an `active` thread row's displayed runtime, so
+ * those rows' notifications carry the post-change `statusChange` snapshot
+ * clients patch in place instead of refetching every active thread list.
+ * Every other row renders the same whether or not the host is connected; it
+ * keeps the bare notification it always received, which clients coalesce into
+ * one throttled list refetch. The snapshots come from one batched pass: this
+ * runs synchronously in the daemon socket's close handler and again when the
+ * grace elapses, and a host can carry hundreds of threads.
  */
 function notifyHostThreadRuntimeStatusChanged(
   deps: Pick<AppDeps, "db" | "hub" | "providerRegistry">,
   hostId: string,
 ): void {
+  const metadataByThreadId = buildThreadStatusChangeMetadataByThreadId(deps, {
+    environmentHostId: hostId,
+    threads: listActiveHostThreads(deps.db, { hostId }),
+  });
   for (const threadId of listHostThreadIds(deps.db, { hostId })) {
-    const thread = getThread(deps.db, threadId);
-    if (!thread) {
-      deps.hub.notifyThread(threadId, ["status-changed"]);
-      continue;
-    }
     deps.hub.notifyThread(
       threadId,
       ["status-changed"],
-      buildThreadStatusChangeMetadata(deps, thread),
+      metadataByThreadId.get(threadId),
     );
   }
 }
