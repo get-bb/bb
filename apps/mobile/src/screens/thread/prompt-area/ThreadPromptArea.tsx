@@ -60,9 +60,10 @@ interface ThreadPromptAreaProps {
   onHandoffToNewThread: () => void;
   /**
    * Liquid Glass: float over the bottom of the timeline (absolute, no page
-   * fill, no seam) instead of docking under it — the composer is glass and
-   * the banner / chips / queued list keep their own card surfaces. The
-   * screen pads the timeline for the height `onLayout` reports.
+   * fill, no seam) instead of docking under it — the composer and the chips
+   * are glass capsules; the banner (a form) and the queued list (cards) sit
+   * on raised panels. The screen pads the timeline for the height
+   * `onLayout` reports.
    */
   floating?: boolean;
   onLayout?: ViewProps["onLayout"];
@@ -151,8 +152,10 @@ export function ThreadPromptArea({
   );
 
   const showBanner = pendingInteraction !== null && !composer.hidden;
-  // Floating host: the banner / chip stack lose the page fill behind them,
-  // so they sit on a raised panel (the composer itself is glass).
+  // Floating host: the banner (a form) and the queued list (a card list)
+  // lose the page fill behind them, so each sits on a raised panel. The
+  // chips are not on it: each is its own glass capsule over the timeline,
+  // like the composer below them.
   const floatingPanelStyle: ViewStyle | undefined = floating
     ? {
         backgroundColor: tokens.surfaceRaisedSolid,
@@ -160,13 +163,11 @@ export function ThreadPromptArea({
         borderCurve: "continuous",
         overflow: "hidden",
         boxShadow: "0 8px 24px rgba(0, 0, 0, 0.18)",
-        marginBottom: 8,
       }
     : undefined;
+  const showQueue = !composer.hidden && queuedMessages.length > 0;
   // Skip the stack's bottom gap when nothing renders in it.
-  const stackHasContent =
-    hasThreadPromptChips(stackChips) ||
-    (!composer.hidden && queuedMessages.length > 0);
+  const stackHasContent = hasThreadPromptChips(stackChips) || showQueue;
   return (
     <View
       className={floating ? "px-3 pt-2" : "bg-background px-3 pt-2"}
@@ -195,7 +196,7 @@ export function ThreadPromptArea({
       {showBanner ? (
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          style={floatingPanelStyle}
+          style={[floatingPanelStyle, floating ? { marginBottom: 8 } : null]}
           contentContainerStyle={{ gap: 8, padding: floating ? 8 : 0 }}
           testID="thread-prompt-area-banner"
         >
@@ -220,32 +221,34 @@ export function ThreadPromptArea({
         <>
           <ScrollView
             keyboardShouldPersistTaps="handled"
-            style={[
-              { flexGrow: 0, flexShrink: 1 },
-              stackHasContent && floating ? floatingPanelStyle : null,
-            ]}
+            style={{ flexGrow: 0, flexShrink: 1 }}
             contentContainerStyle={{
               gap: 8,
-              padding: stackHasContent && floating ? 8 : 0,
               paddingBottom: stackHasContent ? 8 : 0,
             }}
             testID="thread-prompt-stack"
           >
             <ThreadPromptChips {...chipActions} {...stackChips} />
-            {!composer.hidden && queuedMessages.length > 0 ? (
-              <QueuedMessagesList
-                threadId={threadId}
-                queuedMessages={queuedMessages}
-                sendDisabled={composer.queueSendDisabled}
-                actionDisabled={composer.queueActionDisabled}
-                editingQueuedMessageId={
-                  composer.editing?.kind === "queued-message"
-                    ? composer.editing.queuedMessageId
-                    : null
-                }
-                savingQueuedMessageId={composer.savingQueuedMessageId}
-                onEdit={composer.beginQueuedMessageEdit}
-              />
+            {showQueue ? (
+              // The queued list is the one stack item that keeps a panel
+              // when floating: its card surface is translucent.
+              <View
+                style={floating ? [floatingPanelStyle, { padding: 8 }] : null}
+              >
+                <QueuedMessagesList
+                  threadId={threadId}
+                  queuedMessages={queuedMessages}
+                  sendDisabled={composer.queueSendDisabled}
+                  actionDisabled={composer.queueActionDisabled}
+                  editingQueuedMessageId={
+                    composer.editing?.kind === "queued-message"
+                      ? composer.editing.queuedMessageId
+                      : null
+                  }
+                  savingQueuedMessageId={composer.savingQueuedMessageId}
+                  onEdit={composer.beginQueuedMessageEdit}
+                />
+              </View>
             ) : null}
           </ScrollView>
           {composer.hidden || thread === undefined ? null : (

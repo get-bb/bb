@@ -1,16 +1,18 @@
 import type { ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, View, type ViewStyle } from "react-native";
 import { haptic } from "@/lib/haptics";
 import { usePickerSheetMaxHeight } from "@/screens/pickers";
 import { useTheme } from "@/theme";
 import {
   cn,
+  GlassSurface,
   Icon,
   NativeMenu,
   Sheet,
   ShimmerIcon,
   Spinner,
   Text,
+  useLiquidGlass,
   useSheet,
   type IconName,
   type NativeMenuAction,
@@ -18,6 +20,20 @@ import {
 } from "@/ui";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
+const CHIP_HEIGHT = 36;
+/**
+ * The capsule: on iOS 26 the shape is the Liquid Glass itself (the chips
+ * float over the timeline, so they refract it); elsewhere the fill and
+ * border below are painted into the same shape.
+ */
+const CHIP_SHAPE: ViewStyle = {
+  height: CHIP_HEIGHT,
+  borderRadius: CHIP_HEIGHT / 2,
+  borderCurve: "continuous",
+  overflow: "hidden",
+  flexDirection: "row",
+  alignItems: "center",
+};
 
 export interface PromptChipAction {
   label: string;
@@ -80,6 +96,12 @@ const LIVE_EFFECT = { effect: "pulse", repeat: -1 } as const;
  * chip). On iOS the trailing action — an icon-only segment, the one shape a
  * `NativeMenu` may wrap — opens a one-item native menu (destructive when it
  * ends a mode), so an "exit" is never a single accidental tap.
+ *
+ * The capsule is a `GlassSurface`: Liquid Glass on iOS 26 (the chip floats
+ * over the timeline), the raised fill with the pill border everywhere else.
+ * Glass is translucent over whatever scrolls under it, so with glass the
+ * detail segment and the trailing glyph drop their muted tone for the full
+ * foreground; the warning / destructive tints stay as they are.
  */
 export function PromptChip({
   icon,
@@ -96,12 +118,20 @@ export function PromptChip({
   onPress,
 }: PromptChipProps) {
   const { tokens } = useTheme();
+  const glass = useLiquidGlass();
   const sheet = useSheet();
   const maxHeight = usePickerSheetMaxHeight();
   const open = () => {
     haptic("selection");
     if (onPress) onPress();
     else sheet.present();
+  };
+  /** The secondary tone: muted on a solid capsule, full foreground on glass. */
+  const secondaryColor = glass ? tokens.foreground : tokens.mutedForeground;
+  const chipFallbackStyle: ViewStyle = {
+    backgroundColor: tokens.surfaceRaisedSolid,
+    borderWidth: 1,
+    borderColor: tokens.pillSurfaceBorder,
   };
   const glyph =
     leading ??
@@ -129,13 +159,13 @@ export function PromptChip({
     ));
   const actionGlyph = action ? (
     action.pending ? (
-      <Spinner size="small" color={tokens.mutedForeground} />
+      <Spinner size="small" color={secondaryColor} />
     ) : (
       <Icon
         name={action.icon ?? "X"}
         size={GLYPH_SIZE}
         weight="semibold"
-        color={tokens.mutedForeground}
+        color={secondaryColor}
       />
     )
   ) : null;
@@ -156,8 +186,10 @@ export function PromptChip({
     : [];
   return (
     <>
-      <View
-        className="h-9 flex-row items-center overflow-hidden rounded-full border border-pill-surface-border bg-surface-raised-solid"
+      <GlassSurface
+        glassStyle="regular"
+        style={CHIP_SHAPE}
+        fallbackStyle={chipFallbackStyle}
         testID={testID}
       >
         <Pressable
@@ -179,7 +211,12 @@ export function PromptChip({
             {label}
           </Text>
           {detail ? (
-            <Text variant="caption" numberOfLines={1} numeric>
+            // Footnote (foreground) on glass, the muted caption on a fill.
+            <Text
+              variant={glass ? "footnote" : "caption"}
+              numberOfLines={1}
+              numeric
+            >
               {detail}
             </Text>
           ) : null}
@@ -211,7 +248,7 @@ export function PromptChip({
             {actionGlyph}
           </Pressable>
         ) : null}
-      </View>
+      </GlassSurface>
       {children === undefined ? null : (
         <Sheet
           controller={sheet}

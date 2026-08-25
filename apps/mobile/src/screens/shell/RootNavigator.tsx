@@ -22,14 +22,25 @@ const IOS_SYSTEM_BAR = IOS_MAJOR >= 26;
  * search bars with `Stack.Title` / `Stack.Toolbar` / `Stack.SearchBar`.
  */
 export function RootNavigator() {
-  const { tokens } = useTheme();
+  const { tokens, mode } = useTheme();
   const headerSurface: NativeStackNavigationOptions = IS_IOS
     ? IOS_SYSTEM_BAR
       ? {
           headerTransparent: true,
-          headerBlurEffect: "none",
+          // Frosted bar. The adaptive chrome material resolves to its light
+          // flavor inside the bar regardless of the app's scheme on iOS 26,
+          // so pick the flavor from the theme mode (which also honors an
+          // in-app light/dark override).
+          headerBlurEffect:
+            mode === "dark"
+              ? "systemChromeMaterialDark"
+              : "systemChromeMaterialLight",
+          // At rest the large-title area stays transparent; the material
+          // only backs the compact bar once content scrolls under it.
           headerLargeStyle: { backgroundColor: "transparent" },
-          scrollEdgeEffects: { top: "hard" },
+          // The material is the edge treatment; the system edge effect
+          // would double it.
+          scrollEdgeEffects: { top: "hidden" },
         }
       : { headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }
     : { headerStyle: { backgroundColor: tokens.background } };
@@ -59,10 +70,7 @@ export function RootNavigator() {
         name="index"
         options={{ title: "bb", ...LIST_SCREEN_OPTIONS }}
       />
-      <Stack.Screen
-        name="threads/[id]"
-        options={{ title: "Thread", ...opaqueHeader }}
-      />
+      <Stack.Screen name="threads/[id]" options={{ title: "Thread" }} />
       <Stack.Screen name="threads/search" options={{ title: "Search" }} />
       <Stack.Screen name="threads/[id]/files" options={{ title: "Files" }} />
       <Stack.Screen
