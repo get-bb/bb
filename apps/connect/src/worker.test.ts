@@ -108,10 +108,13 @@ describe("parseClientProtocolVersion", () => {
 vi.mock("./session.js", () => ({
   markMachineSeen: vi.fn(),
   parseCookie: vi.fn(),
-  refreshSessionCookie: vi.fn(),
   resolveLabel: vi.fn(),
   verifyMachineCredentialDetails: vi.fn(),
   verifySessionCookie: vi.fn(),
+}));
+
+vi.mock("./account-session.js", () => ({
+  refreshAccountSessionCookie: vi.fn(),
 }));
 
 vi.mock("./servers.js", () => ({
@@ -150,11 +153,11 @@ import { drizzle } from "drizzle-orm/d1";
 import {
   markMachineSeen,
   parseCookie,
-  refreshSessionCookie,
   resolveLabel,
   verifyMachineCredentialDetails,
   verifySessionCookie,
 } from "./session.js";
+import { refreshAccountSessionCookie } from "./account-session.js";
 import {
   handleCreateDesktopSession,
   handleDisconnectServer,
@@ -168,7 +171,7 @@ import worker, { offlinePage, relativeTime, wantsHtml } from "./worker.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
 
 const mockParseCookie = vi.mocked(parseCookie);
-const mockRefreshSession = vi.mocked(refreshSessionCookie);
+const mockRefreshAccountSession = vi.mocked(refreshAccountSessionCookie);
 const mockResolveLabel = vi.mocked(resolveLabel);
 const mockMarkMachineSeen = vi.mocked(markMachineSeen);
 const mockVerifyMachine = vi.mocked(verifyMachineCredentialDetails);
@@ -806,7 +809,7 @@ describe("gate worker share hosts", () => {
     mockResolveLabel.mockResolvedValue(resolvedServer());
     mockParseCookie.mockReturnValue("session-token");
     mockVerifySession.mockResolvedValue(OWNER);
-    mockRefreshSession.mockResolvedValue(false);
+    mockRefreshAccountSession.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -834,7 +837,9 @@ describe("gate worker share hosts", () => {
   });
 
   it("renews an active owner session on an ordinary HTTP response", async () => {
-    mockRefreshSession.mockResolvedValue(true);
+    mockRefreshAccountSession.mockResolvedValue(
+      "__Secure-better-auth.session_token=renewed; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
+    );
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
@@ -842,20 +847,20 @@ describe("gate worker share hosts", () => {
       ctx,
     );
 
-    expect(mockRefreshSession).toHaveBeenCalledWith(
-      "session-token",
-      "test-secret",
-      expect.anything(),
+    expect(mockRefreshAccountSession).toHaveBeenCalledWith(
+      "__Secure-better-auth.session_token=session-token",
+      "https://getbb.app",
+      expect.any(Function),
     );
     expect(response.headers.get("set-cookie")).toBe(
-      "__Secure-better-auth.session_token=session-token; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
+      "__Secure-better-auth.session_token=renewed; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
     );
   });
 
   it.each(["hit", "miss"] as const)(
     "does not renew an owner session on an edge-cache %s",
     async (cacheStatus) => {
-      mockRefreshSession.mockResolvedValue(true);
+      mockRefreshAccountSession.mockResolvedValue("should-not-be-used");
       mockServeWithCache.mockResolvedValueOnce({
         cacheable: true,
         response: new Response("cached asset", {
@@ -870,7 +875,7 @@ describe("gate worker share hosts", () => {
         ctx,
       );
 
-      expect(mockRefreshSession).not.toHaveBeenCalled();
+      expect(mockRefreshAccountSession).not.toHaveBeenCalled();
       expect(response.headers.get("set-cookie")).toBeNull();
       expect(response.headers.get("x-bb-cache")).toBe(cacheStatus);
       await expect(response.text()).resolves.toBe("cached asset");
@@ -878,7 +883,9 @@ describe("gate worker share hosts", () => {
   );
 
   it("reissues the local Cloud cookie without the Secure attribute", async () => {
-    mockRefreshSession.mockResolvedValue(true);
+    mockRefreshAccountSession.mockResolvedValue(
+      "better-auth.session_token=renewed; Max-Age=604800; Domain=.bb.localhost; Path=/; HttpOnly; SameSite=Lax",
+    );
     const { env, ctx } = makeEnv(() => new Response("ok"));
     Object.assign(env, {
       ACCOUNT_APP_URL: "http://bb.localhost:42745",
@@ -897,7 +904,12 @@ describe("gate worker share hosts", () => {
     );
 
     expect(response.headers.get("set-cookie")).toBe(
-      "better-auth.session_token=session-token; Max-Age=604800; Domain=.bb.localhost; Path=/; HttpOnly; SameSite=Lax",
+      "better-auth.session_token=renewed; Max-Age=604800; Domain=.bb.localhost; Path=/; HttpOnly; SameSite=Lax",
+    );
+    expect(mockRefreshAccountSession).toHaveBeenCalledWith(
+      "better-auth.session_token=session-token",
+      "http://bb.localhost:42745",
+      expect.any(Function),
     );
   });
 
@@ -1139,7 +1151,7 @@ describe("gate worker share hosts", () => {
     expect(res.status).toBe(403);
     expect(await res.text()).toContain("not your server");
     expect(captured).toHaveLength(0);
-    expect(mockRefreshSession).not.toHaveBeenCalled();
+    expect(mockRefreshAccountSession).not.toHaveBeenCalled();
   });
 
   it("accepts the short-lived desktop cookie for the owning account", async () => {
@@ -1232,7 +1244,7 @@ describe("gate worker share hosts", () => {
     expect(captured[0].headers.get(TUNNEL_TARGET_HEADER)).toBe("8000");
     expect(captured[0].headers.get("upgrade")).toBe("websocket");
     expect(mockServeWithCache).not.toHaveBeenCalled();
-    expect(mockRefreshSession).not.toHaveBeenCalled();
+    expect(mockRefreshAccountSession).not.toHaveBeenCalled();
   });
 
   it("does not apply machine-credential branch on share hosts", async () => {

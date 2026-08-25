@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
+import { drizzleAdapter } from "@better-auth/drizzle-adapter";
+import { betterAuth } from "better-auth/minimal";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -20,11 +22,10 @@ import {
 import {
   MACHINE_LAST_SEEN_WRITE_INTERVAL_MS,
   markMachineSeen,
-  refreshSessionCookie,
   resolveLabel,
   verifyMachineCredentialDetails,
-  verifySessionCookie,
 } from "./session.js";
+import { refreshAccountSessionCookie } from "./account-session.js";
 import { assignMachineLabel } from "./machine-label.js";
 
 // Real in-memory SQLite (never mock the DB). resolveLabel accepts any Drizzle
@@ -373,7 +374,7 @@ describe("resolveLabel — label → server row (multi-server)", () => {
 });
 
 describe("account session refresh", () => {
-  const secret = "test-better-auth-secret";
+  const secret = "test-better-auth-secret-32-chars";
   const expiresInMs = CONNECT_SESSION_EXPIRES_IN_SECONDS * 1000;
   const updateAgeMs = CONNECT_SESSION_UPDATE_AGE_SECONDS * 1000;
 
@@ -395,41 +396,73 @@ describe("account session refresh", () => {
       .run();
   }
 
-  it("renews at Better Auth's update-age boundary and refreshes only once", async () => {
+  function createAuthFetch(baseURL: string, baseDomain: string) {
+    const auth = betterAuth({
+      secret,
+      baseURL,
+      database: drizzleAdapter(db, {
+        provider: "sqlite",
+        schema: { session, user },
+      }),
+      session: {
+        expiresIn: CONNECT_SESSION_EXPIRES_IN_SECONDS,
+        updateAge: CONNECT_SESSION_UPDATE_AGE_SECONDS,
+      },
+      advanced: {
+        crossSubDomainCookies: {
+          enabled: true,
+          domain: `.${baseDomain}`,
+        },
+      },
+    });
+    return (request: Request) => auth.handler(request);
+  }
+
+  it("lets Better Auth renew the database session and production cookie", async () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
     const oldExpiresAt = refreshAt + expiresInMs - updateAgeMs;
     seedSession(token, refreshAt, oldExpiresAt);
     const cookie = await signedSessionCookie(token, secret);
+    const beforeRefresh = Date.now();
 
-    await expect(
-      refreshSessionCookie(cookie, secret, db, refreshAt),
-    ).resolves.toBe(true);
+    const setCookie = await refreshAccountSessionCookie(
+      `__Secure-better-auth.session_token=${cookie}`,
+      "https://getbb.app",
+      createAuthFetch("https://getbb.app", "getbb.app"),
+    );
+    const afterRefresh = Date.now();
     const refreshed = db
       .select()
       .from(session)
       .where(eq(session.token, token))
       .get();
-    expect(refreshed?.expiresAt.getTime()).toBe(refreshAt + expiresInMs);
-    expect(refreshed?.updatedAt.getTime()).toBe(refreshAt);
-    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBe(
-      `user-${token}`,
+    expect(refreshed?.expiresAt.getTime()).toBeGreaterThanOrEqual(
+      beforeRefresh + expiresInMs,
     );
-    await expect(
-      refreshSessionCookie(cookie, secret, db, refreshAt + 1),
-    ).resolves.toBe(false);
+    expect(refreshed?.expiresAt.getTime()).toBeLessThanOrEqual(
+      afterRefresh + expiresInMs,
+    );
+    expect(setCookie).toContain("__Secure-better-auth.session_token=");
+    expect(setCookie).toContain("Max-Age=604800");
+    expect(setCookie).toContain("Domain=.getbb.app");
+    expect(setCookie).toContain("Secure");
   });
 
   it("leaves a fresh session unchanged before the update-age boundary", async () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
-    const expiresAt = refreshAt + expiresInMs - updateAgeMs + 1;
+    const expiresAt = refreshAt + expiresInMs;
     seedSession(token, refreshAt, expiresAt);
     const cookie = await signedSessionCookie(token, secret);
 
     await expect(
-      refreshSessionCookie(cookie, secret, db, refreshAt),
-    ).resolves.toBe(false);
+      refreshAccountSessionCookie(
+        `__Secure-better-auth.session_token=${cookie}`,
+        "https://getbb.app",
+        createAuthFetch("https://getbb.app", "getbb.app"),
+      ),
+    ).resolves.toBeNull();
     expect(
       db
         .select({ expiresAt: session.expiresAt })
@@ -440,71 +473,20 @@ describe("account session refresh", () => {
     ).toBe(expiresAt);
   });
 
-  it("does not revive an expired session or accept a forged signature", async () => {
+  it("passes through Better Auth's non-secure local Cloud cookie", async () => {
     const refreshAt = Date.now();
     const token = `session-${crypto.randomUUID()}`;
-    seedSession(token, refreshAt, refreshAt);
+    seedSession(token, refreshAt, refreshAt + expiresInMs - updateAgeMs);
     const cookie = await signedSessionCookie(token, secret);
 
-    await expect(
-      refreshSessionCookie(cookie, secret, db, refreshAt),
-    ).resolves.toBe(false);
-    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBeNull();
-    await expect(
-      refreshSessionCookie(`${cookie}forged`, secret, db, refreshAt),
-    ).resolves.toBe(false);
-  });
-
-  it("reissues the cookie without shortening a session another request renewed", async () => {
-    const refreshAt = Date.now();
-    const token = `session-${crypto.randomUUID()}`;
-    const oldExpiresAt = refreshAt + expiresInMs - updateAgeMs;
-    seedSession(token, refreshAt, oldExpiresAt);
-    const cookie = await signedSessionCookie(token, secret);
-
-    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBe(
-      `user-${token}`,
+    const setCookie = await refreshAccountSessionCookie(
+      `better-auth.session_token=${cookie}`,
+      "http://bb.localhost:42745",
+      createAuthFetch("http://bb.localhost:42745", "bb.localhost"),
     );
-    const winnerExpiresAt = refreshAt + expiresInMs;
-    const winnerUpdatedAt = refreshAt - 1;
-    db.update(session)
-      .set({
-        expiresAt: new Date(winnerExpiresAt),
-        updatedAt: new Date(winnerUpdatedAt),
-      })
-      .where(eq(session.token, token))
-      .run();
-
-    await expect(
-      refreshSessionCookie(cookie, secret, db, refreshAt),
-    ).resolves.toBe(true);
-    const current = db
-      .select({
-        expiresAt: session.expiresAt,
-        updatedAt: session.updatedAt,
-      })
-      .from(session)
-      .where(eq(session.token, token))
-      .get();
-    expect(current?.expiresAt.getTime()).toBe(winnerExpiresAt);
-    expect(current?.updatedAt.getTime()).toBe(winnerUpdatedAt);
-  });
-
-  it("does not reissue the cookie when a cached session was deleted", async () => {
-    const refreshAt = Date.now();
-    const token = `session-${crypto.randomUUID()}`;
-    const oldExpiresAt = refreshAt + expiresInMs - updateAgeMs;
-    seedSession(token, refreshAt, oldExpiresAt);
-    const cookie = await signedSessionCookie(token, secret);
-
-    await expect(verifySessionCookie(cookie, secret, db)).resolves.toBe(
-      `user-${token}`,
-    );
-    db.delete(session).where(eq(session.token, token)).run();
-
-    await expect(
-      refreshSessionCookie(cookie, secret, db, refreshAt),
-    ).resolves.toBe(false);
+    expect(setCookie).toContain("better-auth.session_token=");
+    expect(setCookie).toContain("Domain=.bb.localhost");
+    expect(setCookie).not.toContain("Secure");
   });
 });
 

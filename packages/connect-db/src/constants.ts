@@ -131,9 +131,9 @@ export const CONNECT_CODE_TTL_MS = 10 * 60 * 1000;
 export const SERVER_OFFLINE_AFTER_MS = 90 * 1000;
 
 /**
- * Account-session lifetime and sliding-refresh cadence. Better Auth creates
- * the session; the connect gate mirrors its refresh behavior for activity on
- * `<label>.getbb.app`, which never passes through Better Auth's own routes.
+ * Account-session lifetime and sliding-refresh cadence. Better Auth owns this
+ * policy; the connect gate calls its session route after eligible activity on
+ * `<label>.getbb.app`.
  */
 export const CONNECT_SESSION_EXPIRES_IN_SECONDS = 7 * 24 * 60 * 60;
 export const CONNECT_SESSION_UPDATE_AGE_SECONDS = 24 * 60 * 60;

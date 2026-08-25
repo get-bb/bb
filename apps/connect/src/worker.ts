@@ -1,16 +1,15 @@
 import { drizzle } from "drizzle-orm/d1";
 import {
-  CONNECT_SESSION_EXPIRES_IN_SECONDS,
   RESERVED_HANDLES,
   handleAppLinkAssociationRequest,
   parseVisitorHost,
   schema,
 } from "@bb/connect-db";
+import { refreshAccountSessionCookie } from "./account-session.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   parseCookie,
   markMachineSeen,
-  refreshSessionCookie,
   resolveLabel,
   verifyMachineCredentialDetails,
   verifySessionCookie,
@@ -57,29 +56,9 @@ function text(body: string, status: number): Response {
   });
 }
 
-/**
- * Reissue the session cookie on a non-cacheable response. This automatic body
- * rebuild is correct for direct subrequest and locally produced responses; it
- * must never wrap a cacheable result, whose hit body may be pre-encoded.
- */
-function withRefreshedSessionCookie(
-  response: Response,
-  cookieName: string,
-  cookieValue: string,
-  baseDomain: string,
-  secure: boolean,
-): Response {
-  const attributes = [
-    `${cookieName}=${cookieValue}`,
-    `Max-Age=${CONNECT_SESSION_EXPIRES_IN_SECONDS}`,
-    `Domain=.${baseDomain}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-  ];
-  if (secure) attributes.push("Secure");
+function withSetCookie(response: Response, setCookie: string): Response {
   const headers = new Headers(response.headers);
-  headers.append("set-cookie", attributes.join("; "));
+  headers.append("set-cookie", setCookie);
   return new Response(response.body, {
     headers,
     status: response.status,
@@ -507,10 +486,8 @@ export default {
     }
 
     const doRequest = requestForTunnelDo(request, target, "session");
-    const isWebSocketUpgrade =
-      request.headers.get("upgrade")?.toLowerCase() === "websocket";
     // WebSocket upgrades (bb's /ws, terminals) can't be cached — proxy directly.
-    if (isWebSocketUpgrade) {
+    if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
       return stub.fetch(doRequest);
     }
     // Everything else: serve from the edge cache when the origin allows it,
@@ -545,16 +522,14 @@ export default {
     if (
       !cached.cacheable &&
       cookie !== null &&
-      sessionUserId === resolved.userId &&
-      (await refreshSessionCookie(cookie, env.BETTER_AUTH_SECRET, db))
+      sessionUserId === resolved.userId
     ) {
-      return withRefreshedSessionCookie(
-        response,
-        runtime.sessionCookieName,
-        cookie,
-        runtime.baseDomain,
-        !runtime.localCloud,
+      const setCookie = await refreshAccountSessionCookie(
+        `${runtime.sessionCookieName}=${cookie}`,
+        runtime.accountAppUrl,
+        (authRequest) => fetch(authRequest),
       );
+      if (setCookie !== null) return withSetCookie(response, setCookie);
     }
     return response;
   },

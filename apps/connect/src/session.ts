@@ -1,7 +1,5 @@
-import { and, eq, gt, isNull, lte } from "drizzle-orm";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import {
-  CONNECT_SESSION_EXPIRES_IN_SECONDS,
-  CONNECT_SESSION_UPDATE_AGE_SECONDS,
   type ConnectDb,
   labelClaim,
   machine,
@@ -20,21 +18,13 @@ import {
 // reach a disconnected server).
 const LABEL_TTL_MS = 15_000;
 const SESSION_TTL_MS = 20_000;
-const SESSION_EXPIRES_IN_MS = CONNECT_SESSION_EXPIRES_IN_SECONDS * 1000;
-const SESSION_UPDATE_AGE_MS = CONNECT_SESSION_UPDATE_AGE_SECONDS * 1000;
 
 interface CacheEntry<T> {
   value: T;
   expires: number;
 }
 const labelCache = new Map<string, CacheEntry<ResolvedLabel | null>>();
-interface VerifiedSession {
-  expiresAt: number;
-  token: string;
-  userId: string;
-}
-
-const sessionCache = new Map<string, CacheEntry<VerifiedSession | null>>();
+const sessionCache = new Map<string, CacheEntry<string | null>>();
 
 function cacheGet<T>(
   map: Map<string, CacheEntry<T>>,
@@ -178,14 +168,14 @@ export async function resolveLabel(
 /**
  * Verify a better-auth session cookie directly against D1 (no cross-worker
  * call), cached per-isolate. Mirrors better-auth's
- * `${token}.${base64(hmac-sha256(token,secret))}` scheme.
+ * `${token}.${base64(hmac-sha256(token,secret))}` scheme. Returns the userId
+ * when the signature is valid and the session row exists and is unexpired.
  */
-async function loadVerifiedSession(
+export async function verifySessionCookie(
   cookieValue: string,
   secret: string,
   db: ConnectDb,
-  now: number,
-): Promise<{ cacheKey: string; session: VerifiedSession } | null> {
+): Promise<string | null> {
   // better-auth URL-encodes the cookie value, so the base64 signature arrives
   // with %2F/%2B/%3D. Decode before splitting/comparing (the hex token is
   // unaffected by decoding).
@@ -195,18 +185,14 @@ async function loadVerifiedSession(
   const token = decoded.slice(0, dot);
   const providedSig = decoded.slice(dot + 1);
 
+  const now = Date.now();
   // Cache on the full `token.sig` value, not the token alone: keying on the
   // token would return a cached userId before the signature is checked, so a
   // valid `token` with a forged signature would authenticate (and a forged
   // one would negative-poison the real token). The full-cookie key makes the
   // cache reflect exactly what passed verification.
   const cached = cacheGet(sessionCache, decoded, now);
-  if (cached !== undefined) {
-    if (cached === null) return null;
-    // A positive cache entry must never outlive the database session itself.
-    if (cached.expiresAt > now) return { cacheKey: decoded, session: cached };
-    sessionCache.delete(decoded);
-  }
+  if (cached !== undefined) return cached;
 
   const key = await crypto.subtle.importKey(
     "raw",
@@ -231,86 +217,15 @@ async function loadVerifiedSession(
     .from(session)
     .where(and(eq(session.token, token), gt(session.expiresAt, new Date(now))))
     .get();
-  if (!row) {
-    sessionCache.set(decoded, { value: null, expires: now + SESSION_TTL_MS });
-    return null;
-  }
-  const verified = {
-    expiresAt: row.expiresAt.getTime(),
-    token,
-    userId: row.userId,
-  };
+  const userId = row?.userId ?? null;
   sessionCache.set(decoded, {
-    value: verified,
-    expires: now + SESSION_TTL_MS,
+    value: userId,
+    expires:
+      row === undefined
+        ? now + SESSION_TTL_MS
+        : Math.min(now + SESSION_TTL_MS, row.expiresAt.getTime()),
   });
-  return { cacheKey: decoded, session: verified };
-}
-
-/** Return the account id when the signed cookie names an unexpired session. */
-export async function verifySessionCookie(
-  cookieValue: string,
-  secret: string,
-  db: ConnectDb,
-): Promise<string | null> {
-  return (
-    (await loadVerifiedSession(cookieValue, secret, db, Date.now()))?.session
-      .userId ?? null
-  );
-}
-
-/**
- * Apply Better Auth's sliding-refresh policy to a session used at the connect
- * gate. Returns true when the caller must reissue the browser cookie with a
- * fresh Max-Age. The conditional update prevents stale isolate caches from
- * shortening a session another request has already renewed.
- *
- * `now` is a test-only wall-clock override. It must remain epoch milliseconds
- * because the same value also controls expiry in the module-level cache.
- */
-export async function refreshSessionCookie(
-  cookieValue: string,
-  secret: string,
-  db: ConnectDb,
-  now: number = Date.now(),
-): Promise<boolean> {
-  const verified = await loadVerifiedSession(cookieValue, secret, db, now);
-  if (!verified) return false;
-
-  const refreshCeiling = now + SESSION_EXPIRES_IN_MS - SESSION_UPDATE_AGE_MS;
-  if (verified.session.expiresAt > refreshCeiling) return false;
-
-  const expiresAt = new Date(now + SESSION_EXPIRES_IN_MS);
-  const updated = await db
-    .update(session)
-    .set({ expiresAt, updatedAt: new Date(now) })
-    .where(
-      and(
-        eq(session.token, verified.session.token),
-        gt(session.expiresAt, new Date(now)),
-        lte(session.expiresAt, new Date(refreshCeiling)),
-      ),
-    )
-    .returning({ expiresAt: session.expiresAt, userId: session.userId })
-    .get();
-
-  if (updated) {
-    sessionCache.set(verified.cacheKey, {
-      value: {
-        expiresAt: updated.expiresAt.getTime(),
-        token: verified.session.token,
-        userId: updated.userId,
-      },
-      expires: now + SESSION_TTL_MS,
-    });
-    return true;
-  }
-
-  // Another isolate may have won the refresh race. Re-read instead of issuing
-  // a cookie for a session that was concurrently deleted or expired.
-  sessionCache.delete(verified.cacheKey);
-  const current = await loadVerifiedSession(cookieValue, secret, db, now);
-  return current !== null && current.session.expiresAt > refreshCeiling;
+  return userId;
 }
 
 const machineLastSeenWrites = new Map<string, number>();
