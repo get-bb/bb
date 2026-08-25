@@ -4,6 +4,7 @@ import {
   GENERIC_ACP_DIALECT,
   GROK_ACP_DIALECT,
   OMP_ACP_DIALECT,
+  OPENCODE_ACP_DIALECT,
   resolveAcpDialect,
 } from "./dialect.js";
 import type { AcpToolCallUpdateEvent } from "./wire.js";
@@ -19,6 +20,9 @@ describe("resolveAcpDialect", () => {
     expect(
       resolveAcpDialect({ dialectId: "cursor", command: "node" }),
     ).toBe(CURSOR_ACP_DIALECT);
+    expect(resolveAcpDialect({ dialectId: "opencode", command: "node" })).toBe(
+      OPENCODE_ACP_DIALECT,
+    );
   });
 
   it("falls back to the launch executable's base name", () => {
@@ -32,6 +36,9 @@ describe("resolveAcpDialect", () => {
     expect(resolveAcpDialect({ command: "/opt/homebrew/bin/omp" })).toBe(
       OMP_ACP_DIALECT,
     );
+    expect(resolveAcpDialect({ command: "/usr/local/bin/opencode" })).toBe(
+      OPENCODE_ACP_DIALECT,
+    );
   });
 
   it("is generic for a dialect id it does not ship", () => {
@@ -43,11 +50,12 @@ describe("resolveAcpDialect", () => {
   // Selecting on the launch command, not a bb provider id, is what lets a
   // user-configured instance of the same agent get the same dialect.
   it("gives an unknown agent the generic dialect, which answers nothing", () => {
-    const dialect = resolveAcpDialect({ command: "opencode" });
+    const dialect = resolveAcpDialect({ command: "amp" });
     expect(dialect).toBe(GENERIC_ACP_DIALECT);
     expect(dialect.toolIdentity).toBeUndefined();
     expect(dialect.classifyToolCall).toBeUndefined();
     expect(dialect.commandResult).toBeUndefined();
+    expect(dialect.normalizeCommandEvent).toBeUndefined();
     expect(dialect.handleClientRequest).toBeUndefined();
   });
 });
@@ -166,6 +174,52 @@ describe("omp command results", () => {
       expect(result(fields)).toBeUndefined();
     },
   );
+});
+
+describe("OpenCode command results", () => {
+  const normalize = (rawOutput: unknown) =>
+    OPENCODE_ACP_DIALECT.normalizeCommandEvent?.(toolCall({ rawOutput }))
+      .rawOutput;
+
+  it("normalizes the recorded output and metadata envelope", () => {
+    expect(
+      normalize({
+        output: "ok\n",
+        metadata: { exit: 0, output: "ok\n", truncated: false },
+      }),
+    ).toEqual({
+      output: "ok\n",
+      metadata: { exit: 0, output: "ok\n", truncated: false },
+      stdout: "ok\n",
+      exitCode: 0,
+    });
+  });
+
+  it("falls back to metadata.output when top-level output is not text", () => {
+    expect(
+      normalize({
+        output: [{ type: "text", text: "structured" }],
+        metadata: { exit: 17, output: "failed\n", truncated: false },
+      }),
+    ).toEqual({
+      output: [{ type: "text", text: "structured" }],
+      metadata: { exit: 17, output: "failed\n", truncated: false },
+      stdout: "failed\n",
+      exitCode: 17,
+    });
+  });
+
+  it("does not replace shared ACP result shapes", () => {
+    const rawOutput = {
+      exit_code: 7,
+      stdout: "stdout\n",
+      stderr: "stderr\n",
+      output_for_prompt: "prompt output\n",
+      output: "OpenCode output\n",
+      metadata: { exit: 0, output: "OpenCode metadata output\n" },
+    };
+    expect(normalize(rawOutput)).toEqual(rawOutput);
+  });
 });
 
 describe("grok sub-agents", () => {

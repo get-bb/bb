@@ -353,9 +353,9 @@ environment pull-request show <id>`. Diff commands require an explicit target
   co-located daemon. Optional per-agent fields: `args`, `env`, `cwd`,
   `modelCli`, `reasoningCli`, `nativeReasoning`, `nativeSkillRoots`
   (`{"user": [...], "project": [...]}` relative paths), `permissionCli`,
-  `supportsManualCompaction`, and `dialect` (`cursor` or `grok`). The old
-  `customAcpAgents` array in `config.json` is deprecated; bb reads it and warns
-  until 0.41.
+  `supportsManualCompaction`, and `dialect` (`cursor`, `opencode`, `omp`, or
+  `grok`). The old `customAcpAgents` array in `config.json` is deprecated; bb
+  reads it and warns until 0.41.
 - Top-level `customModels` in the same `config.json` registers extra picker
   models. `providerId` accepts a built-in provider id or any `acp-*` provider
   id. The provider must still accept the id: `claude-code` and `codex` accept

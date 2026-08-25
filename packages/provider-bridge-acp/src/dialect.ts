@@ -83,6 +83,12 @@ export interface AcpDialect {
    */
   commandResult?(event: AcpToolCallUpdateEvent): AcpCommandResult | undefined;
   /**
+   * A command event with the agent's non-standard result fields normalized
+   * into the shared ACP result shapes. The hook runs only after the call has
+   * classified as a command; existing shared result fields must win.
+   */
+  normalizeCommandEvent?(event: AcpToolCallUpdateEvent): AcpToolCallUpdateEvent;
+  /**
    * A vendor JSON-RPC request the agent sends to the client. A dialect that
    * answers one returns the JSON-RPC result to reply with (`{}` is a valid
    * acknowledgement) and, optionally, what the request reported. A request
@@ -409,6 +415,68 @@ export const OMP_ACP_DIALECT: AcpDialect = {
 };
 
 // ---------------------------------------------------------------------------
+// opencode (`opencode acp`)
+// ---------------------------------------------------------------------------
+
+/**
+ * OpenCode reports command output twice on its AgentToolResult envelope and
+ * puts the process exit code in metadata. The shared ACP parser deliberately
+ * does not claim these generic-looking vendor fields for every agent.
+ */
+const openCodeCommandRawOutputSchema = z
+  .object({
+    output: z.unknown().optional(),
+    metadata: z
+      .object({
+        exit: z.number().int().nullable().optional(),
+        output: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+function normalizeOpenCodeCommandEvent(
+  event: AcpToolCallUpdateEvent,
+): AcpToolCallUpdateEvent {
+  const parsed = openCodeCommandRawOutputSchema.safeParse(event.rawOutput);
+  if (!parsed.success) {
+    return event;
+  }
+  const rawOutput = parsed.data;
+  const output =
+    typeof rawOutput.output === "string"
+      ? rawOutput.output
+      : rawOutput.metadata?.output;
+  const hasSharedOutput =
+    rawOutput["stdout"] !== undefined ||
+    rawOutput["stderr"] !== undefined ||
+    rawOutput["output_for_prompt"] !== undefined;
+  const hasSharedExitCode =
+    rawOutput["exitCode"] !== undefined || rawOutput["exit_code"] !== undefined;
+  const exitCode = rawOutput.metadata?.exit ?? undefined;
+  if (
+    (output === undefined || hasSharedOutput) &&
+    (exitCode === undefined || hasSharedExitCode)
+  ) {
+    return event;
+  }
+  return {
+    ...event,
+    rawOutput: {
+      ...rawOutput,
+      ...(output === undefined || hasSharedOutput ? {} : { stdout: output }),
+      ...(exitCode === undefined || hasSharedExitCode ? {} : { exitCode }),
+    },
+  };
+}
+
+export const OPENCODE_ACP_DIALECT: AcpDialect = {
+  id: "opencode",
+  normalizeCommandEvent: normalizeOpenCodeCommandEvent,
+};
+
+// ---------------------------------------------------------------------------
 // Selection
 // ---------------------------------------------------------------------------
 
@@ -421,6 +489,7 @@ const DIALECTS_BY_ID: ReadonlyMap<string, AcpDialect> = new Map([
   [CURSOR_ACP_DIALECT.id, CURSOR_ACP_DIALECT],
   [GROK_ACP_DIALECT.id, GROK_ACP_DIALECT],
   [OMP_ACP_DIALECT.id, OMP_ACP_DIALECT],
+  [OPENCODE_ACP_DIALECT.id, OPENCODE_ACP_DIALECT],
 ]);
 
 /** The executable name each dialect's agent is normally launched as. */
@@ -428,6 +497,7 @@ const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
   "cursor-agent": CURSOR_ACP_DIALECT.id,
   grok: GROK_ACP_DIALECT.id,
   omp: OMP_ACP_DIALECT.id,
+  opencode: OPENCODE_ACP_DIALECT.id,
 };
 
 /**

@@ -18,6 +18,7 @@ import {
 } from "./delta-translation.js";
 import { resolveAcpDialect } from "./dialect.js";
 import { ACP_TOOL_PAYLOAD_MAX_CHARS } from "./tool-classification.js";
+import type { AcpToolCallUpdateEvent } from "./wire.js";
 
 /**
  * ACP translation equivalence for the narrow-grammar path.
@@ -735,6 +736,23 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
       });
       expect(item.status).toBe("completed");
       expect(item.exitCode).toBe(1);
+    });
+
+    it("does not claim OpenCode metadata for a generic ACP agent", () => {
+      const item = completeCommand(
+        startedHarness(),
+        "call-generic",
+        "echo ok",
+        {
+          status: "completed",
+          rawOutput: {
+            output: "ok\n",
+            metadata: { exit: 0, output: "ok\n", truncated: false },
+          },
+        },
+      );
+      expect(item.exitCode).toBeUndefined();
+      expect(item.aggregatedOutput).toContain('"metadata"');
     });
 
     it("omits the exit code when a completed call carries no result at all", () => {
@@ -2316,6 +2334,7 @@ describe("acp delta translation (dialects)", () => {
     dialectId: string;
     rawInput: Record<string, unknown>;
     rawOutput: unknown;
+    content?: AcpToolCallUpdateEvent["content"];
     status?: "completed" | "failed";
   }) {
     const harness = dialectHarness(args.dialectId);
@@ -2335,6 +2354,7 @@ describe("acp delta translation (dialects)", () => {
           sessionUpdate: "tool_call_update",
           toolCallId: "call-command",
           status: args.status ?? "completed",
+          ...(args.content === undefined ? {} : { content: args.content }),
           rawOutput: args.rawOutput,
         }),
       ),
@@ -2440,6 +2460,55 @@ describe("acp delta translation (dialects)", () => {
     });
     expect(generic).toMatchObject({ aggregatedOutput: decoratedOutput });
     expect(generic).not.toHaveProperty("exitCode");
+  });
+
+  it("normalizes the recorded OpenCode command completion envelope", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "opencode",
+        rawInput: { command: "echo ok" },
+        rawOutput: {
+          output: "ok\n",
+          metadata: { exit: 0, output: "ok\n", truncated: false },
+        },
+      }),
+    ).toMatchObject({
+      type: "commandExecution",
+      command: "echo ok",
+      status: "completed",
+      exitCode: 0,
+      aggregatedOutput: "ok\n",
+    });
+  });
+
+  it("keeps standard content and shared result fields ahead of OpenCode fallbacks", () => {
+    expect(
+      completedDialectCommand({
+        dialectId: "opencode",
+        rawInput: { command: "echo protocol" },
+        content: [
+          {
+            type: "content",
+            content: { type: "text", text: "protocol content\n" },
+          },
+        ],
+        rawOutput: {
+          exit_code: 9,
+          stdout: "shared stdout\n",
+          output_for_prompt: "shared prompt output\n",
+          output: "OpenCode output\n",
+          metadata: {
+            exit: 0,
+            output: "OpenCode metadata output\n",
+            truncated: false,
+          },
+        },
+      }),
+    ).toMatchObject({
+      type: "commandExecution",
+      exitCode: 9,
+      aggregatedOutput: "protocol content\n",
+    });
   });
 
   it("opens a Cursor task call as a delegation and takes the report's detail", () => {

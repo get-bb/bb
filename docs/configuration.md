@@ -356,7 +356,7 @@ an agent that nests skills or reads them from every ancestor directory),
 `permissionCli` (permission-mode launch flags), `supportsManualCompaction`
 (only if the agent accepts an explicit compaction request — bb hides
 `/compact` otherwise), and `dialect` (the vendor side channels bb reads for
-the agent: `cursor` or `grok`).
+the agent: `cursor`, `opencode`, `omp`, or `grok`).
 
 The change applies immediately: the plugin re-registers its providers when the
 setting changes, with no restart and no `config refresh`.

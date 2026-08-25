@@ -705,8 +705,10 @@ export function createAcpDeltaTranslator(
     Extract<ThreadDelta, { kind: "item.close" }>,
     "aggregatedOutput" | "exitCode" | "resultText"
   > {
+    const normalizedEvent = dialect.normalizeCommandEvent?.(event) ?? event;
     const result =
-      dialect.commandResult?.(event) ?? extractAcpCommandResult(event);
+      dialect.commandResult?.(normalizedEvent) ??
+      extractAcpCommandResult(normalizedEvent);
     const exitCode = result.exitCode ?? (status === "failed" ? 1 : undefined);
     return {
       ...(result.output === undefined
@@ -903,7 +905,9 @@ export function createAcpDeltaTranslator(
           mergedType === "command" &&
           open?.openedType === "command"
         ) {
-          const streamed = extractAcpStreamedCommandOutput(event);
+          const normalizedEvent =
+            dialect.normalizeCommandEvent?.(event) ?? event;
+          const streamed = extractAcpStreamedCommandOutput(normalizedEvent);
           return streamed === undefined
             ? suppressedUnhandled(rawEvent)
             : [
