@@ -196,7 +196,9 @@ export function parseCustomAcpAgents(args: {
   for (const [index, entry] of args.entries.entries()) {
     const parsed = customAcpAgentSchema.safeParse(entry);
     if (!parsed.success) {
-      problems.push(`entry ${index} is not a valid agent: ${parsed.error.message}`);
+      problems.push(
+        `entry ${index} is not a valid agent: ${parsed.error.message}`,
+      );
       continue;
     }
     const providerId = formatCustomAcpProviderId(parsed.data.id);

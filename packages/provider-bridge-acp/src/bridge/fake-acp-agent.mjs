@@ -32,6 +32,8 @@
  *                              advertising a thought_level config option
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
  *                            → fail session/set_config_option for model values
+ * - FAKE_ACP_SET_CONFIG_FAST_ERROR=1
+ *                            → fail session/set_config_option for Fast values
  * - FAKE_ACP_CURSOR_PARAMETERIZED_MODELS=1
  *                            → mirror Cursor compatibility-vs-parameterized
  *                              model/config-option responses
@@ -82,6 +84,7 @@ const unmappedReasoningConfig =
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
+const setConfigFastError = process.env.FAKE_ACP_SET_CONFIG_FAST_ERROR === "1";
 const cursorParameterizedModels =
   process.env.FAKE_ACP_CURSOR_PARAMETERIZED_MODELS === "1";
 const requestLog = process.env.FAKE_ACP_REQUEST_LOG;
@@ -93,7 +96,9 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
 const authOptional = process.env.FAKE_ACP_AUTH_OPTIONAL === "1";
 const sessionNewError = process.env.FAKE_ACP_SESSION_NEW_ERROR;
 const exitOnSessionNew = process.env.FAKE_ACP_EXIT_ON_SESSION_NEW;
-const sessionNewDelayMs = Number(process.env.FAKE_ACP_SESSION_NEW_DELAY_MS ?? "0");
+const sessionNewDelayMs = Number(
+  process.env.FAKE_ACP_SESSION_NEW_DELAY_MS ?? "0",
+);
 const updatesWithSessionResponse =
   process.env.FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE === "1";
 const ignoreCancel = process.env.FAKE_ACP_IGNORE_CANCEL === "1";
@@ -320,7 +325,11 @@ function configState() {
 }
 
 function requireAuthenticated(message) {
-  if (authMethods.length === 0 || authOptional || authenticatedMethod !== null) {
+  if (
+    authMethods.length === 0 ||
+    authOptional ||
+    authenticatedMethod !== null
+  ) {
     return true;
   }
   // ACP's reserved auth-required error: code -32000 with this message.
@@ -765,6 +774,14 @@ async function handleMessage(message) {
         return;
       }
       if (configId === "fast" && cursorParameterizedModels) {
+        if (setConfigFastError) {
+          send({
+            jsonrpc: "2.0",
+            id: message.id,
+            error: { code: -32603, message: "fast config update failed" },
+          });
+          return;
+        }
         if (value !== "false" && value !== "true") {
           send({
             jsonrpc: "2.0",

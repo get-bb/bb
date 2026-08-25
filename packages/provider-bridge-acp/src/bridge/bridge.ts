@@ -9,12 +9,37 @@
  * workspace write policy on client `fs/write_text_file` requests.
  */
 
-import { isStandaloneBuiltinCompactCommand, pendingInteractionResolutionSchema, reasoningEffortsForLevels } from "@bb/domain";
+import {
+  isStandaloneBuiltinCompactCommand,
+  pendingInteractionResolutionSchema,
+  reasoningEffortsForLevels,
+} from "@bb/domain";
 import type { AvailableModel, PromptInput, ReasoningLevel } from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
-import { BRIDGE_INBOUND_REQUEST_METHODS, BRIDGE_JSON_RPC_ERRORS, BRIDGE_NOTIFICATION_METHODS, PROVIDER_BRIDGE_PROTOCOL_VERSION, THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
-import type { InitializeResult, ThreadDelta } from "@bb/provider-bridge-protocol";
-import { BridgeRecoveryError, bridgeRequestEnvelopeSchema, createBridgeIo, createBridgeLineHandler, decodeBridgeJsonRpcResponse, decodeToolCallResponsePayload, experimental_defineProviderBridge, mimeTypeFromExtension, runBridgeRequest, withoutBridgeRuntimeEnv } from "@bb/provider-bridge-protocol/bridge-kit";
+import {
+  BRIDGE_INBOUND_REQUEST_METHODS,
+  BRIDGE_JSON_RPC_ERRORS,
+  BRIDGE_NOTIFICATION_METHODS,
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_GRAMMAR_V3,
+  THREAD_DELTA_NOTIFICATION_METHOD,
+} from "@bb/provider-bridge-protocol";
+import type {
+  InitializeResult,
+  ThreadDelta,
+} from "@bb/provider-bridge-protocol";
+import {
+  BridgeRecoveryError,
+  bridgeRequestEnvelopeSchema,
+  createBridgeIo,
+  createBridgeLineHandler,
+  decodeBridgeJsonRpcResponse,
+  decodeToolCallResponsePayload,
+  experimental_defineProviderBridge,
+  mimeTypeFromExtension,
+  runBridgeRequest,
+  withoutBridgeRuntimeEnv,
+} from "@bb/provider-bridge-protocol/bridge-kit";
 import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -1365,19 +1390,15 @@ async function selectAcpNativeServiceTier(args: {
   if (!fastOption?.options?.some((option) => option.value === value)) {
     return;
   }
-  try {
-    await args.connection.request({
-      method: "session/set_config_option",
-      params: {
-        sessionId: args.sessionId,
-        configId: fastOption.id,
-        value,
-      },
-      resultSchema: acpConfigStateResultSchema,
-    });
-  } catch {
-    // Unsupported or stale service tiers should leave the agent default intact.
-  }
+  await args.connection.request({
+    method: "session/set_config_option",
+    params: {
+      sessionId: args.sessionId,
+      configId: fastOption.id,
+      value,
+    },
+    resultSchema: acpConfigStateResultSchema,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2088,7 +2109,10 @@ async function startAgentSession(
     sendThreadDeltas(bbThreadId, [{ kind: "session.reset" }]);
     session.deferStartEmit = undefined;
     for (const deferred of deferredEmits) {
-      if (deferred.sessionId !== undefined && deferred.sessionId !== sessionId) {
+      if (
+        deferred.sessionId !== undefined &&
+        deferred.sessionId !== sessionId
+      ) {
         continue;
       }
       emitForSession(session, deferred.method, deferred.params);

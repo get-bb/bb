@@ -13,7 +13,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
-import { PROVIDER_BRIDGE_PROTOCOL_VERSION, THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
+import {
+  PROVIDER_BRIDGE_PROTOCOL_VERSION,
+  THREAD_DELTA_NOTIFICATION_METHOD,
+} from "@bb/provider-bridge-protocol";
 import {
   assembleCapturedThreadEvents,
   captureBridgeJsonRpcOutput,
@@ -368,9 +371,7 @@ function deltaKindsOf(message: BridgeJsonRpcOutputMessage): string[] {
   if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
     return [];
   }
-  const params = message.params as
-    | { deltas?: { kind?: string }[] }
-    | undefined;
+  const params = message.params as { deltas?: { kind?: string }[] } | undefined;
   return (params?.deltas ?? []).map((delta) => delta.kind ?? "");
 }
 
@@ -807,6 +808,21 @@ describe("acp bridge", () => {
       expect(agentMessageTexts()).toContain(`selected-fast:${selectedFast}`);
     },
   );
+
+  it("fails session construction when an advertised Fast selection is rejected", async () => {
+    await expect(
+      startThread({
+        parameterizedModelPicker: true,
+        envVars: {
+          FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+          FAKE_ACP_INITIAL_FAST: "true",
+          FAKE_ACP_SET_CONFIG_FAST_ERROR: "1",
+        },
+        model: "grok-4.6",
+        serviceTier: "default",
+      }),
+    ).rejects.toThrow(/fast config update failed/u);
+  });
 
   it("leaves service tier untouched when the agent advertises no Fast option", async () => {
     const requestLog = join(workspaceDir, "no-fast-session-requests.jsonl");

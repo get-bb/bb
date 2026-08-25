@@ -1360,7 +1360,14 @@ describe("host-daemon command schemas", () => {
     // command roots (per-root options explicit) and what its plugin resolved.
     // Version 163: a declared side is `user` or `project` only; host-absolute
     // roots arrive as resolved roots.
-    const root = (path: string, options: Partial<{ recursive: boolean; ancestors: boolean; namePrefix: string }> = {}) => ({
+    const root = (
+      path: string,
+      options: Partial<{
+        recursive: boolean;
+        ancestors: boolean;
+        namePrefix: string;
+      }> = {},
+    ) => ({
       path,
       recursive: false,
       ancestors: false,
@@ -1376,7 +1383,9 @@ describe("host-daemon command schemas", () => {
         nativeRoots: {
           skills: {
             user: [root(".agents/skills")],
-            project: [root(".amp/skills", { recursive: true, ancestors: true })],
+            project: [
+              root(".amp/skills", { recursive: true, ancestors: true }),
+            ],
           },
           commands: { ...emptyRoots, project: [root(".amp/commands")] },
           resolved: {
@@ -1398,7 +1407,9 @@ describe("host-daemon command schemas", () => {
       type: "host.list_commands",
       providerId: "acp-amp",
       nativeRoots: {
-        skills: { project: [{ path: ".amp/skills", recursive: true, ancestors: true }] },
+        skills: {
+          project: [{ path: ".amp/skills", recursive: true, ancestors: true }],
+        },
         resolved: { skills: [{ namePrefix: "one:", shape: "skills" }] },
       },
     });
@@ -1439,16 +1450,24 @@ describe("host-daemon command schemas", () => {
       },
     });
     expect(() =>
-      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ absolute: [root("/home/dev/.pi/agent/skills")] })),
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ absolute: [root("/home/dev/.pi/agent/skills")] }),
+      ),
     ).toThrow(/Unrecognized key[^\n]*absolute/u);
     expect(() =>
-      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ user: [root("/home/dev/.pi/agent/skills")] })),
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root("/home/dev/.pi/agent/skills")] }),
+      ),
     ).toThrow(/relative paths without dot segments/u);
     expect(() =>
-      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ user: [root(".pi/skills", { ancestors: true })] })),
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root(".pi/skills", { ancestors: true })] }),
+      ),
     ).toThrow(/Only project roots may walk ancestors/u);
     expect(() =>
-      hostDaemonOnlineRpcCommandSchema.parse(withRoots({ user: [root(".pi/skills"), root(".pi/skills")] })),
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root(".pi/skills"), root(".pi/skills")] }),
+      ),
     ).toThrow(/must not repeat a path/u);
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse(
@@ -1701,7 +1720,6 @@ describe("host-daemon command schemas", () => {
       });
     }
   });
-
 
   it("rejects malformed environment.provision commands at parse time", () => {
     expect(() =>
@@ -3334,7 +3352,9 @@ describe("host-daemon session schemas", () => {
       ],
     });
     const [group] = parsed.eventGroups;
-    const started = group?.events.find((event) => event.type === "item/started");
+    const started = group?.events.find(
+      (event) => event.type === "item/started",
+    );
     expect(started).toBeDefined();
     if (started?.type !== "item/started") {
       throw new Error("Expected the spoofed event to parse as item/started");

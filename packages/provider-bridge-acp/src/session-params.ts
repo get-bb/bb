@@ -4,7 +4,12 @@
  * model-list params out.
  */
 
-import type { DynamicTool, PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
+import type {
+  DynamicTool,
+  PermissionMode,
+  ReasoningLevel,
+  ServiceTier,
+} from "@bb/domain";
 import path from "node:path";
 
 import {
@@ -180,9 +185,9 @@ function buildAcpSessionInstructions(
 }
 
 /** The spec's `env` is always a record; an empty one adds no envVars key. */
-function launchEnvVars(
-  launchSpec: AcpLaunchSpec,
-): { envVars?: Record<string, string> } {
+function launchEnvVars(launchSpec: AcpLaunchSpec): {
+  envVars?: Record<string, string>;
+} {
   return Object.keys(launchSpec.env).length > 0
     ? { envVars: launchSpec.env }
     : {};
