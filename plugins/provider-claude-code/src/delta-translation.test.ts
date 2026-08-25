@@ -7,6 +7,7 @@ import {
   TURN_2,
   createClaudeDeltaHarness,
   loadFixture,
+  spawningToolUseFor,
 } from "./delta-test-harness.js";
 
 /**
@@ -435,6 +436,10 @@ describe("claude turn and checkpoint lifecycle", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-rate-limited" };
     harness.acceptInput("creq_23456789af", context.threadId);
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-subagent.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-subagent.json"), context);
     harness.translate(
       {
@@ -937,6 +942,10 @@ describe("claude synthetic no-response handling", () => {
   it("keeps an open turn for synthetic no-response messages while an agent is running", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-subagent.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-subagent.json"), context);
 
     const events = harness.translate(

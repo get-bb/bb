@@ -55,16 +55,17 @@ export type ClaudeSdkReasoningEffort =
   | "xhigh"
   | "max";
 
-export interface ClaudeMutableFlagSettings {
+/**
+ * A type alias, not an interface: the Agent SDK's `Settings` carries a string
+ * index signature, and only an object type alias gets the implicit index
+ * signature that makes it assignable to `applyFlagSettings`.
+ */
+export type ClaudeMutableFlagSettings = {
   autoMemoryEnabled: boolean;
   enableWorkflows: boolean;
   effortLevel?: ClaudeSdkReasoningEffort;
   ultracode: boolean;
-}
-
-interface ClaudeMutableSettingsQueryBoundary {
-  applyFlagSettings(settings: ClaudeMutableFlagSettings): Promise<void>;
-}
+};
 
 type SdkSessionMessageHandler = (message: SDKMessage) => void;
 type SdkSessionDoneHandler = (error?: unknown) => void;
@@ -225,12 +226,7 @@ export class SdkSession {
     effort: ClaudeSdkReasoningEffort | undefined;
     settings: ClaudeMutableFlagSettings;
   }): Promise<void> {
-    // Claude CLI accepts `max` through apply_flag_settings (and reports max
-    // from its hook context), but Agent SDK 0.3.197's Settings type omits it.
-    // Keep the compatibility assertion at this external SDK boundary.
-    await (
-      this.query as ClaudeMutableSettingsQueryBoundary | undefined
-    )?.applyFlagSettings(args.settings);
+    await this.query?.applyFlagSettings(args.settings);
     this.options.effort = args.effort;
     const { effortLevel: _effortLevel, ...sessionSettings } = args.settings;
     const currentSettings =

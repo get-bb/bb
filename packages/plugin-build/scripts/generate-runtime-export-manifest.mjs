@@ -12,6 +12,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { RUNTIME_SHIM_NPM_SPECIFIERS } from "../src/runtime-shims.mjs";
 
 // Node 20 does not expose the browser-compatible Navigator global added in
 // later Node releases. Some shared browser runtimes (currently @pierre/diffs)
@@ -31,39 +32,9 @@ const appRequire = createRequire(
   path.join(scriptDir, "..", "..", "..", "apps", "app", "package.json"),
 );
 
-const RUNTIME_MODULE_IDS = [
-  "react",
-  "react-dom",
-  "react-dom/client",
-  "react/jsx-runtime",
-  "react/jsx-dev-runtime",
-  // Portaling radix families (plugin design §5.5): shimmed so vendored
-  // components share the host's dismissable-layer/focus/scroll-lock world.
-  // Non-portal radix has no singleton semantics and bundles per plugin.
-  "@radix-ui/react-alert-dialog",
-  "@radix-ui/react-context-menu",
-  "@radix-ui/react-dialog",
-  "@radix-ui/react-dropdown-menu",
-  "@radix-ui/react-hover-card",
-  "@radix-ui/react-menubar",
-  "@radix-ui/react-navigation-menu",
-  "@radix-ui/react-popover",
-  "@radix-ui/react-select",
-  "@radix-ui/react-tooltip",
-  // toast() must reach the host toaster; vaul mutates document.body styles.
-  "sonner",
-  "vaul",
-  // Diff rendering: FileDiff reads the host's WorkerPoolContextProvider
-  // (React context identity requires one module copy) and sharing keeps
-  // shiki's grammars out of plugin bundles.
-  "@pierre/diffs",
-  "@pierre/diffs/react",
-  // Host-resident libraries (RUNTIME_SLOT_BY_SPECIFIER rule 2): no singleton
-  // semantics, shimmed so plugin bundles stop duplicating them.
-  "clsx",
-  "tailwind-merge",
-  "class-variance-authority",
-];
+// The shimmed npm modules, from the same list `bb plugin build` shims
+// (src/runtime-shims.mjs) so the manifest can never miss a slot.
+const RUNTIME_MODULE_IDS = RUNTIME_SHIM_NPM_SPECIFIERS;
 
 /**
  * Workspace TypeScript modules exposed as slots. Not requireable, so their

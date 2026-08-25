@@ -237,13 +237,13 @@ message agents, or inspect projects, providers, and environments.
   that pairs the bb mobile app with this bb (it needs the `mobileApp`
   experiment: `bb settings experiment mobileApp true`): it prints the code, server URL,
   connect apex, and expiry; `--json` returns `{code, serverUrl, apex,
-  expiresAt}`. The phone enrolls as a connect machine with its own revocable
+expiresAt}`. The phone enrolls as a connect machine with its own revocable
   credential (visible in the getbb.app dashboard). Settings → Remote access →
   Add mobile device shows the same code as a QR. A machine-limit failure names
   the dashboard so the user can revoke an unused device. Remote
   access is owned by the builtin `connect` plugin: `bb plugin disable connect`
   cuts it off entirely; with bb connect still enabled, `bb plugin enable
-  connect` restores the command. Plugins → Connect shows the current URL, QR
+connect` restores the command. Plugins → Connect shows the current URL, QR
   code, mobile pairing, shared ports, re-pair form, and disconnect control.
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
@@ -345,7 +345,7 @@ environment pull-request show <id>`. Diff commands require an explicit target
   `cursor-project` and keeps them read-only.
 - Custom ACP agents live in the ACP providers plugin's `customAgents` setting,
   a JSON array: `bb plugin config provider-acp set customAgents '[{"id":"amp",
-  "displayName":"Amp","command":"amp","args":["acp"]}]'`. The user supplies a
+"displayName":"Amp","command":"amp","args":["acp"]}]'`. The user supplies a
   slug `id`; bb exposes it as provider id `acp-<id>`, which is permanent.
   `cursor` is reserved; `opencode`, `omp`, `grok` and `hermes-agent` are not,
   so an entry with one of those ids replaces the shipped agent. The plugin
@@ -922,7 +922,11 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin types [path]` — sync the plugin's `@get-bb/plugin-sdk` surface
     to the running bb (default: cwd). For a plugin that depends on the npm
     package it rewrites the exact `devDependencies` pin to this bb's SDK
-    version (reporting old → new, and reminding you to `npm install`); for a
+    version and brings the type-only devDependencies of the packages bb shims
+    at runtime (sonner, vaul, the portal radix families, @pierre/diffs, clsx,
+    tailwind-merge, class-variance-authority) to this bb's versions — adding
+    any an app plugin is missing and moving one out of `dependencies`
+    (reporting old → new, and reminding you to `npm install`); for a
     plugin that still vendors declarations it rewrites `types/*.d.ts`, creating
     `types/` when absent. Run it in a cloned or older plugin: the SDK surface
     grows every release. `--check` writes nothing and exits non-zero on a

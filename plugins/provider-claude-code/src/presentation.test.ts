@@ -7,7 +7,10 @@
  */
 import type { ThreadEvent } from "@bb/domain";
 import { describe, expect, it } from "vitest";
-import { createClaudeDeltaHarness } from "./delta-test-harness.js";
+import {
+  createClaudeDeltaHarness,
+  spawningToolUseFor,
+} from "./delta-test-harness.js";
 import { createClaudeDeltaTranslator } from "./delta-translation.js";
 
 function toolUse(
@@ -682,6 +685,7 @@ describe("claude background-task presentation", () => {
       ["local_bash", {}],
       ["local_agent", { subagent_type: "Explore" }],
     ] as const) {
+      harness.translate(spawningToolUseFor(taskStarted(taskType, extra)));
       const opened = harness.translate(taskStarted(taskType, extra));
       const started = startedItems(opened)[0];
       presentations.set(

@@ -820,6 +820,63 @@ describe("acp bridge", () => {
     },
   );
 
+  it.each([
+    // Project-default reuse reaches the bridge as an ordinary thread/start.
+    ["thread/start", "cursor-grok-4.6-medium", "grok-4.6"],
+    ["thread/resume", "cursor-grok-4.5-medium", "grok-4.5"],
+    ["thread/fork", "auto", "default"],
+  ] as const)(
+    "translates a legacy Cursor model for %s session construction",
+    async (method, legacyModel, selectedModel) => {
+      const threadId = `legacy-cursor-${method.slice("thread/".length)}`;
+      const requestLog = join(workspaceDir, `${threadId}.jsonl`);
+      const id = sendRequest(method, {
+        threadId,
+        cwd: workspaceDir,
+        instructionMode: "append",
+        options: executionOptions({
+          model: legacyModel,
+          reasoningLevel: "high",
+          serviceTier: "fast",
+          providerOptions: {
+            acpDialect: "cursor",
+            parameterizedModelPicker: true,
+            acpLaunchSpec: acpLaunchSpec({
+              envVars: {
+                FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+                FAKE_ACP_REQUEST_LOG: requestLog,
+                ...(method === "thread/resume"
+                  ? { FAKE_ACP_LOAD_SESSION: "1" }
+                  : {}),
+                ...(method === "thread/fork"
+                  ? { FAKE_ACP_FORK_SESSION: "1" }
+                  : {}),
+              },
+            }),
+          },
+        }),
+        ...(method === "thread/resume"
+          ? { providerThreadId: "legacy-resume-session" }
+          : {}),
+        ...(method === "thread/fork"
+          ? { sourceProviderThreadId: "legacy-source-session" }
+          : {}),
+      });
+      const response = await waitForResponse(id);
+      expect(response.error).toBeUndefined();
+      expect(
+        loggedAcpRequests(requestLog)
+          .filter((request) => request.method === "session/set_config_option")
+          .map((request) => request.params?.["value"]),
+      ).toEqual(
+        selectedModel === "default" ? [] : [selectedModel, "high", "true"],
+      );
+      const providerThreadId = providerThreadIdOf(response);
+      startedProviderThreadIds.push(providerThreadId);
+      bbThreadIdByProviderThreadId.set(providerThreadId, threadId);
+    },
+  );
+
   it("fails session construction when an advertised Fast selection is rejected", async () => {
     await expect(
       startThread({

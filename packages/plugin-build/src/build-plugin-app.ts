@@ -21,6 +21,12 @@ import { type PluginBuildToolchain } from "./toolchain.js";
 import { createPluginArtifactMeta } from "./plugin-artifact-meta.js";
 import { isRecord, validatePluginBuildManifest } from "./plugin-manifest.js";
 import {
+  LEGACY_PLUGIN_SDK_APP_SPECIFIER,
+  PLUGIN_SDK_APP_SPECIFIER,
+  RUNTIME_SLOT_BY_SPECIFIER,
+  SHARED_UI_ICON_SPECIFIER,
+} from "./runtime-shims.mjs";
+import {
   pluginScopeRoots,
   scopePluginUtilities,
 } from "./scope-plugin-utilities.js";
@@ -46,82 +52,15 @@ import {
  */
 
 /**
- * Runtime slot on `globalThis.__bbPluginRuntime` per shimmed specifier.
- * Shim policy (plugin design §5.5), two admission rules:
- *
- * 1. Singleton/global behavior — one React, the portaling radix families
- *    (shared dismissable-layer/focus/scroll-lock/aria-hidden world), sonner
- *    (`toast()` must reach the host toaster), vaul (mutates document.body
- *    styles), @pierre/diffs (its react FileDiff reads the host's
- *    WorkerPoolContextProvider — context identity requires one module copy —
- *    and sharing keeps shiki's grammars out of every plugin bundle) — plus
- *    the SDK surface itself.
- * 2. Host-resident libraries every plugin app would otherwise duplicate —
- *    tailwind-merge + clsx (the `cn()` pair every vendored component pulls
- *    in), class-variance-authority, and the shared-ui `Icon` (its hugeicons
- *    map is ~110 KB raw per copy). These have no singleton semantics; they
- *    are shimmed so a phone does not parse a dozen copies of the same code.
- *    A plugin gets the host's installed version, so its declared range must
- *    stay within the host's major (tailwind-merge ^3, clsx ^2, cva ^0.7).
- *    Rule 2 has a cost on the host side: exposing a namespace on the
- *    runtime object stops the app's bundler from tree-shaking that library
- *    out of the boot chunk, so it only admits libraries whose slot leaves
- *    the boot budget (apps/app/bundle-budget.json) intact. zod does not —
- *    the app uses a fraction of its exports and slotting the namespace
- *    added +193 KB raw / +33 KB brotli to the payload every phone downloads
- *    before first paint — so zod stays bundled per plugin.
- *
- * Everything else (non-portal radix, lucide-react, zod, form/calendar/chart
- * libs, hugeicons imported directly) bundles from the plugin's own
- * node_modules. Adding a slot here requires the matching host slot in
- * apps/app/src/lib/plugin-frontend.ts (installPluginRuntime) and an
- * export-manifest entry (scripts/generate-runtime-export-manifest.mjs).
+ * The shim specifier → runtime-slot map lives in runtime-shims.mjs (plain
+ * ESM, so the export-manifest and plugin-scaffold generators can read the
+ * same list under bare `node`); the shim admission policy is documented
+ * there. Re-exported for the package's public surface.
  */
-/** The SDK app subpath plugin sources import. */
-const PLUGIN_SDK_APP_SPECIFIER = "@get-bb/plugin-sdk/app";
-
-/**
- * Legacy alias for {@link PLUGIN_SDK_APP_SPECIFIER}, kept so pre-rename plugin
- * sources still build. It resolves to the same runtime slot and the same
- * export list; a later change removes it.
- */
-const LEGACY_PLUGIN_SDK_APP_SPECIFIER = "@bb/plugin-sdk/app";
-
-/**
- * The shared-ui icon module. Builtin plugins import it by package specifier;
- * shared-ui's own components import it relatively (`./icon`), and
- * {@link runtimeShimPlugin} routes both to the same host slot so no plugin
- * bundle carries a second hugeicons map.
- */
-const SHARED_UI_ICON_SPECIFIER = "@bb/shared-ui/icon";
-
-export const RUNTIME_SLOT_BY_SPECIFIER: Record<string, string> = {
-  react: "react",
-  "react-dom": "reactDom",
-  "react-dom/client": "reactDomClient",
-  "react/jsx-runtime": "jsxRuntime",
-  "react/jsx-dev-runtime": "jsxDevRuntime",
-  [PLUGIN_SDK_APP_SPECIFIER]: "pluginSdkApp",
-  [LEGACY_PLUGIN_SDK_APP_SPECIFIER]: "pluginSdkApp",
-  "@pierre/diffs": "pierreDiffs",
-  "@pierre/diffs/react": "pierreDiffsReact",
-  "@radix-ui/react-alert-dialog": "radixAlertDialog",
-  "@radix-ui/react-context-menu": "radixContextMenu",
-  "@radix-ui/react-dialog": "radixDialog",
-  "@radix-ui/react-dropdown-menu": "radixDropdownMenu",
-  "@radix-ui/react-hover-card": "radixHoverCard",
-  "@radix-ui/react-menubar": "radixMenubar",
-  "@radix-ui/react-navigation-menu": "radixNavigationMenu",
-  "@radix-ui/react-popover": "radixPopover",
-  "@radix-ui/react-select": "radixSelect",
-  "@radix-ui/react-tooltip": "radixTooltip",
-  sonner: "sonner",
-  vaul: "vaul",
-  clsx: "clsx",
-  "tailwind-merge": "tailwindMerge",
-  "class-variance-authority": "classVarianceAuthority",
-  [SHARED_UI_ICON_SPECIFIER]: "sharedUiIcon",
-};
+export {
+  RUNTIME_SLOT_BY_SPECIFIER,
+  SHIMMED_TYPE_PACKAGES,
+} from "./runtime-shims.mjs";
 
 /**
  * Real-path suffix of shared-ui's icon module (extension stripped). esbuild

@@ -18,6 +18,7 @@ import {
   type AcpBridgePermissionCli,
   type AcpBridgeReasoningCli,
 } from "./bridge-protocol.js";
+import { agentModelFamilyId } from "./bridge/model-catalog.js";
 import type { AcpLaunchSpec } from "./launch-spec.js";
 
 /**
@@ -266,11 +267,19 @@ export function buildAcpModelListParams(
   };
 }
 
+function cursorParameterizedModelId(model: string): string {
+  const familyId = model === "auto" ? "default" : agentModelFamilyId(model);
+  return familyId.startsWith("cursor-")
+    ? familyId.slice("cursor-".length)
+    : familyId;
+}
+
 /** The synthetic "acp-default" id is never forwarded. */
 function buildAcpModelSelectionParam(
   launchSpec: AcpLaunchSpec,
   options: AcpSessionExecutionOptions,
   parameterizedModelPicker: boolean,
+  dialectId: string | undefined,
 ): { modelSelection?: AcpModelSelection } {
   const model = options.model;
   const listCommand = buildAcpModelListCommand(launchSpec);
@@ -284,7 +293,10 @@ function buildAcpModelSelectionParam(
   ) {
     return {
       modelSelection: {
-        modelId: model,
+        modelId:
+          parameterizedModelPicker && dialectId === "cursor"
+            ? cursorParameterizedModelId(model)
+            : model,
         ...(options.reasoningLevel !== undefined
           ? { reasoningLevel: options.reasoningLevel }
           : {}),
@@ -352,6 +364,7 @@ export function buildAcpSessionParams(
       launchSpec,
       options,
       args.parameterizedModelPicker,
+      args.dialectId,
     ),
     parameterizedModelPicker: args.parameterizedModelPicker,
     ...(launchSpec.reasoningCli !== undefined

@@ -366,6 +366,10 @@ function splitVariant(id: string): {
   };
 }
 
+export function agentModelFamilyId(id: string): string {
+  return splitVariant(id).familyKey;
+}
+
 // How the agent's display names spell each effort token, for stripping the
 // default variant's effort word out of the family display name.
 const EFFORT_DISPLAY_WORDS: Readonly<Record<string, string>> = {

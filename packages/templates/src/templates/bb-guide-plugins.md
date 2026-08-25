@@ -241,7 +241,10 @@ added/updated/unchanged counts.
                                  server required)
   bb plugin types [path]         Sync a plugin's @get-bb/plugin-sdk surface to
                                  this bb (default: cwd): repin the npm
-                                 devDependency to this bb's SDK version, or
+                                 devDependency to this bb's SDK version and
+                                 the type-only devDependencies of the packages
+                                 bb shims at runtime (sonner, vaul, the portal
+                                 radix families, ...) to this bb's versions, or
                                  rewrite the vendored types/ of a plugin that
                                  still carries them; --check writes nothing
                                  and exits non-zero on a mismatch
@@ -600,7 +603,11 @@ not. A plugin can address only its own eligible tab on the current nav panel.
 `import { toast } from
 "sonner"` reaches the host toaster; react, the portaling radix families,
 sonner, vaul, @pierre/diffs, and the host-resident clsx, tailwind-merge, and
-class-variance-authority libraries are runtime-shimmed (never bundled) —
+class-variance-authority libraries are runtime-shimmed (never bundled). Shimmed
+does not mean undeclared: tsc resolves their declarations through node_modules,
+so each shimmed package a plugin imports is a type-only devDependency at the
+host's version — the scaffold declares all of them and `bb plugin types`
+repins them; never list one in dependencies, which would bundle a second copy —
 though source and diffs should go through the host's own
 experimental_SourceCode / experimental_Diff components rather than
 @pierre/diffs directly, so bb owns patch normalization, syntax
@@ -699,8 +706,9 @@ works for existing entries. Run `bb plugin migrate` before adding `bb.host` so
 the `/host` and `/testing/host` declaration subpaths are available; migration
 shows every change and asks first.
 The SDK surface grows every release, so `bb plugin types` syncs a plugin to
-the running bb — repinning the devDependency, or rewriting types/ for a
-plugin that still vendors them. Run it in a cloned or older plugin, and `bb
+the running bb — repinning the SDK devDependency and the shimmed packages'
+type-only devDependencies, or rewriting types/ for a plugin that still
+vendors them. Run it in a cloned or older plugin, and `bb
 plugin types --check` in CI. `bb plugin build` and `bb plugin dev` keep a
 vendored plugin in step for you. Need a symbol the types
 don't explain? Clone the repo: https://github.com/get-bb/bb. The API in

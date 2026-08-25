@@ -791,6 +791,7 @@ describe("toCodexDynamicTools", () => {
       ]),
     ).toEqual([
       {
+        type: "function",
         name: "bb_test_ping",
         description: "Ping the host",
         inputSchema: {

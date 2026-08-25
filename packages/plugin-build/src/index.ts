@@ -17,6 +17,7 @@
 export {
   buildPluginApp,
   RUNTIME_SLOT_BY_SPECIFIER,
+  SHIMMED_TYPE_PACKAGES,
 } from "./build-plugin-app.js";
 export {
   buildPluginServer,

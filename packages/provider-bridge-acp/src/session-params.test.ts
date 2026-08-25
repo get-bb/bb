@@ -262,6 +262,7 @@ describe("buildAcpSessionParams parameterized model selection", () => {
     return buildAcpSessionParams({
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
+      dialectId: "cursor",
       options: { ...BASE_OPTIONS, ...options },
       parameterizedModelPicker: true,
       launchSpec: launchSpecFor(cursorSpec),
@@ -288,6 +289,12 @@ describe("buildAcpSessionParams parameterized model selection", () => {
       .modelSelection as Record<string, unknown>;
     expect(selection).toMatchObject({ modelId: "grok-4.6" });
     expect("reasoningLevel" in selection).toBe(false);
+  });
+
+  it("keeps Cursor's new default id unchanged", () => {
+    expect(cursorSessionParams({ model: "default" }).modelSelection).toEqual({
+      modelId: "default",
+    });
   });
 
   it.each(["default", "fast"] as const)(

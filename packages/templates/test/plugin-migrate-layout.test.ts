@@ -15,6 +15,7 @@ import {
   resolvePluginSdkLayout,
   setPluginSdkPin,
 } from "../src/plugin-scaffold.js";
+import { PLUGIN_SHIMMED_TYPE_DEPENDENCIES } from "../src/generated/plugin-starter-files.generated.js";
 
 const SDK_VERSION = "0.4.3";
 
@@ -148,9 +149,11 @@ describe("migratePluginToPackageLayout", () => {
     });
     expect(raised.enginesFloor).toEqual({ from: ">=0.2.0", to: ">=0.4.3" });
     expect(
-      ((await readJson(join(rootDir, "package.json"))).engines as
-        | Record<string, string>
-        | undefined)?.bbPluginSdk,
+      (
+        (await readJson(join(rootDir, "package.json"))).engines as
+          | Record<string, string>
+          | undefined
+      )?.bbPluginSdk,
     ).toBe(">=0.4.3");
 
     // A plugin that already demands more of the host keeps that requirement:
@@ -170,10 +173,12 @@ describe("migratePluginToPackageLayout", () => {
       });
       expect(result.enginesFloor).toBeNull();
       expect(
-        ((await readJson(join(newer, "package.json"))).engines as Record<
-          string,
-          string
-        >).bbPluginSdk,
+        (
+          (await readJson(join(newer, "package.json"))).engines as Record<
+            string,
+            string
+          >
+        ).bbPluginSdk,
       ).toBe(">=9.1.0");
     } finally {
       await rm(newer, { recursive: true, force: true });
@@ -295,9 +300,9 @@ describe("migratePluginToPackageLayout", () => {
       "@bb/plugin-sdk/app",
     ]);
     const tsconfig = await readJson(join(rootDir, "tsconfig.json"));
-    expect(
-      (tsconfig.compilerOptions as Record<string, unknown>).paths,
-    ).toEqual({ "@/*": ["./*"] });
+    expect((tsconfig.compilerOptions as Record<string, unknown>).paths).toEqual(
+      { "@/*": ["./*"] },
+    );
     expect((await resolvePluginSdkLayout(rootDir)).kind).toBe("package");
   });
 
@@ -547,7 +552,10 @@ describe("migratePluginToPackageLayout", () => {
       join(rootDir, "tsconfig.json"),
       '{\n  // paths\n  "compilerOptions": { "paths": {} }\n}\n',
     );
-    const manifestBefore = await readFile(join(rootDir, "package.json"), "utf8");
+    const manifestBefore = await readFile(
+      join(rootDir, "package.json"),
+      "utf8",
+    );
 
     await expect(
       migratePluginToPackageLayout({ rootDir, sdkVersion: SDK_VERSION }),
@@ -595,11 +603,16 @@ describe("setPluginSdkPin", () => {
       )}\n`,
     );
 
-    const result = await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION });
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: false,
+    });
 
     expect(result).toEqual({
       pin: { from: "0.2.0", to: SDK_VERSION },
       movedFromDependencies: false,
+      shimmedTypePins: [],
     });
     const manifest = await readJson(join(rootDir, "package.json"));
     expect(
@@ -611,7 +624,9 @@ describe("setPluginSdkPin", () => {
     expect((manifest.engines as Record<string, string>).bbPluginSdk).toBe(
       ">=0.2.0",
     );
-    expect(await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION })).toBeNull();
+    expect(
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false }),
+    ).toBeNull();
   });
 
   it("moves a runtime-declared SDK into devDependencies rather than duplicating it", async () => {
@@ -628,7 +643,11 @@ describe("setPluginSdkPin", () => {
       )}\n`,
     );
 
-    const result = await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION });
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: false,
+    });
 
     expect(result?.movedFromDependencies).toBe(true);
     const manifest = await readJson(join(rootDir, "package.json"));
@@ -658,15 +677,132 @@ describe("setPluginSdkPin", () => {
       )}\n`,
     );
 
-    const result = await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION });
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: false,
+    });
 
-    expect(result).toEqual({ pin: null, movedFromDependencies: true });
+    expect(result).toEqual({
+      pin: null,
+      movedFromDependencies: true,
+      shimmedTypePins: [],
+    });
     const manifest = await readJson(join(rootDir, "package.json"));
     expect(manifest.dependencies).toBeUndefined();
     expect(manifest.devDependencies).toEqual({
       "@get-bb/plugin-sdk": SDK_VERSION,
     });
     // And now it really is a no-op.
-    expect(await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION })).toBeNull();
+    expect(
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false }),
+    ).toBeNull();
+  });
+
+  /**
+   * #2072: the shimmed packages are host-provided exactly like the SDK, so an
+   * app plugin's type-only declarations for them track the running bb — a
+   * drifted range, a copy in `dependencies` (which would bundle a second
+   * sonner beside the host's toaster), or a missing one is brought to the
+   * host's version in `devDependencies`.
+   */
+  it("brings an app plugin's shimmed packages to the host's versions in devDependencies", async () => {
+    const hostSonner = PLUGIN_SHIMMED_TYPE_DEPENDENCIES.sonner!;
+    const hostVaul = PLUGIN_SHIMMED_TYPE_DEPENDENCIES.vaul!;
+    await writeFile(
+      join(rootDir, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "bb-plugin-toasty",
+          bb: { server: "./server.ts", app: "./app.tsx" },
+          dependencies: { vaul: "^0.9.0", zod: "^4.3.6" },
+          devDependencies: {
+            "@get-bb/plugin-sdk": SDK_VERSION,
+            sonner: "^0.3.0",
+            typescript: "^5.7.0",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: true,
+    });
+
+    expect(result?.pin).toBeNull();
+    expect(result?.shimmedTypePins).toContainEqual({
+      name: "sonner",
+      from: "^0.3.0",
+      to: hostSonner,
+      movedFromDependencies: false,
+    });
+    expect(result?.shimmedTypePins).toContainEqual({
+      name: "vaul",
+      from: "^0.9.0",
+      to: hostVaul,
+      movedFromDependencies: true,
+    });
+    expect(result?.shimmedTypePins).toContainEqual({
+      name: "@radix-ui/react-popover",
+      from: null,
+      to: PLUGIN_SHIMMED_TYPE_DEPENDENCIES["@radix-ui/react-popover"],
+      movedFromDependencies: false,
+    });
+    const manifest = await readJson(join(rootDir, "package.json"));
+    expect(manifest.dependencies).toEqual({ zod: "^4.3.6" });
+    const devDependencies = manifest.devDependencies as Record<string, string>;
+    for (const [name, version] of Object.entries(
+      PLUGIN_SHIMMED_TYPE_DEPENDENCIES,
+    )) {
+      expect(devDependencies[name], name).toBe(version);
+    }
+    expect(devDependencies["@get-bb/plugin-sdk"]).toBe(SDK_VERSION);
+    expect(devDependencies.typescript).toBe("^5.7.0");
+    // Idempotent once synced — `bb plugin types --check` reads this as current.
+    expect(
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: true }),
+    ).toBeNull();
+  });
+
+  it("only repins the shimmed packages a headless plugin already declares", async () => {
+    await writeFile(
+      join(rootDir, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "bb-plugin-headless",
+          bb: { server: "./server.ts" },
+          devDependencies: {
+            "@get-bb/plugin-sdk": SDK_VERSION,
+            clsx: "^1.0.0",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: false,
+    });
+
+    expect(result?.shimmedTypePins).toEqual([
+      {
+        name: "clsx",
+        from: "^1.0.0",
+        to: PLUGIN_SHIMMED_TYPE_DEPENDENCIES.clsx,
+        movedFromDependencies: false,
+      },
+    ]);
+    const manifest = await readJson(join(rootDir, "package.json"));
+    expect(manifest.devDependencies).toEqual({
+      "@get-bb/plugin-sdk": SDK_VERSION,
+      clsx: PLUGIN_SHIMMED_TYPE_DEPENDENCIES.clsx,
+    });
   });
 });

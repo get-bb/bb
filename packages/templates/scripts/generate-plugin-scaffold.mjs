@@ -11,47 +11,34 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeGeneratedFile } from "./write-generated.mjs";
+import {
+  RUNTIME_SLOT_BY_SPECIFIER,
+  SHIMMED_TYPE_PACKAGES,
+} from "../../plugin-build/src/runtime-shims.mjs";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 
-// Embed the `bb plugin new` starter component set from the plugin component
-// registry (plugin design §5.5): the transitive closure of the starter
-// items, as {target, content} pairs, plus the npm deps a scaffold needs to
-// build (dependencies) and typecheck (devDependencies) them — versions
-// mirrored from apps/app so vendored source matches what the app ships.
-// Read by file path — NOT a package import — same as the plugin-sdk dts
-// embed above. Regenerate the registry FIRST
+// Embed the `bb plugin new` starter component set from the plugin
+// component registry (plugin design §5.5): the transitive closure of the
+// starter items, as {target, content} pairs, plus the npm deps a scaffold
+// needs to build (dependencies) and typecheck (devDependencies) them, and
+// the full shimmed-package set for types — versions mirrored from apps/app
+// so vendored source and declarations match what the app ships. Read by
+// file path — NOT a package import — same as the plugin-sdk dts embed above.
+// Regenerate the registry FIRST
 // (node packages/plugin-registry/scripts/build-registry.mjs), then this.
 // The scaffold's todo page uses button, card, input, and checkbox; dialog is
 // vendored so the next feature has a confirm step ready.
 const STARTER_ITEMS = ["button", "card", "input", "checkbox", "dialog"];
-// Keep in sync with RUNTIME_SLOT_BY_SPECIFIER in
-// packages/plugin-build/src/build-plugin-app.ts: shimmed packages are
-// runtime-provided (devDependencies for types only); everything else must be
-// a real dependency for esbuild to bundle.
-const SHIMMED_SPECIFIERS = new Set([
-  "@radix-ui/react-alert-dialog",
-  "@radix-ui/react-context-menu",
-  "@radix-ui/react-dialog",
-  "@radix-ui/react-dropdown-menu",
-  "@radix-ui/react-hover-card",
-  "@radix-ui/react-menubar",
-  "@radix-ui/react-navigation-menu",
-  "@radix-ui/react-popover",
-  "@radix-ui/react-select",
-  "@radix-ui/react-tooltip",
-  "sonner",
-  "vaul",
-  // Host-resident libraries: shimmed for bundle size, not singleton
-  // semantics. zod is not a slot (its namespace would bloat the host's boot
-  // chunk), so the scaffold keeps it in dependencies.
-  "clsx",
-  "tailwind-merge",
-  "class-variance-authority",
-]);
+// Shimmed packages are runtime-provided (devDependencies for types only);
+// everything else a starter component imports must be a real dependency for
+// esbuild to bundle. Both lists come from the build's own shim table,
+// read by file path like the registry (@bb/templates cannot depend on
+// @bb/plugin-build without a workspace cycle).
+const SHIMMED_SPECIFIERS = new Set(Object.keys(RUNTIME_SLOT_BY_SPECIFIER));
 const registryDir = path.join(packageRoot, "..", "plugin-registry", "r");
 const appPackageJson = JSON.parse(
   await readFile(
@@ -61,7 +48,11 @@ const appPackageJson = JSON.parse(
 );
 const starterFiles = [];
 const starterBundledDeps = new Set();
-const starterTypeOnlyDeps = new Set();
+// Every shimmed package, not only those the starter components import: the
+// plugin guide tells authors to import any of them freely, and `bb plugin
+// build` shims them all — but tsc resolves through node_modules, so each one
+// needs its declarations installed for the import to typecheck (#2072).
+const shimmedTypeDeps = new Set(SHIMMED_TYPE_PACKAGES);
 {
   const seenItems = new Set();
   const itemQueue = [...STARTER_ITEMS];
@@ -76,10 +67,15 @@ const starterTypeOnlyDeps = new Set();
       starterFiles.push({ target: file.target, content: file.content });
     }
     for (const dep of item.dependencies ?? []) {
-      (SHIMMED_SPECIFIERS.has(dep)
-        ? starterTypeOnlyDeps
-        : starterBundledDeps
-      ).add(dep);
+      if (SHIMMED_SPECIFIERS.has(dep)) {
+        if (!shimmedTypeDeps.has(dep)) {
+          throw new Error(
+            `starter dep "${dep}" is shimmed but missing from SHIMMED_TYPE_PACKAGES`,
+          );
+        }
+        continue;
+      }
+      starterBundledDeps.add(dep);
     }
     itemQueue.push(
       ...(item.registryDependencies ?? []).map((name) =>
@@ -128,8 +124,11 @@ export const PLUGIN_STARTER_FILES: readonly PluginStarterFile[] = ${JSON.stringi
 /** npm deps \`bb plugin build\` bundles — must be installed to build. */
 export const PLUGIN_STARTER_DEPENDENCIES: Readonly<Record<string, string>> = ${JSON.stringify(versionedDeps(starterBundledDeps), null, 2)};
 
-/** Runtime-shimmed packages — installed for editor/tsc types only. */
-export const PLUGIN_STARTER_TYPE_DEPENDENCIES: Readonly<Record<string, string>> = ${JSON.stringify(versionedDeps(starterTypeOnlyDeps), null, 2)};
+/**
+ * Every package \`bb plugin build\` shims to the host runtime, at the host's
+ * version — installed for editor/tsc types only, never bundled.
+ */
+export const PLUGIN_SHIMMED_TYPE_DEPENDENCIES: Readonly<Record<string, string>> = ${JSON.stringify(versionedDeps(shimmedTypeDeps), null, 2)};
 `;
 
 await writeGeneratedFile(starterOutputPath, starterOutput);
