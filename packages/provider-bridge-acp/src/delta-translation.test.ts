@@ -93,11 +93,24 @@ function updateEvent(update: Record<string, unknown>): ProviderRuntimeEvent {
   };
 }
 
-function fsWriteEvent(path: string): ProviderRuntimeEvent {
+function fsWriteEvent(
+  path: string,
+  options: {
+    kind?: "add" | "update";
+    oldText?: string;
+    content?: string;
+  } = {},
+): ProviderRuntimeEvent {
   return {
     jsonrpc: "2.0",
     method: ACP_FS_WRITE_METHOD,
-    params: { threadId: THREAD_ID, path, kind: "add", content: "hello\n" },
+    params: {
+      threadId: THREAD_ID,
+      path,
+      kind: options.kind ?? "add",
+      ...(options.oldText === undefined ? {} : { oldText: options.oldText }),
+      content: options.content ?? "hello\n",
+    },
   };
 }
 
@@ -244,7 +257,7 @@ describe("acp delta translation (bridge-shared invariants)", () => {
   // Historical fix f60cf84ee (recast): fs-write item ids must never collide
   // across writes or sessions. Minting moved to the runtime assembler, whose
   // per-assembler entropy+serial ids are unique across every session it sees.
-  it("mints distinct fs-write item ids across writes", () => {
+  it("keeps unmatched fs writes standalone with distinct item ids", () => {
     const harness = createHarness();
     harness.translate(turnStartedEvent());
     const first = completedItems(
@@ -259,6 +272,111 @@ describe("acp delta translation (bridge-shared invariants)", () => {
     expect(first.id).toMatch(ITEM_ID_PATTERN);
     expect(second.id).toMatch(ITEM_ID_PATTERN);
     expect(first.id).not.toBe(second.id);
+  });
+
+  it("keeps an fs write standalone when its native file-change match is ambiguous", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    for (const toolCallId of ["edit-a", "edit-b"]) {
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId,
+          kind: "edit",
+          status: "pending",
+          rawInput: {},
+        }),
+      );
+    }
+
+    const [write] = completedItems(
+      harness.translate(fsWriteEvent("/tmp/file.ts")),
+    );
+    expect(write).toMatchObject({
+      type: "fileChange",
+      changes: [{ path: "/tmp/file.ts", kind: "add" }],
+    });
+  });
+
+  it("accumulates repeated client writes and reapplies them after provider updates", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "omp-repeated-write",
+        title: "edit",
+        kind: "edit",
+        status: "pending",
+        rawInput: {},
+      }),
+    );
+
+    expect(
+      harness.translate(
+        fsWriteEvent("/workspace/poem.md", {
+          kind: "update",
+          oldText: "original\n",
+          content: "middle\n",
+        }),
+      ),
+    ).toEqual([]);
+
+    // Provider content has replace semantics, but it cannot overwrite the
+    // authoritative file snapshot observed by the ACP client write.
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "omp-repeated-write",
+        status: "in_progress",
+        locations: [{ path: "/workspace/poem.md" }],
+        content: [
+          {
+            type: "diff",
+            path: "/workspace/poem.md",
+            oldText: "provider-old\n",
+            newText: "provider-stale\n",
+          },
+        ],
+      }),
+    );
+
+    expect(
+      harness.translate(
+        fsWriteEvent("/workspace/poem.md", {
+          kind: "update",
+          oldText: "middle\n",
+          content: "latest\n",
+        }),
+      ),
+    ).toEqual([]);
+
+    const [completed] = completedItems(
+      harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "omp-repeated-write",
+          title: "poem.md",
+          status: "completed",
+          content: [
+            {
+              type: "content",
+              content: { type: "text", text: "Edited file successfully." },
+            },
+          ],
+        }),
+      ),
+    );
+    expect(completed).toMatchObject({
+      type: "fileChange",
+      changes: [{ path: "/workspace/poem.md", kind: "update" }],
+    });
+    const change =
+      completed?.type === "fileChange" ? completed.changes[0] : undefined;
+    expect(change?.diff).toContain("-original");
+    expect(change?.diff).toContain("+latest");
+    expect(change?.diff).not.toContain("middle");
+    expect(change?.diff).not.toContain("provider-stale");
   });
 });
 
@@ -878,6 +996,82 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
         }),
       }),
     ]);
+  });
+
+  it("folds an OMP client fs write into its path-pending native edit", () => {
+    const harness = startedHarness();
+    const startedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-omp-edit",
+        title: "edit",
+        kind: "edit",
+        status: "pending",
+        rawInput: {},
+      }),
+    );
+    const startedItem = startedEvents.find(
+      (event) => event.type === "item/started",
+    );
+    expect(startedItem).toMatchObject({
+      type: "item/started",
+      item: { type: "fileChange", changes: [] },
+    });
+    const startedItemId =
+      startedItem?.type === "item/started" ? startedItem.item.id : "";
+
+    expect(
+      harness.translate({
+        jsonrpc: "2.0",
+        method: ACP_FS_WRITE_METHOD,
+        params: {
+          threadId: THREAD_ID,
+          path: "/workspace/poem.md",
+          kind: "update",
+          oldText: "# Lions\n",
+          content: "# Rabbits\n",
+        },
+      }),
+    ).toEqual([]);
+
+    const completedEvents = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-omp-edit",
+        title: "poem.md",
+        status: "completed",
+        locations: [{ path: "/workspace/poem.md" }],
+        content: [
+          {
+            type: "content",
+            content: {
+              type: "text",
+              text: "Edited file successfully.",
+            },
+          },
+        ],
+      }),
+    );
+    expect(completedEvents).toHaveLength(1);
+    expect(completedEvents[0]).toMatchObject({
+      type: "item/completed",
+      item: {
+        type: "fileChange",
+        id: startedItemId,
+        status: "completed",
+        changes: [{ path: "/workspace/poem.md", kind: "update" }],
+      },
+    });
+    const change =
+      completedEvents[0]?.type === "item/completed" &&
+      completedEvents[0].item.type === "fileChange"
+        ? completedEvents[0].item.changes[0]
+        : undefined;
+    expect(countChangedLines(change?.diff)).toEqual({ added: 1, removed: 1 });
+
+    expect(
+      completedItems(harness.translate(turnCompletedEvent("end_turn"))),
+    ).toEqual([]);
   });
 
   it("translates plan updates into settled planSteps snapshots", () => {
@@ -1662,7 +1856,9 @@ describe("acp delta translation (raw payloads and real results)", () => {
         sessionUpdate: "tool_call_update",
         toolCallId: "call-stream",
         status: "in_progress",
-        content: [{ type: "content", content: { type: "text", text: "one\n" } }],
+        content: [
+          { type: "content", content: { type: "text", text: "one\n" } },
+        ],
       }),
     );
     expect(first).toEqual([
@@ -1696,7 +1892,9 @@ describe("acp delta translation (raw payloads and real results)", () => {
         sessionUpdate: "tool_call_update",
         toolCallId: "call-stream",
         status: "in_progress",
-        content: [{ type: "content", content: { type: "text", text: "two\n" } }],
+        content: [
+          { type: "content", content: { type: "text", text: "two\n" } },
+        ],
       }),
     );
     expect(third).toEqual([
@@ -1940,7 +2138,11 @@ describe("acp delta translation (raw payloads and real results)", () => {
         content: [
           { type: "content", content: { type: "text", text: "README.md\n" } },
         ],
-        rawOutput: { type: "Bash", exit_code: 0, output_for_prompt: "exit: 0\n" },
+        rawOutput: {
+          type: "Bash",
+          exit_code: 0,
+          output_for_prompt: "exit: 0\n",
+        },
       }),
     );
     expect(closed).toHaveLength(1);
@@ -1970,7 +2172,11 @@ describe("acp delta translation (raw payloads and real results)", () => {
       }),
     );
     expect(opened[0]).toMatchObject({
-      item: { type: "toolCall", tool: "fetch", presentation: { title: "Web Fetch" } },
+      item: {
+        type: "toolCall",
+        tool: "fetch",
+        presentation: { title: "Web Fetch" },
+      },
     });
     const openedId =
       opened[0]?.type === "item/started" ? opened[0].item.id : "";

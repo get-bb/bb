@@ -17,10 +17,27 @@
 
 import { providerRawEventSchema } from "@bb/domain";
 import type { ProviderRawEvent } from "@bb/domain";
-import { COMPACTION_PRESENTATION, errorEnvelopeSchema, jsonRpcEnvelopeSchema, planStepsPresentation, presentationTitle } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { JsonRpcMessage, ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
-import type { ThreadEventItemStatus, ThreadEventPlanStep, ThreadEventTurnStatus } from "@bb/domain";
-import type { DeltaItemShape, DeltaNoTurnFallback, ThreadDelta } from "@bb/provider-bridge-protocol";
+import {
+  COMPACTION_PRESENTATION,
+  errorEnvelopeSchema,
+  jsonRpcEnvelopeSchema,
+  planStepsPresentation,
+  presentationTitle,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  JsonRpcMessage,
+  ProviderRuntimeEvent,
+} from "@bb/provider-bridge-protocol/bridge-kit";
+import type {
+  ThreadEventItemStatus,
+  ThreadEventPlanStep,
+  ThreadEventTurnStatus,
+} from "@bb/domain";
+import type {
+  DeltaItemShape,
+  DeltaNoTurnFallback,
+  ThreadDelta,
+} from "@bb/provider-bridge-protocol";
 import {
   ACP_COMPACTION_COMPLETED_METHOD,
   ACP_COMPACTION_STARTED_METHOD,
@@ -54,6 +71,7 @@ import {
   type AcpClassifiedToolCall,
   type AcpInjectedTool,
 } from "./tool-classification.js";
+import { resolveAcpToolCallPath } from "./tool-call-operation.js";
 import { acpVisibilityMetadata } from "./visibility.js";
 import {
   acpAgentMessageChunkUpdateSchema,
@@ -64,6 +82,7 @@ import {
   extractAcpContentText,
   type AcpSessionUpdate,
   type AcpStopReason,
+  type AcpToolCallContent,
   type AcpToolCallUpdateEvent,
 } from "./wire.js";
 
@@ -194,6 +213,12 @@ function mergeAcpToolCallEvents(
 interface AcpOpenToolCall {
   /** The latest merged tool_call event. */
   event: AcpToolCallUpdateEvent;
+  /**
+   * Authoritative diffs captured while serving ACP client fs writes. They
+   * survive later tool-call updates whose replace-semantics content omits or
+   * supersedes the diff that the client itself observed.
+   */
+  clientFileWrites?: Extract<AcpToolCallContent, { type: "diff" }>[];
   /**
    * The item type the call opened as. An update can re-classify the merged
    * event (grok's first update adds the kind), and only a call that opened
@@ -378,6 +403,107 @@ export function createAcpDeltaTranslator(
       }
     }
     return classifyAcpToolCall(event, injected, pathOptions);
+  }
+
+  /** The file snapshot captured while serving an ACP client write request. */
+  interface AcpFsWriteSnapshot {
+    path: string;
+    oldText?: string;
+    content: string;
+  }
+
+  /** Upsert client-observed diffs onto a provider tool-call snapshot. */
+  function withClientFileWrites(
+    event: AcpToolCallUpdateEvent,
+    writes: readonly Extract<AcpToolCallContent, { type: "diff" }>[],
+  ): AcpToolCallUpdateEvent {
+    if (writes.length === 0) {
+      return event;
+    }
+    const paths = new Set(
+      writes.map((write) => resolveAcpToolCallPath(write.path, pathOptions)),
+    );
+    return {
+      ...event,
+      content: [
+        ...(event.content ?? []).filter(
+          (entry) =>
+            entry.type !== "diff" ||
+            !paths.has(resolveAcpToolCallPath(entry.path, pathOptions)),
+        ),
+        ...writes,
+      ],
+    };
+  }
+
+  /**
+   * Fold a client-side fs write into the one open native file change it can
+   * describe. Some agents (notably OMP) announce a native edit, then execute
+   * it through `fs/write_text_file`; ACP gives the client request no tool-call
+   * id. Prefer one exact path match, otherwise the sole path-pending file
+   * change. Ambiguous requests remain standalone timeline items.
+   */
+  function mergeFsWriteIntoOpenToolCall(
+    context: AcpDeltaTranslationContext | undefined,
+    write: AcpFsWriteSnapshot,
+  ): boolean {
+    const writePath = resolveAcpToolCallPath(write.path, pathOptions);
+    const fileChangeCalls = threadCallEntries(context).flatMap(
+      ([key, open]) => {
+        if (open.openedType !== "fileChange") {
+          return [];
+        }
+        const classified = classifyCall(context, open.event);
+        return classified.item.type === "fileChange"
+          ? [
+              {
+                key,
+                open,
+                paths: classified.item.changes.map((change) => change.path),
+              },
+            ]
+          : [];
+      },
+    );
+    const exactMatches = fileChangeCalls.filter(({ paths }) =>
+      paths.includes(writePath),
+    );
+    const pathPendingMatches = fileChangeCalls.filter(
+      ({ paths }) => paths.length === 0,
+    );
+    const matching =
+      exactMatches.length === 1
+        ? exactMatches[0]
+        : exactMatches.length === 0 && pathPendingMatches.length === 1
+          ? pathPendingMatches[0]
+          : undefined;
+    if (matching === undefined) {
+      return false;
+    }
+
+    const previous = matching.open.clientFileWrites?.find(
+      (entry) => resolveAcpToolCallPath(entry.path, pathOptions) === writePath,
+    );
+    const oldText = previous === undefined ? write.oldText : previous.oldText;
+    const diff: Extract<AcpToolCallContent, { type: "diff" }> = {
+      type: "diff",
+      path: write.path,
+      ...(oldText === undefined ? {} : { oldText }),
+      newText: write.content,
+    };
+    const clientFileWrites = [
+      ...(matching.open.clientFileWrites ?? []).filter(
+        (entry) =>
+          resolveAcpToolCallPath(entry.path, pathOptions) !== writePath,
+      ),
+      diff,
+    ];
+    mergedToolCalls.set(matching.key, {
+      ...matching.open,
+      clientFileWrites,
+      event: withClientFileWrites(matching.open.event, clientFileWrites),
+    });
+    return true;
   }
 
   // -------------------------------------------------------------------------
@@ -732,7 +858,10 @@ export function createAcpDeltaTranslator(
         const event = withDialectIdentity(parsed.data);
         const key = callKey(context, event.toolCallId);
         const open = mergedToolCalls.get(key);
-        const merged = mergeAcpToolCallEvents(open?.event, event);
+        const merged = withClientFileWrites(
+          mergeAcpToolCallEvents(open?.event, event),
+          open?.clientFileWrites ?? [],
+        );
         if (isTerminalAcpStatus(merged.status)) {
           mergedToolCalls.delete(key);
           return [
@@ -756,6 +885,9 @@ export function createAcpDeltaTranslator(
           ...(open?.delegation === undefined
             ? {}
             : { delegation: open.delegation }),
+          ...(open?.clientFileWrites === undefined
+            ? {}
+            : { clientFileWrites: open.clientFileWrites }),
         });
         // An in-progress update on a running command carries the output so
         // far (grok streams cumulative stdout, with tail-window resets): a
@@ -1001,6 +1133,9 @@ export function createAcpDeltaTranslator(
           envelope.data.params,
         );
         if (!params.success) {
+          return [];
+        }
+        if (mergeFsWriteIntoOpenToolCall(context, params.data)) {
           return [];
         }
         const rawEvent: JsonRpcMessage = {
