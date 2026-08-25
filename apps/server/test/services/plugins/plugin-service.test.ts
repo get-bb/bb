@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import semver from "semver";
 import {
   createConnection,
   getInstalledPlugin,
@@ -650,7 +651,7 @@ describe("plugin service", () => {
     await after.stop();
   });
 
-  it("keeps a persisted 0.4.8 scaffold plugin running after the 0.4.18 SDK upgrade", async () => {
+  it("keeps a persisted 0.4.8 scaffold plugin running after an SDK upgrade", async () => {
     // This package.json is frozen from `bb plugin new sdk-upgrade-fixture`
     // shipped by bb 0.39.0 with @get-bb/plugin-sdk 0.4.8. Copy it into a
     // user-owned path, then persist the registration before starting the
@@ -670,7 +671,10 @@ describe("plugin service", () => {
     };
     expect(manifest.engines.bbPluginSdk).toBe(">=0.4.8");
     expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.8");
-    expect(PLUGIN_SDK_VERSION).toBe("0.4.18");
+    // The current SDK must be newer than the frozen fixture — the point is
+    // the upgrade, not any particular release, so don't pin the exact
+    // version here.
+    expect(semver.gt(PLUGIN_SDK_VERSION, "0.4.8")).toBe(true);
 
     upsertInstalledPlugin(db, {
       id: "sdk-upgrade-fixture",

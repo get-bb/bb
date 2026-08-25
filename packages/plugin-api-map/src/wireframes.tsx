@@ -1801,12 +1801,10 @@ export function RealComposerAnnotated() {
                   </div>
                 ) : null}
 
-                {/* + menu: chip on the + itself; opens upward while engaged,
-                  the direction the real menu takes at the window's bottom */}
-                <GuideHighlight
-                  id="composer-plus-menu"
-                  className="bottom-2 left-2 size-10"
-                />
+                {/* + menu: opens upward while engaged, the direction the
+                  real menu takes at the window's bottom. Its highlight ring
+                  lives inside StaticEmbeddedComposer with the other
+                  bottom-anchored rings. */}
                 {engaged("composer-plus-menu") ? (
                   <div
                     aria-hidden
@@ -1833,15 +1831,6 @@ export function RealComposerAnnotated() {
                   </div>
                 ) : null}
 
-                {/* agent providers: one annotation for the whole picker */}
-                <GuideHighlight
-                  id="provider-picker"
-                  className="bottom-2 left-[52px] h-10 w-[157px]"
-                />
-                <GuideHighlight
-                  id="composer-actions"
-                  className="bottom-[10px] right-[88px] size-9"
-                />
               </div>
             </div>
           </div>
@@ -1892,6 +1881,22 @@ function StaticEmbeddedComposer() {
             />
           </span>
         </div>
+        {/* Bottom-anchored highlight rings must share the prompt box's
+            coordinate space: the wrapper outside also contains the
+            sub-composer strip, so a bottom-* anchor there lands below the
+            control row it rings. */}
+        <GuideHighlight
+          id="composer-plus-menu"
+          className="bottom-2 left-2 size-10"
+        />
+        <GuideHighlight
+          id="provider-picker"
+          className="bottom-2 left-[52px] h-10 w-[157px]"
+        />
+        <GuideHighlight
+          id="composer-actions"
+          className="bottom-[10px] right-[88px] size-9"
+        />
       </div>
       <div className="flex items-center justify-between px-2.5" aria-hidden>
         <span className="flex items-center gap-1.5">

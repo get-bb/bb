@@ -100,7 +100,7 @@ export default function SplitWorkspaceRoute() {
     routeContent.kind === "plugin-detail" &&
     !holdsPluginDetailPane(layout, routeContent.pluginId)
   ) {
-    return <ToolsView />;
+    return <ToolsView pluginId={routeContent.pluginId} />;
   }
   return <SplitThreadArea routeContent={routeContent} />;
 }
