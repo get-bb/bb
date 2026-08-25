@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -62,6 +65,7 @@ describe("guide fixture boundaries", () => {
     expect(markup).toContain("data-guide-page-list-scroll");
     expect(markup).toContain("min-w-0 flex-1 overflow-x-auto");
     expect(markup).toContain("w-max min-w-full flex-nowrap");
+    expect(markup).toContain("min-w-0 w-full shrink-0 self-start px-1 pt-2");
     expect(markup).not.toContain("flex flex-wrap items-center justify-center");
     expect(markup).not.toContain("mx-auto w-full min-w-[720px] max-w-5xl");
   });
@@ -141,7 +145,14 @@ describe("guide fixture boundaries", () => {
     }
   });
 
-  it("orders the right-panel tabs by annotation number", () => {
+  it("mirrors bb's fixed Info/Diff tabs before plugin-owned content tabs", () => {
+    const appSource = readFileSync(
+      join(
+        import.meta.dirname,
+        "../../../apps/app/src/views/thread-detail/ThreadDetailView.tsx",
+      ),
+      "utf8",
+    );
     const markup = renderWireframe(
       createElement(AppShellRightPanel, {
         activeTab: "thread-panel",
@@ -150,11 +161,17 @@ describe("guide fixture boundaries", () => {
     );
     const tabStrip = markup.slice(0, markup.indexOf("data-guide-tab-body="));
 
-    expect(tabStrip.indexOf('data-guide-tab="thread-panel"')).toBeLessThan(
-      tabStrip.indexOf('data-guide-tab="file-opener"'),
+    expect(appSource.indexOf("createThreadInfoFixedPanelTab()")).toBeLessThan(
+      appSource.indexOf("createGitDiffFixedPanelTab()"),
     );
-    expect(tabStrip.indexOf('data-guide-tab="file-opener"')).toBeLessThan(
-      tabStrip.indexOf('data-guide-tab="code-renderers"'),
+    expect(tabStrip).toMatch(
+      /data-guide-fixture="right-panel-fixed-tabs"[\s\S]*data-guide-tab="info"[\s\S]*data-guide-tab="code-renderers"/,
+    );
+    expect(tabStrip).toMatch(
+      /data-guide-fixture="right-panel-content-tabs"[\s\S]*data-guide-tab="thread-panel"[\s\S]*data-guide-tab="file-opener"/,
+    );
+    expect(tabStrip.indexOf('data-guide-tab="code-renderers"')).toBeLessThan(
+      tabStrip.indexOf('data-guide-tab="thread-panel"'),
     );
   });
 
@@ -168,7 +185,10 @@ describe("guide fixture boundaries", () => {
       /data-guide-badge="thread-list"[\s\S]*left-4 top-\[190px\]/,
     );
     expect(markup).not.toContain("overflow-x-auto");
-    expect(markup).toContain("relative min-w-[1260px] px-10 pb-4 pt-5");
+    expect(markup).toContain("relative min-w-[1260px] px-10 pb-0 pt-[26px]");
+    expect(markup).toMatch(
+      /data-guide-badge="content-scripts"[\s\S]*right-4 bottom-4/,
+    );
   });
 
   it("keeps the sidebar trigger in app-owned overlay chrome", () => {
@@ -287,21 +307,47 @@ describe("guide fixture boundaries", () => {
     );
   });
 
-  it("draws a fixture-owned plugin icon inside the composer action target", () => {
+  it("annotates the single fixture-owned composer action without duplicating it", () => {
     const markup = renderWireframe(createElement(RealComposerAnnotated));
 
-    expect(markup).toMatch(
-      /data-guide-region="composer-actions"[\s\S]*data-guide-fixture="plugin-composer-action"/,
+    expect(
+      markup.match(/data-guide-fixture="plugin-composer-action"/g),
+    ).toHaveLength(1);
+    expect(markup).toContain('data-guide-target="composer-actions"');
+    expect(markup).toContain('data-guide-badge="composer-actions"');
+    expect(markup).toContain('data-guide-icon="CornerDownLeft"');
+  });
+
+  it("keeps composer badges in a Guide-owned layer separate from host controls", () => {
+    const markup = renderWireframe(createElement(RealComposerAnnotated));
+
+    expect(markup).toContain('data-guide-annotation-layer="composer-controls"');
+    for (const id of [
+      "composer-banners",
+      "composer-state",
+      "composer-plus-menu",
+      "provider-picker",
+      "composer-actions",
+    ]) {
+      expect(markup).toContain(`data-guide-badge="${id}"`);
+      expect(markup).toContain(`data-guide-target="${id}"`);
+    }
+    expect(markup).not.toMatch(
+      /data-guide-target="composer-actions"[^>]*>[\s\S]*data-guide-badge="composer-actions"/,
     );
   });
 
-  it("leaves annotation clearance below the open mention typeahead", () => {
+  it("keeps the open mention typeahead separate from its target and annotation layer", () => {
     const markup = renderWireframe(createElement(RealComposerAnnotated), {
       ...mapState,
       activeId: "mention-provider",
     });
 
-    expect(markup).toContain("bottom-full z-20 mb-5");
+    expect(markup).toContain('data-guide-transient-for="mention-provider"');
+    expect(markup).toContain("bottom-full z-20 mb-15");
+    expect(markup).not.toMatch(
+      /data-guide-transient-for="mention-provider"[^>]*>[\s\S]*data-guide-badge="mention-provider"/,
+    );
   });
 
   it("keeps the message selection toolbar closed before activation", () => {

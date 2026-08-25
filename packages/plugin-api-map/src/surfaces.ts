@@ -195,6 +195,24 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Ask User Question", "Secrets"],
       },
       {
+        id: "code-renderers",
+        title: "Code & diff renderers",
+        summary:
+          "Replaces bb's source-code or diff renderer everywhere that kind of content appears. With this, a plugin can:",
+        bullets: [
+          "Register the source-code and diff replacements independently",
+          "Apply each replacement across bb's file previews, timeline and environment diffs, and plugin pages",
+          "Hand any individual render back to bb's built-in renderer, and fall back to it automatically if the plugin is unavailable or crashes",
+        ],
+        apiSymbols: [
+          "PluginSourceCodeRendererRegistration",
+          "PluginSourceCodeRendererProps",
+          "PluginDiffRendererRegistration",
+          "PluginDiffRendererProps",
+        ],
+        experimental: true,
+      },
+      {
         id: "thread-panel",
         title: "Thread side-panel tabs",
         summary:
@@ -220,32 +238,14 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         firstParty: ["Docs"],
       },
       {
-        id: "code-renderers",
-        title: "Code & diff renderers",
-        summary:
-          "Replaces bb's source-code or diff renderer everywhere that kind of content appears. With this, a plugin can:",
-        bullets: [
-          "Register the source-code and diff replacements independently",
-          "Apply each replacement across bb's file previews, timeline and environment diffs, and plugin pages",
-          "Hand any individual render back to bb's built-in renderer, and fall back to it automatically if the plugin is unavailable or crashes",
-        ],
-        apiSymbols: [
-          "PluginSourceCodeRendererRegistration",
-          "PluginSourceCodeRendererProps",
-          "PluginDiffRendererRegistration",
-          "PluginDiffRendererProps",
-        ],
-        experimental: true,
-      },
-      {
         id: "timeline-renderers",
-        title: "Timeline row renderers",
+        title: "Timeline entry content",
         summary:
-          "Renders the expanded body of timeline rows the plugin owns, while bb keeps the row header and lifecycle controls. With this, a plugin can:",
+          "Renders the expanded content of plugin-owned timeline entries while bb keeps each entry's header and controls. With this, a plugin can:",
         bullets: [
-          "Register a renderer for one of its extension item kinds, or for tool rows emitted by a provider it owns",
-          "Receive the normalized row, payload, presentation, thread context, and bb's built-in body as `Original`",
-          "Fall back to bb's declarative body automatically when the plugin is unavailable or crashes",
+          "Draw the expanded content beneath timeline entries created by the plugin's own provider",
+          "Receive the entry data and plugin payload, plus bb's default content as `Original`",
+          "Fall back to bb's default content automatically when the plugin is unavailable or crashes",
         ],
         apiSymbols: [
           "PluginTimelineRendererRegistration",
@@ -262,7 +262,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Mount once per bb window and unmount when the window reloads",
           "Add behavior that is not tied to one screen, such as a keyboard shortcut",
           "Set a [thread row status](thread-row-status) on any thread, for as long as the script is mounted",
-          "Add its own elements to pages in the app, but not relocate bb's own",
+          "Add plugin-owned elements to app pages without taking ownership of bb's built-in layout",
           "Return a cleanup function. bb calls it once on unmount, and clears any row statuses the script set",
         ],
         apiSymbols: [
@@ -337,7 +337,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "composer-rich-text",
         title: "Draft prompt highlighting",
         summary:
-          "Styles ranges of the draft prompt as the person types, without changing the text. With this, a plugin can:",
+          "Styles text ranges as the person types a prompt, without changing the text. With this, a plugin can:",
         bullets: [
           "Match ranges in the draft prompt, such as a ticket number or the word TODO",
           "Change only how those ranges look; the text the agent receives is untouched",
@@ -432,7 +432,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         id: "new-thread-panel",
         title: "New-thread side panel",
         summary:
-          "Adds a tab to the side panel beside the new-thread screen. It is the [thread side panel](thread-panel) for a thread that does not exist yet. With this, a plugin can:",
+          "Adds a plugin tab to the side panel on the new-thread screen. With this, a plugin can:",
         bullets: [
           "Render before a thread exists, so it receives no thread id",
           "Host setup the person does while writing the first prompt",

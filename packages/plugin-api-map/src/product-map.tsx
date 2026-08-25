@@ -638,7 +638,15 @@ export function ProductMap({
                     // between them, so a card opening below sits under the
                     // diagram rather than under the tallest slide's reserved
                     // canvas.
-                    className="w-full shrink-0 self-start px-1 py-2"
+                    // `min-w-0` belongs on the carousel item, which is the
+                    // available-width owner. Without it, a spatial child's
+                    // authored min-width expands this flex item before
+                    // SpatialFixture measures the frame, making the measured
+                    // "available" width equal the authored width and
+                    // incorrectly producing scale=1 in split panes.
+                    // The detail gap has one owner (`mt-2` below), so slides
+                    // contribute no second block-end gap.
+                    className="min-w-0 w-full shrink-0 self-start px-1 pt-2"
                   >
                     <Slide group={entry} />
                   </div>

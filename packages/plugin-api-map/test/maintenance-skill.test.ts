@@ -113,6 +113,16 @@ describe("Plugin Guide maintenance skill", () => {
     expect(normalized).toContain("provider is exactly `surface`");
     expect(normalized).toContain("item id is exactly `surface:<surface.id>`");
     expect(normalized).toContain("byte-identical clipboard and context output");
+    expect(normalized).toContain(
+      "fixed host tabs before scrollable content tabs",
+    );
+    expect(normalized).toContain(
+      "one Guide-owned gap between a fixture and its card",
+    );
+    expect(normalized).toContain(
+      "title names the visible product object or outcome",
+    );
+    expect(normalized).toContain("Build a plugin that uses");
   });
 
   it("keeps desktop footer spacing from manufacturing page overflow", () => {

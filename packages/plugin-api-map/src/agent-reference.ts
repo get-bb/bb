@@ -42,8 +42,8 @@ export interface PluginSurfaceAgentReference {
   context: string;
 }
 
-const AGENT_REFERENCE_PREFIX = "Build a plugin capability like ";
-const AGENT_REFERENCE_SUFFIX = " using bb's Plugin Guide. ";
+const AGENT_REFERENCE_PREFIX = "Build a plugin that uses ";
+const AGENT_REFERENCE_SUFFIX = ". ";
 
 function escapeHtml(value: string): string {
   return value

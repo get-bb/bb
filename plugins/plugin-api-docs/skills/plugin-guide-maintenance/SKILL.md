@@ -157,6 +157,11 @@ labels in one non-wrapping row between fixed Previous and Next carets, and
 horizontally reveal the active label after arrow, click, or linked navigation.
 At wide widths the same row stays centered and does not scroll.
 
+The carousel item owns the available width and must be shrinkable before a
+spatial fixture measures itself. Put `min-width: 0` on that item; never let an
+authored fixture minimum inflate the measurement frame and turn a narrow pane
+into a false `scale=1` result.
+
 The desktop app-window fixture and every open annotation card fit above the
 fold in the 980px-tall plugin content region left by a 2048 by 1080 bb window.
 Preserve product-control density and the timeline's readable internal spacing;
@@ -219,6 +224,11 @@ pixel nudge:
 - Keep annotations on each page sequential by annotation number. Previous and
   next controls use that page order, including first and last disabled states,
   so readers never have to hunt across the fixture.
+- Derive that sequence from the host's visual scan order: owning regions from
+  left to right, then controls within a region from top to bottom. In a panel
+  tab row, preserve fixed host tabs before scrollable content tabs. Put a
+  whole-window boundary last in an exterior end or bottom gutter; do not place
+  its final number above an earlier interior target.
 - Keep the badge/card and demonstrated action as separate interaction targets.
   Clicking a badge opens or pans the Guide card without running the product
   action; clicking the host action changes only the reachable fixture state.
@@ -234,7 +244,9 @@ class names alone. Record the badge, target-content, transient-surface,
 fixture, and viewport bounding rectangles. The badge rectangle must be fully
 contained, the badge and target-content rectangles must not intersect, and a
 visible transient surface must intersect neither. Use at least 4 CSS pixels of
-clearance between adjacent rectangles, then inspect the screenshot because a
+clearance between adjacent rectangles in the fixture's authored CSS coordinate
+space (divide rendered distances by the uniform fixture scale), then inspect
+the screenshot because a
 border, shadow, or rounded edge can still visually cut through a technically
 non-intersecting box. Hit-test the badge center with `elementFromPoint`; it must
 resolve to the badge or one of its descendants, proving the badge is actually
@@ -275,9 +287,19 @@ in the top visual layer rather than merely having an unclipped rectangle.
 - Open the annotation card in normal flow below the fixture so it never covers
   the entry point. Panning pages closes the old card; following a cross-page
   reference lands on the destination before opening its card.
+- Use one Guide-owned gap between a fixture and its card: the card wrapper owns
+  exactly 8 CSS pixels. The active carousel slide and the fixture itself add no
+  block-end spacing, so stacked padding cannot manufacture page overflow.
 - Keep Previous and Next annotation controls compact in the card header. Both
   remain visible, navigate the current page's numeric order, and expose a
   disabled endpoint rather than wrapping to another page.
+- For every new or touched card, the title names the visible product object or outcome,
+  not the SDK mechanism that implements it. The lead starts with an active verb,
+  names the visible location or result, and stands alone before the capability
+  list. Do not explain a current surface through an absent or hypothetical
+  object (for example, “a thread that does not exist yet”), and do not use
+  `renderer`, `registration`, `slot`, `normalized`, or `declarative` unless that
+  word is visible in bb's own UI.
 - Author every card as one complete lead ending in
   `. With this, a plugin can:`, followed by at least two bare verb-phrase
   bullets. Keep tutorials in the authoring skill or SDK guidance, not cards.
@@ -286,8 +308,10 @@ in the top visual layer rather than merely having an unclipped rectangle.
   field separately. The provider is exactly `surface`, the reference id is
   exactly `surface.id`, the label is exactly `surface.title`, the plugin id is
   exactly `plugin-api-docs`, and the item id is exactly
-  `surface:<surface.id>`. The framing is exactly `Build a plugin capability
-like ` before the pill and `using bb's Plugin Guide.` after it.
+  `surface:<surface.id>`. The framing is exactly `Build a plugin that uses `
+  before the pill and `. ` after it. The pill's send-time context already
+  points at the Plugin Guide and authoring skill, so visible clipboard prose
+  never repeats that implementation pointer.
 - Resolve exactly three context lines: surface title plus id; the surface's
   `apiSymbols`; then a pointer to the `bb-plugin-authoring` skill and the
   authoritative `@get-bb/plugin-sdk` declarations. Do not include card

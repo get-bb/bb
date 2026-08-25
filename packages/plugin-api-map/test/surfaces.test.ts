@@ -36,9 +36,9 @@ describe("product-map surfaces", () => {
       "message-directives",
       "message-actions",
       "pending-interaction",
+      "code-renderers",
       "thread-panel",
       "file-opener",
-      "code-renderers",
       "timeline-renderers",
       "content-scripts",
     ];
