@@ -406,9 +406,17 @@ function handleSharedKeyUp(): void {
 }
 
 function attachSharedDocumentListeners(): void {
-  document.addEventListener("pointerdown", handleSharedPointerDown);
-  document.addEventListener("pointerup", handleSharedPointerRelease);
-  document.addEventListener("pointercancel", handleSharedPointerCancel);
+  // Passive: none of the pointer handlers call preventDefault, so declare it
+  // and keep every tap off the compositor's blocking-handler list.
+  document.addEventListener("pointerdown", handleSharedPointerDown, {
+    passive: true,
+  });
+  document.addEventListener("pointerup", handleSharedPointerRelease, {
+    passive: true,
+  });
+  document.addEventListener("pointercancel", handleSharedPointerCancel, {
+    passive: true,
+  });
   document.addEventListener("mouseup", handleSharedPointerRelease);
   document.addEventListener("selectionchange", handleSharedSelectionChange);
   document.addEventListener("keyup", handleSharedKeyUp);
