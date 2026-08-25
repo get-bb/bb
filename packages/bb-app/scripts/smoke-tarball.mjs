@@ -263,8 +263,14 @@ async function stopManagedProcess(processRef) {
   }
 }
 
-function createNpxArgs(tarballPath, bin, args) {
-  return ["--yes", "--package", tarballPath, "--", bin, ...args];
+function createInstalledBinInvocation(binDir, bin, args) {
+  // The tarball is installed once below. Run its npm-created bin links
+  // directly so package resolution and installation cannot consume a
+  // managed process's readiness budget before that process even starts.
+  return {
+    args,
+    command: join(binDir, bin),
+  };
 }
 
 async function packTarball() {
@@ -687,33 +693,29 @@ const SMOKE_EXECUTION_OPTIONS = {
   permissionEscalation: null,
 };
 
-async function smokeHelpCommands(tarballPath) {
+async function smokeHelpCommands(binDir) {
   await runCommand({
-    args: createNpxArgs(tarballPath, "bb-app", ["--help"]),
-    command: "npx",
+    ...createInstalledBinInvocation(binDir, "bb-app", ["--help"]),
     label: "bb-app help",
   });
   await runCommand({
-    args: createNpxArgs(tarballPath, "bb", ["--help"]),
-    command: "npx",
+    ...createInstalledBinInvocation(binDir, "bb", ["--help"]),
     label: "bb cli help",
   });
   await runCommand({
-    args: createNpxArgs(tarballPath, "bb-server", ["--help"]),
-    command: "npx",
+    ...createInstalledBinInvocation(binDir, "bb-server", ["--help"]),
     label: "bb-server help",
   });
   await runCommand({
-    args: createNpxArgs(tarballPath, "bb-host-daemon", ["--help"]),
-    command: "npx",
+    ...createInstalledBinInvocation(binDir, "bb-host-daemon", ["--help"]),
     label: "bb-host-daemon help",
   });
 }
 
-async function smokeConfigCommand(tarballPath) {
+async function smokeConfigCommand(binDir) {
   const dataDir = join(tempRoot, "config-command-data");
   await runCommand({
-    args: createNpxArgs(tarballPath, "bb-app", [
+    ...createInstalledBinInvocation(binDir, "bb-app", [
       "--data-dir",
       dataDir,
       "env",
@@ -721,11 +723,10 @@ async function smokeConfigCommand(tarballPath) {
       "OPENAI_API_KEY",
       "test-openai-key",
     ]),
-    command: "npx",
     label: "bb-app env OPENAI_API_KEY",
   });
   await runCommand({
-    args: createNpxArgs(tarballPath, "bb-app", [
+    ...createInstalledBinInvocation(binDir, "bb-app", [
       "--data-dir",
       dataDir,
       "config",
@@ -733,7 +734,6 @@ async function smokeConfigCommand(tarballPath) {
       "BB_APP_URL",
       "https://bb.example.test",
     ]),
-    command: "npx",
     label: "bb-app config BB_APP_URL",
   });
 
@@ -759,7 +759,7 @@ async function smokeSdkPackage(tarballPath) {
   await runCommand({
     args: [
       "install",
-      "--ignore-scripts",
+      "--ignore-scripts=false",
       "--no-audit",
       "--no-fund",
       tarballPath,
@@ -839,15 +839,18 @@ async function smokeInstalledRepack(installedPackageDir) {
   }
 }
 
-async function smokeBuiltinPluginsRunning({ cliEnv, tarballPath }) {
+async function smokeBuiltinPluginsRunning({ binDir, cliEnv }) {
   const deadline = Date.now() + PLUGIN_LOAD_TIMEOUT_MS;
   let lastSummary = "no plugin list output yet";
   // Plugins load after the HTTP server starts listening, so poll until every
   // expected builtin settles into "running".
   while (Date.now() <= deadline) {
     const stdout = await runCommand({
-      args: createNpxArgs(tarballPath, "bb", ["plugin", "list", "--json"]),
-      command: "npx",
+      ...createInstalledBinInvocation(binDir, "bb", [
+        "plugin",
+        "list",
+        "--json",
+      ]),
       env: cliEnv,
       label: "bb plugin list",
     });
@@ -886,12 +889,12 @@ async function smokeBuiltinPluginsRunning({ cliEnv, tarballPath }) {
   );
 }
 
-async function smokeFullStack(tarballPath, sdkDir) {
+async function smokeFullStack(binDir, sdkDir) {
   const dataDir = join(tempRoot, "full-stack-data");
   const [serverPort, daemonPort] = await getFreePorts(2);
   const serverUrl = `http://127.0.0.1:${serverPort}`;
   const stack = spawnManagedProcess({
-    args: createNpxArgs(tarballPath, "bb-app", [
+    ...createInstalledBinInvocation(binDir, "bb-app", [
       "--data-dir",
       dataDir,
       "--server-port",
@@ -899,7 +902,6 @@ async function smokeFullStack(tarballPath, sdkDir) {
       "--host-daemon-port",
       String(daemonPort),
     ]),
-    command: "npx",
     env: {
       BB_LOG_LEVEL: "info",
     },
@@ -923,12 +925,11 @@ async function smokeFullStack(tarballPath, sdkDir) {
       BB_SERVER_URL: serverUrl,
     };
     await runCommand({
-      args: createNpxArgs(tarballPath, "bb", ["status"]),
-      command: "npx",
+      ...createInstalledBinInvocation(binDir, "bb", ["status"]),
       env: cliEnv,
       label: "bb cli status",
     });
-    await smokeBuiltinPluginsRunning({ cliEnv, tarballPath });
+    await smokeBuiltinPluginsRunning({ binDir, cliEnv });
     // Keep Awake reconciles even its default disabled state, so reaching this
     // log proves the packed daemon found its companion worker, downloaded the
     // plugin artifact, and started the worker for a host RPC call.
@@ -958,7 +959,7 @@ async function smokeFullStack(tarballPath, sdkDir) {
   }
 }
 
-async function smokeDaemonJoin(tarballPath) {
+async function smokeDaemonJoin(binDir) {
   const serverDataDir = join(tempRoot, "join-server-data");
   const [serverPort, firstDaemonPort, secondDaemonPort, staleEnvPort] =
     await getFreePorts(4);
@@ -977,7 +978,7 @@ async function smokeDaemonJoin(tarballPath) {
     },
   ];
   const server = spawnManagedProcess({
-    args: createNpxArgs(tarballPath, "bb-server", [
+    ...createInstalledBinInvocation(binDir, "bb-server", [
       "--data-dir",
       serverDataDir,
       "--server-port",
@@ -985,7 +986,6 @@ async function smokeDaemonJoin(tarballPath) {
       "--host-daemon-port",
       String(firstDaemonPort),
     ]),
-    command: "npx",
     env: {
       BB_LOG_LEVEL: "warn",
     },
@@ -1001,7 +1001,7 @@ async function smokeDaemonJoin(tarballPath) {
     });
     for (const spec of daemonSpecs) {
       const daemon = spawnManagedProcess({
-        args: createNpxArgs(tarballPath, "bb-app", [
+        ...createInstalledBinInvocation(binDir, "bb-app", [
           "host-daemon",
           "join",
           "--data-dir",
@@ -1011,7 +1011,6 @@ async function smokeDaemonJoin(tarballPath) {
           "--host-daemon-port",
           String(spec.port),
         ]),
-        command: "npx",
         env: {
           BB_LOG_LEVEL: "info",
           BB_SERVER_URL: staleEnvServerUrl,
@@ -1038,7 +1037,7 @@ async function smokeDaemonJoin(tarballPath) {
       BB_HOST_DAEMON_PORT: String(firstDaemonPort),
       BB_SERVER_URL: serverUrl,
     };
-    await smokeBuiltinPluginsRunning({ cliEnv, tarballPath });
+    await smokeBuiltinPluginsRunning({ binDir, cliEnv });
     // Both daemons joined a server in a different process and data directory.
     // Ready workers on both prove host-plugin artifacts and calls fan out to
     // enrolled machines instead of assuming server-local paths.
@@ -1058,15 +1057,16 @@ async function smokeDaemonJoin(tarballPath) {
 
 try {
   const tarballPath = await packTarball();
-  await smokeHelpCommands(tarballPath);
-  await smokeConfigCommand(tarballPath);
   const sdkDir = await smokeSdkPackage(tarballPath);
+  const installedBinDir = join(sdkDir, "node_modules", ".bin");
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
+  await smokeHelpCommands(installedBinDir);
+  await smokeConfigCommand(installedBinDir);
   await smokeInstalledRepack(installedPackageDir);
   await smokeProviderBridgeBundles(installedPackageDir);
   await smokePluginHostWorkerBundle(installedPackageDir);
-  await smokeFullStack(tarballPath, sdkDir);
-  await smokeDaemonJoin(tarballPath);
+  await smokeFullStack(installedBinDir, sdkDir);
+  await smokeDaemonJoin(installedBinDir);
   process.stdout.write("bb-app tarball smoke passed\n");
 } finally {
   await rm(tempRoot, { force: true, recursive: true });
