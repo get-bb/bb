@@ -373,7 +373,8 @@ export {
   deleteDeferredThreadMessage,
   deleteDeferredThreadMessagesForThread,
   listDeferredThreadMessages,
-  listThreadIdsWithDeferredThreadMessages,
+  listThreadIdsWithDeliverableDeferredThreadMessages,
+  listThreadIdsWithUndeliverableDeferredThreadMessages,
 } from "./deferred-thread-messages.js";
 export type {
   CreateDeferredThreadMessageInput,

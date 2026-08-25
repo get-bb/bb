@@ -1,9 +1,11 @@
 import {
   deleteDeferredThreadMessage,
   deleteDeferredThreadMessagesForThread,
+  getEnvironment,
   getThread,
   listDeferredThreadMessages,
-  listThreadIdsWithDeferredThreadMessages,
+  listThreadIdsWithDeliverableDeferredThreadMessages,
+  listThreadIdsWithUndeliverableDeferredThreadMessages,
   type DeferredThreadMessageRow,
 } from "@bb/db";
 import type { Thread } from "@bb/domain";
@@ -12,11 +14,15 @@ import type {
   SendMessageResponse,
 } from "@bb/server-contract";
 import { ApiError } from "../../errors.js";
-import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
+import type {
+  AppDeps,
+  LoggedPendingInteractionWorkSessionDeps,
+} from "../../types.js";
 import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
+import { goneThreadEnvironmentDetails } from "../lib/lifecycle-api-errors.js";
 import { deferAfterResponse } from "../lib/response-deferral.js";
 import { validatePromptAttachmentReferences } from "../projects/attachments.js";
 import {
@@ -175,17 +181,67 @@ function isDeferredThreadMessageRequestInvalid(error: unknown): boolean {
   );
 }
 
+/**
+ * Why this thread can never take its held messages, or null while it still can.
+ *
+ * A destroyed environment is never reprovisioned (#1789), so a row waiting on
+ * one would otherwise sit unsent until somebody archived the thread while every
+ * sweep re-ran the send pipeline for it. A held row is only ever created for a
+ * thread that had a live provider session, so a thread that now has no
+ * environment row lost it to a post-destroy prune.
+ */
+function undeliverableDeferredThreadMessageReason(
+  deps: Pick<AppDeps, "db">,
+  thread: Thread,
+): string | null {
+  if (thread.deletedAt !== null) {
+    return "thread_deleted";
+  }
+  if (thread.archivedAt !== null) {
+    return "thread_archived";
+  }
+  if (thread.environmentId === null) {
+    return "environment_pruned";
+  }
+  const environment = getEnvironment(deps.db, thread.environmentId);
+  if (!environment) {
+    return "environment_pruned";
+  }
+  return goneThreadEnvironmentDetails(environment)?.reason ?? null;
+}
+
+function dropUndeliverableDeferredThreadMessages(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db" | "logger">,
+  threadId: string,
+  reason: string,
+): void {
+  const dropped = deleteDeferredThreadMessagesForThread(deps.db, threadId);
+  // Warn, not info: every sender was told its message would be delivered.
+  deps.logger.warn(
+    { dropped, reason, threadId },
+    "Dropped deferred thread messages: they can no longer be delivered",
+  );
+}
+
 async function flushDeferredThreadMessagesNow(
   deps: LoggedPendingInteractionWorkSessionDeps,
   threadId: string,
 ): Promise<void> {
   for (const row of listDeferredThreadMessages(deps.db, threadId)) {
     const thread = getThread(deps.db, threadId);
-    if (!thread || thread.archivedAt !== null || thread.deletedAt !== null) {
-      const dropped = deleteDeferredThreadMessagesForThread(deps.db, threadId);
-      deps.logger.info(
-        { dropped, threadId },
-        "Dropped deferred thread messages: thread is gone",
+    if (!thread) {
+      dropUndeliverableDeferredThreadMessages(deps, threadId, "thread_missing");
+      return;
+    }
+    const undeliverableReason = undeliverableDeferredThreadMessageReason(
+      deps,
+      thread,
+    );
+    if (undeliverableReason !== null) {
+      dropUndeliverableDeferredThreadMessages(
+        deps,
+        threadId,
+        undeliverableReason,
       );
       return;
     }
@@ -280,12 +336,27 @@ export function requestDeferredThreadMessageFlush(
 
 /**
  * Sweep entry: re-drives rows whose settle flush did not deliver (a restart
- * before the settle, a thread that was still stopping, a host that was away).
+ * before the settle, a thread that was still stopping, a host that was away),
+ * and drops rows that can never deliver.
+ *
+ * It visits only threads that can act on their rows now. A thread in `error`,
+ * `starting` or `stopping` refuses every send, and its state only changes when
+ * a user retries it, a start lands, or a stop finishes; driving it on each tick
+ * would re-run the send pipeline and log a failure every ten seconds for as
+ * long as it sat there. The rows wait instead, and the tick after the status
+ * changes delivers them.
  */
 export async function runDeferredThreadMessageSweep(
   deps: LoggedPendingInteractionWorkSessionDeps,
 ): Promise<void> {
-  for (const threadId of listThreadIdsWithDeferredThreadMessages(deps.db)) {
+  for (const threadId of listThreadIdsWithUndeliverableDeferredThreadMessages(
+    deps.db,
+  )) {
+    await flushDeferredThreadMessages(deps, threadId);
+  }
+  for (const threadId of listThreadIdsWithDeliverableDeferredThreadMessages(
+    deps.db,
+  )) {
     await flushDeferredThreadMessages(deps, threadId);
   }
 }

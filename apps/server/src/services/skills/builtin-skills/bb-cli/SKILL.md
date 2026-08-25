@@ -411,7 +411,8 @@ or artifacts, validation performed, and blockers.
   delivers in the requested mode once the interaction settles; the CLI prints
   "message held". That outcome is not a failure, so do not resend. For a hard
   stop use `bb thread stop <thread-id>`. `--json` reports `delivery` as `sent`,
-  `queued`, or `deferred`.
+  `queued`, or `deferred`. If the thread fails while the message is held (its
+  provider exited), the message waits until somebody retries the thread.
 
 ## Inspecting Results
 

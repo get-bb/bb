@@ -195,7 +195,8 @@ Messaging:
   approval) cannot take a prompt; tell then holds the message and delivers it
   in the requested mode once the interaction settles. That outcome is not a
   failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
-  or `deferred`.
+  or `deferred`. A held message waits for a thread that failed while it was
+  held, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude

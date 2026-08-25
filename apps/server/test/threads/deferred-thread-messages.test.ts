@@ -6,6 +6,7 @@
 import { and, eq } from "drizzle-orm";
 import {
   events,
+  getEnvironment,
   getThread,
   listDeferredThreadMessages,
   listQueuedThreadMessages,
@@ -14,6 +15,7 @@ import {
 } from "@bb/db";
 import {
   turnRequestEventDataSchema,
+  type EnvironmentStatus,
   type PendingInteractionCreate,
   type TurnRequestEventData,
 } from "@bb/domain";
@@ -86,7 +88,11 @@ async function waitFor<T>(
  */
 function seedBlockedThread(
   harness: TestHarness,
-  args: { hostId: string; status?: "active" | "idle" },
+  args: {
+    hostId: string;
+    status?: "active" | "idle";
+    environmentStatus?: EnvironmentStatus;
+  },
 ) {
   const { host, session } = seedHostSession(harness.deps, { id: args.hostId });
   const { project } = seedProjectWithSource(harness.deps, { hostId: host.id });
@@ -94,6 +100,7 @@ function seedBlockedThread(
     hostId: host.id,
     projectId: project.id,
     path: `/tmp/${args.hostId}`,
+    ...(args.environmentStatus ? { status: args.environmentStatus } : {}),
   });
   const thread = seedThread(harness.deps, {
     projectId: project.id,
@@ -162,6 +169,55 @@ async function answerQuestion(
   );
   const reported = await reportQueuedCommandSuccess(harness, queuedResolve, {});
   expect(reported.status).toBe(200);
+}
+
+/**
+ * Records every `logger.warn` the server makes from now on. The sweep runs on a
+ * ten-second timer, so a held message the sweep cannot deliver must not produce
+ * a warn per tick.
+ */
+function recordServerWarnings(harness: TestHarness): string[] {
+  const messages: string[] = [];
+  const previous = harness.deps.logger;
+  harness.deps.logger = {
+    ...previous,
+    warn(_fields: unknown, message?: string): void {
+      messages.push(message ?? "");
+    },
+  };
+  return messages;
+}
+
+async function holdSteerMessage(
+  harness: TestHarness,
+  args: { text: string; threadId: string },
+): Promise<void> {
+  const response = await harness.app.request(
+    `/api/v1/threads/${args.threadId}/send`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        mode: "steer-if-active",
+        input: [{ type: "text", text: args.text }],
+      }),
+    },
+  );
+  expect(response.status).toBe(200);
+  await expect(readJson(response)).resolves.toEqual({
+    ok: true,
+    delivery: "deferred",
+  });
+}
+
+/**
+ * Lets the flush that the interaction settle hook scheduled with setImmediate
+ * start and finish, without starting a second one of our own.
+ */
+async function drainSettleFlush(): Promise<void> {
+  for (let turn = 0; turn < 5; turn += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
 }
 
 describe("messages to a thread that awaits user interaction (#1650)", () => {
@@ -456,6 +512,103 @@ describe("messages to a thread that awaits user interaction (#1650)", () => {
         );
       expect(texts).toEqual(["from the user"]);
       expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(0);
+    });
+  });
+
+  it("leaves a held message alone while the thread sits in error instead of re-failing it on every sweep", async () => {
+    await withTestHarness(async (harness) => {
+      const { interactionId, thread } = seedBlockedThread(harness, {
+        hostId: "host-1650-errored",
+      });
+      await holdSteerMessage(harness, {
+        text: "worker report while blocked",
+        threadId: thread.id,
+      });
+
+      // The provider process exits while the question is open. The internal
+      // event route interrupts the interaction and then fails the run, which
+      // leaves the thread in `error` until the user retries it. A steer cannot
+      // deliver into an errored thread.
+      harness.deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
+        threadIds: [thread.id],
+        reason: "Provider process exited while awaiting user interaction",
+      });
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.failed" },
+        threadId: thread.id,
+      });
+      expect(getThread(harness.db, thread.id)?.status).toBe("error");
+
+      const warnings = recordServerWarnings(harness);
+      await drainSettleFlush();
+      // The settle races the failure, so it may attempt delivery once.
+      const afterSettle = warnings.length;
+      expect(afterSettle).toBeLessThanOrEqual(1);
+
+      // The sweep runs every ten seconds for as long as the thread exists. It
+      // must not re-run the send pipeline, and must not log, on every tick.
+      for (let tick = 0; tick < 5; tick += 1) {
+        await runDeferredThreadMessageSweep(harness.deps);
+      }
+      expect(warnings).toHaveLength(afterSettle);
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(1);
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
+      expect(getThread(harness.db, thread.id)?.status).toBe("error");
+
+      // The user retries the thread. The next sweep delivers the held message.
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.preparing" },
+        threadId: thread.id,
+      });
+      applyLoggedThreadLifecycleEvent(harness.deps, {
+        event: { type: "run.started" },
+        threadId: thread.id,
+      });
+      await runDeferredThreadMessageSweep(harness.deps);
+      expect(listTurnRequests(harness.db, thread.id).at(-1)?.target.kind).toBe(
+        "steer",
+      );
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      expect(interactionId).toBeTruthy();
+    });
+  });
+
+  it("drops held messages once when the thread's environment is gone instead of retrying them", async () => {
+    await withTestHarness(async (harness) => {
+      // A destroy only completes while every thread on the environment is
+      // archived, and unarchiving never reprovisions it (#1789), so a live
+      // thread can end up holding messages for an environment that will never
+      // run again.
+      const { environment, interactionId, thread } = seedBlockedThread(
+        harness,
+        { hostId: "host-1650-destroyed", environmentStatus: "destroyed" },
+      );
+      await holdSteerMessage(harness, {
+        text: "worker report while blocked",
+        threadId: thread.id,
+      });
+      expect(getEnvironment(harness.db, environment.id)?.status).toBe(
+        "destroyed",
+      );
+
+      harness.deps.pendingInteractions.interruptPendingInteraction({
+        interactionId,
+        reason: "answered",
+      });
+
+      const warnings = recordServerWarnings(harness);
+      await drainSettleFlush();
+      for (let tick = 0; tick < 3; tick += 1) {
+        await runDeferredThreadMessageSweep(harness.deps);
+      }
+      expect(listDeferredThreadMessages(harness.db, thread.id)).toHaveLength(0);
+      expect(listTurnRequests(harness.db, thread.id)).toHaveLength(1);
+      expect(
+        warnings.filter((message) =>
+          message.includes("can no longer be delivered"),
+        ),
+      ).toHaveLength(1);
+      expect(warnings).toHaveLength(1);
     });
   });
 });
