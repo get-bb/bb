@@ -307,9 +307,15 @@
 // lets turn submission recover a stale target by re-steering the live turn.
 // An old daemon can still start a competing provider turn in that race.
 //
+// Version 167 lets the server retry an explicitly retryable online RPC after
+// its first response timeout. This can send the same command twice when the
+// daemon executed the first request but its response was lost, so enrolled
+// daemons must update with the server even though the message schema is
+// unchanged.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 166 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 167 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

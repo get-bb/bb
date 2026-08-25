@@ -1407,7 +1407,7 @@ export function hasLiveThreadAtHostPath(
       and(
         eq(environments.hostId, args.hostId),
         eq(environments.path, args.path),
-        nonDeletedThreads(
+        liveThreads(
           inArray(threads.status, [...NON_TERMINAL_THREAD_STATUSES]),
         ),
       ),

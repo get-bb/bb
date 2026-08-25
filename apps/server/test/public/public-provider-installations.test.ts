@@ -8,8 +8,8 @@ import {
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
-import { ApiError } from "../../src/errors.js";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
+import { HostOnlineRpcTimeoutError } from "../../src/ws/hub.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import { seedHostSession } from "../helpers/seed.js";
@@ -281,13 +281,7 @@ describe("public provider installation routes", () => {
           return new Promise((_, reject) => {
             setTimeout(
               () =>
-                reject(
-                  new ApiError(
-                    504,
-                    "command_timeout",
-                    "Timed out waiting for command result",
-                  ),
-                ),
+                reject(new HostOnlineRpcTimeoutError()),
               args.timeoutMs,
             );
           });
@@ -316,7 +310,7 @@ describe("public provider installation routes", () => {
         expect(resolvedAt! - startedAt).toBeLessThan(
           DEFAULT_BB_REQUEST_TIMEOUT_MS,
         );
-        expect(statusTimeouts).toHaveLength(9);
+        expect(statusTimeouts).toHaveLength(18);
         expect(statusTimeouts.some((timeout) => timeout < COMMAND_TIMEOUT_MS))
           .toBe(true);
       } finally {

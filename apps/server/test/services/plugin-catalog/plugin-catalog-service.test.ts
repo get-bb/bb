@@ -634,13 +634,15 @@ describe("plugin catalog service", () => {
     }
 
     it("reports counts for curated entries and bundled plugins", async () => {
-      const bundled = listBundledPluginRegistrations()[0];
-      if (bundled === undefined) throw new Error("no bundled plugin");
+      const bundled = listBundledPluginRegistrations().find(
+        (plugin) => plugin.name === "docs" && plugin.pluginId === "simple-notes",
+      );
+      if (bundled === undefined) throw new Error("docs registration missing");
       const catalog = service({
         fetch: fetchWith(() =>
           statsResponse({
             widgets: { installs: 4_210 },
-            [bundled.name]: { installs: 12 },
+            [bundled.pluginId]: { installs: 12 },
           }),
         ),
       });

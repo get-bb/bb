@@ -594,7 +594,7 @@ describe("resolveSystemExecutionOptions", () => {
         await vi.advanceTimersByTimeAsync(1);
         const providers = await pendingProviders;
         expect(settled).toBe(true);
-        expect(responder.requests).toHaveLength(3);
+        expect(responder.requests).toHaveLength(6);
         expect(providers.map((provider) => provider.id)).not.toContain(
           "acp-opencode",
         );
