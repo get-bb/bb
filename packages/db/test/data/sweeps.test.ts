@@ -12,6 +12,7 @@ import {
   pruneArchivedThreadEvents,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
+  pruneProviderUnhandledEvents,
   sweepManagedEnvironments,
   truncateCompletedEventItemOutputs,
 } from "../../src/data/sweeps.js";
@@ -723,6 +724,151 @@ describe("pruneArchivedThreadEvents", () => {
       }),
     ).toMatchObject({ deleted: 15 });
     expect(listSequences(db, second.id)).toEqual([16, 17, 18, 19, 20]);
+  });
+});
+
+describe("pruneProviderUnhandledEvents", () => {
+  interface SeedEventAtArgs {
+    createdAt: number;
+    db: DbConnection;
+    sequence: number;
+    threadId: string;
+    type: "provider/unhandled" | "item/completed";
+  }
+
+  function seedEventAt(args: SeedEventAtArgs): string {
+    const id = createEventId();
+    args.db
+      .insert(events)
+      .values({
+        id,
+        threadId: args.threadId,
+        scopeKind: "turn",
+        turnId: "turn-1",
+        providerThreadId: "provider-thread-1",
+        sequence: args.sequence,
+        type: args.type,
+        itemId: args.type === "item/completed" ? "item-1" : null,
+        itemKind: args.type === "item/completed" ? "agentMessage" : null,
+        data:
+          args.type === "provider/unhandled"
+            ? JSON.stringify({
+                providerId: "claude-code",
+                providerThreadId: "provider-thread-1",
+                rawType: "sdk/unknown",
+                rawEvent: { jsonrpc: "2.0", method: "sdk/unknown" },
+              })
+            : JSON.stringify({
+                item: { id: "item-1", type: "agentMessage", text: "hi" },
+              }),
+        createdAt: args.createdAt,
+      })
+      .run();
+    return id;
+  }
+
+  function listRemainingEventIds(db: DbConnection, threadId: string): string[] {
+    return db
+      .select({ id: events.id })
+      .from(events)
+      .where(eq(events.threadId, threadId))
+      .all()
+      .map((row) => row.id)
+      .sort();
+  }
+
+  it("deletes old provider/unhandled rows on an active thread and keeps everything else", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      status: "active",
+    });
+    const now = Date.now();
+    const staleCreatedAt = now - 10_000;
+
+    const staleUnhandled = seedEventAt({
+      createdAt: staleCreatedAt,
+      db,
+      sequence: 1,
+      threadId: thread.id,
+      type: "provider/unhandled",
+    });
+    const staleCompleted = seedEventAt({
+      createdAt: staleCreatedAt,
+      db,
+      sequence: 2,
+      threadId: thread.id,
+      type: "item/completed",
+    });
+    const freshUnhandled = seedEventAt({
+      createdAt: now - 1_000,
+      db,
+      sequence: 3,
+      threadId: thread.id,
+      type: "provider/unhandled",
+    });
+
+    expect(
+      pruneProviderUnhandledEvents(db, {
+        createdBefore: now - 5_000,
+        limit: 100,
+      }),
+    ).toEqual({ deleted: 1 });
+
+    const remaining = listRemainingEventIds(db, thread.id);
+    expect(remaining).toEqual([staleCompleted, freshUnhandled].sort());
+    expect(remaining).not.toContain(staleUnhandled);
+  });
+
+  it("honors the delete batch limit oldest-first and converges across passes", () => {
+    const { db, project } = setup();
+    const thread = createThread(db, noopNotifier, {
+      projectId: project.id,
+      providerId: "codex",
+      status: "idle",
+    });
+    const now = Date.now();
+
+    const oldest = seedEventAt({
+      createdAt: now - 30_000,
+      db,
+      sequence: 1,
+      threadId: thread.id,
+      type: "provider/unhandled",
+    });
+    const middle = seedEventAt({
+      createdAt: now - 20_000,
+      db,
+      sequence: 2,
+      threadId: thread.id,
+      type: "provider/unhandled",
+    });
+    const newest = seedEventAt({
+      createdAt: now - 10_000,
+      db,
+      sequence: 3,
+      threadId: thread.id,
+      type: "provider/unhandled",
+    });
+
+    expect(
+      pruneProviderUnhandledEvents(db, {
+        createdBefore: now - 5_000,
+        limit: 2,
+      }),
+    ).toEqual({ deleted: 2 });
+    expect(listRemainingEventIds(db, thread.id)).toEqual([newest]);
+    expect(listRemainingEventIds(db, thread.id)).not.toContain(oldest);
+    expect(listRemainingEventIds(db, thread.id)).not.toContain(middle);
+
+    expect(
+      pruneProviderUnhandledEvents(db, {
+        createdBefore: now - 5_000,
+        limit: 2,
+      }),
+    ).toEqual({ deleted: 1 });
+    expect(listRemainingEventIds(db, thread.id)).toEqual([]);
   });
 });
 

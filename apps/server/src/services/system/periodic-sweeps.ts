@@ -14,6 +14,7 @@ import {
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
   DEFAULT_PROMPT_HISTORY_CAP_SCOPE_BATCH_SIZE,
+  DEFAULT_PROVIDER_UNHANDLED_EVENT_PRUNE_BATCH_SIZE,
   DEFAULT_SETTLED_PENDING_INTERACTION_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
   dropDeferredLegacyTables,
@@ -25,9 +26,11 @@ import {
   listDeferredLegacyTables,
   environments,
   PROMPT_HISTORY_KEEP_PER_SCOPE,
+  PROVIDER_UNHANDLED_EVENT_RETENTION_MS,
   pruneArchivedThreadEvents,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
+  pruneProviderUnhandledEvents,
   pruneSettledPendingInteractions,
   runIncrementalVacuum,
   SETTLED_PENDING_INTERACTION_RETENTION_MS,
@@ -599,6 +602,21 @@ function runArchivedThreadEventRetentionSweep(
   });
 }
 
+// A no-op pass is one covering seek on the partial retention index, but the
+// deletes it does perform are write transactions - a cadence keeps them off
+// the every-10s tick.
+const PROVIDER_UNHANDLED_EVENT_PRUNE_INTERVAL_MS = 60_000;
+
+function runProviderUnhandledEventPruneSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
+): void {
+  pruneProviderUnhandledEvents(deps.db, {
+    createdBefore: now - PROVIDER_UNHANDLED_EVENT_RETENTION_MS,
+    limit: DEFAULT_PROVIDER_UNHANDLED_EVENT_PRUNE_BATCH_SIZE,
+  });
+}
+
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -641,6 +659,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "archived-thread-event-retention",
     run: runArchivedThreadEventRetentionSweep,
+  },
+  {
+    cadenceMs: PROVIDER_UNHANDLED_EVENT_PRUNE_INTERVAL_MS,
+    category: "retention",
+    name: "provider-unhandled-event-prune",
+    run: runProviderUnhandledEventPruneSweep,
   },
   {
     cadenceMs: 0,

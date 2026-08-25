@@ -401,10 +401,13 @@ export {
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  DEFAULT_PROVIDER_UNHANDLED_EVENT_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
+  PROVIDER_UNHANDLED_EVENT_RETENTION_MS,
   pruneArchivedThreadEvents,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
+  pruneProviderUnhandledEvents,
   truncateCompletedEventItemOutputs,
   sweepManagedEnvironments,
 } from "./sweeps.js";

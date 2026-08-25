@@ -348,6 +348,61 @@ export function truncateCompletedEventItemOutputs(
   };
 }
 
+/**
+ * `provider/unhandled` rows are raw provider events bb could not translate,
+ * persisted for diagnostics. Stored rows are read back only by the
+ * diagnostics timeline path (development builds or the
+ * `showUnhandledProviderEvents` setting) and by the legacy claude-code
+ * model-fallback extraction for rows persisted before `provider/modelFallback`
+ * existed; nothing replays them to a provider. They are capped by age
+ * regardless of thread archival. Retention policy — revisit deliberately,
+ * not incidentally.
+ */
+export const PROVIDER_UNHANDLED_EVENT_RETENTION_MS = 30 * 24 * 60 * 60_000;
+export const DEFAULT_PROVIDER_UNHANDLED_EVENT_PRUNE_BATCH_SIZE = 1_000;
+
+export interface PruneProviderUnhandledEventsArgs {
+  createdBefore: number;
+  limit: number;
+}
+
+export interface PruneProviderUnhandledEventsResult {
+  deleted: number;
+}
+
+type ProviderUnhandledDeleteParameters = [number, number];
+
+/**
+ * Deletes `provider/unhandled` event rows created before the cutoff,
+ * oldest-first, bounded per pass. Deleting from the head of the partial
+ * retention index means each pass resumes where the last one stopped
+ * without a cursor.
+ */
+export function pruneProviderUnhandledEvents(
+  db: DbConnection,
+  args: PruneProviderUnhandledEventsArgs,
+): PruneProviderUnhandledEventsResult {
+  // Keep the prune plan pinned to the partial retention index; the literal
+  // type predicate is what makes the partial index usable.
+  const result = db.$client
+    .prepare<ProviderUnhandledDeleteParameters>(
+      `
+        DELETE FROM events
+        WHERE id IN (
+          SELECT id
+          FROM events INDEXED BY events_provider_unhandled_created_idx
+          WHERE type = 'provider/unhandled'
+            AND created_at < ?
+          ORDER BY created_at
+          LIMIT ?
+        )
+      `,
+    )
+    .run(args.createdBefore, args.limit);
+
+  return { deleted: result.changes };
+}
+
 const ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_POLICY =
   "archived_thread_event_retention";
 const ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_VERSION = 1;

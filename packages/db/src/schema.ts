@@ -801,6 +801,13 @@ export const events = sqliteTable(
     index("events_completed_item_truncation_idx")
       .on(table.itemKind, table.createdAt, table.id)
       .where(sql`${table.type} = 'item/completed'`),
+    // The provider/unhandled retention sweep deletes these diagnostic rows
+    // oldest-first by age. The partial index keeps that delete an index-only
+    // range scan and stays tiny: it holds only the retained rows of this one
+    // type.
+    index("events_provider_unhandled_created_idx")
+      .on(table.createdAt, table.id)
+      .where(sql`${table.type} = 'provider/unhandled'`),
     // Latest-thread-state lookup (listLatestThreadStateEventRowsByThreadIds)
     // runs over every listed thread on each sidebar bootstrap: the newest
     // plugin thread-state snapshot of one kind (codex goals today), plus the
