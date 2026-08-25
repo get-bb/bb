@@ -823,13 +823,20 @@ export const events = sqliteTable(
   ],
 );
 
+// Generic keyset cursors for maintenance policies. `item_kind` and
+// `output_path` are per-policy scan dimensions (the completed-output
+// truncation scan uses an event item kind and a JSON output path); a policy
+// without those dimensions stores empty strings. `last_created_at` and
+// `last_event_id` hold the policy's keyset position (the archived-thread
+// event retention policy stores its last finished thread id in
+// `last_event_id` and leaves `last_created_at` at 0).
 export const maintenanceScanCursors = sqliteTable(
   "maintenance_scan_cursors",
   {
     id: text("id").primaryKey(),
     policy: text("policy").notNull(),
     version: integer("version").notNull(),
-    itemKind: text("item_kind").$type<ThreadEventItemType>().notNull(),
+    itemKind: text("item_kind").notNull(),
     outputPath: text("output_path").notNull(),
     lastCreatedAt: integer("last_created_at").notNull().default(0),
     lastEventId: text("last_event_id").notNull().default(""),

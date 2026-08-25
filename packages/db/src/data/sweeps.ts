@@ -1,6 +1,9 @@
 import {
   eq,
   and,
+  gt,
+  isNotNull,
+  isNull,
   sql,
   lt,
   asc,
@@ -8,7 +11,8 @@ import {
 import { type ThreadEventItemType } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import type { DbNotifier } from "../notifier.js";
-import { environments, maintenanceScanCursors } from "../schema.js";
+import { environments, maintenanceScanCursors, threads } from "../schema.js";
+import { getLatestThreadSequence } from "./events.js";
 
 /** Destroyed environments are hard-deleted after 7 days. */
 export const DESTROYED_ENVIRONMENT_TTL_MS = 7 * 24 * 60 * 60_000;
@@ -342,6 +346,167 @@ export function truncateCompletedEventItemOutputs(
       outputPath: "resultText",
     }),
   };
+}
+
+const ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_POLICY =
+  "archived_thread_event_retention";
+const ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_VERSION = 1;
+const ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_ID = [
+  ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_POLICY,
+  `v${ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_VERSION}`,
+].join(":");
+
+/** Archived threads examined per retention pass. */
+export const DEFAULT_ARCHIVED_THREAD_EVENT_PRUNE_THREAD_BATCH_SIZE = 50;
+/**
+ * Total event rows deleted per retention pass. Bounds the write transaction
+ * so a backlog of hundreds of thousands of rows drains across passes without
+ * stalling foreground work on the synchronous SQLite writer.
+ */
+export const DEFAULT_ARCHIVED_THREAD_EVENT_PRUNE_ROW_BATCH_SIZE = 2_000;
+
+export interface PruneArchivedThreadEventsArgs {
+  /**
+   * Number of most recent sequence slots kept per archived thread. The
+   * caller (the server) owns this product policy.
+   */
+  keepRecent: number;
+  maxRows: number;
+  maxThreads: number;
+  now: number;
+}
+
+export interface PruneArchivedThreadEventsResult {
+  /**
+   * True when this pass reached the end of the archived-thread walk; the
+   * cursor has wrapped and the next pass starts over.
+   */
+  completedCycle: boolean;
+  deleted: number;
+  scannedThreads: number;
+}
+
+type ArchivedThreadEventDeleteParameters = [string, number, number];
+
+function getArchivedThreadEventRetentionCursorThreadId(
+  db: DbConnection,
+): string {
+  const row = db
+    .select({ lastEventId: maintenanceScanCursors.lastEventId })
+    .from(maintenanceScanCursors)
+    .where(
+      eq(maintenanceScanCursors.id, ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_ID),
+    )
+    .get();
+
+  return row?.lastEventId ?? "";
+}
+
+function setArchivedThreadEventRetentionCursorThreadId(
+  db: DbConnection,
+  args: { threadId: string; updatedAt: number },
+): void {
+  db.insert(maintenanceScanCursors)
+    .values({
+      id: ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_ID,
+      policy: ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_POLICY,
+      version: ARCHIVED_THREAD_EVENT_RETENTION_CURSOR_VERSION,
+      itemKind: "",
+      outputPath: "",
+      lastCreatedAt: 0,
+      lastEventId: args.threadId,
+      updatedAt: args.updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: maintenanceScanCursors.id,
+      set: {
+        lastEventId: args.threadId,
+        updatedAt: args.updatedAt,
+      },
+    })
+    .run();
+}
+
+/**
+ * Hard-deletes archived threads' events beyond the caller's keep-recent
+ * window (the same window the on-archive prune already applies to its
+ * prunable event classes — the product accepts that an archived thread keeps
+ * only its recent history). Walks archived, non-deleted threads in id order
+ * behind a durable keyset cursor, so a large backlog drains across passes
+ * and newly archived threads are picked up on the next cycle. Unarchiving a
+ * thread removes it from the walk — rows already pruned stay gone, which is
+ * the same contract the on-archive prune implies.
+ */
+export function pruneArchivedThreadEvents(
+  db: DbConnection,
+  args: PruneArchivedThreadEventsArgs,
+): PruneArchivedThreadEventsResult {
+  if (args.keepRecent < 0 || args.maxThreads <= 0 || args.maxRows <= 0) {
+    return { completedCycle: false, deleted: 0, scannedThreads: 0 };
+  }
+
+  const cursorThreadId = getArchivedThreadEventRetentionCursorThreadId(db);
+  const threadRows = db
+    .select({ id: threads.id })
+    .from(threads)
+    .where(
+      and(
+        isNotNull(threads.archivedAt),
+        isNull(threads.deletedAt),
+        gt(threads.id, cursorThreadId),
+      ),
+    )
+    .orderBy(threads.id)
+    .limit(args.maxThreads)
+    .all();
+
+  let deleted = 0;
+  let scannedThreads = 0;
+  let lastFinishedThreadId = cursorThreadId;
+  let exhaustedRowBudget = false;
+  for (const threadRow of threadRows) {
+    scannedThreads += 1;
+    const latestSequence = getLatestThreadSequence(db, {
+      threadId: threadRow.id,
+    });
+    const sequenceCutoff = latestSequence - args.keepRecent;
+    if (sequenceCutoff > 0) {
+      // Keep the delete plan pinned to the (thread_id, sequence) index; the
+      // subquery is a bounded oldest-first range scan on it.
+      const result = db.$client
+        .prepare<ArchivedThreadEventDeleteParameters>(
+          `
+            DELETE FROM events
+            WHERE id IN (
+              SELECT id
+              FROM events INDEXED BY events_thread_sequence_idx
+              WHERE thread_id = ?
+                AND sequence <= ?
+              ORDER BY sequence
+              LIMIT ?
+            )
+          `,
+        )
+        .run(threadRow.id, sequenceCutoff, args.maxRows - deleted);
+      deleted += result.changes;
+      if (deleted >= args.maxRows) {
+        // The thread may still hold prunable rows; leave the cursor before
+        // it so the next pass resumes here.
+        exhaustedRowBudget = true;
+        break;
+      }
+    }
+    lastFinishedThreadId = threadRow.id;
+  }
+
+  const completedCycle =
+    !exhaustedRowBudget && threadRows.length < args.maxThreads;
+  setArchivedThreadEventRetentionCursorThreadId(db, {
+    threadId: completedCycle ? "" : lastFinishedThreadId,
+    updatedAt: args.now,
+  });
+
+  return { completedCycle, deleted, scannedThreads };
 }
 
 /**

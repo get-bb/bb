@@ -60,7 +60,13 @@ class ThreadEventPruningStepError extends Error {
 
 const ACTIVE_THREAD_EVENT_KEEP_RECENT = 1_000;
 const IDLE_THREAD_EVENT_KEEP_RECENT = 300;
-const ARCHIVED_THREAD_EVENT_KEEP_RECENT = 120;
+/**
+ * Keep-recent window for archived threads. Applied by the on-archive prune
+ * (prunable event classes) and by the periodic archived-thread retention
+ * sweep (all event classes). Product policy: an archived thread keeps only
+ * this many recent sequence slots of history.
+ */
+export const ARCHIVED_THREAD_EVENT_KEEP_RECENT = 120;
 const ACTIVE_THREAD_EVENT_PRUNE_MIN_SEQUENCE_DELTA = 250;
 const ACTIVE_THREAD_EVENT_PRUNE_MIN_INTERVAL_MS = 30_000;
 const SLOW_THREAD_EVENT_PRUNE_LOG_THRESHOLD_MS = 1_000;

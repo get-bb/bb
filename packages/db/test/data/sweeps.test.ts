@@ -9,6 +9,7 @@ import {
   COMPLETED_EVENT_OUTPUT_RETAINED_TAIL_CHARS,
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   DESTROYED_ENVIRONMENT_TTL_MS,
+  pruneArchivedThreadEvents,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
   sweepManagedEnvironments,
@@ -20,6 +21,7 @@ import {
   createThread,
   archiveThread,
   markThreadDeleted,
+  unarchiveThread,
 } from "../../src/data/threads.js";
 import {
   createEnvironment,
@@ -546,6 +548,181 @@ describe("pruneClosedSessions", () => {
         .where(eq(hostDaemonSessions.status, "closed"))
         .all(),
     ).toHaveLength(1);
+  });
+});
+
+describe("pruneArchivedThreadEvents", () => {
+  interface SeedTurnEventsArgs {
+    db: DbConnection;
+    endingSequence: number;
+    startingSequence?: number;
+    threadId: string;
+  }
+
+  function seedTurnEvents(args: SeedTurnEventsArgs): void {
+    const startingSequence = args.startingSequence ?? 1;
+    const createdAt = Date.now();
+    for (
+      let sequence = startingSequence;
+      sequence <= args.endingSequence;
+      sequence += 1
+    ) {
+      args.db
+        .insert(events)
+        .values({
+          id: createEventId(),
+          threadId: args.threadId,
+          scopeKind: "turn",
+          turnId: `turn-${sequence}`,
+          providerThreadId: "provider-thread-1",
+          sequence,
+          type: "thread/tokenUsage/updated",
+          itemId: null,
+          itemKind: null,
+          data: JSON.stringify({ tokenUsage: { totalTokens: sequence } }),
+          createdAt,
+        })
+        .run();
+    }
+  }
+
+  function listSequences(db: DbConnection, threadId: string): number[] {
+    return db
+      .select({ sequence: events.sequence })
+      .from(events)
+      .where(eq(events.threadId, threadId))
+      .all()
+      .map((row) => row.sequence)
+      .sort((left, right) => left - right);
+  }
+
+  function createIdleThread(context: ReturnType<typeof setup>) {
+    return createThread(context.db, noopNotifier, {
+      projectId: context.project.id,
+      providerId: "codex",
+      status: "idle",
+    });
+  }
+
+  it("prunes archived threads to the keep-recent window and leaves live threads alone", () => {
+    const context = setup();
+    const { db } = context;
+    const archived = createIdleThread(context);
+    const live = createIdleThread(context);
+
+    seedTurnEvents({ db, endingSequence: 30, threadId: archived.id });
+    seedTurnEvents({ db, endingSequence: 30, threadId: live.id });
+    archiveThread(db, noopNotifier, archived.id);
+
+    const result = pruneArchivedThreadEvents(db, {
+      keepRecent: 10,
+      maxRows: 1_000,
+      maxThreads: 10,
+      now: Date.now(),
+    });
+
+    expect(result).toEqual({
+      completedCycle: true,
+      deleted: 20,
+      scannedThreads: 1,
+    });
+    // keepRecent is a sequence window: rows above latest - keepRecent stay.
+    expect(listSequences(db, archived.id)).toEqual([
+      21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+    ]);
+    expect(listSequences(db, live.id)).toHaveLength(30);
+  });
+
+  it("stops pruning a thread once it is unarchived", () => {
+    const context = setup();
+    const { db } = context;
+    const thread = createIdleThread(context);
+
+    seedTurnEvents({ db, endingSequence: 30, threadId: thread.id });
+    archiveThread(db, noopNotifier, thread.id);
+    unarchiveThread(db, noopNotifier, thread.id);
+
+    const result = pruneArchivedThreadEvents(db, {
+      keepRecent: 10,
+      maxRows: 1_000,
+      maxThreads: 10,
+      now: Date.now(),
+    });
+
+    expect(result).toEqual({
+      completedCycle: true,
+      deleted: 0,
+      scannedThreads: 0,
+    });
+    expect(listSequences(db, thread.id)).toHaveLength(30);
+  });
+
+  it("bounds each pass by the row budget and resumes the same thread next pass", () => {
+    const context = setup();
+    const { db } = context;
+    const first = createIdleThread(context);
+    const second = createIdleThread(context);
+
+    seedTurnEvents({ db, endingSequence: 30, threadId: first.id });
+    seedTurnEvents({ db, endingSequence: 30, threadId: second.id });
+    archiveThread(db, noopNotifier, first.id);
+    archiveThread(db, noopNotifier, second.id);
+    const [earlierThreadId, laterThreadId] = [first.id, second.id].sort();
+
+    const firstPass = pruneArchivedThreadEvents(db, {
+      keepRecent: 10,
+      maxRows: 15,
+      maxThreads: 10,
+      now: Date.now(),
+    });
+    expect(firstPass.deleted).toBe(15);
+    expect(firstPass.completedCycle).toBe(false);
+    // The row budget cut the earlier thread mid-delete: it still holds
+    // prunable rows, and the later thread is untouched.
+    expect(listSequences(db, earlierThreadId!)).toHaveLength(15);
+    expect(listSequences(db, laterThreadId!)).toHaveLength(30);
+
+    const secondPass = pruneArchivedThreadEvents(db, {
+      keepRecent: 10,
+      maxRows: 1_000,
+      maxThreads: 10,
+      now: Date.now(),
+    });
+    expect(secondPass.deleted).toBe(25);
+    expect(listSequences(db, earlierThreadId!)).toHaveLength(10);
+    expect(listSequences(db, laterThreadId!)).toHaveLength(10);
+  });
+
+  it("wraps the cursor after a completed cycle so newly archived threads are picked up", () => {
+    const context = setup();
+    const { db } = context;
+    const first = createIdleThread(context);
+
+    seedTurnEvents({ db, endingSequence: 20, threadId: first.id });
+    archiveThread(db, noopNotifier, first.id);
+
+    expect(
+      pruneArchivedThreadEvents(db, {
+        keepRecent: 5,
+        maxRows: 1_000,
+        maxThreads: 10,
+        now: Date.now(),
+      }),
+    ).toMatchObject({ completedCycle: true, deleted: 15 });
+
+    const second = createIdleThread(context);
+    seedTurnEvents({ db, endingSequence: 20, threadId: second.id });
+    archiveThread(db, noopNotifier, second.id);
+
+    expect(
+      pruneArchivedThreadEvents(db, {
+        keepRecent: 5,
+        maxRows: 1_000,
+        maxThreads: 10,
+        now: Date.now(),
+      }),
+    ).toMatchObject({ deleted: 15 });
+    expect(listSequences(db, second.id)).toEqual([16, 17, 18, 19, 20]);
   });
 });
 

@@ -1,4 +1,10 @@
-import { getThread, listEvents } from "@bb/db";
+import {
+  archiveThread,
+  getThread,
+  listEvents,
+  noopNotifier,
+  pruneArchivedThreadEvents,
+} from "@bb/db";
 import { threadScope, turnScope } from "@bb/domain";
 import { groupHostDaemonEvents } from "@bb/host-daemon-contract";
 import { describe, expect, it, vi } from "vitest";
@@ -653,6 +659,97 @@ describe("thread event pruning", () => {
       expect(afterPrune.contextWindowUsage).toEqual(
         beforePrune.contextWindowUsage,
       );
+    });
+  });
+
+  it("projects a timeline from the kept window after archived-thread retention", async () => {
+    await withTestHarness(async (harness) => {
+      const host = seedHost(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const thread = seedThread(harness.deps, {
+        projectId: project.id,
+        environmentId: environment.id,
+        status: "idle",
+      });
+
+      // Ten complete turns; the retention window will cut mid-history, the
+      // same shape as the timeline event-budget window.
+      let sequence = 0;
+      for (let turn = 1; turn <= 10; turn += 1) {
+        const turnId = `turn-${turn}`;
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "provider-thread-1",
+          scope: turnScope(turnId),
+          sequence: (sequence += 1),
+          type: "turn/started",
+          itemId: null,
+          itemKind: null,
+          data: { providerThreadId: "provider-thread-1" },
+        });
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "provider-thread-1",
+          scope: turnScope(turnId),
+          sequence: (sequence += 1),
+          type: "item/completed",
+          itemId: `msg-${turn}`,
+          itemKind: "agentMessage",
+          data: {
+            item: {
+              id: `msg-${turn}`,
+              type: "agentMessage",
+              text: `Answer ${turn}`,
+            },
+          },
+        });
+        seedStoredEvent(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "provider-thread-1",
+          scope: turnScope(turnId),
+          sequence: (sequence += 1),
+          type: "turn/completed",
+          itemId: null,
+          itemKind: null,
+          data: { status: "completed" },
+        });
+      }
+
+      archiveThread(harness.db, noopNotifier, thread.id);
+      const result = pruneArchivedThreadEvents(harness.db, {
+        keepRecent: 9,
+        maxRows: 1_000,
+        maxThreads: 10,
+        now: Date.now(),
+      });
+      expect(result.deleted).toBe(21);
+
+      const archivedThread = getThread(harness.db, thread.id);
+      expect(archivedThread?.archivedAt).toBeTypeOf("number");
+      const timeline = buildThreadTimeline(harness.db, archivedThread!, {
+        eventBudget: 1_000_000,
+        includeProviderUnhandledOperations: true,
+        maxInlineOutputChars: null,
+        maxSeq: 0,
+        page: {
+          kind: "latest",
+          segmentLimit: Number.MAX_SAFE_INTEGER,
+        },
+      });
+
+      // The kept recent window still projects: the three fully retained
+      // turns' messages are present, and nothing throws on the cut edge.
+      const rowText = JSON.stringify(timeline.rows);
+      expect(timeline.rows.length).toBeGreaterThan(0);
+      expect(rowText).toContain("Answer 10");
+      expect(rowText).toContain("Answer 8");
+      expect(rowText).not.toContain("Answer 7");
     });
   });
 

@@ -8,6 +8,8 @@ import {
   DATABASE_COMPACTION_MIN_RECLAIMABLE_RATIO,
   DATABASE_INCREMENTAL_VACUUM_MAX_PAGES,
   DATABASE_INCREMENTAL_VACUUM_MIN_FREELIST_PAGES,
+  DEFAULT_ARCHIVED_THREAD_EVENT_PRUNE_ROW_BATCH_SIZE,
+  DEFAULT_ARCHIVED_THREAD_EVENT_PRUNE_THREAD_BATCH_SIZE,
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
@@ -23,6 +25,7 @@ import {
   listDeferredLegacyTables,
   environments,
   PROMPT_HISTORY_KEEP_PER_SCOPE,
+  pruneArchivedThreadEvents,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
   pruneSettledPendingInteractions,
@@ -57,6 +60,7 @@ import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
 import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
 import { runDeferredThreadMessageSweep } from "../threads/thread-send-request.js";
 import { LIVE_DAEMON_COMMAND_TIMEOUT_MS } from "../hosts/live-command.js";
+import { ARCHIVED_THREAD_EVENT_KEEP_RECENT } from "./event-pruning.js";
 import { runEventLoopWork, runEventLoopWorkSync } from "./event-loop-work.js";
 
 type DatabaseMaintenanceSweepDeps = Pick<AppDeps, "db" | "logger">;
@@ -578,6 +582,23 @@ function runPromptHistoryCapSweep(
   });
 }
 
+// Each pass probes up to a thread batch even when nothing is prunable, so
+// this job runs on a cadence instead of every tick. A large backlog still
+// drains at thousands of rows per minute.
+const ARCHIVED_THREAD_EVENT_RETENTION_INTERVAL_MS = 60_000;
+
+function runArchivedThreadEventRetentionSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
+): void {
+  pruneArchivedThreadEvents(deps.db, {
+    keepRecent: ARCHIVED_THREAD_EVENT_KEEP_RECENT,
+    maxRows: DEFAULT_ARCHIVED_THREAD_EVENT_PRUNE_ROW_BATCH_SIZE,
+    maxThreads: DEFAULT_ARCHIVED_THREAD_EVENT_PRUNE_THREAD_BATCH_SIZE,
+    now,
+  });
+}
+
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -614,6 +635,12 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "prompt-history-cap",
     run: runPromptHistoryCapSweep,
+  },
+  {
+    cadenceMs: ARCHIVED_THREAD_EVENT_RETENTION_INTERVAL_MS,
+    category: "retention",
+    name: "archived-thread-event-retention",
+    run: runArchivedThreadEventRetentionSweep,
   },
   {
     cadenceMs: 0,
