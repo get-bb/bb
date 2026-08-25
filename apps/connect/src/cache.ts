@@ -4,12 +4,14 @@
 // into a handful of dynamic API calls plus edge hits.
 //
 // The app shell (index.html on every client route) gets a second, revalidated
-// flavor: the origin serves it with `max-age=300, must-revalidate` plus a
-// build-id ETag, so the worker keeps the last confirmed document at the edge
-// and asks the laptop only "is <etag> still current?" on each navigation. A
-// 304 costs the tunnel a handful of header bytes instead of the document, and
-// a new build still takes effect on the next navigation because the origin
-// answers that conditional request with the fresh 200.
+// flavor: the origin serves it `no-cache` plus a build-id ETag, so the worker
+// keeps the last confirmed document at the edge and asks the laptop only "is
+// <etag> still current?" on each navigation. A 304 costs the tunnel a handful
+// of header bytes instead of the document, and a new build still takes effect
+// on the next navigation because the origin answers that conditional request
+// with the fresh 200. The visitor always receives the origin's `no-cache`, so
+// its browser revalidates on the next navigation too — exactly as a direct
+// client does — instead of booting a stale shell whose hashed assets are gone.
 //
 // Only called AFTER the gate has verified the requester owns the label. Server
 // cache namespaces remain the bare/full host label exactly as on main; new
@@ -24,6 +26,13 @@ const CACHE_HOST = "https://bb-connect-asset-cache.internal";
 // for the same namespace + path.
 const SHELL_CACHE_HOST = "https://bb-connect-shell-cache.internal";
 const MIN_CACHEABLE_MAX_AGE = 300;
+// The shell contract's Cache-Control, and what the visitor gets back.
+const SHELL_CACHE_CONTROL = "no-cache";
+// Freshness bound for the edge copy of the shell. caches.default will not hold
+// a `no-cache` response, so the copy is stored under this internal TTL. It
+// never reaches a visitor: the copy is served only after the origin confirms
+// its ETag, and the visitor's response takes the origin's own Cache-Control.
+const SHELL_STORE_CACHE_CONTROL = "max-age=300";
 
 /**
  * The origin fetch for a gated request. `ifNoneMatch` asks the tunnel client
@@ -62,31 +71,50 @@ export interface CacheResult {
 }
 
 /**
- * A response the origin wants cached only under revalidation: a build-id ETag
- * plus `must-revalidate` with a short freshness window. The bb server marks
- * exactly one response this way — the app shell — but the check is
- * header-driven, so any origin (including a port share) opting in with the
- * same contract gets the same treatment. Checked before `isCacheable`: the
- * shell's `max-age=300` would otherwise be cached plainly and served without
- * the revalidation its `must-revalidate` demands.
+ * A response the origin wants reused only after revalidation: `no-cache` plus
+ * an ETag. The bb server marks exactly one response this way — the app shell
+ * — but the check is header-driven, so any origin (including a port share)
+ * opting in with the same contract gets the same treatment. `no-cache` is
+ * what every browser and the desktop window obey on each navigation; the
+ * edge copy obeys it the same way, so a new build is picked up on the very
+ * next navigation everywhere. `isCacheable` keeps rejecting `no-cache`: a
+ * plain edge hit would skip exactly that revalidation.
  */
 function isRevalidatableShell(resp: Response): boolean {
   if (!resp.ok) return false;
   if (resp.headers.has("set-cookie")) return false;
   if (resp.headers.get("etag") === null) return false;
   const cc = resp.headers.get("cache-control") ?? "";
-  if (/\b(no-store|no-cache|private)\b/i.test(cc)) return false;
-  if (!/\bmust-revalidate\b/i.test(cc)) return false;
-  const maxAge = cc.match(/max-age=(\d+)/i);
-  return maxAge !== null && Number(maxAge[1]) >= 1;
+  if (/\b(no-store|private)\b/i.test(cc)) return false;
+  return /\bno-cache\b/i.test(cc);
 }
 
 /**
- * Store the shell response and build the visitor's copy. The clone is stored
- * with its origin headers intact — including the ETag the entry is keyed to
- * in spirit: a stored shell is only ever served after the origin confirms
- * that exact ETag with a 304 — and its `max-age=300` bounds the storage, so
- * nothing stale outlives the origin's own freshness window.
+ * The copy of a shell response that goes into caches.default. It cannot be a
+ * plain clone: the origin's `no-cache` would keep the cache from holding it,
+ * so the copy carries the internal freshness bound instead. And because a
+ * body read out of a subrequest is already plain bytes whatever the origin's
+ * content-encoding says (see the miss path in serveWithCache), the copy drops
+ * content-encoding and content-length and is stored identity — the one form
+ * that is unambiguous both for the put and for the pre-encoded rebuild on the
+ * revalidated path.
+ */
+function shellCopyForStorage(resp: Response): Response {
+  const headers = new Headers(resp.headers);
+  headers.set("cache-control", SHELL_STORE_CACHE_CONTROL);
+  headers.delete("content-encoding");
+  headers.delete("content-length");
+  return new Response(resp.clone().body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers,
+  });
+}
+
+/**
+ * Store the shell response and build the visitor's copy. A stored shell is
+ * only ever served after the origin confirms its ETag with a 304; the
+ * visitor's copy keeps the origin's own headers, `no-cache` included.
  */
 function storeShellAndServe(
   resp: Response,
@@ -94,7 +122,12 @@ function storeShellAndServe(
   url: URL,
   ctx: ExecutionContext,
 ): CacheResult {
-  ctx.waitUntil(caches.default.put(shellCacheKey(namespace, url), resp.clone()));
+  ctx.waitUntil(
+    caches.default.put(
+      shellCacheKey(namespace, url),
+      shellCopyForStorage(resp),
+    ),
+  );
   // Same encoding rule as the asset miss below: a body read out of a
   // subrequest is already plain bytes, so automatic encoding is correct.
   const r = new Response(resp.body, resp);
@@ -130,12 +163,20 @@ async function serveRevalidatedShell(
       r.headers.set("x-bb-cache", "revalidated");
       return { cacheable: true, response: r };
     }
-    // The stored bytes are still encoded exactly like an asset hit's (the
-    // cache keeps the origin's encoding), so rebuild as pre-encoded.
-    // `cacheable: true` is load-bearing beyond refresh semantics: the
+    // The stored bytes are identity and the stored headers say so (see
+    // shellCopyForStorage), so the pre-encoded rebuild ships them as they
+    // are. `cacheable: true` is load-bearing beyond refresh semantics: the
     // session-refresh path rebuilds non-cacheable responses to append
     // Set-Cookie, and that rebuild would strip this body's pre-encoded flag.
     const r = rebuiltResponse(shellHit.body, shellHit);
+    // A 304 freshens the stored response (RFC 9111 §4.3.4): the origin's
+    // current Cache-Control replaces the internal bound the copy was stored
+    // under, so the visitor's browser revalidates next time like a direct
+    // client's does.
+    r.headers.set(
+      "cache-control",
+      resp.headers.get("cache-control") ?? SHELL_CACHE_CONTROL,
+    );
     r.headers.set("x-bb-cache", "revalidated");
     return { cacheable: true, response: r };
   }

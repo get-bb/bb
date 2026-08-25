@@ -68,16 +68,18 @@ export default {
     }
 
     // Probe: whether the revalidated shell copy for a path has landed in the
-    // edge cache yet. cache writes ride ctx.waitUntil, so tests poll this
-    // instead of racing the put.
+    // edge cache yet, and the Cache-Control it was stored under (the worker's
+    // internal freshness bound, not the origin's `no-cache`). Cache writes
+    // ride ctx.waitUntil, so tests poll this instead of racing the put.
     if (url.pathname === "/shell-cached") {
       const target = url.searchParams.get("for") ?? "/";
       const cached = await caches.default.match(
         shellCacheKey(NAMESPACE, new URL(`${url.origin}${target}`)),
       );
-      return new Response(cached ? "cached" : "absent", {
-        status: cached ? 200 : 404,
-      });
+      return new Response(
+        cached ? (cached.headers.get("cache-control") ?? "") : "absent",
+        { status: cached ? 200 : 404 },
+      );
     }
 
     // Control: the pre-fix cache-hit rebuild, over the entry serveWithCache

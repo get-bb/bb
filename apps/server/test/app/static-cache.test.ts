@@ -8,7 +8,7 @@ import { createApp } from "../../src/server.js";
 import { createTestAppHarness } from "../helpers/test-app.js";
 
 describe("production static cache headers", () => {
-  it("keeps index.html fresh while allowing immutable hashed assets", async () => {
+  it("revalidates index.html on every navigation while allowing immutable hashed assets", async () => {
     const staticDir = await mkdtemp(join(tmpdir(), "bb-server-static-"));
     await mkdir(join(staticDir, "assets"), { recursive: true });
     await writeFile(
@@ -38,20 +38,17 @@ describe("production static cache headers", () => {
     const harness = await createTestAppHarness();
     const serverApp = createApp(harness.deps, { staticDir });
     try {
-      // The shell travels with max-age=300 + must-revalidate + a build-id
-      // ETag: browsers and the connect edge revalidate with If-None-Match
-      // (a cheap 304) instead of refetching the document, and unlike
-      // `no-store` it stays eligible for the WebKit back/forward cache.
+      // The shell is `no-cache` plus a build-id ETag: browsers, the desktop
+      // window and the connect edge revalidate with If-None-Match on every
+      // navigation (a cheap 304), so a new build is never masked by a fresh
+      // private copy whose hashed assets are gone, and unlike `no-store` it
+      // stays eligible for the WebKit back/forward cache.
       const rootResponse = await serverApp.app.request("/");
-      expect(rootResponse.headers.get("cache-control")).toBe(
-        "max-age=300, must-revalidate",
-      );
+      expect(rootResponse.headers.get("cache-control")).toBe("no-cache");
       expect(rootResponse.headers.get("etag")).toMatch(/^W\/"[0-9a-f]{32}"$/u);
 
       const fallbackResponse = await serverApp.app.request("/threads/thr_123");
-      expect(fallbackResponse.headers.get("cache-control")).toBe(
-        "max-age=300, must-revalidate",
-      );
+      expect(fallbackResponse.headers.get("cache-control")).toBe("no-cache");
       // Same document, same validator: the fallback IS the shell.
       expect(fallbackResponse.headers.get("etag")).toBe(
         rootResponse.headers.get("etag"),

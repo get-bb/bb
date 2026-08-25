@@ -9,10 +9,16 @@ import { ifNoneMatchSatisfied, registerStaticAppRoutes } from "./server.js";
 /**
  * The shell contract the connect worker's edge cache builds on: the document
  * (served directly and as the SPA fallback for every client route) carries a
- * build-id ETag and `max-age=300, must-revalidate`, answers If-None-Match
- * with a cheap 304, and ships its precompressed sidecar when the client
- * accepts it. A regression here silently turns every relayed navigation back
- * into a full-document tunnel round trip.
+ * build-id ETag and `Cache-Control: no-cache`, answers If-None-Match with a
+ * cheap 304, and ships its precompressed sidecar when the client accepts it.
+ *
+ * `no-cache` is load-bearing: any positive freshness lifetime lets a browser
+ * or the desktop window reuse the shell after a bb update without asking
+ * (`must-revalidate` only governs stale entries), and a stale shell
+ * references hashed assets that no longer exist — a blank page until the
+ * window expires. A regression here either masks a new build for the whole
+ * window or turns every relayed navigation back into a full-document tunnel
+ * round trip.
  */
 describe("app shell serving", () => {
   const shellHtml = "<!doctype html><title>bb</title><p>build-a</p>";
@@ -36,9 +42,7 @@ describe("app shell serving", () => {
       expect(res.status).toBe(200);
       expect(res.headers.get("content-encoding")).toBe("br");
       expect(res.headers.get("content-type")).toBe("text/html");
-      expect(res.headers.get("cache-control")).toBe(
-        "max-age=300, must-revalidate",
-      );
+      expect(res.headers.get("cache-control")).toBe("no-cache");
       expect(res.headers.get("etag")).toMatch(/^W\/"[0-9a-f]{32}"$/u);
       expect(Buffer.from(await res.arrayBuffer())).toEqual(shellBrotli);
     }
@@ -63,9 +67,7 @@ describe("app shell serving", () => {
       });
       expect(res.status).toBe(304);
       expect(res.headers.get("etag")).toBe(etag);
-      expect(res.headers.get("cache-control")).toBe(
-        "max-age=300, must-revalidate",
-      );
+      expect(res.headers.get("cache-control")).toBe("no-cache");
       expect((await res.arrayBuffer()).byteLength).toBe(0);
     }
   });

@@ -139,16 +139,18 @@ interface StaticResponseHeadersArgs {
   urlPath: string;
 }
 
-// The document travels with a build-id ETag (see shellEtag): the browser may
-// reuse it for five minutes, then must revalidate — an If-None-Match answered
-// with a 304, which costs the connect tunnel a handful of header bytes — and
-// the connect worker revalidates its edge copy on every navigation, so a new
-// build still takes effect on the next navigation there. This replaces
-// `no-cache`, whose "new build picked up immediately" property the ETag
-// preserves without re-sending the document each time. Still not `no-store`:
-// WebKit may keep the page in the back/forward cache and restore it without a
-// reload.
-const STATIC_INDEX_CACHE_CONTROL = "max-age=300, must-revalidate";
+// `no-cache` (not `no-store`): every client — browsers, the desktop window,
+// the connect worker's edge copy — revalidates the document on every
+// navigation, so a new build is picked up immediately. The document travels
+// with a build-id ETag (see shellEtag), so that revalidation is an
+// If-None-Match answered with an empty 304: a handful of header bytes, also
+// through the connect tunnel, where the worker keeps the last confirmed
+// document at the edge. A positive max-age would let a browser reuse the
+// shell without asking (`must-revalidate` only governs stale entries) and
+// boot a stale build — whose hashed assets no longer exist after an in-place
+// update — for the whole window. Not `no-store`: WebKit may still keep the
+// page in the back/forward cache and restore it without a reload.
+const STATIC_INDEX_CACHE_CONTROL = "no-cache";
 const STATIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
 // Icons and manifests under public/ are not content-hashed but change only
 // with a release; a day of caching keeps favicon/badge flips and PWA
@@ -296,9 +298,9 @@ export function registerStaticAppRoutes(app: Hono, staticDir: string): void {
     urlPath: string;
   }): Promise<Response> => {
     // Only the shell carries a validator: assets are immutable by hash and
-    // public files by TTL, but the document must revalidate cheaply — a 304
-    // here is what keeps `max-age=300, must-revalidate` as prompt as the old
-    // `no-cache` without resending the document every navigation.
+    // public files by TTL, but the document is `no-cache` and revalidated on
+    // every navigation — the 304 here is what keeps that revalidation a few
+    // header bytes instead of the document each time.
     const etag =
       args.contentType === "text/html"
         ? await shellEtag(args.filePath)
