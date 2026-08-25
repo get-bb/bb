@@ -5,7 +5,7 @@ import {
   parseVisitorHost,
   schema,
 } from "@bb/connect-db";
-import { refreshAccountSessionCookie } from "./account-session.js";
+import { refreshAccountSessionCookies } from "./account-session.js";
 import { TUNNEL_OFFLINE_HEADER, TunnelDO, type Env } from "./tunnel-do.js";
 import {
   invalidateSessionCookie,
@@ -57,9 +57,12 @@ function text(body: string, status: number): Response {
   });
 }
 
-function withSetCookie(response: Response, setCookie: string): Response {
+function withSetCookies(
+  response: Response,
+  setCookies: readonly string[],
+): Response {
   const headers = new Headers(response.headers);
-  headers.append("set-cookie", setCookie);
+  for (const setCookie of setCookies) headers.append("set-cookie", setCookie);
   return new Response(response.body, {
     headers,
     status: response.status,
@@ -533,12 +536,12 @@ export default {
       // hint so the next request observes the renewed row instead of repeating
       // the cross-worker check for the rest of the short verification TTL.
       invalidateSessionCookie(cookie);
-      const setCookie = await refreshAccountSessionCookie(
+      const setCookies = await refreshAccountSessionCookies(
         `${runtime.sessionCookieName}=${cookie}`,
         runtime.accountAppUrl,
         (authRequest) => fetch(authRequest),
       );
-      if (setCookie !== null) return withSetCookie(response, setCookie);
+      if (setCookies !== null) return withSetCookies(response, setCookies);
     }
     return response;
   },

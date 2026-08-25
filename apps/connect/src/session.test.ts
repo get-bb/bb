@@ -26,7 +26,7 @@ import {
   verifyMachineCredentialDetails,
   verifySessionCookieDetails,
 } from "./session.js";
-import { refreshAccountSessionCookie } from "./account-session.js";
+import { refreshAccountSessionCookies } from "./account-session.js";
 import { assignMachineLabel } from "./machine-label.js";
 
 // Real in-memory SQLite (never mock the DB). resolveLabel accepts any Drizzle
@@ -460,7 +460,7 @@ describe("account session refresh", () => {
     const cookie = await signedSessionCookie(token, secret);
     const beforeRefresh = Date.now();
 
-    const setCookie = await refreshAccountSessionCookie(
+    const setCookies = await refreshAccountSessionCookies(
       `__Secure-better-auth.session_token=${cookie}`,
       "https://getbb.app",
       createAuthFetch("https://getbb.app", "getbb.app"),
@@ -477,10 +477,11 @@ describe("account session refresh", () => {
     expect(refreshed?.expiresAt.getTime()).toBeLessThanOrEqual(
       afterRefresh + expiresInMs,
     );
-    expect(setCookie).toContain("__Secure-better-auth.session_token=");
-    expect(setCookie).toContain("Max-Age=604800");
-    expect(setCookie).toContain("Domain=.getbb.app");
-    expect(setCookie).toContain("Secure");
+    expect(setCookies).toHaveLength(1);
+    expect(setCookies?.[0]).toContain("__Secure-better-auth.session_token=");
+    expect(setCookies?.[0]).toContain("Max-Age=604800");
+    expect(setCookies?.[0]).toContain("Domain=.getbb.app");
+    expect(setCookies?.[0]).toContain("Secure");
   });
 
   it("leaves a fresh session unchanged before the update-age boundary", async () => {
@@ -491,7 +492,7 @@ describe("account session refresh", () => {
     const cookie = await signedSessionCookie(token, secret);
 
     await expect(
-      refreshAccountSessionCookie(
+      refreshAccountSessionCookies(
         `__Secure-better-auth.session_token=${cookie}`,
         "https://getbb.app",
         createAuthFetch("https://getbb.app", "getbb.app"),
@@ -513,14 +514,36 @@ describe("account session refresh", () => {
     seedSession(token, refreshAt, refreshAt + expiresInMs - updateAgeMs);
     const cookie = await signedSessionCookie(token, secret);
 
-    const setCookie = await refreshAccountSessionCookie(
+    const setCookies = await refreshAccountSessionCookies(
       `better-auth.session_token=${cookie}`,
       "http://bb.localhost:42745",
       createAuthFetch("http://bb.localhost:42745", "bb.localhost"),
     );
-    expect(setCookie).toContain("better-auth.session_token=");
-    expect(setCookie).toContain("Domain=.bb.localhost");
-    expect(setCookie).not.toContain("Secure");
+    expect(setCookies).toHaveLength(1);
+    expect(setCookies?.[0]).toContain("better-auth.session_token=");
+    expect(setCookies?.[0]).toContain("Domain=.bb.localhost");
+    expect(setCookies?.[0]).not.toContain("Secure");
+  });
+
+  it("preserves multiple Better Auth cookies as separate values", async () => {
+    const headers = new Headers();
+    headers.append("set-cookie", "session=renewed; Path=/; HttpOnly");
+    headers.append("set-cookie", "session-data=cached; Path=/; HttpOnly");
+
+    await expect(
+      refreshAccountSessionCookies(
+        "session=old",
+        "https://getbb.app",
+        async () =>
+          Response.json(
+            { session: { id: "session" }, user: { id: "user" } },
+            { headers },
+          ),
+      ),
+    ).resolves.toEqual([
+      "session=renewed; Path=/; HttpOnly",
+      "session-data=cached; Path=/; HttpOnly",
+    ]);
   });
 });
 

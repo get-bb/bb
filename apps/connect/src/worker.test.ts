@@ -115,7 +115,7 @@ vi.mock("./session.js", () => ({
 }));
 
 vi.mock("./account-session.js", () => ({
-  refreshAccountSessionCookie: vi.fn(),
+  refreshAccountSessionCookies: vi.fn(),
 }));
 
 vi.mock("./servers.js", () => ({
@@ -159,7 +159,7 @@ import {
   verifyMachineCredentialDetails,
   verifySessionCookieDetails,
 } from "./session.js";
-import { refreshAccountSessionCookie } from "./account-session.js";
+import { refreshAccountSessionCookies } from "./account-session.js";
 import {
   handleCreateDesktopSession,
   handleDisconnectServer,
@@ -174,7 +174,7 @@ import { TUNNEL_OFFLINE_HEADER, TunnelDO } from "./tunnel-do.js";
 
 const mockParseCookie = vi.mocked(parseCookie);
 const mockInvalidateSession = vi.mocked(invalidateSessionCookie);
-const mockRefreshAccountSession = vi.mocked(refreshAccountSessionCookie);
+const mockRefreshAccountSession = vi.mocked(refreshAccountSessionCookies);
 const mockResolveLabel = vi.mocked(resolveLabel);
 const mockMarkMachineSeen = vi.mocked(markMachineSeen);
 const mockVerifyMachine = vi.mocked(verifyMachineCredentialDetails);
@@ -845,9 +845,10 @@ describe("gate worker share hosts", () => {
 
   it("renews an active owner session on an ordinary HTTP response", async () => {
     mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
-    mockRefreshAccountSession.mockResolvedValue(
+    mockRefreshAccountSession.mockResolvedValue([
       "__Secure-better-auth.session_token=renewed; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
-    );
+      "__Secure-better-auth.session_data=cached; Max-Age=300; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
+    ]);
     const { env, ctx } = makeEnv(() => new Response("ok"));
     const response = await worker.fetch(
       visitorRequest("sawyer.getbb.app", "/api/v1/threads"),
@@ -861,8 +862,11 @@ describe("gate worker share hosts", () => {
       expect.any(Function),
     );
     expect(mockInvalidateSession).toHaveBeenCalledWith("session-token");
-    expect(response.headers.get("set-cookie")).toBe(
-      "__Secure-better-auth.session_token=renewed; Max-Age=604800; Domain=.getbb.app; Path=/; HttpOnly; SameSite=Lax; Secure",
+    expect(response.headers.get("set-cookie")).toContain(
+      "__Secure-better-auth.session_token=renewed",
+    );
+    expect(response.headers.get("set-cookie")).toContain(
+      "__Secure-better-auth.session_data=cached",
     );
   });
 
@@ -884,7 +888,7 @@ describe("gate worker share hosts", () => {
     "does not renew an owner session on an edge-cache %s",
     async (cacheStatus) => {
       mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
-      mockRefreshAccountSession.mockResolvedValue("should-not-be-used");
+      mockRefreshAccountSession.mockResolvedValue(["should-not-be-used"]);
       mockServeWithCache.mockResolvedValueOnce({
         cacheable: true,
         response: new Response("cached asset", {
@@ -908,9 +912,9 @@ describe("gate worker share hosts", () => {
 
   it("reissues the local Cloud cookie without the Secure attribute", async () => {
     mockVerifySessionDetails.mockResolvedValue(sessionDetails(OWNER, true));
-    mockRefreshAccountSession.mockResolvedValue(
+    mockRefreshAccountSession.mockResolvedValue([
       "better-auth.session_token=renewed; Max-Age=604800; Domain=.bb.localhost; Path=/; HttpOnly; SameSite=Lax",
-    );
+    ]);
     const { env, ctx } = makeEnv(() => new Response("ok"));
     Object.assign(env, {
       ACCOUNT_APP_URL: "http://bb.localhost:42745",
