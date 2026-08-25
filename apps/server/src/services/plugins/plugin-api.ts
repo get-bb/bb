@@ -69,6 +69,7 @@ import {
   PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_HTTP_METHODS,
   parsePluginAgentToolPresentation,
+  pluginCliCollisionWarning,
   readRpcMethodContract,
   registerSettingDescriptors,
   rejectStaleAgentToolFields,
@@ -1471,6 +1472,10 @@ export function createPluginApi(options: {
       providerRegistrations.flush();
       aiServiceRegistrations.flush();
       activated = true;
+      const cliWarning = cliRecord.registration
+        ? pluginCliCollisionWarning(pluginId, cliRecord.registration.name)
+        : null;
+      if (cliWarning) emitLog("warn", cliWarning);
       pendingSharedPorts.clear();
       for (const problem of pendingAgentToolProblems) {
         reportAgentToolProblem(problem);

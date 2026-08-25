@@ -283,6 +283,17 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     );
     const entry = await harness.pluginService.installPath(reserved);
     expect(entry.status).toBe("running");
+    const warnings = (await harness.pluginService.readLogTail("shadower", 10))
+      ?.map((line) => JSON.parse(line) as { level: string; message: string })
+      .filter((line) => line.level === "warn")
+      .map(({ level, message }) => ({ level, message }));
+    expect(warnings).toEqual([
+      {
+        level: "warn",
+        message:
+          'CLI command "thread" collides with core command "bb thread"; core keeps the short form. Use "bb plugin run shadower" to invoke this plugin.',
+      },
+    ]);
     expect(
       await (await runCli(harness, "shadower", { argv: [] })).json(),
     ).toMatchObject({ exitCode: 0, stdout: "thread" });

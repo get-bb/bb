@@ -330,7 +330,8 @@ export interface PluginCliExecutionResult {
 
 export interface PluginCliRegistration {
   /** Preferred top-level command name (`bb <name> …`): lowercase [a-z0-9-]+.
-   * A core collision remains available through `bb plugin run <plugin-id>`. */
+   * A core collision logs an activation warning and remains available through
+   * `bb plugin run <plugin-id>`. */
   name: string;
   summary: string;
   /** Subcommand metadata rendered in help and the plugin-commands skill
@@ -346,7 +347,7 @@ export interface PluginCli {
   /**
    * Register this plugin's `bb` subcommand. One registration per factory
    * execution; a repeated call is rejected. Core bb commands always win
-   * name collisions; the plugin remains explicitly callable by id.
+   * name collisions; the plugin is warned and remains explicitly callable by id.
    */
   register(registration: PluginCliRegistration): void;
 }

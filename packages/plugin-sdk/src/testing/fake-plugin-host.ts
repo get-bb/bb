@@ -22,6 +22,7 @@ import {
   MENTION_PROVIDER_ID_PATTERN,
   normalizeMentionProviderTriggers,
   parsePluginAgentToolPresentation,
+  pluginCliCollisionWarning,
   PLUGIN_AGENT_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_AGENT_SELECTION_MAX_IDS,
   PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS,
@@ -1225,6 +1226,8 @@ function createFakePluginHostInternal(
         commands: validatedCommands,
         run: registration.run.bind(registration),
       };
+      const warning = pluginCliCollisionWarning(pluginId, name);
+      if (warning) emitLog("warn", warning);
     },
   };
 

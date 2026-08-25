@@ -948,7 +948,8 @@ if (!initial.apiKey)
 One top-level command per plugin; a second `register` in one factory
 execution is rejected.
 Users and agents run `bb <name> …` like any core command; the bb CLI
-proxies it to the server, where `run` executes.
+proxies it to the server, where `run` executes. Core collisions log an
+activation warning and appear in `bb plugin list` as `bb plugin run <id>`.
 
 ```ts
 bb.cli.register({

@@ -540,6 +540,12 @@ describe("cli", () => {
           run: () => ({ exitCode: 0 }),
         }),
       ).not.toThrow();
+      expect(reservedHost.harness.logEntries).toEqual([
+        {
+          level: "warn",
+          message: `CLI command "${name}" collides with core command "bb ${name}"; core keeps the short form. Use "bb plugin run test-plugin" to invoke this plugin.`,
+        },
+      ]);
     }
 
     const availableHost = createFakePluginHost();
@@ -550,6 +556,7 @@ describe("cli", () => {
         run: () => ({ exitCode: 0 }),
       }),
     ).not.toThrow();
+    expect(availableHost.harness.logEntries).toEqual([]);
   });
 
   it("rejects a duplicate registration like the production host", () => {

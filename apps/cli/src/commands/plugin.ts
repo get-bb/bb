@@ -809,8 +809,13 @@ function printPlugin(plugin: PluginEntry): void {
     );
   }
   if (plugin.cliCommand) {
+    const collisionNote = RESERVED_BB_CLI_COMMANDS.includes(
+      plugin.cliCommand.name,
+    )
+      ? ` (core command "bb ${plugin.cliCommand.name}" takes precedence)`
+      : "";
     console.log(
-      `  command: ${pluginCliCall(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}`,
+      `  command: ${pluginCliCall(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}${collisionNote}`,
     );
   }
 }

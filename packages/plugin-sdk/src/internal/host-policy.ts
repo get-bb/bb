@@ -49,6 +49,14 @@ import type {
 
 export { RESERVED_BB_CLI_COMMANDS };
 
+export function pluginCliCollisionWarning(
+  pluginId: string,
+  commandName: string,
+): string | null {
+  if (!RESERVED_BB_CLI_COMMANDS.includes(commandName)) return null;
+  return `CLI command "${commandName}" collides with core command "bb ${commandName}"; core keeps the short form. Use "bb plugin run ${pluginId}" to invoke this plugin.`;
+}
+
 /**
  * Built-in dynamic tool names plugins may not shadow. Maintained by hand —
  * kept in sync with the built-in tools in
