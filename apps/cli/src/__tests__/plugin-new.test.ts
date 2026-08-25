@@ -93,7 +93,7 @@ describe.sequential("bb plugin new dependency install", () => {
   }
 
   it("installs the packages the plugin needs to build under NODE_ENV=production", async () => {
-    await runPluginNew(["prod-env", "--app"]);
+    await runPluginNew(["prod-env"]);
 
     // zod is imported by the generated server.ts and inlined by the build;
     // typescript/@types are what the scaffold typechecks against.
@@ -103,13 +103,6 @@ describe.sequential("bb plugin new dependency install", () => {
     expect(warned).toEqual([]);
     expect(logged).toContain("Installed dependencies (npm install).");
     expect(logged).not.toContain("  npm install --include=dev");
-  });
-
-  it("installs headless scaffolds too, whose server.ts also imports zod", async () => {
-    await runPluginNew(["headless"]);
-
-    expect(await isInstalled("bb-plugin-headless", "zod")).toBe(true);
-    expect(logged).toContain("Installed dependencies (npm install).");
   });
 
   it("accepts a tree npm hoisted to a workspace root", async () => {
@@ -123,7 +116,7 @@ describe.sequential("bb plugin new dependency install", () => {
     );
     vi.stubEnv("BB_TEST_NPM_HOIST_TO", workDir);
 
-    await runPluginNew(["hoisted", "--app"]);
+    await runPluginNew(["hoisted"]);
 
     expect(await isInstalled("bb-plugin-hoisted", "zod")).toBe(false);
     expect(warned).toEqual([]);
@@ -133,7 +126,7 @@ describe.sequential("bb plugin new dependency install", () => {
   it("does not report success when npm exits 0 without installing the tree", async () => {
     vi.stubEnv("BB_TEST_NPM_ALWAYS_OMIT_DEV", "1");
 
-    await runPluginNew(["silent-omit", "--app"]);
+    await runPluginNew(["silent-omit"]);
 
     expect(await isInstalled("bb-plugin-silent-omit", "typescript")).toBe(
       false,

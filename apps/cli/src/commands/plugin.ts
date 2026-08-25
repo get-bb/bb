@@ -471,9 +471,9 @@ async function probeSdkVersionPublished(): Promise<
 /**
  * Install a fresh scaffold's npm tree, reporting whether it is usable.
  *
- * Generated source imports packages `bb plugin build` inlines into dist/ (zod;
- * with --app, the vendored components' deps), and path: installs run server.ts
- * from source, so the tree must exist before the plugin can build or load.
+ * Generated source imports packages `bb plugin build` inlines into dist/ (zod
+ * and the vendored components' deps), and path: installs run server.ts from
+ * source, so the tree must exist before the plugin can build or load.
  *
  * `--include=dev` rather than a bare `npm install`: the packaged CLI runs with
  * NODE_ENV=production — bb-app's launcher sets it for every `bb` invocation —
@@ -1288,12 +1288,8 @@ export function registerPluginCommands(
     .description(
       "Scaffold a plugin in ./bb-plugin-<name>; accepts @scope/bb-plugin-<name>",
     )
-    .option(
-      "--app",
-      "Also scaffold a frontend entry (app.tsx, built by `bb plugin build`)",
-    )
     .action(
-      action(async (name: string, opts: { app?: boolean }) => {
+      action(async (name: string) => {
         const target = resolveNewPluginTarget(name);
         if (target === null) {
           console.error(
@@ -1307,7 +1303,6 @@ export function registerPluginCommands(
           targetDir,
           packageName,
           bbVersion: resolveBbCliVersion(),
-          app: opts.app ?? false,
         });
         console.log(`Created ${directoryName}/ (${packageName}).`);
         // Before the install, so a resolution failure below reads as expected

@@ -31,11 +31,6 @@ interface ScaffoldPluginArgs {
   packageName: string;
   /** BB app version; engines.bb is pinned to ">=<major.minor>". */
   bbVersion: string;
-  /**
-   * Also scaffold a frontend entry (`app.tsx`, wired as `bb.app` and built
-   * by `bb plugin build`). Off by default so headless plugins stay lean.
-   */
-  app?: boolean;
 }
 
 /** Arguments for {@link syncPluginTypes}. */
@@ -1092,40 +1087,205 @@ function componentsJsonSource(bbVersion: string): string {
 
 function serverEntrySource(packageName: string): string {
   const id = derivePluginId(packageName);
+  const name = pluginNameOf(packageName);
   return `// ${packageName} — a BB plugin backend entry.
 //
 // The default export is a factory that receives the plugin API. BB supplies
 // the tiny defineRpcContract runtime helper; the API type remains type-only.
+//
+// The example is a todo list. One store in bb.storage.kv serves three
+// surfaces: the Example todos page (app.tsx, over RPC), the \`bb ${id}\` CLI
+// command (below), and the skill in skills/example-todos/SKILL.md that tells
+// agents how to use that command. A write from any surface publishes a realtime signal so
+// every open page refetches.
+import { randomUUID } from "node:crypto";
 import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
+const todoSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  done: z.boolean(),
+  createdAt: z.string(),
+});
+export type Todo = z.infer<typeof todoSchema>;
+
+// Both schemas run at the wire boundary. Handler input/output are inferred
+// from the shared contract; app.tsx imports only its type.
 export const rpcContract = defineRpcContract({
-  greeting: {
+  todos_list: {
     input: z.null(),
-    output: z.object({ greeting: z.string(), loadCount: z.number().int() }),
+    output: z.object({ todos: z.array(todoSchema) }),
+  },
+  todos_add: {
+    input: z.object({ title: z.string().trim().min(1).max(200) }),
+    output: todoSchema,
+  },
+  todos_set_done: {
+    input: z.object({ id: z.string(), done: z.boolean() }),
+    output: todoSchema,
+  },
+  todos_remove: {
+    input: z.object({ id: z.string() }),
+    output: z.object({ removed: z.boolean() }),
   },
 });
+
+/** Realtime channel app.tsx listens on; the payload is the todo count. */
+const TODOS_CHANGED = "todos-changed";
 
 export default async function plugin(bb: BbPluginApi) {
   bb.log.info("loaded");
 
   // Declarative settings — rendered in BB's settings UI and editable with
   // \`bb plugin config ${id}\`. Add \`secret: true\` for values like API keys.
+  // Settings are read once per load: reload the plugin after changing one.
   const settings = bb.settings.define({
-    greeting: { type: "string", label: "Greeting", default: "hello" },
+    showDone: {
+      type: "boolean",
+      label: "Show completed todos",
+      default: true,
+    },
   });
-  const { greeting } = await settings.get();
+  const { showDone } = await settings.get();
 
   // Namespaced key-value storage in bb.db (JSON values, up to 256KB each).
   // For bigger or relational data use bb.storage.database().
-  const loadCount = ((await bb.storage.kv.get<number>("load-count")) ?? 0) + 1;
-  await bb.storage.kv.set("load-count", loadCount);
-  bb.log.info(\`\${greeting} — load #\${loadCount}\`);
+  async function readTodos(): Promise<Todo[]> {
+    return (await bb.storage.kv.get<Todo[]>("todos")) ?? [];
+  }
+  async function writeTodos(todos: Todo[]): Promise<void> {
+    await bb.storage.kv.set("todos", todos);
+    // Ephemeral broadcast to every connected client; nothing is persisted.
+    bb.realtime.publish(TODOS_CHANGED, { count: todos.length });
+  }
 
-  // Both schemas run at the wire boundary. Handler input/output are inferred
-  // from the shared contract; app.tsx imports only its type.
+  async function listTodos(): Promise<Todo[]> {
+    const todos = await readTodos();
+    return showDone ? todos : todos.filter((todo) => !todo.done);
+  }
+  async function addTodo(title: string): Promise<Todo> {
+    const todo: Todo = {
+      id: randomUUID().slice(0, 8),
+      title,
+      done: false,
+      createdAt: new Date().toISOString(),
+    };
+    await writeTodos([...(await readTodos()), todo]);
+    return todo;
+  }
+  async function setTodoDone(id: string, done: boolean): Promise<Todo | null> {
+    const todos = await readTodos();
+    const todo = todos.find((candidate) => candidate.id === id);
+    if (todo === undefined) return null;
+    todo.done = done;
+    await writeTodos(todos);
+    return todo;
+  }
+  async function removeTodo(id: string): Promise<boolean> {
+    const todos = await readTodos();
+    const remaining = todos.filter((todo) => todo.id !== id);
+    if (remaining.length === todos.length) return false;
+    await writeTodos(remaining);
+    return true;
+  }
+
   bb.rpc.register(rpcContract, {
-    greeting: () => ({ greeting, loadCount }),
+    todos_list: async () => ({ todos: await listTodos() }),
+    todos_add: ({ title }) => addTodo(title),
+    todos_set_done: async ({ id, done }) => {
+      const todo = await setTodoDone(id, done);
+      if (todo === null) throw new Error(\`No todo with id \${id}\`);
+      return todo;
+    },
+    todos_remove: async ({ id }) => ({ removed: await removeTodo(id) }),
+  });
+
+  // The \`bb ${id}\` command: what agents (and you) use from a shell. Parsing
+  // argv is plugin-owned; \`commands\` is metadata BB renders into help and
+  // the generated plugin-commands skill without running plugin code.
+  const usage = [
+    "Usage:",
+    "  bb ${id} list [--json]",
+    "  bb ${id} add <title> [--json]",
+    "  bb ${id} done <todo-id> [--json]",
+    "  bb ${id} undo <todo-id> [--json]",
+    "  bb ${id} remove <todo-id> [--json]",
+  ].join("\\n");
+  function formatTodo(todo: Todo): string {
+    return \`[\${todo.done ? "x" : " "}] \${todo.id}  \${todo.title}\`;
+  }
+  bb.cli.register({
+    name: "${id}",
+    summary: "Manage the ${name} plugin's example todo list",
+    commands: [
+      { name: "list", summary: "List todos", usage: "bb ${id} list [--json]" },
+      {
+        name: "add",
+        summary: "Add a todo",
+        usage: "bb ${id} add <title> [--json]",
+      },
+      {
+        name: "done",
+        summary: "Mark a todo done",
+        usage: "bb ${id} done <todo-id> [--json]",
+      },
+      {
+        name: "undo",
+        summary: "Mark a todo not done",
+        usage: "bb ${id} undo <todo-id> [--json]",
+      },
+      {
+        name: "remove",
+        summary: "Remove a todo",
+        usage: "bb ${id} remove <todo-id> [--json]",
+      },
+    ],
+    async run(argv) {
+      const json = argv.includes("--json");
+      const [command, ...args] = argv.filter((arg) => arg !== "--json");
+      const reply = (value: unknown, text: string) => ({
+        exitCode: 0,
+        stdout: json ? JSON.stringify(value) : text,
+      });
+      const notFound = (missingId: string) => ({
+        exitCode: 1,
+        stderr: \`No todo with id \${missingId}. Run "bb ${id} list" to see ids.\`,
+      });
+      const todoId = args[0];
+      switch (command) {
+        case undefined:
+        case "help":
+        case "--help":
+          return { exitCode: 0, stdout: usage };
+        case "list": {
+          const todos = await listTodos();
+          return reply(
+            todos,
+            todos.length === 0 ? "No todos." : todos.map(formatTodo).join("\\n"),
+          );
+        }
+        case "add": {
+          const title = args.join(" ").trim();
+          if (title === "") break;
+          const todo = await addTodo(title);
+          return reply(todo, \`Added \${formatTodo(todo)}\`);
+        }
+        case "done":
+        case "undo": {
+          if (todoId === undefined || args.length !== 1) break;
+          const todo = await setTodoDone(todoId, command === "done");
+          if (todo === null) return notFound(todoId);
+          return reply(todo, formatTodo(todo));
+        }
+        case "remove": {
+          if (todoId === undefined || args.length !== 1) break;
+          if (!(await removeTodo(todoId))) return notFound(todoId);
+          return reply({ removed: true, id: todoId }, \`Removed \${todoId}\`);
+        }
+      }
+      return { exitCode: 1, stderr: usage };
+    },
   });
 
   // Cleanup on reload/disable/shutdown; hooks run LIFO. The sanctioned place
@@ -1166,62 +1326,194 @@ function appEntrySource(packageName: string): string {
 //
 // The components under components/ui/ are YOURS: vendored source (shadcn
 // model), edit freely. Add more from the BB registry with
-// \`npx shadcn add @bb/<name>\` (see components.json) — dialogs, dropdowns,
-// tables, the full shadcn set, version-matched to this BB install. Run
+// \`npx shadcn add @bb/<name>\` (see components.json) — dropdowns, tables,
+// the full shadcn set, version-matched to this BB install. Run
 // \`npm install\` once before \`bb plugin build\`.
-import { useState } from "react";
-import { definePluginApp, useBbContext, useRpc } from "@get-bb/plugin-sdk/app";
-import type { rpcContract } from "./server";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { definePluginApp, useRealtime, useRpc } from "@get-bb/plugin-sdk/app";
+import type { rpcContract, Todo } from "./server";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Icon } from "@/components/ui/icon";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-function HelloCard() {
-  const { projectId } = useBbContext();
+/** The todo list, kept current by the server's "todos-changed" signal. */
+function useTodos() {
   const rpc = useRpc<typeof rpcContract>();
-  const [greeting, setGreeting] = useState("Say hello");
-  // Tailwind classes compile against the host theme's live CSS variables —
-  // derive colors from the theme tokens, never hardcoded grays.
+  const [todos, setTodos] = useState<Todo[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const report = useCallback((cause: unknown) => {
+    setError(cause instanceof Error ? cause.message : String(cause));
+  }, []);
+  const refetch = useCallback(() => {
+    rpc.call("todos_list").then((result) => {
+      setTodos(result.todos);
+      setError(null);
+    }, report);
+  }, [rpc, report]);
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+  // server.ts publishes after every write — from this page, another window,
+  // or \`bb ${id} add\` run by an agent — so the list never goes stale.
+  useRealtime("todos-changed", refetch);
+  return { rpc, todos, error, report, refetch };
+}
+
+function TodoRow({
+  todo,
+  onToggle,
+  onRemove,
+}: {
+  todo: Todo;
+  onToggle: (done: boolean) => void;
+  onRemove: () => void;
+}) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>${packageName}</CardTitle>
-      </CardHeader>
-      <CardContent className="flex items-center gap-3 text-sm text-muted-foreground">
-        <span>
-          {projectId === null
-            ? "No project selected."
-            : \`Project: \${projectId}.\`}
-        </span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => {
-            void rpc.call("greeting").then((result) => {
-              setGreeting(\`\${result.greeting} (#\${result.loadCount})\`);
-            });
-          }}
-        >
-          {greeting}
-        </Button>
-      </CardContent>
-    </Card>
+    <li className="flex items-center gap-3 py-2.5 text-sm">
+      <Checkbox
+        checked={todo.done}
+        onCheckedChange={(checked) => onToggle(checked === true)}
+        aria-label={\`Mark "\${todo.title}" \${todo.done ? "not done" : "done"}\`}
+      />
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate",
+          todo.done && "text-muted-foreground line-through",
+        )}
+      >
+        {todo.title}
+      </span>
+      <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
+        {todo.id}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-7 text-muted-foreground hover:text-foreground"
+        aria-label={\`Remove "\${todo.title}"\`}
+        onClick={onRemove}
+      >
+        <Icon name="Trash2" className="size-4" />
+      </Button>
+    </li>
+  );
+}
+
+/** The dashed box BB's own list pages use for loading and empty states. */
+function EmptyState({ children }: { children: ReactNode }) {
+  return (
+    <div
+      role="status"
+      className="rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground"
+    >
+      {children}
+    </div>
+  );
+}
+
+// Tailwind classes compile against the host theme's live CSS variables —
+// derive colors from the theme tokens, never hardcoded grays. The frame
+// (scrolling page, centered column) matches BB's own nav-panel pages.
+function TodosPage() {
+  const { rpc, todos, error, report, refetch } = useTodos();
+  const [title, setTitle] = useState("");
+  const [pending, setPending] = useState(false);
+  const add = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const next = title.trim();
+    if (next === "" || pending) return;
+    setPending(true);
+    try {
+      await rpc.call("todos_add", { title: next });
+      setTitle("");
+      refetch();
+    } catch (cause) {
+      report(cause);
+    } finally {
+      setPending(false);
+    }
+  };
+  const doneCount = todos?.filter((todo) => todo.done).length ?? 0;
+  return (
+    <div className="h-full min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto box-border w-full max-w-3xl px-4 pb-4 pt-3 md:px-5 md:pt-4">
+        <p className="text-sm text-muted-foreground">
+          Agents keep this list with <code>bb ${id}</code>; the skill in{" "}
+          <code>skills/example-todos</code> tells them how.
+        </p>
+        <form onSubmit={add} className="mt-4 flex items-center gap-2">
+          <Input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="What needs doing?"
+            aria-label="New todo"
+          />
+          <Button type="submit" disabled={pending || title.trim() === ""}>
+            <Icon name="Plus" className="size-4" />
+            Add
+          </Button>
+        </form>
+        {error === null ? null : (
+          <p role="alert" className="mt-3 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+        <div className="mt-4">
+          {todos === null ? (
+            <EmptyState>Loading todos…</EmptyState>
+          ) : todos.length === 0 ? (
+            <EmptyState>
+              Nothing to do. Add one above, or run{" "}
+              <code>bb ${id} add "Ship it"</code>.
+            </EmptyState>
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card px-4">
+              {todos.map((todo) => (
+                <TodoRow
+                  key={todo.id}
+                  todo={todo}
+                  onToggle={(done) => {
+                    rpc
+                      .call("todos_set_done", { id: todo.id, done })
+                      .then(refetch, report);
+                  }}
+                  onRemove={() => {
+                    rpc
+                      .call("todos_remove", { id: todo.id })
+                      .then(refetch, report);
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+        {todos !== null && todos.length > 0 ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            {doneCount} of {todos.length} done
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
 // The default export must be definePluginApp(...); BB interprets it after
-// loading the bundle. Register general UI under app.slots and composer actions,
-// plus-menu rows, banners, or rich-text rules with app.composer.customize(...)
-// (see the bb guide's plugins chapter).
+// loading the bundle. navPanel adds a page to the left sidebar; register
+// other UI under app.slots and composer actions, plus-menu rows, banners, or
+// rich-text rules with app.composer.customize(...) (see the bb guide's
+// plugins chapter).
 export default definePluginApp((app) => {
-  app.slots.homepageSection({
-    id: "${id}-hello",
-    title: "${packageName}",
-    component: HelloCard,
+  app.slots.navPanel({
+    id: "example-todos",
+    title: "Example todos",
+    icon: "ListTodo",
+    // Routed at /plugins/${id}/example-todos; the component receives the
+    // remainder as \`subPath\` for deep links within the page.
+    path: "example-todos",
+    component: TodosPage,
   });
 });
 `;
@@ -1229,15 +1521,15 @@ export default definePluginApp((app) => {
 
 /**
  * Typecheck-only tsconfig: server.ts compiles against the BbPluginApi contract
- * (type-only, erased at load time); app.tsx is included when the plugin
- * declares a frontend entry. `@get-bb/plugin-sdk` and `@get-bb/plugin-sdk/app`
- * resolve through plain node resolution to the installed npm package (declared
- * as an exact devDependency pin), whose `bundled-types/*.d.ts` are the API
- * surface — no path mapping, so editors, `tsc`, and the build all agree with
- * what `npm install` put on disk. Tests reach the testing subpaths of the same
- * package.
+ * (type-only, erased at load time) and app.tsx plus the vendored components
+ * against the frontend contract. `@get-bb/plugin-sdk` and
+ * `@get-bb/plugin-sdk/app` resolve through plain node resolution to the
+ * installed npm package (declared as an exact devDependency pin), whose
+ * `bundled-types/*.d.ts` are the API surface — no path mapping for the SDK, so
+ * editors, `tsc`, and the build all agree with what `npm install` put on
+ * disk. Tests reach the testing subpaths of the same package.
  */
-function tsconfigSource(app: boolean): string {
+function tsconfigSource(): string {
   return `${JSON.stringify(
     {
       compilerOptions: {
@@ -1252,38 +1544,87 @@ function tsconfigSource(app: boolean): string {
         types: ["node"],
         // Vendored components import via "@/..." (shadcn convention);
         // esbuild reads this mapping too during `bb plugin build`.
-        ...(app ? { paths: { "@/*": ["./*"] } } : {}),
+        paths: { "@/*": ["./*"] },
         noEmit: true,
         skipLibCheck: false,
       },
-      include: app
-        ? ["server.ts", "app.tsx", "components", "lib", "hooks"]
-        : ["server.ts"],
+      include: ["server.ts", "app.tsx", "components", "lib", "hooks"],
     },
     null,
     2,
   )}\n`;
 }
 
-function skillSource(): string {
+/**
+ * The plugin's skill: auto-imported into agent threads from `skills/` (the
+ * manifest's default `bb.skills` root; the directory name is the skill name).
+ * BB also generates a `plugin-commands` skill that lists every registered
+ * `bb <id>` subcommand, so this one carries the procedure, not the syntax.
+ */
+function skillSource(packageName: string): string {
+  const id = derivePluginId(packageName);
+  const name = pluginNameOf(packageName);
   return `---
-name: example-skill
-description: Example skill scaffolded by \`bb plugin new\` — replace with a real capability description that tells agents when to use it.
+name: example-todos
+description: Read and update the ${name} plugin's example todo list with the \`bb ${id}\` CLI. Use when the user asks to add, complete, reopen, remove, or review todos, or when the steps of a task should be tracked as todos.
 ---
 
-<!-- Plugin skills/ directories auto-import in a later BB phase; until then
-     this file documents the expected layout. -->
+# Example todos
 
-# Example skill
+The ${name} plugin keeps one todo list. The Example todos page in the BB sidebar and
+the \`bb ${id}\` command read and write the same list, so a change from either
+side shows in the other at once.
 
-Describe when to use this skill and the steps to follow.
+## Commands
+
+| Command | Effect |
+| --- | --- |
+| \`bb ${id} list\` | Show every todo with its id. \`[x]\` marks a done todo. |
+| \`bb ${id} add <title>\` | Add a todo. Quote a title that has spaces. |
+| \`bb ${id} done <todo-id>\` | Mark a todo done. |
+| \`bb ${id} undo <todo-id>\` | Mark a todo not done. |
+| \`bb ${id} remove <todo-id>\` | Delete a todo. |
+
+Add \`--json\` to any command when the output drives code.
+
+## Procedure
+
+1. Run \`bb ${id} list\` before you change the list. Use the ids it prints;
+   never guess an id.
+2. Add todos one at a time with a short title that starts with a verb:
+   \`bb ${id} add "Write the release notes"\`.
+3. When you finish a todo, mark it done: \`bb ${id} done <todo-id>\`. Do not
+   remove a todo to mark it done.
+4. Remove a todo only when the user asks for it or when it duplicates
+   another todo.
+5. End with a short summary of what you added, completed, or removed.
+
+## Rules
+
+- Change the list only through \`bb ${id}\`. Do not edit bb.db or the plugin's
+  storage directly.
+- A non-zero exit with "No todo with id" means the id is stale: run
+  \`bb ${id} list\` again.
 `;
 }
 
-function readmeSource(packageName: string, app: boolean): string {
+function readmeSource(packageName: string): string {
   const id = derivePluginId(packageName);
-  const componentsSection = app
-    ? `
+  return `# ${packageName}
+
+A BB plugin that keeps a todo list. It shows every surface a plugin can own:
+
+- \`server.ts\` — the backend: a todo store in \`bb.storage.kv\`, RPC methods
+  for the page, a \`bb ${id}\` CLI command, a setting, and a realtime signal
+  that keeps every open page current.
+- \`app.tsx\` — the frontend: an **Example todos** page in the left sidebar
+  (\`app.slots.navPanel\`) built from the vendored components.
+- \`skills/example-todos/SKILL.md\` — a skill that tells agents how to keep the list
+  with \`bb ${id}\`. BB imports it into agent threads automatically.
+
+Try it: install the plugin, open **Example todos** in the sidebar, then run
+\`bb ${id} add "Ship it"\` in a terminal. The page updates at once.
+
 ## UI components
 
 \`components/ui/\` is vendored source you own (the shadcn model): edit the
@@ -1292,7 +1633,7 @@ component registry (the full shadcn set, version-matched to your BB install
 via the pinned ref in \`components.json\`):
 
 \`\`\`
-npx shadcn add @bb/dialog @bb/select
+npx shadcn add @bb/select @bb/table
 \`\`\`
 
 Run \`npm install\` once before \`bb plugin build\` — the vendored components'
@@ -1301,17 +1642,16 @@ radix portal primitives and \`sonner\` (\`import { toast } from "sonner"\`
 reaches BB's own toaster), are provided by the BB app at runtime and never
 bundled. Ship \`dist/\` (npm tarball or committed for git installs) so
 people installing your plugin never need npm.
-`
-    : "";
-  return `# ${packageName}
 
-A BB plugin.
-${componentsSection}
 ## Manifest
 
 \`package.json\` is the plugin manifest. Notable fields:
 
-- \`bb.server\` — backend entry (required); optional \`bb.app\` for a frontend.
+- \`bb.server\` — backend entry (required).
+- \`bb.app\` — frontend entry. Delete it, \`app.tsx\`, \`components/\`,
+  \`hooks/\`, and \`lib/\` for a headless plugin.
+- \`bb.skills\` — skill roots; omitted here, so BB reads \`skills/\`. Each
+  directory with a \`SKILL.md\` is one skill, named after the directory.
 - \`bb.name\` and \`bb.description\` — required human-facing identity.
 - \`bb.branding\` — required; declare \`icon\` as a BB icon name or a
   plugin-relative compact SVG, or declare \`logo.light\` (with optional
@@ -1329,8 +1669,8 @@ ${componentsSection}
   \`@get-bb/plugin-sdk\` at runtime — never bundle them).
 
 Run \`bb plugin build\` before publishing git/npm installs. It writes
-\`dist/server.js\` + \`server.meta.json\` (and, with \`bb.app\`, \`app.js\` /
-\`app.css\` / \`app.meta.json\`). Each \`*.meta.json\` stamps SDK major/version,
+\`dist/server.js\` + \`server.meta.json\` and \`app.js\` / \`app.css\` /
+\`app.meta.json\`. Each \`*.meta.json\` stamps SDK major/version,
 \`artifactFormatVersion\`, \`pluginId\`, \`pluginVersion\`, and
 \`builtWith\` so managed installs can verify the artifacts.
 
@@ -1350,11 +1690,14 @@ After editing sources, reload:
 bb plugin reload ${id}
 \`\`\`
 
+Or let \`bb plugin dev\` rebuild and reload on every save.
+
 ## Configure
 
 \`\`\`
 bb plugin config ${id}
-bb plugin config ${id} set greeting hi
+bb plugin config ${id} set showDone false
+bb plugin reload ${id}
 \`\`\`
 
 ## Types & API reference
@@ -1394,7 +1737,7 @@ repo and read the source: <https://github.com/get-bb/bb>.
  * The generated server.ts loads cleanly against the live plugin API.
  */
 export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
-  const { targetDir, packageName, bbVersion, app = false } = args;
+  const { targetDir, packageName, bbVersion } = args;
   try {
     await mkdir(targetDir, { recursive: false });
   } catch (error) {
@@ -1416,10 +1759,10 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         },
         bb: {
           name: pluginNameOf(packageName),
-          description: "A BB plugin.",
-          branding: { icon: "Zap" },
+          description: "A BB plugin with an example todo list.",
+          branding: { icon: "ListTodo" },
           server: "./server.ts",
-          ...(app ? { app: "./app.tsx" } : {}),
+          app: "./app.tsx",
         },
         // A package belongs here when generated source imports it AND the
         // build neither externalizes nor shims it — those imports are inlined
@@ -1432,7 +1775,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         // - starter deps: the vendored components' real runtime deps, bundled
         //   into dist/app.js (consumers get the prebuilt dist/ and need none).
         dependencies: {
-          ...(app ? PLUGIN_STARTER_DEPENDENCIES : {}),
+          ...PLUGIN_STARTER_DEPENDENCIES,
           zod: "^4.3.6",
         },
         // Typecheck-only. @get-bb/plugin-sdk carries the BbPluginApi/SDK
@@ -1442,23 +1785,20 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         // declarations must describe the bb actually loading the plugin, and
         // `bb plugin types` keeps it matched to the bb you run. The rest supply
         // the real npm types those declarations reference (hono/better-sqlite3
-        // and the root contract's React types) for packages generated source
-        // does not import: BB provides them at runtime and the bundle never
-        // inlines them. An author who imports one directly must promote it
-        // above.
+        // and React) for packages generated source does not import: BB
+        // provides them at runtime and the bundle never inlines them. An
+        // author who imports one directly must promote it above.
         devDependencies: {
           "@get-bb/plugin-sdk": PLUGIN_SDK_VERSION,
           "@types/better-sqlite3": "^7.6.12",
           "@types/node": "^22.0.0",
-          // The root SDK declaration also exposes frontend contract types, so
-          // React's declarations are required for headless plugin typechecks.
           "@types/react": "^19.0.0",
-          ...(app ? { "@types/react-dom": "^19.0.0" } : {}),
+          "@types/react-dom": "^19.0.0",
           "better-sqlite3": "^12.0.0",
           hono: "^4.11.9",
           typescript: "^5.7.0",
           // Runtime-shimmed by BB (never bundled) — types only.
-          ...(app ? PLUGIN_STARTER_TYPE_DEPENDENCIES : {}),
+          ...PLUGIN_STARTER_TYPE_DEPENDENCIES,
         },
       },
       null,
@@ -1466,29 +1806,28 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
     ) + "\n",
   );
   await writeFile(join(targetDir, "server.ts"), serverEntrySource(packageName));
-  await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource(app));
+  await writeFile(join(targetDir, "app.tsx"), appEntrySource(packageName));
+  await writeFile(join(targetDir, "tsconfig.json"), tsconfigSource());
   // No `types/` here: the declarations arrive with `npm install` from the
   // exact-pinned @get-bb/plugin-sdk devDependency above. Plugins scaffolded
   // before that switch still vendor `types/`, and syncPluginTypes keeps
   // refreshing those — see resolvePluginSdkLayout.
-  if (app) {
-    await writeFile(join(targetDir, "app.tsx"), appEntrySource(packageName));
-    // Vendored starter components (shadcn model — the author owns and edits
-    // them) + components.json so `npx shadcn add @bb/<name>` pulls more from
-    // the BB registry at the version tag matching this install.
-    for (const file of PLUGIN_STARTER_FILES) {
-      const filePath = join(targetDir, file.target);
-      await mkdir(dirname(filePath), { recursive: true });
-      await writeFile(filePath, file.content);
-    }
-    await writeFile(
-      join(targetDir, "components.json"),
-      componentsJsonSource(bbVersion),
-    );
+  //
+  // Vendored starter components (shadcn model — the author owns and edits
+  // them) + components.json so `npx shadcn add @bb/<name>` pulls more from
+  // the BB registry at the version tag matching this install.
+  for (const file of PLUGIN_STARTER_FILES) {
+    const filePath = join(targetDir, file.target);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, file.content);
   }
-  const skillDir = join(targetDir, "skills", "example-skill");
+  await writeFile(
+    join(targetDir, "components.json"),
+    componentsJsonSource(bbVersion),
+  );
+  const skillDir = join(targetDir, "skills", "example-todos");
   await mkdir(skillDir, { recursive: true });
-  await writeFile(join(skillDir, "SKILL.md"), skillSource());
+  await writeFile(join(skillDir, "SKILL.md"), skillSource(packageName));
   await writeFile(join(targetDir, ".gitignore"), "dist/\nnode_modules/\n");
-  await writeFile(join(targetDir, "README.md"), readmeSource(packageName, app));
+  await writeFile(join(targetDir, "README.md"), readmeSource(packageName));
 }

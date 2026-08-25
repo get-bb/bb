@@ -293,7 +293,7 @@
       ],
       "outputs": ["src/generated/templates.generated.ts"]
     },
-    // The `bb plugin new --app` starter files from the (committed) component
+    // The `bb plugin new` starter files from the (committed) component
     // registry.
     "@bb/templates#generate:plugin-scaffold": {
       "dependsOn": [],

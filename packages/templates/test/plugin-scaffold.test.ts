@@ -27,11 +27,11 @@ describe("scaffoldPlugin SDK dependency", () => {
     await rm(workDir, { recursive: true, force: true });
   });
 
-  it("pins @get-bb/plugin-sdk exactly and vendors no declarations (headless)", async () => {
-    const targetDir = join(workDir, "bb-plugin-headless");
+  it("pins @get-bb/plugin-sdk exactly and vendors no declarations", async () => {
+    const targetDir = join(workDir, "bb-plugin-todo");
     await scaffoldPlugin({
       targetDir,
-      packageName: "bb-plugin-headless",
+      packageName: "bb-plugin-todo",
       bbVersion: "0.9.0",
     });
 
@@ -40,11 +40,17 @@ describe("scaffoldPlugin SDK dependency", () => {
     const tsconfig = JSON.parse(
       await readFile(join(targetDir, "tsconfig.json"), "utf8"),
     );
-    // No path map at all for a headless plugin: `@get-bb/plugin-sdk` must
-    // resolve through node_modules, the way an editor and `tsc` both do.
-    expect(tsconfig.compilerOptions.paths).toBeUndefined();
+    // Only the shadcn alias: `@get-bb/plugin-sdk` must resolve through
+    // node_modules, the way an editor and `tsc` both do.
+    expect(tsconfig.compilerOptions.paths).toEqual({ "@/*": ["./*"] });
     expect(tsconfig.compilerOptions.skipLibCheck).toBe(false);
-    expect(tsconfig.include).toEqual(["server.ts"]);
+    expect(tsconfig.include).toEqual([
+      "server.ts",
+      "app.tsx",
+      "components",
+      "lib",
+      "hooks",
+    ]);
 
     const pkg = JSON.parse(
       await readFile(join(targetDir, "package.json"), "utf8"),
@@ -59,10 +65,10 @@ describe("scaffoldPlugin SDK dependency", () => {
       bbPluginSdk: `>=${PLUGIN_SDK_VERSION}`,
     });
     expect(pkg.bb).toMatchObject({
-      name: "Headless",
-      description: "A BB plugin.",
-      branding: { icon: "Zap" },
+      name: "Todo",
+      branding: { icon: "ListTodo" },
       server: "./server.ts",
+      app: "./app.tsx",
     });
     expect(pkg.devDependencies["@types/react"]).toBeDefined();
     // server.ts imports zod and the build inlines it, so an install that omits
@@ -80,25 +86,6 @@ describe("scaffoldPlugin SDK dependency", () => {
     );
     expect(readme).not.toContain("rewrite types/");
     expect(readme).toContain("https://github.com/get-bb/bb");
-  });
-
-  it("keeps only the shadcn alias in paths for --app plugins", async () => {
-    const targetDir = join(workDir, "bb-plugin-ui");
-    await scaffoldPlugin({
-      targetDir,
-      packageName: "bb-plugin-ui",
-      bbVersion: "0.9.0",
-      app: true,
-    });
-
-    await expect(access(join(targetDir, "types"))).rejects.toThrow();
-
-    const tsconfig = JSON.parse(
-      await readFile(join(targetDir, "tsconfig.json"), "utf8"),
-    );
-    expect(tsconfig.compilerOptions.paths).toEqual({ "@/*": ["./*"] });
-    expect(tsconfig.include).toContain("app.tsx");
-    expect(tsconfig.include).not.toContain("types");
 
     const components = JSON.parse(
       await readFile(join(targetDir, "components.json"), "utf8"),
@@ -106,6 +93,10 @@ describe("scaffoldPlugin SDK dependency", () => {
     expect(components.registries["@bb"]).toBe(
       "https://raw.githubusercontent.com/get-bb/bb/desktop-v0.9.0/packages/plugin-registry/r/{name}.json",
     );
+    // The todo page's Checkbox rides on a bundled radix package: it must be a
+    // real dependency, not a shimmed type-only one.
+    expect(pkg.dependencies["@radix-ui/react-checkbox"]).toBeDefined();
+    await access(join(targetDir, "components", "ui", "checkbox.tsx"));
   });
 
   it("uses the canonical id in a scoped package scaffold", async () => {
@@ -126,9 +117,21 @@ describe("scaffoldPlugin SDK dependency", () => {
     expect(readme).toContain("bb plugin reload scoped");
     expect(readme).toContain("bb plugin config scoped");
 
+    // The CLI command, the page copy, and the skill all name the canonical
+    // id, never the scoped package name.
     const server = await readFile(join(targetDir, "server.ts"), "utf8");
     expect(server).toContain("bb plugin config scoped");
     expect(server).not.toContain("bb plugin config @acme/");
+    expect(server).toContain('name: "scoped"');
+    expect(server).toContain("bb scoped list");
+    const app = await readFile(join(targetDir, "app.tsx"), "utf8");
+    expect(app).toContain("bb scoped add");
+    const skill = await readFile(
+      join(targetDir, "skills", "example-todos", "SKILL.md"),
+      "utf8",
+    );
+    expect(skill).toContain("bb scoped list");
+    expect(skill).not.toContain("@acme/");
   });
 });
 

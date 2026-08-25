@@ -888,9 +888,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
   - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
-  - `bb plugin new <name> [--app]` — scaffold a plugin and install its npm
-    dependencies (`--app` adds a frontend entry plus a typecheck-only
-    `tsconfig.json`; scaffold sets `engines.bbPluginSdk` to `>=0.4.3`). The
+  - `bb plugin new <name>` — scaffold a todo-list plugin (`server.ts`,
+    `app.tsx` with a sidebar page, a `bb <name>` CLI command, a skill, and
+    vendored UI components) and install its npm dependencies (scaffold sets
+    `engines.bbPluginSdk` to `>=0.4.3`). The
     scaffold depends on `@get-bb/plugin-sdk`, pinned to this bb's exact SDK
     version in `devDependencies`, so the API declarations arrive with
     `npm install` at `node_modules/@get-bb/plugin-sdk/bundled-types/*.d.ts`
