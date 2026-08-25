@@ -273,6 +273,17 @@ function createInstalledBinInvocation(binDir, bin, args) {
   };
 }
 
+async function smokeNpxEntrypoint(tarballPath) {
+  // Keep one real invocation through the package's advertised npx path. Once
+  // npx dispatches the bin, the installed-package smokes below cover the same
+  // launcher without repeatedly charging npm startup to readiness budgets.
+  await runCommand({
+    args: ["--yes", "--package", tarballPath, "--", "bb-app", "--help"],
+    command: "npx",
+    label: "bb-app npx help",
+  });
+}
+
 async function packTarball() {
   const stdout = await runCommand({
     args: ["pack", packageRoot, "--pack-destination", tempRoot, "--json"],
@@ -1057,6 +1068,7 @@ async function smokeDaemonJoin(binDir) {
 
 try {
   const tarballPath = await packTarball();
+  await smokeNpxEntrypoint(tarballPath);
   const sdkDir = await smokeSdkPackage(tarballPath);
   const installedBinDir = join(sdkDir, "node_modules", ".bin");
   const installedPackageDir = join(sdkDir, "node_modules", "bb-app");
