@@ -188,6 +188,7 @@ afterAll(async () => {
 
 describe("revalidated shell cache", () => {
   it("serves repeats from caches.default with only a 304 on the tunnel, and ships a new build on the next navigation", async () => {
+    currentBuild = BUILD_A;
     // Cold: full document through the tunnel, stored at the edge. The
     // visitor gets the origin's own `no-cache`, so its browser revalidates
     // on the next navigation exactly like a direct client would.
@@ -240,6 +241,8 @@ describe("revalidated shell cache", () => {
   }, 30_000);
 
   it("relays the origin's 304 when the visitor presents a current validator", async () => {
+    // Own path, stored first: the relay only consults the visitor's validator
+    // once an edge copy exists, so this must not lean on the previous test.
     currentBuild = BUILD_B;
     // Cold path: nothing stored yet, the visitor's own validator rides the
     // proxied request and the origin's 304 comes straight back.
