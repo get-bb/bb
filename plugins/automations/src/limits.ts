@@ -1,15 +1,15 @@
 /**
- * Size and count limits shared by the RPC schemas and the plugin frontend.
+ * Size and count limits used by the RPC schemas.
  *
- * Kept free of imports on purpose: the frontend only needs these numbers,
- * and importing them from `rpc-types.ts` would drag zod and every schema
+ * Kept free of imports on purpose: when the frontend needs one of these
+ * numbers it must import it from here, because importing it from
+ * `rpc-types.ts` would drag zod and every schema
  * into `dist/app.js`, which the app dynamic-imports and evaluates on every
  * boot (the bundle URL is content-hashed and served immutable, so the
  * recurring cost is parse/evaluate, not download). `frontend-imports.test.ts`
  * guards the split.
  */
 export const AUTOMATION_NAME_MAX_LENGTH = 200;
-export const AUTOMATION_PROMPT_MAX_LENGTH = 8_000;
 export const AUTOMATION_SCRIPT_MAX_LENGTH = 262_144;
 export const AUTOMATION_SCRIPT_FILE_MAX_LENGTH = 200;
 export const SCHEDULE_CRON_MAX_LENGTH = 100;

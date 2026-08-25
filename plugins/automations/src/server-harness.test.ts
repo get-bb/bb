@@ -592,6 +592,59 @@ describe("automations server plugin harness", () => {
     await harness.dispose();
   });
 
+  it("accepts a long prompt and keeps the automation readable afterwards", async () => {
+    // Regression for #2166: an 8,000-character cap once rejected the update
+    // after the row was written, and the same cap on the response schema
+    // then failed every list/get/update of that project.
+    const { harness } = await bootAutomationsPlugin();
+    const created = await createAgentAutomation(harness);
+    const longPrompt = "review every open pull request carefully. ".repeat(250);
+    expect(longPrompt.length).toBeGreaterThan(8_000);
+
+    const update = await harness.runCli([
+      "update",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--prompt",
+      longPrompt,
+      "--json",
+    ]);
+    expect(update.exitCode).toBe(0);
+    expect(
+      automationResponseSchema.parse(JSON.parse(update.stdout ?? "")).execution,
+    ).toMatchObject({ mode: "agent", prompt: longPrompt });
+
+    const listed = automationListResponseSchema.parse(
+      await harness.callRpc("automations_list", { projectId: PROJECT_ID }),
+    );
+    expect(listed).toHaveLength(1);
+    expect(listed[0]?.execution).toMatchObject({ prompt: longPrompt });
+
+    const shown = await harness.runCli([
+      "show",
+      created.id,
+      "--project",
+      PROJECT_ID,
+      "--json",
+    ]);
+    expect(shown.exitCode).toBe(0);
+    expect(
+      automationResponseSchema.parse(JSON.parse(shown.stdout ?? "")).execution,
+    ).toMatchObject({ prompt: longPrompt });
+
+    const repaired = automationResponseSchema.parse(
+      await harness.callRpc("automations_update", {
+        projectId: PROJECT_ID,
+        automationId: created.id,
+        agent: { prompt: "short again" },
+      }),
+    );
+    expect(repaired.execution).toMatchObject({ prompt: "short again" });
+
+    await harness.dispose();
+  });
+
   it("rejects conflicting targets and invalid permission modes before updating", async () => {
     const { harness } = await bootAutomationsPlugin();
     const created = await createAgentAutomation(harness);

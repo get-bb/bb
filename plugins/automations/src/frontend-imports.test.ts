@@ -212,7 +212,6 @@ describe("automations frontend bundle", () => {
         "detail-view.tsx",
         "overview-view.tsx",
         "lib/format-schedule.ts",
-        "src/limits.ts",
         "../../packages/domain/src/update-state.ts",
         "../../packages/shared-ui/src/components/ui/button.tsx",
       ]),
