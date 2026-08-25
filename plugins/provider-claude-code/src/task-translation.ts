@@ -77,6 +77,15 @@ interface TranslateClaudeTaskMessageArgs {
    * translate — they ride the thread-attached item, not a turn.
    */
   turnStartSuppressed: boolean;
+  /**
+   * Whether the bridge saw the `tool_use` block with this id open in the
+   * forwarded stream. The CLI emits `task_started` for every task in the
+   * session, including tasks a workflow agent started, but it forwards
+   * `tool_use` blocks only from the main loop and from `Agent` sub-agents
+   * (under `parent_tool_use_id`). A task whose spawning call never streamed
+   * belongs to an unforwarded child, and bb does not materialize it.
+   */
+  hasForwardedToolUse: (toolUseId: string) => boolean;
 }
 
 /**
@@ -323,8 +332,8 @@ function isMaterializedTaskType(taskType: string): boolean {
  * Translates the SDK task event family (task_started / task_progress /
  * task_updated / task_notification) into deltas. Returns null when the
  * message is not a task message; returns [] for task messages that are
- * intentionally not materialized (monitor/unknown task types and events for
- * unknown/settled tasks).
+ * intentionally not materialized (monitor/unknown task types, tasks an
+ * unforwarded child spawned, and events for unknown/settled tasks).
  *
  * A `task_started` for a materialized type opens the item in the spawning
  * turn: the returned deltas begin with `turn.open` exactly where the old
@@ -343,6 +352,20 @@ export function translateClaudeTaskMessage(
     const existing = args.tasks.get(message.task_id);
     if (existing && !existing.terminal) {
       // Duplicate started for an open task — nothing new to materialize.
+      return [];
+    }
+    if (
+      existing === undefined &&
+      message.tool_use_id !== undefined &&
+      !args.hasForwardedToolUse(message.tool_use_id)
+    ) {
+      // A workflow agent's backgrounded command or sub-agent. Its spawning
+      // call never streamed, so no row in this thread can own the task. If
+      // it materialized, the prompt-box card would list it as the parent's
+      // own command and the `turn.open` would open a provider-only turn that
+      // stays open until the CLI's next result. The workflow card already
+      // shows the agent's last tool. Later progress/notification events for
+      // the untracked task id fall through to the unknown-task branches.
       return [];
     }
     const generation = existing ? existing.generation + 1 : 1;

@@ -26,6 +26,8 @@ import {
   createClaudeDeltaHarness,
   loadFixture,
   loadSessionFixture,
+  spawningToolUseFor,
+  spawningToolUseMessage,
 } from "./delta-test-harness.js";
 
 /** The assembler's central progress-throttle default. */
@@ -158,6 +160,10 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
 
     advanceClock(PROGRESS_THROTTLE_MS + 1);
@@ -198,6 +204,10 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
 
     // Within the throttle window: folded but not emitted.
@@ -242,6 +252,10 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
     const killed = harness.translate(
       {
@@ -374,6 +388,10 @@ describe("claude-code background task translation", () => {
 
   it("preserves skip_transcript on the item", () => {
     const harness = createClaudeDeltaHarness();
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      { threadId: "bb-thread-1" },
+    );
     const started = harness.translate(
       {
         ...loadFixture("task-started-workflow.json"),
@@ -389,7 +407,31 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
+    // The Workflow call returns as soon as the task is registered; only the
+    // task itself stays open.
+    harness.translate(
+      {
+        type: "user",
+        message: {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: "toolu_012BkJCmbBgNqL6SXPKNfPvE",
+              content: "Workflow started in the background",
+              is_error: false,
+            },
+          ],
+        },
+        session_id: "sess-1",
+      },
+      context,
+    );
 
     const events = harness.settleSession("bb-thread-1");
 
@@ -421,6 +463,10 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
     // task_updated may report "completed" minutes before task_notification
     // arrives; a settle inside that window must not flip the workflow to
@@ -454,6 +500,10 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
 
     const events = harness.settleSession("bb-thread-1");
@@ -471,6 +521,10 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
     harness.translate(loadFixture("task-notification-workflow.json"), context);
 
@@ -519,6 +573,17 @@ describe("claude-code background task translation", () => {
     const harness = createClaudeDeltaHarness();
     const context = { threadId: "bb-thread-1" };
 
+    harness.translate(
+      spawningToolUseMessage({
+        toolUseId: "toolu_bash_1",
+        toolName: "Bash",
+        input: {
+          command: "for i in 1 2 3 4 5 6; do echo $i; sleep 1; done",
+          run_in_background: true,
+        },
+      }),
+      context,
+    );
     const started = harness.translate(
       {
         type: "system",
@@ -581,8 +646,127 @@ describe("claude-code background task translation", () => {
     });
   });
 
+  it("ignores tasks spawned by an unforwarded child (workflow agent)", () => {
+    const harness = createClaudeDeltaHarness();
+    const context = { threadId: "bb-thread-1" };
+
+    // The parent starts a workflow and its turn completes; the workflow keeps
+    // running without holding the turn open.
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
+    harness.translate(loadFixture("task-started-workflow.json"), context);
+    const settled = harness.translate(
+      { type: "result", subtype: "end_turn", session_id: "sess-1" },
+      context,
+    );
+    expect(settled).toContainEqual(
+      expect.objectContaining({ type: "turn/completed" }),
+    );
+
+    // A workflow agent backgrounds a shell command. The CLI reports the task
+    // on the parent session, but the agent's own tool_use never streamed.
+    const childCommand = harness.translate(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "b0blaygur",
+        tool_use_id: "toolu_workflow_child_bash",
+        description: "Gate runner progress",
+        task_type: "local_bash",
+        is_backgrounded: true,
+        uuid: "u-child-1",
+        session_id: "s-1",
+      },
+      context,
+    );
+    // Nothing materializes: no background-command row the parent would show
+    // as its own, and no provider-only turn opens.
+    expect(childCommand).toEqual([]);
+    expect(harness.itemId("toolu_workflow_child_bash", "bb-thread-1")).toBe("");
+
+    // A sub-agent the workflow agent spawned must not hold a turn open either.
+    const childAgent = harness.translate(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "a-child-agent",
+        tool_use_id: "toolu_workflow_child_agent",
+        description: "Review one file",
+        task_type: "local_agent",
+        subagent_type: "general-purpose",
+        uuid: "u-child-2",
+        session_id: "s-1",
+      },
+      context,
+    );
+    expect(childAgent).toEqual([]);
+
+    // Later lifecycle events for the untracked task fall through.
+    const notified = harness.translate(
+      {
+        type: "system",
+        subtype: "task_notification",
+        task_id: "b0blaygur",
+        tool_use_id: "toolu_workflow_child_bash",
+        status: "completed",
+        output_file: "/tmp/tasks/b0blaygur.output",
+        summary:
+          'Background command "Gate runner progress" completed (exit code 0)',
+        uuid: "u-child-3",
+        session_id: "s-1",
+      },
+      context,
+    );
+    expect(notified).toEqual([]);
+
+    // The parent's own next backgrounded command still materializes.
+    harness.translate(
+      spawningToolUseMessage({
+        toolUseId: "toolu_parent_bash",
+        toolName: "Bash",
+        input: { command: "sleep 30", run_in_background: true },
+      }),
+      context,
+    );
+    const parentCommand = harness.translate(
+      {
+        type: "system",
+        subtype: "task_started",
+        task_id: "parent-bash",
+        tool_use_id: "toolu_parent_bash",
+        description: "Sleep",
+        task_type: "local_bash",
+        uuid: "u-parent-1",
+        session_id: "s-1",
+      },
+      context,
+    );
+    expect(collectTaskEvents(parentCommand)).toHaveLength(1);
+    expect(
+      backgroundTaskItem(collectTaskEvents(parentCommand)[0]!),
+    ).toMatchObject({
+      taskType: "local_bash",
+      parentToolCallId: harness.itemId("toolu_parent_bash", "bb-thread-1"),
+    });
+  });
+
   it("materializes background subagents with legacy task_type local_subagent", () => {
     const harness = createClaudeDeltaHarness();
+    harness.translate(
+      spawningToolUseMessage({
+        toolUseId: "toolu_sub_1",
+        toolName: "Agent",
+        input: {
+          description: "background subagent",
+          prompt: "background subagent",
+          subagent_type: "Explore",
+          run_in_background: true,
+        },
+      }),
+      { threadId: "bb-thread-1" },
+    );
     const events = harness.translate(
       {
         type: "system",
@@ -625,6 +809,10 @@ describe("claude-code background task translation", () => {
         },
         session_id: "sess-1",
       },
+      context,
+    );
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-subagent.json")),
       context,
     );
     harness.translate(loadFixture("task-started-subagent.json"), context);
@@ -713,6 +901,7 @@ describe("claude-code background task translation", () => {
         },
         context,
       );
+      harness.translate(spawningToolUseFor(task), context);
       harness.translate(task, context);
 
       const events = harness.translate(
@@ -757,6 +946,10 @@ describe("claude-code background task translation", () => {
         context,
       );
       harness.translate(
+        spawningToolUseFor({ tool_use_id: `tool-${task.task_id}`, ...task }),
+        context,
+      );
+      harness.translate(
         {
           type: "system",
           subtype: "task_started",
@@ -798,6 +991,10 @@ describe("claude-code background task translation", () => {
         },
         session_id: "sess-1",
       },
+      context,
+    );
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
       context,
     );
     const started = harness.translate(
@@ -850,6 +1047,10 @@ describe("claude-code background task translation", () => {
       },
       context,
     );
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-workflow.json")),
+      context,
+    );
     harness.translate(loadFixture("task-started-workflow.json"), context);
     harness.translate(
       { type: "result", subtype: "end_turn", session_id: "sess-1" },
@@ -900,6 +1101,10 @@ describe("claude-code background task translation", () => {
         message: { role: "assistant", content: [{ type: "text", text: "x" }] },
         session_id: "sess-1",
       },
+      context,
+    );
+    harness.translate(
+      spawningToolUseFor(loadFixture("task-started-subagent.json")),
       context,
     );
     harness.translate(loadFixture("task-started-subagent.json"), context);

@@ -875,6 +875,7 @@ export function createClaudeDeltaTranslator(
       event,
       tasks: state.tasksById,
       turnStartSuppressed: isTurnStartSuppressed(state),
+      hasForwardedToolUse: (toolUseId) => state.startedTools.has(toolUseId),
     });
     if (taskDeltas !== null) {
       return withMirror(state, taskDeltas);
