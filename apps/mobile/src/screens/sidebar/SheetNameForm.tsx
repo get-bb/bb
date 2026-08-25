@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { View, type TextInputProps } from "react-native";
-import { resolveFont } from "@/theme/fonts";
-import { useTheme } from "@/theme";
-import { Button, SheetTextInput, Text } from "@/ui";
+import { Button, Text } from "@/ui";
+import { SheetInput } from "../pickers/SheetInput";
 
 interface SheetNameFormProps {
   title: string;
@@ -23,8 +22,10 @@ interface SheetNameFormProps {
 
 /**
  * Single-field name form for bottom sheets (rename thread/project/section,
- * new section). Uses the bottom-sheet text input so the sheet rides above
- * the keyboard; trims and rejects empty names like the web RenameDialog.
+ * new section). Uses the sheet text field (`SheetInput`, the `Input` look
+ * on `BottomSheetTextInput`) so the sheet rides above the keyboard; trims
+ * and rejects empty names like the web RenameDialog. iOS offers the system
+ * prompt (`promptName`) first; this is the fallback form.
  */
 export function SheetNameForm({
   title,
@@ -39,13 +40,11 @@ export function SheetNameForm({
   onCancel,
   testID,
 }: SheetNameFormProps) {
-  const { tokens, radii } = useTheme();
   const [value, setValue] = useState(initialValue);
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null,
   );
   const shownError = validationMessage ?? errorMessage ?? null;
-  const font = resolveFont({});
 
   const submit = () => {
     const trimmed = value.trim();
@@ -62,40 +61,29 @@ export function SheetNameForm({
         <Text variant="heading">{title}</Text>
         {message ? <Text variant="caption">{message}</Text> : null}
       </View>
-      <SheetTextInput
+      <SheetInput
         value={value}
         onChangeText={(next) => {
           setValue(next);
           if (validationMessage) setValidationMessage(null);
         }}
         placeholder={placeholder}
-        placeholderTextColor={tokens.mutedForeground}
-        selectionColor={tokens.primary}
-        cursorColor={tokens.primary}
         autoFocus
         autoCapitalize={autoCapitalize}
-        autoCorrect={false}
         editable={!pending}
+        invalid={shownError !== null}
         returnKeyType="done"
         onSubmitEditing={submit}
         selectTextOnFocus
-        style={[
-          font,
-          {
-            height: 40,
-            borderWidth: 1,
-            borderColor: shownError ? tokens.destructive : tokens.input,
-            borderRadius: radii.md,
-            paddingHorizontal: 12,
-            fontSize: 16,
-            color: tokens.foreground,
-            opacity: pending ? 0.5 : 1,
-          },
-        ]}
         testID={`${testID}-input`}
       />
       {shownError ? (
-        <Text variant="caption" tone="destructive" testID={`${testID}-error`}>
+        <Text
+          variant="caption"
+          tone="destructive"
+          selectable
+          testID={`${testID}-error`}
+        >
           {shownError}
         </Text>
       ) : null}

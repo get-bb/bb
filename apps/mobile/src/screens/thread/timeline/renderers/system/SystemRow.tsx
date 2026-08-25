@@ -28,12 +28,12 @@ function SystemDetailBlock({
   return (
     <View
       className="mb-2 overflow-hidden rounded-lg border border-border bg-card"
+      style={{ borderRadius: 10, borderCurve: "continuous" }}
       testID="timeline-system-detail"
     >
       <Text
         variant="mono"
         className="px-4 py-3 text-xs text-subtle-foreground"
-        style={{ opacity: 0.7 }}
         selectable
       >
         {body.text}
@@ -74,6 +74,7 @@ export function SystemRow({
   return (
     <TimelineRowShell depth={item.depth} kind="system">
       <ExpandableRowHeader
+        rowKey={item.key}
         title={item.title}
         leadingIcon={leadingIconForSystemRow(row)}
         expandable={expandable}

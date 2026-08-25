@@ -65,7 +65,11 @@ function LiveDuration({ startedAt }: { startedAt: number }) {
   }, []);
   const elapsed = now - startedAt;
   if (elapsed <= 1_000) return null;
-  return <Text variant="caption">{durationToCompactString(elapsed)}</Text>;
+  return (
+    <Text variant="caption" numeric>
+      {durationToCompactString(elapsed)}
+    </Text>
+  );
 }
 
 function workflowAgentProgressLabel(
@@ -101,7 +105,11 @@ function WorkflowSheetSection({
         <Text variant="label" numberOfLines={1} className="min-w-0 flex-1">
           {name}
         </Text>
-        {progress ? <Text variant="caption">{progress}</Text> : null}
+        {progress ? (
+          <Text variant="caption" numeric>
+            {progress}
+          </Text>
+        ) : null}
         <LiveDuration startedAt={workflow.startedAt} />
       </View>
       {workflow.workflowName ? (
@@ -265,6 +273,7 @@ export function ThreadPromptModeChip({
               label: "Exit plan mode",
               onPress: onExitPlanMode,
               pending: isExitPending,
+              destructive: true,
               testID: "thread-chip-plan-exit",
             }
           : null
@@ -302,6 +311,7 @@ export function ThreadGoalChip({
               label: "Clear goal",
               onPress: onClearGoal,
               pending: isClearPending,
+              destructive: true,
               testID: "thread-chip-goal-clear",
             }
           : null
@@ -315,11 +325,13 @@ export function ThreadGoalChip({
       <View className="flex-row flex-wrap items-center gap-x-4 gap-y-1 pt-3">
         <View className="flex-row items-center gap-1.5">
           <Icon name="Zap" size={14} color={tokens.mutedForeground} />
-          <Text variant="caption">{formatGoalTokenUsage(goal)}</Text>
+          <Text variant="caption" numeric>
+            {formatGoalTokenUsage(goal)}
+          </Text>
         </View>
         <View className="flex-row items-center gap-1.5">
           <Icon name="Clock" size={14} color={tokens.mutedForeground} />
-          <Text variant="caption">
+          <Text variant="caption" numeric>
             {formatGoalDuration(goal.timeUsedSeconds)}
           </Text>
         </View>
@@ -534,7 +546,7 @@ export function ThreadModelFallbackChip({
       iconColor={tokens.warningText}
       label="Fallback"
       action={{
-        label: "Dismiss model fallback",
+        label: "Dismiss",
         onPress: () => setDismissedSourceSeq(fallback.sourceSeq),
         pending: false,
         testID: "thread-chip-model-fallback-dismiss",

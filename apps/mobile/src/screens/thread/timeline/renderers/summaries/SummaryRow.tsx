@@ -20,6 +20,7 @@ export function SummaryRow({
   return (
     <TimelineRowShell depth={item.depth} kind={item.kind}>
       <ExpandableRowHeader
+        rowKey={item.key}
         title={item.title}
         expandable={item.expandable}
         expanded={item.expandable && expanded}

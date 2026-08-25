@@ -1,16 +1,12 @@
-import type { ThreadListEntry } from "@bb/domain";
 import { FlashList, type ListRenderItemInfo } from "@shopify/flash-list";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfiles } from "@/app-shell";
 import { useSidebarBootstrap } from "@/data/sidebar";
-import {
-  getThreadDisplayTitle,
-  useArchivedThreads,
-  useUnarchiveThread,
-} from "@/data/threads";
+import { useArchivedThreads } from "@/data/threads";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
   ActionSheet,
@@ -20,67 +16,23 @@ import {
   Skeleton,
   Spinner,
   Text,
-  toast,
   useSheet,
   type ActionSheetAction,
 } from "@/ui";
+import { ConnectionBanner } from "../shell/ConnectionBanner";
 import { Screen } from "../shell/Screen";
 import {
   flatThreadRow,
-  SidebarActionsProvider,
   projectSubtitle,
+  SidebarActionsProvider,
   SidebarThreadRowView,
-  type SidebarRowSubtitle,
-  useSidebarActions,
   type SidebarThreadRow,
 } from "../sidebar";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 /** Rows inserted at the top (unarchive, realtime) should simply appear, not shift the viewport. */
 const DISABLE_MAINTAIN_POSITION = { disabled: true };
-
-function ArchivedRow({
-  row,
-  subtitle,
-  onPress,
-  onLongPress,
-  onUnarchive,
-  pending,
-}: {
-  row: SidebarThreadRow;
-  subtitle: SidebarRowSubtitle | null;
-  onPress: (row: SidebarThreadRow) => void;
-  onLongPress: (row: SidebarThreadRow) => void;
-  onUnarchive: (thread: ThreadListEntry) => void;
-  pending: boolean;
-}) {
-  const { tokens } = useTheme();
-  const noop = useCallback(() => undefined, []);
-  return (
-    <View className="flex-row items-center">
-      <View className="min-w-0 flex-1">
-        <SidebarThreadRowView
-          row={row}
-          subtitle={subtitle}
-          onPress={onPress}
-          onLongPress={onLongPress}
-          onToggleCollapsed={noop}
-        />
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Unarchive ${getThreadDisplayTitle(row.thread)}`}
-        hitSlop={6}
-        disabled={pending}
-        onPress={() => onUnarchive(row.thread)}
-        className="mr-2 h-10 w-10 items-center justify-center rounded-md active:bg-state-hover"
-        style={{ opacity: pending ? 0.5 : 1 }}
-        testID={`unarchive-${row.thread.id}`}
-      >
-        <Icon name="ArchiveRestore" size={20} color={tokens.foreground} />
-      </Pressable>
-    </View>
-  );
-}
 
 function ArchivedBody({
   initialProjectId,
@@ -89,11 +41,9 @@ function ArchivedBody({
 }) {
   const insets = useSafeAreaInsets();
   const { tokens } = useTheme();
-  const actions = useSidebarActions();
   const bootstrap = useSidebarBootstrap();
   const [projectId, setProjectId] = useState<string | null>(initialProjectId);
   const archived = useArchivedThreads(projectId ? { projectId } : {});
-  const unarchive = useUnarchiveThread();
   const filterSheet = useSheet();
 
   const bootstrapData = bootstrap.data;
@@ -119,52 +69,25 @@ function ArchivedBody({
     [archived.data],
   );
 
-  const onPress = useCallback(
-    (row: SidebarThreadRow) => actions.openThread(row.thread),
-    [actions],
-  );
-  const onLongPress = useCallback(
-    (row: SidebarThreadRow) => actions.openThreadMenu(row.thread),
-    [actions],
-  );
-  const onUnarchive = useCallback(
-    (thread: ThreadListEntry) => {
-      unarchive.mutate(
-        { id: thread.id },
-        {
-          onSuccess: () =>
-            toast.success(`Unarchived ${getThreadDisplayTitle(thread)}`),
-        },
-      );
-    },
-    [unarchive],
-  );
-  const pendingIds = unarchive.variables?.id;
+  const noop = useCallback(() => undefined, []);
+  const selectProject = useCallback((next: string | null) => {
+    haptic("selection");
+    setProjectId(next);
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<SidebarThreadRow>) => (
-      <ArchivedRow
+      <SidebarThreadRowView
         row={item}
         subtitle={projectSubtitle(
           projectId === null
             ? (projectNamesById.get(item.thread.projectId) ?? null)
             : null,
         )}
-        onPress={onPress}
-        onLongPress={onLongPress}
-        onUnarchive={onUnarchive}
-        pending={unarchive.isPending && pendingIds === item.thread.id}
+        onToggleCollapsed={noop}
       />
     ),
-    [
-      onLongPress,
-      onPress,
-      onUnarchive,
-      pendingIds,
-      projectId,
-      projectNamesById,
-      unarchive.isPending,
-    ],
+    [noop, projectId, projectNamesById],
   );
 
   const filterLabel = projectId
@@ -176,62 +99,104 @@ function ArchivedBody({
       key: "all",
       label: "All projects",
       icon: "Layers",
-      onPress: () => setProjectId(null),
+      checked: projectId === null,
+      onPress: () => selectProject(null),
     },
-    ...projects.map(
-      (project): ActionSheetAction => ({
-        key: project.id,
-        label: project.name,
-        icon: "Folder",
-        onPress: () => setProjectId(project.id),
-      }),
-    ),
+    ...projects.map((project): ActionSheetAction => ({
+      key: project.id,
+      label: project.name,
+      icon: "Folder",
+      checked: projectId === project.id,
+      onPress: () => selectProject(project.id),
+    })),
   ];
+
+  const banner = <ConnectionBanner inset />;
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Filter by project: ${filterLabel}`}
-              hitSlop={8}
-              onPress={filterSheet.present}
-              className="flex-row items-center gap-1 rounded-md px-2 py-1 active:bg-state-hover"
-              testID="archived-filter"
+      {IS_IOS ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Menu
+            icon="line.3.horizontal.decrease.circle"
+            title={filterLabel}
+            accessibilityLabel="Filter by project"
+          >
+            <Stack.Toolbar.MenuAction
+              icon="tray.full"
+              isOn={projectId === null}
+              onPress={() => selectProject(null)}
             >
-              <Icon name="Folder" size={16} color={tokens.mutedForeground} />
-              <Text
-                variant="label"
-                tone="muted"
-                numberOfLines={1}
-                className="max-w-36"
+              All projects
+            </Stack.Toolbar.MenuAction>
+            {projects.map((project) => (
+              <Stack.Toolbar.MenuAction
+                key={project.id}
+                icon="folder"
+                isOn={projectId === project.id}
+                onPress={() => selectProject(project.id)}
               >
-                {filterLabel}
-              </Text>
-              <Icon
-                name="ChevronDown"
-                size={14}
-                color={tokens.mutedForeground}
-              />
-            </Pressable>
-          ),
-        }}
-      />
+                {project.name}
+              </Stack.Toolbar.MenuAction>
+            ))}
+          </Stack.Toolbar.Menu>
+        </Stack.Toolbar>
+      ) : (
+        <Stack.Screen
+          options={{
+            headerRight: () => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Filter by project: ${filterLabel}`}
+                hitSlop={8}
+                onPress={filterSheet.present}
+                className="flex-row items-center gap-1 rounded-md px-2 py-1 active:bg-state-hover"
+                testID="archived-filter"
+              >
+                <Icon name="Folder" size={16} color={tokens.mutedForeground} />
+                <Text
+                  variant="label"
+                  tone="muted"
+                  numberOfLines={1}
+                  className="max-w-36"
+                >
+                  {filterLabel}
+                </Text>
+                <Icon
+                  name="ChevronDown"
+                  size={14}
+                  color={tokens.mutedForeground}
+                />
+              </Pressable>
+            ),
+          }}
+        />
+      )}
       {archived.isLoading ? (
-        <View className="gap-3 px-4 pt-4" testID="archived-loading">
-          {[0, 1, 2, 3].map((index) => (
-            <Skeleton key={index} className="h-4 w-2/3" />
-          ))}
-        </View>
+        <ScrollView
+          className="flex-1"
+          contentInsetAdjustmentBehavior="automatic"
+          scrollEnabled={false}
+        >
+          {banner}
+          <View className="gap-3 px-4 pt-4" testID="archived-loading">
+            {[0, 1, 2, 3].map((index) => (
+              <Skeleton key={index} className="h-4 w-2/3" />
+            ))}
+          </View>
+        </ScrollView>
       ) : archived.isError ? (
-        <View className="gap-3 p-4">
+        <ScrollView
+          className="flex-1"
+          contentInsetAdjustmentBehavior="automatic"
+          contentContainerStyle={{ gap: 12, padding: 16 }}
+        >
+          {banner}
           <EmptyStatePanel>
             <Text className="text-center text-sm text-muted-foreground">
               Could not load archived threads.
             </Text>
-            <Text variant="caption" className="pt-1 text-center">
+            <Text variant="caption" className="pt-1 text-center" selectable>
               {archived.error.message}
             </Text>
           </EmptyStatePanel>
@@ -242,17 +207,13 @@ function ArchivedBody({
           >
             Retry
           </Button>
-        </View>
+        </ScrollView>
       ) : (
         <FlashList
           data={rows}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          extraData={{
-            projectId,
-            pendingIds,
-            isPending: unarchive.isPending,
-          }}
+          extraData={{ projectId }}
           maintainVisibleContentPosition={DISABLE_MAINTAIN_POSITION}
           onEndReachedThreshold={0.5}
           onEndReached={() => {
@@ -260,6 +221,7 @@ function ArchivedBody({
               void archived.fetchNextPage();
             }
           }}
+          ListHeaderComponent={banner}
           ListEmptyComponent={
             <View className="p-4" testID="archived-empty">
               <EmptyStatePanel>
@@ -276,18 +238,21 @@ function ArchivedBody({
               </View>
             ) : null
           }
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={{
             paddingBottom: insets.bottom + 24,
-            paddingTop: 8,
+            paddingTop: 4,
           }}
           testID="archived-thread-list"
         />
       )}
-      <ActionSheet
-        controller={filterSheet}
-        title="Filter by project"
-        actions={filterActions}
-      />
+      {IS_IOS ? null : (
+        <ActionSheet
+          controller={filterSheet}
+          title="Filter by project"
+          actions={filterActions}
+        />
+      )}
     </>
   );
 }
@@ -296,12 +261,16 @@ function keyExtractor(row: SidebarThreadRow): string {
   return row.key;
 }
 
-/** `/settings/archived`: paginated archived threads, filter by project, unarchive. */
+/**
+ * `/settings/archived`: paginated archived threads under a large title,
+ * filtered by project from the header menu; rows unarchive from the
+ * context menu, the swipe actions, or (Android) the long-press sheet.
+ */
 export function ArchivedThreadsScreen() {
   const { connection } = useProfiles();
   const { projectId } = useLocalSearchParams<{ projectId?: string }>();
   return (
-    <Screen scroll={false} testID="archived-threads-screen">
+    <Screen scroll={false} banner={false} testID="archived-threads-screen">
       {connection ? (
         <SidebarActionsProvider>
           <ArchivedBody initialProjectId={projectId ?? null} />

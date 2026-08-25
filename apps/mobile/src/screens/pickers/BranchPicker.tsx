@@ -1,7 +1,7 @@
 import { View } from "react-native";
 import type { BranchSelection } from "@/data/compose";
-import { useTheme } from "@/theme";
-import { Icon, ListRow, Separator, Sheet, Spinner, Text, useSheet } from "@/ui";
+import { haptic } from "@/lib/haptics";
+import { ListRow, Separator, Sheet, Spinner, Text, useSheet } from "@/ui";
 import { usePickerSheetMaxHeight } from "./OptionSheet";
 import { PickerTrigger } from "./PickerTrigger";
 import { SheetInput } from "./SheetInput";
@@ -60,14 +60,15 @@ export function BranchPicker({
   disabled,
 }: BranchPickerProps) {
   const sheet = useSheet();
-  const { tokens } = useTheme();
   const maxHeight = usePickerSheetMaxHeight();
   const label = describeBranchSelection(mode, selected, defaultBranch);
   const baseForNew = selected?.name ?? defaultBranch;
-  const pick = (name: string) => {
+  const choose = (effect: () => void) => {
+    haptic("selection");
     sheet.dismiss();
-    onSelect(name);
+    effect();
   };
+  const pick = (name: string) => choose(() => onSelect(name));
   const trimmedQuery = searchQuery.trim();
   const showRemote = remoteBranches.length > 0;
 
@@ -106,15 +107,7 @@ export function BranchPicker({
           }
           leading="GitBranch"
           selected={selected === null}
-          trailing={
-            selected === null ? (
-              <Icon name="Check" size={18} color={tokens.foreground} />
-            ) : null
-          }
-          onPress={() => {
-            sheet.dismiss();
-            onClear();
-          }}
+          onPress={() => choose(onClear)}
           testID="branch-picker-default"
         />
         {mode === "local" && onCreateFrom && baseForNew ? (
@@ -123,15 +116,7 @@ export function BranchPicker({
             subtitle="bb names the branch after the thread."
             leading="Plus"
             selected={selected?.isNew === true}
-            trailing={
-              selected?.isNew ? (
-                <Icon name="Check" size={18} color={tokens.foreground} />
-              ) : null
-            }
-            onPress={() => {
-              sheet.dismiss();
-              onCreateFrom(baseForNew);
-            }}
+            onPress={() => choose(() => onCreateFrom(baseForNew))}
             testID="branch-picker-create"
           />
         ) : null}
@@ -151,46 +136,30 @@ export function BranchPicker({
             </Text>
           </View>
         ) : null}
-        {branches.map((name) => {
-          const isSelected = selected?.name === name && !selected.isNew;
-          return (
-            <ListRow
-              key={`local:${name}`}
-              title={name}
-              selected={isSelected}
-              trailing={
-                isSelected ? (
-                  <Icon name="Check" size={18} color={tokens.foreground} />
-                ) : null
-              }
-              onPress={() => pick(name)}
-              testID={`branch-picker-option-${name}`}
-            />
-          );
-        })}
+        {branches.map((name) => (
+          <ListRow
+            key={`local:${name}`}
+            title={name}
+            selected={selected?.name === name && !selected.isNew}
+            onPress={() => pick(name)}
+            testID={`branch-picker-option-${name}`}
+          />
+        ))}
         {showRemote ? (
           <>
             <View className="px-4 pb-1 pt-3">
               <Text variant="sectionLabel">Remote branches</Text>
             </View>
-            {remoteBranches.map((name) => {
-              const isSelected = selected?.name === name && !selected.isNew;
-              return (
-                <ListRow
-                  key={`remote:${name}`}
-                  title={name}
-                  leading="Globe"
-                  selected={isSelected}
-                  trailing={
-                    isSelected ? (
-                      <Icon name="Check" size={18} color={tokens.foreground} />
-                    ) : null
-                  }
-                  onPress={() => pick(name)}
-                  testID={`branch-picker-remote-${name}`}
-                />
-              );
-            })}
+            {remoteBranches.map((name) => (
+              <ListRow
+                key={`remote:${name}`}
+                title={name}
+                leading="Globe"
+                selected={selected?.name === name && !selected.isNew}
+                onPress={() => pick(name)}
+                testID={`branch-picker-remote-${name}`}
+              />
+            ))}
           </>
         ) : null}
       </Sheet>

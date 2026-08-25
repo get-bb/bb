@@ -1,0 +1,145 @@
+/*
+ * Mobile-only theme override layer.
+ *
+ * scripts/generate-native-theme.ts replays this file AFTER
+ * apps/app/src/components/ui/theme.css and BEFORE every built-in palette's
+ * CSS (apps/app/src/lib/themes/*.ts). It re-tunes the DEFAULT palette to the
+ * iOS system look; a palette that sets its own anchors and literals (Nord,
+ * Dracula, …) still wins because it cascades last. The web app never loads
+ * this file, and only these parts of it are read:
+ *
+ * - custom properties inside `:root`, `.light`, and `.dark` rules (colors);
+ * - the `@theme` block (`--text-*` type ramp, `--radius-2xl`, `--radius-full`).
+ *
+ * Rules:
+ * - Every neutral derives from `--canvas`/`--ink` via `color-mix()` so custom
+ *   palettes keep tinting the surfaces this layer touches. Use the token names
+ *   theme.css already has; new names are allowed (they become mobile-only
+ *   tokens, listed in the generated header and pinned in theme-vars.test.ts).
+ * - `:root` reaches dark mode too, so a token set under `:root, .light` must
+ *   also get a `.dark` value or it would replace theme.css's dark value (the
+ *   generator refuses that). `.dark`-only re-tunes are fine: light keeps the
+ *   web value. A NEW token must exist in both modes.
+ * - Percentages mean different things per mix: an opaque mix
+ *   (`…, var(--canvas)`) shifts oklch/oklab LIGHTNESS, a translucent mix
+ *   (`…, transparent`) sets sRGB ALPHA. Near black the two diverge: white at
+ *   22.7% lightness over black is #1c1c1c (systemGray6), the same surface as
+ *   white at 11% alpha. Comments below quote the resulting default hex.
+ * - Keep the invariants generate-native-theme.test.ts guards:
+ *   card == popover == background == canvas; sidebar < secondary/accent/muted
+ *   < border <= input (lightness distance from the canvas); stateActive alpha
+ *   > stateHover alpha.
+ */
+
+:root,
+.light {
+  /* Anchors: systemBackground / label. */
+  --ink: oklch(0 0 0);
+  /* systemBlue tint; the ring and selection tints derive from it. */
+  --primary: #007aff;
+  --primary-foreground: #ffffff;
+  /* Text tiers (black over white): muted #666666 (5.7:1), readback #747474
+   * (4.7:1), subtle #8c8c8c (3.3:1 — the secondaryLabel tier; hints and
+   * chevrons only, never body copy). */
+  --muted-foreground: color-mix(in oklch, var(--ink) 49%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 44%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 36%, var(--canvas));
+  /* Separator (#c7c7c7): one value for every line. */
+  --border: color-mix(in oklch, var(--ink) 17%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 17%, var(--canvas));
+  --border-seam: var(--border);
+  --sidebar-border: color-mix(in oklch, var(--ink) 17%, var(--canvas));
+  /* systemGroupedBackground-class sunken step (#f2f2f2). */
+  --surface-recessed: color-mix(in oklab, var(--ink) 5%, transparent);
+  --surface-recessed-solid: color-mix(in oklab, var(--ink) 4%, var(--canvas));
+  /* Inset grouped lists: the page behind the cards and the cards themselves
+   * (systemGroupedBackground / secondarySystemGroupedBackground). */
+  --surface-grouped: color-mix(in oklab, var(--ink) 4%, var(--canvas));
+  --surface-grouped-cell: var(--canvas);
+  /* systemRed / systemGreen / systemOrange / systemYellow. */
+  --destructive: #ff3b30;
+  --destructive-text: #d70015;
+  --success: #34c759;
+  --warning: #ff9500;
+  /* systemOrange darkened to clear AA on white (4.6:1). */
+  --warning-text: #b84d00;
+  --attention: #ffcc00;
+}
+
+.dark {
+  /* Anchors: systemBackground / label. */
+  --canvas: oklch(0 0 0);
+  --ink: oklch(1 0 0);
+  --primary: #0a84ff;
+  --primary-foreground: #ffffff;
+  /* Text tiers (white over black): muted #8c8c8c (6.3:1, secondaryLabel),
+   * readback #808080 (5.3:1), subtle #777777 (4.7:1). */
+  --muted-foreground: color-mix(in oklch, var(--ink) 64%, var(--canvas));
+  --readback-foreground: color-mix(in oklch, var(--ink) 60%, var(--canvas));
+  --subtle-foreground: color-mix(in oklch, var(--ink) 57%, var(--canvas));
+  /* Lift ramp over pure black. Opaque steps are lightness shares:
+   * 22.7% → #1c1c1c (systemGray6: sidebar, raised, grouped cells),
+   * 29% → #2b2b2b (systemGray5: secondary/accent fills),
+   * 32% → #333333 (muted), 34% → #383838 (opaqueSeparator), 40% → #484848. */
+  --sidebar: color-mix(in oklch, var(--ink) 22.7%, var(--canvas));
+  --sidebar-accent: color-mix(in oklch, var(--ink) 29%, var(--canvas));
+  --secondary: color-mix(in oklch, var(--ink) 29%, var(--canvas));
+  --accent: color-mix(in oklch, var(--ink) 29%, var(--canvas));
+  --muted: color-mix(in oklch, var(--ink) 32%, var(--canvas));
+  --border: color-mix(in oklch, var(--ink) 34%, var(--canvas));
+  --border-hairline: color-mix(in oklch, var(--ink) 34%, var(--canvas));
+  --border-seam: var(--border);
+  --sidebar-border: color-mix(in oklch, var(--ink) 34%, var(--canvas));
+  --input: color-mix(in oklch, var(--ink) 40%, var(--canvas));
+  /* Translucent twins use alpha: 11% white over black is #1c1c1c. */
+  --surface-raised: color-mix(in oklab, var(--ink) 11%, transparent);
+  --surface-raised-solid: color-mix(in oklab, var(--ink) 22.7%, var(--canvas));
+  --surface-recessed: color-mix(in oklab, var(--ink) 11%, transparent);
+  --surface-recessed-solid: color-mix(
+    in oklab,
+    var(--ink) 22.7%,
+    var(--canvas)
+  );
+  --surface-recessed-soft-solid: color-mix(
+    in oklch,
+    var(--ink) 20%,
+    var(--canvas)
+  );
+  /* Inset grouped lists: black page, systemGray6 cells. */
+  --surface-grouped: var(--canvas);
+  --surface-grouped-cell: color-mix(in oklab, var(--ink) 22.7%, var(--canvas));
+  /* systemRed / systemGreen / systemOrange / systemYellow (dark variants). */
+  --destructive: #ff453a;
+  --destructive-text: #ff6961;
+  --success: #30d158;
+  --warning: #ff9f0a;
+  --warning-text: #ff9f0a;
+  --attention: #ffd60a;
+}
+
+/*
+ * Apple text-style ramp (font size / line height in px): caption2, footnote,
+ * subheadline, body, title3, title2, title1, largeTitle. Emitted as
+ * nativeTypography; global.css mirrors it as `--text-*` ratios. The extra
+ * radii are Tailwind's `rounded-2xl` / `rounded-full` as numbers.
+ */
+@theme {
+  --text-2xs: 11px;
+  --text-2xs--line-height: 13px;
+  --text-xs: 13px;
+  --text-xs--line-height: 18px;
+  --text-sm: 15px;
+  --text-sm--line-height: 20px;
+  --text-base: 17px;
+  --text-base--line-height: 22px;
+  --text-lg: 20px;
+  --text-lg--line-height: 25px;
+  --text-xl: 22px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 34px;
+  --text-3xl: 34px;
+  --text-3xl--line-height: 41px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+}

@@ -29,7 +29,8 @@ import {
 import { useEnvironment } from "@/data/environments";
 import { removeEnvironmentDiffPatchQueries } from "@/lib/query/diff-patch-cache";
 import { environmentWorkStatusQueryKeyPrefix } from "@/lib/query/query-keys";
-import { Button, EmptyStatePanel, Skeleton, Text, useSheet } from "@/ui";
+import { useTheme } from "@/theme";
+import { Button, GROUPED_CARD_RADIUS, Skeleton, Text, useSheet } from "@/ui";
 import { MergeBasePickerSheet } from "../thread/context/MergeBasePickerSheet";
 import { DiffTabFileCard } from "./DiffTabFileCard";
 import { DiffTabHeader } from "./DiffTabHeader";
@@ -87,6 +88,7 @@ function DiffSkeleton() {
   );
 }
 
+/** A raised, continuous-corner note (workspace unavailable / not applicable). */
 function Notice({
   title,
   message,
@@ -96,16 +98,42 @@ function Notice({
   message: string;
   testID: string;
 }) {
+  const { tokens } = useTheme();
   return (
-    <View className="px-4 pt-2" testID={testID}>
-      <View className="rounded-lg border border-border bg-surface-raised px-3 py-2.5">
+    <View className="px-4 pt-3" testID={testID}>
+      <View
+        style={{
+          borderRadius: GROUPED_CARD_RADIUS,
+          borderCurve: "continuous",
+          backgroundColor: tokens.surfaceRaised,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+        }}
+      >
         {title ? (
-          <Text className="text-xs font-medium text-foreground">{title}</Text>
+          <Text variant="footnote" weight="semibold">
+            {title}
+          </Text>
         ) : null}
-        <Text variant="caption" className={title ? "pt-1" : undefined}>
+        <Text
+          variant="caption"
+          className={title ? "pt-0.5" : undefined}
+          selectable
+        >
           {message}
         </Text>
       </View>
+    </View>
+  );
+}
+
+/** Centered footnote for the no-diff states. */
+function EmptyNote({ children, testID }: { children: string; testID: string }) {
+  return (
+    <View className="px-6 py-8" testID={testID}>
+      <Text variant="footnote" tone="muted" className="text-center">
+        {children}
+      </Text>
     </View>
   );
 }
@@ -265,16 +293,26 @@ export function DiffTabContent({
     ],
   );
 
+  const mergeBase =
+    targetState.mergeBase.showMergeBase &&
+    targetState.mergeBase.effectiveMergeBaseBranch
+      ? {
+          branch: targetState.mergeBase.effectiveMergeBaseBranch,
+          onPress: () => {
+            targetSheet.dismiss();
+            mergeBaseSheet.present();
+          },
+        }
+      : null;
+
   let body: ReactElement;
   if (environmentId === null || (environment && !environment.isGitRepo)) {
     body = (
-      <View className="px-4 pt-2" testID="diff-tab-unavailable">
-        <EmptyStatePanel>
-          {environmentId === null
-            ? "This thread has no workspace to diff."
-            : "This workspace is not a git repository."}
-        </EmptyStatePanel>
-      </View>
+      <EmptyNote testID="diff-tab-unavailable">
+        {environmentId === null
+          ? "This thread has no workspace to diff."
+          : "This workspace is not a git repository."}
+      </EmptyNote>
     );
   } else if (
     (!environment && environmentQuery.isPending) ||
@@ -283,26 +321,22 @@ export function DiffTabContent({
     body = <DiffSkeleton />;
   } else if (filesQuery.error && !response) {
     body = (
-      <View className="gap-3 px-4 pt-2" testID="diff-tab-error">
-        <EmptyStatePanel>
-          <Text className="text-center text-sm text-muted-foreground">
+      <View className="items-center gap-4 px-6 pt-8" testID="diff-tab-error">
+        <View className="items-center gap-1">
+          <Text variant="headline" className="text-center">
             Could not load the diff.
           </Text>
-          <Text variant="caption" className="pt-1 text-center">
+          <Text variant="caption" className="text-center" selectable>
             {filesQuery.error.message}
           </Text>
-        </EmptyStatePanel>
+        </View>
         <Button variant="outline" icon="RotateCcw" onPress={refresh}>
           Retry
         </Button>
       </View>
     );
   } else if (!response) {
-    body = (
-      <View className="px-4 pt-2" testID="diff-tab-empty">
-        <EmptyStatePanel>No changes.</EmptyStatePanel>
-      </View>
-    );
+    body = <EmptyNote testID="diff-tab-empty">No changes.</EmptyNote>;
   } else if (response.outcome === "unavailable") {
     body = (
       <Notice
@@ -314,11 +348,7 @@ export function DiffTabContent({
   } else if (response.outcome === "not_applicable") {
     body = <Notice message={response.message} testID="diff-tab-unavailable" />;
   } else if (response.files.length === 0) {
-    body = (
-      <View className="px-4 pt-2" testID="diff-tab-empty">
-        <EmptyStatePanel>No changes.</EmptyStatePanel>
-      </View>
-    );
+    body = <EmptyNote testID="diff-tab-empty">No changes.</EmptyNote>;
   } else {
     body = (
       <FlashList
@@ -358,24 +388,14 @@ export function DiffTabContent({
         refreshDisabled={!canDiff}
       />
       {body}
+      {/* The picker sheet behind the header's target capsule (both platforms). */}
       <DiffTargetPickerSheet
         controller={targetSheet}
         stackBehavior="push"
         options={targetState.options}
         value={targetState.selection}
         onChange={targetState.setSelection}
-        mergeBase={
-          targetState.mergeBase.showMergeBase &&
-          targetState.mergeBase.effectiveMergeBaseBranch
-            ? {
-                branch: targetState.mergeBase.effectiveMergeBaseBranch,
-                onPress: () => {
-                  targetSheet.dismiss();
-                  mergeBaseSheet.present();
-                },
-              }
-            : null
-        }
+        mergeBase={mergeBase}
       />
       <MergeBasePickerSheet
         controller={mergeBaseSheet}

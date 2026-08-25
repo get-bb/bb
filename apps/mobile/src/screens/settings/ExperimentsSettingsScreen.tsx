@@ -3,14 +3,14 @@ import { useProfiles } from "@/app-shell";
 import { useUpdateExperiments } from "@/data/settings";
 import { useSystemConfig } from "@/data/system";
 import { EmptyStatePanel } from "@/ui";
-import { Screen } from "../shell/Screen";
+import { GroupedScreen } from "./GroupedScreen";
 import { SettingsSection, SettingsSwitchRow } from "./SettingsRows";
 
 interface ExperimentRow {
   key: ExperimentKey;
   label: string;
   description: string;
-  badge?: string;
+  tag?: string;
 }
 
 /** Same copy as the web Experiments section (SettingsView.tsx). */
@@ -40,9 +40,9 @@ export function ExperimentsSettingsScreen() {
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <Screen testID="experiments-settings-screen">
+      <GroupedScreen testID="experiments-settings-screen">
         <EmptyStatePanel>Add a server first.</EmptyStatePanel>
-      </Screen>
+      </GroupedScreen>
     );
   }
   return <ConnectedExperimentsSettingsScreen />;
@@ -54,17 +54,17 @@ function ConnectedExperimentsSettingsScreen() {
   const experiments = configQuery.data?.experiments ?? defaultExperiments;
   const disabled = configQuery.data === undefined;
   return (
-    <Screen testID="experiments-settings-screen">
+    <GroupedScreen testID="experiments-settings-screen">
       <SettingsSection
         title="Experiments"
-        description="Early features that are off by default. Opt in to try them. Shared with every bb client on this server."
+        footnote="Early features that are off by default. Opt in to try them. Shared with every bb client on this server."
       >
         {EXPERIMENT_ROWS.map((row) => (
           <SettingsSwitchRow
             key={row.key}
             label={row.label}
             description={row.description}
-            badge={row.badge}
+            tag={row.tag}
             checked={experiments[row.key] ?? false}
             disabled={disabled}
             onCheckedChange={(value) =>
@@ -74,6 +74,6 @@ function ConnectedExperimentsSettingsScreen() {
           />
         ))}
       </SettingsSection>
-    </Screen>
+    </GroupedScreen>
   );
 }

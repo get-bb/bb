@@ -12,7 +12,12 @@ import type {
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
 import { useMemo, type RefObject } from "react";
-import { ScrollView, useWindowDimensions, View } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Composer, type ComposerAction, type ComposerHandle } from "@/composer";
 import type { ChildThreadPendingAttention } from "@/data/interactions";
@@ -55,6 +60,7 @@ interface ThreadPromptAreaProps {
 
 /** Share of the window the stack + composer may take before the stack scrolls. */
 const MAX_PROMPT_AREA_WINDOW_FRACTION = 0.6;
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 /**
  * The bottom of the thread screen (port of apps/app ThreadDetailPromptArea):
@@ -89,6 +95,7 @@ export function ThreadPromptArea({
   onHandoffToNewThread,
 }: ThreadPromptAreaProps) {
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
   const cancelPlan = useCancelThreadPlan();
   const clearGoal = useClearThreadGoal();
@@ -131,10 +138,18 @@ export function ThreadPromptArea({
     (!composer.hidden && queuedMessages.length > 0);
   return (
     <View
-      className="bg-background px-3 pt-1"
+      className="bg-background px-3 pt-2"
       style={{
         paddingBottom: Math.max(insets.bottom, 8),
         maxHeight: windowHeight * MAX_PROMPT_AREA_WINDOW_FRACTION,
+        // iOS: a hairline seam between the timeline and the input region,
+        // the Messages-style bottom bar edge.
+        ...(IS_IOS
+          ? {
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: tokens.borderHairline,
+            }
+          : null),
       }}
       testID="thread-prompt-area"
     >
@@ -246,7 +261,12 @@ function EditModeHeader({
       testID="thread-composer-edit-header"
     >
       <Icon name="Edit" size={14} color={tokens.mutedForeground} />
-      <Text variant="caption" className="min-w-0 flex-1" numberOfLines={1}>
+      <Text
+        variant="footnote"
+        tone="muted"
+        className="min-w-0 flex-1"
+        numberOfLines={1}
+      >
         {kind === "queued-message"
           ? "Editing queued message"
           : "Editing sent message"}

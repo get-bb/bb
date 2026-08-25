@@ -1,6 +1,9 @@
 export {
+  ORGANIZE_OPTIONS,
   SidebarActionsProvider,
+  SORT_OPTIONS,
   useSidebarActions,
+  type SidebarActions,
 } from "./SidebarActionsProvider";
 export { SidebarThreadList } from "./SidebarThreadList";
 export {

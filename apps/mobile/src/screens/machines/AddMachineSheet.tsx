@@ -1,11 +1,12 @@
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Linking, View } from "react-native";
 import { formatCountdown, type AddMachineSession } from "@/data/hosts";
 import { useTheme } from "@/theme";
 import {
   Button,
+  GROUPED_CARD_RADIUS,
   Sheet,
   Spinner,
   Text,
@@ -22,6 +23,29 @@ interface AddMachineSheetProps {
   controller: SheetController;
   /** The session from `useAddMachineSession()`; the caller's press handler runs `begin()` before presenting. */
   session: AddMachineSession;
+}
+
+/** A recessed panel inside the sheet (the command, the connection status). */
+function SheetPanel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const { tokens } = useTheme();
+  return (
+    <View
+      className={className}
+      style={{
+        backgroundColor: tokens.surfaceRecessed,
+        borderRadius: GROUPED_CARD_RADIUS,
+        borderCurve: "continuous",
+      }}
+    >
+      {children}
+    </View>
+  );
 }
 
 /**
@@ -55,7 +79,7 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
       onDismiss={session.end}
     >
       <View className="gap-4 px-4 pb-8 pt-2" testID="add-machine-sheet">
-        <Text variant="caption">
+        <Text variant="footnote" tone="muted">
           {presentation.kind === "unreachable"
             ? "Pair a machine to run projects and threads on it."
             : "Run this on the machine you want to add. It pairs the machine to this server and keeps it available for your projects."}
@@ -71,7 +95,7 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
         ) : presentation.kind === "error" ||
           presentation.kind === "connect-unavailable" ? (
           <View className="gap-2">
-            <Text variant="body" tone="destructive">
+            <Text variant="body" tone="destructive" selectable>
               {presentation.kind === "connect-unavailable"
                 ? "Remote access isn't ready yet."
                 : presentation.message}
@@ -87,8 +111,10 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
             </Button>
           </View>
         ) : presentation.kind === "unreachable" ? (
-          <View className="gap-2 rounded-md border border-border bg-muted/40 p-3">
-            <Text variant="body">Another machine cannot use this address.</Text>
+          <SheetPanel className="gap-2 p-3">
+            <Text variant="bodyLarge">
+              Another machine cannot use this address.
+            </Text>
             <Text variant="caption">
               The pairing command would target{" "}
               <Text variant="mono" className="text-xs">
@@ -124,10 +150,10 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
                 Other options
               </Button>
             </View>
-          </View>
+          </SheetPanel>
         ) : (
           <View className="gap-2">
-            <View className="rounded-md border border-border bg-muted/40 p-3">
+            <SheetPanel className="p-3">
               <Text
                 variant="mono"
                 className="text-xs"
@@ -136,7 +162,7 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
               >
                 {presentation.command}
               </Text>
-            </View>
+            </SheetPanel>
             <View className="flex-row flex-wrap items-center gap-2">
               <Button
                 size="sm"
@@ -161,7 +187,7 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
                   </Button>
                 </>
               ) : session.remainingMs !== null ? (
-                <Text variant="caption" className="tabular-nums">
+                <Text variant="caption" numeric>
                   Code expires in {formatCountdown(session.remainingMs)}
                 </Text>
               ) : null}
@@ -177,7 +203,7 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
         )}
 
         {presentation.kind === "unreachable" ? null : (
-          <View className="flex-row items-center gap-2.5 rounded-md border border-border bg-muted/40 px-3 py-2.5">
+          <SheetPanel className="flex-row items-center gap-2.5 px-3 py-2.5">
             {session.connectedNewHost !== null ? (
               <>
                 <HostStatusDot connected />
@@ -204,7 +230,7 @@ export function AddMachineSheet({ controller, session }: AddMachineSheetProps) {
                 </Text>
               </>
             )}
-          </View>
+          </SheetPanel>
         )}
       </View>
     </Sheet>

@@ -116,7 +116,7 @@ export function ServerInfoCard() {
         {config.isPending ? (
           <Skeleton className="h-4 w-40" />
         ) : config.isError ? (
-          <Text variant="body" tone="destructive">
+          <Text variant="body" tone="destructive" selectable>
             {describeError(config.error)}
           </Text>
         ) : (

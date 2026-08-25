@@ -139,9 +139,10 @@ launcher does the same with `filesParams`.
 
 ## Entry points
 
-- The thread screen's native header → `PanelToggleButton`
-  (`thread-panel-button`, icon `PanelBottom`) → `panel.open()`; also the
-  "Workspace" row of the "…" menu.
+- The thread screen's native header → the "Workspace panel" item (a
+  `Stack.Toolbar.Button` on iOS — no test id, Maestro taps the label — or
+  `PanelToggleButton` / `thread-panel-button` on Android, icon `PanelBottom`)
+  → `panel.open()`; also the "Workspace" row of the "…" menu.
 - Home `ComposeDock` → "Workspace" in the composer's "+" menu.
 - Info tab: changed files → `openDiff(path)`, storage row →
   `openFiles({ section: "storage" })`, parent / forks → thread route.
@@ -154,6 +155,10 @@ launcher does the same with `filesParams`.
 `workspace-panel-content`, `panel-info`, `panel-info-<row>`
 (`directory`, `branch`, `git-status`, `changed-files`, …),
 `panel-content-unsupported`, `panel-content-placeholder-<kind|launcher>`.
+A file tab's close actions are the long-press
+`action-sheet-close|close-others|close-all` sheet on both platforms (one
+sheet shared by the strip; a native context menu per tab would host a
+SwiftUI view in every pill).
 
 ## Tests
 

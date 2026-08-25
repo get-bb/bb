@@ -21,11 +21,10 @@ import {
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
+import { withAlpha } from "@/markdown/colors";
 import { useTheme } from "@/theme";
 import { Button, Icon, Spinner, Text } from "@/ui";
-import {
-  type TimelineListEntry,
-} from "./list-entries";
+import { type TimelineListEntry } from "./list-entries";
 import { getTimelineRowRenderer } from "./renderers";
 // Registers the row renderers (side effect) before the first cell renders.
 import "./renderers/index";
@@ -307,11 +306,9 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
       scrollToEndNow(true);
     }, [scrollToEndNow]);
 
-    useImperativeHandle(
-      ref,
-      () => ({ scrollToEnd: jumpToLatest }),
-      [jumpToLatest],
-    );
+    useImperativeHandle(ref, () => ({ scrollToEnd: jumpToLatest }), [
+      jumpToLatest,
+    ]);
 
     const renderItem = useCallback(
       ({ item: entry }: ListRenderItemInfo<TimelineListEntry>) => {
@@ -390,7 +387,13 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
           ListHeaderComponent={header}
           ListFooterComponent={footerNode}
           keyboardShouldPersistTaps="handled"
+          // Not "interactive": the composer is positioned by
+          // KeyboardPaddingView, which only follows keyboard frame
+          // notifications, and iOS posts none while the keyboard is dragged.
           keyboardDismissMode="on-drag"
+          // First scrollable of the route: insets under a transparent /
+          // blurred native header and above the home indicator.
+          contentInsetAdjustmentBehavior="automatic"
           testID={testID}
         />
         {showJumpToLatest ? (
@@ -402,17 +405,20 @@ export const TimelineList = forwardRef<TimelineListHandle, TimelineListProps>(
               accessibilityRole="button"
               accessibilityLabel="Jump to latest"
               onPress={jumpToLatest}
-              className="h-9 flex-row items-center gap-1.5 rounded-full border border-border bg-popover pl-3 pr-4 active:bg-state-hover"
+              className="h-9 flex-row items-center gap-1.5 rounded-full pl-3 pr-4 active:opacity-70"
               style={{
-                shadowColor: tokens.ink,
-                shadowOpacity: 0.18,
-                shadowRadius: 6,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 3,
+                backgroundColor: tokens.surfaceRaisedSolid,
+                borderCurve: "continuous",
+                boxShadow: `0 2px 6px ${withAlpha(tokens.ink, 0.18)}`,
               }}
               testID="timeline-jump-to-latest"
             >
-              <Icon name="ArrowDown" size={16} color={tokens.foreground} />
+              <Icon
+                name="ArrowDown"
+                size={16}
+                weight="semibold"
+                color={tokens.foreground}
+              />
               <Text variant="label">Jump to latest</Text>
             </Pressable>
           </View>

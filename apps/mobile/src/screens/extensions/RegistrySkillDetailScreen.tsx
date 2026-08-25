@@ -18,15 +18,16 @@ import { Markdown } from "@/markdown";
 import {
   Button,
   EmptyStatePanel,
-  ListRow,
-  Pill,
+  GroupedRow,
+  IconBadge,
   Skeleton,
   Text,
   toast,
 } from "@/ui";
-import { SettingsSection } from "../plugins/plugin-ui";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { useBadgeColors } from "../settings/settings-badges";
+import { SettingsSection } from "../settings/SettingsRows";
 import { skillDetailHref } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
 
 function describeError(error: unknown): string {
   if (error instanceof BbHttpError && error.status === 503) {
@@ -42,6 +43,12 @@ function isMarkdownPath(path: string): boolean {
   return /\.(md|mdx|markdown)$/iu.test(path);
 }
 
+function openLink(url: string | null | undefined): void {
+  Linking.openURL(url ?? "").catch(() =>
+    toast.error("Could not open the link"),
+  );
+}
+
 /**
  * One skills.sh skill (`/settings/skills/registry/[registrySkillId]`; web
  * RegistrySkillDetailView): the entry facts, its files (SKILL.md rendered as
@@ -53,6 +60,7 @@ export function RegistrySkillDetailScreen() {
   const registrySkillId =
     typeof params.registrySkillId === "string" ? params.registrySkillId : null;
   const router = useRouter();
+  const colors = useBadgeColors();
   const entry = useRegistrySkillEntry(registrySkillId);
   const detail = useRegistrySkillDetail({
     source: entry.data?.source ?? null,
@@ -74,7 +82,7 @@ export function RegistrySkillDetailScreen() {
   return (
     <>
       <Stack.Screen options={{ title }} />
-      <Screen testID="registry-skill-detail-screen">
+      <GroupedScreen testID="registry-skill-detail-screen">
         {entry.isPending ? (
           <View className="gap-3">
             <Skeleton className="h-8 w-3/5" />
@@ -93,35 +101,38 @@ export function RegistrySkillDetailScreen() {
           </View>
         ) : (
           <>
-            <View className="gap-2">
-              <Text variant="title" testID="registry-skill-detail-name">
-                {entry.data.name}
-              </Text>
-              <View className="flex-row flex-wrap gap-1.5">
-                <Pill variant="secondary" size="sm">
-                  {formatRegistrySource(entry.data.source)}
-                </Pill>
-                <Pill variant="outline" size="sm">
-                  {`${formatInstallCount(entry.data.installs)} installs`}
-                </Pill>
-                {entry.data.stars !== null ? (
-                  <Pill
-                    variant="outline"
-                    size="sm"
-                  >{`${formatInstallCount(entry.data.stars)} stars`}</Pill>
-                ) : null}
-                {entry.data.topic ? (
-                  <Pill variant="outline" size="sm">
-                    {entry.data.topic}
-                  </Pill>
-                ) : null}
+            <SettingsSection footnote={entry.data.summary ?? undefined}>
+              <View className="flex-row items-center gap-3 px-4 py-3">
+                <IconBadge
+                  icon="AiContentGenerator01"
+                  symbol="sparkles"
+                  color={colors.pink}
+                  size={40}
+                />
+                <View className="min-w-0 flex-1">
+                  <Text
+                    variant="headline"
+                    numberOfLines={2}
+                    selectable
+                    testID="registry-skill-detail-name"
+                  >
+                    {entry.data.name}
+                  </Text>
+                  <Text variant="caption" numberOfLines={2} numeric>
+                    {[
+                      formatRegistrySource(entry.data.source),
+                      `${formatInstallCount(entry.data.installs)} installs`,
+                      entry.data.stars !== null
+                        ? `${formatInstallCount(entry.data.stars)} stars`
+                        : null,
+                      entry.data.topic,
+                    ]
+                      .filter((part): part is string => !!part)
+                      .join(" · ")}
+                  </Text>
+                </View>
               </View>
-              {entry.data.summary ? (
-                <Text variant="body" tone="muted">
-                  {entry.data.summary}
-                </Text>
-              ) : null}
-            </View>
+            </SettingsSection>
 
             <View className="flex-row gap-2">
               {installedSkill ? (
@@ -164,11 +175,7 @@ export function RegistrySkillDetailScreen() {
               <Button
                 variant="outline"
                 icon="ExternalLink"
-                onPress={() => {
-                  Linking.openURL(entry.data?.url ?? "").catch(() =>
-                    toast.error("Could not open the link"),
-                  );
-                }}
+                onPress={() => openLink(entry.data?.url)}
                 accessibilityLabel="Open on skills.sh"
               >
                 skills.sh
@@ -176,10 +183,12 @@ export function RegistrySkillDetailScreen() {
             </View>
 
             {detail.isPending ? (
-              <View className="gap-3 rounded-lg border border-border bg-card px-4 py-3">
-                <Skeleton className="h-5 w-4/5" />
-                <Skeleton className="h-5 w-3/5" />
-              </View>
+              <SettingsSection>
+                <View className="gap-3 px-4 py-3">
+                  <Skeleton className="h-5 w-4/5" />
+                  <Skeleton className="h-5 w-3/5" />
+                </View>
+              </SettingsSection>
             ) : detail.isError || detail.data === undefined ? (
               <View className="gap-3">
                 <EmptyStatePanel>{describeError(detail.error)}</EmptyStatePanel>
@@ -217,52 +226,50 @@ export function RegistrySkillDetailScreen() {
                     ))}
                   </ScrollView>
                 ) : null}
-                <View
-                  className="rounded-lg border border-border bg-card px-4 py-3"
-                  testID="registry-skill-detail-content"
-                >
-                  {isMarkdownPath(file.path) ? (
-                    <Markdown
-                      content={file.contents}
-                      textSize="base"
-                      showFrontmatter
-                    />
-                  ) : (
-                    <Text variant="mono" className="text-xs" selectable>
-                      {file.contents}
-                    </Text>
-                  )}
-                </View>
+                <SettingsSection title={file.path}>
+                  <View
+                    className="px-4 py-3"
+                    testID="registry-skill-detail-content"
+                  >
+                    {isMarkdownPath(file.path) ? (
+                      <Markdown
+                        content={file.contents}
+                        textSize="base"
+                        showFrontmatter
+                      />
+                    ) : (
+                      <Text variant="mono" className="text-xs" selectable>
+                        {file.contents}
+                      </Text>
+                    )}
+                  </View>
+                </SettingsSection>
               </>
             )}
 
-            <SettingsSection title="About">
-              <ListRow
+            <SettingsSection
+              title="About"
+              footnote="Treat registry skills as untrusted source material: bb installs the files into your user skill library and agents follow them."
+            >
+              <GroupedRow
                 title="Registry id"
                 subtitle={entry.data.id}
                 leading="Info"
+                selectable
               />
               {entry.data.installUrl ? (
-                <ListRow
+                <GroupedRow
                   title="Source repository"
                   subtitle={entry.data.installUrl}
                   leading="Github"
                   trailing="chevron"
-                  onPress={() => {
-                    Linking.openURL(entry.data?.installUrl ?? "").catch(() =>
-                      toast.error("Could not open the link"),
-                    );
-                  }}
+                  onPress={() => openLink(entry.data?.installUrl)}
                 />
               ) : null}
             </SettingsSection>
-            <Text variant="caption">
-              Treat registry skills as untrusted source material: bb installs
-              the files into your user skill library and agents follow them.
-            </Text>
           </>
         )}
-      </Screen>
+      </GroupedScreen>
     </>
   );
 }

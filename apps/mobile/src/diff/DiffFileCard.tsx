@@ -45,6 +45,9 @@ export interface DiffFileCardProps {
   testID?: string;
 }
 
+/** Card corners: continuous 10pt, the grouped-card radius. */
+const CARD_STYLE = { borderRadius: 10, borderCurve: "continuous" } as const;
+
 const CHANGE_KIND_LABEL: Record<DiffChangeKind, string | null> = {
   added: "added",
   deleted: "deleted",
@@ -105,6 +108,7 @@ export const DiffFileCard = memo(function DiffFileCard({
   return (
     <View
       className="overflow-hidden rounded-lg border border-border bg-background"
+      style={CARD_STYLE}
       testID={testID}
     >
       <Pressable
@@ -164,12 +168,12 @@ export const DiffFileCard = memo(function DiffFileCard({
         </View>
         <View className="shrink-0 flex-row items-center gap-1">
           {showAdditions ? (
-            <Text className="text-xs text-diff-added">
+            <Text className="text-xs text-diff-added" numeric>
               +{formatDiffCount(file.stats.additions)}
             </Text>
           ) : null}
           {showDeletions ? (
-            <Text className="text-xs text-diff-removed">
+            <Text className="text-xs text-diff-removed" numeric>
               -{formatDiffCount(file.stats.deletions)}
             </Text>
           ) : null}

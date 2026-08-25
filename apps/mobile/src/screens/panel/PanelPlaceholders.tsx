@@ -7,6 +7,7 @@ import type {
   PanelTabContentProps,
 } from "./registry";
 
+/** iOS empty state: a large light symbol, a headline, a footnote. */
 function PlaceholderCard({
   icon,
   title,
@@ -20,13 +21,21 @@ function PlaceholderCard({
 }) {
   const { tokens } = useTheme();
   return (
-    <View className="flex-1 items-center justify-center px-8" testID={testID}>
-      <View className="max-w-[320px] items-center gap-2 rounded-lg border border-dashed border-border px-5 py-6">
-        <Icon name={icon} size={24} color={tokens.mutedForeground} />
-        <Text variant="label" className="text-center" numberOfLines={2}>
+    <View
+      className="flex-1 items-center justify-center px-8 pb-12"
+      testID={testID}
+    >
+      <View className="max-w-[320px] items-center gap-2">
+        <Icon
+          name={icon}
+          size={40}
+          weight="light"
+          color={tokens.subtleForeground}
+        />
+        <Text variant="headline" className="text-center" numberOfLines={2}>
           {title}
         </Text>
-        <Text variant="caption" className="text-center">
+        <Text variant="footnote" tone="muted" className="text-center">
           {message}
         </Text>
       </View>

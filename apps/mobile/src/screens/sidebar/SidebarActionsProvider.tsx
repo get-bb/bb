@@ -48,16 +48,20 @@ import {
   useUnpinThread,
 } from "@/data/threads";
 import { describeError } from "@/lib/describe-error";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
+  confirmDestructive,
   Icon,
   ListRow,
+  promptName,
   Separator,
   Sheet,
   Text,
   toast,
   useSheet,
   type IconName,
+  type NamePromptOptions,
 } from "@/ui";
 import { CenteredRow, CheckRow, SheetHeader } from "../shell/sheet-rows";
 import {
@@ -70,27 +74,25 @@ import { SectionReorderList } from "./SectionReorderList";
 import { SheetNameForm } from "./SheetNameForm";
 
 /**
- * The long-press menus and follow-up forms for sidebar rows (thread, project,
- * section) plus the organize/sort options, rendered as one bottom sheet whose
- * content follows a small state machine. One sheet instead of a stack of
- * modals: a menu action swaps the content in place (rename form, confirm,
- * section picker), so nothing has to wait for a previous sheet to dismiss.
- * Mirrors the web ThreadActionsMenu / ProjectActionsMenu / section row menu.
+ * The actions behind sidebar rows (thread, project, section) and the
+ * organize/sort options. Thread mutations (read, pin, rename, move,
+ * archive, delete) are exposed on the context so the swipe actions call
+ * them directly; the long-press sheet (the thread row menu and the project
+ * / section header menus, on both platforms — a native context menu would
+ * hide the row from VoiceOver) is one bottom sheet whose content follows a
+ * small state machine, so a menu action swaps the content in place. Renames
+ * use the system prompt where the platform has one (`promptName`) and the
+ * sheet form elsewhere; destructive actions confirm through the system
+ * alert. Mirrors the web ThreadActionsMenu / ProjectActionsMenu / section
+ * menu.
  */
 
 type SheetState =
   | { kind: "thread-menu"; thread: ThreadListEntry }
   | { kind: "thread-rename"; thread: ThreadListEntry }
   | { kind: "thread-move"; thread: ThreadListEntry }
-  | {
-      kind: "thread-delete";
-      thread: ThreadListEntry;
-      /** Null while the child summary loads. */
-      childThreadCount: number | null;
-    }
   | { kind: "project-menu"; project: SidebarProject }
   | { kind: "project-rename"; project: SidebarProject }
-  | { kind: "project-remove"; project: SidebarProject }
   | { kind: "section-menu"; section: SidebarSectionDefinition }
   | { kind: "section-rename"; section: SidebarSectionDefinition }
   | {
@@ -98,22 +100,37 @@ type SheetState =
       /** When set, the thread moves into the new section on success. */
       moveThread: ThreadListEntry | null;
     }
-  | { kind: "section-delete"; section: SidebarSectionDefinition }
   | { kind: "display-options" }
   | { kind: "section-reorder" };
 
-interface SidebarActions {
+export interface SidebarActions {
+  /** The long-press menu for a thread row (a heavy haptic, then the sheet). */
   openThreadMenu(thread: ThreadListEntry): void;
   openProjectMenu(project: SidebarProject): void;
   openSectionMenu(section: SidebarSectionDefinition): void;
+  /** The Android organize / sort sheet (iOS uses the header menu). */
   openDisplayOptions(): void;
   /** The drag-to-reorder list of top-level sections for the current mode. */
   openSectionReorder(): void;
+  /**
+   * Create a section by name (system prompt or sheet form); a thread passed
+   * in moves into it on success.
+   */
+  openSectionCreate(moveThread?: ThreadListEntry | null): void;
   /** Navigate to the thread detail. */
   openThread(thread: Pick<ThreadListEntry, "id">): void;
   /** Navigate to the composer, preselecting a project and/or section. */
   createThread(target?: { projectId?: string; sectionId?: string }): void;
   createProject(): void;
+  toggleThreadRead(thread: ThreadListEntry): void;
+  toggleThreadPinned(thread: ThreadListEntry): void;
+  renameThread(thread: ThreadListEntry): void;
+  moveThreadToSection(thread: ThreadListEntry, sectionId: string | null): void;
+  /** Archives with an undo toast. */
+  archiveThread(thread: ThreadListEntry): void;
+  unarchiveThread(thread: ThreadListEntry): void;
+  /** Confirms (with the child count) before deleting. */
+  deleteThread(thread: ThreadListEntry): void;
 }
 
 const SidebarActionsContext = createContext<SidebarActions | null>(null);
@@ -130,7 +147,9 @@ export function useSidebarActions(): SidebarActions {
 
 const ARCHIVE_UNDO_TOAST_DURATION_MS = 8000;
 
-const ORGANIZE_OPTIONS: readonly {
+const EMPTY_SECTIONS: readonly SidebarSectionDefinition[] = [];
+
+export const ORGANIZE_OPTIONS: readonly {
   label: string;
   mode: SidebarOrganizeMode;
   icon: IconName;
@@ -140,7 +159,7 @@ const ORGANIZE_OPTIONS: readonly {
   { label: "Manually", mode: "manual", icon: "Layers" },
 ];
 
-const SORT_OPTIONS: readonly {
+export const SORT_OPTIONS: readonly {
   label: string;
   sort: SidebarSortMode;
   icon: IconName;
@@ -155,6 +174,13 @@ function sectionErrorMessage(error: unknown, fallback: string): string {
     return "Section name already exists.";
   }
   return describeError(error) || fallback;
+}
+
+function childThreadsMessage(count: number): string {
+  const children = `${count} child ${count === 1 ? "thread" : "threads"} will be deleted.`;
+  return count > 0
+    ? `${children} This action cannot be undone.`
+    : "This action cannot be undone.";
 }
 
 interface MenuAction {
@@ -193,38 +219,6 @@ function MenuRows({ actions }: { actions: readonly MenuAction[] }) {
   );
 }
 
-function ConfirmRows({
-  confirmLabel,
-  confirmIcon,
-  pending,
-  onConfirm,
-  onCancel,
-}: {
-  confirmLabel: string;
-  confirmIcon: IconName;
-  pending: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const { tokens } = useTheme();
-  return (
-    <>
-      <ListRow
-        title={pending ? `${confirmLabel}…` : confirmLabel}
-        leading={
-          <Icon name={confirmIcon} size={20} color={tokens.destructiveText} />
-        }
-        destructive
-        disabled={pending}
-        onPress={onConfirm}
-        testID="sidebar-confirm"
-      />
-      <Separator />
-      <CenteredRow label="Cancel" onPress={onCancel} testID="sidebar-cancel" />
-    </>
-  );
-}
-
 interface SidebarActionsProviderProps {
   children: ReactNode;
   /**
@@ -246,23 +240,33 @@ export function SidebarActionsProvider({
   const [state, setState] = useState<SheetState | null>(null);
   const [preferences, preferenceActions] = useSidebarPreferences();
   const bootstrap = useSidebarBootstrap();
-  const sections = bootstrap.data?.sections ?? [];
+  const bootstrapSections = bootstrap.data?.sections;
+  const sections = useMemo(
+    () => bootstrapSections ?? EMPTY_SECTIONS,
+    [bootstrapSections],
+  );
 
-  const renameThread = useRenameThread();
-  const moveThread = useMoveThreadToSection();
-  const pinThread = usePinThread();
-  const unpinThread = useUnpinThread();
-  const archiveThread = useArchiveThread();
-  const unarchiveThread = useUnarchiveThread();
-  const deleteThread = useDeleteThread();
-  const childSummary = useThreadChildSummary();
-  const markRead = useMarkThreadRead();
-  const markUnread = useMarkThreadUnread();
+  const { mutate: renameThreadMutate, isPending: renameThreadPending } =
+    useRenameThread();
+  const { mutate: moveThreadMutate } = useMoveThreadToSection();
+  const { mutate: pinThreadMutate } = usePinThread();
+  const { mutate: unpinThreadMutate } = useUnpinThread();
+  const { mutate: archiveThreadMutate } = useArchiveThread();
+  const { mutate: unarchiveThreadMutate } = useUnarchiveThread();
+  const { mutate: deleteThreadMutate } = useDeleteThread();
+  const { mutateAsync: fetchChildSummary } = useThreadChildSummary();
+  const { mutate: markReadMutate } = useMarkThreadRead();
+  const { mutate: markUnreadMutate } = useMarkThreadUnread();
   const renameProject = useRenameProject();
-  const deleteProject = useDeleteProject();
+  const { mutate: deleteProjectMutate } = useDeleteProject();
   const createSection = useCreateSection();
+  const { mutate: createSectionMutate, reset: resetCreateSection } =
+    createSection;
   const renameSection = useRenameSection();
-  const deleteSection = useDeleteSection();
+  const { reset: resetRenameSection } = renameSection;
+  const { mutate: deleteSectionMutate } = useDeleteSection();
+  const { organize } = preferences;
+  const { setOrganize } = preferenceActions;
 
   const present = useCallback(
     (next: SheetState) => {
@@ -278,35 +282,31 @@ export function SidebarActionsProvider({
     [router],
   );
 
-  const actions = useMemo<SidebarActions>(
-    () => ({
-      openThreadMenu: (thread) => present({ kind: "thread-menu", thread }),
-      openProjectMenu: (project) => present({ kind: "project-menu", project }),
-      openSectionMenu: (section) => present({ kind: "section-menu", section }),
-      openDisplayOptions: () => present({ kind: "display-options" }),
-      openSectionReorder: () => present({ kind: "section-reorder" }),
-      openThread: (thread) => navigate(threadHref(thread.id)),
-      createThread: (target) => {
-        if (onCreateThread?.(target)) return;
-        // Home already sits at the bottom of the stack: navigate (not push)
-        // returns to it with the new params.
-        router.navigate(newThreadHref(target));
-      },
-      createProject: () => navigate(newProjectHref()),
-    }),
-    [navigate, onCreateThread, present, router],
+  /**
+   * Rename through the system prompt when the platform has one, otherwise
+   * swap the sheet to its form.
+   */
+  const renameWithPrompt = useCallback(
+    (options: NamePromptOptions, fallback: SheetState) => {
+      if (promptName(options)) {
+        dismiss();
+        return;
+      }
+      setState(fallback);
+    },
+    [dismiss],
   );
 
   const unarchiveMany = useCallback(
     (threadIds: readonly string[]) => {
-      for (const id of threadIds) unarchiveThread.mutate({ id });
+      for (const id of threadIds) unarchiveThreadMutate({ id });
     },
-    [unarchiveThread],
+    [unarchiveThreadMutate],
   );
 
   const archiveWithUndo = useCallback(
     (thread: ThreadListEntry) => {
-      archiveThread.mutate(
+      archiveThreadMutate(
         { id: thread.id },
         {
           onSuccess: (response) => {
@@ -331,29 +331,136 @@ export function SidebarActionsProvider({
         },
       );
     },
-    [archiveThread, unarchiveMany],
+    [archiveThreadMutate, unarchiveMany],
   );
 
-  const requestDelete = useCallback(
+  const deleteWithConfirm = useCallback(
     (thread: ThreadListEntry) => {
-      setState({ kind: "thread-delete", thread, childThreadCount: null });
-      childSummary.mutateAsync(thread.id).then(
+      const title = getThreadDisplayTitle(thread);
+      fetchChildSummary(thread.id).then(
         (summary) => {
-          setState((current) =>
-            current?.kind === "thread-delete" && current.thread.id === thread.id
-              ? { ...current, childThreadCount: summary.nonDeletedChildCount }
-              : current,
-          );
+          const count = summary.nonDeletedChildCount;
+          confirmDestructive({
+            title: `Delete ${title}?`,
+            message: childThreadsMessage(count),
+            actionLabel: "Delete thread",
+            onConfirm: () => {
+              deleteThreadMutate(
+                { id: thread.id, childThreadsConfirmed: count > 0 },
+                { onSuccess: () => toast.success("Thread deleted") },
+              );
+            },
+          });
         },
         (error: unknown) => {
           toast.error("Could not check child threads", {
             description: describeError(error),
           });
-          dismiss();
         },
       );
     },
-    [childSummary, dismiss],
+    [deleteThreadMutate, fetchChildSummary],
+  );
+
+  const createSectionNamed = useCallback(
+    (name: string, moveThread: ThreadListEntry | null) => {
+      createSectionMutate(
+        { name },
+        {
+          onSuccess: (section) => {
+            if (moveThread) {
+              moveThreadMutate({ id: moveThread.id, sectionId: section.id });
+            }
+            if (organize !== "manual") setOrganize("manual");
+          },
+          onError: (error) => {
+            toast.error(
+              sectionErrorMessage(error, "Failed to create section."),
+            );
+          },
+        },
+      );
+    },
+    [createSectionMutate, moveThreadMutate, organize, setOrganize],
+  );
+
+  const actions = useMemo<SidebarActions>(
+    () => ({
+      openThreadMenu: (thread) => {
+        haptic("impact-heavy");
+        present({ kind: "thread-menu", thread });
+      },
+      openProjectMenu: (project) => {
+        haptic("impact-heavy");
+        present({ kind: "project-menu", project });
+      },
+      openSectionMenu: (section) => {
+        haptic("impact-heavy");
+        present({ kind: "section-menu", section });
+      },
+      openDisplayOptions: () => present({ kind: "display-options" }),
+      openSectionReorder: () => present({ kind: "section-reorder" }),
+      openSectionCreate: (moveThread = null) => {
+        const handled = promptName({
+          title: "New section",
+          message: moveThread
+            ? `${getThreadDisplayTitle(moveThread)} moves into it.`
+            : "Create a section for threads.",
+          initialValue: "",
+          submitLabel: "Create",
+          onSubmit: (name) => createSectionNamed(name, moveThread),
+        });
+        if (!handled) present({ kind: "section-create", moveThread });
+      },
+      openThread: (thread) => navigate(threadHref(thread.id)),
+      createThread: (target) => {
+        if (onCreateThread?.(target)) return;
+        // Home already sits at the bottom of the stack: navigate (not push)
+        // returns to it with the new params.
+        router.navigate(newThreadHref(target));
+      },
+      createProject: () => navigate(newProjectHref()),
+      toggleThreadRead: (thread) => {
+        if (isThreadRead(thread)) markUnreadMutate(thread.id);
+        else markReadMutate(thread.id);
+      },
+      toggleThreadPinned: (thread) => {
+        if (thread.pinnedAt !== null) unpinThreadMutate({ id: thread.id });
+        else pinThreadMutate({ id: thread.id });
+      },
+      renameThread: (thread) => {
+        const handled = promptName({
+          title: "Rename thread",
+          initialValue: getThreadDisplayTitle(thread),
+          submitLabel: "Rename",
+          onSubmit: (title) => renameThreadMutate({ id: thread.id, title }),
+        });
+        if (!handled) present({ kind: "thread-rename", thread });
+      },
+      moveThreadToSection: (thread, sectionId) => {
+        if (thread.sectionId === sectionId) return;
+        moveThreadMutate({ id: thread.id, sectionId });
+      },
+      archiveThread: archiveWithUndo,
+      unarchiveThread: (thread) => unarchiveThreadMutate({ id: thread.id }),
+      deleteThread: deleteWithConfirm,
+    }),
+    [
+      archiveWithUndo,
+      createSectionNamed,
+      deleteWithConfirm,
+      markReadMutate,
+      markUnreadMutate,
+      moveThreadMutate,
+      navigate,
+      onCreateThread,
+      pinThreadMutate,
+      present,
+      renameThreadMutate,
+      router,
+      unarchiveThreadMutate,
+      unpinThreadMutate,
+    ],
   );
 
   const renderContent = (): ReactNode => {
@@ -380,8 +487,7 @@ export function SidebarActionsProvider({
             icon: isRead ? "Mail" : "MailOpen",
             onPress: () => {
               dismiss();
-              if (isRead) markUnread.mutate(thread.id);
-              else markRead.mutate(thread.id);
+              actions.toggleThreadRead(thread);
             },
           },
           {
@@ -390,15 +496,24 @@ export function SidebarActionsProvider({
             icon: isPinned ? "PinOff" : "Pin",
             onPress: () => {
               dismiss();
-              if (isPinned) unpinThread.mutate({ id: thread.id });
-              else pinThread.mutate({ id: thread.id });
+              actions.toggleThreadPinned(thread);
             },
           },
           {
             key: "rename",
             label: "Rename",
             icon: "Edit",
-            onPress: () => setState({ kind: "thread-rename", thread }),
+            onPress: () =>
+              renameWithPrompt(
+                {
+                  title: "Rename thread",
+                  initialValue: getThreadDisplayTitle(thread),
+                  submitLabel: "Rename",
+                  onSubmit: (title) =>
+                    renameThreadMutate({ id: thread.id, title }),
+                },
+                { kind: "thread-rename", thread },
+              ),
           },
           {
             key: "move",
@@ -412,8 +527,8 @@ export function SidebarActionsProvider({
             icon: isArchived ? "ArchiveRestore" : "Archive",
             onPress: () => {
               dismiss();
-              if (isArchived) unarchiveThread.mutate({ id: thread.id });
-              else archiveWithUndo(thread);
+              if (isArchived) actions.unarchiveThread(thread);
+              else actions.archiveThread(thread);
             },
           },
           {
@@ -421,7 +536,10 @@ export function SidebarActionsProvider({
             label: "Delete",
             icon: "Trash2",
             destructive: true,
-            onPress: () => requestDelete(thread),
+            onPress: () => {
+              dismiss();
+              actions.deleteThread(thread);
+            },
           },
         ];
         return (
@@ -437,10 +555,10 @@ export function SidebarActionsProvider({
             title="Rename thread"
             initialValue={getThreadDisplayTitle(state.thread)}
             submitLabel="Rename"
-            pending={renameThread.isPending}
+            pending={renameThreadPending}
             autoCapitalize="sentences"
             onSubmit={(title) => {
-              renameThread.mutate(
+              renameThreadMutate(
                 { id: state.thread.id, title },
                 { onSettled: dismiss },
               );
@@ -465,9 +583,7 @@ export function SidebarActionsProvider({
                 checked={thread.sectionId === section.id}
                 onPress={() => {
                   dismiss();
-                  if (thread.sectionId !== section.id) {
-                    moveThread.mutate({ id: thread.id, sectionId: section.id });
-                  }
+                  actions.moveThreadToSection(thread, section.id);
                 }}
                 testID={`sidebar-move-${section.id}`}
               />
@@ -478,9 +594,7 @@ export function SidebarActionsProvider({
               checked={thread.sectionId === null}
               onPress={() => {
                 dismiss();
-                if (thread.sectionId !== null) {
-                  moveThread.mutate({ id: thread.id, sectionId: null });
-                }
+                actions.moveThreadToSection(thread, null);
               }}
               testID="sidebar-move-none"
             />
@@ -494,47 +608,6 @@ export function SidebarActionsProvider({
                 setState({ kind: "section-create", moveThread: thread })
               }
               testID="sidebar-move-new-section"
-            />
-          </>
-        );
-      }
-      case "thread-delete": {
-        const { thread, childThreadCount } = state;
-        const message =
-          childThreadCount === null
-            ? "Checking child threads…"
-            : [
-                childThreadCount > 0
-                  ? `${childThreadCount} child ${childThreadCount === 1 ? "thread" : "threads"} will be deleted.`
-                  : null,
-                "This action cannot be undone.",
-              ]
-                .filter((part): part is string => part !== null)
-                .join(" ");
-        return (
-          <>
-            <SheetHeader
-              title={`Delete ${getThreadDisplayTitle(thread)}?`}
-              message={message}
-            />
-            <ConfirmRows
-              confirmLabel="Delete thread"
-              confirmIcon="Trash2"
-              pending={childThreadCount === null || deleteThread.isPending}
-              onConfirm={() => {
-                if (childThreadCount === null) return;
-                deleteThread.mutate(
-                  {
-                    id: thread.id,
-                    childThreadsConfirmed: childThreadCount > 0,
-                  },
-                  {
-                    onSuccess: () => toast.success("Thread deleted"),
-                    onSettled: dismiss,
-                  },
-                );
-              }}
-              onCancel={dismiss}
             />
           </>
         );
@@ -564,7 +637,17 @@ export function SidebarActionsProvider({
             key: "rename",
             label: "Rename",
             icon: "Edit",
-            onPress: () => setState({ kind: "project-rename", project }),
+            onPress: () =>
+              renameWithPrompt(
+                {
+                  title: "Rename project",
+                  initialValue: project.name,
+                  submitLabel: "Rename",
+                  onSubmit: (name) =>
+                    renameProject.mutate({ id: project.id, name }),
+                },
+                { kind: "project-rename", project },
+              ),
           },
           {
             key: "add-local-path",
@@ -586,7 +669,19 @@ export function SidebarActionsProvider({
             label: "Remove",
             icon: "Trash2",
             destructive: true,
-            onPress: () => setState({ kind: "project-remove", project }),
+            onPress: () => {
+              dismiss();
+              confirmDestructive({
+                title: "Remove project?",
+                message: `Remove "${project.name}" and all of its threads? This cannot be undone.`,
+                actionLabel: "Remove project",
+                onConfirm: () => {
+                  deleteProjectMutate(project.id, {
+                    onSuccess: () => toast.success(`Removed ${project.name}`),
+                  });
+                },
+              });
+            },
           },
         ];
         return (
@@ -613,28 +708,6 @@ export function SidebarActionsProvider({
             testID="rename"
           />
         );
-      case "project-remove":
-        return (
-          <>
-            <SheetHeader
-              title="Remove project?"
-              message={`Remove "${state.project.name}" and all of its threads? This cannot be undone.`}
-            />
-            <ConfirmRows
-              confirmLabel="Remove project"
-              confirmIcon="Trash2"
-              pending={deleteProject.isPending}
-              onConfirm={() => {
-                deleteProject.mutate(state.project.id, {
-                  onSuccess: () =>
-                    toast.success(`Removed ${state.project.name}`),
-                  onSettled: dismiss,
-                });
-              }}
-              onCancel={dismiss}
-            />
-          </>
-        );
       case "section-menu": {
         const { section } = state;
         const menu: MenuAction[] = [
@@ -651,7 +724,28 @@ export function SidebarActionsProvider({
             key: "rename",
             label: "Rename",
             icon: "Edit",
-            onPress: () => setState({ kind: "section-rename", section }),
+            onPress: () =>
+              renameWithPrompt(
+                {
+                  title: "Rename section",
+                  initialValue: section.name,
+                  submitLabel: "Rename",
+                  onSubmit: (name) =>
+                    renameSection.mutate(
+                      { id: section.id, name },
+                      {
+                        onError: (error) =>
+                          toast.error(
+                            sectionErrorMessage(
+                              error,
+                              "Failed to rename section.",
+                            ),
+                          ),
+                      },
+                    ),
+                },
+                { kind: "section-rename", section },
+              ),
           },
           {
             key: "reorder",
@@ -664,7 +758,15 @@ export function SidebarActionsProvider({
             label: "Delete",
             icon: "Trash2",
             destructive: true,
-            onPress: () => setState({ kind: "section-delete", section }),
+            onPress: () => {
+              dismiss();
+              confirmDestructive({
+                title: `Delete ${section.name}?`,
+                message: "Threads in this section move back to Unorganized.",
+                actionLabel: "Delete section",
+                onConfirm: () => deleteSectionMutate({ id: section.id }),
+              });
+            },
           },
         ];
         return (
@@ -722,19 +824,17 @@ export function SidebarActionsProvider({
             }
             onSubmit={(name) => {
               const moveThreadId = state.moveThread?.id ?? null;
-              createSection.mutate(
+              createSectionMutate(
                 { name },
                 {
                   onSuccess: (section) => {
                     if (moveThreadId) {
-                      moveThread.mutate({
+                      moveThreadMutate({
                         id: moveThreadId,
                         sectionId: section.id,
                       });
                     }
-                    if (preferences.organize !== "manual") {
-                      preferenceActions.setOrganize("manual");
-                    }
+                    if (organize !== "manual") setOrganize("manual");
                     dismiss();
                   },
                 },
@@ -743,27 +843,6 @@ export function SidebarActionsProvider({
             onCancel={dismiss}
             testID="section-create"
           />
-        );
-      case "section-delete":
-        return (
-          <>
-            <SheetHeader
-              title={`Delete ${state.section.name}?`}
-              message="Threads in this section move back to Unorganized."
-            />
-            <ConfirmRows
-              confirmLabel="Delete section"
-              confirmIcon="Trash2"
-              pending={deleteSection.isPending}
-              onConfirm={() => {
-                deleteSection.mutate(
-                  { id: state.section.id },
-                  { onSettled: dismiss },
-                );
-              }}
-              onCancel={dismiss}
-            />
-          </>
         );
       case "display-options":
         return (
@@ -856,8 +935,8 @@ export function SidebarActionsProvider({
         deferContent={false}
         onDismiss={() => {
           setState(null);
-          createSection.reset();
-          renameSection.reset();
+          resetCreateSection();
+          resetRenameSection();
         }}
       >
         {renderContent()}

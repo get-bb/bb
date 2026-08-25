@@ -39,7 +39,7 @@ export const DEFAULT_INLINE_STATE: InlineState = {
 
 function spanFont(
   state: InlineState,
-): Pick<TextStyle, "fontFamily" | "fontWeight"> {
+): Pick<TextStyle, "fontFamily" | "fontWeight" | "fontStyle"> {
   if (state.italic) {
     return resolveItalicFont(state.weight);
   }

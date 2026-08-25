@@ -1,11 +1,11 @@
-import type { Host } from "@bb/domain";
 import type {
   ProviderUsage,
   ProviderUsageResponse,
   ProviderUsageWindow,
 } from "@bb/host-daemon-contract";
+import { Stack } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import { selectPrimaryHost, useHosts } from "@/data/hosts";
 import {
@@ -21,25 +21,17 @@ import {
 } from "@/data/settings";
 import { useSystemConfig, useSystemProviders } from "@/data/system";
 import { useTheme } from "@/theme";
-import {
-  EmptyStatePanel,
-  Icon,
-  ListRow,
-  Pill,
-  Separator,
-  Sheet,
-  Spinner,
-  Text,
-  useSheet,
-} from "@/ui";
-import {
-  HostStatusDot,
-  PickerTrigger,
-  usePickerSheetMaxHeight,
-} from "../pickers";
-import { Screen } from "../shell/Screen";
+import { EmptyStatePanel, Separator, Spinner, Text } from "@/ui";
 import { useNow } from "../shell/use-now";
-import { SettingsHint, SettingsSection } from "./SettingsRows";
+import { GroupedScreen } from "./GroupedScreen";
+import { MenuValueRow } from "./MenuValueRow";
+import {
+  HeaderIconButton,
+  SettingsHint,
+  SettingsSection,
+} from "./SettingsRows";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 /**
  * `/settings/usage`: `GET /system/usage-limits?hostId=` for the primary or a
@@ -50,9 +42,9 @@ export function UsageLimitsScreen() {
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <Screen testID="usage-limits-screen">
+      <GroupedScreen testID="usage-limits-screen">
         <EmptyStatePanel>Add a server first.</EmptyStatePanel>
-      </Screen>
+      </GroupedScreen>
     );
   }
   return <ConnectedUsageLimitsScreen />;
@@ -77,14 +69,12 @@ function UsageWindowRow({
   return (
     <View className="gap-1">
       <View className="flex-row items-baseline justify-between gap-2">
-        <Text variant="caption" tone="foreground">
-          {window.label}
-        </Text>
-        <Text variant="caption" className="tabular-nums">
+        <Text variant="body">{window.label}</Text>
+        <Text variant="body" tone="muted" numeric>
           {usageWindowValue(window)}
         </Text>
       </View>
-      <View className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+      <View className="h-1 w-full overflow-hidden rounded-full bg-muted">
         <View
           className="h-full rounded-full"
           style={{
@@ -117,17 +107,17 @@ function ProviderUsageBlock({
     <View className="gap-3 px-4 py-3" testID={`usage-${config.providerId}`}>
       <View className="flex-row items-start justify-between gap-2">
         <View className="min-w-0 flex-1">
-          <Text variant="heading">{config.name}</Text>
+          <Text variant="headline">{config.name}</Text>
           {heading.accountEmail ? (
-            <Text variant="caption" numberOfLines={1}>
+            <Text variant="caption" numberOfLines={1} selectable>
               {heading.accountEmail}
             </Text>
           ) : null}
         </View>
         {heading.planLabel ? (
-          <Pill variant="outline" size="sm">
+          <Text variant="body" tone="muted">
             {heading.planLabel}
-          </Pill>
+          </Text>
         ) : null}
       </View>
       {body.kind === "windows" ? (
@@ -144,7 +134,6 @@ function ProviderUsageBlock({
 }
 
 function ConnectedUsageLimitsScreen() {
-  const { tokens } = useTheme();
   const configQuery = useSystemConfig();
   const hostsQuery = useHosts();
   const hosts = useMemo(() => hostsQuery.data ?? [], [hostsQuery.data]);
@@ -161,8 +150,6 @@ function ConnectedUsageLimitsScreen() {
     hostId: selectedHost?.id,
     enabled: configQuery.data !== undefined && hostReady,
   });
-  const pickerSheet = useSheet();
-  const maxHeight = usePickerSheetMaxHeight();
   const now = useNow();
   const providersQuery = useSystemProviders({
     ...(selectedHost === null ? {} : { hostId: selectedHost.id }),
@@ -175,119 +162,99 @@ function ConnectedUsageLimitsScreen() {
   );
   const loaded =
     hostsQuery.data !== undefined && configQuery.data !== undefined;
+  const refreshDisabled = !hostReady || usageQuery.isFetching;
+  const refresh = () => void usageQuery.refetch();
 
   return (
-    <Screen testID="usage-limits-screen">
-      <SettingsSection
-        title="Usage limits"
-        description="Your provider subscription usage, read from the machine's signed-in CLIs."
-        action={
-          <View className="flex-row items-center gap-2">
-            {hosts.length > 1 ? (
-              <PickerTrigger
-                icon="Laptop"
-                label={selectedHost?.name ?? "Machine"}
-                variant="outline"
-                onPress={pickerSheet.present}
-                tone={hostReady ? "default" : "warning"}
-                testID="usage-machine-picker"
-                accessibilityLabel="Usage limits machine"
-              />
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Reload usage data"
-              hitSlop={8}
-              disabled={!hostReady || usageQuery.isFetching}
-              onPress={() => void usageQuery.refetch()}
-              testID="usage-refresh"
-            >
-              {usageQuery.isFetching ? (
-                <Spinner size="small" color={tokens.mutedForeground} />
-              ) : (
-                <Icon
-                  name="RotateCcw"
-                  size={18}
-                  color={tokens.mutedForeground}
-                />
-              )}
-            </Pressable>
-          </View>
-        }
-      >
-        {!loaded ? (
-          <View className="items-center px-4 py-6">
-            <Spinner />
-          </View>
-        ) : selectedHost === null ? (
-          <SettingsHint
-            title="No machine yet"
-            message="Usage limits are read from a paired machine's provider CLIs. Pair a machine under Settings → Machines first."
-            testID="usage-no-host"
+    <>
+      {IS_IOS ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="arrow.clockwise"
+            accessibilityLabel="Reload usage data"
+            disabled={refreshDisabled}
+            onPress={refresh}
           />
-        ) : !hostReady ? (
-          <SettingsHint
-            title={`${selectedHost.name} is offline`}
-            message="Usage is read live from the machine's provider CLIs. Connect it (or pick another machine) to see usage."
-            testID="usage-host-offline"
-          />
-        ) : providers.length === 0 && !usageQuery.isLoading ? (
-          <View className="px-4 py-4">
-            <Text variant="caption">
-              No provider CLIs are installed on {selectedHost.name}.
-            </Text>
-          </View>
-        ) : (
-          providers.map((config, index) => (
-            <View key={config.providerId}>
-              {index > 0 ? <Separator /> : null}
-              <ProviderUsageBlock
-                config={config}
-                usage={usage[config.providerId]}
-                isLoading={usageQuery.isLoading}
-                isError={usageQuery.isError}
-                now={now}
-              />
-            </View>
-          ))
-        )}
-      </SettingsSection>
-
-      <Sheet
-        controller={pickerSheet}
-        title="Machine"
-        layout="scroll"
-        maxDynamicContentSize={maxHeight}
-      >
-        {hosts.map((host: Host) => {
-          const connected = host.status === "connected";
-          const selected = host.id === selectedHost?.id;
-          return (
-            <ListRow
-              key={host.id}
-              title={host.name}
-              subtitle={connected ? undefined : "Offline"}
-              leading={
-                <View className="w-5 items-center">
-                  <HostStatusDot connected={connected} />
-                </View>
-              }
-              trailing={
-                selected ? (
-                  <Icon name="Check" size={18} color={tokens.foreground} />
-                ) : null
-              }
-              selected={selected}
-              disabled={!connected}
-              onPress={() => {
-                pickerSheet.dismiss();
-                setSelectedHostId(host.id);
-              }}
-              testID={`usage-machine-option-${host.id}`}
+        </Stack.Toolbar>
+      ) : null}
+      <GroupedScreen testID="usage-limits-screen">
+        {hosts.length > 1 ? (
+          <SettingsSection title="Machine">
+            <MenuValueRow
+              title="Machine"
+              value={selectedHost?.name ?? "Machine"}
+              valueTone={hostReady ? "default" : "warning"}
+              options={hosts.map((host) => ({
+                value: host.id,
+                label:
+                  host.status === "connected"
+                    ? host.name
+                    : `${host.name} (offline)`,
+                icon: "Laptop" as const,
+                disabled: host.status !== "connected",
+              }))}
+              selected={selectedHost?.id ?? null}
+              onSelect={setSelectedHostId}
+              testID="usage-machine-picker"
+              accessibilityLabel="Usage limits machine"
             />
-          );
-        })}
-      </Sheet>
-    </Screen>
+          </SettingsSection>
+        ) : null}
+
+        <SettingsSection
+          title="Usage limits"
+          footnote="Your provider subscription usage, read from the machine's signed-in CLIs."
+          action={
+            IS_IOS ? undefined : (
+              <HeaderIconButton
+                icon="RotateCcw"
+                accessibilityLabel="Reload usage data"
+                disabled={!hostReady}
+                loading={usageQuery.isFetching}
+                onPress={refresh}
+                testID="usage-refresh"
+              />
+            )
+          }
+        >
+          {!loaded ? (
+            <View className="items-center px-4 py-6">
+              <Spinner />
+            </View>
+          ) : selectedHost === null ? (
+            <SettingsHint
+              title="No machine yet"
+              message="Usage limits are read from a paired machine's provider CLIs. Pair a machine under Settings → Machines first."
+              testID="usage-no-host"
+            />
+          ) : !hostReady ? (
+            <SettingsHint
+              title={`${selectedHost.name} is offline`}
+              message="Usage is read live from the machine's provider CLIs. Connect it (or pick another machine) to see usage."
+              testID="usage-host-offline"
+            />
+          ) : providers.length === 0 && !usageQuery.isLoading ? (
+            <View className="px-4 py-3">
+              <Text variant="footnote" tone="muted">
+                No provider CLIs are installed on {selectedHost.name}.
+              </Text>
+            </View>
+          ) : (
+            providers.map((config, index) => (
+              <View key={config.providerId}>
+                {index > 0 ? <Separator inset /> : null}
+                <ProviderUsageBlock
+                  config={config}
+                  usage={usage[config.providerId]}
+                  isLoading={usageQuery.isLoading}
+                  isError={usageQuery.isError}
+                  now={now}
+                />
+              </View>
+            ))
+          )}
+        </SettingsSection>
+      </GroupedScreen>
+    </>
   );
 }

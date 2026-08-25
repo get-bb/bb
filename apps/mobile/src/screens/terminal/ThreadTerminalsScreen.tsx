@@ -1,6 +1,6 @@
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { useProfiles } from "@/app-shell/ProfilesProvider";
 import { EmptyStatePanel } from "@/ui";
 import { Screen } from "../shell/Screen";
@@ -9,7 +9,8 @@ import { TerminalSessionsList } from "./TerminalSessionsList";
 
 /**
  * `/threads/[id]/terminal`: the thread's terminals (list + Start), the route
- * behind the panel's Terminal tab for deep links and full-screen use.
+ * behind the panel's Terminal tab for deep links and full-screen use. A
+ * grouped page: the session cards sit on the grouped background.
  */
 export function ThreadTerminalsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,12 +32,21 @@ export function ThreadTerminalsScreen() {
             <EmptyStatePanel>No active server.</EmptyStatePanel>
           </View>
         ) : (
-          <TerminalSessionsList
-            listScope={{ kind: "thread", threadId: id }}
-            createScope={{ kind: "thread", threadId: id }}
-            onOpenTerminal={openTerminal}
-            testID="thread-terminals"
-          />
+          <View className="flex-1 bg-surface-grouped">
+            <ScrollView
+              contentInsetAdjustmentBehavior="automatic"
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              <TerminalSessionsList
+                listScope={{ kind: "thread", threadId: id }}
+                createScope={{ kind: "thread", threadId: id }}
+                onOpenTerminal={openTerminal}
+                surface="grouped"
+                testID="thread-terminals"
+              />
+            </ScrollView>
+          </View>
         )}
       </Screen>
     </>

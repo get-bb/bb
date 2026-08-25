@@ -117,7 +117,9 @@ function CardBody({ entry, state, onLoadPatch, onRetry }: CardBodyProps) {
     case "error":
       return (
         <Notice testID="diff-tab-file-error">
-          <Text className="text-xs text-destructive-text">{state.message}</Text>
+          <Text className="text-xs text-destructive-text" selectable>
+            {state.message}
+          </Text>
           <LinkButton
             label="Retry"
             onPress={onRetry}

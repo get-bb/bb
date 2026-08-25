@@ -6,6 +6,7 @@ import {
   type ModelPickerOption,
   type ReasoningPickerOption,
 } from "@/data/compose";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
   cn,
@@ -46,10 +47,12 @@ export interface ModelReasoningPickerProps {
 }
 
 /**
- * Model + reasoning effort (+ Fast) in one sheet, mirroring the web
- * ModelReasoningPicker's essentials: model rows with a check mark, a
- * "More models" disclosure for retired ids, reasoning chips per model, and
- * the service-tier switch.
+ * Model + reasoning effort (+ Fast) in one sheet on both platforms,
+ * mirroring the web ModelReasoningPicker's essentials: model rows with a
+ * check mark (search, "More models"), reasoning chips per model, and the
+ * service-tier switch. The pill shows the model with the reasoning level as
+ * its detail; it is text, so it is a plain pressable rather than a
+ * native-menu trigger (see `NativeMenu`).
  */
 export function ModelReasoningPicker({
   modelOptions,
@@ -106,6 +109,10 @@ export function ModelReasoningPicker({
     filtered.isSearching &&
     filtered.modelOptions.length === 0 &&
     filtered.moreModelOptions.length === 0;
+  const pickModel = (model: string) => {
+    haptic("selection");
+    onModelChange(model);
+  };
 
   return (
     <>
@@ -134,7 +141,10 @@ export function ModelReasoningPicker({
         }}
       >
         {loadErrorMessage ? (
-          <View className="mx-4 my-3 flex-row items-start gap-2 rounded-md border border-border bg-surface-attention px-3 py-2">
+          <View
+            className="mx-4 my-3 flex-row items-start gap-2 rounded-md border border-border bg-surface-attention px-3 py-2"
+            style={{ borderCurve: "continuous" }}
+          >
             <Icon name="AlertTriangle" size={16} color={tokens.warningText} />
             <Text variant="caption" tone="warning" className="flex-1">
               {loadErrorMessage}
@@ -180,7 +190,7 @@ export function ModelReasoningPicker({
             key={option.value}
             option={option}
             selected={option.value === modelValue}
-            onSelect={onModelChange}
+            onSelect={pickModel}
             testID={`model-picker-option-${option.value}`}
           />
         ))}
@@ -202,7 +212,7 @@ export function ModelReasoningPicker({
             key={option.value}
             option={option}
             selected={option.value === modelValue}
-            onSelect={onModelChange}
+            onSelect={pickModel}
             testID={`model-picker-option-${option.value}`}
           />
         ))}
@@ -219,7 +229,10 @@ export function ModelReasoningPicker({
                       key={option.value}
                       accessibilityRole="button"
                       accessibilityState={{ selected: active }}
-                      onPress={() => onReasoningChange(option.value)}
+                      onPress={() => {
+                        haptic("selection");
+                        onReasoningChange(option.value);
+                      }}
                       testID={`model-picker-reasoning-${option.value}`}
                       className={cn(
                         "h-9 flex-row items-center rounded-md border px-3",
@@ -255,7 +268,10 @@ export function ModelReasoningPicker({
               </View>
               <Switch
                 checked={fastMode.enabled}
-                onCheckedChange={fastMode.onChange}
+                onCheckedChange={(enabled) => {
+                  haptic("selection");
+                  fastMode.onChange(enabled);
+                }}
                 testID="model-picker-fast"
               />
             </View>
@@ -274,17 +290,11 @@ interface ModelRowProps {
 }
 
 function ModelRow({ option, selected, onSelect, testID }: ModelRowProps) {
-  const { tokens } = useTheme();
   return (
     <ListRow
       title={option.label}
       subtitle={option.description || undefined}
       selected={selected}
-      trailing={
-        selected ? (
-          <Icon name="Check" size={18} color={tokens.foreground} />
-        ) : null
-      }
       onPress={() => onSelect(option.value)}
       testID={testID}
     />

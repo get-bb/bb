@@ -32,26 +32,23 @@ env:
     visible:
       id: "home-thread-list"
     timeout: 30000
+# The server label is the large title.
 - assertVisible: "E2E backend"
 - assertNotVisible:
     id: "connection-banner"
 - takeScreenshot: phase1-home
-# Workspace menu (the header's server avatar): the active server with its
-# realtime label, the server rows, Add server, Settings.
-- tapOn:
-    id: "home-workspace-menu"
+# Workspace menu (the native "Workspace" bar item): the menu title carries
+# the active server and its realtime label, then the server rows, Add
+# server, Archived threads, Settings. Native menu items have no test ids;
+# they are matched by text.
+- tapOn: "Workspace"
 - extendedWaitUntil:
-    visible:
-      id: "workspace-settings"
+    visible: "Settings"
     timeout: 10000
-- assertVisible:
-    id: "workspace-profile-label"
-- assertVisible: "Connected"
-- assertVisible:
-    id: "workspace-add-server"
+- assertVisible: ".*E2E backend.*Connected.*"
+- assertVisible: "Add server.*"
 - takeScreenshot: phase1-workspace-menu
-- tapOn:
-    id: "workspace-settings"
+- tapOn: "Settings"
 - extendedWaitUntil:
     visible:
       id: "settings-server-status"

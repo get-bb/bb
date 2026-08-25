@@ -18,6 +18,7 @@ import {
 import { useTheme } from "@/theme";
 import {
   Button,
+  GROUPED_CARD_RADIUS,
   Separator,
   Sheet,
   Spinner,
@@ -27,9 +28,9 @@ import {
 } from "@/ui";
 
 /**
- * One machine's provider CLI rows (web `MachineUpdatesRows` body): name +
- * version → latest, the state label, and the Install / Update / Retry /
- * View log actions backed by the app-wide install runner.
+ * One machine's provider CLI rows (web `MachineUpdatesRows` body) inside a
+ * grouped card: name + version → latest, the state label, and the Install /
+ * Update / Retry / View log actions backed by the app-wide install runner.
  */
 
 interface ProviderCliRowsProps {
@@ -52,7 +53,7 @@ function toneColor(
     case "destructive":
       return tokens.destructiveText;
     default:
-      return tokens.subtleForeground;
+      return tokens.mutedForeground;
   }
 }
 
@@ -102,20 +103,20 @@ function ProviderCliRow({
     : running
       ? "attention"
       : (state?.tone ?? "subtle");
+  const version = status.currentVersion
+    ? `${status.currentVersion}${latest !== null && latest !== status.currentVersion ? ` → ${latest}` : ""}`
+    : null;
 
   return (
-    <View className="gap-2 px-4 py-3" testID={testID}>
+    <View className="min-h-[44px] gap-2 px-4 py-2.5" testID={testID}>
       <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1.5">
-        <View className="min-w-0 flex-1 flex-row items-baseline gap-2">
-          <Text variant="label" numberOfLines={1} className="shrink">
+        <View className="min-w-0 flex-1">
+          <Text variant="bodyLarge" numberOfLines={1}>
             {status.displayName}
           </Text>
-          {status.currentVersion ? (
-            <Text variant="mono" tone="readback" className="text-xs">
-              {status.currentVersion}
-              {latest !== null && latest !== status.currentVersion
-                ? ` → ${latest}`
-                : ""}
+          {version ? (
+            <Text variant="caption" numeric selectable>
+              {version}
             </Text>
           ) : null}
         </View>
@@ -123,7 +124,8 @@ function ProviderCliRow({
           {running ? <Spinner size="small" color={tokens.warningText} /> : null}
           {label ? (
             <Text
-              variant="caption"
+              variant="body"
+              numberOfLines={1}
               style={{ color: toneColor(labelTone, tokens) }}
             >
               {label}
@@ -152,7 +154,7 @@ function ProviderCliRow({
         </View>
       </View>
       {failure?.message ? (
-        <Text variant="caption" tone="destructive">
+        <Text variant="caption" tone="destructive" selectable>
           {failure.message}
         </Text>
       ) : issue !== null && !hasProviderCliAction(issue) ? (
@@ -174,14 +176,16 @@ export function ProviderCliRows({
   if (host.status !== "connected") {
     return (
       <View className="px-4 py-3">
-        <Text variant="caption">Offline — connect to check provider CLIs.</Text>
+        <Text variant="footnote" tone="muted">
+          Offline — connect to check provider CLIs.
+        </Text>
       </View>
     );
   }
   if (statusError) {
     return (
       <View className="px-4 py-3">
-        <Text variant="caption" tone="destructive">
+        <Text variant="footnote" tone="destructive">
           Couldn't check provider CLIs on {host.name}.
         </Text>
       </View>
@@ -191,7 +195,9 @@ export function ProviderCliRows({
     return (
       <View className="flex-row items-center gap-2 px-4 py-3">
         <Spinner size="small" />
-        <Text variant="caption">Checking provider CLIs…</Text>
+        <Text variant="footnote" tone="muted">
+          Checking provider CLIs…
+        </Text>
       </View>
     );
   }
@@ -206,7 +212,7 @@ export function ProviderCliRows({
         if (entry === undefined) return null;
         return (
           <View key={provider}>
-            {index > 0 ? <Separator /> : null}
+            {index > 0 ? <Separator inset /> : null}
             <ProviderCliRow
               host={host}
               provider={provider}
@@ -234,6 +240,7 @@ function ProviderCliInstallLogSheet({
 }: ProviderCliInstallLogSheetProps) {
   const verb = record?.actionKind === "update" ? "update" : "install";
   const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
   return (
     <Sheet
       controller={controller}
@@ -248,14 +255,20 @@ function ProviderCliInstallLogSheet({
       >
         {record?.message ? (
           <Text
-            variant="caption"
+            variant="footnote"
             tone={record.status === "failed" ? "destructive" : "muted"}
+            selectable
           >
             {record.message}
           </Text>
         ) : null}
         <ScrollView
-          className="flex-1 rounded-md border border-border bg-muted/40"
+          className="flex-1"
+          style={{
+            backgroundColor: tokens.surfaceRecessedSolid,
+            borderRadius: GROUPED_CARD_RADIUS,
+            borderCurve: "continuous",
+          }}
           contentContainerStyle={{ padding: 12 }}
         >
           <ScrollView horizontal>

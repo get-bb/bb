@@ -17,7 +17,9 @@ import { renderInline } from "./render-inline";
 const MIN_COLUMN_WIDTH = 64;
 const MAX_COLUMN_WIDTH = 260;
 const CELL_HORIZONTAL_PADDING = 8;
-// Average glyph advance of Inter at 14px; over-estimates so short cells and
+// Average glyph advance at the 13px footnote size, tuned for the widest
+// system face in play (Inter-class metrics on Android; SF Pro is a touch
+// narrower, so it only gains slack); over-estimates so short cells and
 // medium-weight headers do not wrap.
 const APPROX_CHAR_WIDTH = 8.4;
 // Absorbs wide glyph runs (`m`, capitals) the average misses on short words.
@@ -145,7 +147,8 @@ export const MarkdownTable = memo(function MarkdownTable({
           borderWidth: 1,
           borderRightWidth: 0,
           borderColor: tokens.border,
-          borderRadius: 4,
+          borderRadius: 8,
+          borderCurve: "continuous",
           overflow: "hidden",
         }}
       >

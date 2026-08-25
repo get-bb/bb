@@ -1,8 +1,14 @@
 # Phase 4b thread actions + context banner: add the harness server → open
 # the thread named by THREAD_TITLE (create it first; see README) → header
-# title tap opens the rename sheet → rename → "…" menu lists the thread
-# actions (Copy link toasts) → the git button opens the git sheet (when the
-# worktree is dirty) → the context banner's changed-files row expands.
+# title tap opens the rename prompt → rename → the "…" native menu lists
+# the thread actions (Copy link toasts) → its git row opens the git sheet
+# (when the worktree is dirty) → the context banner's changed-files row
+# expands → long-pressing an assistant message opens its action sheet.
+#
+# iOS: native bar items and menu items have no testID, so the flow taps them
+# by accessibility label / text ("Thread actions", "Commit", "Copy link").
+# Message actions stay a bottom sheet on both platforms (its rows keep
+# `action-sheet-<key>` ids).
 #
 # Setup (the flow asserts the banner's git row, which needs a dirty
 # worktree): create a managed-worktree thread through the API, write a file
@@ -49,15 +55,12 @@ env:
     notVisible:
       id: "thread-chip-changes-sheet"
     timeout: 10000
-# Git sheet from the "…" menu (the header has no second row).
-- tapOn:
-    id: "thread-actions-button"
+# Git sheet from the "…" menu's first row (the dirty worktree offers Commit).
+- tapOn: "Thread actions"
 - extendedWaitUntil:
-    visible:
-      id: "thread-git-button"
+    visible: "Commit"
     timeout: 10000
-- tapOn:
-    id: "thread-git-button"
+- tapOn: "Commit"
 - extendedWaitUntil:
     visible:
       id: "thread-git-sheet"
@@ -71,40 +74,30 @@ env:
     notVisible:
       id: "thread-git-sheet"
     timeout: 10000
-# Rename through the title.
+# Rename through the title (the system prompt, pre-filled and focused).
 - tapOn:
     id: "thread-detail-title"
 - extendedWaitUntil:
-    visible:
-      id: "thread-rename-input"
+    visible: "Rename thread"
     timeout: 10000
-- tapOn:
-    id: "thread-rename-input"
 - eraseText: 60
 - inputText: "${THREAD_TITLE} renamed"
-- tapOn:
-    id: "thread-rename-submit"
+- tapOn: "Rename"
 - extendedWaitUntil:
     visible:
       id: "thread-detail-title"
       text: "${THREAD_TITLE} renamed"
     timeout: 15000
 # Actions menu: copy link.
-- tapOn:
-    id: "thread-actions-button"
+- tapOn: "Thread actions"
 - extendedWaitUntil:
-    visible:
-      id: "thread-action-copy-link"
+    visible: "Copy link"
     timeout: 10000
-- assertVisible:
-    id: "thread-action-handoff"
-- assertVisible:
-    id: "thread-action-pin"
-- assertVisible:
-    id: "thread-action-delete"
+- assertVisible: "Handoff to new thread"
+- assertVisible: "Pin"
+- assertVisible: "Delete"
 - takeScreenshot: phase4b-thread-menu
-- tapOn:
-    id: "thread-action-copy-link"
+- tapOn: "Copy link"
 - extendedWaitUntil:
     visible: "Link copied"
     timeout: 10000

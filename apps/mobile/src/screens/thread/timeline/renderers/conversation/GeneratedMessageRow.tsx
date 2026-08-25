@@ -244,6 +244,7 @@ export function GeneratedMessageRow({
   return (
     <TimelineRowShell depth={depth} kind="conversation:user">
       <ExpandableRowHeader
+        rowKey={row.id}
         title={title}
         titleContent={
           sourceKind === "agent" ? (

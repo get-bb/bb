@@ -16,20 +16,17 @@ import {
 } from "@/data/settings";
 import { useSystemConfig } from "@/data/system";
 import { useTheme, type ThemeModePreference } from "@/theme";
-import { Button, Icon, ListRow, Sheet, Text, useSheet } from "@/ui";
+import { ListRow, Sheet, Text, useSheet } from "@/ui";
 import {
   OptionSheet,
   usePickerSheetMaxHeight,
   type PickerOption,
 } from "../pickers";
-import { Screen } from "../shell/Screen";
-import {
-  SettingsControlRow,
-  SettingsSection,
-  SettingsValueRow,
-} from "./SettingsRows";
+import { GroupedScreen } from "./GroupedScreen";
+import { SegmentedChoice } from "./SegmentedChoice";
+import { SettingsSection, SettingsValueRow } from "./SettingsRows";
 
-const MODES: { value: ThemeModePreference; label: string }[] = [
+const MODES: readonly { value: ThemeModePreference; label: string }[] = [
   { value: "system", label: "System" },
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
@@ -39,50 +36,40 @@ const PALETTE_DESCRIPTION =
   "Palettes change bb's colors on every client of this server. The six built-in palettes render natively here; a custom or plugin palette shows as the default palette on mobile.";
 
 /**
- * `/settings/appearance`: light/dark mode (device-local, `bb.theme`), the
- * server-wide palette (`PUT /settings/appearance`, picked from
- * `GET /settings/themes`) and the favicon tint that rides along with it.
+ * `/settings/appearance`: light/dark mode (device-local, `bb.theme`) as a
+ * segmented control, the server-wide palette (`PUT /settings/appearance`,
+ * picked from `GET /settings/themes`) and the favicon tint that rides
+ * along with it.
  */
 export function AppearanceSettingsScreen() {
   const { connection } = useProfiles();
   const theme = useTheme();
   return (
-    <Screen testID="appearance-settings-screen">
-      <SettingsSection title="Mode">
-        <View className="gap-2 px-4 py-3">
-          <View className="flex-row gap-2">
-            {MODES.map((mode) => (
-              <Button
-                key={mode.value}
-                size="sm"
-                variant={
-                  theme.preference === mode.value ? "default" : "outline"
-                }
-                onPress={() => theme.setMode(mode.value)}
-                testID={`appearance-mode-${mode.value}`}
-              >
-                {mode.label}
-              </Button>
-            ))}
-          </View>
-          <Text variant="caption">
-            Light or dark is a choice for this phone; the palette below is
-            shared with the server.
-          </Text>
+    <GroupedScreen testID="appearance-settings-screen">
+      <SettingsSection
+        title="Mode"
+        footnote="Light or dark is a choice for this phone; the palette below is shared with the server."
+      >
+        <View className="px-4 py-3" testID="appearance-mode">
+          <SegmentedChoice
+            options={MODES}
+            value={theme.preference}
+            onChange={(mode) => theme.setMode(mode)}
+            testIDPrefix="appearance-mode"
+          />
         </View>
       </SettingsSection>
       {connection ? (
         <ConnectedAppearanceSections />
       ) : (
-        <SettingsSection title="Palette">
-          <SettingsControlRow
-            label="Palette"
-            description="Add a server to choose its palette."
-            disabled
-          />
+        <SettingsSection
+          title="Palette"
+          footnote="Add a server to choose its palette."
+        >
+          <SettingsValueRow label="Palette" value="Default" disabled />
         </SettingsSection>
       )}
-    </Screen>
+    </GroupedScreen>
   );
 }
 
@@ -133,11 +120,14 @@ function ConnectedAppearanceSections() {
     <>
       <SettingsSection
         title="Palette"
-        description={PALETTE_DESCRIPTION}
         footnote={
-          nativelyRendered
-            ? undefined
-            : `“${activeLabel}” is a custom palette; this phone renders the default palette while it is active.`
+          nativelyRendered ? (
+            PALETTE_DESCRIPTION
+          ) : (
+            <Text variant="footnote" tone="warning">
+              {`“${activeLabel}” is a custom palette; this phone renders the default palette while it is active. ${PALETTE_DESCRIPTION}`}
+            </Text>
+          )
         }
       >
         <SettingsValueRow
@@ -150,7 +140,6 @@ function ConnectedAppearanceSections() {
         />
         <SettingsValueRow
           label="Favicon color"
-          description="Tints the browser tab icon of the web app."
           value={faviconColorLabel(appearance.faviconColor)}
           onPress={faviconSheet.present}
           disabled={disabled}
@@ -176,32 +165,29 @@ function ConnectedAppearanceSections() {
         layout="scroll"
         maxDynamicContentSize={maxHeight}
       >
-        {FAVICON_COLOR_OPTIONS.map((option) => {
-          const selected = option.value === appearance.faviconColor;
-          return (
-            <ListRow
-              key={option.value}
-              title={option.label}
-              leading={
-                <View
-                  className="h-4 w-4 rounded-full"
-                  style={{ backgroundColor: option.hex ?? tokens.foreground }}
-                />
-              }
-              trailing={
-                selected ? (
-                  <Icon name="Check" size={18} color={tokens.foreground} />
-                ) : null
-              }
-              selected={selected}
-              onPress={() => {
-                faviconSheet.dismiss();
-                selectFaviconColor(option.value);
-              }}
-              testID={`appearance-favicon-option-${option.value}`}
-            />
-          );
-        })}
+        <View className="px-4 pb-2">
+          <Text variant="caption">
+            Tints the browser tab icon of the web app.
+          </Text>
+        </View>
+        {FAVICON_COLOR_OPTIONS.map((option) => (
+          <ListRow
+            key={option.value}
+            title={option.label}
+            leading={
+              <View
+                className="h-5 w-5 rounded-full"
+                style={{ backgroundColor: option.hex ?? tokens.foreground }}
+              />
+            }
+            selected={option.value === appearance.faviconColor}
+            onPress={() => {
+              faviconSheet.dismiss();
+              selectFaviconColor(option.value);
+            }}
+            testID={`appearance-favicon-option-${option.value}`}
+          />
+        ))}
       </Sheet>
     </>
   );

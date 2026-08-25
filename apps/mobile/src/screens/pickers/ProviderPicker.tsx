@@ -19,7 +19,9 @@ interface ProviderPickerProps {
  * server (`GET /system/providers/:id/logo`, `currentColor` SVGs) painted in
  * the theme foreground; a provider that declared a named glyph instead of a
  * logo file (`icon: "Zap"` on its declaration) gets that glyph when this app
- * knows it, and any other provider gets the Zap glyph.
+ * knows it, and any other provider gets the Zap glyph. The option sheet
+ * lists the providers on both platforms (the pill shows text, so it is a
+ * plain pressable rather than a native-menu trigger — see `NativeMenu`).
  */
 function providerGlyph(option: ProviderPickerOption): IconName {
   return option.glyph !== null && isIconName(option.glyph)
@@ -60,6 +62,7 @@ export function ProviderPicker({
     [options, tokens.foreground, tokens.subtleForeground],
   );
   const selected = options.find((option) => option.value === value);
+  const inert = disabled || options.length === 0;
   return (
     <>
       <PickerTrigger
@@ -76,7 +79,7 @@ export function ProviderPicker({
         }
         label={selected?.label ?? (loading ? "Provider…" : "Provider")}
         onPress={sheet.present}
-        disabled={disabled || options.length === 0}
+        disabled={inert}
         loading={loading}
         testID="provider-picker"
         accessibilityLabel="Provider"

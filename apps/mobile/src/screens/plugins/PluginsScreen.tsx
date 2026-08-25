@@ -1,7 +1,7 @@
 import type { InstalledPlugin } from "@bb/server-contract";
 import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import {
   describePluginRow,
   filterPlugins,
@@ -22,35 +22,45 @@ import { useTheme } from "@/theme";
 import {
   ActionSheet,
   Button,
+  confirmDestructive,
+  DisclosureChevron,
   EmptyStatePanel,
-  Icon,
+  GroupedRow,
   Input,
-  ListRow,
   Skeleton,
   Text,
   toast,
   useSheet,
+  type ActionSheetAction,
 } from "@/ui";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { LinkRow } from "../settings/LinkRow";
+import { useBadgeColors } from "../settings/settings-badges";
+import { HeaderIconButton, SettingsSection } from "../settings/SettingsRows";
 import {
   marketplacesHref,
   pluginBrowseHref,
   pluginDetailHref,
 } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
 import { AddPluginSheet } from "./AddPluginSheet";
-import { PluginSignalPill, SettingsSection } from "./plugin-ui";
+import { PluginSignalPill } from "./plugin-ui";
 import { PluginIcon } from "./ServerSvgIcon";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 /**
  * Installed plugins (`/settings/plugins`; web Extensions → Plugins →
- * Installed): one row per plugin with its single signal, a filter, entry
- * points to Browse / Marketplaces, "+" to install from a source, and a
- * long-press menu (enable / disable, reload, uninstall). Tapping a row opens
- * the detail screen.
+ * Installed): one row per plugin with its single signal, a header search
+ * bar, entry points to Browse / Marketplaces, "+" to install from a source,
+ * and a long-press action sheet (enable / disable, reload, uninstall) on
+ * both platforms. Tapping a row opens the detail screen; Check for updates
+ * / Reload all sit in the iOS overflow menu (a Maintenance group on
+ * Android).
  */
 export function PluginsScreen() {
   const router = useRouter();
   const { tokens } = useTheme();
+  const colors = useBadgeColors();
   const list = usePluginList();
   const setEnabled = useSetPluginEnabled();
   const reload = useReloadPlugins();
@@ -58,7 +68,6 @@ export function PluginsScreen() {
   const checkUpdates = useCheckPluginUpdates();
   const addSheet = useSheet();
   const menu = useSheet();
-  const confirmRemove = useSheet();
   const [query, setQuery] = useState("");
   const [target, setTarget] = useState<InstalledPlugin | null>(null);
 
@@ -68,196 +77,277 @@ export function PluginsScreen() {
   );
   const total = list.data?.length ?? 0;
 
-  const openMenu = (plugin: InstalledPlugin) => {
-    setTarget(plugin);
-    haptic("impact-heavy");
-    menu.present();
-  };
+  const checkForUpdates = () =>
+    checkUpdates.mutate(
+      {},
+      {
+        onSuccess: (results) => {
+          const available = results.filter(
+            (entry) => entry.outcome === "update-available",
+          ).length;
+          toast.success(
+            available === 0
+              ? "Every plugin is up to date"
+              : `${available} ${available === 1 ? "update" : "updates"} available`,
+          );
+        },
+      },
+    );
+  const reloadAll = () =>
+    reload.mutate({}, { onSuccess: () => toast.success("Plugins reloaded") });
+
+  const confirmRemove = (plugin: InstalledPlugin) =>
+    confirmDestructive({
+      title: `${pluginRemovalLabel(plugin)} ${pluginDisplayName(plugin)}?`,
+      message: pluginRemovalDescription(plugin),
+      actionLabel: pluginRemovalLabel(plugin),
+      onConfirm: () =>
+        remove.mutate(
+          { pluginId: plugin.id },
+          {
+            onSuccess: () =>
+              toast.success(`${pluginDisplayName(plugin)} removed`),
+          },
+        ),
+    });
+
+  const actionsFor = (plugin: InstalledPlugin): ActionSheetAction[] => [
+    {
+      key: "open",
+      label: "Open",
+      icon: "ChevronRight",
+      onPress: () => router.push(pluginDetailHref(plugin.id)),
+    },
+    {
+      key: plugin.enabled ? "disable" : "enable",
+      label: plugin.enabled ? "Disable" : "Enable",
+      icon: plugin.enabled ? "Pause" : "Play",
+      onPress: () =>
+        setEnabled.mutate({ pluginId: plugin.id, enabled: !plugin.enabled }),
+    },
+    {
+      key: "reload",
+      label: "Reload",
+      icon: "RotateCcw",
+      disabled: !plugin.enabled,
+      onPress: () =>
+        reload.mutate(
+          { pluginId: plugin.id },
+          {
+            onSuccess: () =>
+              toast.success(`${pluginDisplayName(plugin)} reloaded`),
+          },
+        ),
+    },
+    {
+      key: "remove",
+      label: pluginRemovalLabel(plugin),
+      icon: "Trash2",
+      destructive: true,
+      onPress: () => confirmRemove(plugin),
+    },
+  ];
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
+      {IS_IOS ? (
+        <>
+          <Stack.SearchBar
+            placeholder="Filter plugins"
+            autoCapitalize="none"
+            hideWhenScrolling={false}
+            onChangeText={(event) => setQuery(event.nativeEvent.text)}
+            onCancelButtonPress={() => setQuery("")}
+          />
+          <Stack.Toolbar placement="right">
+            <Stack.Toolbar.Button
+              icon="plus"
               accessibilityLabel="Add plugin"
-              hitSlop={8}
               onPress={addSheet.present}
-              testID="plugins-add"
+            />
+            <Stack.Toolbar.Menu
+              icon="ellipsis.circle"
+              accessibilityLabel="Plugin maintenance"
             >
-              <Icon name="Plus" size={22} color={tokens.foreground} />
-            </Pressable>
-          ),
-        }}
-      />
-      <Screen testID="plugins-screen">
+              <Stack.Toolbar.MenuAction
+                icon="arrow.down.circle"
+                disabled={total === 0 || checkUpdates.isPending}
+                onPress={checkForUpdates}
+              >
+                Check for updates
+              </Stack.Toolbar.MenuAction>
+              <Stack.Toolbar.MenuAction
+                icon="arrow.clockwise"
+                disabled={total === 0 || reload.isPending}
+                onPress={reloadAll}
+              >
+                Reload all
+              </Stack.Toolbar.MenuAction>
+            </Stack.Toolbar.Menu>
+          </Stack.Toolbar>
+        </>
+      ) : (
+        <Stack.Screen
+          options={{
+            headerRight: () => (
+              <HeaderIconButton
+                icon="Plus"
+                accessibilityLabel="Add plugin"
+                onPress={addSheet.present}
+                testID="plugins-add"
+              />
+            ),
+          }}
+        />
+      )}
+      <GroupedScreen testID="plugins-screen">
         <SettingsSection title="Discover">
-          <ListRow
+          <LinkRow
+            href={pluginBrowseHref()}
             title="Browse catalog"
-            subtitle="Plugins from BB Community and your marketplaces"
-            leading="Explore"
-            trailing="chevron"
-            onPress={() => router.push(pluginBrowseHref())}
+            badge={{ icon: "Explore", symbol: "book.fill", color: colors.blue }}
             testID="plugins-browse"
           />
-          <ListRow
+          <LinkRow
+            href={marketplacesHref()}
             title="Marketplaces"
-            subtitle="Where bb reads plugin catalogs from"
-            leading="PackageReceive"
-            trailing="chevron"
-            onPress={() => router.push(marketplacesHref())}
+            badge={{
+              icon: "PackageReceive",
+              symbol: "shippingbox.fill",
+              color: colors.teal,
+            }}
             testID="plugins-marketplaces"
           />
-          <ListRow
+          <GroupedRow
             title="Add from source"
             subtitle="npm, git, or a path on the server"
-            leading="Plus"
+            badge={{ icon: "Plus", symbol: "plus", color: colors.green }}
             trailing="chevron"
             onPress={addSheet.present}
             testID="plugins-add-row"
           />
         </SettingsSection>
 
-        <View className="gap-1">
-          <Text variant="sectionLabel" className="pb-1">
-            {total > 0 ? `Installed (${total})` : "Installed"}
-          </Text>
-          {total > 4 ? (
-            <Input
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Filter plugins"
-              autoCapitalize="none"
-              clearButtonMode="while-editing"
-              className="mb-2"
-              testID="plugins-filter"
-            />
-          ) : null}
-          <View className="overflow-hidden rounded-lg border border-border bg-card">
-            {list.isPending ? (
-              <View className="gap-3 px-4 py-3">
-                <Skeleton className="h-5 w-3/5" />
-                <Skeleton className="h-5 w-4/5" />
-                <Skeleton className="h-5 w-2/5" />
-              </View>
-            ) : list.isError ? (
-              <View className="gap-3 px-4 py-3">
-                <Text variant="caption" tone="destructive">
-                  Could not load plugins: {describeError(list.error)}
-                </Text>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  icon="RotateCcw"
-                  onPress={() => void list.refetch()}
-                >
-                  Retry
-                </Button>
-              </View>
-            ) : total === 0 ? (
-              <View className="gap-3 px-4 py-4" testID="plugins-empty">
-                <EmptyStatePanel>
-                  No plugins installed on this server.
-                </EmptyStatePanel>
-                <Button
-                  icon="Explore"
-                  onPress={() => router.push(pluginBrowseHref())}
-                >
-                  Browse catalog
-                </Button>
-              </View>
-            ) : plugins.length === 0 ? (
-              <View className="px-4 py-4">
-                <EmptyStatePanel>No plugins match “{query}”.</EmptyStatePanel>
-              </View>
-            ) : (
-              plugins.map((plugin) => {
-                const signal = pluginRowSignal(plugin);
-                return (
-                  <ListRow
-                    key={plugin.id}
-                    title={pluginDisplayName(plugin)}
-                    subtitle={describePluginRow(plugin)}
-                    leading={
-                      <PluginIcon
-                        iconUrl={plugin.iconUrl}
-                        icon={plugin.icon}
-                        size={22}
-                        color={
-                          plugin.enabled
-                            ? tokens.foreground
-                            : tokens.subtleForeground
-                        }
-                      />
-                    }
-                    trailing={
-                      <View className="flex-row items-center gap-2">
-                        {signal ? (
-                          <PluginSignalPill
-                            signal={signal}
-                            testID={`plugin-signal-${plugin.id}`}
-                          />
-                        ) : null}
-                        <Icon
-                          name="ChevronRight"
-                          size={18}
-                          color={tokens.subtleForeground}
-                        />
-                      </View>
-                    }
-                    onPress={() => router.push(pluginDetailHref(plugin.id))}
-                    onLongPress={() => openMenu(plugin)}
-                    testID={`plugin-row-${plugin.id}`}
-                  />
-                );
-              })
-            )}
-          </View>
-        </View>
+        {IS_IOS ? null : (
+          <Input
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Filter plugins"
+            autoCapitalize="none"
+            clearButtonMode="while-editing"
+            testID="plugins-filter"
+          />
+        )}
 
-        {total > 0 ? (
+        <SettingsSection
+          title={total > 0 ? `Installed (${total})` : "Installed"}
+          footnote={
+            total > 0
+              ? `Tap a plugin for its settings and logs${IS_IOS ? "." : "; long-press to enable, reload or uninstall it."}`
+              : undefined
+          }
+        >
+          {list.isPending ? (
+            <View className="gap-3 px-4 py-3">
+              <Skeleton className="h-5 w-3/5" />
+              <Skeleton className="h-5 w-4/5" />
+              <Skeleton className="h-5 w-2/5" />
+            </View>
+          ) : list.isError ? (
+            <View className="gap-3 px-4 py-3">
+              <Text variant="footnote" tone="destructive" selectable>
+                Could not load plugins: {describeError(list.error)}
+              </Text>
+              <Button
+                variant="outline"
+                size="sm"
+                icon="RotateCcw"
+                onPress={() => void list.refetch()}
+              >
+                Retry
+              </Button>
+            </View>
+          ) : total === 0 ? (
+            <View className="gap-3 px-4 py-4" testID="plugins-empty">
+              <EmptyStatePanel>
+                No plugins installed on this server.
+              </EmptyStatePanel>
+              <Button
+                icon="Explore"
+                onPress={() => router.push(pluginBrowseHref())}
+              >
+                Browse catalog
+              </Button>
+            </View>
+          ) : plugins.length === 0 ? (
+            <View className="px-4 py-4">
+              <EmptyStatePanel>No plugins match “{query}”.</EmptyStatePanel>
+            </View>
+          ) : (
+            plugins.map((plugin) => {
+              const signal = pluginRowSignal(plugin);
+              return (
+                <LinkRow
+                  key={plugin.id}
+                  href={pluginDetailHref(plugin.id)}
+                  title={pluginDisplayName(plugin)}
+                  subtitle={describePluginRow(plugin)}
+                  leading={
+                    <PluginIcon
+                      iconUrl={plugin.iconUrl}
+                      icon={plugin.icon}
+                      size={20}
+                      color={
+                        plugin.enabled
+                          ? tokens.foreground
+                          : tokens.subtleForeground
+                      }
+                    />
+                  }
+                  trailing={
+                    <View className="flex-row items-center gap-2">
+                      {signal ? (
+                        <PluginSignalPill
+                          signal={signal}
+                          testID={`plugin-signal-${plugin.id}`}
+                        />
+                      ) : null}
+                      <DisclosureChevron />
+                    </View>
+                  }
+                  onLongPress={() => {
+                    setTarget(plugin);
+                    haptic("impact-heavy");
+                    menu.present();
+                  }}
+                  testID={`plugin-row-${plugin.id}`}
+                />
+              );
+            })
+          )}
+        </SettingsSection>
+
+        {total > 0 && !IS_IOS ? (
           <SettingsSection title="Maintenance">
-            <ListRow
+            <GroupedRow
               title="Check for updates"
               subtitle="Ask every plugin's source for a newer release"
               leading="Download"
               disabled={checkUpdates.isPending}
-              onPress={() =>
-                checkUpdates.mutate(
-                  {},
-                  {
-                    onSuccess: (results) => {
-                      const available = results.filter(
-                        (entry) => entry.outcome === "update-available",
-                      ).length;
-                      toast.success(
-                        available === 0
-                          ? "Every plugin is up to date"
-                          : `${available} ${available === 1 ? "update" : "updates"} available`,
-                      );
-                    },
-                  },
-                )
-              }
+              onPress={checkForUpdates}
               testID="plugins-check-updates"
             />
-            <ListRow
+            <GroupedRow
               title="Reload all plugins"
               subtitle="Restart every plugin's server half"
               leading="RotateCcw"
               disabled={reload.isPending}
-              onPress={() =>
-                reload.mutate(
-                  {},
-                  { onSuccess: () => toast.success("Plugins reloaded") },
-                )
-              }
+              onPress={reloadAll}
               testID="plugins-reload-all"
             />
           </SettingsSection>
         ) : null}
-      </Screen>
+      </GroupedScreen>
 
       <AddPluginSheet
         controller={addSheet}
@@ -269,81 +359,7 @@ export function PluginsScreen() {
         controller={menu}
         title={target ? pluginDisplayName(target) : undefined}
         message={target?.description ?? undefined}
-        actions={
-          target
-            ? [
-                {
-                  key: "open",
-                  label: "Open",
-                  icon: "ChevronRight",
-                  onPress: () => router.push(pluginDetailHref(target.id)),
-                },
-                {
-                  key: target.enabled ? "disable" : "enable",
-                  label: target.enabled ? "Disable" : "Enable",
-                  icon: target.enabled ? "Pause" : "Play",
-                  onPress: () =>
-                    setEnabled.mutate({
-                      pluginId: target.id,
-                      enabled: !target.enabled,
-                    }),
-                },
-                {
-                  key: "reload",
-                  label: "Reload",
-                  icon: "RotateCcw",
-                  disabled: !target.enabled,
-                  onPress: () =>
-                    reload.mutate(
-                      { pluginId: target.id },
-                      {
-                        onSuccess: () =>
-                          toast.success(
-                            `${pluginDisplayName(target)} reloaded`,
-                          ),
-                      },
-                    ),
-                },
-                {
-                  key: "remove",
-                  label: pluginRemovalLabel(target),
-                  icon: "Trash2",
-                  destructive: true,
-                  onPress: () => confirmRemove.present(),
-                },
-              ]
-            : []
-        }
-      />
-
-      <ActionSheet
-        controller={confirmRemove}
-        title={
-          target
-            ? `${pluginRemovalLabel(target)} ${pluginDisplayName(target)}?`
-            : undefined
-        }
-        message={target ? pluginRemovalDescription(target) : undefined}
-        actions={
-          target
-            ? [
-                {
-                  key: "confirm-remove",
-                  label: pluginRemovalLabel(target),
-                  icon: "Trash2",
-                  destructive: true,
-                  onPress: () =>
-                    remove.mutate(
-                      { pluginId: target.id },
-                      {
-                        onSuccess: () =>
-                          toast.success(`${pluginDisplayName(target)} removed`),
-                      },
-                    ),
-                },
-              ]
-            : []
-        }
+        actions={target ? actionsFor(target) : []}
       />
     </>
   );

@@ -84,48 +84,64 @@
   --color-sidebar-search-match: var(--sidebar-search-match);
   --color-sidebar-search-match-border: var(--sidebar-search-match-border);
   --color-shadow-color: var(--shadow-color);
+  /* iOS inset-grouped lists (src/theme/mobile-overrides.css): the page behind
+     the cards and the cards themselves. */
+  --color-surface-grouped: var(--surface-grouped);
+  --color-surface-grouped-cell: var(--surface-grouped-cell);
 
   /*
-   * Fonts. Expo Google Fonts register one family name per weight, so the
-   * `font-sans-*` / `font-mono-*` utilities select the weight-specific family.
-   * `<Text weight="…">` (src/ui/Text.tsx) picks the right family for you and
-   * also derives it from web-style `font-medium|semibold|bold` classes.
+   * Fonts. The app renders in the platform faces (SF Pro / Menlo on iOS,
+   * sans-serif / monospace on Android); CSS cannot pick a family per
+   * platform, so these only keep the `font-sans` / `font-mono` class names
+   * resolvable. `System` is React Native's iOS alias for the system font and
+   * falls through to the default sans-serif typeface on Android; `monospace`
+   * is Android's mono family (iOS gets Menlo from `<Text>`, below).
+   * `<Text>` (src/ui/Text.tsx) re-resolves the real family + numeric weight
+   * through `resolveFont` (src/theme/fonts.ts, font-platform*.ts) as an
+   * inline style, and that is what renders — outside `<Text>` use
+   * `theme.fonts.mono.regular` rather than a `font-mono` class.
    */
-  --font-sans: "Inter_400Regular";
-  --font-sans-medium: "Inter_500Medium";
-  --font-sans-semibold: "Inter_600SemiBold";
-  --font-sans-bold: "Inter_700Bold";
-  --font-mono: "FiraCode_400Regular";
-  --font-mono-medium: "FiraCode_500Medium";
-  --font-mono-semibold: "FiraCode_600SemiBold";
-  --font-mono-bold: "FiraCode_700Bold";
+  --font-sans: "System";
+  --font-mono: monospace;
 
-  /* Radii mirror `--radius: 0.5rem` and its steps (nativeRadii). */
+  /* Radii mirror `--radius: 0.5rem` and its steps (nativeRadii); 2xl/full are
+     Tailwind's defaults pinned as numbers (nativeRadii.xl2 / .full). */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
 }
 
 /*
- * Typography scale: the touch (coarse-pointer) values from theme.css, which
- * the mobile PWA renders on a phone. Sizes are px so react-native-css does
+ * Typography scale: the Apple text-style ramp from
+ * src/theme/mobile-overrides.css (caption2, footnote, subheadline, body,
+ * title3, title2, title1, largeTitle). Sizes are px so react-native-css does
  * not depend on the rem multiplier. Line heights are unitless ratios
  * (`calc(line-height / font-size)`): Tailwind emits them as the fallback of
  * `var(--tw-leading, …)`, and react-native-css drops the unit inside that
  * fallback and treats the number as an em multiplier at runtime (`22px`
  * became `22 × 15 = 330`). A ratio survives that path and yields the px value.
- * Mirrors nativeTypography in theme.native.ts.
+ * Mirrors nativeTypography in theme.native.ts (theme-vars.test.ts).
  */
 @theme {
   --text-2xs: 11px;
-  --text-2xs--line-height: calc(15 / 11);
-  --text-xs: 14px;
-  --text-xs--line-height: calc(20 / 14);
+  --text-2xs--line-height: calc(13 / 11);
+  --text-xs: 13px;
+  --text-xs--line-height: calc(18 / 13);
   --text-sm: 15px;
-  --text-sm--line-height: calc(22 / 15);
-  --text-base: 16px;
-  --text-base--line-height: calc(24 / 16);
+  --text-sm--line-height: calc(20 / 15);
+  --text-base: 17px;
+  --text-base--line-height: calc(22 / 17);
+  --text-lg: 20px;
+  --text-lg--line-height: calc(25 / 20);
+  --text-xl: 22px;
+  --text-xl--line-height: calc(28 / 22);
+  --text-2xl: 28px;
+  --text-2xl--line-height: calc(34 / 28);
+  --text-3xl: 34px;
+  --text-3xl--line-height: calc(41 / 34);
 }
 
 /*

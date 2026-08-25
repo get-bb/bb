@@ -1,7 +1,13 @@
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { Image } from "expo-image";
 import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+} from "react-native-reanimated";
+import { haptic } from "@/lib/haptics";
 import {
   ImageLightbox,
   openLightbox,
@@ -27,16 +33,18 @@ export interface AttachmentChipsProps {
 
 const THUMB = 64;
 const THUMB_RADIUS = 12;
-/** The corner remove button on an image thumbnail. */
+/** The corner remove badge on an image thumbnail. */
 const REMOVE_BUTTON = 20;
-// The remove button sits on the photograph, so it is black/white like the
-// lightbox chrome (web `bg-black/55 text-white`), not a palette token.
-const REMOVE_BUTTON_BACKGROUND = "rgba(0, 0, 0, 0.6)";
-const REMOVE_BUTTON_PRESSED_BACKGROUND = "rgba(0, 0, 0, 0.8)";
+// The remove badge sits on the photograph, so it is black/white like the
+// lightbox chrome (web `bg-black/55 text-white`), not a palette token: a
+// white `xmark.circle.fill` over a soft shadow.
 const REMOVE_BUTTON_FOREGROUND = "#ffffff";
+const REMOVE_BUTTON_SHADOW = "0 1px 3px rgba(0, 0, 0, 0.4)";
+const CHIP_ENTER_MS = 180;
+const CHIP_EXIT_MS = 140;
 
 /**
- * An image thumbnail with a small remove button in its top-right corner. A
+ * An image thumbnail with a small remove badge in its top-right corner. A
  * tap on the picture opens the lightbox.
  */
 function ImageChip({
@@ -54,7 +62,10 @@ function ImageChip({
 }) {
   const { tokens } = useTheme();
   return (
-    <View
+    <Animated.View
+      entering={FadeIn.duration(CHIP_ENTER_MS)}
+      exiting={FadeOut.duration(CHIP_EXIT_MS)}
+      layout={LinearTransition.duration(CHIP_ENTER_MS)}
       testID={testID}
       accessibilityLabel={label}
       style={{ width: THUMB, height: THUMB }}
@@ -68,8 +79,9 @@ function ImageChip({
           width: THUMB,
           height: THUMB,
           borderRadius: THUMB_RADIUS,
-          borderWidth: 1,
-          borderColor: tokens.border,
+          borderCurve: "continuous",
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: tokens.borderHairline,
           backgroundColor: tokens.surfaceRaisedSolid,
           overflow: "hidden",
           opacity: pressed ? 0.8 : 1,
@@ -98,18 +110,23 @@ function ImageChip({
             borderRadius: REMOVE_BUTTON / 2,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: pressed
-              ? REMOVE_BUTTON_PRESSED_BACKGROUND
-              : REMOVE_BUTTON_BACKGROUND,
+            boxShadow: REMOVE_BUTTON_SHADOW,
+            opacity: pressed ? 0.7 : 1,
           })}
         >
-          <Icon name="X" size={12} color={REMOVE_BUTTON_FOREGROUND} />
+          <Icon
+            name="CircleX"
+            symbol="xmark.circle.fill"
+            size={REMOVE_BUTTON}
+            color={REMOVE_BUTTON_FOREGROUND}
+          />
         </Pressable>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
+/** A file chip: capsule, hairline outline, optional remove. */
 function ChipFrame({
   children,
   onRemove,
@@ -123,18 +140,21 @@ function ChipFrame({
 }) {
   const { tokens } = useTheme();
   return (
-    <View
+    <Animated.View
+      entering={FadeIn.duration(CHIP_ENTER_MS)}
+      exiting={FadeOut.duration(CHIP_EXIT_MS)}
+      layout={LinearTransition.duration(CHIP_ENTER_MS)}
       testID={testID}
       accessibilityLabel={label}
       style={{
         flexDirection: "row",
         alignItems: "center",
         gap: 6,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: tokens.border,
+        borderRadius: 999,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: tokens.borderHairline,
         backgroundColor: tokens.surfaceRaisedSolid,
-        paddingRight: onRemove ? 4 : 8,
+        paddingRight: onRemove ? 4 : 12,
         overflow: "hidden",
         maxWidth: 220,
       }}
@@ -153,13 +173,18 @@ function ChipFrame({
             borderRadius: 12,
             alignItems: "center",
             justifyContent: "center",
-            backgroundColor: pressed ? tokens.stateHover : "transparent",
+            opacity: pressed ? 0.6 : 1,
           })}
         >
-          <Icon name="X" size={14} color={tokens.mutedForeground} />
+          <Icon
+            name="CircleX"
+            symbol="xmark.circle.fill"
+            size={16}
+            color={tokens.mutedForeground}
+          />
         </Pressable>
       ) : null}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -172,6 +197,7 @@ interface ResolvedAttachment {
 /**
  * Horizontal strip of attached files (image thumbnails, file chips, uploads
  * in flight). Image thumbnails open the same lightbox as timeline images.
+ * Chips fade in and out and the strip reflows as they come and go.
  */
 export function AttachmentChips({
   attachments,
@@ -199,6 +225,10 @@ export function AttachmentChips({
     ({ attachment, uri }) =>
       uri === null ? [] : [{ src: uri, alt: attachment.name }],
   );
+  const remove = (path: string) => {
+    haptic("selection");
+    onRemove(path);
+  };
 
   return (
     <>
@@ -214,9 +244,9 @@ export function AttachmentChips({
         testID={testID}
       >
         {resolved.map(({ attachment, uri }, index) => {
-          const remove = disabled
+          const removeThis = disabled
             ? undefined
-            : () => onRemove(attachment.path);
+            : () => remove(attachment.path);
           if (uri !== null) {
             const imageIndex = lightboxImages.findIndex(
               (image) => image.src === uri,
@@ -229,7 +259,7 @@ export function AttachmentChips({
                 onPress={() =>
                   setLightbox(openLightbox(lightboxImages, imageIndex))
                 }
-                onRemove={remove}
+                onRemove={removeThis}
                 testID={`${testID}-${index}`}
               />
             );
@@ -238,13 +268,16 @@ export function AttachmentChips({
             <ChipFrame
               key={attachment.path}
               label={attachment.name}
-              onRemove={remove}
+              onRemove={removeThis}
               testID={`${testID}-${index}`}
             >
-              <View className="flex-row items-center gap-2 py-2 pl-2">
+              <View className="flex-row items-center gap-2 py-2 pl-3">
                 <Icon
                   name={
                     attachment.type === "localImage" ? "Eye" : "FileAttachment"
+                  }
+                  symbol={
+                    attachment.type === "localImage" ? "photo" : "doc.fill"
                   }
                   size={16}
                   color={tokens.mutedForeground}
@@ -258,16 +291,20 @@ export function AttachmentChips({
         })}
         {pending.map((entry) =>
           entry.previewUri ? (
-            <View
+            <Animated.View
               key={entry.id}
+              entering={FadeIn.duration(CHIP_ENTER_MS)}
+              exiting={FadeOut.duration(CHIP_EXIT_MS)}
+              layout={LinearTransition.duration(CHIP_ENTER_MS)}
               accessibilityLabel={`Uploading ${entry.name}`}
               testID={`${testID}-pending`}
               style={{
                 width: THUMB,
                 height: THUMB,
                 borderRadius: THUMB_RADIUS,
-                borderWidth: 1,
-                borderColor: tokens.border,
+                borderCurve: "continuous",
+                borderWidth: StyleSheet.hairlineWidth,
+                borderColor: tokens.borderHairline,
                 backgroundColor: tokens.surfaceRaisedSolid,
                 overflow: "hidden",
               }}
@@ -287,14 +324,14 @@ export function AttachmentChips({
               >
                 <Spinner />
               </View>
-            </View>
+            </Animated.View>
           ) : (
             <ChipFrame
               key={entry.id}
               label={`Uploading ${entry.name}`}
               testID={`${testID}-pending`}
             >
-              <View className="flex-row items-center gap-2 py-2 pl-2">
+              <View className="flex-row items-center gap-2 py-2 pl-3">
                 <Spinner />
                 <Text variant="caption" numberOfLines={1} className="max-w-36">
                   {entry.name}

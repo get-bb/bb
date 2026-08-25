@@ -14,29 +14,37 @@ import { useTheme } from "@/theme";
 import {
   ActionSheet,
   Button,
+  confirmDestructive,
   EmptyStatePanel,
+  GroupedRow,
   Icon,
   Input,
   ListRow,
-  Separator,
   Sheet,
   Spinner,
   Text,
   toast,
   useSheet,
+  type ActionSheetAction,
 } from "@/ui";
 import { HostStatusDot } from "../pickers";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import {
+  ICON_ROW_SEPARATOR_INSET,
+  SettingsSection,
+} from "../settings/SettingsRows";
 import { firstParam } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
 import {
   ProjectMachineSetupSheet,
   type ProjectMachineSetupTarget,
 } from "./ProjectMachineSetupSheet";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 /**
  * `/projects/[id]/settings`: rename, the project's sources per machine
  * (add through the guided clone/folder flow, remove with confirmation), and
- * delete. Mirrors the web ProjectSettingsView essentials.
+ * delete. Mirrors the web ProjectSettingsView essentials as grouped forms.
  */
 export function ProjectSettingsScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -44,10 +52,9 @@ export function ProjectSettingsScreen() {
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <Screen testID="project-settings-screen">
-        <Text variant="title">Project settings</Text>
-        <Text variant="caption">Add a server first.</Text>
-      </Screen>
+      <GroupedScreen testID="project-settings-screen">
+        <EmptyStatePanel>Add a server first.</EmptyStatePanel>
+      </GroupedScreen>
     );
   }
   return <ConnectedProjectSettingsScreen projectId={projectId} />;
@@ -55,7 +62,6 @@ export function ProjectSettingsScreen() {
 
 function ConnectedProjectSettingsScreen({ projectId }: { projectId: string }) {
   const router = useRouter();
-  const { tokens } = useTheme();
   const bootstrap = useSidebarBootstrap();
   const project = useSidebarProject(projectId);
   const hostsQuery = useHosts();
@@ -73,7 +79,6 @@ function ConnectedProjectSettingsScreen({ projectId }: { projectId: string }) {
   const nameDirty = nameDraft !== null && nameDraft.trim() !== project?.name;
 
   const sourceMenu = useSheet();
-  const removeConfirm = useSheet();
   const [sourceForMenu, setSourceForMenu] = useState<ProjectSource | null>(
     null,
   );
@@ -81,25 +86,24 @@ function ConnectedProjectSettingsScreen({ projectId }: { projectId: string }) {
   const setupSheet = useSheet();
   const [setupTarget, setSetupTarget] =
     useState<ProjectMachineSetupTarget | null>(null);
-  const deleteConfirm = useSheet();
 
   if (bootstrap.isLoading && !project) {
     return (
-      <Screen scroll={false} testID="project-settings-screen">
+      <GroupedScreen scroll={false} testID="project-settings-screen">
         <View className="flex-1 items-center justify-center">
           <Spinner />
         </View>
-      </Screen>
+      </GroupedScreen>
     );
   }
   if (!project) {
     return (
-      <Screen testID="project-settings-screen">
+      <GroupedScreen testID="project-settings-screen">
         <EmptyStatePanel>This project no longer exists.</EmptyStatePanel>
         <Button variant="outline" onPress={() => router.back()}>
           Go back
         </Button>
-      </Screen>
+      </GroupedScreen>
     );
   }
   const isPersonal = project.kind === "personal";
@@ -134,23 +138,66 @@ function ConnectedProjectSettingsScreen({ projectId }: { projectId: string }) {
     setupSheet.present();
   };
 
+  const confirmRemoveSource = (source: ProjectSource) =>
+    confirmDestructive({
+      title: "Remove this source?",
+      message: `bb stops using ${source.path} on ${hostById.get(source.hostId)?.name ?? "that machine"} for this project. The folder stays on disk.`,
+      actionLabel: "Remove",
+      onConfirm: () =>
+        removeSource.mutate(
+          { projectId: project.id, sourceId: source.id },
+          { onSuccess: () => toast.success("Source removed") },
+        ),
+    });
+
+  const sourceActions = (source: ProjectSource): ActionSheetAction[] => [
+    {
+      key: "remove",
+      label: "Remove source",
+      icon: "FolderMinus",
+      destructive: true,
+      onPress: () => confirmRemoveSource(source),
+    },
+  ];
+
+  const confirmDelete = () =>
+    confirmDestructive({
+      title: `Delete ${project.name}?`,
+      message:
+        "This removes the project and all of its threads from bb. This cannot be undone.",
+      actionLabel: "Delete project",
+      onConfirm: () => {
+        deleteProject.mutate(project.id, {
+          onSuccess: () => {
+            toast.success(`Deleted ${project.name}`);
+            router.dismissTo("/");
+          },
+        });
+      },
+    });
+
   return (
-    <Screen testID="project-settings-screen">
-      <View className="gap-2">
-        <Text variant="label">Name</Text>
-        <View className="flex-row items-center gap-2">
+    <GroupedScreen testID="project-settings-screen">
+      <SettingsSection
+        title="Name"
+        footnote={project.gitRemoteUrl ?? undefined}
+      >
+        <View className="flex-row items-center gap-2 px-1">
           <Input
             value={name}
             onChangeText={setNameDraft}
             editable={!isPersonal && !renameProject.isPending}
             returnKeyType="done"
             onSubmitEditing={saveName}
+            grouped
             className="flex-1"
+            accessibilityLabel="Project name"
             testID="project-name-input"
           />
           {nameDirty ? (
             <Button
-              size="default"
+              size="sm"
+              variant="ghost"
               loading={renameProject.isPending}
               onPress={saveName}
               testID="project-name-save"
@@ -159,141 +206,75 @@ function ConnectedProjectSettingsScreen({ projectId }: { projectId: string }) {
             </Button>
           ) : null}
         </View>
-        {project.gitRemoteUrl ? (
-          <Text variant="caption" numberOfLines={1}>
-            {project.gitRemoteUrl}
-          </Text>
-        ) : null}
-      </View>
+      </SettingsSection>
 
       {isPersonal ? (
-        <EmptyStatePanel>
+        <Text variant="footnote" tone="muted" className="px-4">
           The personal project has no sources; its threads run in each machine's
           personal workspace.
-        </EmptyStatePanel>
+        </Text>
       ) : (
-        <View className="gap-2">
-          <Text variant="label">Sources</Text>
-          <Text variant="caption">
-            Where this project is checked out. One folder per machine.
-          </Text>
-          <View className="overflow-hidden rounded-md border border-border">
-            {project.sources.length === 0 ? (
-              <View className="px-4 py-4">
-                <Text variant="caption">No sources yet.</Text>
-              </View>
-            ) : (
-              project.sources.map((source, index) => {
-                const host = hostById.get(source.hostId);
-                return (
-                  <View key={source.id}>
-                    {index > 0 ? <Separator /> : null}
-                    <ListRow
-                      title={host?.name ?? "Unknown machine"}
-                      subtitle={source.path}
-                      leading={
-                        <View className="w-5 items-center">
-                          <HostStatusDot
-                            connected={host?.status === "connected"}
-                          />
-                        </View>
-                      }
-                      trailing={
-                        <Icon
-                          name="MoreHorizontal"
-                          size={18}
-                          color={tokens.mutedForeground}
-                        />
-                      }
-                      onPress={() => {
-                        setSourceForMenu(source);
-                        sourceMenu.present();
-                      }}
-                      onLongPress={() => {
-                        setSourceForMenu(source);
-                        sourceMenu.present();
-                      }}
-                      testID={`project-source-${source.hostId}`}
-                    />
-                  </View>
-                );
-              })
-            )}
-            <Separator />
-            <ListRow
-              title="Add source…"
-              subtitle={
-                addableHosts.length === 0
-                  ? hosts.length === 0
-                    ? "No machines connected"
-                    : "Every machine already has a source"
-                  : "Clone or point at a folder on another machine"
-              }
-              leading="FolderPlus"
-              trailing="chevron"
-              disabled={addableHosts.length === 0}
-              onPress={addHostSheet.present}
-              testID="project-add-source"
-            />
-          </View>
-        </View>
+        <SettingsSection
+          title="Sources"
+          separatorInset={ICON_ROW_SEPARATOR_INSET}
+          footnote="Where this project is checked out. One folder per machine."
+        >
+          {project.sources.length === 0 ? (
+            <View className="px-4 py-3">
+              <Text variant="footnote" tone="muted">
+                No sources yet.
+              </Text>
+            </View>
+          ) : (
+            project.sources.map((source) => (
+              <SourceRow
+                key={source.id}
+                source={source}
+                host={hostById.get(source.hostId)}
+                onOpenMenu={() => {
+                  setSourceForMenu(source);
+                  sourceMenu.present();
+                }}
+              />
+            ))
+          )}
+          <GroupedRow
+            title="Add source…"
+            subtitle={
+              addableHosts.length === 0
+                ? hosts.length === 0
+                  ? "No machines connected"
+                  : "Every machine already has a source"
+                : "Clone or point at a folder on another machine"
+            }
+            leading="FolderPlus"
+            leadingTone="primary"
+            trailing="chevron"
+            disabled={addableHosts.length === 0}
+            onPress={addHostSheet.present}
+            testID="project-add-source"
+          />
+        </SettingsSection>
       )}
 
       {isPersonal ? null : (
-        <View className="gap-2 pt-2">
-          <Button
-            variant="destructive"
-            icon="Trash2"
-            onPress={deleteConfirm.present}
-            loading={deleteProject.isPending}
+        <SettingsSection footnote="Deletes the project and every thread in it from bb. Files on your machines are left alone.">
+          <GroupedRow
+            title="Delete project"
+            leading="Trash2"
+            destructive
+            disabled={deleteProject.isPending}
+            onPress={confirmDelete}
             testID="project-delete"
-          >
-            Delete project
-          </Button>
-          <Text variant="caption">
-            Deletes the project and every thread in it from bb. Files on your
-            machines are left alone.
-          </Text>
-        </View>
+          />
+        </SettingsSection>
       )}
 
       <ActionSheet
         controller={sourceMenu}
         title={hostById.get(sourceForMenu?.hostId ?? "")?.name ?? "Source"}
         message={sourceForMenu?.path}
-        actions={[
-          {
-            key: "remove",
-            label: "Remove source",
-            icon: "FolderMinus",
-            destructive: true,
-            onPress: () => removeConfirm.present(),
-          },
-        ]}
-      />
-      <ActionSheet
-        controller={removeConfirm}
-        title="Remove this source?"
-        message={
-          sourceForMenu
-            ? `bb stops using ${sourceForMenu.path} on ${hostById.get(sourceForMenu.hostId)?.name ?? "that machine"} for this project. The folder stays on disk.`
-            : undefined
-        }
-        actions={[
-          {
-            key: "confirm-remove",
-            label: "Remove",
-            icon: "Trash2",
-            destructive: true,
-            onPress: () => {
-              if (!sourceForMenu) return;
-              removeSource.mutate(
-                { projectId: project.id, sourceId: sourceForMenu.id },
-                { onSuccess: () => toast.success("Source removed") },
-              );
-            },
-          },
-        ]}
+        actions={sourceForMenu ? sourceActions(sourceForMenu) : []}
       />
       <Sheet controller={addHostSheet} title="Add source on…" layout="scroll">
         {addableHosts.map((host) => (
@@ -329,27 +310,46 @@ function ConnectedProjectSettingsScreen({ projectId }: { projectId: string }) {
           toast.success("Source added", { description: source.path })
         }
       />
-      <ActionSheet
-        controller={deleteConfirm}
-        title={`Delete ${project.name}?`}
-        message="This removes the project and all of its threads from bb. This cannot be undone."
-        actions={[
-          {
-            key: "confirm-delete",
-            label: "Delete project",
-            icon: "Trash2",
-            destructive: true,
-            onPress: () => {
-              deleteProject.mutate(project.id, {
-                onSuccess: () => {
-                  toast.success(`Deleted ${project.name}`);
-                  router.dismissTo("/");
-                },
-              });
-            },
-          },
-        ]}
-      />
-    </Screen>
+    </GroupedScreen>
+  );
+}
+
+/**
+ * One checkout: the machine, its path, and its action sheet on tap /
+ * long-press. A plain row on both platforms: a native pull-down would hide
+ * it from VoiceOver.
+ */
+function SourceRow({
+  source,
+  host,
+  onOpenMenu,
+}: {
+  source: ProjectSource;
+  host: Host | undefined;
+  onOpenMenu: () => void;
+}) {
+  const { tokens } = useTheme();
+  return (
+    <GroupedRow
+      title={host?.name ?? "Unknown machine"}
+      subtitle={source.path}
+      leading={
+        <View className="w-5 items-center">
+          <HostStatusDot connected={host?.status === "connected"} />
+        </View>
+      }
+      trailing={
+        <Icon
+          name="MoreHorizontal"
+          symbol="ellipsis.circle"
+          size={IS_IOS ? 20 : 18}
+          color={IS_IOS ? tokens.primary : tokens.subtleForeground}
+        />
+      }
+      onPress={onOpenMenu}
+      onLongPress={onOpenMenu}
+      selectable
+      testID={`project-source-${source.hostId}`}
+    />
   );
 }

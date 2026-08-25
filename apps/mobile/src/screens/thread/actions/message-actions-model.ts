@@ -140,6 +140,40 @@ export function buildMessageActionItems(
 }
 
 /**
+ * Dispatches one chosen action to the host handlers (shared by the sheet
+ * and the native context menu).
+ */
+export function runMessageAction(
+  item: MessageActionItem,
+  target: TimelineMessageActionsTarget,
+  handlers: TimelineMessageActionHandlers,
+  onCopy: (text: string) => void,
+): void {
+  switch (item.key) {
+    case "copy":
+      onCopy(target.text);
+      return;
+    case "quote-paragraph":
+      if (target.paragraph !== null) {
+        handlers.quoteIntoComposer?.(target.paragraph);
+      }
+      return;
+    case "add-to-chat":
+      handlers.quoteIntoComposer?.(target.text);
+      return;
+    case "edit":
+      handlers.editMessage?.(buildEditMessageRequest(target));
+      return;
+    case "fork":
+      handlers.forkFromMessage?.({ sourceSeqEnd: target.sourceSeqEnd });
+      return;
+    case "send-to-main":
+      handlers.sendToMainThread?.({ messageText: target.text });
+      return;
+  }
+}
+
+/**
  * Web `canEditMessage`: only the person's own plain message requests that
  * were accepted, not grouped into a batch, and carry no image URLs.
  */

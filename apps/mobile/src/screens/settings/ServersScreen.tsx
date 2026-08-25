@@ -1,38 +1,40 @@
 import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import { describeError } from "@/lib/describe-error";
+import { haptic } from "@/lib/haptics";
 import type { ServerProfile } from "@/lib/profiles";
-import { useTheme } from "@/theme";
 import {
   ActionSheet,
-  Button,
-  EmptyStatePanel,
-  Icon,
-  ListRow,
-  Pill,
-  Text,
+  confirmDestructive,
+  GroupedRow,
   toast,
   useSheet,
+  type ActionSheetAction,
 } from "@/ui";
 import { connectEnrollHref } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
+import { GroupedScreen } from "./GroupedScreen";
+import {
+  HeaderIconButton,
+  ICON_ROW_SEPARATOR_INSET,
+  SettingsSection,
+} from "./SettingsRows";
 
-/** Saved servers: tap to switch, long-press for actions, "+" to add. */
+const IS_IOS = process.env.EXPO_OS === "ios";
+
+/**
+ * Saved servers: tap to switch, long-press for the row's action sheet
+ * (sign-in again, remove) on both platforms — a native context menu would
+ * hide the row from VoiceOver — and "+" in the header to add one.
+ */
 export function ServersScreen() {
   const router = useRouter();
-  const { tokens } = useTheme();
   const { profiles, activeProfile, setActiveProfile, removeProfile } =
     useProfiles();
   const menu = useSheet();
-  const confirmRemove = useSheet();
   const [target, setTarget] = useState<ServerProfile | null>(null);
 
-  const openMenu = (profile: ServerProfile) => {
-    setTarget(profile);
-    menu.present();
-  };
+  const addServer = () => router.push("/settings/servers/add");
 
   const activate = (profile: ServerProfile) => {
     if (profile.id === activeProfile?.id) return;
@@ -53,38 +55,99 @@ export function ServersScreen() {
       });
   };
 
+  const confirmRemove = (profile: ServerProfile) =>
+    confirmDestructive({
+      title: `Remove ${profile.label}?`,
+      message:
+        profile.mode === "connect"
+          ? "The app forgets this server and its device credential. The phone stays listed under Machines in the getbb.app dashboard until you revoke it there."
+          : "The app forgets this server. Nothing on the server changes.",
+      actionLabel: "Remove",
+      onConfirm: () => remove(profile),
+    });
+
+  const actionsFor = (profile: ServerProfile): ActionSheetAction[] => [
+    {
+      key: "activate",
+      label: "Use this server",
+      icon: "Check",
+      disabled: profile.id === activeProfile?.id,
+      onPress: () => activate(profile),
+    },
+    ...(profile.mode === "connect"
+      ? [
+          {
+            key: "reauth",
+            label: "Sign in again",
+            icon: "Lock" as const,
+            onPress: () => {
+              router.push(connectEnrollHref({ profileId: profile.id }));
+            },
+          },
+        ]
+      : []),
+    {
+      key: "remove",
+      label: "Remove",
+      icon: "Trash2",
+      destructive: true,
+      onPress: () => confirmRemove(profile),
+    },
+  ];
+
+  const openMenu = (profile: ServerProfile) => {
+    haptic("impact-heavy");
+    setTarget(profile);
+    menu.present();
+  };
+
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add server"
-              hitSlop={8}
-              onPress={() => router.push("/settings/servers/add")}
-              testID="servers-add"
-            >
-              <Icon name="Plus" size={22} color={tokens.foreground} />
-            </Pressable>
-          ),
-        }}
-      />
-      <Screen testID="servers-screen">
+      {IS_IOS ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="plus"
+            accessibilityLabel="Add server"
+            onPress={addServer}
+          />
+        </Stack.Toolbar>
+      ) : (
+        <Stack.Screen
+          options={{
+            headerRight: () => (
+              <HeaderIconButton
+                icon="Plus"
+                accessibilityLabel="Add server"
+                onPress={addServer}
+                testID="servers-add"
+              />
+            ),
+          }}
+        />
+      )}
+      <GroupedScreen testID="servers-screen">
         {profiles.length === 0 ? (
-          <View className="gap-3">
-            <EmptyStatePanel>No servers saved yet.</EmptyStatePanel>
-            <Button
-              icon="Plus"
-              onPress={() => router.push("/settings/servers/add")}
-            >
-              Add server
-            </Button>
-          </View>
+          <SettingsSection footnote="No servers saved yet. Pair through getbb.app or enter a direct URL.">
+            <GroupedRow
+              title="Add server"
+              leading="Plus"
+              leadingTone="primary"
+              onPress={addServer}
+            />
+          </SettingsSection>
         ) : (
-          <View className="overflow-hidden rounded-lg border border-border bg-card">
+          <SettingsSection
+            title="Saved servers"
+            separatorInset={ICON_ROW_SEPARATOR_INSET}
+            footnote={
+              // iOS footers stay free of gesture hints.
+              IS_IOS
+                ? "Tap a server to make it active."
+                : "Tap a server to make it active. Long-press for more."
+            }
+          >
             {profiles.map((profile) => (
-              <ListRow
+              <GroupedRow
                 key={profile.id}
                 title={profile.label}
                 subtitle={
@@ -93,100 +156,24 @@ export function ServersScreen() {
                     : profile.serverUrl
                 }
                 leading={profile.mode === "connect" ? "Globe" : "Laptop"}
-                selected={profile.id === activeProfile?.id}
+                value={profile.mode === "connect" ? "bb connect" : "Direct"}
                 trailing={
-                  <View className="flex-row items-center gap-2">
-                    <Pill
-                      variant={
-                        profile.mode === "connect" ? "emphasis" : "outline"
-                      }
-                      size="sm"
-                    >
-                      {profile.mode === "connect" ? "bb connect" : "direct"}
-                    </Pill>
-                    {profile.id === activeProfile?.id ? (
-                      <Icon name="Check" size={18} color={tokens.foreground} />
-                    ) : (
-                      <Icon
-                        name="MoreHorizontal"
-                        size={18}
-                        color={tokens.subtleForeground}
-                      />
-                    )}
-                  </View>
+                  profile.id === activeProfile?.id ? "checkmark" : undefined
                 }
                 onPress={() => activate(profile)}
                 onLongPress={() => openMenu(profile)}
                 testID={`server-row-${profile.id}`}
               />
             ))}
-          </View>
+          </SettingsSection>
         )}
-        <Text variant="caption">
-          Tap a server to make it active. Long-press for more.
-        </Text>
-      </Screen>
+      </GroupedScreen>
 
       <ActionSheet
         controller={menu}
         title={target?.label}
         message={target?.serverUrl}
-        actions={[
-          {
-            key: "activate",
-            label: "Use this server",
-            icon: "Check",
-            disabled: target?.id === activeProfile?.id,
-            onPress: () => {
-              if (target) activate(target);
-            },
-          },
-          ...(target?.mode === "connect"
-            ? [
-                {
-                  key: "reauth",
-                  label: "Sign in again",
-                  icon: "Lock" as const,
-                  onPress: () => {
-                    if (target) {
-                      router.push(connectEnrollHref({ profileId: target.id }));
-                    }
-                  },
-                },
-              ]
-            : []),
-          {
-            key: "remove",
-            label: "Remove",
-            icon: "Trash2",
-            destructive: true,
-            onPress: () => {
-              // Present after the menu has started dismissing so the two
-              // sheets do not fight over the modal host.
-              setTimeout(() => confirmRemove.present(), 250);
-            },
-          },
-        ]}
-      />
-      <ActionSheet
-        controller={confirmRemove}
-        title={target ? `Remove ${target.label}?` : "Remove server?"}
-        message={
-          target?.mode === "connect"
-            ? "The app forgets this server and its device credential. The phone stays listed under Machines in the getbb.app dashboard until you revoke it there."
-            : "The app forgets this server. Nothing on the server changes."
-        }
-        actions={[
-          {
-            key: "confirm",
-            label: "Remove",
-            icon: "Trash2",
-            destructive: true,
-            onPress: () => {
-              if (target) remove(target);
-            },
-          },
-        ]}
+        actions={target ? actionsFor(target) : []}
       />
     </>
   );

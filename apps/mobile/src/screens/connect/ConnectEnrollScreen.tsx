@@ -1,5 +1,10 @@
 import type { ConnectCredential } from "@bb/connect-client";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  Stack,
+  useLocalSearchParams,
+  useNavigation,
+  useRouter,
+} from "expo-router";
 import { useState } from "react";
 import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
@@ -15,10 +20,23 @@ import {
 import { describeError } from "@/lib/describe-error";
 import type { SessionState } from "@/lib/session";
 import { useTheme } from "@/theme";
-import { Button, Icon, Input, Spinner, Text, toast } from "@/ui";
-import { Screen } from "../shell/Screen";
+import {
+  Button,
+  GroupedRow,
+  Icon,
+  Input,
+  SheetProvider,
+  Spinner,
+  Text,
+  toast,
+} from "@/ui";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { useBadgeColors } from "../settings/settings-badges";
+import { SettingsSection } from "../settings/SettingsRows";
 import { AccountServersList } from "./AccountServersList";
 import { ConnectScanner } from "./ConnectScanner";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 type Phase =
   | { kind: "form" }
@@ -38,17 +56,18 @@ interface FieldError {
 }
 
 /**
- * bb connect enrollment: scan the pairing QR or type the code, redeem it at
- * the apex for this phone's machine credential, save the profile, make it
- * active (the connector then mints the desktop-session cookie and opens
- * realtime), and offer the account's other servers — one enrollment covers
- * all of them because the credential and the session cookie are
- * account-scoped. With `profileId` the same flow re-pairs an existing
- * profile whose credential was revoked.
+ * bb connect enrollment (a modal on iOS with Cancel in the header): scan the
+ * pairing QR or type the code, redeem it at the apex for this phone's
+ * machine credential, save the profile, make it active (the connector then
+ * mints the desktop-session cookie and opens realtime), and offer the
+ * account's other servers — one enrollment covers all of them because the
+ * credential and the session cookie are account-scoped. With `profileId`
+ * the same flow re-pairs an existing profile whose credential was revoked.
  */
 export function ConnectEnrollScreen() {
   const router = useRouter();
-  const { tokens } = useTheme();
+  const navigation = useNavigation();
+  const colors = useBadgeColors();
   const params = useLocalSearchParams<{
     code?: string;
     serverUrl?: string;
@@ -144,206 +163,274 @@ export function ConnectEnrollScreen() {
     });
   };
 
+  const done = () => router.dismissTo("/");
+
+  // This screen is a modal: a push would land the Add server card beneath
+  // it on iOS. Pop back to Add server when it opened this screen; otherwise
+  // (the bb://connect deep link) replace the modal with it.
+  const openDirectUrlForm = () => {
+    const state = navigation.getState();
+    const below = state ? state.routes[state.index - 1] : undefined;
+    if (below?.name === "settings/servers/add") router.back();
+    else router.replace("/settings/servers/add");
+  };
+
   if (phase.kind === "enrolled") {
     return (
-      <Screen testID="connect-enrolled-screen">
-        <View className="gap-2">
-          <View className="flex-row items-center gap-2">
-            <Icon name="CircleCheck" size={22} color={tokens.success} />
-            <Text variant="title">
-              {reauth ? "Paired again" : "Paired with bb connect"}
-            </Text>
-          </View>
-          <Text variant="caption">
-            This phone is now a device on your getbb.app account. You can revoke
-            it any time in the dashboard under Machines.
-          </Text>
-        </View>
+      <>
+        <Stack.Screen
+          options={{
+            title: reauth ? "Paired again" : "Paired with bb connect",
+          }}
+        />
+        {IS_IOS ? (
+          <Stack.Toolbar placement="right">
+            <Stack.Toolbar.Button
+              variant="done"
+              accessibilityLabel="Done"
+              onPress={done}
+            >
+              Done
+            </Stack.Toolbar.Button>
+          </Stack.Toolbar>
+        ) : null}
+        <GroupedScreen testID="connect-enrolled-screen">
+          <SettingsSection footnote="This phone is now a device on your getbb.app account. You can revoke it any time in the dashboard under Machines.">
+            <View
+              className="flex-row items-center gap-3 px-4 py-3"
+              testID="connect-enrolled-card"
+            >
+              <Icon
+                name="CircleCheck"
+                symbol="checkmark.circle.fill"
+                size={28}
+                color={colors.green}
+              />
+              <View className="min-w-0 flex-1">
+                <Text variant="headline" numberOfLines={1}>
+                  {phase.label}
+                </Text>
+                <Text variant="caption" mono numberOfLines={1} selectable>
+                  {phase.credential.serverUrl}
+                </Text>
+                <SessionStatusLine session={session} />
+              </View>
+            </View>
+          </SettingsSection>
 
-        <View
-          className="gap-1 rounded-lg border border-border bg-card px-4 py-3"
-          testID="connect-enrolled-card"
-        >
-          <Text variant="label">{phase.label}</Text>
-          <Text variant="caption" mono>
-            {phase.credential.serverUrl}
-          </Text>
-          <SessionStatusLine session={session} />
-        </View>
+          <AccountServersList credential={phase.credential} />
 
-        <AccountServersList credential={phase.credential} />
-
-        <Button
-          onPress={() => router.dismissTo("/")}
-          icon="ArrowRight"
-          iconPosition="right"
-          testID="connect-done"
-        >
-          Done
-        </Button>
-      </Screen>
+          <Button
+            onPress={done}
+            icon="ArrowRight"
+            iconPosition="right"
+            testID="connect-done"
+          >
+            Done
+          </Button>
+        </GroupedScreen>
+      </>
     );
   }
 
   return (
-    <Screen testID="connect-screen">
-      <View className="gap-1">
-        <Text variant="title">
-          {reauth
+    <>
+      <Stack.Screen
+        options={{
+          title: reauth
             ? `Sign in again to ${reauth.label}`
             : firstRun
               ? "Connect to getbb.app"
-              : "Pair with bb connect"}
-        </Text>
-        <Text variant="caption">
-          {reauth
-            ? "This phone's access was revoked or has expired. Generate a new pairing code on the server and enter it here; your saved server keeps its place."
-            : "Pair this phone with your bb server through getbb.app. Generate a code in bb Settings → Remote access → Add mobile device, or run `bb connect machine-code`."}
-        </Text>
-      </View>
-
-      <View className="gap-2">
-        {scanning ? (
-          <ConnectScanner active={!busy} onScanned={onScanned} />
-        ) : null}
-        <Button
-          variant={scanning ? "outline" : "secondary"}
-          icon={scanning ? "X" : "GridView"}
-          onPress={() => setScanning((value) => !value)}
-          disabled={busy}
-          testID="connect-scan-toggle"
-        >
-          {scanning ? "Stop scanning" : "Scan QR code"}
-        </Button>
-      </View>
-
-      <View className="gap-2">
-        <Text variant="label">Pairing code</Text>
-        <Input
-          value={code}
-          onChangeText={(next) => {
-            setCode(next);
-            if (phase.kind === "failed") setPhase({ kind: "form" });
-          }}
-          placeholder="ABCD-EFGH"
-          autoCapitalize="characters"
-          autoCorrect={false}
-          returnKeyType="next"
-          invalid={fieldError?.field === "code"}
-          mono
-          editable={!busy}
-          testID="connect-code-input"
-        />
-        {fieldError?.field === "code" ? (
-          <Text variant="caption" tone="destructive">
-            {fieldError.message}
-          </Text>
-        ) : null}
-      </View>
-
-      <View className="gap-2">
-        <Text variant="label">Server (handle or URL)</Text>
-        <Input
-          value={server}
-          onChangeText={setServer}
-          placeholder="bee or https://bee.getbb.app"
-          keyboardType="url"
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="go"
-          onSubmitEditing={submit}
-          invalid={fieldError?.field === "server"}
-          mono
-          editable={!busy && reauth === null}
-          testID="connect-server-input"
-        />
-        <Text variant="caption">
-          {reauth
-            ? "The server is fixed when signing in again."
-            : "Optional: the code already names the server. A URL also sets the bb connect address for self-hosted gates."}
-        </Text>
-        {fieldError?.field === "server" ? (
-          <Text variant="caption" tone="destructive">
-            {fieldError.message}
-          </Text>
-        ) : null}
-      </View>
-
-      {showAdvanced ? (
-        <View className="gap-2">
-          <Text variant="label">bb connect address</Text>
-          <Input
-            value={apexUrl}
-            onChangeText={setApexUrl}
-            placeholder={DEFAULT_CONNECT_APEX_URL}
-            keyboardType="url"
-            autoCapitalize="none"
-            autoCorrect={false}
-            invalid={fieldError?.field === "apexUrl"}
-            mono
-            editable={!busy}
-            testID="connect-apex-input"
-          />
-          {fieldError?.field === "apexUrl" ? (
-            <Text variant="caption" tone="destructive">
-              {fieldError.message}
-            </Text>
+              : "Pair with bb connect",
+        }}
+      />
+      {IS_IOS ? (
+        <Stack.Toolbar placement="left">
+          <Stack.Toolbar.Button
+            accessibilityLabel="Cancel"
+            disabled={busy}
+            onPress={() => router.back()}
+          >
+            Cancel
+          </Stack.Toolbar.Button>
+        </Stack.Toolbar>
+      ) : null}
+      {/* Own sheet host: this route is a native modal. */}
+      <SheetProvider>
+        <GroupedScreen testID="connect-screen">
+          <SettingsSection
+            footnote={
+              reauth
+                ? "This phone's access was revoked or has expired. Generate a new pairing code on the server and enter it here; your saved server keeps its place."
+                : "Pair this phone with your bb server through getbb.app. Generate a code in bb Settings → Remote access → Add mobile device, or run `bb connect machine-code`."
+            }
+          >
+            <GroupedRow
+              title={scanning ? "Stop scanning" : "Scan QR code"}
+              badge={{
+                icon: "GridView",
+                symbol: "qrcode.viewfinder",
+                color: scanning ? colors.gray : colors.blue,
+              }}
+              onPress={() => setScanning((value) => !value)}
+              disabled={busy}
+              testID="connect-scan-toggle"
+            />
+          </SettingsSection>
+          {scanning ? (
+            <ConnectScanner active={!busy} onScanned={onScanned} />
           ) : null}
-        </View>
-      ) : (
-        <Button
-          variant="link"
-          size="sm"
-          className="self-start"
-          onPress={() => setShowAdvanced(true)}
-          testID="connect-advanced-toggle"
-        >
-          Self-hosted bb connect…
-        </Button>
-      )}
 
-      {phase.kind === "failed" ? (
-        <View
-          className="gap-1 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2"
-          testID="connect-error"
-        >
-          <Text variant="label" tone="destructive">
-            {phase.failure.title}
-          </Text>
-          <Text variant="caption" tone="destructive">
-            {phase.failure.message}
-          </Text>
-        </View>
-      ) : null}
+          <SettingsSection
+            title="Pairing code"
+            footnote={
+              fieldError?.field === "code" ? (
+                <Text variant="footnote" tone="destructive">
+                  {fieldError.message}
+                </Text>
+              ) : undefined
+            }
+          >
+            <View className="px-1">
+              <Input
+                value={code}
+                onChangeText={(next) => {
+                  setCode(next);
+                  if (phase.kind === "failed") setPhase({ kind: "form" });
+                }}
+                placeholder="ABCD-EFGH"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                returnKeyType="next"
+                invalid={fieldError?.field === "code"}
+                mono
+                grouped
+                editable={!busy}
+                testID="connect-code-input"
+              />
+            </View>
+          </SettingsSection>
 
-      <Button
-        onPress={submit}
-        loading={busy}
-        disabled={code.trim().length === 0}
-        icon="ArrowRight"
-        iconPosition="right"
-        testID="connect-submit"
-      >
-        {phase.kind === "redeeming"
-          ? "Pairing…"
-          : phase.kind === "saving"
-            ? "Saving…"
-            : reauth
-              ? "Sign in again"
-              : "Pair"}
-      </Button>
+          <SettingsSection
+            title="Server (handle or URL)"
+            footnote={
+              fieldError?.field === "server" ? (
+                <Text variant="footnote" tone="destructive">
+                  {fieldError.message}
+                </Text>
+              ) : reauth ? (
+                "The server is fixed when signing in again."
+              ) : (
+                "Optional: the code already names the server. A URL also sets the bb connect address for self-hosted gates."
+              )
+            }
+          >
+            <View className="px-1">
+              <Input
+                value={server}
+                onChangeText={setServer}
+                placeholder="bee or https://bee.getbb.app"
+                keyboardType="url"
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="go"
+                onSubmitEditing={submit}
+                invalid={fieldError?.field === "server"}
+                mono
+                grouped
+                editable={!busy && reauth === null}
+                testID="connect-server-input"
+              />
+            </View>
+          </SettingsSection>
 
-      {!reauth ? (
-        <Button
-          variant="ghost"
-          onPress={() => router.push("/settings/servers/add")}
-          disabled={busy}
-          testID="connect-use-direct"
-        >
-          Use a direct URL instead
-        </Button>
-      ) : null}
-    </Screen>
+          {showAdvanced ? (
+            <SettingsSection
+              title="bb connect address"
+              footnote={
+                fieldError?.field === "apexUrl" ? (
+                  <Text variant="footnote" tone="destructive">
+                    {fieldError.message}
+                  </Text>
+                ) : (
+                  "The self-hosted bb connect gate this phone pairs through."
+                )
+              }
+            >
+              <View className="px-1">
+                <Input
+                  value={apexUrl}
+                  onChangeText={setApexUrl}
+                  placeholder={DEFAULT_CONNECT_APEX_URL}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  invalid={fieldError?.field === "apexUrl"}
+                  mono
+                  grouped
+                  editable={!busy}
+                  testID="connect-apex-input"
+                />
+              </View>
+            </SettingsSection>
+          ) : (
+            <Button
+              variant="link"
+              size="sm"
+              className="self-start"
+              onPress={() => setShowAdvanced(true)}
+              testID="connect-advanced-toggle"
+            >
+              Self-hosted bb connect…
+            </Button>
+          )}
+
+          <View className="gap-2">
+            {phase.kind === "failed" ? (
+              <View className="gap-0.5 px-4" testID="connect-error">
+                <Text
+                  variant="footnote"
+                  weight="semibold"
+                  tone="destructive"
+                  selectable
+                >
+                  {phase.failure.title}
+                </Text>
+                <Text variant="footnote" tone="destructive" selectable>
+                  {phase.failure.message}
+                </Text>
+              </View>
+            ) : null}
+            <Button
+              onPress={submit}
+              loading={busy}
+              disabled={code.trim().length === 0}
+              icon="ArrowRight"
+              iconPosition="right"
+              testID="connect-submit"
+            >
+              {phase.kind === "redeeming"
+                ? "Pairing…"
+                : phase.kind === "saving"
+                  ? "Saving…"
+                  : reauth
+                    ? "Sign in again"
+                    : "Pair"}
+            </Button>
+            {!reauth ? (
+              <Button
+                variant="ghost"
+                onPress={openDirectUrlForm}
+                disabled={busy}
+                testID="connect-use-direct"
+              >
+                Use a direct URL instead
+              </Button>
+            ) : null}
+          </View>
+        </GroupedScreen>
+      </SheetProvider>
+    </>
   );
 }
 
@@ -353,7 +440,7 @@ function SessionStatusLine({ session }: { session: SessionState | null }) {
   if (session === null || session.status === "idle") {
     return (
       <View className="flex-row items-center gap-2 pt-1">
-        <Spinner />
+        <Spinner size="small" />
         <Text variant="caption">Activating…</Text>
       </View>
     );
@@ -362,7 +449,7 @@ function SessionStatusLine({ session }: { session: SessionState | null }) {
     case "authenticating":
       return (
         <View className="flex-row items-center gap-2 pt-1">
-          <Spinner />
+          <Spinner size="small" />
           <Text variant="caption" testID="connect-session-authenticating">
             Signing in…
           </Text>
@@ -371,7 +458,12 @@ function SessionStatusLine({ session }: { session: SessionState | null }) {
     case "authenticated":
       return (
         <View className="flex-row items-center gap-2 pt-1">
-          <Icon name="Check" size={16} color={tokens.success} />
+          <Icon
+            name="Check"
+            size={14}
+            weight="semibold"
+            color={tokens.success}
+          />
           <Text
             variant="caption"
             tone="success"
@@ -386,6 +478,7 @@ function SessionStatusLine({ session }: { session: SessionState | null }) {
         <Text
           variant="caption"
           tone="destructive"
+          selectable
           testID="connect-session-auth-required"
         >
           bb connect rejected the new credential: {session.detail}
@@ -393,7 +486,12 @@ function SessionStatusLine({ session }: { session: SessionState | null }) {
       );
     case "error":
       return (
-        <Text variant="caption" tone="warning" testID="connect-session-error">
+        <Text
+          variant="caption"
+          tone="warning"
+          selectable
+          testID="connect-session-error"
+        >
           Could not sign in yet ({describeError(session.detail)}). Retrying…
         </Text>
       );

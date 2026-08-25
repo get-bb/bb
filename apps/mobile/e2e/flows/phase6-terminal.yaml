@@ -25,9 +25,9 @@ env:
     visible:
       id: "thread-detail-screen"
     timeout: 30000
-# Workspace panel → Terminal.
-- tapOn:
-    id: "thread-panel-button"
+# Workspace panel (the header's toolbar item, tapped by its accessibility
+# label) → Terminal.
+- tapOn: "Workspace panel"
 - extendedWaitUntil:
     visible:
       id: "panel-tab-terminal"
@@ -92,33 +92,27 @@ env:
     id: "terminal-key-ctrl"
 - inputText: "u"
 - takeScreenshot: phase6-terminal-keys
-# Terminal menu: rename the session. (The accessory bar's "…" mirrors the
-# header's, which the dev client's floating gear covers on large simulators.)
+# Terminal menu: rename the session. The accessory bar's "…" anchors the
+# same native menu as the header's (which the dev client's floating gear
+# covers on large simulators); its items have no test ids, so they are
+# tapped by title.
 - tapOn:
     id: "terminal-key-menu"
 - extendedWaitUntil:
-    visible:
-      id: "terminal-action-rename"
+    visible: "Rename"
     timeout: 10000
-- assertVisible:
-    id: "terminal-action-restart"
-- assertVisible:
-    id: "terminal-action-new"
-- assertVisible:
-    id: "terminal-action-close"
+- assertVisible: "Restart terminal"
+- assertVisible: "New terminal"
+- assertVisible: "Close terminal"
 - takeScreenshot: phase6-terminal-menu
-- tapOn:
-    id: "terminal-action-rename"
+- tapOn: "Rename"
+# The system prompt opens focused on the current title; replace it.
 - extendedWaitUntil:
-    visible:
-      id: "terminal-rename-input"
+    visible: "Rename terminal"
     timeout: 10000
-- tapOn:
-    id: "terminal-rename-input"
 - eraseText: 60
 - inputText: "P6 shell"
-- tapOn:
-    id: "terminal-rename-submit"
+- tapOn: "Rename"
 - extendedWaitUntil:
     visible: "P6 shell"
     timeout: 15000

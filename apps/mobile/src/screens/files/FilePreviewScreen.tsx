@@ -1,18 +1,22 @@
 import { Stack, useLocalSearchParams } from "expo-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import { getFileName } from "@/data/files";
 import { useThreadDetailBootstrap } from "@/data/thread-detail";
 import { useThread } from "@/data/threads";
+import { useTheme } from "@/theme";
 import { EmptyStatePanel, Skeleton } from "@/ui";
 import { Screen } from "../shell/Screen";
+import { ScreenTitle } from "../shell/ScreenTitle";
 import {
   parseFilePreviewRouteParams,
   type FilePreviewRouteParams,
 } from "./file-preview-target";
 import { FilePreviewView } from "./FilePreviewView";
 import { FilesTabContent } from "./FilesTabContent";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 function ThreadFilesBody({
   threadId,
@@ -21,10 +25,13 @@ function ThreadFilesBody({
   threadId: string;
   params: FilePreviewRouteParams;
 }) {
+  const { tokens } = useTheme();
   const bootstrap = useThreadDetailBootstrap(threadId);
   const threadQuery = useThread(threadId);
   const thread = threadQuery.data;
   const parsed = useMemo(() => parseFilePreviewRouteParams(params), [params]);
+  // The iOS header search bar's text; Android types into the inline field.
+  const [headerQuery, setHeaderQuery] = useState("");
   const environment = bootstrap.data?.environment ?? null;
   const hostId = bootstrap.data?.host?.id ?? null;
   const projectId = thread?.projectId ?? null;
@@ -49,12 +56,28 @@ function ThreadFilesBody({
   if (parsed === null) {
     return (
       <>
-        <Stack.Screen options={{ title: "Files" }} />
+        <ScreenTitle>Files</ScreenTitle>
+        {IS_IOS ? (
+          <Stack.SearchBar
+            placeholder="Search files"
+            autoCapitalize="none"
+            hideWhenScrolling={false}
+            onChangeText={(event) => setHeaderQuery(event.nativeEvent.text)}
+            onSearchButtonPress={(event) =>
+              setHeaderQuery(event.nativeEvent.text)
+            }
+            onCancelButtonPress={() => setHeaderQuery("")}
+            tintColor={tokens.primary}
+            textColor={tokens.foreground}
+          />
+        ) : null}
         <FilesTabContent
           threadId={threadId}
           projectId={projectId}
           environmentId={environment?.id ?? null}
           hostId={hostId}
+          searchField={IS_IOS ? "external" : "inline"}
+          externalQuery={headerQuery}
           testID="thread-files-screen-tab"
         />
       </>
@@ -62,7 +85,17 @@ function ThreadFilesBody({
   }
   return (
     <>
-      <Stack.Screen options={{ title: getFileName(parsed.target.path) }} />
+      <ScreenTitle>{getFileName(parsed.target.path)}</ScreenTitle>
+      {IS_IOS ? (
+        // The preview keeps a fixed path line under the bar and nothing
+        // scrolls beneath it, so the bar stays opaque here.
+        <Stack.Screen
+          options={{
+            headerTransparent: false,
+            headerStyle: { backgroundColor: tokens.background },
+          }}
+        />
+      ) : null}
       <FilePreviewView
         threadId={threadId}
         projectId={projectId}
@@ -71,15 +104,17 @@ function ThreadFilesBody({
         workspaceRootPath={environment?.path ?? null}
         target={parsed.target}
         lineRange={parsed.lineRange}
+        chrome={IS_IOS ? "header" : "inline"}
       />
     </>
   );
 }
 
 /**
- * `/threads/[id]/files`: the Files tab full-screen (search + storage
- * browser) when no file is named, otherwise the file preview for
- * `?kind=&path=&line=[&source=&status=]` (see `file-preview-target.ts`).
+ * `/threads/[id]/files`: the Files tab full-screen (header search bar +
+ * storage browser) when no file is named, otherwise the file preview for
+ * `?kind=&path=&line=[&source=&status=]` (see `file-preview-target.ts`)
+ * with the file name as the title and its actions in the toolbar.
  */
 export function FilePreviewScreen() {
   const params = useLocalSearchParams<

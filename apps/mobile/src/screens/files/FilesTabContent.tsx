@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState, type ComponentType } from "react";
 import {
   FlatList,
   Pressable,
+  StyleSheet,
+  TextInput,
   View,
   type FlatListProps,
   type ListRenderItem,
@@ -16,12 +18,15 @@ import {
   type StorageEntry,
 } from "@/data/files";
 import { copyWithToast } from "@/lib/clipboard";
-import { useTheme } from "@/theme";
+import { haptic } from "@/lib/haptics";
+import { nativeTypography, resolveFont, useTheme } from "@/theme";
 import {
   ActionSheet,
-  EmptyStatePanel,
+  GROUPED_ROW_PADDING_X,
   Icon,
-  Input,
+  INPUT_RADIUS,
+  LIST_ROW_ICON_SIZE,
+  Separator,
   SheetFlatList,
   Skeleton,
   Spinner,
@@ -34,6 +39,31 @@ import type { FilePreviewTarget } from "./file-preview-target";
 import { buildFilesTabRows, type FilesTabRow } from "./files-tab-model";
 import { FilePathRow } from "./FilePathRow";
 import { StorageBreadcrumbs } from "./ThreadStorageBrowser";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
+/** The inline search field (UISearchBar's text field height). */
+const SEARCH_FIELD_HEIGHT = 36;
+/** Hairlines between file rows start at the text column (padding + glyph + gap). */
+const FILE_ROW_SEPARATOR_INSET =
+  GROUPED_ROW_PADDING_X + LIST_ROW_ICON_SIZE + 12;
+const FILE_ROW_KINDS: ReadonlySet<FilesTabRow["kind"]> = new Set<
+  FilesTabRow["kind"]
+>(["search-result", "recent", "storage-entry"]);
+/** The rows rendered as a `FilePathRow` (tap opens, long-press is the menu). */
+type FileRow = Extract<
+  FilesTabRow,
+  { kind: "search-result" | "recent" | "storage-entry" }
+>;
+
+interface FileRowHandlers {
+  onPress: () => void;
+  onLongPress: () => void;
+}
+
+// Module-level so the list (a PureComponent) keeps its props stable across
+// the host's re-renders (the menu sheet opening, a query tick).
+const keyExtractor = (row: FilesTabRow) => row.key;
+const LIST_CONTENT_STYLE = { paddingBottom: 24 } as const;
 
 interface FilesTabContentProps {
   /** Null for the root-compose panel (no thread storage, no recents). */
@@ -49,23 +79,127 @@ interface FilesTabContentProps {
   scroll?: "screen" | "sheet";
   /** Seed the search box (the panel's Files launcher params). */
   initialQuery?: string | null;
+  /**
+   * Where the query is typed: the inline search field (default), or a host
+   * bar — the full-screen route's native header search on iOS — in which
+   * case `externalQuery` is the live query and no field renders here.
+   */
+  searchField?: "inline" | "external";
+  externalQuery?: string;
   testID?: string;
 }
 
-interface CopyMenuTarget {
+interface FileMenuTarget {
   path: string;
   name: string;
+  kind: "file" | "directory";
+  open: () => void;
 }
 
 function sourceLabel(source: FileSearchSource): string {
   return source === "workspace" ? "Workspace" : "Thread storage";
 }
 
+/** Open / Copy path / Copy name: the long-press sheet's rows. */
+function fileMenuActions(target: FileMenuTarget): ActionSheetAction[] {
+  return [
+    {
+      key: "open",
+      label: target.kind === "directory" ? "Open folder" : "Open",
+      icon: target.kind === "directory" ? "FolderOpen" : "FileText",
+      onPress: target.open,
+    },
+    {
+      key: "copy-path",
+      label: "Copy path",
+      icon: "Copy",
+      onPress: () => copyWithToast(target.path, "Path copied"),
+    },
+    {
+      key: "copy-name",
+      label: "Copy name",
+      icon: "Copy",
+      onPress: () => copyWithToast(target.name, "Name copied"),
+    },
+  ];
+}
+
+/** Hairline under a file row; section headers and states draw none. */
+function FileRowSeparator({ leadingItem }: { leadingItem: FilesTabRow }) {
+  return FILE_ROW_KINDS.has(leadingItem.kind) ? (
+    <Separator inset={FILE_ROW_SEPARATOR_INSET} />
+  ) : null;
+}
+
+/** The iOS search field: 36pt, muted fill, continuous corners, magnifier + clear glyphs. */
+function SearchField({
+  value,
+  onChangeText,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+}) {
+  const { tokens, mode } = useTheme();
+  return (
+    <View style={[styles.searchField, { backgroundColor: tokens.muted }]}>
+      <Icon name="Search" size={17} color={tokens.mutedForeground} />
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder="Search files"
+        placeholderTextColor={tokens.subtleForeground}
+        returnKeyType="search"
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="off"
+        clearButtonMode="never"
+        keyboardAppearance={mode}
+        selectionColor={tokens.primary}
+        cursorColor={tokens.primary}
+        accessibilityLabel="Search files"
+        style={[
+          styles.searchInput,
+          resolveFont({}),
+          { color: tokens.foreground },
+        ]}
+        testID="files-search-input"
+      />
+      {value.length > 0 ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
+          hitSlop={8}
+          onPress={() => onChangeText("")}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+          testID="files-search-clear"
+        >
+          <Icon
+            name="CircleX"
+            symbol="xmark.circle.fill"
+            size={17}
+            color={tokens.subtleForeground}
+          />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function StateText({ children }: { children: string }) {
+  return (
+    <Text variant="footnote" tone="muted" className="text-center">
+      {children}
+    </Text>
+  );
+}
+
 /**
- * The Files tab: a search box over the workspace (environment or project
+ * The Files tab: a search field over the workspace (environment or project
  * paths) and thread storage, and — when idle — the thread's recent files
  * plus a storage browser with breadcrumbs. Tapping a file opens the preview;
- * long-press copies the path / name.
+ * long-press is the open / copy menu — one action sheet shared by every row
+ * (a native context menu per row would host a SwiftUI view in each list
+ * cell).
  */
 export function FilesTabContent({
   threadId,
@@ -74,10 +208,12 @@ export function FilesTabContent({
   hostId,
   scroll = "screen",
   initialQuery = null,
+  searchField = "inline",
+  externalQuery = "",
   testID = "files-tab",
 }: FilesTabContentProps) {
-  const { tokens } = useTheme();
-  const [query, setQuery] = useState(initialQuery ?? "");
+  const [inlineQuery, setInlineQuery] = useState(initialQuery ?? "");
+  const query = searchField === "external" ? externalQuery : inlineQuery;
   const [directoryPath, setDirectoryPath] = useState("");
   const [recentExpanded, setRecentExpanded] = useState(false);
   const search = useFileSearch({
@@ -165,39 +301,74 @@ export function FilesTabContent({
     [openFile, workspaceTarget],
   );
 
-  const copyMenu = useSheet();
-  const [copyTarget, setCopyTarget] = useState<CopyMenuTarget | null>(null);
-  const presentCopyMenu = useCallback(
-    (target: CopyMenuTarget) => {
-      setCopyTarget(target);
-      copyMenu.present();
+  // The long-press menu: one sheet for the whole list, re-targeted per row.
+  const menuSheet = useSheet();
+  const [menuTarget, setMenuTarget] = useState<FileMenuTarget | null>(null);
+  const presentMenu = useCallback(
+    (target: FileMenuTarget) => {
+      haptic("impact-heavy");
+      setMenuTarget(target);
+      menuSheet.present();
     },
-    [copyMenu],
+    [menuSheet],
   );
-  const copyActions = useMemo<ActionSheetAction[]>(
-    () =>
-      copyTarget === null
-        ? []
-        : [
-            {
-              key: "copy-path",
-              label: "Copy path",
-              icon: "Copy",
-              onPress: () => copyWithToast(copyTarget.path, "Path copied"),
-            },
-            {
-              key: "copy-name",
-              label: "Copy name",
-              icon: "Copy",
-              onPress: () => copyWithToast(copyTarget.name, "Name copied"),
-            },
-          ],
-    [copyTarget],
+  const storageEntryTarget = useCallback(
+    (entry: StorageEntry): FileMenuTarget => ({
+      path: entry.path,
+      name: entry.name,
+      kind: entry.kind === "directory" ? "directory" : "file",
+      open:
+        entry.kind === "directory"
+          ? () => setDirectoryPath(entry.path)
+          : () =>
+              openFile({
+                target: { kind: "storage-file", path: entry.path },
+                lineRange: null,
+              }),
+    }),
+    [openFile],
   );
-  const presentEntryMenu = useCallback(
-    (entry: StorageEntry) =>
-      presentCopyMenu({ path: entry.path, name: entry.name }),
-    [presentCopyMenu],
+  const buildRowHandlers = useCallback(
+    (row: FileRow): FileRowHandlers => {
+      const target: FileMenuTarget =
+        row.kind === "search-result"
+          ? {
+              path: row.path,
+              name: getFileName(row.path),
+              kind: "file",
+              open: () => openSource(row.source, row.path),
+            }
+          : row.kind === "recent"
+            ? {
+                path: row.item.path,
+                name: getFileName(row.item.path),
+                kind: "file",
+                open: () => openSource(row.item.source, row.item.path),
+              }
+            : storageEntryTarget(row.entry);
+      return { onPress: target.open, onLongPress: () => presentMenu(target) };
+    },
+    [openSource, presentMenu, storageEntryTarget],
+  );
+  // One handler pair per row, keyed by row key and memoized on the row list,
+  // so `memo(FilePathRow)` holds across renders that leave the rows alone.
+  const rowHandlers = useMemo(() => {
+    const handlers = new Map<string, FileRowHandlers>();
+    for (const row of rows) {
+      if (
+        row.kind === "search-result" ||
+        row.kind === "recent" ||
+        row.kind === "storage-entry"
+      ) {
+        handlers.set(row.key, buildRowHandlers(row));
+      }
+    }
+    return handlers;
+  }, [buildRowHandlers, rows]);
+  const handlersFor = useCallback(
+    (row: FileRow): FileRowHandlers =>
+      rowHandlers.get(row.key) ?? buildRowHandlers(row),
+    [buildRowHandlers, rowHandlers],
   );
 
   const renderItem = useCallback<ListRenderItem<FilesTabRow>>(
@@ -205,7 +376,7 @@ export function FilesTabContent({
       switch (item.kind) {
         case "section":
           return (
-            <View className="flex-row items-baseline justify-between px-4 pb-1 pt-4">
+            <View className="flex-row items-baseline justify-between px-4 pb-1.5 pt-5">
               <Text variant="sectionLabel">{item.title}</Text>
               {item.note ? <Text variant="caption">{item.note}</Text> : null}
             </View>
@@ -216,13 +387,7 @@ export function FilesTabContent({
               path={item.path}
               positions={item.positions}
               icon="FileText"
-              onPress={() => openSource(item.source, item.path)}
-              onLongPress={() =>
-                presentCopyMenu({
-                  path: item.path,
-                  name: getFileName(item.path),
-                })
-              }
+              {...handlersFor(item)}
               testID="files-search-result"
             />
           );
@@ -232,13 +397,7 @@ export function FilesTabContent({
               path={item.item.path}
               icon="Clock"
               trailingText={sourceLabel(item.item.source)}
-              onPress={() => openSource(item.item.source, item.item.path)}
-              onLongPress={() =>
-                presentCopyMenu({
-                  path: item.item.path,
-                  name: getFileName(item.item.path),
-                })
-              }
+              {...handlersFor(item)}
               testID="files-recent-row"
             />
           );
@@ -247,77 +406,73 @@ export function FilesTabContent({
             <Pressable
               accessibilityRole="button"
               onPress={() => setRecentExpanded((current) => !current)}
-              className="px-4 py-2 active:opacity-70"
+              className="px-4 py-2 active:opacity-60"
               testID="files-recent-toggle"
             >
-              <Text variant="chrome" tone="primary">
+              <Text variant="footnote" tone="primary">
                 {item.expanded ? "Show fewer" : `Show ${item.hidden} more`}
               </Text>
             </Pressable>
           );
         case "storage-breadcrumbs":
           return (
-            <View className="py-1">
-              <StorageBreadcrumbs
-                directoryPath={item.directoryPath}
-                onNavigate={setDirectoryPath}
-              />
-            </View>
+            <StorageBreadcrumbs
+              directoryPath={item.directoryPath}
+              onNavigate={setDirectoryPath}
+            />
           );
         case "storage-entry":
-          return item.entry.kind === "directory" ? (
-            <FilePathRow
-              path={item.entry.name}
-              icon="Folder"
-              trailingText={`${item.entry.fileCount} ${item.entry.fileCount === 1 ? "file" : "files"}`}
-              trailing="chevron"
-              onPress={() => setDirectoryPath(item.entry.path)}
-              onLongPress={() => presentEntryMenu(item.entry)}
-              testID="storage-directory-row"
-            />
-          ) : (
+          if (item.entry.kind === "directory") {
+            return (
+              <FilePathRow
+                path={item.entry.name}
+                icon="Folder"
+                trailingText={`${item.entry.fileCount} ${item.entry.fileCount === 1 ? "file" : "files"}`}
+                trailing="chevron"
+                {...handlersFor(item)}
+                testID="storage-directory-row"
+              />
+            );
+          }
+          return (
             <FilePathRow
               path={item.entry.name}
               icon="FileText"
-              onPress={() =>
-                openFile({
-                  target: { kind: "storage-file", path: item.entry.path },
-                  lineRange: null,
-                })
-              }
-              onLongPress={() => presentEntryMenu(item.entry)}
+              {...handlersFor(item)}
               testID="storage-file-row"
             />
           );
         case "storage-state":
           return (
-            <View className="px-4 py-2">
+            <View className="px-4 py-4">
               {item.state === "loading" ? (
                 <View className="gap-2 py-1" testID="thread-storage-loading">
                   <Skeleton className="h-4 w-2/3" />
                   <Skeleton className="h-4 w-1/2" />
                 </View>
               ) : (
-                <EmptyStatePanel>
+                <StateText>
                   {item.state === "error"
                     ? "Could not load thread storage."
                     : directoryPath.length === 0
                       ? "No files in thread storage yet."
                       : "Empty directory."}
-                </EmptyStatePanel>
+                </StateText>
               )}
             </View>
           );
         case "search-state":
           return (
-            <View className="px-4 py-4">
+            <View className="px-4 py-6">
               {item.state === "loading" ? (
-                <View className="flex-row items-center gap-2">
+                <View className="flex-row items-center justify-center gap-2">
                   <Spinner size="small" />
-                  <Text variant="caption">Searching…</Text>
+                  <Text variant="footnote" tone="muted">
+                    Searching…
+                  </Text>
                 </View>
               ) : (
-                <EmptyStatePanel>
+                <StateText>
                   {item.state === "error"
                     ? "File search failed."
                     : item.state === "unavailable"
@@ -325,13 +480,13 @@ export function FilesTabContent({
                       : item.state === "hint"
                         ? "Search the project's files by name."
                         : "No matching files."}
-                </EmptyStatePanel>
+                </StateText>
               )}
             </View>
           );
       }
     },
-    [directoryPath, openFile, openSource, presentCopyMenu, presentEntryMenu],
+    [directoryPath, handlersFor],
   );
 
   const List: ComponentType<FlatListProps<FilesTabRow>> =
@@ -339,52 +494,50 @@ export function FilesTabContent({
 
   return (
     <View className="flex-1" testID={testID}>
-      <View className="flex-row items-center gap-2 px-4 pb-2 pt-3">
-        <View className="relative flex-1">
-          <Input
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search files"
-            returnKeyType="search"
-            autoCapitalize="none"
-            autoCorrect={false}
-            className="pl-9"
-            testID="files-search-input"
-          />
-          <View
-            pointerEvents="none"
-            className="absolute inset-y-0 left-3 justify-center"
-          >
-            <Icon name="Search" size={16} color={tokens.mutedForeground} />
-          </View>
-          {query.length > 0 ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-              onPress={() => setQuery("")}
-              className="absolute inset-y-0 right-2 justify-center"
-              testID="files-search-clear"
-            >
-              <Icon name="CircleX" size={16} color={tokens.mutedForeground} />
-            </Pressable>
-          ) : null}
+      {searchField === "inline" ? (
+        <View className="px-4 pb-2 pt-2">
+          <SearchField value={inlineQuery} onChangeText={setInlineQuery} />
         </View>
-      </View>
+      ) : null}
       <List
         data={rows}
-        keyExtractor={(row) => row.key}
+        keyExtractor={keyExtractor}
         renderItem={renderItem}
+        ItemSeparatorComponent={FileRowSeparator}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={{ paddingBottom: 24 }}
+        keyboardDismissMode={IS_IOS ? "interactive" : "on-drag"}
+        // The full-screen route's first scrollable: inset under the native
+        // header (and its search bar) automatically.
+        contentInsetAdjustmentBehavior={
+          scroll === "screen" ? "automatic" : undefined
+        }
+        contentContainerStyle={LIST_CONTENT_STYLE}
         testID="files-tab-list"
       />
       <ActionSheet
-        controller={copyMenu}
-        title={copyTarget?.name}
-        actions={copyActions}
+        controller={menuSheet}
+        title={menuTarget?.name}
+        actions={menuTarget === null ? [] : fileMenuActions(menuTarget)}
         stackBehavior="push"
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  searchField: {
+    height: SEARCH_FIELD_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 8,
+    borderRadius: INPUT_RADIUS,
+    borderCurve: "continuous",
+  },
+  searchInput: {
+    flex: 1,
+    height: SEARCH_FIELD_HEIGHT,
+    paddingVertical: 0,
+    fontSize: nativeTypography.base.fontSize,
+  },
+});

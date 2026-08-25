@@ -17,8 +17,8 @@ env:
     visible: "${THREAD_TITLE}"
     timeout: 30000
 - tapOn: "${THREAD_TITLE}"
-- tapOn:
-    id: "thread-panel-button"
+# The header's panel button is a native toolbar item: tap its label.
+- tapOn: "Workspace panel"
 - extendedWaitUntil:
     visible:
       id: "panel-tab-terminal"

@@ -1,0 +1,186 @@
+/**
+ * `IconName` → SF Symbol. `Icon.ios.tsx` renders a mapped name through
+ * expo-image's `sf:` source and falls back to the Hugeicons glyph for
+ * unmapped names; header/menu/tab items (`Stack.Toolbar.*`, `Link.MenuAction`,
+ * `MenuView`) take a symbol name directly, so they reuse the same table via
+ * `sfSymbolFor`. Pure data: no React Native imports, so it is testable under
+ * node (`sf-symbol-map.test.ts`).
+ *
+ * Every name maps to an outline symbol at most as new as SF Symbols 4
+ * (iOS 16, the app's deployment target); the test guards both. Brand marks
+ * (Discord, Github) have no SF Symbol and stay on Hugeicons.
+ */
+import type { SFSymbol } from "sf-symbols-typescript";
+import type { IconName } from "./icon-map";
+
+export type { SFSymbol };
+
+/** Symbol weight names → the `fontWeight` values expo-image understands. */
+export const SF_SYMBOL_WEIGHTS = {
+  ultralight: "100",
+  thin: "200",
+  light: "300",
+  regular: "400",
+  medium: "500",
+  semibold: "600",
+  bold: "700",
+  heavy: "800",
+  black: "900",
+} as const;
+
+export type SFSymbolWeight = keyof typeof SF_SYMBOL_WEIGHTS;
+
+/** Default symbol weight: optically closest to the 1.75 Hugeicons stroke. */
+export const SF_SYMBOL_WEIGHT: SFSymbolWeight = "medium";
+
+export const SF_SYMBOL_MAP = {
+  AiContentGenerator01: "sparkles",
+  AlertCircle: "exclamationmark.circle",
+  AlertTriangle: "exclamationmark.triangle",
+  AlignLeft: "text.alignleft",
+  AppWindow: "macwindow",
+  Archive: "archivebox",
+  ArchiveRestore: "tray.and.arrow.up",
+  ArrowDown: "arrow.down",
+  ArrowRight: "arrow.right",
+  ArrowReloadHorizontal: "arrow.triangle.2.circlepath",
+  ArrowUp: "arrow.up",
+  ArrowUpDown: "arrow.up.arrow.down",
+  ArrowTurnBackward: "arrow.uturn.backward",
+  ArrowTurnForward: "arrow.uturn.forward",
+  ArrowUpRight: "arrow.up.right",
+  Beaker: "testtube.2",
+  Bot: "cpu",
+  Browser: "safari",
+  Brain: "brain",
+  Bug: "ladybug",
+  Calendar: "calendar",
+  CalendarCheckOut02: "calendar.badge.minus",
+  ChartColumn: "chart.bar",
+  Check: "checkmark",
+  ChevronDown: "chevron.down",
+  ChevronLeft: "chevron.left",
+  ChevronRight: "chevron.right",
+  ChevronUp: "chevron.up",
+  // Diff header "expand all / collapse all" toggle.
+  ChevronsDown: "rectangle.expand.vertical",
+  ChevronsUp: "rectangle.compress.vertical",
+  Circle: "circle",
+  CircleArrowShrink: "arrow.down.right.and.arrow.up.left.circle",
+  CircleCheck: "checkmark.circle",
+  CircleQuestion: "questionmark.circle",
+  CircleX: "xmark.circle",
+  Clean: "paintbrush",
+  Clock: "clock",
+  Cloud: "cloud",
+  CloudOff: "icloud.slash",
+  Coffee: "cup.and.saucer",
+  Code: "chevron.left.forwardslash.chevron.right",
+  ComputerTerminal01: "terminal",
+  Columns2: "rectangle.split.2x1",
+  Copy: "doc.on.doc",
+  CornerDownLeft: "arrow.turn.down.left",
+  CornerDownRight: "arrow.turn.down.right",
+  DateTime: "calendar.badge.clock",
+  DragDropHorizontal: "ellipsis",
+  DragDropVertical: "line.3.horizontal",
+  Download: "arrow.down.circle",
+  Edit: "pencil",
+  EditFile: "square.and.pencil",
+  ElectricPlugs: "powerplug",
+  Eye: "eye",
+  EyeOff: "eye.slash",
+  Explore: "book",
+  ExternalLink: "arrow.up.right.square",
+  FileDiff: "plus.forwardslash.minus",
+  File: "doc",
+  FileAttachment: "doc",
+  FileQuestion: "questionmark.square.dashed",
+  FileText: "doc.text",
+  Folder: "folder",
+  FolderEdit: "folder.badge.gearshape",
+  FolderExport: "square.and.arrow.up",
+  FolderGit: "folder.badge.gearshape",
+  FolderOpen: "folder",
+  FolderMinus: "folder.badge.minus",
+  FolderPlus: "folder.badge.plus",
+  Fork: "arrow.triangle.branch",
+  GitBranch: "arrow.triangle.branch",
+  GitMerge: "arrow.triangle.merge",
+  GitPullRequest: "arrow.triangle.pull",
+  GitPullRequestArrow: "arrow.triangle.pull",
+  GitPullRequestClosed: "xmark.circle",
+  GitPullRequestDraft: "circle.dashed",
+  Globe: "globe",
+  GridView: "square.grid.2x2",
+  Info: "info.circle",
+  Laptop: "laptopcomputer",
+  Layers: "square.3.layers.3d",
+  ListView: "list.bullet",
+  SectionAdd: "text.badge.plus",
+  ListTodo: "checklist",
+  Loading: "circle.dotted",
+  Lock: "lock",
+  Mail: "envelope",
+  MailOpen: "envelope.open",
+  Maximize2: "arrow.up.left.and.arrow.down.right",
+  MessageQuestion: "questionmark.bubble",
+  MessageCirclePlus: "plus.bubble",
+  MessageSquarePlus: "plus.bubble",
+  MessageSquare: "bubble.left",
+  Mic: "mic",
+  Minimize2: "arrow.down.right.and.arrow.up.left",
+  MoreHorizontal: "ellipsis",
+  NewTab: "plus.square.dashed",
+  PackageReceive: "shippingbox",
+  Palette: "paintpalette",
+  PanelBottom: "rectangle.bottomthird.inset.filled",
+  PanelLeft: "sidebar.left",
+  PanelRight: "sidebar.right",
+  Paperclip: "paperclip",
+  Pause: "pause",
+  Pin: "pin",
+  PinOff: "pin.slash",
+  Play: "play",
+  Plus: "plus",
+  Puzzle: "puzzlepiece.extension",
+  Repeat: "repeat",
+  // Almost every use is "refresh / retry", so clockwise (not counterclockwise).
+  RotateCcw: "arrow.clockwise",
+  Rows2: "rectangle.split.1x2",
+  Search: "magnifyingglass",
+  SecurityCheck: "checkmark.shield",
+  Sent: "paperplane",
+  Settings: "gearshape",
+  SideChat: "plus.bubble",
+  ClosePluginPane: "xmark",
+  CloseThreadPane: "xmark",
+  SlidersHorizontal: "slider.horizontal.3",
+  Smartphone: "iphone",
+  Sort: "arrow.up.arrow.down",
+  Spinner: "circle.dotted",
+  Square: "square",
+  SquareUnlock02: "lock.open",
+  Star: "star",
+  Target: "target",
+  Terminal: "terminal",
+  TextWrap: "text.word.spacing",
+  TimeSchedule: "clock.badge.checkmark",
+  Toolbox: "wrench.and.screwdriver",
+  ToolCase: "case",
+  Trash2: "trash",
+  UserRound: "person",
+  UserRoundPlus: "person.badge.plus",
+  Workflow: "point.3.connected.trianglepath.dotted",
+  X: "xmark",
+  Zap: "bolt",
+  ZoomIn: "plus.magnifyingglass",
+  ZoomOut: "minus.magnifyingglass",
+} as const satisfies Partial<Record<IconName, SFSymbol>>;
+
+const SYMBOL_BY_NAME: Partial<Record<IconName, SFSymbol>> = SF_SYMBOL_MAP;
+
+/** The SF Symbol for an icon name, or `undefined` for brand marks. */
+export function sfSymbolFor(name: IconName): SFSymbol | undefined {
+  return SYMBOL_BY_NAME[name];
+}

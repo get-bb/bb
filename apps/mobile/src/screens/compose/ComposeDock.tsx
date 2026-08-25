@@ -237,7 +237,8 @@ function WhereControls({
       horizontal
       showsHorizontalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ gap: 2, alignItems: "center" }}
+      // Capsule pills need room between them (the ghost pills touched).
+      contentContainerStyle={{ gap: 8, alignItems: "center" }}
       style={{ flexGrow: 1, flexShrink: 1 }}
       testID="compose-environment-controls"
     >

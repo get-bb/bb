@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import { Linking } from "react-native";
 import { e2eModeEnabled, resetLocalState, useProfiles } from "@/app-shell";
 import { useTheme } from "@/theme";
-import { ActionSheet, Icon, ListRow, toast, useSheet } from "@/ui";
+import { confirmDestructive, GroupedRow, Icon, toast } from "@/ui";
 import {
   archivedThreadsHref,
   machinesHref,
@@ -13,9 +13,10 @@ import {
   settingsSectionHref,
   skillsHref,
 } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
+import { GroupedScreen } from "./GroupedScreen";
 import { HapticsSettingsRow } from "./HapticsSettingsRow";
-import { SettingsSection } from "./SettingsRows";
+import { useBadgeColors } from "./settings-badges";
+import { BADGE_ROW_SEPARATOR_INSET, SettingsSection } from "./SettingsRows";
 
 const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";
 const GITHUB_REPO_URL = "https://github.com/get-bb/bb";
@@ -27,40 +28,76 @@ function openExternal(url: string): void {
 }
 
 /**
- * Settings home: the web settings buckets (settings-nav.tsx) minus the
- * desktop-only ones (Keyboard, Files), each a row into its own screen.
- * Server / Notifications / Developer / About are mobile-specific.
+ * Settings home, laid out like the iOS Settings app: inset-grouped rows
+ * with tinted icon badges, the current value on the right and a chevron
+ * into each bucket (the web settings-nav.tsx buckets minus the
+ * desktop-only ones). Server / Machines / Developer / About are
+ * mobile-specific.
  */
 export function SettingsScreen() {
   const router = useRouter();
   const theme = useTheme();
+  const colors = useBadgeColors();
   const { profiles, activeProfile } = useProfiles();
-  const resetSheet = useSheet();
   const appVersion = Constants.expoConfig?.version ?? "dev";
   const connected = activeProfile !== null;
+  const modeLabel =
+    theme.preference === "system"
+      ? "System"
+      : theme.preference === "dark"
+        ? "Dark"
+        : "Light";
   const externalLinkGlyph = (
-    <Icon name="ExternalLink" size={18} color={theme.tokens.subtleForeground} />
+    <Icon
+      name="ExternalLink"
+      size={16}
+      weight="semibold"
+      color={theme.tokens.subtleForeground}
+    />
   );
 
+  const resetLocal = () =>
+    confirmDestructive({
+      title: "Reset local state?",
+      message:
+        "Saved servers and preferences are removed. The app returns to first run.",
+      actionLabel: "Reset",
+      onConfirm: () => {
+        resetLocalState()
+          .then(() => {
+            toast.success("Local state reset");
+            router.dismissTo("/");
+          })
+          .catch((error: unknown) => {
+            toast.error("Reset failed", { description: String(error) });
+          });
+      },
+    });
+
   return (
-    <Screen testID="settings-screen">
+    <GroupedScreen testID="settings-screen">
       <SettingsSection title="Server">
-        <ListRow
+        <GroupedRow
           title="Servers"
-          subtitle={
+          value={
             activeProfile
-              ? `${activeProfile.label} · ${profiles.length} saved`
-              : "No servers saved"
+              ? profiles.length > 1
+                ? `${activeProfile.label} · ${profiles.length}`
+                : activeProfile.label
+              : "None"
           }
-          leading="Laptop"
+          badge={{ icon: "Cloud", symbol: "server.rack", color: colors.blue }}
           trailing="chevron"
           onPress={() => router.push("/settings/servers")}
           testID="settings-servers"
         />
-        <ListRow
+        <GroupedRow
           title="Server status"
-          subtitle="Connection, primary host, version"
-          leading="Info"
+          badge={{
+            icon: "Info",
+            symbol: "info.circle.fill",
+            color: colors.gray,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(serverStatusHref())}
@@ -68,28 +105,38 @@ export function SettingsScreen() {
         />
       </SettingsSection>
 
-      <SettingsSection title="Preferences">
-        <ListRow
+      <SettingsSection
+        title="Preferences"
+        separatorInset={BADGE_ROW_SEPARATOR_INSET}
+        footnote="Haptics play on pickers, send, approvals, and destructive actions."
+      >
+        <GroupedRow
           title="General"
-          subtitle="Threads, links, debug"
-          leading="Settings"
+          badge={{
+            icon: "Settings",
+            symbol: "gearshape.fill",
+            color: colors.gray,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(settingsSectionHref("general"))}
           testID="settings-general"
         />
-        <ListRow
+        <GroupedRow
           title="Appearance"
-          subtitle={`${theme.preference === "system" ? "System" : theme.preference === "dark" ? "Dark" : "Light"} · ${theme.palette} palette`}
-          leading="Palette"
+          value={modeLabel}
+          badge={{
+            icon: "Palette",
+            symbol: "paintpalette.fill",
+            color: colors.purple,
+          }}
           trailing="chevron"
           onPress={() => router.push(settingsSectionHref("appearance"))}
           testID="settings-appearance"
         />
-        <ListRow
+        <GroupedRow
           title="Experiments"
-          subtitle="Early features, off by default"
-          leading="Beaker"
+          badge={{ icon: "Beaker", symbol: "testtube.2", color: colors.orange }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(settingsSectionHref("experiments"))}
@@ -98,41 +145,46 @@ export function SettingsScreen() {
         <HapticsSettingsRow />
       </SettingsSection>
 
-      <SettingsSection title="Providers">
-        <ListRow
+      <SettingsSection title="Agents">
+        <GroupedRow
           title="Provider settings"
-          subtitle="Each provider's options live on its plugin"
-          leading="Brain"
+          badge={{ icon: "Brain", symbol: "brain", color: colors.indigo }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(pluginsHref())}
           testID="settings-provider-plugins"
         />
-        <ListRow
+        <GroupedRow
           title="Usage limits"
-          subtitle="Provider subscription usage per machine"
-          leading="ChartColumn"
+          badge={{
+            icon: "ChartColumn",
+            symbol: "chart.bar.fill",
+            color: colors.orange,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(settingsSectionHref("usage"))}
           testID="settings-usage"
         />
-      </SettingsSection>
-
-      <SettingsSection title="Machines and updates">
-        <ListRow
+        <GroupedRow
           title="Machines"
-          subtitle="Paired computers, permission limits, pairing"
-          leading="Laptop"
+          badge={{
+            icon: "Laptop",
+            symbol: "laptopcomputer",
+            color: colors.blue,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(machinesHref())}
           testID="settings-machines"
         />
-        <ListRow
+        <GroupedRow
           title="Updates"
-          subtitle="bb, provider CLIs, CLI skills"
-          leading="PackageReceive"
+          badge={{
+            icon: "Download",
+            symbol: "arrow.down.circle.fill",
+            color: colors.green,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(settingsSectionHref("updates"))}
@@ -141,28 +193,37 @@ export function SettingsScreen() {
       </SettingsSection>
 
       <SettingsSection title="Extensions">
-        <ListRow
+        <GroupedRow
           title="Plugins"
-          subtitle="Installed plugins and their settings"
-          leading="Puzzle"
+          badge={{
+            icon: "Puzzle",
+            symbol: "puzzlepiece.extension.fill",
+            color: colors.green,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(pluginsHref())}
           testID="settings-plugins"
         />
-        <ListRow
+        <GroupedRow
           title="Skills"
-          subtitle="Library and registry"
-          leading="Toolbox"
+          badge={{
+            icon: "AiContentGenerator01",
+            symbol: "sparkles",
+            color: colors.pink,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(skillsHref())}
           testID="settings-skills"
         />
-        <ListRow
+        <GroupedRow
           title="Plugin marketplaces"
-          subtitle="Where plugins are installed from"
-          leading="Globe"
+          badge={{
+            icon: "PackageReceive",
+            symbol: "shippingbox.fill",
+            color: colors.teal,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(marketplacesHref())}
@@ -171,10 +232,13 @@ export function SettingsScreen() {
       </SettingsSection>
 
       <SettingsSection title="Threads">
-        <ListRow
+        <GroupedRow
           title="Archived threads"
-          subtitle="Browse and unarchive"
-          leading="Archive"
+          badge={{
+            icon: "Archive",
+            symbol: "archivebox.fill",
+            color: colors.gray,
+          }}
           trailing="chevron"
           disabled={!connected}
           onPress={() => router.push(archivedThreadsHref())}
@@ -183,18 +247,18 @@ export function SettingsScreen() {
       </SettingsSection>
 
       <SettingsSection title="Community">
-        <ListRow
+        <GroupedRow
           title="Discord"
           subtitle="Support, feedback, and announcements"
-          leading="Discord"
+          badge={{ icon: "Discord", color: colors.discord }}
           trailing={externalLinkGlyph}
           onPress={() => openExternal(DISCORD_INVITE_URL)}
           testID="settings-discord"
         />
-        <ListRow
+        <GroupedRow
           title="GitHub"
           subtitle="Source code, issues, and releases"
-          leading="Github"
+          badge={{ icon: "Github", color: colors.github }}
           trailing={externalLinkGlyph}
           onPress={() => openExternal(GITHUB_REPO_URL)}
           testID="settings-github"
@@ -202,113 +266,108 @@ export function SettingsScreen() {
       </SettingsSection>
 
       {e2eModeEnabled ? (
-        <SettingsSection title="Developer">
-          <ListRow
+        <SettingsSection
+          title="Developer"
+          footnote="Showcases for every primitive and renderer; only in development and E2E builds."
+        >
+          <GroupedRow
             title="UI gallery"
-            subtitle="Every primitive, palette × mode"
-            leading="Palette"
+            badge={{
+              icon: "Palette",
+              symbol: "paintpalette.fill",
+              color: colors.gray,
+            }}
             trailing="chevron"
             onPress={() => router.push("/dev/ui")}
             testID="settings-dev-ui"
           />
-          <ListRow
+          <GroupedRow
             title="Diff + terminal showcase"
-            subtitle="Native diff cards and ANSI output fixtures"
-            leading="FileDiff"
+            badge={{
+              icon: "FileDiff",
+              symbol: "plus.forwardslash.minus",
+              color: colors.gray,
+            }}
             trailing="chevron"
             onPress={() => router.push("/dev/diff")}
             testID="settings-dev-diff"
           />
-          <ListRow
+          <GroupedRow
             title="Work rows showcase"
-            subtitle="Timeline work-row renderers on synthetic rows"
-            leading="Terminal"
+            badge={{
+              icon: "Terminal",
+              symbol: "terminal.fill",
+              color: colors.gray,
+            }}
             trailing="chevron"
             onPress={() => router.push("/dev/work-rows")}
             testID="settings-dev-work-rows"
           />
-          <ListRow
+          <GroupedRow
             title="Interactions showcase"
-            subtitle="Pending-interaction banners and the queued messages list"
-            leading="MessageQuestion"
+            badge={{
+              icon: "MessageQuestion",
+              symbol: "questionmark.bubble.fill",
+              color: colors.gray,
+            }}
             trailing="chevron"
             onPress={() => router.push("/dev/interactions")}
             testID="settings-dev-interactions"
           />
-          <ListRow
+          <GroupedRow
             title="Composer showcase"
-            subtitle="Mentions, slash commands, attachments, voice"
-            leading="MessageSquarePlus"
+            badge={{
+              icon: "MessageSquarePlus",
+              symbol: "plus.bubble.fill",
+              color: colors.gray,
+            }}
             trailing="chevron"
             onPress={() => router.push("/dev/composer")}
             testID="settings-dev-composer"
           />
-          <ListRow
+          <GroupedRow
             title="Markdown showcase"
-            subtitle="Every markdown node type, mentions, directives"
-            leading="FileText"
+            badge={{
+              icon: "FileText",
+              symbol: "doc.text.fill",
+              color: colors.gray,
+            }}
             trailing="chevron"
             onPress={() => router.push("/dev/markdown")}
             testID="settings-dev-markdown"
           />
-          <ListRow
+          <GroupedRow
             title="Runtime spike"
-            subtitle="Phase 0 diagnostics: SDK, realtime, polyfills"
-            leading="Beaker"
+            badge={{ icon: "Beaker", symbol: "testtube.2", color: colors.gray }}
             trailing="chevron"
             onPress={() => router.push("/dev/spike")}
             testID="settings-dev-spike"
           />
-          <ListRow
+          <GroupedRow
             title="Connect cookie spike"
-            subtitle="Machine code → session cookie → fetch/WS/WebView"
-            leading="Globe"
+            badge={{ icon: "Globe", symbol: "globe", color: colors.gray }}
             trailing="chevron"
             onPress={() => router.push("/dev/connect-spike")}
             testID="settings-dev-connect-spike"
           />
-          <ListRow
+          <GroupedRow
             title="Reset local state"
-            subtitle="Remove every saved server and preference"
-            leading="Trash2"
+            badge={{ icon: "Trash2", symbol: "trash.fill", color: colors.red }}
             destructive
-            onPress={resetSheet.present}
+            onPress={resetLocal}
             testID="settings-dev-reset"
           />
         </SettingsSection>
       ) : null}
 
       <SettingsSection title="About">
-        <ListRow
+        <GroupedRow
           title="bb mobile"
-          subtitle={`Version ${appVersion}`}
-          leading="Smartphone"
+          value={`Version ${appVersion}`}
+          badge={{ icon: "Smartphone", symbol: "iphone", color: colors.gray }}
+          selectable
         />
       </SettingsSection>
-
-      <ActionSheet
-        controller={resetSheet}
-        title="Reset local state?"
-        message="Saved servers and preferences are removed. The app returns to first run."
-        actions={[
-          {
-            key: "reset",
-            label: "Reset",
-            icon: "Trash2",
-            destructive: true,
-            onPress: () => {
-              resetLocalState()
-                .then(() => {
-                  toast.success("Local state reset");
-                  router.dismissTo("/");
-                })
-                .catch((error: unknown) => {
-                  toast.error("Reset failed", { description: String(error) });
-                });
-            },
-          },
-        ]}
-      />
-    </Screen>
+    </GroupedScreen>
   );
 }

@@ -1,38 +1,32 @@
 import { forwardRef } from "react";
 import { TextInput, type TextInputProps } from "react-native";
-import { resolveFont } from "@/theme/fonts";
-import { useTheme } from "@/theme/ThemeProvider";
 import { cn } from "./cn";
+import { useInputFieldProps, type InputFieldOptions } from "./Input";
 
-export interface TextAreaProps extends TextInputProps {
-  invalid?: boolean;
-  mono?: boolean;
-  className?: string;
-}
+export interface TextAreaProps extends TextInputProps, InputFieldOptions {}
 
-/** Multi-line text field. Mirrors packages/shared-ui textarea.tsx. */
+/** Multi-line text field with the `Input` appearance (min height 60). */
 export const TextArea = forwardRef<TextInput, TextAreaProps>(function TextArea(
-  { invalid = false, editable = true, mono, className, style, ...props },
+  { invalid, editable = true, mono, grouped, className, style, ...props },
   ref,
 ) {
-  const { tokens } = useTheme();
-  const font = resolveFont({ className, mono });
+  const field = useInputFieldProps({
+    invalid,
+    mono,
+    grouped,
+    editable,
+    className: cn("min-h-[60px] py-2.5", className),
+  });
   return (
     <TextInput
       ref={ref}
       multiline
       textAlignVertical="top"
       editable={editable}
-      placeholderTextColor={tokens.mutedForeground}
-      selectionColor={tokens.primary}
-      cursorColor={tokens.primary}
-      className={cn(
-        "min-h-[60px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-base text-foreground focus:border-ring",
-        invalid && "border-destructive",
-        !editable && "opacity-50",
-        className,
-      )}
-      style={[font, style]}
+      {...field}
+      // The clear button only applies to single-line fields.
+      clearButtonMode="never"
+      style={[field.style, style]}
       {...props}
     />
   );

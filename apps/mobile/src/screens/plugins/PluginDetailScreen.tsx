@@ -22,22 +22,21 @@ import { copyWithToast } from "@/lib/clipboard";
 import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
-  ActionSheet,
   Button,
+  confirmDestructive,
   EmptyStatePanel,
-  ListRow,
-  Pill,
-  Separator,
+  GroupedRow,
   Skeleton,
   Switch,
   Text,
   toast,
-  useSheet,
 } from "@/ui";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { LinkRow } from "../settings/LinkRow";
+import { SettingsSection } from "../settings/SettingsRows";
 import { pluginLogsHref } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
 import { PluginSettingsForm } from "./PluginSettingsForm";
-import { CardNote, DetailRow, NoticeCard, SettingsSection } from "./plugin-ui";
+import { CardNote, DetailRow, NoticeCard } from "./plugin-ui";
 import { PluginIcon } from "./ServerSvgIcon";
 
 const CAPABILITY_LABELS: Record<PluginCapability["kind"], string> = {
@@ -47,35 +46,33 @@ const CAPABILITY_LABELS: Record<PluginCapability["kind"], string> = {
   "thread-integration": "Thread integration",
 };
 
-function PluginHeader({ plugin }: { plugin: InstalledPlugin }) {
+/** The identity cell: icon, name, version · publisher, and the runtime state on the right. */
+function PluginIdentityRow({ plugin }: { plugin: InstalledPlugin }) {
+  const { tokens } = useTheme();
+  const running = plugin.enabled && plugin.status === "running";
   return (
-    <View className="flex-row items-center gap-3">
-      <View className="h-12 w-12 items-center justify-center rounded-lg border border-border bg-card">
-        <PluginIcon iconUrl={plugin.iconUrl} icon={plugin.icon} size={28} />
+    <View className="flex-row items-center gap-3 px-4 py-3">
+      <View
+        className="h-11 w-11 items-center justify-center"
+        style={{
+          borderRadius: 10,
+          borderCurve: "continuous",
+          backgroundColor: tokens.surfaceRecessed,
+        }}
+      >
+        <PluginIcon iconUrl={plugin.iconUrl} icon={plugin.icon} size={26} />
       </View>
-      <View className="min-w-0 flex-1 gap-1">
-        <Text variant="title" numberOfLines={2} testID="plugin-detail-name">
+      <View className="min-w-0 flex-1">
+        <Text variant="headline" numberOfLines={2} testID="plugin-detail-name">
           {pluginDisplayName(plugin)}
         </Text>
-        <View className="flex-row flex-wrap items-center gap-1.5">
-          <Pill variant="outline" size="sm">{`v${plugin.version}`}</Pill>
-          {plugin.publisherLabel !== null ? (
-            <Pill variant="secondary" size="sm">
-              {plugin.publisherLabel}
-            </Pill>
-          ) : null}
-          <Pill
-            variant={
-              plugin.enabled && plugin.status === "running"
-                ? "emphasis"
-                : "outline"
-            }
-            size="sm"
-          >
-            {plugin.enabled ? plugin.status : "disabled"}
-          </Pill>
-        </View>
+        <Text variant="caption" numberOfLines={1} selectable>
+          {`v${plugin.version}${plugin.publisherLabel !== null ? ` · ${plugin.publisherLabel}` : ""}`}
+        </Text>
       </View>
+      <Text variant="body" tone={running ? "success" : "muted"}>
+        {plugin.enabled ? plugin.status : "disabled"}
+      </Text>
     </View>
   );
 }
@@ -91,7 +88,6 @@ export function PluginDetailScreen() {
   const { pluginId } = useLocalSearchParams<{ pluginId: string }>();
   const id = typeof pluginId === "string" ? pluginId : null;
   const router = useRouter();
-  const { tokens } = useTheme();
   const { plugin, isPending, isError, error, refetch } = usePlugin(id);
   const updates = usePluginUpdates();
   const setEnabled = useSetPluginEnabled();
@@ -99,7 +95,6 @@ export function PluginDetailScreen() {
   const remove = useRemovePlugin();
   const checkUpdates = useCheckPluginUpdates();
   const applyUpdate = useApplyPluginUpdate();
-  const confirmRemove = useSheet();
 
   const updateEntry = useMemo(
     () => updates.data?.find((entry) => entry.id === id),
@@ -110,16 +105,35 @@ export function PluginDetailScreen() {
 
   if (id === null) {
     return (
-      <Screen>
+      <GroupedScreen>
         <EmptyStatePanel>No plugin selected.</EmptyStatePanel>
-      </Screen>
+      </GroupedScreen>
     );
   }
+
+  const confirmRemove = () => {
+    if (!plugin) return;
+    confirmDestructive({
+      title: `${pluginRemovalLabel(plugin)} ${name}?`,
+      message: pluginRemovalDescription(plugin),
+      actionLabel: pluginRemovalLabel(plugin),
+      onConfirm: () =>
+        remove.mutate(
+          { pluginId: plugin.id },
+          {
+            onSuccess: () => {
+              toast.success(`${name} removed`);
+              router.back();
+            },
+          },
+        ),
+    });
+  };
 
   return (
     <>
       <Stack.Screen options={{ title: name }} />
-      <Screen testID="plugin-detail-screen">
+      <GroupedScreen testID="plugin-detail-screen">
         {isPending ? (
           <View className="gap-3">
             <Skeleton className="h-12 w-full" />
@@ -127,7 +141,7 @@ export function PluginDetailScreen() {
           </View>
         ) : isError ? (
           <View className="gap-3">
-            <Text variant="caption" tone="destructive">
+            <Text variant="footnote" tone="destructive" selectable>
               Could not load the plugin:{" "}
               {error instanceof Error ? error.message : String(error)}
             </Text>
@@ -201,40 +215,10 @@ export function PluginDetailScreen() {
               )
             }
             reloading={reload.isPending}
-            onOpenLogs={() => router.push(pluginLogsHref(plugin.id))}
-            onRemove={confirmRemove.present}
-            tokens={tokens}
+            onRemove={confirmRemove}
           />
         )}
-      </Screen>
-
-      <ActionSheet
-        controller={confirmRemove}
-        title={plugin ? `${pluginRemovalLabel(plugin)} ${name}?` : undefined}
-        message={plugin ? pluginRemovalDescription(plugin) : undefined}
-        actions={
-          plugin
-            ? [
-                {
-                  key: "confirm-remove",
-                  label: pluginRemovalLabel(plugin),
-                  icon: "Trash2",
-                  destructive: true,
-                  onPress: () =>
-                    remove.mutate(
-                      { pluginId: plugin.id },
-                      {
-                        onSuccess: () => {
-                          toast.success(`${name} removed`);
-                          router.back();
-                        },
-                      },
-                    ),
-                },
-              ]
-            : []
-        }
-      />
+      </GroupedScreen>
     </>
   );
 }
@@ -250,9 +234,7 @@ function PluginDetailBody({
   onApplyUpdate,
   onReload,
   reloading,
-  onOpenLogs,
   onRemove,
-  tokens,
 }: {
   plugin: InstalledPlugin;
   updateSummary: ReturnType<typeof summarizePluginUpdate>;
@@ -264,9 +246,7 @@ function PluginDetailBody({
   onApplyUpdate: () => void;
   onReload: () => void;
   reloading: boolean;
-  onOpenLogs: () => void;
   onRemove: () => void;
-  tokens: { subtleForeground: string };
 }) {
   const health = pluginRuntimeStatusPresentation(plugin);
   const settings = pluginSettingsAvailability(plugin);
@@ -274,12 +254,22 @@ function PluginDetailBody({
   const lastFailure = plugin.updateState.lastFailure;
   return (
     <>
-      <PluginHeader plugin={plugin} />
-      {plugin.description ? (
-        <Text variant="body" tone="muted" testID="plugin-detail-description">
-          {plugin.description}
-        </Text>
-      ) : null}
+      <SettingsSection
+        footnote={
+          plugin.description ? (
+            <Text
+              variant="footnote"
+              tone="muted"
+              selectable
+              testID="plugin-detail-description"
+            >
+              {plugin.description}
+            </Text>
+          ) : undefined
+        }
+      >
+        <PluginIdentityRow plugin={plugin} />
+      </SettingsSection>
 
       {lastFailure !== undefined ? (
         <NoticeCard
@@ -302,25 +292,26 @@ function PluginDetailBody({
         />
       ) : null}
 
-      <SettingsSection title="State">
-        <View className="flex-row items-center gap-3 px-4 py-3">
-          <View className="min-w-0 flex-1 gap-0.5">
-            <Text variant="label">Enabled</Text>
-            <Text variant="caption">
-              {plugin.enabled
-                ? "The plugin's server half is loaded."
-                : "bb does not load this plugin."}
-            </Text>
-          </View>
-          <Switch
-            checked={plugin.enabled}
-            onCheckedChange={onToggleEnabled}
-            disabled={toggling}
-            testID="plugin-detail-enabled"
-            accessibilityLabel="Enabled"
-          />
-        </View>
-        <Separator />
+      <SettingsSection
+        title="State"
+        footnote={
+          plugin.enabled
+            ? "The plugin's server half is loaded."
+            : "bb does not load this plugin."
+        }
+      >
+        <GroupedRow
+          title="Enabled"
+          trailing={
+            <Switch
+              checked={plugin.enabled}
+              onCheckedChange={onToggleEnabled}
+              disabled={toggling}
+              testID="plugin-detail-enabled"
+              accessibilityLabel="Enabled"
+            />
+          }
+        />
         <DetailRow
           label="Status"
           value={plugin.enabled ? plugin.status : "disabled"}
@@ -346,45 +337,41 @@ function PluginDetailBody({
             Bundled with bb; it updates with the app.
           </CardNote>
         ) : (
-          <>
-            <View className="gap-0.5 px-4 py-3">
-              <Text variant="label">
-                {updateSummary?.title ?? "Updates not checked yet"}
-              </Text>
-              {updateSummary?.detail ? (
-                <Text variant="caption">{updateSummary.detail}</Text>
-              ) : plugin.updateState.lastCheckAt !== undefined ? (
-                <Text variant="caption">
-                  Last checked{" "}
-                  {new Date(plugin.updateState.lastCheckAt).toLocaleString()}
-                </Text>
-              ) : null}
-            </View>
-            <Separator />
-            <View className="flex-row gap-2 px-4 py-3">
+          <GroupedRow
+            title={updateSummary?.title ?? "Updates not checked yet"}
+            titleLines={2}
+            subtitle={
+              updateSummary?.detail ??
+              (plugin.updateState.lastCheckAt !== undefined
+                ? `Last checked ${new Date(plugin.updateState.lastCheckAt).toLocaleString()}`
+                : undefined)
+            }
+          />
+        )}
+        {plugin.provenance === "builtin" ? null : (
+          <View className="flex-row gap-2 px-4 py-2.5">
+            <Button
+              variant="outline"
+              size="sm"
+              icon="Download"
+              onPress={onCheckUpdates}
+              loading={checkingUpdates}
+              testID="plugin-detail-check-updates"
+            >
+              Check for updates
+            </Button>
+            {updateSummary?.canApply ? (
               <Button
-                variant="outline"
                 size="sm"
-                icon="Download"
-                onPress={onCheckUpdates}
-                loading={checkingUpdates}
-                testID="plugin-detail-check-updates"
+                icon="ArrowUp"
+                onPress={onApplyUpdate}
+                loading={applyingUpdate}
+                testID="plugin-detail-apply-update"
               >
-                Check for updates
+                Update
               </Button>
-              {updateSummary?.canApply ? (
-                <Button
-                  size="sm"
-                  icon="ArrowUp"
-                  onPress={onApplyUpdate}
-                  loading={applyingUpdate}
-                  testID="plugin-detail-apply-update"
-                >
-                  Update
-                </Button>
-              ) : null}
-            </View>
-          </>
+            ) : null}
+          </View>
         )}
       </SettingsSection>
 
@@ -396,30 +383,22 @@ function PluginDetailBody({
               : "Enable the plugin to see what it contributes."}
           </CardNote>
         ) : (
-          plugin.capabilities.map((capability, index) => (
-            <View key={`${capability.kind}:${capability.id}`}>
-              {index > 0 ? <Separator /> : null}
-              <ListRow
-                title={capability.label}
-                subtitle={
-                  capability.detail ?? CAPABILITY_LABELS[capability.kind]
-                }
-                leading={
-                  capability.kind === "skill"
-                    ? "Zap"
-                    : capability.kind === "theme"
-                      ? "Palette"
-                      : capability.kind === "agent-tool"
-                        ? "ToolCase"
-                        : "MessageSquare"
-                }
-                trailing={
-                  <Pill variant="outline" size="sm">
-                    {CAPABILITY_LABELS[capability.kind]}
-                  </Pill>
-                }
-              />
-            </View>
+          plugin.capabilities.map((capability) => (
+            <GroupedRow
+              key={`${capability.kind}:${capability.id}`}
+              title={capability.label}
+              subtitle={capability.detail ?? undefined}
+              value={CAPABILITY_LABELS[capability.kind]}
+              leading={
+                capability.kind === "skill"
+                  ? "Zap"
+                  : capability.kind === "theme"
+                    ? "Palette"
+                    : capability.kind === "agent-tool"
+                      ? "ToolCase"
+                      : "MessageSquare"
+              }
+            />
           ))
         )}
       </SettingsSection>
@@ -457,12 +436,12 @@ function PluginDetailBody({
       <SettingsSection title="Source">
         <DetailRow label="Source" value={plugin.sourceDisplay} mono />
         <DetailRow label="Provenance" value={plugin.provenance} />
-        <ListRow
+        <GroupedRow
           title="Install path"
           subtitle={plugin.rootDir}
           leading="Folder"
           onPress={() => copyWithToast(plugin.rootDir, "Path copied")}
-          titleLines={1}
+          accessibilityHint="Copies the path"
         />
         {plugin.handlerStats.count > 0 ? (
           <DetailRow
@@ -472,8 +451,8 @@ function PluginDetailBody({
         ) : null}
       </SettingsSection>
 
-      <SettingsSection title="Actions">
-        <ListRow
+      <SettingsSection title="Actions" footnote={`Plugin id ${plugin.id}`}>
+        <GroupedRow
           title="Reload plugin"
           subtitle="Restart its server half"
           leading="RotateCcw"
@@ -481,15 +460,14 @@ function PluginDetailBody({
           onPress={onReload}
           testID="plugin-detail-reload"
         />
-        <ListRow
+        <LinkRow
+          href={pluginLogsHref(plugin.id)}
           title="View logs"
           subtitle="The plugin host's log tail"
           leading="FileText"
-          trailing="chevron"
-          onPress={onOpenLogs}
           testID="plugin-detail-logs"
         />
-        <ListRow
+        <GroupedRow
           title={pluginRemovalLabel(plugin)}
           leading="Trash2"
           destructive
@@ -497,9 +475,6 @@ function PluginDetailBody({
           testID="plugin-detail-remove"
         />
       </SettingsSection>
-      <Text variant="caption" style={{ color: tokens.subtleForeground }}>
-        Plugin id {plugin.id}
-      </Text>
     </>
   );
 }

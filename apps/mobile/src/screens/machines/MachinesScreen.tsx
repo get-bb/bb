@@ -1,7 +1,7 @@
 import type { Host } from "@bb/domain";
 import { Stack, useRouter } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { useProfiles } from "@/app-shell";
 import {
   countProjectsByHost,
@@ -14,45 +14,49 @@ import {
   useHosts,
   useAddMachineSession,
   useRemoveHost,
+  useRenameHost,
   useRetryHostUpdate,
   useServerProtocolVersion,
 } from "@/data/hosts";
 import { useSidebarBootstrap } from "@/data/sidebar";
 import { useSystemConfig } from "@/data/system";
-import { useTheme } from "@/theme";
+import { haptic } from "@/lib/haptics";
 import {
   ActionSheet,
-  Button,
+  confirmDestructive,
   EmptyStatePanel,
-  Icon,
-  ListRow,
-  Pill,
+  GroupedRow,
   Spinner,
   Text,
   toast,
   useSheet,
+  type ActionSheetAction,
 } from "@/ui";
 import { HostStatusDot } from "../pickers";
-import { SettingsSection } from "../settings/SettingsRows";
+import { GroupedScreen } from "../settings/GroupedScreen";
+import { LinkRow } from "../settings/LinkRow";
+import { HeaderIconButton, SettingsSection } from "../settings/SettingsRows";
 import { machineDetailHref } from "../shell/hrefs";
-import { Screen } from "../shell/Screen";
 import { useNow } from "../shell/use-now";
 import { AddMachineSheet } from "./AddMachineSheet";
 import { MachineRenameSheet } from "./MachineRenameSheet";
+import { promptRenameMachine } from "./rename-machine-prompt";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 /**
  * `/settings/machines` (web MachinesSettingsSection): every paired machine
  * with its presence, platform, project count and permission limit; tap
- * opens the detail screen, long-press the rename / retry / remove menu,
- * "+" the pairing sheet.
+ * opens the detail screen, long-press the row's action sheet (rename /
+ * retry / remove) on both platforms, "+" the pairing sheet.
  */
 export function MachinesScreen() {
   const { connection } = useProfiles();
   if (!connection) {
     return (
-      <Screen testID="machines-screen">
+      <GroupedScreen testID="machines-screen">
         <EmptyStatePanel>Add a server first.</EmptyStatePanel>
-      </Screen>
+      </GroupedScreen>
     );
   }
   return <ConnectedMachinesScreen />;
@@ -64,14 +68,17 @@ function describeError(error: unknown, fallback: string): string {
     : fallback;
 }
 
+/** Presents the Android rename sheet after the menu sheet has left the modal host. */
+const SHEET_HANDOFF_MS = 250;
+
 function ConnectedMachinesScreen() {
   const router = useRouter();
-  const { tokens } = useTheme();
   const hostsQuery = useHosts();
   const configQuery = useSystemConfig();
   const bootstrap = useSidebarBootstrap();
   const serverProtocolVersion = useServerProtocolVersion();
   const removeHost = useRemoveHost();
+  const renameHost = useRenameHost();
   const retryUpdate = useRetryHostUpdate();
 
   const hosts = hostsQuery.data;
@@ -91,48 +98,147 @@ function ConnectedMachinesScreen() {
   };
   const menu = useSheet();
   const renameSheet = useSheet();
-  const removeConfirm = useSheet();
   const [target, setTarget] = useState<Host | null>(null);
-  const targetIsPrimary = target !== null && target.id === primaryHostId;
+
+  const rename = (host: Host, fromMenu = false) => {
+    const handled = promptRenameMachine({
+      currentName: host.name,
+      onSubmit: (name) =>
+        renameHost.mutate(
+          { hostId: host.id, name },
+          {
+            onSuccess: (updated) => toast.success(`Renamed to ${updated.name}`),
+            onError: (error) =>
+              toast.error(`Couldn't rename ${host.name}`, {
+                description: describeError(
+                  error,
+                  "The server refused the request.",
+                ),
+              }),
+          },
+        ),
+    });
+    if (handled) return;
+    setTarget(host);
+    if (fromMenu) setTimeout(() => renameSheet.present(), SHEET_HANDOFF_MS);
+    else renameSheet.present();
+  };
+
+  const confirmRemove = (host: Host) =>
+    confirmDestructive({
+      title: `Remove ${host.name}?`,
+      message: `This revokes ${host.name}'s access to this server. Project checkouts stay on its disk, but its environments become read-only history and it can't run new work until it's paired again.`,
+      actionLabel: "Remove machine",
+      onConfirm: () => {
+        const name = host.name;
+        removeHost.mutate(host.id, {
+          onSuccess: () => toast.success(`Removed ${name}`),
+          onError: (error) =>
+            toast.error(`Couldn't remove ${name}`, {
+              description: describeError(
+                error,
+                "The server refused the request.",
+              ),
+            }),
+        });
+      },
+    });
+
+  const actionsFor = (host: Host): ActionSheetAction[] => {
+    const isPrimary = host.id === primaryHostId;
+    return [
+      {
+        key: "open",
+        label: "Open",
+        icon: "ChevronRight",
+        onPress: () => router.push(machineDetailHref(host.id)),
+      },
+      {
+        key: "rename",
+        label: "Rename",
+        icon: "Edit",
+        onPress: () => rename(host, true),
+      },
+      ...(hostCanRetryUpdate(host, serverProtocolVersion)
+        ? [
+            {
+              key: "retry",
+              label: "Retry update",
+              icon: "RotateCcw" as const,
+              onPress: () => {
+                retryUpdate.mutate(host.id, {
+                  onSuccess: () =>
+                    toast.success(`Update retry requested for ${host.name}`),
+                });
+              },
+            },
+          ]
+        : []),
+      {
+        key: "remove",
+        label: "Remove machine",
+        subtitle: isPrimary ? PRIMARY_HOST_REMOVE_DISABLED_REASON : undefined,
+        icon: "Trash2",
+        destructive: true,
+        disabled: isPrimary,
+        onPress: () => confirmRemove(host),
+      },
+    ];
+  };
+
+  const openMenu = (host: Host) => {
+    haptic("impact-heavy");
+    setTarget(host);
+    menu.present();
+  };
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Add a machine"
-              hitSlop={8}
-              onPress={openAddMachine}
-              testID="machines-add"
-            >
-              <Icon name="Plus" size={22} color={tokens.foreground} />
-            </Pressable>
-          ),
-        }}
-      />
-      <Screen testID="machines-screen">
+      {IS_IOS ? (
+        <Stack.Toolbar placement="right">
+          <Stack.Toolbar.Button
+            icon="plus"
+            accessibilityLabel="Add a machine"
+            onPress={openAddMachine}
+          />
+        </Stack.Toolbar>
+      ) : (
+        <Stack.Screen
+          options={{
+            headerRight: () => (
+              <HeaderIconButton
+                icon="Plus"
+                accessibilityLabel="Add a machine"
+                onPress={openAddMachine}
+                testID="machines-add"
+              />
+            ),
+          }}
+        />
+      )}
+      <GroupedScreen testID="machines-screen">
         <SettingsSection
           title="Machines"
-          description={MACHINES_SECTION_DESCRIPTION}
+          footnote={`${MACHINES_SECTION_DESCRIPTION} Tap a machine for its permission limit, provider CLIs and updates${IS_IOS ? "." : "; long-press for rename and remove."}`}
         >
           {hosts === undefined ? (
             <View className="items-center px-4 py-6">
               <Spinner />
             </View>
           ) : hosts.length === 0 ? (
-            <View className="px-4 py-4">
-              <Text variant="caption">No machines yet.</Text>
+            <View className="px-4 py-3">
+              <Text variant="footnote" tone="muted">
+                No machines yet.
+              </Text>
             </View>
           ) : (
             hosts.map((host) => {
               const isPrimary = host.id === primaryHostId;
               return (
-                <ListRow
+                <LinkRow
                   key={host.id}
+                  href={machineDetailHref(host.id)}
                   title={host.name}
-                  titleLines={1}
                   subtitle={`${hosts.length > 1 && isPrimary ? "Primary · " : ""}${machineMetaLine(
                     {
                       host,
@@ -150,130 +256,32 @@ function ConnectedMachinesScreen() {
                       <HostStatusDot connected={host.status === "connected"} />
                     </View>
                   }
-                  trailing={
-                    <View className="flex-row items-center gap-2">
-                      <Pill variant="secondary" size="sm">
-                        {PERMISSION_MODE_SHORT_LABELS[host.maxPermissionMode]}
-                      </Pill>
-                      <Icon
-                        name="ChevronRight"
-                        size={18}
-                        color={tokens.subtleForeground}
-                      />
-                    </View>
-                  }
-                  onPress={() => router.push(machineDetailHref(host.id))}
-                  onLongPress={() => {
-                    setTarget(host);
-                    menu.present();
-                  }}
+                  value={PERMISSION_MODE_SHORT_LABELS[host.maxPermissionMode]}
+                  onLongPress={() => openMenu(host)}
                   testID={`machine-row-${host.id}`}
                 />
               );
             })
           )}
+          <GroupedRow
+            title="Add a machine…"
+            leading="Plus"
+            leadingTone="primary"
+            onPress={openAddMachine}
+            testID="machines-add-button"
+          />
         </SettingsSection>
-        <Button
-          variant="outline"
-          icon="Plus"
-          onPress={openAddMachine}
-          testID="machines-add-button"
-        >
-          Add a machine
-        </Button>
-        <Text variant="caption">
-          Tap a machine for its permission limit, provider CLIs and updates.
-          Long-press for rename and remove.
-        </Text>
-      </Screen>
+      </GroupedScreen>
 
       <AddMachineSheet controller={addSheet} session={addSession} />
 
       <ActionSheet
         controller={menu}
         title={target?.name}
-        actions={[
-          {
-            key: "open",
-            label: "Open",
-            icon: "ChevronRight",
-            onPress: () => {
-              if (target) router.push(machineDetailHref(target.id));
-            },
-          },
-          {
-            key: "rename",
-            label: "Rename",
-            icon: "Edit",
-            onPress: () => {
-              setTimeout(() => renameSheet.present(), 250);
-            },
-          },
-          ...(target && hostCanRetryUpdate(target, serverProtocolVersion)
-            ? [
-                {
-                  key: "retry",
-                  label: "Retry update",
-                  icon: "RotateCcw" as const,
-                  onPress: () => {
-                    retryUpdate.mutate(target.id, {
-                      onSuccess: () =>
-                        toast.success(
-                          `Update retry requested for ${target.name}`,
-                        ),
-                    });
-                  },
-                },
-              ]
-            : []),
-          {
-            key: "remove",
-            label: targetIsPrimary
-              ? `Remove machine — ${PRIMARY_HOST_REMOVE_DISABLED_REASON}`
-              : "Remove machine",
-            icon: "Trash2",
-            destructive: true,
-            disabled: targetIsPrimary,
-            onPress: () => {
-              setTimeout(() => removeConfirm.present(), 250);
-            },
-          },
-        ]}
+        actions={target ? actionsFor(target) : []}
       />
 
       <MachineRenameSheet controller={renameSheet} host={target} />
-
-      <ActionSheet
-        controller={removeConfirm}
-        title={target ? `Remove ${target.name}?` : "Remove machine?"}
-        message={
-          target
-            ? `This revokes ${target.name}'s access to this server. Project checkouts stay on its disk, but its environments become read-only history and it can't run new work until it's paired again.`
-            : undefined
-        }
-        actions={[
-          {
-            key: "confirm",
-            label: "Remove machine",
-            icon: "Trash2",
-            destructive: true,
-            onPress: () => {
-              if (!target) return;
-              const name = target.name;
-              removeHost.mutate(target.id, {
-                onSuccess: () => toast.success(`Removed ${name}`),
-                onError: (error) =>
-                  toast.error(`Couldn't remove ${name}`, {
-                    description: describeError(
-                      error,
-                      "The server refused the request.",
-                    ),
-                  }),
-              });
-            },
-          },
-        ]}
-      />
     </>
   );
 }

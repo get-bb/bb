@@ -5,7 +5,7 @@ import type {
   PluginCatalogResolvedSource,
   PluginCatalogSearchResult,
 } from "@bb/server-contract";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { View } from "react-native";
 import {
   catalogInstallNeedsSourceConfirmation,
@@ -18,6 +18,7 @@ import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import {
   Button,
+  GROUPED_CARD_RADIUS,
   Icon,
   Sheet,
   Spinner,
@@ -46,6 +47,29 @@ interface AddPluginSheetProps {
   target: AddPluginTarget | null;
   onInstalled?: (plugin: InstalledPlugin) => void;
   onDismiss?: () => void;
+}
+
+/** A recessed panel inside the sheet (the entry facts, the trust warning). */
+function SheetPanel({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  const { tokens } = useTheme();
+  return (
+    <View
+      className={className}
+      style={{
+        backgroundColor: tokens.surfaceRecessed,
+        borderRadius: GROUPED_CARD_RADIUS,
+        borderCurve: "continuous",
+      }}
+    >
+      {children}
+    </View>
+  );
 }
 
 function resolvedSourceRows(
@@ -116,7 +140,7 @@ function ThirdPartySourceDisclosure({
   }
   if (error !== null && error !== undefined) {
     return (
-      <Text variant="caption" tone="warning">
+      <Text variant="caption" tone="warning" selectable>
         Could not resolve this listing&rsquo;s source:{" "}
         {error instanceof Error ? error.message : String(error)}
       </Text>
@@ -126,7 +150,7 @@ function ThirdPartySourceDisclosure({
     return null;
   }
   return (
-    <View className="gap-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+    <View className="gap-1.5">
       <Text variant="caption">
         Listed by {plan.marketplaceDisplayName}, a third-party marketplace that
         BB does not review.
@@ -135,7 +159,7 @@ function ThirdPartySourceDisclosure({
         <Text variant="caption" className="w-28 shrink-0">
           author
         </Text>
-        <Text variant="mono" className="min-w-0 flex-1 text-xs">
+        <Text variant="mono" className="min-w-0 flex-1 text-xs" selectable>
           {plan.author.name}
         </Text>
       </View>
@@ -144,7 +168,7 @@ function ThirdPartySourceDisclosure({
           <Text variant="caption" className="w-28 shrink-0">
             {row.label}
           </Text>
-          <Text variant="mono" className="min-w-0 flex-1 text-xs">
+          <Text variant="mono" className="min-w-0 flex-1 text-xs" selectable>
             {row.value}
           </Text>
         </View>
@@ -156,9 +180,9 @@ function ThirdPartySourceDisclosure({
 function FullTrustWarning() {
   const { tokens } = useTheme();
   return (
-    <View className="flex-row gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+    <View className="flex-row gap-2 px-1">
       <Icon name="Lock" size={16} color={tokens.warningText} />
-      <Text variant="caption" className="min-w-0 flex-1">
+      <Text variant="footnote" tone="muted" className="min-w-0 flex-1">
         Plugins run inside the bb server with full trust: they can read your
         data, run commands on your machines, and call the network. Install only
         plugins you trust.
@@ -224,6 +248,13 @@ export function AddPluginSheet({
   return (
     <Sheet
       controller={controller}
+      title={
+        target === null
+          ? undefined
+          : entry !== null
+            ? `Install ${entry.displayName}?`
+            : "Add plugin"
+      }
       layout="scroll"
       deferContent={false}
       onDismiss={() => {
@@ -234,22 +265,15 @@ export function AddPluginSheet({
       <View className="gap-3 px-4 pb-2 pt-1" testID="add-plugin-sheet">
         {target === null ? null : (
           <>
-            <View className="gap-1">
-              <Text variant="heading">
-                {entry !== null
-                  ? `Install ${entry.displayName}?`
-                  : "Add plugin"}
-              </Text>
-              <Text variant="caption">
-                {entry === null
-                  ? "Install from npm, a Git repository, or a local path on the server."
-                  : thirdParty
-                    ? "Install this plugin from the source its marketplace lists."
-                    : describeCatalogInstall(entry)}
-              </Text>
-            </View>
+            <Text variant="footnote" tone="muted">
+              {entry === null
+                ? "Install from npm, a Git repository, or a local path on the server."
+                : thirdParty
+                  ? "Install this plugin from the source its marketplace lists."
+                  : describeCatalogInstall(entry)}
+            </Text>
             {entry !== null ? (
-              <View className="gap-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
+              <SheetPanel className="gap-1.5 px-3 py-2.5">
                 <View className="flex-row items-center gap-2.5">
                   <PluginIcon
                     iconUrl={entry.iconUrl}
@@ -257,7 +281,7 @@ export function AddPluginSheet({
                     size={22}
                   />
                   <Text
-                    variant="label"
+                    variant="headline"
                     className="min-w-0 flex-1"
                     numberOfLines={1}
                   >
@@ -267,7 +291,12 @@ export function AddPluginSheet({
                     {entry.entryId}
                   </Text>
                 </View>
-                <Text variant="mono" className="text-xs" numberOfLines={1}>
+                <Text
+                  variant="mono"
+                  className="text-xs"
+                  numberOfLines={1}
+                  selectable
+                >
                   {entry.source}
                 </Text>
                 {thirdParty ? (
@@ -277,7 +306,7 @@ export function AddPluginSheet({
                     error={planQuery.error}
                   />
                 ) : null}
-              </View>
+              </SheetPanel>
             ) : (
               <SheetInput
                 value={sourceText}

@@ -1,14 +1,6 @@
 import { View } from "react-native";
 import type { DiffSelectionOption } from "@/data/diff";
-import { useTheme } from "@/theme";
-import {
-  Icon,
-  ListRow,
-  Separator,
-  Sheet,
-  Text,
-  type SheetController,
-} from "@/ui";
+import { ListRow, Separator, Sheet, Text, type SheetController } from "@/ui";
 import { usePickerSheetMaxHeight } from "../pickers/OptionSheet";
 
 interface DiffTargetPickerSheetProps {
@@ -27,9 +19,11 @@ interface DiffTargetPickerSheetProps {
 }
 
 /**
- * The diff target picker (web `GitDiffToolbar` select): all / committed /
- * uncommitted changes, then one row per commit above the merge base, with the
- * merge-base row at the bottom opening the branch picker.
+ * The diff target picker (web `GitDiffToolbar` select) as a sheet, presented
+ * from the header's target capsule on both platforms. All / committed /
+ * uncommitted changes, then one row per commit above the merge base, with
+ * the merge-base row at the bottom opening the branch picker. The current
+ * choice carries the tinted check mark.
  */
 export function DiffTargetPickerSheet({
   controller,
@@ -39,7 +33,6 @@ export function DiffTargetPickerSheet({
   mergeBase,
   stackBehavior,
 }: DiffTargetPickerSheetProps) {
-  const { tokens } = useTheme();
   const maxHeight = usePickerSheetMaxHeight();
   return (
     <Sheet
@@ -56,15 +49,10 @@ export function DiffTargetPickerSheet({
             title={option.label}
             leading={
               option.monoPrefix ? (
-                <Text variant="mono" tone="muted" className="text-xs">
+                <Text variant="mono" tone="muted" numeric className="text-xs">
                   {option.monoPrefix}
                 </Text>
               ) : undefined
-            }
-            trailing={
-              option.value === value ? (
-                <Icon name="Check" size={18} color={tokens.foreground} />
-              ) : null
             }
             selected={option.value === value}
             onPress={() => {

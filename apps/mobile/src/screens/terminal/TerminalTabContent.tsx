@@ -1,8 +1,8 @@
 import type { TerminalSession } from "@bb/server-contract";
 import { useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
-import { useCallback, useRef, useState } from "react";
-import { View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Keyboard, StyleSheet, View } from "react-native";
 import { e2eModeEnabled } from "@/app-shell/e2e";
 import { useProfileClient, useProfiles } from "@/app-shell/ProfilesProvider";
 import {
@@ -12,16 +12,21 @@ import {
   useFetchTerminalOutput,
   useTerminalSession,
 } from "@/data/terminals";
-import { Button, EmptyStatePanel, Spinner, Text, toast } from "@/ui";
+import { useTheme } from "@/theme";
+import { Button, Spinner, Text, toast, type NativeMenuAction } from "@/ui";
 import { TerminalAccessoryBar } from "./TerminalAccessoryBar";
 import { TerminalView, type TerminalViewHandle } from "./TerminalView";
 import type { TerminalAccessoryKey } from "./terminal-bridge";
 import { useTerminalTitleSync } from "./use-terminal-title-sync";
 
+const IS_IOS = process.env.EXPO_OS === "ios";
+
 /**
  * One terminal session as tab / screen content: the attached xterm view, the
  * accessory key bar, and the not-running states. Usable inside the thread
- * panel's Terminal tab or full screen (`TerminalScreen`).
+ * panel's Terminal tab or full screen (`TerminalScreen`). The chrome sits on
+ * the raised solid surface the xterm canvas is painted with, so the page and
+ * its frame read as one.
  */
 
 interface TerminalTabContentProps {
@@ -31,8 +36,10 @@ interface TerminalTabContentProps {
   onRestart?: () => void;
   onStartNew?: () => void;
   restartPending?: boolean;
-  /** Adds a "…" key to the accessory bar (the full-screen route's menu). */
+  /** Android: adds a "…" key that opens the full-screen route's actions sheet. */
   onMenu?: () => void;
+  /** iOS: the full-screen route's actions as a native menu on the "…" key. */
+  menuActions?: readonly NativeMenuAction[];
   /** False for a retained-but-hidden terminal (inactive panel tab / closed sheet). */
   visible?: boolean;
   testID?: string;
@@ -43,13 +50,17 @@ export function TerminalTabContent(props: TerminalTabContentProps) {
   // outlive its screen (profile switch, sign-out); the session hooks below
   // need an active connection.
   const { connection } = useProfiles();
+  const { tokens } = useTheme();
   if (!connection) {
     return (
       <View
-        className="flex-1 justify-center bg-sidebar p-4"
+        style={[styles.fill, { backgroundColor: tokens.surfaceRaisedSolid }]}
+        className="justify-center p-6"
         testID={props.testID ?? "terminal-tab"}
       >
-        <EmptyStatePanel>No active server.</EmptyStatePanel>
+        <Text variant="footnote" tone="muted" className="text-center">
+          No active server.
+        </Text>
       </View>
     );
   }
@@ -63,16 +74,19 @@ function ConnectedTerminalTabContent({
   onStartNew,
   restartPending = false,
   onMenu,
+  menuActions,
   visible = true,
   testID = "terminal-tab",
 }: TerminalTabContentProps) {
+  const { tokens } = useTheme();
   const sessionQuery = useTerminalSession(terminalId);
   const session = sessionQuery.data;
 
   if (sessionQuery.isLoading && !session) {
     return (
       <View
-        className="flex-1 items-center justify-center bg-sidebar"
+        style={[styles.fill, { backgroundColor: tokens.surfaceRaisedSolid }]}
+        className="items-center justify-center"
         testID={testID}
       >
         <Spinner />
@@ -81,19 +95,28 @@ function ConnectedTerminalTabContent({
   }
   if (!session) {
     return (
-      <View className="flex-1 gap-3 bg-sidebar p-4" testID={testID}>
-        <EmptyStatePanel>
-          <Text className="text-center text-sm text-muted-foreground">
+      <View
+        style={[styles.fill, { backgroundColor: tokens.surfaceRaisedSolid }]}
+        className="items-center justify-center gap-4 p-6"
+        testID={testID}
+      >
+        <View className="items-center gap-1">
+          <Text variant="headline" className="text-center">
             {sessionQuery.error
               ? "Could not load this terminal."
               : "This terminal no longer exists."}
           </Text>
           {sessionQuery.error ? (
-            <Text variant="caption" className="pt-1 text-center">
+            <Text
+              variant="footnote"
+              tone="muted"
+              className="text-center"
+              selectable
+            >
               {sessionQuery.error.message}
             </Text>
           ) : null}
-        </EmptyStatePanel>
+        </View>
         {onStartNew ? (
           <Button icon="Plus" variant="outline" onPress={onStartNew}>
             Start new terminal
@@ -111,6 +134,7 @@ function ConnectedTerminalTabContent({
       onStartNew={onStartNew}
       restartPending={restartPending}
       onMenu={onMenu}
+      menuActions={menuActions}
       visible={visible}
       testID={testID}
     />
@@ -124,6 +148,7 @@ interface AttachedTerminalProps {
   onStartNew?: () => void;
   restartPending: boolean;
   onMenu?: () => void;
+  menuActions?: readonly NativeMenuAction[];
   visible: boolean;
   testID: string;
 }
@@ -135,9 +160,11 @@ function AttachedTerminal({
   onStartNew,
   restartPending,
   onMenu,
+  menuActions,
   visible,
   testID,
 }: AttachedTerminalProps) {
+  const { tokens } = useTheme();
   const { serverUrl } = useProfileClient();
   const queryClient = useQueryClient();
   const fetchOutput = useFetchTerminalOutput();
@@ -149,6 +176,25 @@ function AttachedTerminal({
   // attached keeps its last output on screen under the notice.
   const [hadLiveSession] = useState(session.status !== "exited");
   const handleTitleChange = useTerminalTitleSync(session);
+
+  // The WebView owns the keyboard; the accessory bar's keyboard key toggles
+  // it, so track whether one is up (any keyboard: the notifications are
+  // app-wide).
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener(
+      IS_IOS ? "keyboardWillShow" : "keyboardDidShow",
+      () => setKeyboardVisible(true),
+    );
+    const hide = Keyboard.addListener(
+      IS_IOS ? "keyboardWillHide" : "keyboardDidHide",
+      () => setKeyboardVisible(false),
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   const handleSessionChange = useCallback(
     (next: TerminalSession) => {
@@ -177,13 +223,19 @@ function AttachedTerminal({
       () => toast.error("Could not read the clipboard"),
     );
   }, []);
-  const focusTerminal = useCallback(() => viewRef.current?.focus(), []);
+  const toggleKeyboard = useCallback(() => {
+    if (keyboardVisible) viewRef.current?.blur();
+    else viewRef.current?.focus();
+  }, [keyboardVisible]);
 
   const notice = terminalSessionStatusNotice(session);
   const showView = hadLiveSession;
 
   return (
-    <View className="flex-1 bg-sidebar" testID={testID}>
+    <View
+      style={[styles.fill, { backgroundColor: tokens.surfaceRaisedSolid }]}
+      testID={testID}
+    >
       {showView ? (
         <TerminalView
           ref={viewRef}
@@ -198,24 +250,30 @@ function AttachedTerminal({
           onTitleChange={handleTitleChange}
           textMirror={e2eModeEnabled}
           onTextMirror={e2eModeEnabled ? setMirrorLines : undefined}
-          style={{ flex: 1 }}
+          style={styles.fill}
           testID="terminal-view"
         />
       ) : null}
       {notice !== null ? (
         <View
-          className="gap-3 border-t border-border bg-background p-4"
+          style={[
+            styles.statusCard,
+            {
+              borderTopColor: tokens.borderHairline,
+              backgroundColor: tokens.surfaceRaisedSolid,
+            },
+          ]}
           testID="terminal-status-card"
         >
-          <Text weight="medium" className="text-center text-foreground">
+          <Text variant="headline" className="text-center">
             {notice}
           </Text>
           {!showView ? (
-            <Text className="text-center text-sm text-muted-foreground">
+            <Text variant="footnote" tone="muted" className="text-center">
               Its output is no longer available.
             </Text>
           ) : null}
-          <View className="flex-row justify-center gap-2">
+          <View className="flex-row justify-center gap-3">
             {onRestart ? (
               <Button
                 variant="outline"
@@ -245,8 +303,10 @@ function AttachedTerminal({
           onToggleCtrl={() => setCtrlActive((value) => !value)}
           onKey={handleKey}
           onPaste={handlePaste}
-          onKeyboard={focusTerminal}
+          onKeyboard={toggleKeyboard}
+          keyboardVisible={keyboardVisible}
           onMenu={onMenu}
+          menuActions={menuActions}
           testID="terminal-accessory-bar"
         />
       ) : null}
@@ -275,3 +335,12 @@ function lastNonEmptyLine(lines: readonly string[]): string {
   }
   return "";
 }
+
+const styles = StyleSheet.create({
+  fill: { flex: 1 },
+  statusCard: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    padding: 16,
+    gap: 12,
+  },
+});

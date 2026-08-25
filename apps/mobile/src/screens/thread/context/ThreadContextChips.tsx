@@ -12,6 +12,7 @@ import {
   toChangeTally,
 } from "@/data/environments";
 import type { ChildThreadPendingAttention } from "@/data/interactions";
+import { haptic } from "@/lib/haptics";
 import { useTheme } from "@/theme";
 import { Button, Icon, ListRow, Text } from "@/ui";
 import { PromptChip } from "../cards/PromptChip";
@@ -201,7 +202,7 @@ export function ThreadChangesChip({
     >
       {(sheet) => (
         <>
-          <Text variant="caption" className="pb-2">
+          <Text variant="caption" className="pb-2" numeric>
             {formatChangeSummary(tally)}
           </Text>
           <WorkspaceChangesList
@@ -216,7 +217,8 @@ export function ThreadChangesChip({
             <Pressable
               accessibilityRole="button"
               onPress={mergeBase.onPress}
-              className="mt-1.5 min-h-9 flex-row items-center gap-1.5 rounded-sm px-1 active:bg-state-hover"
+              className="mt-1.5 min-h-9 flex-row items-center gap-1.5 rounded-md px-1 active:bg-state-hover"
+              style={{ borderCurve: "continuous" }}
               testID="thread-chip-merge-base"
             >
               <Icon name="GitMerge" size={14} color={tokens.mutedForeground} />
@@ -230,7 +232,9 @@ export function ThreadChangesChip({
               </Text>
               <Icon
                 name="ChevronDown"
+                symbol="chevron.up.chevron.down"
                 size={12}
+                weight="semibold"
                 color={tokens.subtleForeground}
               />
             </Pressable>
@@ -259,7 +263,7 @@ export function ThreadChangesChip({
  * Pull request (web pull request row): state + checks glyphs, the number,
  * and the state as detail when it is not simply open. The sheet carries
  * the attention label, Open on GitHub, and Mark ready / the merge methods /
- * Convert to draft (the web split-button menu).
+ * Convert to draft (the web split-button menu) as rows on both platforms.
  */
 export function ThreadPullRequestChip({
   layout,
@@ -362,6 +366,9 @@ function PullRequestSheetBody({
         </Button>
       ) : null}
       {pullRequestActions && action?.kind === "merge" ? (
+        // The web split button as rows: the merge methods, then Convert to
+        // draft. Text rows, so they are sheet rows rather than a native
+        // menu on a "Merge" button (see `NativeMenu`).
         <View className="-mx-2 border-t border-border-hairline pt-1">
           {PULL_REQUEST_MERGE_ACTIONS.map((merge) => (
             <ListRow
@@ -369,7 +376,10 @@ function PullRequestSheetBody({
               leading="GitMerge"
               title={merge.label}
               disabled={pullRequestActions.isPending}
-              onPress={() => pullRequestActions.onMerge(merge.method)}
+              onPress={() => {
+                haptic("impact-medium");
+                pullRequestActions.onMerge(merge.method);
+              }}
               testID={`thread-chip-pull-request-merge-${merge.method}`}
             />
           ))}
@@ -377,7 +387,10 @@ function PullRequestSheetBody({
             leading="GitPullRequestDraft"
             title="Convert to draft"
             disabled={pullRequestActions.isPending}
-            onPress={pullRequestActions.onConvertToDraft}
+            onPress={() => {
+              haptic("selection");
+              pullRequestActions.onConvertToDraft();
+            }}
             testID="thread-chip-pull-request-draft"
           />
         </View>

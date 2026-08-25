@@ -4,15 +4,8 @@ import {
   getMergeBaseBranchCandidateGroups,
   useEnvironmentMergeBaseBranches,
 } from "@/data/environments";
-import { useTheme } from "@/theme";
-import {
-  Icon,
-  ListRow,
-  Sheet,
-  Spinner,
-  Text,
-  type SheetController,
-} from "@/ui";
+import { haptic } from "@/lib/haptics";
+import { ListRow, Sheet, Spinner, Text, type SheetController } from "@/ui";
 import { SheetInput } from "../../pickers/SheetInput";
 import { usePickerSheetMaxHeight } from "../../pickers/OptionSheet";
 
@@ -38,7 +31,6 @@ export function MergeBasePickerSheet({
   onSelect,
   stackBehavior,
 }: MergeBasePickerSheetProps) {
-  const { tokens } = useTheme();
   const maxHeight = usePickerSheetMaxHeight();
   const [query, setQuery] = useState("");
   const branches = useEnvironmentMergeBaseBranches(environmentId, {
@@ -52,6 +44,7 @@ export function MergeBasePickerSheet({
     remoteMergeBaseBranchOptions: branches.data?.remoteBranches ?? [],
   });
   const pick = (branch: string) => {
+    haptic("selection");
     controller.dismiss();
     onSelect(branch);
   };
@@ -61,11 +54,6 @@ export function MergeBasePickerSheet({
       title={branch}
       leading="GitBranch"
       selected={branch === mergeBaseBranch}
-      trailing={
-        branch === mergeBaseBranch ? (
-          <Icon name="Check" size={18} color={tokens.foreground} />
-        ) : null
-      }
       onPress={() => pick(branch)}
       testID={`merge-base-option-${branch}`}
     />

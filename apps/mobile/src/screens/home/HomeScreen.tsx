@@ -1,5 +1,6 @@
 import {
   Redirect,
+  Stack,
   useLocalSearchParams,
   useNavigation,
   useRouter,
@@ -12,11 +13,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { Animated, Keyboard, Pressable, View } from "react-native";
+import { Animated, Keyboard, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useProfiles } from "@/app-shell";
 import type { ComposerHandle } from "@/composer";
-import { blendOver, withAlpha } from "@/markdown/colors";
+import { useSidebarPreferences } from "@/data/sidebar";
+import { haptic } from "@/lib/haptics";
+import { withAlpha } from "@/markdown/colors";
 import { scrimBaseColor, useTheme } from "@/theme";
 import {
   Button,
@@ -25,6 +28,7 @@ import {
   COMPOSER_KEYBOARD_GAP,
   KeyboardPaddingView,
   OverlayBounds,
+  sfSymbolFor,
   Spinner,
   Text,
 } from "@/ui";
@@ -33,91 +37,155 @@ import {
   useComposeController,
   type ComposeParams,
 } from "../compose/useComposeController";
+import { ConnectionBanner } from "../shell/ConnectionBanner";
 import { threadHref, threadSearchHref } from "../shell/hrefs";
 import { Screen } from "../shell/Screen";
-import { WorkspaceMenuButton } from "../shell/WorkspaceMenu";
+import { ScreenTitle } from "../shell/ScreenTitle";
+import { WorkspaceMenuButton, WorkspaceToolbar } from "../shell/WorkspaceMenu";
 import {
+  ORGANIZE_OPTIONS,
   SidebarActionsProvider,
   SidebarThreadList,
+  SORT_OPTIONS,
   useSidebarActions,
 } from "../sidebar";
+import { ThreadSearchResults } from "../threads/ThreadSearchResults";
+
+const IS_IOS = process.env.EXPO_OS === "ios";
 
 const SCRIM_DURATION_MS = 180;
 /** Opacity of the scrim over the list while the dock is expanded. */
 const SCRIM_ALPHA = 0.35;
 
-/**
- * Home header: the server label as the title, the workspace menu (server
- * switcher / archived / Settings) on the left. Rendered in every ready state
- * so the menu is reachable before a server connects.
- */
-function HomeHeaderShell({ dimmed = false }: { dimmed?: boolean }) {
+/** Android: the workspace avatar button on the header's left. */
+function HomeWorkspaceButton() {
   const navigation = useNavigation();
-  const { activeProfile } = useProfiles();
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: activeProfile?.label ?? "bb",
-      headerLeft: () => <WorkspaceMenuButton dimmed={dimmed} />,
+      headerLeft: () => <WorkspaceMenuButton />,
     });
-  }, [activeProfile?.label, dimmed, navigation]);
+  }, [navigation]);
   return null;
 }
 
 /**
- * Search + display-options buttons in the home header (set from inside the
- * provider). While the dock is expanded the header is painted the same gray
- * as the scrim (it is navigator chrome above the screen, so the scrim view
- * cannot cover it) and its controls are muted.
+ * Home header: the server label as the (large) title and the workspace menu
+ * — server switcher / archived / Settings — on the left, a native pull-down
+ * on iOS and the avatar button's sheet on Android. Rendered in every ready
+ * state so the menu is reachable before a server connects.
  */
-function HomeHeaderActions({ dimmed }: { dimmed: boolean }) {
+function HomeHeaderShell() {
+  const { activeProfile } = useProfiles();
+  return (
+    <>
+      <ScreenTitle large>{activeProfile?.label ?? "bb"}</ScreenTitle>
+      {IS_IOS ? <WorkspaceToolbar /> : <HomeWorkspaceButton />}
+    </>
+  );
+}
+
+/**
+ * iOS: the display-options pull-down on the header's right — organize and
+ * sort as checked groups, then the section commands. Preferences apply as
+ * soon as an item is picked.
+ */
+function HomeDisplayOptionsToolbar() {
+  const actions = useSidebarActions();
+  const [preferences, preferenceActions] = useSidebarPreferences();
+  return (
+    <Stack.Toolbar placement="right">
+      <Stack.Toolbar.Menu
+        icon="line.3.horizontal.decrease.circle"
+        accessibilityLabel="Display options"
+      >
+        <Stack.Toolbar.Menu inline title="Organize">
+          {ORGANIZE_OPTIONS.map((option) => (
+            <Stack.Toolbar.MenuAction
+              key={option.mode}
+              icon={sfSymbolFor(option.icon)}
+              isOn={preferences.organize === option.mode}
+              onPress={() => {
+                haptic("selection");
+                preferenceActions.setOrganize(option.mode);
+              }}
+            >
+              {option.label}
+            </Stack.Toolbar.MenuAction>
+          ))}
+        </Stack.Toolbar.Menu>
+        <Stack.Toolbar.Menu inline title="Sort by">
+          {SORT_OPTIONS.map((option) => (
+            <Stack.Toolbar.MenuAction
+              key={option.sort}
+              icon={sfSymbolFor(option.icon)}
+              isOn={preferences.sort === option.sort}
+              onPress={() => {
+                haptic("selection");
+                preferenceActions.setSort(option.sort);
+              }}
+            >
+              {option.label}
+            </Stack.Toolbar.MenuAction>
+          ))}
+        </Stack.Toolbar.Menu>
+        <Stack.Toolbar.MenuAction
+          icon="text.badge.plus"
+          onPress={() => actions.openSectionCreate(null)}
+        >
+          New section…
+        </Stack.Toolbar.MenuAction>
+        <Stack.Toolbar.MenuAction
+          icon="arrow.up.arrow.down"
+          onPress={actions.openSectionReorder}
+        >
+          Reorder sections…
+        </Stack.Toolbar.MenuAction>
+      </Stack.Toolbar.Menu>
+    </Stack.Toolbar>
+  );
+}
+
+/**
+ * Android: search + display-options buttons in the home header (set from
+ * inside the provider; iOS has the header search bar and the native menu).
+ */
+function HomeHeaderActionsAndroid() {
   const navigation = useNavigation();
   const router = useRouter();
-  const { tokens, fonts, mode } = useTheme();
+  const { tokens } = useTheme();
   const actions = useSidebarActions();
-  const scrimColor = scrimBaseColor(mode, tokens);
-  const background = dimmed
-    ? blendOver(tokens.background, scrimColor, SCRIM_ALPHA)
-    : tokens.background;
-  const foreground = dimmed
-    ? blendOver(tokens.foreground, scrimColor, SCRIM_ALPHA)
-    : tokens.foreground;
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerStyle: { backgroundColor: background },
-      headerTintColor: foreground,
-      headerTitleStyle: {
-        fontFamily: fonts.sans.semibold,
-        fontWeight: "600",
-        color: foreground,
-      },
       headerRight: () => (
         <View className="flex-row items-center gap-1 pr-2">
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Search threads"
             hitSlop={8}
-            disabled={dimmed}
             onPress={() => router.push(threadSearchHref())}
             className="h-10 w-10 items-center justify-center rounded-full active:bg-state-hover"
             testID="home-search"
           >
-            <Icon name="Search" size={20} color={foreground} />
+            <Icon name="Search" size={20} color={tokens.foreground} />
           </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Sidebar display options"
             hitSlop={8}
-            disabled={dimmed}
             onPress={actions.openDisplayOptions}
             className="h-10 w-10 items-center justify-center rounded-full active:bg-state-hover"
             testID="home-display-options"
           >
-            <Icon name="SlidersHorizontal" size={20} color={foreground} />
+            <Icon
+              name="SlidersHorizontal"
+              size={20}
+              color={tokens.foreground}
+            />
           </Pressable>
         </View>
       ),
     });
-  }, [actions, background, dimmed, fonts, foreground, navigation, router]);
+  }, [actions, navigation, router, tokens.foreground]);
   return null;
 }
 
@@ -196,7 +264,9 @@ function useNewThreadRouteParams(): {
  * project's "+", or a routed new-thread request) expands it in place over a
  * scrim that dims the list, with the where-it-runs pickers on top and the
  * agent pickers below the prompt. Creating a thread collapses the dock and
- * opens the thread.
+ * opens the thread. On iOS the header search bar searches in place: while
+ * it is open the list shows recent threads, then results, and the dock
+ * steps aside.
  */
 function HomeBody() {
   const insets = useSafeAreaInsets();
@@ -208,6 +278,9 @@ function HomeBody() {
   const [expanded, setExpanded] = useState(false);
   const [scrim] = useState(() => new Animated.Value(0));
   const [scrimMounted, setScrimMounted] = useState(false);
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searching = IS_IOS && (searchOpen || query.trim().length > 0);
 
   const animateScrim = useCallback(
     (open: boolean) => {
@@ -262,10 +335,39 @@ function HomeBody() {
     [router],
   );
 
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setQuery("");
+  }, []);
+
+  // The banner scrolls with the rows, right under the large title.
+  const banner = <ConnectionBanner inset />;
+
   return (
     <SidebarActionsProvider onCreateThread={createThreadInDock}>
-      <HomeHeaderShell dimmed={expanded} />
-      <HomeHeaderActions dimmed={expanded} />
+      <HomeHeaderShell />
+      {IS_IOS ? (
+        <>
+          <HomeDisplayOptionsToolbar />
+          <Stack.SearchBar
+            placeholder="Search threads"
+            autoCapitalize="none"
+            placement="stacked"
+            hideWhenScrolling
+            obscureBackground={false}
+            barTintColor={tokens.secondary}
+            textColor={tokens.foreground}
+            tintColor={tokens.primary}
+            onChangeText={(event) => setQuery(event.nativeEvent.text)}
+            onOpen={() => setSearchOpen(true)}
+            onFocus={() => setSearchOpen(true)}
+            onClose={closeSearch}
+            onCancelButtonPress={closeSearch}
+          />
+        </>
+      ) : (
+        <HomeHeaderActionsAndroid />
+      )}
       <KeyboardPaddingView
         style={{ flex: 1 }}
         keyboardGap={COMPOSER_KEYBOARD_GAP}
@@ -274,16 +376,26 @@ function HomeBody() {
             under the header. */}
         <OverlayBounds style={{ flex: 1 }}>
           <View className="flex-1">
-            <SidebarThreadList
-              contentContainerStyle={{ paddingBottom: 16 }}
-              testID="home-thread-list"
-            />
+            {searching ? (
+              <ThreadSearchResults
+                query={query}
+                ListHeaderComponent={banner}
+                contentContainerStyle={{ paddingBottom: 16 }}
+              />
+            ) : (
+              <SidebarThreadList
+                ListHeaderComponent={banner}
+                contentContainerStyle={{ paddingBottom: 16 }}
+                testID="home-thread-list"
+              />
+            )}
           </View>
           {/* The scrim dims everything under the card — the list and the
-              dock's own margins — so the expanded card floats over it. It
-              overhangs the bounds by the keyboard gap: on devices without a
-              home-indicator inset the bounds end that far above the
-              keyboard, and the strip would otherwise show undimmed. */}
+              dock's own margins — so the expanded card floats over it (and
+              shows through the header's material). It overhangs the bounds
+              by the keyboard gap: on devices without a home-indicator inset
+              the bounds end that far above the keyboard, and the strip
+              would otherwise show undimmed. */}
           {scrimMounted ? (
             <Animated.View
               pointerEvents={expanded ? "auto" : "none"}
@@ -309,9 +421,18 @@ function HomeBody() {
               />
             </Animated.View>
           ) : null}
+          {/* The dock host: a hairline above the collapsed pill on the page
+              background; while the card is expanded the scrim owns the
+              region and the rule disappears. Hidden (kept mounted) while
+              the header search bar is open. */}
           <View
-            className="px-3 pt-1"
-            style={{ paddingBottom: Math.max(insets.bottom, 8) }}
+            className="px-3 pt-2"
+            style={{
+              display: searching ? "none" : "flex",
+              paddingBottom: Math.max(insets.bottom, 8),
+              borderTopWidth: expanded ? 0 : StyleSheet.hairlineWidth,
+              borderTopColor: tokens.borderHairline,
+            }}
             testID="home-compose-dock"
           >
             <ComposeDock
@@ -333,11 +454,11 @@ function HomeBody() {
 }
 
 /**
- * Home: the root screen. The grouped thread list for the active server,
- * pull-to-refresh, the new-thread dock at the bottom, the workspace menu
- * (servers / archived / Settings) on the header's left and search / display
- * options on its right. With no saved server it hands off to the add-server
- * flow (first run).
+ * Home: the root screen. The grouped thread list for the active server
+ * under a large title, pull-to-refresh, the new-thread dock at the bottom,
+ * the workspace menu (servers / archived / Settings) on the header's left
+ * and search / display options on its right. With no saved server it hands
+ * off to the add-server flow (first run).
  */
 export function HomeScreen() {
   const { status, profiles, activeProfile, connection } = useProfiles();
@@ -384,7 +505,7 @@ export function HomeScreen() {
   }
 
   return (
-    <Screen scroll={false} testID="home-screen">
+    <Screen scroll={false} banner={false} testID="home-screen">
       <HomeBody key={activeProfile.id} />
     </Screen>
   );

@@ -54,6 +54,7 @@ export const FileChangeDiffBlock = memo(function FileChangeDiffBlock({
       return (
         <View
           className="rounded-md border border-border bg-surface-raised px-2 py-1.5"
+          style={PLAIN_CARD_STYLE}
           testID={testID}
         >
           <Text variant="caption">No diff available.</Text>
@@ -68,6 +69,12 @@ interface PlainDiffBlockProps {
   testID?: string;
 }
 
+/** Card corners: continuous 10pt, the grouped-card radius. */
+const PLAIN_CARD_STYLE = {
+  borderRadius: 10,
+  borderCurve: "continuous",
+} as const;
+
 /** Monospace fallback for diffs that do not parse: the web's `EventCodeBlock`. */
 function PlainDiffBlock({ text, maxLines, testID }: PlainDiffBlockProps) {
   const [expanded, setExpanded] = useState(false);
@@ -80,6 +87,7 @@ function PlainDiffBlock({ text, maxLines, testID }: PlainDiffBlockProps) {
   return (
     <View
       className="overflow-hidden rounded-md border border-border bg-surface-raised"
+      style={PLAIN_CARD_STYLE}
       testID={testID}
     >
       <ScrollView
@@ -96,6 +104,7 @@ function PlainDiffBlock({ text, maxLines, testID }: PlainDiffBlockProps) {
               variant="mono"
               tone="muted"
               numberOfLines={1}
+              selectable
               style={{ fontSize: DIFF_FONT_SIZE, lineHeight: DIFF_LINE_HEIGHT }}
             >
               {line.length === 0 ? " " : line}
