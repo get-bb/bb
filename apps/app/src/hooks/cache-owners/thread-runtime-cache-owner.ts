@@ -10,6 +10,7 @@ import type {
 import type {
   CreateQueuedMessageRequest,
   PromptHistoryResponse,
+  SendMessageDelivery,
   SendQueuedMessageMode,
   ThreadQueuedMessageListResponse,
   ThreadResponse,
@@ -150,6 +151,12 @@ interface RollbackRemoveQueuedMessageTransactionArgs {
 }
 
 interface ApplySendThreadMessageSuccessArgs {
+  /**
+   * How the server took the message. `deferred` means the thread awaits a user
+   * interaction, so nothing runs yet and the optimistic accepted turn must be
+   * undone (#1650).
+   */
+  delivery: SendMessageDelivery;
   queryClient: QueryClient;
   realtimeConnected: boolean;
   request: SendThreadMessageMutationRequest;
@@ -843,11 +850,37 @@ export function rollbackSendThreadMessageTransaction({
 }
 
 export function applySendThreadMessageSuccess({
+  delivery,
   queryClient,
   realtimeConnected,
   request,
   transaction,
 }: ApplySendThreadMessageSuccessArgs): void {
+  if (delivery === "deferred" && transaction?.kind === "accepted-turn") {
+    // The server holds the message until the thread's open question or
+    // approval settles, so no turn is running. Undo the optimistic thread
+    // state, which would otherwise show a working indicator for a turn that
+    // has not started, but keep the optimistic message row: it is the only
+    // place the held message is visible, and the real event replaces it when
+    // the interaction settles and the message delivers. Marking the timeline
+    // stale here would drop that row on the next refetch and the message would
+    // look lost — the very symptom #1650 is about.
+    if (transaction.previousThread) {
+      queryClient.setQueryData<ThreadResponse>(
+        threadQueryKey(request.id),
+        transaction.previousThread,
+      );
+    }
+    prependThreadPromptHistory(
+      queryClient,
+      request.id,
+      buildAcceptedPromptHistoryEntry({
+        createdAt: transaction.optimisticCreatedAt,
+        input: request.input,
+      }),
+    );
+    return;
+  }
   if (transaction?.kind === "queued-message") {
     // Queued prompts enter recall too; prepend locally instead of refetching.
     prependThreadPromptHistory(

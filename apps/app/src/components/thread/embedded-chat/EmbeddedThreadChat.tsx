@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { defaultAppSettings, type PromptInput } from "@bb/domain";
+import type { SendMessageDelivery } from "@bb/server-contract";
 import type {
   AttachmentsConfig,
   HistoryConfig,
@@ -73,6 +74,21 @@ import { useComposerAttachmentUploads } from "./useComposerAttachmentUploads";
 import { useComposerTypeahead } from "./useComposerTypeahead";
 import { useInlineQueuedMessageEditing } from "./useInlineQueuedMessageEditing";
 import { useQueuedMessageActions } from "./useQueuedMessageActions";
+
+/**
+ * A thread that awaits a user interaction cannot take a prompt, so the server
+ * holds the message and delivers it when the interaction settles (#1650). The
+ * message is accepted, not lost, and resending it would double-send — say so,
+ * because nothing in the timeline runs yet.
+ */
+function reportHeldSendDelivery(delivery: SendMessageDelivery): void {
+  if (delivery !== "deferred") {
+    return;
+  }
+  appToast.message(
+    "Message held until the pending question is answered. It sends by itself; do not send it again.",
+  );
+}
 
 let pluginComposerHostOwnershipSequence = 0;
 
@@ -465,14 +481,15 @@ function EmbeddedThreadChatWithComposer({
           input,
           ...executionRequestFields,
         });
-      } else {
-        await sendThreadMessage.mutateAsync({
-          id: threadId,
-          input,
-          mode: "queue-if-active",
-          ...executionRequestFields,
-        });
+        return;
       }
+      const result = await sendThreadMessage.mutateAsync({
+        id: threadId,
+        input,
+        mode: "queue-if-active",
+        ...executionRequestFields,
+      });
+      reportHeldSendDelivery(result.delivery);
     },
     [
       createQueuedMessage,
@@ -558,6 +575,9 @@ function EmbeddedThreadChatWithComposer({
         input: submittedInput,
         mode: "steer-if-active",
         ...executionRequestFields,
+      })
+      .then((result) => {
+        reportHeldSendDelivery(result.delivery);
       })
       .catch((error) => {
         if (!isMountedRef.current) {
