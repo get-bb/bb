@@ -29,7 +29,6 @@ export function PluginNewThreadComposer({
   focusRequest,
   className,
   draftKey,
-  experimental_pluginCustomizations,
   onSubmit,
 }: PluginComposerProps) {
   const pluginId = useContext(PluginContext);
@@ -80,8 +79,6 @@ export function PluginNewThreadComposer({
           {renderPromptBox({
             placeholder,
             allowNoProject: true,
-            suppressPluginComposerCustomizations:
-              experimental_pluginCustomizations === "none",
           })}
         </div>
       )}

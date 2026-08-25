@@ -7,6 +7,7 @@ import { SURFACES_BY_ID } from "../src/surfaces";
 import {
   AppShellRightPanel,
   AppShellWireframe,
+  CommandPaletteWireframe,
   RealComposerAnnotated,
   SurfaceMapContext,
   type SurfaceMapState,
@@ -63,14 +64,32 @@ describe("guide fixture boundaries", () => {
         onTabSelect: vi.fn(),
       }),
     );
-    const tabStrip = markup.slice(0, markup.indexOf('data-guide-tab-body='));
+    const tabStrip = markup.slice(0, markup.indexOf("data-guide-tab-body="));
 
     expect(tabStrip).toContain("items-end");
-    expect(tabStrip).toContain("pb-1");
-    expect(tabStrip.match(/left-1\/2 -top-5 -translate-x-1\/2/g)).toHaveLength(
+    expect(tabStrip).toContain("h-16");
+    expect(tabStrip).toContain("pb-2");
+    expect(tabStrip.match(/left-1\/2 -top-6 -translate-x-1\/2/g)).toHaveLength(
       3,
     );
     expect(tabStrip).not.toContain("-bottom-3");
+  });
+
+  it("orders the right-panel tabs by annotation number", () => {
+    const markup = renderWireframe(
+      createElement(AppShellRightPanel, {
+        activeTab: "thread-panel",
+        onTabSelect: vi.fn(),
+      }),
+    );
+    const tabStrip = markup.slice(0, markup.indexOf("data-guide-tab-body="));
+
+    expect(tabStrip.indexOf('data-guide-tab="thread-panel"')).toBeLessThan(
+      tabStrip.indexOf('data-guide-tab="file-opener"'),
+    );
+    expect(tabStrip.indexOf('data-guide-tab="file-opener"')).toBeLessThan(
+      tabStrip.indexOf('data-guide-tab="code-renderers"'),
+    );
   });
 
   it("places the first two sidebar badges in the exterior annotation gutter", () => {
@@ -83,9 +102,7 @@ describe("guide fixture boundaries", () => {
       /data-guide-badge="thread-list"[\s\S]*left-4 top-\[190px\]/,
     );
     expect(markup).toContain("overflow-x-auto");
-    expect(markup).toContain(
-      "relative min-w-[1120px] px-10 pb-4 pt-4",
-    );
+    expect(markup).toContain("relative min-w-[1260px] px-10 pb-4 pt-5");
   });
 
   it("gives the app-window timeline taller, looser skeleton geometry", () => {
@@ -95,7 +112,7 @@ describe("guide fixture boundaries", () => {
       markup.indexOf("Fix the flaky checkout tests"),
     );
 
-    expect(markup).toContain("min-w-[1040px]");
+    expect(markup).toContain("min-w-[1180px]");
     expect(markup).toContain("flex min-h-[650px] items-stretch");
     expect(markup).toContain("flex w-[300px] shrink-0 flex-col");
     expect(timeline).toContain("min-h-[510px] flex-1 space-y-7");
@@ -122,12 +139,18 @@ describe("guide fixture boundaries", () => {
     },
   );
 
+  it("renders the command-palette action on a dedicated realistic page", () => {
+    const markup = renderWireframe(createElement(CommandPaletteWireframe));
+
+    expect(markup).toContain("Search");
+    expect(markup).toContain('data-guide-region="command-palette-actions"');
+    expect(markup).toContain('data-guide-fixture="command-palette-action"');
+    expect(markup).toContain("Run release checklist");
+    expect(markup).toContain("Plugins");
+  });
+
   it("attaches the mention annotation to the rendered mention pill", () => {
-    const markup = renderWireframe(
-      createElement(RealComposerAnnotated, {
-        composer: createElement("div", { "data-host-composer": true }),
-      }),
-    );
+    const markup = renderWireframe(createElement(RealComposerAnnotated));
 
     expect(markup).toMatch(
       /data-guide-region="mention-provider"[\s\S]*@release-notes/,
@@ -135,11 +158,7 @@ describe("guide fixture boundaries", () => {
   });
 
   it("draws a fixture-owned plugin icon inside the composer action target", () => {
-    const markup = renderWireframe(
-      createElement(RealComposerAnnotated, {
-        composer: createElement("div", { "data-host-composer": true }),
-      }),
-    );
+    const markup = renderWireframe(createElement(RealComposerAnnotated));
 
     expect(markup).toMatch(
       /data-guide-region="composer-actions"[\s\S]*data-guide-fixture="plugin-composer-action"/,
@@ -147,25 +166,21 @@ describe("guide fixture boundaries", () => {
   });
 
   it("leaves annotation clearance below the open mention typeahead", () => {
-    const markup = renderWireframe(
-      createElement(RealComposerAnnotated, {
-        composer: createElement("div", { "data-host-composer": true }),
-      }),
-      { ...mapState, activeId: "mention-provider" },
-    );
+    const markup = renderWireframe(createElement(RealComposerAnnotated), {
+      ...mapState,
+      activeId: "mention-provider",
+    });
 
     expect(markup).toContain("bottom-full z-20 mb-5");
   });
 
-  it("shows the plugin messageAction entry point in the selection toolbar", () => {
+  it("keeps the message selection toolbar closed before activation", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
-    const selectionToolbar = markup.slice(
-      markup.indexOf('data-guide-fixture="message-action-selection-toolbar"'),
-      markup.indexOf('data-guide-region="message-actions"'),
-    );
 
-    expect(selectionToolbar).toContain("Add to chat");
-    expect(selectionToolbar).toContain("Your action");
+    expect(markup).toContain('data-guide-fixture="assistant-message"');
+    expect(markup).not.toContain(
+      'data-guide-fixture="message-action-selection-toolbar"',
+    );
   });
 });
 

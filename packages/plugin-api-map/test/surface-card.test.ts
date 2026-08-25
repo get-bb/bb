@@ -47,4 +47,18 @@ describe("SurfaceCard annotation navigation", () => {
       /<button[^>]*disabled=""[^>]*aria-label="No previous annotation"/,
     );
   });
+
+  it("renders the compact copy action when the host supplies copy behavior", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SurfaceCard, {
+        surface: surfaces[0]!,
+        number: 1,
+        onDismiss: () => undefined,
+        onCopyForAgent: async () => true,
+      }),
+    );
+
+    expect(markup).toContain("Copy for agent");
+    expect(markup).not.toContain("bb-plugin-authoring skill");
+  });
 });

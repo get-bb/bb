@@ -1406,23 +1406,6 @@ boot (`InstalledPlugin.providerIds` marks the candidates the loader defers).
    sufficient for the first-party extension kinds before a third party
    relies on a web-only upgrade.
 
-## `PluginComposerApi.experimental_copyMention` (`@get-bb/plugin-sdk/app`)
-
-**What it does.** Copies a plugin-owned mention as bb's structured rich
-clipboard payload. Pasting it into any bb composer creates the same durable
-plugin mention pill as `insertMention`: the calling plugin owns the provider
-and item id, and its server-side mention provider resolves fresh agent context
-when the message is sent. It returns `false` instead of silently degrading to
-plain text when the provider id is invalid or rich clipboard access fails.
-
-**Audit before stabilizing.** Confirm that clipboard is the right transfer
-boundary for references initiated outside a composer, rather than exposing a
-more general host drag/share object. Decide whether plugins need an icon hint
-or a distinct display label versus serialized fallback text. Verify the
-modern `ClipboardItem` path and editing-command fallback remain sufficient in
-supported desktop, browser, and LAN-origin environments, and whether failures
-need a host toast API instead of caller-owned feedback.
-
 ## `experimental_NewThreadComposer` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** zero consumers; items 1 (a newly required create-thread field going missing silently) and 6 (projectless switching) need a consumer to validate.
@@ -1503,18 +1486,6 @@ Implementation: the shared workflow is
    project metadata with `projects.list({ includePersonal: true })`. Before
    stabilizing, confirm unconditional project switching is right for embedded
    plugin workflows, rather than adding an explicit project-locking policy.
-
-7. **`experimental_pluginCustomizations`.** Selects whether an embedded
-   composer includes `"all"` globally registered plugin customizations or
-   `"none"`. Omission defaults to `"all"`, preserving the behavior shipped by
-   the original composer API. `"none"` provides cross-plugin isolation for a
-   plugin-owned embed: no plugin banners, inline actions, + menu rows, draft
-   highlighting, or draft observers render there. The Plugin Guide uses this
-   for its real-composer diagrams so installed plugins cannot alter the
-   illustration or its persisted example draft. Before stabilizing, confirm
-   the all-or-none policy covers real embedded workflows; add a narrower
-   owner-only mode only when a concrete consumer needs it rather than turning
-   this into a plugin allowlist or permissions model.
 
 ## `app.slots.experimental_newThreadPanelAction` (`@get-bb/plugin-sdk/app`)
 

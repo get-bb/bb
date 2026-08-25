@@ -122,7 +122,6 @@ interface NewThreadComposerPromptOptions {
   /** Override the host bound to this prompt box; omission uses this Composer's host. */
   pluginComposerHost?: PluginComposerHost;
   textEffects?: NewThreadPromptBoxProps["textEffects"];
-  suppressPluginComposerCustomizations?: boolean;
   allowNoProject?: boolean;
   createProject?: ProjectSelectorCreateProjectConfig;
   onRequestMachineSetup?: (host: Host) => void;
@@ -1242,9 +1241,6 @@ export function NewThreadComposer({
           autoFocus={options.autoFocus}
           pluginComposerHost={options.pluginComposerHost ?? pluginComposerHost}
           textEffects={options.textEffects ?? textEffects}
-          suppressPluginComposerCustomizations={
-            options.suppressPluginComposerCustomizations
-          }
           history={{
             currentDraft,
             entries: promptHistoryDrafts,

@@ -650,7 +650,7 @@ describe("plugin service", () => {
     await after.stop();
   });
 
-  it("keeps a persisted 0.4.8 scaffold plugin running after the 0.4.18 SDK upgrade", async () => {
+  it("keeps a persisted 0.4.8 scaffold plugin running after the 0.4.17 SDK upgrade", async () => {
     // This package.json is frozen from `bb plugin new sdk-upgrade-fixture`
     // shipped by bb 0.39.0 with @get-bb/plugin-sdk 0.4.8. Copy it into a
     // user-owned path, then persist the registration before starting the
@@ -670,7 +670,7 @@ describe("plugin service", () => {
     };
     expect(manifest.engines.bbPluginSdk).toBe(">=0.4.8");
     expect(manifest.devDependencies["@get-bb/plugin-sdk"]).toBe("0.4.8");
-    expect(PLUGIN_SDK_VERSION).toBe("0.4.18");
+    expect(PLUGIN_SDK_VERSION).toBe("0.4.17");
 
     upsertInstalledPlugin(db, {
       id: "sdk-upgrade-fixture",

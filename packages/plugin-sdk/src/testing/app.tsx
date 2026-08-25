@@ -157,7 +157,6 @@ export interface ComposerLog {
   inputLockCalls: boolean[];
   quotes: string[];
   mentions: PluginComposerMention[];
-  copiedMentions: PluginComposerMention[];
   focusCount: number;
 }
 
@@ -444,7 +443,6 @@ function TestNewThreadComposer({
   focusRequest,
   className,
   draftKey,
-  experimental_pluginCustomizations,
   onSubmit,
 }: NewThreadComposerProps) {
   const [text, setText] = useState(initialPrompt ?? "");
@@ -465,7 +463,6 @@ function TestNewThreadComposer({
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-draft-key={draftKey ?? ""}
-      data-plugin-customizations={experimental_pluginCustomizations ?? "all"}
       className={className}
     >
       <textarea
@@ -1479,7 +1476,6 @@ export function renderSlot<
     inputLockCalls: [],
     quotes: [],
     mentions: [],
-    copiedMentions: [],
     focusCount: 0,
   };
   const composerOwnership = { active: true };
@@ -1533,10 +1529,6 @@ export function renderSlot<
         commitComposerText(`${composerText}${separator}${label} `);
         composerLog.mentions.push(mention);
         composerLog.focusCount += 1;
-      },
-      async experimental_copyMention(mention) {
-        composerLog.copiedMentions.push(mention);
-        return true;
       },
       focus() {
         composerLog.focusCount += 1;

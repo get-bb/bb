@@ -5,6 +5,7 @@ import { SURFACE_GROUPS, SURFACE_NUMBERS, SURFACES_BY_ID } from "../src/index";
 import {
   ANATOMY_RENDERER_KEYS,
   APP_SHELL_MARKS,
+  COMMAND_PALETTE_MARKS,
   COMPOSE_MARKS,
   COMPOSER_MARKS,
   EXTENSIONS_MARKS,
@@ -20,29 +21,29 @@ function surfaceIds(groupId: string): string[] {
 }
 
 describe("product-map surfaces", () => {
-  it("orders app-window annotations along one spatial scan path", () => {
+  it("keeps app-window annotations in their stable sequential order", () => {
     const ordered = [
-      // Sidebar, top to bottom.
       "nav-panel",
       "thread-list",
       "thread-row-status",
       "sidebar-footer",
-      // Main thread, top to bottom.
       "thread-header",
-      "command-palette-actions",
-      "timeline-renderers",
       "message-directives",
       "message-actions",
       "pending-interaction",
-      // Right-panel tabs, left to right.
-      "code-renderers",
       "thread-panel",
       "file-opener",
-      // Whole-window behavior is the final, enclosing annotation.
+      "code-renderers",
+      "timeline-renderers",
       "content-scripts",
     ];
     expect(surfaceIds("app-shell")).toEqual(ordered);
     expect([...APP_SHELL_MARKS]).toEqual(ordered);
+  });
+
+  it("gives command palette actions their own numbered page", () => {
+    expect(surfaceIds("command-palette")).toEqual(["command-palette-actions"]);
+    expect([...COMMAND_PALETTE_MARKS]).toEqual(["command-palette-actions"]);
   });
 
   it("has globally unique surface ids", () => {
@@ -57,6 +58,9 @@ describe("product-map surfaces", () => {
     // One skeleton per carousel slide, so each group's surfaces must all be
     // marked on that group's own wireframe.
     expect([...APP_SHELL_MARKS].sort()).toEqual(surfaceIds("app-shell").sort());
+    expect([...COMMAND_PALETTE_MARKS].sort()).toEqual(
+      surfaceIds("command-palette").sort(),
+    );
     expect([...COMPOSER_MARKS].sort()).toEqual(surfaceIds("composer").sort());
     expect([...COMPOSE_MARKS].sort()).toEqual(surfaceIds("home").sort());
     expect([...SETTINGS_MARKS].sort()).toEqual(surfaceIds("settings").sort());
@@ -109,6 +113,7 @@ describe("product-map surfaces", () => {
   it("keeps the headless group off the wireframes", () => {
     const marked = new Set<string>([
       ...APP_SHELL_MARKS,
+      ...COMMAND_PALETTE_MARKS,
       ...COMPOSER_MARKS,
       ...COMPOSE_MARKS,
       ...SETTINGS_MARKS,

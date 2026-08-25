@@ -182,8 +182,6 @@ interface NewThreadPromptBoxUIProps {
   /** Active root-composer binding for plugin composer hooks and customizations. */
   pluginComposerHost?: PluginComposerHost | null;
   textEffects?: readonly ComposerTextEffectSource[];
-  /** Hide every plugin composer customization; see PromptBoxInternal. */
-  suppressPluginComposerCustomizations?: boolean;
   /** Overrides the default new-thread placeholder copy. */
   placeholder?: string;
 
@@ -236,7 +234,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
   autoFocus,
   pluginComposerHost,
   textEffects,
-  suppressPluginComposerCustomizations,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -307,9 +304,6 @@ export const NewThreadPromptBoxUI = memo(function NewThreadPromptBoxUI({
           disabledReason={disabledReason}
           autoFocus={autoFocus}
           textEffects={textEffects}
-          suppressPluginComposerCustomizations={
-            suppressPluginComposerCustomizations
-          }
           placeholder={placeholderOverride}
           history={history}
           typeahead={typeahead}
@@ -348,7 +342,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
   disabledReason,
   autoFocus,
   textEffects,
-  suppressPluginComposerCustomizations,
   placeholder: placeholderOverride,
   history,
   typeahead,
@@ -393,10 +386,7 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
       className="w-full"
     >
       <div className="mb-2 grid gap-2 empty:hidden">
-        <ComposerBannersSlot
-          ownerPlacement="before"
-          includePluginContributions={!suppressPluginComposerCustomizations}
-        >
+        <ComposerBannersSlot ownerPlacement="before">
           {modeConfig.banner}
         </ComposerBannersSlot>
       </div>
@@ -408,9 +398,6 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
         onChange={onChange}
         onSubmit={onSubmit}
         textEffects={textEffects}
-        suppressPluginComposerCustomizations={
-          suppressPluginComposerCustomizations
-        }
         onComposerLayoutChange={onComposerLayoutChange}
         history={history}
         typeahead={typeahead}

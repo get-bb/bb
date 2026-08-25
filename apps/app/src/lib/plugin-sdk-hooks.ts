@@ -63,8 +63,6 @@ import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
 import { normalizeExperimentalFileOpenOptions } from "@/lib/live-file-navigation";
 import { deprecatedAlias } from "@/lib/plugin-sdk-deprecated-aliases";
-import { copyPromptMentionToClipboard } from "@/components/promptbox/mentions/prompt-mention-clipboard";
-import { pluginComposerMentionResource } from "@/lib/plugin-composer-mention";
 import {
   getPluginFixedTabOwnerId,
   useAppFixedTabTarget,
@@ -831,8 +829,9 @@ export function useComposer(): PluginComposerApi {
 
   const insertMention = useCallback(
     (mention: PluginComposerMention) => {
-      const resource = pluginComposerMentionResource(pluginId, mention);
-      if (resource === null) {
+      const provider = mention.provider.trim();
+      const label = mention.label.trim() || mention.id;
+      if (provider.length === 0 || provider.includes(":")) {
         // Provider ids exclude ":" (enforced at registration) — a bad id
         // would corrupt the composite itemId the server splits at send.
         console.warn(
@@ -846,36 +845,28 @@ export function useComposer(): PluginComposerApi {
       const separator =
         current.text.length === 0 || /\s$/u.test(current.text) ? "" : " ";
       const start = current.text.length + separator.length;
-      const end = start + resource.label.length;
+      const end = start + label.length;
       setDraft({
         ...current,
-        text: `${current.text}${separator}${resource.label} `,
+        text: `${current.text}${separator}${label} `,
         mentions: [
           ...current.mentions,
           {
             start,
             end,
-            resource,
+            resource: {
+              kind: "plugin",
+              pluginId,
+              icon: null,
+              itemId: `${provider}:${mention.id}`,
+              label,
+            },
           },
         ],
       });
       focusActiveComposer();
     },
     [focusActiveComposer, getCurrent, pluginId, setDraft],
-  );
-
-  const experimental_copyMention = useCallback(
-    (mention: PluginComposerMention) => {
-      const resource = pluginComposerMentionResource(pluginId, mention);
-      if (resource === null) {
-        console.warn(
-          `[plugin:${pluginId}] useComposer().experimental_copyMention: invalid provider id "${mention.provider}"`,
-        );
-        return Promise.resolve(false);
-      }
-      return copyPromptMentionToClipboard(resource);
-    },
-    [pluginId],
   );
 
   const focus = focusActiveComposer;
@@ -897,7 +888,6 @@ export function useComposer(): PluginComposerApi {
       setThreadRowStatus: legacySetThreadRowStatus,
       addQuote,
       insertMention,
-      experimental_copyMention,
       focus,
     }),
     [
@@ -906,7 +896,6 @@ export function useComposer(): PluginComposerApi {
       composerScope,
       composerText,
       focus,
-      experimental_copyMention,
       insertMention,
       projectId,
       setText,

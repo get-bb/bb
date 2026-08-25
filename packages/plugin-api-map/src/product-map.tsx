@@ -9,11 +9,9 @@
  * pixels to point at, so it renders as a conventional docs capability grid:
  * named sections of icon + title + description cards.
  *
- * Rendered identically by the docs site and by the bb plugin; inside bb the
- * plugin hands in the host's real composer twice — live on the Home slide,
- * and inert on the composer slide, where it is annotated in place with both
- * menus drawn open as static popovers. The docs site has no host, so both
- * slides fall back to drawn mocks there.
+ * Rendered identically by the docs site and by the bb plugin. Composer
+ * illustrations are deterministic, product-shaped fixtures: installed plugin
+ * customizations cannot leak into the Guide or move its annotations.
  */
 import {
   Fragment,
@@ -40,7 +38,7 @@ import {
 import { ExperimentalBadge, renderSurfaceCopy } from "./annotation";
 import {
   AppShellWireframe,
-  ComposerWireframe,
+  CommandPaletteWireframe,
   ComposeScreenWireframe,
   ExtensionsPluginPageWireframe,
   RealComposerAnnotated,
@@ -235,26 +233,7 @@ function FitDiagram({ children }: { children: ReactNode }) {
   );
 }
 
-function Slide({
-  group,
-  realComposer,
-  annotatedComposer,
-}: {
-  group: SurfaceGroup;
-  realComposer?: ReactNode;
-  /**
-   * A second instance of the host composer for the composer-anatomy slide,
-   * with its own draft key so edits on the Home slide never move the
-   * annotated diagram. Rendered inert; see RealComposerAnnotated.
-   */
-  annotatedComposer?: ReactNode;
-  /**
-   * Resolves a shipped plugin's page in the running bb, or null when this
-   * host has no page for it. Only the in-app copy can answer that, so the
-   * docs website omits it and the "Used by" names render as plain text.
-   */
-  pluginPageHref?: (displayName: string) => string | null;
-}) {
+function Slide({ group }: { group: SurfaceGroup }) {
   switch (group.id) {
     case "app-shell":
       // This is the densest diagram in the Guide. Keep it at a readable
@@ -262,27 +241,24 @@ function Slide({
       // narrow bb pane; shrinking the whole window makes every label and
       // annotation harder to understand at once.
       return <AppShellWireframe />;
-    case "composer":
-      // Inside bb, the diagram is the real host composer rendered inert —
-      // authentic proportions, no interactivity, with both menus drawn as
-      // static popovers. The docs site has no host, so it keeps the mock.
-      // Not scaled: the live composer is a real interactive component, and a
-      // CSS transform would blur its text and offset its menus.
+    case "command-palette":
       return (
         <div className="mx-auto max-w-5xl">
-          {annotatedComposer ? (
-            <RealComposerAnnotated composer={annotatedComposer} />
-          ) : (
-            <FitDiagram>
-              <ComposerWireframe />
-            </FitDiagram>
-          )}
+          <FitDiagram>
+            <CommandPaletteWireframe />
+          </FitDiagram>
+        </div>
+      );
+    case "composer":
+      return (
+        <div className="mx-auto max-w-5xl">
+          <RealComposerAnnotated />
         </div>
       );
     case "home":
       return (
         <div className="mx-auto max-w-5xl">
-          <ComposeScreenWireframe composer={realComposer} />
+          <ComposeScreenWireframe />
         </div>
       );
     case "settings":
@@ -402,8 +378,6 @@ function useStageHeight(
 
 export function ProductMap({
   header,
-  realComposer,
-  annotatedComposer,
   pluginPageHref,
   initialSlideId,
   onSlideChange,
@@ -412,20 +386,6 @@ export function ProductMap({
 }: {
   /** Page copy above the diagrams; omitted inside compact plugin panels. */
   header?: ReactNode;
-  /**
-   * The host's real composer (experimental_NewThreadComposer), supplied by
-   * the bb plugin. It replaces the mock composer in the skeletons, so the
-   * diagram is the actual product. Surfaces with no bb behind them omit it
-   * and get the mock.
-   */
-  realComposer?: ReactNode;
-  /**
-   * A second host-composer instance for the composer-anatomy slide, seeded
-   * with the demo draft under its own draft key so edits on the Home slide
-   * never move the annotated diagram. Rendered inert. Omitted on the docs
-   * site, which falls back to the drawn mock.
-   */
-  annotatedComposer?: ReactNode;
   /**
    * Resolves a shipped plugin's page in the running bb, or null when this
    * host has no page for it. Only the in-app copy can answer that, so the
@@ -663,11 +623,7 @@ export function ProductMap({
                     // canvas.
                     className="w-full shrink-0 self-start px-1 py-2"
                   >
-                    <Slide
-                      group={entry}
-                      realComposer={realComposer}
-                      annotatedComposer={annotatedComposer}
-                    />
+                    <Slide group={entry} />
                   </div>
                 ))}
               </div>

@@ -4,7 +4,6 @@ import {
   type PromptMentionResource,
 } from "@bb/domain";
 import { PLUGIN_MENTION_TRIGGER_VALUES } from "@bb/client-core";
-import { copyRichTextToClipboard } from "@/lib/clipboard";
 
 const PROMPT_MENTION_CLIPBOARD_RESOURCE_ATTR = "data-prompt-mention-resource";
 const PROMPT_MENTION_CLIPBOARD_SERIALIZED_TEXT_ATTR =
@@ -72,13 +71,6 @@ export function promptMentionClipboardContent(
     text: `${serializedText} `,
     html: `${element.outerHTML} `,
   };
-}
-
-/** Copy one mention using the same structured payload the composer pastes. */
-export function copyPromptMentionToClipboard(
-  resource: PromptMentionResource,
-): Promise<boolean> {
-  return copyRichTextToClipboard(promptMentionClipboardContent(resource));
 }
 
 export function serializedTextForPromptMentionResource(

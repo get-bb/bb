@@ -112,16 +112,17 @@ export const APP_SHELL_MARKS = [
   "thread-row-status",
   "sidebar-footer",
   "thread-header",
-  "command-palette-actions",
-  "timeline-renderers",
   "message-directives",
   "message-actions",
   "pending-interaction",
-  "code-renderers",
   "thread-panel",
   "file-opener",
+  "code-renderers",
+  "timeline-renderers",
   "content-scripts",
 ] as const;
+
+export const COMMAND_PALETTE_MARKS = ["command-palette-actions"] as const;
 
 export const COMPOSER_MARKS = [
   "composer-banners",
@@ -538,6 +539,60 @@ export type AppShellRightPanelTab =
   | "file-opener"
   | "code-renderers";
 
+/**
+ * The command palette is a whole-window modal, not part of an open thread's
+ * anatomy. Its own page gives the action a realistic search field, sibling
+ * commands, and ranking context without covering the app-window annotations.
+ */
+export function CommandPaletteWireframe() {
+  return (
+    <div className="relative px-7 pb-2 pt-4">
+      <WindowFrame>
+        <div className="flex min-h-[500px] items-start justify-center bg-surface-recessed/40 px-10 pt-14">
+          <div className="w-full max-w-xl overflow-visible rounded-xl border border-border bg-popover shadow-lg">
+            <div className="flex h-11 items-center gap-2 border-b border-border-hairline px-3 text-sm">
+              <MiniIcon icon={Search01Icon} className="size-4" />
+              <input
+                aria-label="Search commands"
+                readOnly
+                value="release"
+                className="min-w-0 flex-1 bg-transparent text-foreground outline-none"
+              />
+            </div>
+            <div className="space-y-0.5 p-1 text-sm">
+              <span className="flex h-9 items-center rounded-md px-2.5">
+                Open release notes
+                <span className="ml-auto text-xs text-subtle-foreground">
+                  Navigation
+                </span>
+              </span>
+              <Mark
+                id="command-palette-actions"
+                label="Plugin actions in bb's quick command palette"
+                className="flex h-9 items-center px-2.5"
+                chipClassName="-left-3 top-1/2 -translate-y-1/2"
+              >
+                <span data-guide-fixture="command-palette-action">
+                  Run release checklist
+                </span>
+                <span className="ml-auto text-xs text-subtle-foreground">
+                  Plugins
+                </span>
+              </Mark>
+              <span className="flex h-9 items-center rounded-md px-2.5">
+                Copy thread link
+                <span className="ml-auto text-xs text-subtle-foreground">
+                  Thread
+                </span>
+              </span>
+            </div>
+          </div>
+        </div>
+      </WindowFrame>
+    </div>
+  );
+}
+
 export function AppShellWireframe() {
   const { expandedId } = useSurfaceMap();
   const [rightPanelTab, setRightPanelTab] =
@@ -564,7 +619,7 @@ export function AppShellWireframe() {
     // readable minimum size. The whole annotated object scrolls together in
     // a narrow pane, so the exterior sidebar badges do not detach from it.
     <div className="overflow-x-auto">
-      <div className="relative min-w-[1120px] px-10 pb-4 pt-4">
+      <div className="relative min-w-[1260px] px-10 pb-4 pt-5">
         {/* The first two surfaces belong to the sidebar as a whole. Keep their
             chips in the exterior annotation gutter, matching the shipped Guide,
             while the in-frame regions remain independently clickable. */}
@@ -584,9 +639,9 @@ export function AppShellWireframe() {
           id="content-scripts"
           label="App-wide plugin scripts, running in the whole window"
           className="left-1/2 top-0.5 -translate-x-1/2"
-          region="inset-x-10 bottom-4 top-4"
+          region="inset-x-10 bottom-4 top-5"
         />
-        <div className="min-w-[1040px]">
+        <div className="min-w-[1180px]">
           <AppShellWireframeBody
             rightPanelTab={rightPanelTab}
             onRightPanelTabSelect={setRightPanelTab}
@@ -604,27 +659,14 @@ function AppShellWireframeBody({
   rightPanelTab: AppShellRightPanelTab;
   onRightPanelTabSelect: (tab: AppShellRightPanelTab) => void;
 }) {
+  const { expandedId } = useSurfaceMap();
+  const [assistantMessageHovered, setAssistantMessageHovered] = useState(false);
+  const messageActionsSelected = expandedId === "message-actions";
+  const messageActionRowVisible =
+    assistantMessageHovered || messageActionsSelected;
+
   return (
     <WindowFrame className="relative">
-      <RegionMark
-        id="command-palette-actions"
-        label="Plugin actions in bb's quick command palette"
-        className="absolute left-1/2 top-14 z-10 w-56 -translate-x-1/2 rounded-lg border border-border bg-popover p-1 shadow-md"
-        chipClassName="-right-2 -top-2"
-      >
-        <div data-guide-fixture="command-palette-action">
-          <div className="px-2 py-1 text-[9px] text-subtle-foreground">
-            Commands
-          </div>
-          <div className="flex items-center gap-1.5 rounded-md bg-state-hover px-2 py-2 text-foreground">
-            <PluginGlyph className="size-3.5" />
-            Your plugin: run action
-            <span className="ml-auto text-[9px] text-subtle-foreground">
-              Plugins
-            </span>
-          </div>
-        </div>
-      </RegionMark>
       {/* Sized to the real window's aspect: at the diagram's 1100px width, a
           650px frame matches the ~1.7:1 footprint of an actual bb window.
           The thread list and timeline are flex-1, so the height lands there
@@ -694,7 +736,14 @@ function AppShellWireframeBody({
             </div>
 
             {/* assistant message: plain prose + directive + action bar */}
-            <div className="w-[88%] space-y-2">
+            <div
+              data-guide-fixture="assistant-message"
+              onMouseEnter={() => setAssistantMessageHovered(true)}
+              onMouseLeave={() => setAssistantMessageHovered(false)}
+              onFocusCapture={() => setAssistantMessageHovered(true)}
+              onBlurCapture={() => setAssistantMessageHovered(false)}
+              className="w-[88%] space-y-2"
+            >
               <p className="leading-relaxed">
                 The retries cluster in two suites. Failure rate by suite:
               </p>
@@ -717,41 +766,61 @@ function AppShellWireframeBody({
                 </span>
               </Mark>
               <div className="space-y-1.5">
-                <div
-                  aria-hidden
-                  data-guide-fixture="message-action-selection-toolbar"
-                  className="inline-flex items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 text-2xs text-foreground shadow-md"
-                >
-                  <span className="flex items-center gap-1 rounded px-1.5 py-0.5">
-                    <MiniIcon icon={MessageAdd01Icon} className="size-3.5" />
-                    Add to chat
-                  </span>
-                  <span className="mx-0.5 h-4 w-px bg-border" />
-                  <span className="flex items-center gap-1 rounded bg-state-hover px-1.5 py-0.5">
-                    <PluginGlyph className="size-3.5" />
-                    Your action
-                  </span>
-                </div>
+                {messageActionsSelected ? (
+                  <div
+                    aria-hidden
+                    data-guide-fixture="message-action-selection-toolbar"
+                    className="inline-flex items-center gap-0.5 rounded-md border border-border bg-popover p-0.5 text-2xs text-foreground shadow-md"
+                  >
+                    <span className="flex items-center gap-1 rounded px-1.5 py-0.5">
+                      <MiniIcon icon={MessageAdd01Icon} className="size-3.5" />
+                      Add to chat
+                    </span>
+                    <span className="mx-0.5 h-4 w-px bg-border" />
+                    <span className="flex items-center gap-1 rounded bg-state-hover px-1.5 py-0.5">
+                      <PluginGlyph className="size-3.5" />
+                      Your action
+                    </span>
+                  </div>
+                ) : null}
                 <p className="leading-relaxed">
                   Fixed by isolating the{" "}
-                  <span className="rounded-sm bg-surface-selected px-0.5">
+                  <span
+                    data-guide-fixture="message-action-selected-text"
+                    className={cn(
+                      "rounded-sm px-0.5",
+                      messageActionsSelected &&
+                        "bg-file-accent/25 text-foreground",
+                    )}
+                  >
                     Stripe mock
                   </span>{" "}
                   per test.
                 </p>
               </div>
-              {/* action bar, icons in anatomy-manifest order */}
-              <Mark
-                id="message-actions"
-                label="Plugin message actions, after the host actions"
-                className="inline-flex items-center gap-2 px-2 py-1.5"
-              >
-                {anatomy.messageActionBar.map((key) => (
-                  <Fragment key={key}>
-                    {MESSAGE_ACTION_RENDERERS[key]?.()}
-                  </Fragment>
-                ))}
-              </Mark>
+              {/* Reserve the real action row's height so hover never shifts
+                  the message or the entries below it. */}
+              <div className="flex h-7 items-start">
+                <Mark
+                  id="message-actions"
+                  label="Plugin message actions, after the host actions"
+                  className="inline-flex items-center px-2 py-1.5"
+                >
+                  <span
+                    data-guide-fixture="message-action-hover-row"
+                    className={cn(
+                      "inline-flex items-center gap-2 transition-opacity",
+                      messageActionRowVisible ? "opacity-100" : "opacity-0",
+                    )}
+                  >
+                    {anatomy.messageActionBar.map((key) => (
+                      <Fragment key={key}>
+                        {MESSAGE_ACTION_RENDERERS[key]?.()}
+                      </Fragment>
+                    ))}
+                  </span>
+                </Mark>
+              </div>
             </div>
           </div>
 
@@ -803,7 +872,7 @@ export function AppShellRightPanel({
 }) {
   const tabClass = (tab: AppShellRightPanelTab) =>
     cn(
-      "flex h-6 shrink-0 items-center rounded-md",
+      "flex h-7 shrink-0 items-center rounded-md",
       activeTab === tab && "bg-state-hover",
     );
 
@@ -811,22 +880,11 @@ export function AppShellRightPanel({
     // Plain bg-sidebar, like the real ThreadSecondaryPanel — the real panel
     // is not the app's `.fixed.bg-sidebar` element, so it does not receive
     // the themed sidebar overlay.
-    <div className="flex w-[300px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
-      <div className="flex h-12 items-end gap-1.5 border-b border-border-hairline px-3 pb-1">
+    <div className="flex w-[380px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
+      <div className="flex h-16 items-end gap-1.5 border-b border-border-hairline px-3 pb-2">
         <span className="flex h-6 items-center rounded-md px-1.5">
           <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
         </span>
-        <Mark
-          id="code-renderers"
-          label="Plugin code and diff renderers on bb's Diff tab"
-          className={cn(tabClass("code-renderers"), "px-1.5")}
-          chipClassName="left-1/2 -top-5 -translate-x-1/2"
-          onActivate={() => onTabSelect("code-renderers")}
-        >
-          <span data-guide-tab="code-renderers">
-            <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
-          </span>
-        </Mark>
         <Mark
           id="thread-panel"
           label="A plugin tab in the thread side panel"
@@ -834,7 +892,7 @@ export function AppShellRightPanel({
             tabClass("thread-panel"),
             "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
           )}
-          chipClassName="left-1/2 -top-5 -translate-x-1/2"
+          chipClassName="left-1/2 -top-6 -translate-x-1/2"
           onActivate={() => onTabSelect("thread-panel")}
         >
           <span data-guide-tab="thread-panel" className="contents">
@@ -845,19 +903,38 @@ export function AppShellRightPanel({
         <Mark
           id="file-opener"
           label="A plugin file viewer or editor tab"
-          className={cn(tabClass("file-opener"), "px-1.5")}
-          chipClassName="left-1/2 -top-5 -translate-x-1/2"
+          className={cn(
+            tabClass("file-opener"),
+            "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
+          )}
+          chipClassName="left-1/2 -top-6 -translate-x-1/2"
           onActivate={() => onTabSelect("file-opener")}
         >
-          <span data-guide-tab="file-opener">
+          <span data-guide-tab="file-opener" className="contents">
             <MiniIcon icon={File01Icon} className="size-3.5" />
+            <span className="text-foreground">retry-notes.md</span>
+          </span>
+        </Mark>
+        <Mark
+          id="code-renderers"
+          label="Plugin code and diff renderers on bb's Diff tab"
+          className={cn(
+            tabClass("code-renderers"),
+            "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
+          )}
+          chipClassName="left-1/2 -top-6 -translate-x-1/2"
+          onActivate={() => onTabSelect("code-renderers")}
+        >
+          <span data-guide-tab="code-renderers" className="contents">
+            <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
+            <span className="text-foreground">Diff</span>
           </span>
         </Mark>
         <span className="flex-1" />
         <MiniIcon icon={PlusSignIcon} className="size-3.5" />
         <MiniIcon icon={SidebarRightIcon} className="size-3.5" />
       </div>
-      <div data-guide-tab-body={activeTab} className="m-3 flex-1 p-3.5">
+      <div data-guide-tab-body={activeTab} className="min-h-0 flex-1 p-4">
         {activeTab === "thread-panel" ? (
           <div data-guide-fixture="thread-panel" className="space-y-2">
             <div className="flex items-center gap-1.5 text-foreground">
@@ -872,32 +949,71 @@ export function AppShellRightPanel({
             <span className="block h-2 w-3/5 rounded-sm bg-muted/60" />
           </div>
         ) : activeTab === "file-opener" ? (
-          <div data-guide-fixture="file-viewer">
-            <div className="flex items-center gap-1.5 pb-2 text-foreground">
+          <div data-guide-fixture="file-viewer" className="space-y-3">
+            <div className="flex items-center gap-1.5 text-xs text-subtle-foreground">
               <MiniIcon icon={File01Icon} className="size-3.5" />
-              notes.md
-              <PluginGlyph className="ml-auto size-3.5" />
+              <span>docs</span>
+              <span>/</span>
+              <span className="text-foreground">retry-notes.md</span>
             </div>
-            <p className="pb-2 text-foreground">Checkout retry notes</p>
-            <p className="leading-relaxed text-subtle-foreground">
-              Flakes cluster around shared test state. Reset each mock between
-              cases before rerunning the suite.
-            </p>
+            <article className="space-y-3 rounded-lg border border-border-hairline bg-background p-4">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Checkout retry notes
+                </h3>
+                <span className="ml-auto flex items-center gap-1 rounded bg-surface-recessed px-1.5 py-1 text-2xs text-subtle-foreground">
+                  <PluginGlyph className="size-3" />
+                  Custom viewer
+                </span>
+              </div>
+              <p className="leading-relaxed text-subtle-foreground">
+                Flakes cluster around shared test state. Reset each mock between
+                cases before rerunning the suite.
+              </p>
+              <div className="rounded-md border-l-2 border-file-accent bg-surface-recessed px-3 py-2 leading-relaxed text-foreground">
+                Next: isolate the Stripe mock per test.
+              </div>
+            </article>
           </div>
         ) : (
-          <div data-guide-fixture="diff-renderer" className="space-y-2">
+          <div data-guide-fixture="diff-renderer" className="space-y-3">
             <div className="flex items-center gap-1.5 text-foreground">
               <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
-              checkout.test.ts
-              <PluginGlyph className="ml-auto size-3.5" />
+              <span className="font-medium">tests/checkout.test.ts</span>
+              <span className="ml-auto flex items-center gap-1 rounded bg-surface-recessed px-1.5 py-1 text-2xs text-subtle-foreground">
+                <PluginGlyph className="size-3" />
+                Custom diff
+              </span>
             </div>
-            <div className="space-y-1 font-mono text-2xs leading-tight">
-              <span className="block rounded-sm bg-danger/10 px-1.5 py-1 text-danger">
-                − sharedMock.reset()
-              </span>
-              <span className="block rounded-sm bg-success/10 px-1.5 py-1 text-success">
-                + mock.resetEach()
-              </span>
+            <div className="overflow-hidden rounded-md border border-border-hairline bg-background font-mono text-2xs leading-relaxed">
+              <div className="border-b border-border-hairline bg-surface-recessed px-2 py-1.5 text-subtle-foreground">
+                @@ -18,7 +18,8 @@ describe(&quot;checkout&quot;)
+              </div>
+              <div className="grid grid-cols-[24px_24px_1fr] px-2 py-1 text-subtle-foreground">
+                <span>18</span>
+                <span>18</span>
+                <span>beforeEach(() =&gt; &#123;</span>
+              </div>
+              <div className="grid grid-cols-[24px_24px_1fr] bg-danger/10 px-2 py-1 text-danger">
+                <span>19</span>
+                <span></span>
+                <span>− sharedMock.reset()</span>
+              </div>
+              <div className="grid grid-cols-[24px_24px_1fr] bg-success/10 px-2 py-1 text-success">
+                <span></span>
+                <span>19</span>
+                <span>+ stripeMock.reset()</span>
+              </div>
+              <div className="grid grid-cols-[24px_24px_1fr] bg-success/10 px-2 py-1 text-success">
+                <span></span>
+                <span>20</span>
+                <span>+ inventoryMock.reset()</span>
+              </div>
+              <div className="grid grid-cols-[24px_24px_1fr] px-2 py-1 text-subtle-foreground">
+                <span>20</span>
+                <span>21</span>
+                <span>&#125;)</span>
+              </div>
             </div>
           </div>
         )}
@@ -1055,7 +1171,7 @@ export function ComposerWireframe() {
   );
 }
 
-/* ── annotating the real composer (bb plugin only) ──────────────────── */
+/* ── close-up composer anatomy ─────────────────────────────────────── */
 
 /**
  * Marker for a real host component: the numbered chip, plus an optional
@@ -1130,20 +1246,17 @@ function OverlayMark({
 }
 
 /**
- * The composer slide inside bb: the real host composer, rendered static,
- * seated in the thread chrome it actually lives in — window bar, a short
- * exchange above, the reply box at the bottom. The chrome is what gives the
- * slide its height, so the page matches the other slides without padding.
+ * The close-up composer is seated in the thread chrome it actually lives in:
+ * window bar, a short exchange above, and the reply box at the bottom. The
+ * fixture owns the exact geometry so installed plugin customizations cannot
+ * move, rewrite, or add controls inside the Guide illustration.
  *
- * The component is the one the plugin API actually returns
- * (experimental_NewThreadComposer); the wrapper is `inert`, so nothing
- * focuses, types, or opens. Over the editor's first line sits a drawn draft
- * with a real mention pill and a painted range — the two things a plain-text
- * seed cannot show. The composer's two menus stay collapsed; each expands
- * only while its own annotation is engaged. The + menu opens upward, as the
- * real one does when the composer sits at the bottom of the window.
+ * Over the editor's first line sits a mention pill and a painted range. The
+ * composer's two menus stay collapsed; each expands only while its own
+ * annotation is engaged. The + menu opens upward, as the real one does when
+ * the composer sits at the bottom of the window.
  */
-export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
+export function RealComposerAnnotated() {
   const { activeId, expandedId } = useSurfaceMap();
   const engaged = (id: string) => activeId === id || expandedId === id;
   return (
@@ -1206,7 +1319,7 @@ export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
                 </Mark>
 
                 <div className="relative">
-                  <div inert>{composer}</div>
+                  <StaticEmbeddedComposer />
 
                   {/* The drawn draft, covering the editor's first line: a real
                   mention pill and a plugin-painted range. Its fill matches
@@ -1319,10 +1432,8 @@ export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
                     className="left-[184px] top-[71px]"
                     region="left-[41px] top-[85px] h-10 w-[157px]"
                   />
-                  {/* The real composer intentionally suppresses globally
-                      installed plugin controls. Draw this fixture-owned icon
-                      in the documented slot so the annotation still points
-                      at a recognizable plugin action. */}
+                  {/* Draw this fixture-owned icon in the documented slot so
+                      the annotation points at a recognizable plugin action. */}
                   <RegionMark
                     id="composer-actions"
                     label="Plugin composer actions, before voice and send"
@@ -1342,6 +1453,46 @@ export function RealComposerAnnotated({ composer }: { composer: ReactNode }) {
             </div>
           </WindowFrame>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Product-shaped prompt-box chrome underneath the annotation overlays. */
+function StaticEmbeddedComposer() {
+  return (
+    <div data-guide-fixture="embedded-composer" className="space-y-2">
+      <div className="relative h-[126px] rounded-xl border border-border bg-background shadow-lift">
+        <div className="absolute inset-x-3 top-3 h-8" aria-hidden />
+        <div className="absolute inset-x-2 bottom-2 flex h-10 items-center gap-1">
+          <span className="flex size-10 items-center justify-center rounded-md">
+            <MiniIcon icon={PlusSignIcon} className="size-4" />
+          </span>
+          <span className="flex h-10 w-[157px] items-center gap-1.5 rounded-md px-2 text-foreground">
+            <MiniIcon icon={SparklesIcon} className="size-3.5" />
+            Fable 5<span className="text-subtle-foreground">High</span>
+          </span>
+          <span className="flex-1" />
+          <span className="flex size-9 items-center justify-center rounded-md bg-state-hover">
+            <PluginGlyph className="size-3.5" />
+          </span>
+          <span className="flex size-9 items-center justify-center">
+            <MiniIcon icon={Mic01Icon} className="size-4" />
+          </span>
+          <span className="flex size-9 items-center justify-center rounded-md bg-foreground">
+            <MiniIcon
+              icon={ArrowUp01Icon}
+              className="size-3.5 text-background"
+            />
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center justify-between px-2.5" aria-hidden>
+        <span className="flex items-center gap-1.5">
+          <MiniIcon icon={Folder01Icon} className="size-3.5" />
+          acme-app · worktree
+        </span>
+        <span>Full Access</span>
       </div>
     </div>
   );

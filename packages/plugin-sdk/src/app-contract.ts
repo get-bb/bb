@@ -1564,13 +1564,6 @@ export interface PluginComposerApi {
    * content should be fetched fresh when the message is sent.
    */
   insertMention(mention: PluginComposerMention): void;
-  /**
-   * Copy an @-mention reference to the clipboard using bb's structured
-   * composer format. Pasting it into any bb composer creates a pill that
-   * resolves through this plugin's mention provider at send time. Returns
-   * false when the provider id is invalid or rich clipboard access fails.
-   */
-  experimental_copyMention(mention: PluginComposerMention): Promise<boolean>;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
 }
@@ -1847,14 +1840,6 @@ export interface NewThreadComposerProps {
    * user typed.
    */
   onSubmit: (request: NewThreadRequest) => void | Promise<void>;
-  /**
-   * Which globally registered plugin composer customizations render in this
-   * embedded composer. `"all"` (the default) preserves the ordinary composed
-   * experience; `"none"` renders only bb's composer, without plugin banners,
-   * actions, + menu rows, draft highlighting, or draft observers.
-   * Experimental: see docs/api_to_audit.md.
-   */
-  experimental_pluginCustomizations?: "all" | "none";
 }
 
 /**

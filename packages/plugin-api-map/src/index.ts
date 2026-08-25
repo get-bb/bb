@@ -1,8 +1,12 @@
 export { cn } from "./cn";
 export {
+  copyPluginSurfaceAgentReference,
+  PLUGIN_GUIDE_PLUGIN_ID,
   PLUGIN_GUIDE_SURFACE_PROVIDER_ID,
+  pluginSurfaceAgentClipboardContent,
   pluginSurfaceAgentContext,
   pluginSurfaceAgentMention,
+  type PluginSurfaceAgentClipboardContent,
   type PluginSurfaceAgentMention,
 } from "./agent-reference";
 export {
@@ -37,6 +41,7 @@ export {
 } from "./surfaces";
 export {
   AppShellWireframe,
+  CommandPaletteWireframe,
   ComposerWireframe,
   ComposeScreenWireframe,
   ExtensionsPluginPageWireframe,
@@ -45,6 +50,7 @@ export {
   useSurfaceMap,
   ANATOMY_RENDERER_KEYS,
   APP_SHELL_MARKS,
+  COMMAND_PALETTE_MARKS,
   COMPOSER_MARKS,
   COMPOSE_MARKS,
   EXTENSIONS_MARKS,

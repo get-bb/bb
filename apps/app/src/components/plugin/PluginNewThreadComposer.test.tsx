@@ -439,38 +439,6 @@ describe("PluginNewThreadComposer seeding", () => {
     });
   });
 
-  it("maps the public customization policy to host composer isolation", async () => {
-    const composer = (policy?: "all" | "none") => (
-      <MemoryRouter>
-        <PluginNewThreadComposer
-          draftKey="plugin-customization-policy"
-          defaultProjectId="proj_1"
-          experimental_pluginCustomizations={policy}
-          onSubmit={() => undefined}
-        />
-      </MemoryRouter>
-    );
-    const view = render(composer());
-
-    expect(latestPromptBoxProps().suppressPluginComposerCustomizations).toBe(
-      false,
-    );
-
-    view.rerender(composer("none"));
-    await waitFor(() => {
-      expect(latestPromptBoxProps().suppressPluginComposerCustomizations).toBe(
-        true,
-      );
-    });
-
-    view.rerender(composer("all"));
-    await waitFor(() => {
-      expect(latestPromptBoxProps().suppressPluginComposerCustomizations).toBe(
-        false,
-      );
-    });
-  });
-
   it("binds plugin draft actions to the hosted composer instance", async () => {
     renderComposer(STORED_REQUEST, () => undefined, "host-binding");
 
