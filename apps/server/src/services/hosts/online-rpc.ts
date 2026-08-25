@@ -85,21 +85,45 @@ async function callHostOnlineRpcWithRetry(
       await waitForRetryableHostRpcTransport(deps, args.hostId);
     },
   );
-  const response = await requestHostOnlineRpcResponse(deps, args).catch(
-    async (error) => {
-      if (!options.retryOnTransportFailure) {
-        throwOnlineRpcError(error);
-      }
-      if (error instanceof HostOnlineRpcUnavailableError) {
-        await waitForRetryableHostRpcTransport(deps, args.hostId);
-      } else if (!(error instanceof HostOnlineRpcTimeoutError)) {
-        throwOnlineRpcError(error);
-      }
+  const timeoutRetryDeadline =
+    options.retryOnTransportFailure && args.timeoutMs > 1
+      ? Date.now() + args.timeoutMs
+      : null;
+  const firstAttemptArgs =
+    timeoutRetryDeadline === null
+      ? args
+      : {
+          ...args,
+          timeoutMs: Math.max(1, Math.floor(args.timeoutMs / 2)),
+        };
+  const response = await requestHostOnlineRpcResponse(
+    deps,
+    firstAttemptArgs,
+  ).catch(async (error) => {
+    if (!options.retryOnTransportFailure) {
+      throwOnlineRpcError(error);
+    }
+    if (error instanceof HostOnlineRpcUnavailableError) {
+      await waitForRetryableHostRpcTransport(deps, args.hostId);
       return requestHostOnlineRpcResponse(deps, args).catch((retryError) => {
         throwOnlineRpcError(retryError);
       });
-    },
-  );
+    }
+    if (!(error instanceof HostOnlineRpcTimeoutError)) {
+      throwOnlineRpcError(error);
+    }
+    const retryTimeoutMs =
+      timeoutRetryDeadline === null ? 0 : timeoutRetryDeadline - Date.now();
+    if (retryTimeoutMs <= 0) {
+      throwOnlineRpcError(error);
+    }
+    return requestHostOnlineRpcResponse(deps, {
+      ...args,
+      timeoutMs: retryTimeoutMs,
+    }).catch((retryError) => {
+      throwOnlineRpcError(retryError);
+    });
+  });
 
   if (!response.ok) {
     throw new ApiError(502, response.errorCode, response.errorMessage, false);
