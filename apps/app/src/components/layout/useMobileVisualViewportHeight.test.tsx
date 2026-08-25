@@ -442,9 +442,15 @@ describe("useMobileVisualViewportHeight", () => {
           expect(shell.style.top).toBe("");
 
           // With a keyboard editor focused, the same pan is Safari's
-          // focus-reveal pan and must still be compensated.
+          // focus-reveal pan and must still be compensated. Let the pan
+          // settle and the focus-scheduled pass run first, so that only the
+          // scroll handler's keyboard branch can produce the compensation.
+          visualViewport.offsetTop = 0;
           act(() => editor.focus());
+          await flushScheduledViewportPass();
+          expect(shell.style.top).toBe("");
           act(() => {
+            visualViewport.offsetTop = 340;
             visualViewport.dispatchEvent(new Event("scroll"));
           });
           await waitFor(() => expect(shell.style.top).toBe("340px"));

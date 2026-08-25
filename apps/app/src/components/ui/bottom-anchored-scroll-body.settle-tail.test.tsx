@@ -117,17 +117,32 @@ function installGeometryReadCounters(
   return { readScrollHeight, readClientHeight };
 }
 
+interface ResizeEntryBoxes {
+  contentBlockSize: number;
+  borderBlockSize: number;
+}
+
+// The two boxes differ so a test can tell which one the component reads: the
+// scroll port's content box is its client height (padding excluded) and the
+// content wrapper's border box is the scroll height.
 function makeResizeEntry(
   target: Element,
-  blockSize: number,
+  boxes: ResizeEntryBoxes,
 ): ResizeObserverEntry {
-  const boxSize: ResizeObserverSize = { blockSize, inlineSize: 100 };
+  const contentBoxSize: ResizeObserverSize = {
+    blockSize: boxes.contentBlockSize,
+    inlineSize: 100,
+  };
+  const borderBoxSize: ResizeObserverSize = {
+    blockSize: boxes.borderBlockSize,
+    inlineSize: 100,
+  };
   return {
     target,
-    contentRect: new DOMRect(0, 0, 100, blockSize),
-    borderBoxSize: [boxSize],
-    contentBoxSize: [boxSize],
-    devicePixelContentBoxSize: [boxSize],
+    contentRect: new DOMRect(0, 0, 100, boxes.contentBlockSize),
+    borderBoxSize: [borderBoxSize],
+    contentBoxSize: [contentBoxSize],
+    devicePixelContentBoxSize: [contentBoxSize],
   };
 }
 
@@ -265,17 +280,44 @@ describe("BottomAnchoredScrollBody settle tail", () => {
 
     // Content grows to 900 while detached. The delivery carries the observer's
     // own box sizes, so the cache refresh needs no scrollHeight/clientHeight.
+    // The refresh must read the scroll port's content box (100) and the
+    // content wrapper's border box (900); the other box of each pair is off.
     getLatestResizeObserver().trigger([
-      makeResizeEntry(scrollArea, 100),
-      makeResizeEntry(scrollContent, 900),
+      makeResizeEntry(scrollArea, {
+        contentBlockSize: 100,
+        borderBlockSize: 108,
+      }),
+      makeResizeEntry(scrollContent, {
+        contentBlockSize: 880,
+        borderBlockSize: 900,
+      }),
     ]);
     expect(readScrollHeight).not.toHaveBeenCalled();
     expect(readClientHeight).not.toHaveBeenCalled();
 
     // The derived max offset (800) is what scroll classification runs on:
-    // 797 is within the 4px threshold, so this scroll re-attaches — still
-    // without a live read.
-    scrollArea.scrollTop = 797;
+    // 790 is outside the 4px threshold, so the viewport stays detached and
+    // the next growth (max offset 850) leaves it where it is...
+    scrollArea.scrollTop = 790;
+    fireEvent.scroll(scrollArea);
+    liveMetrics.scrollHeight = 950;
+    getLatestResizeObserver().trigger([
+      makeResizeEntry(scrollArea, {
+        contentBlockSize: 100,
+        borderBlockSize: 108,
+      }),
+      makeResizeEntry(scrollContent, {
+        contentBlockSize: 930,
+        borderBlockSize: 950,
+      }),
+    ]);
+    expect(scrollArea.scrollTop).toBe(790);
+    expect(readScrollHeight).not.toHaveBeenCalled();
+    expect(readClientHeight).not.toHaveBeenCalled();
+
+    // ...while 847 is within it, so this scroll re-attaches — still without
+    // a live read.
+    scrollArea.scrollTop = 847;
     fireEvent.scroll(scrollArea);
     expect(readScrollHeight).not.toHaveBeenCalled();
     expect(readClientHeight).not.toHaveBeenCalled();
@@ -284,8 +326,14 @@ describe("BottomAnchoredScrollBody settle tail", () => {
     // restore legitimately reads fresh geometry).
     liveMetrics.scrollHeight = 1_000;
     getLatestResizeObserver().trigger([
-      makeResizeEntry(scrollArea, 100),
-      makeResizeEntry(scrollContent, 1_000),
+      makeResizeEntry(scrollArea, {
+        contentBlockSize: 100,
+        borderBlockSize: 108,
+      }),
+      makeResizeEntry(scrollContent, {
+        contentBlockSize: 980,
+        borderBlockSize: 1_000,
+      }),
     ]);
     expect(scrollArea.scrollTop).toBe(900);
   });
