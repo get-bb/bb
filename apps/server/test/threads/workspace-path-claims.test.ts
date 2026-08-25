@@ -1,4 +1,4 @@
-import { archiveThread } from "@bb/db";
+import { archiveThread, markThreadDeleted, unarchiveThread } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { unmanagedAttachRefusal } from "../../src/services/threads/workspace-path-claims.js";
 import {
@@ -94,56 +94,64 @@ describe("unmanagedAttachRefusal", () => {
     });
   });
 
-  it("ignores live threads unless the request checks out a branch", async () => {
-    await withTestHarness(async (harness) => {
-      const { host } = seedHostSession(harness.deps, {
-        id: "host-claims-busy",
-      });
-      const sharedPath = "/tmp/busy-shared";
-      const { project: busy } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        name: "Busy",
-        path: sharedPath,
-      });
-      const busyEnvironment = seedEnvironment(harness.deps, {
-        hostId: host.id,
-        projectId: busy.id,
-        path: sharedPath,
-      });
-      seedThread(harness.deps, {
-        projectId: busy.id,
-        environmentId: busyEnvironment.id,
-        status: "active",
-      });
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        name: "Joiner",
-        path: sharedPath,
-      });
+  it.each([
+    { status: "starting", visibility: "visible" },
+    { status: "idle", visibility: "visible" },
+    { status: "active", visibility: "hidden" },
+  ] as const)(
+    "blocks a $visibility $status thread only for branch checkout",
+    async ({ status, visibility }) => {
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: `host-claims-busy-${status}`,
+        });
+        const sharedPath = `/tmp/busy-shared-${status}`;
+        const { project: busy } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          name: "Busy",
+          path: sharedPath,
+        });
+        const busyEnvironment = seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: busy.id,
+          path: sharedPath,
+        });
+        seedThread(harness.deps, {
+          projectId: busy.id,
+          environmentId: busyEnvironment.id,
+          status,
+          visibility,
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          name: "Joiner",
+          path: sharedPath,
+        });
 
-      const args = {
-        dataDir: HOST_DATA_DIR,
-        hostId: host.id,
-        path: sharedPath,
-        projectId: project.id,
-      };
-      // Sharing a directory is allowed; only rewriting the tree is not.
-      expect(
-        unmanagedAttachRefusal(harness.deps.db, {
-          ...args,
-          checksOutBranch: false,
-        }),
-      ).toBeNull();
-      expect(
-        unmanagedAttachRefusal(harness.deps.db, {
-          ...args,
-          checksOutBranch: true,
-        }),
-      ).toMatchObject({ reason: "live-thread" });
-    });
-  });
+        const args = {
+          dataDir: HOST_DATA_DIR,
+          hostId: host.id,
+          path: sharedPath,
+          projectId: project.id,
+        };
+        // Sharing a directory is allowed; only rewriting the tree is not.
+        expect(
+          unmanagedAttachRefusal(harness.deps.db, {
+            ...args,
+            checksOutBranch: false,
+          }),
+        ).toBeNull();
+        expect(
+          unmanagedAttachRefusal(harness.deps.db, {
+            ...args,
+            checksOutBranch: true,
+          }),
+        ).toMatchObject({ reason: "live-thread" });
+      });
+    },
+  );
 
-  it("allows branch checkout after every thread at the path is archived", async () => {
+  it("releases archived and deleted claims but restores an unarchived claim", async () => {
     await withTestHarness(async (harness) => {
       const { host } = seedHostSession(harness.deps, {
         id: "host-claims-archived",
@@ -164,17 +172,26 @@ describe("unmanagedAttachRefusal", () => {
         environmentId: environment.id,
         status: "idle",
       });
-      archiveThread(harness.deps.db, harness.deps.hub, thread.id);
+      const args = {
+        checksOutBranch: true,
+        dataDir: HOST_DATA_DIR,
+        hostId: host.id,
+        path: sharedPath,
+        projectId: project.id,
+      };
 
-      expect(
-        unmanagedAttachRefusal(harness.deps.db, {
-          checksOutBranch: true,
-          dataDir: HOST_DATA_DIR,
-          hostId: host.id,
-          path: sharedPath,
-          projectId: project.id,
-        }),
-      ).toBeNull();
+      archiveThread(harness.deps.db, harness.deps.hub, thread.id);
+      expect(unmanagedAttachRefusal(harness.deps.db, args)).toBeNull();
+
+      unarchiveThread(harness.deps.db, harness.deps.hub, thread.id);
+      expect(unmanagedAttachRefusal(harness.deps.db, args)).toMatchObject({
+        reason: "live-thread",
+      });
+
+      markThreadDeleted(harness.deps.db, harness.deps.hub, {
+        threadId: thread.id,
+      });
+      expect(unmanagedAttachRefusal(harness.deps.db, args)).toBeNull();
     });
   });
 });
