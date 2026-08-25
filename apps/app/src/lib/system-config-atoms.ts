@@ -21,12 +21,14 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindings: [],
   defaultKeybindings: [],
   keybindingOverrides: [],
+  // timelineWindowing is deliberately omitted (never-chosen semantics): a
+  // phone that cannot reach the server still gets the compact windowing
+  // default instead of an explicit off.
   experiments: {
     changelogPreview: false,
     editMessages: false,
     mobileApp: false,
     providerSessionReaping: false,
-    timelineWindowing: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

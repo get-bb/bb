@@ -6,11 +6,11 @@ import {
   appKeybindingsSchema,
   appThemeSchema,
   availableModelSchema,
-  experimentsSchema,
   featureFlagsSchema,
   permissionModeSchema,
   pluginThemeMetaSchema,
   providerInfoSchema,
+  storedExperimentsSchema,
 } from "@bb/domain";
 import { providerHealthSchema as providerHealthSchema } from "@bb/provider-bridge-protocol/provider-maintenance";
 import { hostPlatformSchema } from "@bb/host-daemon-contract/local";
@@ -177,8 +177,13 @@ export const systemConfigResponseSchema = z.object({
   defaultKeybindings: appDefaultKeybindingsSchema,
   /** Sparse per-command customizations; null shortcuts explicitly disable commands. */
   keybindingOverrides: appKeybindingOverridesSchema,
-  /** User-opt-in experiments (Settings → Experiments), persisted server-side. */
-  experiments: experimentsSchema,
+  /**
+   * User-opt-in experiments (Settings → Experiments), persisted server-side.
+   * Only saved choices appear; an omitted key means the user never chose, so
+   * clients apply `defaultExperiments` — or a viewport-dependent default
+   * (`timelineWindowing` defaults on for compact viewports).
+   */
+  experiments: storedExperimentsSchema,
   /** Active app-wide palette (built-in id or custom theme), resolved server-side. */
   appearance: appThemeSchema,
   /**

@@ -3,6 +3,7 @@ import { defaultExperiments } from "@bb/domain";
 import {
   createConnection,
   getExperiments,
+  getStoredExperiments,
   migrate,
   setExperiments,
 } from "../src/index.js";
@@ -14,12 +15,15 @@ describe("experiments", () => {
     try {
       migrate(db);
       expect(getExperiments(db)).toEqual(defaultExperiments);
+      // Never-saved keys are omitted from the stored view, not defaulted.
+      expect(getStoredExperiments(db)).toEqual({});
 
       const experiments = {
         ...defaultExperiments,
         mobileApp: true,
       };
       setExperiments(db, experiments);
+      expect(getStoredExperiments(db)).toEqual(experiments);
       db.$client
         .prepare(
           "INSERT INTO system_experiments (key, value, updated_at) VALUES ('futureExperiment', true, 1)",

@@ -8,12 +8,17 @@ import { seedHostSession } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 describe("experiments settings", () => {
-  it("serves the shipped experiment defaults in /system/config", async () => {
+  it("omits never-saved experiments from /system/config", async () => {
     await withTestHarness(async (harness) => {
       const response = await harness.app.request("/api/v1/system/config");
       expect(response.status).toBe(200);
       const body = systemConfigResponseSchema.parse(await readJson(response));
-      expect(body.experiments).toEqual({
+      // Omission is the contract: a client cannot otherwise distinguish
+      // "user chose false" from "user never chose", and the compact-viewport
+      // windowing default rests on that distinction.
+      expect(body.experiments).toEqual({});
+      // Server-internal policy still reads concrete booleans.
+      expect(getExperiments(harness.db)).toEqual({
         changelogPreview: false,
         editMessages: true,
         mobileApp: false,

@@ -51,7 +51,12 @@ export function ExperimentsSettingsScreen() {
 function ConnectedExperimentsSettingsScreen() {
   const configQuery = useSystemConfig();
   const updateExperiments = useUpdateExperiments();
-  const experiments = configQuery.data?.experiments ?? defaultExperiments;
+  // The config payload carries stored choices only; overlay the defaults so
+  // toggles display effective values and saves put a full record.
+  const experiments = {
+    ...defaultExperiments,
+    ...configQuery.data?.experiments,
+  };
   const disabled = configQuery.data === undefined;
   return (
     <Screen testID="experiments-settings-screen">

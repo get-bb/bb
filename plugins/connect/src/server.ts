@@ -50,9 +50,12 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   // Experiments are server-owned settings; the plugin reads them through its
-  // loopback SDK binding rather than through a dedicated plugin API.
+  // loopback SDK binding rather than through a dedicated plugin API. The
+  // config payload carries stored choices only, and a never-saved mobileApp
+  // key means the default (off), so the gate fails closed.
   const mobilePairing: MobilePairingGate = {
-    enabled: async () => (await bb.sdk.system.config()).experiments.mobileApp,
+    enabled: async () =>
+      (await bb.sdk.system.config()).experiments.mobileApp ?? false,
   };
 
   bb.rpc.register(

@@ -3,11 +3,13 @@ import {
   appCommandIdSchema,
   appShortcutSchema,
   appSettingsSchema,
+  defaultExperiments,
   experimentKeySchema,
   experimentsSchema,
   type AppSettings,
   type AppShortcut,
   type Experiments,
+  type StoredExperiments,
 } from "@bb/domain";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
@@ -102,7 +104,7 @@ function updateGeneralSetting(
 }
 
 function updateExperiment(
-  experiments: Experiments,
+  experiments: StoredExperiments,
   key: string,
   value: string,
 ): Experiments {
@@ -111,7 +113,10 @@ function updateExperiment(
   if (!experimentKey.success) {
     throw new Error(`Unknown experiment '${key}'.`);
   }
+  // The config payload carries stored choices only; overlay the defaults so
+  // the PUT persists a full record, as it always has.
   return experimentsSchema.parse({
+    ...defaultExperiments,
     ...experiments,
     [experimentKey.data]: enabled,
   });

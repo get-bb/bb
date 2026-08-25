@@ -919,7 +919,12 @@ export function SettingsView() {
   // The in-app browser only exists on desktop; hide the toggle entirely on web,
   // where it would have no effect.
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
-  const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
+  // The config payload carries stored choices only; overlay the defaults so
+  // toggles display effective values and saves put a full record.
+  const experiments = {
+    ...defaultExperiments,
+    ...systemConfigQuery.data?.experiments,
+  };
   const updateExperimentsMutation = useUpdateExperiments();
   const generalSettings =
     systemConfigQuery.data?.generalSettings ?? defaultAppSettings;

@@ -2,6 +2,7 @@ import {
   getAppSettings,
   getAppKeybindingOverrides,
   getExperiments,
+  getStoredExperiments,
   getStoredFaviconColor,
   getStoredThemeId,
   hasActiveThreadAttention,
@@ -160,7 +161,11 @@ export function registerSystemRoutes(
       ),
       defaultKeybindings: DEFAULT_APP_KEYBINDINGS,
       keybindingOverrides,
-      experiments: getExperiments(deps.db),
+      // Stored choices only: an omitted key means the user never chose, so
+      // clients can apply their own defaults (timelineWindowing defaults on
+      // for compact viewports, which the server cannot know). Server-internal
+      // policy keeps reading concrete booleans through getExperiments.
+      experiments: getStoredExperiments(deps.db),
       appearance: await resolveSelectedTheme(
         getStoredThemeId(deps.db),
         getStoredFaviconColor(deps.db),

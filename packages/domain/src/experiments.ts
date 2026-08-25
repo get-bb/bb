@@ -24,6 +24,21 @@ export const experimentsSchema = z.record(experimentKeySchema, z.boolean());
 export type Experiments = z.infer<typeof experimentsSchema>;
 
 /**
+ * The user's persisted experiment choices only. Omission means the user never
+ * saved a value for the key — real semantics, not a hidden default: consumers
+ * that need a concrete boolean overlay `defaultExperiments`, while
+ * viewport-dependent defaults (`timelineWindowing` on compact viewports)
+ * resolve client-side where the viewport is known. `setExperiments` persists
+ * every key, so after the first explicit save the stored values win
+ * everywhere.
+ */
+export const storedExperimentsSchema = z.partialRecord(
+  experimentKeySchema,
+  z.boolean(),
+);
+export type StoredExperiments = z.infer<typeof storedExperimentsSchema>;
+
+/**
  * Values for an installation that has never saved a toggle. `setExperiments`
  * persists every key, so one that has keeps its stored values instead.
  */

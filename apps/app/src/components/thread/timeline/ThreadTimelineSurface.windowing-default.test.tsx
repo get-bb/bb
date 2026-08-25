@@ -3,13 +3,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Experiments } from "@bb/domain";
+import type { Experiments, StoredExperiments } from "@bb/domain";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineSurface } from "./ThreadTimelineSurface.js";
 
 const mocks = vi.hoisted(() => ({
-  experiments: undefined as Experiments | undefined,
+  experiments: undefined as StoredExperiments | undefined,
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
@@ -90,6 +90,15 @@ afterEach(() => {
 describe("ThreadTimelineSurface windowing default", () => {
   it("defaults windowing on for compact viewports while the experiment is unset", () => {
     mocks.experiments = undefined;
+    renderSurface({ isCompactViewport: true });
+
+    expect(windowingEnabledAttribute()).toBe("true");
+  });
+
+  it("defaults windowing on for compact viewports when the config payload omits the key", () => {
+    // A fresh install: /system/config serves only saved choices, so a
+    // never-toggled timelineWindowing arrives omitted, not false.
+    mocks.experiments = {};
     renderSurface({ isCompactViewport: true });
 
     expect(windowingEnabledAttribute()).toBe("true");

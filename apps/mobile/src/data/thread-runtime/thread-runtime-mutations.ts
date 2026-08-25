@@ -1,4 +1,4 @@
-import type { ThreadQueuedMessage } from "@bb/domain";
+import { defaultExperiments, type ThreadQueuedMessage } from "@bb/domain";
 import { BbHttpError } from "@bb/sdk/browser";
 import type {
   EditMessageRequest,
@@ -143,7 +143,10 @@ export function useEditThreadMessage() {
 /** Whether the server has the `editMessages` experiment switched on. */
 export function useEditMessagesExperimentEnabled(): boolean {
   const config = useSystemConfig();
-  return config.data?.experiments.editMessages ?? false;
+  // The config payload omits never-saved keys; editMessages defaults on.
+  return (
+    config.data?.experiments.editMessages ?? defaultExperiments.editMessages
+  );
 }
 
 /** `POST /threads/:id/stop`: the thread shows `stopping` at once. */

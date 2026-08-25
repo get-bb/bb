@@ -108,7 +108,11 @@ export {
   setAppSettings,
 } from "./app-settings.js";
 export { getStoredThreadTabs, replaceStoredThreadTabs } from "./thread-tabs.js";
-export { getExperiments, setExperiments } from "./experiments.js";
+export {
+  getExperiments,
+  getStoredExperiments,
+  setExperiments,
+} from "./experiments.js";
 export {
   deleteInstalledPlugin,
   getInstalledPlugin,

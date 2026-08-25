@@ -4,12 +4,23 @@ import {
   experimentKeys,
   experimentKeySchema,
   type Experiments,
+  type StoredExperiments,
 } from "@bb/domain";
 import type { DbConnection } from "../connection.js";
 import { systemExperiments } from "../schema.js";
 
 export function getExperiments(db: DbConnection): Experiments {
-  const experiments = { ...defaultExperiments };
+  return { ...defaultExperiments, ...getStoredExperiments(db) };
+}
+
+/**
+ * Only the persisted choices, with never-saved keys omitted. `/system/config`
+ * serves this so clients can distinguish "user chose false" from "user never
+ * chose"; server-internal policy keeps using `getExperiments` for concrete
+ * booleans.
+ */
+export function getStoredExperiments(db: DbConnection): StoredExperiments {
+  const experiments: StoredExperiments = {};
   const rows = db
     .select()
     .from(systemExperiments)

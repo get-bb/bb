@@ -30,6 +30,7 @@ import { requestProviderPluginFrontend } from "@/lib/plugin-frontend-lazy";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import {
   defaultAppSettings,
+  defaultExperiments,
   resolveEnvironmentMergeBaseBranch,
   type ThreadListEntry,
   type ThreadWithRuntime,
@@ -1044,7 +1045,9 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
   // must repeat the full eligibility check on the server before changing state.
   const canEditSentMessages =
     thread !== undefined &&
-    (systemConfigQuery.data?.experiments.editMessages ?? false) &&
+    // The config payload omits never-saved keys; editMessages defaults on.
+    (systemConfigQuery.data?.experiments.editMessages ??
+      defaultExperiments.editMessages) &&
     // Declared capability, same source as the fork affordance above: an edit
     // is a rewind to an earlier point in the provider session.
     (threadProviderInfo?.capabilities.supportsSessionRewind ?? false) &&
