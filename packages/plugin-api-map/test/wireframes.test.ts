@@ -56,15 +56,21 @@ describe("guide fixture boundaries", () => {
     }
   });
 
-  it("keeps tab badges inside the clipped frame on the top Guide layer", () => {
-    const markup = renderWireframe(createElement(AppShellWireframe));
-    const codeTab = markup.slice(
-      markup.indexOf('data-guide-region="code-renderers"'),
-      markup.indexOf('data-guide-region="thread-panel"'),
+  it("keeps tab badges clear of their right-panel entry points", () => {
+    const markup = renderWireframe(
+      createElement(AppShellRightPanel, {
+        activeTab: "thread-panel",
+        onTabSelect: vi.fn(),
+      }),
     );
+    const tabStrip = markup.slice(0, markup.indexOf('data-guide-tab-body='));
 
-    expect(codeTab).toContain("absolute z-50");
-    expect(codeTab).toContain("-top-2");
+    expect(tabStrip).toContain("items-end");
+    expect(tabStrip).toContain("pb-1");
+    expect(tabStrip.match(/left-1\/2 -top-5 -translate-x-1\/2/g)).toHaveLength(
+      3,
+    );
+    expect(tabStrip).not.toContain("-bottom-3");
   });
 
   it("places the first two sidebar badges in the exterior annotation gutter", () => {

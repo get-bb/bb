@@ -797,7 +797,7 @@ export function AppShellRightPanel({
     // is not the app's `.fixed.bg-sidebar` element, so it does not receive
     // the themed sidebar overlay.
     <div className="flex w-[300px] shrink-0 flex-col border-l border-border-seam bg-sidebar">
-      <div className="flex h-12 items-center gap-1.5 border-b border-border-hairline px-3">
+      <div className="flex h-12 items-end gap-1.5 border-b border-border-hairline px-3 pb-1">
         <span className="flex h-6 items-center rounded-md px-1.5">
           <MiniIcon icon={InformationCircleIcon} className="size-3.5" />
         </span>
@@ -805,7 +805,7 @@ export function AppShellRightPanel({
           id="code-renderers"
           label="Plugin code and diff renderers on bb's Diff tab"
           className={cn(tabClass("code-renderers"), "px-1.5")}
-          chipClassName="left-1/2 -top-2 -translate-x-1/2"
+          chipClassName="left-1/2 -top-5 -translate-x-1/2"
           onActivate={() => onTabSelect("code-renderers")}
         >
           <span data-guide-tab="code-renderers">
@@ -819,7 +819,7 @@ export function AppShellRightPanel({
             tabClass("thread-panel"),
             "gap-1.5 whitespace-nowrap pl-1.5 pr-2",
           )}
-          chipClassName="left-1/2 -top-2 -translate-x-1/2"
+          chipClassName="left-1/2 -top-5 -translate-x-1/2"
           onActivate={() => onTabSelect("thread-panel")}
         >
           <span data-guide-tab="thread-panel" className="contents">
@@ -831,7 +831,7 @@ export function AppShellRightPanel({
           id="file-opener"
           label="A plugin file viewer or editor tab"
           className={cn(tabClass("file-opener"), "px-1.5")}
-          chipClassName="left-1/2 -bottom-3 -translate-x-1/2"
+          chipClassName="left-1/2 -top-5 -translate-x-1/2"
           onActivate={() => onTabSelect("file-opener")}
         >
           <span data-guide-tab="file-opener">
