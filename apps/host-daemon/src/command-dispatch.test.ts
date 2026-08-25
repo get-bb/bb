@@ -1665,6 +1665,42 @@ describe("dispatchCommand", () => {
     expect(runtime.startThread).toHaveBeenCalledTimes(2);
   });
 
+  it("retries concurrent thread starts when a shell env refresh interrupts their shared probe", async () => {
+    const runtime = createRuntime();
+    const manager = new RuntimeManager({
+      createRuntime: () => runtime,
+      provisionWorkspace: async () => createWorkspace(),
+      shellEnv: { PATH: "/old/bin" },
+    });
+    const staleProbe = createDeferredPromise<ProviderCliStatus>();
+    const providerInstallationStatus = vi
+      .fn<() => Promise<ProviderCliStatus>>()
+      .mockReturnValueOnce(staleProbe.promise)
+      .mockResolvedValueOnce(supportedCodexInstallationStatus());
+    const options = makeDispatchOptions({
+      runtimeManager: manager,
+      providerInstallationStatus,
+    });
+
+    const starts = Promise.all([
+      dispatchCommand(createInstallationGatedThreadStart("thread-1"), options),
+      dispatchCommand(createInstallationGatedThreadStart("thread-2"), options),
+    ]);
+    await vi.waitFor(() =>
+      expect(providerInstallationStatus).toHaveBeenCalledOnce(),
+    );
+
+    await manager.replaceBaseShellEnv({ PATH: "/new/bin" });
+    staleProbe.reject(new Error("Runtime shutting down"));
+
+    await expect(starts).resolves.toEqual([
+      { providerThreadId: "provider-thread-1" },
+      { providerThreadId: "provider-thread-1" },
+    ]);
+    expect(providerInstallationStatus).toHaveBeenCalledTimes(2);
+    expect(runtime.startThread).toHaveBeenCalledTimes(2);
+  });
+
   it("does not remember an unsupported installation", async () => {
     const runtime = createRuntime();
     const manager = new RuntimeManager({
