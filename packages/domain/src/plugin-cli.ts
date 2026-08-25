@@ -1,7 +1,7 @@
 /**
  * Core `bb` CLI top-level command names (plus commander's built-in help).
- * Plugin CLI commands may not shadow these. Maintained by hand and checked
- * against the real Commander program by
+ * Core commands win these names; plugin scaffolding rejects them. Maintained
+ * by hand and checked against the real Commander program by
  * apps/cli/src/__tests__/plugin-cli-proxy.test.ts.
  *
  * "automation" and "connect" are intentionally absent: builtin plugins own
@@ -21,7 +21,8 @@ export const RESERVED_BB_CLI_COMMANDS: readonly string[] = [
   "thread",
 ];
 
-export const pluginCliInvocation = (pluginId: string, name: string): string =>
-  RESERVED_BB_CLI_COMMANDS.includes(name)
-    ? `bb plugin run ${pluginId}`
-    : `bb ${name}`;
+export function pluginCliCall(pluginId: string, name: string): string {
+  if (RESERVED_BB_CLI_COMMANDS.includes(name))
+    return `bb plugin run ${pluginId}`;
+  return `bb ${name}`;
+}

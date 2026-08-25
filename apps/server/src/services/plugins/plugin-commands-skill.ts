@@ -1,6 +1,6 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { pluginCliInvocation } from "@bb/domain/plugin-cli";
+import { pluginCliCall } from "@bb/domain/plugin-cli";
 import { PLUGIN_CLI_OUTPUT_MAX_BYTES } from "@get-bb/plugin-sdk";
 import type { PluginCliCommandInfo } from "./plugin-api.js";
 
@@ -34,10 +34,7 @@ function renderPluginCommandsSkill(
 ): string {
   const sections = contributions.map((contribution) => {
     const direct = `bb ${contribution.name}`;
-    const invocation = pluginCliInvocation(
-      contribution.pluginId,
-      contribution.name,
-    );
+    const invocation = pluginCliCall(contribution.pluginId, contribution.name);
     const lines = [
       `## ${invocation} — ${contribution.summary}`,
       "",
@@ -64,8 +61,7 @@ function renderPluginCommandsSkill(
     "",
     "# Plugin Commands",
     "",
-    "Installed BB plugins contribute these commands. Most use a top-level `bb`",
-    "subcommand; core-name collisions use the explicit plugin-id form.",
+    "Installed BB plugins contribute commands; core-name collisions use the explicit plugin-id form while others use a top-level `bb` subcommand.",
     `Combined stdout and stderr is capped at ${PLUGIN_CLI_OUTPUT_MAX_BYTES} UTF-8 bytes. Above-limit`,
     "results fail atomically as `plugin_cli_output_too_large` and are never clipped;",
     "use pagination or file/streaming commands for large results.",

@@ -286,12 +286,11 @@ describe("plugin CLI commands (bb.cli.register + endpoints + skill + logs)", () 
     expect(
       await (await runCli(harness, "shadower", { argv: [] })).json(),
     ).toMatchObject({ exitCode: 0, stdout: "thread" });
-    expect(
-      await readFile(
-        join(pluginCommandsSkillDir(harness.config.dataDir), "SKILL.md"),
-        "utf8",
-      ),
-    ).toContain("bb plugin run shadower inspect");
+    const skill = await readFile(
+      join(pluginCommandsSkillDir(harness.config.dataDir), "SKILL.md"),
+      "utf8",
+    );
+    expect(skill).toContain("bb plugin run shadower inspect");
 
     const invalid = await writePlugin(
       join(harness.config.dataDir, "fixtures"),

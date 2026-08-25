@@ -7,10 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { z } from "zod";
 import { derivePluginId } from "@bb/domain";
-import {
-  pluginCliInvocation,
-  RESERVED_BB_CLI_COMMANDS,
-} from "@bb/domain/plugin-cli";
+import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
@@ -813,7 +810,7 @@ function printPlugin(plugin: PluginEntry): void {
   }
   if (plugin.cliCommand) {
     console.log(
-      `  command: ${pluginCliInvocation(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}`,
+      `  command: ${pluginCliCall(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}`,
     );
   }
 }
