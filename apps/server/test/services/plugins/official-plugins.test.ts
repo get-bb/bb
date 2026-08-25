@@ -108,6 +108,7 @@ describe("official plugin registry invariants", () => {
       "provider-codex": "Agent interaction",
       "provider-pi": "Agent interaction",
       "provider-retry": "Agent interaction",
+      "scheduled-send": "Workflow management",
       secrets: "Developer tools",
       "side-chat": "Agent interaction",
       tasks: "Workflow management",

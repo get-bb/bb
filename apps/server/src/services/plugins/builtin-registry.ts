@@ -130,6 +130,14 @@ export const BUILTIN_PLUGINS = [
     category: "Developer tools",
   },
   {
+    name: "scheduled-send",
+    pluginId: "scheduled-send",
+    // Off by default: it adds a row to every thread composer's + menu, which
+    // is not a change to make on a user's behalf.
+    defaultEnabled: false,
+    category: "Workflow management",
+  },
+  {
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,
