@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -30,6 +31,12 @@ describe("resolveNewPluginTarget", () => {
     "@acme/team/bb-plugin-hello",
   ])("rejects %s", (name) => {
     expect(resolveNewPluginTarget(name)).toBeNull();
+  });
+
+  it.each(RESERVED_BB_CLI_COMMANDS)("rejects reserved id %s", (id) => {
+    expect(resolveNewPluginTarget(id)).toBeNull();
+    expect(resolveNewPluginTarget(`bb-plugin-${id}`)).toBeNull();
+    expect(resolveNewPluginTarget(`@acme/bb-plugin-${id}`)).toBeNull();
   });
 });
 

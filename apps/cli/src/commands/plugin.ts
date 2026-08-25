@@ -7,6 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Command } from "commander";
 import { z } from "zod";
 import { derivePluginId } from "@bb/domain";
+import { pluginCliCall, RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 import type {
   InstalledPlugin as PluginEntry,
   PluginApplyUpdateResult,
@@ -61,9 +62,11 @@ export function resolveNewPluginTarget(name: string): NewPluginTarget | null {
   ) {
     return null;
   }
+  const pluginId = derivePluginId(packageName);
+  if (RESERVED_BB_CLI_COMMANDS.includes(pluginId)) return null;
   return {
     packageName,
-    directoryName: `bb-plugin-${derivePluginId(packageName)}`,
+    directoryName: `bb-plugin-${pluginId}`,
   };
 }
 
@@ -806,8 +809,13 @@ function printPlugin(plugin: PluginEntry): void {
     );
   }
   if (plugin.cliCommand) {
+    const collisionNote = RESERVED_BB_CLI_COMMANDS.includes(
+      plugin.cliCommand.name,
+    )
+      ? ` (core command "bb ${plugin.cliCommand.name}" takes precedence)`
+      : "";
     console.log(
-      `  command: bb ${plugin.cliCommand.name} — ${plugin.cliCommand.summary}`,
+      `  command: ${pluginCliCall(plugin.id, plugin.cliCommand.name)} — ${plugin.cliCommand.summary}${collisionNote}`,
     );
   }
 }
@@ -1293,7 +1301,7 @@ export function registerPluginCommands(
         const target = resolveNewPluginTarget(name);
         if (target === null) {
           console.error(
-            `Invalid plugin name "${name}" — use name, bb-plugin-name, or @scope/bb-plugin-name.`,
+            `Invalid or reserved plugin name "${name}" — use a non-core name, bb-plugin-name, or @scope/bb-plugin-name.`,
           );
           process.exit(1);
         }
