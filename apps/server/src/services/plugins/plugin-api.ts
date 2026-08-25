@@ -69,11 +69,11 @@ import {
   PLUGIN_AGENT_STATIC_INSTRUCTIONS_MAX_CHARS,
   PLUGIN_HTTP_METHODS,
   parsePluginAgentToolPresentation,
+  pluginCliCollisionWarning,
   readRpcMethodContract,
   registerSettingDescriptors,
   rejectStaleAgentToolFields,
   RESERVED_AGENT_TOOL_NAMES,
-  RESERVED_BB_CLI_COMMANDS,
   RPC_METHOD_PATTERN,
   isStandardSchema,
   summarizeParseIssues,
@@ -1205,11 +1205,6 @@ export function createPluginApi(options: {
           `invalid cli command name ${JSON.stringify(name)} — use lowercase letters, digits, and "-"`,
         );
       }
-      if (RESERVED_BB_CLI_COMMANDS.includes(name)) {
-        throw new Error(
-          `cli command name "${name}" is reserved by the bb CLI — pick another name`,
-        );
-      }
       if (
         typeof registration.summary !== "string" ||
         registration.summary.trim().length === 0
@@ -1477,6 +1472,10 @@ export function createPluginApi(options: {
       providerRegistrations.flush();
       aiServiceRegistrations.flush();
       activated = true;
+      const cliWarning = cliRecord.registration
+        ? pluginCliCollisionWarning(pluginId, cliRecord.registration.name)
+        : null;
+      if (cliWarning) emitLog("warn", cliWarning);
       pendingSharedPorts.clear();
       for (const problem of pendingAgentToolProblems) {
         reportAgentToolProblem(problem);

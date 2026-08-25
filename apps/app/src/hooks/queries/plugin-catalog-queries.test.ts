@@ -164,6 +164,8 @@ describe("plugin catalog queries", () => {
         official: false,
         author: { name: "Acme", url: "https://acme.dev" },
         installed: false,
+        // Likewise: a server from before the field reports no count.
+        installs: null,
         compatible: false,
         incompatibleReason: "requires bb >= 0.15",
       },

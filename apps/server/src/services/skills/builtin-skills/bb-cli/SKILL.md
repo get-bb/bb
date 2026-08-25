@@ -798,7 +798,10 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
     plugin code, and a failed refresh keeps the last catalog bb validated.
   - `bb plugin search <query> [--json]` — search the official plugins by id,
     name, description, category, or tag; status shows installed / compatible /
-    requires newer bb.
+    requires newer bb. An **Installs** column appears once the curated
+    marketplace's `stats.json` sidecar has been read (`installs` in `--json`,
+    null when unknown): anonymous-telemetry install counts, published only for
+    bundled plugins and `bb-community` entries, never for third-party ones.
 - **Third-party marketplaces** (routes under `/api/v1/marketplaces`):
   - `bb marketplace add <source>` — add a marketplace from an https manifest
     URL, `git:<url>[@<ref>]` (bb reads `marketplace.json` from the checkout),
@@ -894,7 +897,8 @@ them by mixing ink into canvas), the `--primary` accent, the secondary text tier
   - `bb plugin config <id> [set <key> <value> | unset <key>]` — declared
     settings. Reload the plugin after configuring (`bb plugin reload <id>`).
   - `bb plugin logs <id> [-n N] [-f]` — the plugin's `bb.log` output.
-  - `bb plugin run <id> [args...]` — explicit form of a plugin's CLI command.
+  - `bb plugin run <id> [args...]` — explicit form; collisions log an activation
+    warning and are annotated by `bb plugin list`.
   - `bb plugin new <name>` — scaffold a todo-list plugin (`server.ts`,
     `app.tsx` with a sidebar page, a `bb <name>` CLI command, a skill, and
     vendored UI components) and install its npm dependencies (scaffold sets

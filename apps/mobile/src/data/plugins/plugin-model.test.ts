@@ -213,6 +213,7 @@ describe("groupCatalogEntries", () => {
       category: "Misc",
       source: "npm:e",
       repositoryUrl: null,
+      installs: null,
       marketplace: "zeta",
       marketplaceDisplayName: "Zeta",
       publisherKey: "zeta",

@@ -1,0 +1,1 @@
+ALTER TABLE `plugin_marketplaces` ADD `stats_json` text;

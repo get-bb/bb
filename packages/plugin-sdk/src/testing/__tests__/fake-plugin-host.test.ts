@@ -10,6 +10,7 @@ import { defineRpcContract } from "../../rpc-contract.js";
 import {
   parsePluginAgentToolPresentation,
   PLUGIN_AGENT_STATUS_LABEL_MAX_CHARS,
+  RESERVED_BB_CLI_COMMANDS,
 } from "../../internal/host-policy.js";
 import { createFakePluginHost, makeThreadResponse } from "../index.js";
 
@@ -530,14 +531,22 @@ describe("cli", () => {
   });
 
   it("uses the production host's reserved CLI names", () => {
-    const reservedHost = createFakePluginHost();
-    expect(() =>
-      reservedHost.bb.cli.register({
-        name: "skill",
-        summary: "nope",
-        run: () => ({ exitCode: 0 }),
-      }),
-    ).toThrow('cli command name "skill" is reserved by the bb CLI');
+    for (const name of RESERVED_BB_CLI_COMMANDS) {
+      const reservedHost = createFakePluginHost();
+      expect(() =>
+        reservedHost.bb.cli.register({
+          name,
+          summary: "nope",
+          run: () => ({ exitCode: 0 }),
+        }),
+      ).not.toThrow();
+      expect(reservedHost.harness.logEntries).toEqual([
+        {
+          level: "warn",
+          message: `CLI command "${name}" collides with core command "bb ${name}"; core keeps the short form. Use "bb plugin run test-plugin" to invoke this plugin.`,
+        },
+      ]);
+    }
 
     const availableHost = createFakePluginHost();
     expect(() =>
@@ -547,6 +556,7 @@ describe("cli", () => {
         run: () => ({ exitCode: 0 }),
       }),
     ).not.toThrow();
+    expect(availableHost.harness.logEntries).toEqual([]);
   });
 
   it("rejects a duplicate registration like the production host", () => {

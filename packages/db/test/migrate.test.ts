@@ -719,6 +719,22 @@ function dropEventParentToolCallIdColumn(db: DbConnection): void {
   }
 }
 
+/**
+ * Migration 0109 adds the marketplace install-count sidecar column. A rewind
+ * that clears journal rows from before it must drop the column, or migrate()
+ * replays the ADD against a table that already has it.
+ */
+function dropMarketplaceStatsColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(plugin_marketplaces)")
+    .all();
+  if (columns.some((column) => column.name === "stats_json")) {
+    db.$client
+      .prepare("ALTER TABLE plugin_marketplaces DROP COLUMN stats_json")
+      .run();
+  }
+}
+
 function dropEnvironmentNameColumn(db: DbConnection): void {
   db.$client.prepare("ALTER TABLE environments DROP COLUMN name").run();
 }
@@ -5117,6 +5133,7 @@ describe("migrate", () => {
       });
 
       dropEventParentToolCallIdColumn(db);
+      dropMarketplaceStatsColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

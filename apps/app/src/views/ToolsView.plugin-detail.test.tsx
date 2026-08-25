@@ -79,6 +79,7 @@ const GITHUB_CATALOG_ENTRY = {
   official: true,
   author: null,
   installed: false,
+  installs: null,
   compatible: true,
   incompatibleReason: null,
 } satisfies PluginCatalogSearchEntry;

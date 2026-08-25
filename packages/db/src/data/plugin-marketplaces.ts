@@ -12,6 +12,8 @@ export interface PluginMarketplaceRow {
   sourceGitRef: string | null;
   sourceGitCommit: string | null;
   manifestJson: string;
+  /** Last-known-good `stats.json` document, verbatim; null when there is none. */
+  statsJson: string | null;
   etag: string | null;
   lastModified: string | null;
   lastSuccessfulRefreshAt: number | null;
@@ -28,6 +30,12 @@ export interface UpsertPluginMarketplaceInput {
   sourceGitRef: string | null;
   sourceGitCommit: string | null;
   manifestJson: string;
+  /**
+   * Last-known-good `stats.json`, verbatim. Every caller states it: passing
+   * the row's current value is how a refresh that did not re-read the sidecar
+   * keeps the counts it already had.
+   */
+  statsJson: string | null;
   etag: string | null;
   lastModified: string | null;
   lastSuccessfulRefreshAt: number | null;

@@ -225,7 +225,7 @@ added/updated/unchanged counts.
   bb plugin config <id> [set <key> <value> | unset <key>]
                                  Show or change a plugin's declared settings
   bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's bb.log output
-  bb plugin run <id> [args...]   Run the plugin's CLI command explicitly
+  bb plugin run <id> [args...]   Run a plugin command explicitly (also works when core owns its name)
   bb plugin token <id> [--rotate]  Print the token for auth:"token" HTTP
                                  routes; --rotate generates a new token,
                                  invalidating the old one
@@ -347,6 +347,15 @@ only — it never installs, updates, or runs plugin code. Entry icons are
 fetched, validated, and served by the bb server, so the app never requests a
 marketplace URL. Installing an entry runs the normal install pipeline against
 its listed git or npm source and records which marketplace listed it.
+
+The BB Community marketplace also publishes install counts beside its
+manifest, at https://getbb.app/marketplace/v1/stats.json. bb re-reads that
+file on every refresh — the counts move while the manifest sits unchanged —
+and shows them in the store and in the Installs column of `bb plugin search`.
+The number is how many BB installations reported installing the plugin
+through anonymous telemetry, so it undercounts: telemetry is opt-out and only
+production builds report. No third-party marketplace has counts; bb measures
+them itself rather than repeating a publisher's claim.
 
 Third-party marketplaces
 
@@ -610,8 +619,9 @@ touching the rest of the app. Installed plugins and their declared settings
 Plugin CLI commands: a plugin can register one top-level subcommand (for
 example `bb github …`). Unknown `bb` commands are looked up against installed
 plugins and proxied to the server, so plugin commands work exactly like core
-commands; core command names always win. Inside agent threads the generated
-`plugin-commands` skill lists the available plugin commands.
+commands; core command names always win. A collision logs an activation warning,
+and `bb plugin list` shows the required `bb plugin run <id>` form. Inside agent
+threads the generated `plugin-commands` skill lists the available plugin commands.
 
 Settings changes do not auto-reload a plugin — run `bb plugin reload <id>`
 after configuring. Add --json to plugin commands for machine-readable output.

@@ -25,6 +25,7 @@ function register(
     sourceGitRef: null,
     sourceGitCommit: null,
     manifestJson,
+    statsJson: null,
     etag: null,
     lastModified: null,
     lastSuccessfulRefreshAt: null,
