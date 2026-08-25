@@ -570,20 +570,25 @@ describe("createRealtimeCacheEffects", () => {
     effects.dispose();
   });
 
-  it("does not abort an in-flight search when a status change patches the row", async () => {
+  it("refetches an in-flight search once it settles after a status change instead of aborting it", async () => {
     vi.useFakeTimers();
     const { effects, queryClient } = createRealtimeEffectsTestContext();
     const threadSearchKey = threadSearchQueryKey({
       limitPerGroup: 20,
       query: "needle",
     });
+    const idleResponse = {
+      active: { results: [{ id: "thr_1", status: "idle" }], total: 1 },
+      archived: { results: [], total: 0 },
+    };
+    const activeResponse = {
+      active: { results: [{ id: "thr_1", status: "active" }], total: 1 },
+      archived: { results: [], total: 0 },
+    };
     // Cached data matters: the default cancelling invalidation only aborts
     // and re-issues a fetch when the query already holds data — exactly the
     // open-search-refreshing case a streaming turn's status flips would starve.
-    queryClient.setQueryData(threadSearchKey, {
-      active: { results: [], total: 0 },
-      archived: { results: [], total: 0 },
-    });
+    queryClient.setQueryData(threadSearchKey, idleResponse);
     const signals: AbortSignal[] = [];
     const resolveFetches: Array<(value: unknown) => void> = [];
     const searchQueryFn = vi.fn(({ signal }: { signal: AbortSignal }) => {
@@ -628,11 +633,26 @@ describe("createRealtimeCacheEffects", () => {
     expect(signals[0]?.aborted).toBe(false);
     expect(searchQueryFn).toHaveBeenCalledTimes(1);
 
-    resolveFetches[0]?.({
-      active: { results: [], total: 0 },
-      archived: { results: [], total: 0 },
-    });
+    // The request read the index before the transition, so its response
+    // still carries the old status. Landing it clears the invalidation, which
+    // would lose the change for good without a trailing refetch.
+    resolveFetches[0]?.(idleResponse);
     await vi.advanceTimersByTimeAsync(0);
+    expect(queryClient.getQueryData(threadSearchKey)).toEqual(idleResponse);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+    expect(signals[0]?.aborted).toBe(false);
+
+    resolveFetches[1]?.(activeResponse);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(queryClient.getQueryData(threadSearchKey)).toEqual(activeResponse);
+    expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      false,
+    );
+    // One trailing read is enough: nothing changed while it ran.
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(searchQueryFn).toHaveBeenCalledTimes(2);
+
     unsubscribeSearch();
     effects.dispose();
   });
@@ -2197,6 +2217,63 @@ describe("createRealtimeCacheEffects", () => {
     expect(sidebarQueryFn).toHaveBeenCalledTimes(3);
 
     unsubscribe();
+    effects.dispose();
+  });
+
+  it("refetches a project list and its forks list once each for a bare status change", async () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const projectListKey = threadListQueryKey({
+      archived: false,
+      projectId: "project-1",
+    });
+    // The forks row's filters extend the project list's, so a partial key
+    // match on the project list key also selects the forks query.
+    const forksListKey = threadListQueryKey({
+      archived: false,
+      originKind: "fork",
+      projectId: "project-1",
+      sourceThreadId: "thr_1",
+    });
+    const createListQueryFn = () =>
+      vi.fn(
+        () =>
+          new Promise<unknown[]>((resolve) => {
+            setTimeout(() => resolve([]), 20);
+          }),
+      );
+    const projectQueryFn = createListQueryFn();
+    const forksQueryFn = createListQueryFn();
+    const projectObserver = new QueryObserver(queryClient, {
+      queryKey: projectListKey,
+      queryFn: projectQueryFn,
+      staleTime: Infinity,
+    });
+    const forksObserver = new QueryObserver(queryClient, {
+      queryKey: forksListKey,
+      queryFn: forksQueryFn,
+      staleTime: Infinity,
+    });
+    const unsubscribeProject = projectObserver.subscribe(() => {});
+    const unsubscribeForks = forksObserver.subscribe(() => {});
+    await vi.advanceTimersByTimeAsync(20);
+    expect(projectQueryFn).toHaveBeenCalledTimes(1);
+    expect(forksQueryFn).toHaveBeenCalledTimes(1);
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "thread",
+      id: "thr_2",
+      metadata: { projectId: "project-1" },
+      changes: ["status-changed"],
+    });
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(projectQueryFn).toHaveBeenCalledTimes(2);
+    expect(forksQueryFn).toHaveBeenCalledTimes(2);
+
+    unsubscribeProject();
+    unsubscribeForks();
     effects.dispose();
   });
 

@@ -127,6 +127,14 @@ interface TimelineInvalidationQueryKeysArgs {
 }
 
 interface ScheduleTrailingActiveRefetchArgs {
+  /**
+   * Match `queryKey` exactly instead of as a prefix. Leaf thread-list keys
+   * enumerated from the cache must be exact: list filters are sparse, so a
+   * project list key is a prefix of that project's forks-row key, and a
+   * prefix match would refetch the forks list with the project list and then
+   * again from the forks key's own run.
+   */
+  exact: boolean;
   queryClient: QueryClient;
   queryKey: QueryKey;
 }
@@ -152,6 +160,8 @@ const throttledActiveRefetchEntries = new WeakMap<
 >();
 
 interface ThrottledActiveRefetchArgs {
+  /** See {@link ScheduleTrailingActiveRefetchArgs.exact}. */
+  exact: boolean;
   minIntervalMs: number;
   queryClient: QueryClient;
   queryKey: QueryKey;
@@ -209,10 +219,11 @@ function timelineInvalidationKey(queryKey: QueryKey): string {
 function hasActiveFetchingQueries(
   queryClient: QueryClient,
   queryKey: QueryKey,
+  exact: boolean,
 ): boolean {
   return queryClient
     .getQueryCache()
-    .findAll({ queryKey, type: "active" })
+    .findAll({ exact, queryKey, type: "active" })
     .some((query) => query.state.fetchStatus !== "idle");
 }
 
@@ -226,18 +237,22 @@ function hasActiveQueries(
 }
 
 function refetchActiveQueriesWithoutCanceling({
+  exact,
   queryClient,
   queryKey,
 }: ScheduleTrailingActiveRefetchArgs): void {
-  const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey);
+  const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey, exact);
   void queryClient
-    .refetchQueries({ queryKey, type: "active" }, { cancelRefetch: false })
+    .refetchQueries(
+      { exact, queryKey, type: "active" },
+      { cancelRefetch: false },
+    )
     .catch(() => {
       // Individual query state already captures the refetch error.
     });
   if (hadActiveFetch) {
     // A change that raced the in-flight read must not be lost.
-    scheduleTrailingActiveRefetch({ queryClient, queryKey });
+    scheduleTrailingActiveRefetch({ exact, queryClient, queryKey });
   }
 }
 
@@ -248,11 +263,12 @@ function refetchActiveQueriesWithoutCanceling({
  * coalesce into one trailing refetch. Never cancels an in-flight fetch.
  */
 function invalidateQueryKeyWithThrottledActiveRefetch({
+  exact,
   minIntervalMs,
   queryClient,
   queryKey,
 }: ThrottledActiveRefetchArgs): void {
-  queryClient.invalidateQueries({ queryKey, refetchType: "none" });
+  queryClient.invalidateQueries({ exact, queryKey, refetchType: "none" });
 
   const scheduleKey = timelineInvalidationKey(queryKey);
   let entries = throttledActiveRefetchEntries.get(queryClient);
@@ -267,7 +283,7 @@ function invalidateQueryKeyWithThrottledActiveRefetch({
   }
   const run = () => {
     entries.set(scheduleKey, { lastRunAt: Date.now(), timer: null });
-    refetchActiveQueriesWithoutCanceling({ queryClient, queryKey });
+    refetchActiveQueriesWithoutCanceling({ exact, queryClient, queryKey });
   };
   const lastRunAt = entry?.lastRunAt ?? Number.NEGATIVE_INFINITY;
   const delayMs = Math.max(0, lastRunAt + minIntervalMs - Date.now());
@@ -279,6 +295,7 @@ function invalidateQueryKeyWithThrottledActiveRefetch({
 }
 
 function scheduleTrailingActiveRefetch({
+  exact,
   queryClient,
   queryKey,
 }: ScheduleTrailingActiveRefetchArgs): void {
@@ -299,7 +316,7 @@ function scheduleTrailingActiveRefetch({
   const waitingSince = Date.now();
 
   const unsubscribe = queryClient.getQueryCache().subscribe(() => {
-    if (hasActiveFetchingQueries(queryClient, queryKey)) {
+    if (hasActiveFetchingQueries(queryClient, queryKey, exact)) {
       return;
     }
 
@@ -309,7 +326,10 @@ function scheduleTrailingActiveRefetch({
     const timer = setTimeout(() => {
       unsubscribers.delete(scheduleKey);
       void queryClient
-        .refetchQueries({ queryKey, type: "active" }, { cancelRefetch: false })
+        .refetchQueries(
+          { exact, queryKey, type: "active" },
+          { cancelRefetch: false },
+        )
         .catch(() => {
           // Individual query state already captures the refetch error.
         });
@@ -344,12 +364,16 @@ function invalidateQueryKeysWithoutCancelingActiveFetches({
   queryKeys,
 }: TimelineInvalidationQueryKeysArgs): void {
   for (const queryKey of queryKeys) {
-    const hadActiveFetch = hasActiveFetchingQueries(queryClient, queryKey);
-    // Avoid aborting the active timeline request on every event batch, but keep
-    // one trailing refetch so an event that raced the in-flight read is not lost.
+    const hadActiveFetch = hasActiveFetchingQueries(
+      queryClient,
+      queryKey,
+      false,
+    );
+    // Avoid aborting the active request on every event batch, but keep one
+    // trailing refetch so an event that raced the in-flight read is not lost.
     queryClient.invalidateQueries({ queryKey }, { cancelRefetch: false });
     if (hadActiveFetch) {
-      scheduleTrailingActiveRefetch({ queryClient, queryKey });
+      scheduleTrailingActiveRefetch({ exact: false, queryClient, queryKey });
     }
   }
 }
@@ -873,6 +897,7 @@ function dirtyActiveThreadListQueriesWithThrottledRefetch({
       continue;
     }
     invalidateQueryKeyWithThrottledActiveRefetch({
+      exact: true,
       minIntervalMs: THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS,
       queryClient,
       queryKey,
@@ -883,6 +908,7 @@ function dirtyActiveThreadListQueriesWithThrottledRefetch({
     threadSearchQueryKeyPrefix(),
   ]) {
     invalidateQueryKeyWithThrottledActiveRefetch({
+      exact: false,
       minIntervalMs: THREAD_LIST_STATUS_FALLBACK_REFETCH_MIN_INTERVAL_MS,
       queryClient,
       queryKey,
@@ -1174,9 +1200,7 @@ function patchThreadListPendingInteractionState({
  * and would overwrite the patch when it lands, so those queries are
  * invalidated, which cancels and restarts them.
  */
-function patchThreadListStatusState(
-  context: ThreadRealtimeDirtyContext,
-): void {
+function patchThreadListStatusState(context: ThreadRealtimeDirtyContext): void {
   const { flushOnce, queryClient, statusChange, threadId } = context;
   if (!threadId || !statusChange) {
     dirtyActiveThreadListQueriesWithThrottledRefetch(context);
@@ -1189,12 +1213,14 @@ function patchThreadListStatusState(
   // Result rows render status but are not list-shaped, so search refreshes
   // rather than patches — once per flush and without aborting a request in
   // flight: status changes ride the immediate path, and the default
-  // cancelling invalidation could starve an open search on a slow link.
+  // cancelling invalidation could starve an open search on a slow link. A
+  // request already in flight read the index before this transition, and
+  // landing it clears the invalidation, so one trailing refetch follows it.
   if (flushOnce("thread-search:status-changed")) {
-    queryClient.invalidateQueries(
-      { queryKey: threadSearchQueryKeyPrefix() },
-      { cancelRefetch: false },
-    );
+    invalidateQueryKeysWithoutCancelingActiveFetches({
+      queryClient,
+      queryKeys: [threadSearchQueryKeyPrefix()],
+    });
   }
 }
 
@@ -1221,6 +1247,7 @@ function dirtyEnvironmentLiveWorkspaceStateQueries({
   queryClient,
 }: EnvironmentRealtimeDirtyContext): void {
   invalidateQueryKeyWithThrottledActiveRefetch({
+    exact: false,
     minIntervalMs: WORK_STATUS_REFETCH_MIN_INTERVAL_MS,
     queryClient,
     queryKey: environmentWorkStatusQueryKeyPrefix(environmentId),
