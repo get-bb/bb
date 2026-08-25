@@ -281,6 +281,7 @@ export function BottomAnchoredScrollBody({
   const scrollContentRef = useRef<HTMLDivElement>(null);
   const shouldStickToBottomRef = useRef(true);
   const userScrollIntentUntilRef = useRef(0);
+  const userScrollInputPendingRef = useRef(false);
   const pointerScrollIntentRef = useRef(false);
   const restoreFrameRef = useRef<number | null>(null);
   const restoreFramesRemainingRef = useRef(0);
@@ -482,6 +483,9 @@ export function BottomAnchoredScrollBody({
   const captureScrollAnchor = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
+    // Input that produced the captured position is already reflected in
+    // scrollTop. Only later input should advance this pending anchor.
+    userScrollInputPendingRef.current = false;
     pendingPrependAnchorRef.current = {
       scrollHeight: scrollArea.scrollHeight,
       scrollTop: scrollArea.scrollTop,
@@ -625,6 +629,7 @@ export function BottomAnchoredScrollBody({
   );
 
   const markUserScrollIntent = useCallback(() => {
+    userScrollInputPendingRef.current = true;
     userScrollIntentUntilRef.current =
       window.performance.now() + USER_SCROLL_INTENT_MS;
   }, []);
@@ -702,11 +707,22 @@ export function BottomAnchoredScrollBody({
   const syncBottomStateFromScroll = useCallback(() => {
     const scrollArea = scrollAreaRef.current;
     if (!scrollArea) return;
+    const hasDirectUserScrollInput =
+      userScrollInputPendingRef.current || pointerScrollIntentRef.current;
+    userScrollInputPendingRef.current = false;
 
     if (
       pendingPrependAnchorRef.current !== null &&
       hasRecentUserScrollIntent()
     ) {
+      if (hasDirectUserScrollInput) {
+        // The user can keep moving while the older-page request is in flight.
+        // Advance only the position: scrollHeight remains the pre-prepend
+        // baseline used to compensate once the new rows mount. Browser-native
+        // anchoring emits scroll without fresh input, so it cannot overwrite
+        // this explicit anchor with a transient position.
+        pendingPrependAnchorRef.current.scrollTop = scrollArea.scrollTop;
+      }
       // Native scroll anchoring can temporarily move a user-scrolled viewport
       // to the current maximum while prepended rows mount. That is not a user
       // request to resume following the bottom. Keep sticky-bottom disabled

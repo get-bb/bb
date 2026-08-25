@@ -125,29 +125,34 @@ function renderTimeline({
   showScrollToBottomControl = false,
   virtualized = false,
 }: RenderArgs) {
-  const rows = rowIds.map((rowId) => (
-    <div key={rowId} data-timeline-row-id={rowId}>
-      {rowId}
-    </div>
-  ));
-  const view = render(
-    <BottomAnchoredScrollBody
-      footer={<div>Footer</div>}
-      maxWidthClassName="max-w-none"
-      scrollAreaClassName={SCROLL_AREA_CLASS}
-      scrollAnchorThreadId={threadId}
-    >
-      {showCapturePrependAnchorControl ? <CapturePrependAnchorControl /> : null}
-      {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
-      {virtualized ? (
-        <div data-timeline-row-list="top-level">
-          <div data-timeline-virtual-spacer="">{rows}</div>
-        </div>
-      ) : (
-        rows
-      )}
-    </BottomAnchoredScrollBody>,
-  );
+  const timeline = (renderedRowIds: string[]) => {
+    const rows = renderedRowIds.map((rowId) => (
+      <div key={rowId} data-timeline-row-id={rowId}>
+        {rowId}
+      </div>
+    ));
+    return (
+      <BottomAnchoredScrollBody
+        footer={<div>Footer</div>}
+        maxWidthClassName="max-w-none"
+        scrollAreaClassName={SCROLL_AREA_CLASS}
+        scrollAnchorThreadId={threadId}
+      >
+        {showCapturePrependAnchorControl ? (
+          <CapturePrependAnchorControl />
+        ) : null}
+        {showScrollToBottomControl ? <ScrollToBottomControl /> : null}
+        {virtualized ? (
+          <div data-timeline-row-list="top-level">
+            <div data-timeline-virtual-spacer="">{rows}</div>
+          </div>
+        ) : (
+          rows
+        )}
+      </BottomAnchoredScrollBody>
+    );
+  };
+  const view = render(timeline(rowIds));
 
   const scrollArea = requireHTMLElement(
     view.container.querySelector(`.${SCROLL_AREA_CLASS}`),
@@ -166,6 +171,7 @@ function renderTimeline({
     getByRole: view.getByRole,
     scrollArea,
     rowElements,
+    rerenderRows: (nextRowIds: string[]) => view.rerender(timeline(nextRowIds)),
     unmount: view.unmount,
   };
 }
@@ -331,7 +337,7 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
   });
 
   it("does not treat a native-anchor jump during prepend as bottom intent", () => {
-    const { getByRole, scrollArea } = renderTimeline({
+    const { getByRole, rerenderRows, scrollArea } = renderTimeline({
       threadId: "thread-a",
       rowIds: ["row-a", "row-b", "row-c"],
       showCapturePrependAnchorControl: true,
@@ -367,6 +373,46 @@ describe("BottomAnchoredScrollBody scroll preservation", () => {
     getLatestResizeObserver().trigger();
 
     expect(scrollArea.scrollTop).toBe(300);
+
+    // The browser-induced scroll event must not replace the explicit anchor
+    // captured at 150; the 100px prepend therefore restores to 250.
+    rerenderRows(["older-row", "row-a", "row-b", "row-c"]);
+    expect(scrollArea.scrollTop).toBe(250);
+  });
+
+  it("preserves user scrolling that continues while older rows load", () => {
+    const { getByRole, rerenderRows, scrollArea } = renderTimeline({
+      threadId: "thread-a",
+      rowIds: ["row-a", "row-b", "row-c"],
+      showCapturePrependAnchorControl: true,
+    });
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 400,
+      clientHeight: 100,
+      scrollTop: 300,
+    });
+    getLatestResizeObserver().trigger();
+
+    scrollArea.scrollTop = 150;
+    fireEvent.wheel(scrollArea, { deltaY: -100 });
+    fireEvent.scroll(scrollArea);
+    fireEvent.click(getByRole("button", { name: "Capture prepend anchor" }));
+
+    // The request remains in flight while the user keeps scrolling upward.
+    scrollArea.scrollTop = 100;
+    fireEvent.wheel(scrollArea, { deltaY: -50 });
+    fireEvent.scroll(scrollArea);
+
+    // One 100px row is prepended. Preserve the user's newer 100px position,
+    // not the stale 150px position captured when loading began.
+    setScrollMetrics(scrollArea, {
+      scrollHeight: 500,
+      clientHeight: 100,
+      scrollTop: scrollArea.scrollTop,
+    });
+    rerenderRows(["older-row", "row-a", "row-b", "row-c"]);
+
+    expect(scrollArea.scrollTop).toBe(200);
   });
 
   it("restores near the saved row when returning to a thread", () => {
