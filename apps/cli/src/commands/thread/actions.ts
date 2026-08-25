@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   threadVisibilitySchema,
   type PermissionMode,
+  type PluginInputs,
   type ReasoningLevel,
   type ServiceTier,
   type ThreadVisibility,
@@ -30,6 +31,7 @@ import {
   collectOption,
 } from "./helpers.js";
 import { HOLD_UNTIL_HELP, parseHoldUntil } from "./hold-time.js";
+import { parsePluginInputs, PLUGIN_INPUT_HELP } from "./plugin-input.js";
 
 interface ThreadUpdateCommandOptions {
   self?: boolean;
@@ -76,6 +78,7 @@ interface ThreadTellCommandOptions {
   file?: string[];
   image?: string[];
   holdUntil?: string;
+  pluginInput?: string[];
 }
 
 interface ThreadActionOptions {
@@ -106,6 +109,7 @@ interface PostThreadMessageArgs {
   files?: readonly string[];
   images?: readonly string[];
   holdUntil?: number;
+  pluginInputs?: PluginInputs;
 }
 
 type PostThreadMessageResult = ThreadSendResult & {
@@ -432,6 +436,12 @@ export function registerActionsCommands(
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
     .option("--hold-until <when>", HOLD_UNTIL_HELP)
+    .option(
+      "--plugin-input <pluginId=json>",
+      PLUGIN_INPUT_HELP,
+      collectOption,
+      [],
+    )
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -448,6 +458,7 @@ export function registerActionsCommands(
     .action(
       action(
         async (id: string, message: string, opts: ThreadTellCommandOptions) => {
+          const pluginInputs = parsePluginInputs(opts.pluginInput);
           const response = await postThreadMessage({
             getUrl,
             threadId: id,
@@ -464,6 +475,7 @@ export function registerActionsCommands(
             ...(opts.holdUntil === undefined
               ? {}
               : { holdUntil: parseHoldUntil(opts.holdUntil) }),
+            ...(pluginInputs === undefined ? {} : { pluginInputs }),
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(describeThreadTellOutcome(id, response));
@@ -556,6 +568,9 @@ async function postThreadMessage(
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
     ...(args.holdUntil === undefined ? {} : { holdUntil: args.holdUntil }),
+    ...(args.pluginInputs === undefined
+      ? {}
+      : { pluginInputs: args.pluginInputs }),
   });
   return {
     ...response,

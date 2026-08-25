@@ -1331,6 +1331,93 @@ describe("@bb/sdk", () => {
     );
   });
 
+  // A limiter gate counts on every dispatch, so an omitted filter must drop out
+  // of the query string rather than narrow the count on the string "undefined".
+  it("counts threads over the grouped count route with only the given filters", async () => {
+    const queue = createFetchQueue([
+      { body: { total: 4 } },
+      {
+        body: {
+          total: 4,
+          groups: [
+            { key: "host_a", count: 3 },
+            { key: null, count: 1 },
+          ],
+        },
+      },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await expect(sdk.threads.count()).resolves.toEqual({ total: 4 });
+    await expect(
+      sdk.threads.count({
+        status: "active",
+        hostId: "host_a",
+        providerId: "codex",
+        projectId: "proj_123",
+        // The root-parent sentinel: a limiter exempting child threads counts
+        // only threads with no parent.
+        parentThreadId: "none",
+        groupBy: "host",
+      }),
+    ).resolves.toEqual({
+      total: 4,
+      groups: [
+        { key: "host_a", count: 3 },
+        { key: null, count: 1 },
+      ],
+    });
+
+    expect(queue.requests[0].url).toBe("http://bb.test/api/v1/threads/count?");
+    expect(queue.requests[1].url).toBe(
+      "http://bb.test/api/v1/threads/count?status=active&hostId=host_a&providerId=codex&projectId=proj_123&parentThreadId=none&groupBy=host",
+    );
+  });
+
+  it("carries pluginInputs onto the create and send bodies", async () => {
+    const queue = createFetchQueue([
+      { body: { id: "thr_123" } },
+      { body: { ok: true, delivery: "sent" } },
+    ]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+
+    await sdk.threads.spawn({
+      projectId: "proj_123",
+      environment: {
+        type: "host",
+        hostId: "host_123",
+        workspace: { type: "unmanaged", path: null },
+      },
+      prompt: "Route me",
+      pluginInputs: { "model-router": { entry: "fast" } },
+    });
+    await sdk.threads.send({
+      threadId: "thr_123",
+      input: [{ type: "text", text: "and again", mentions: [] }],
+      mode: "auto",
+      pluginInputs: { "concurrency-limit": { skip: true } },
+    });
+
+    expect(JSON.parse(queue.requests[0].bodyText ?? "{}")).toMatchObject({
+      pluginInputs: { "model-router": { entry: "fast" } },
+    });
+    expect(JSON.parse(queue.requests[1].bodyText ?? "{}")).toMatchObject({
+      pluginInputs: { "concurrency-limit": { skip: true } },
+    });
+  });
+
   it("exposes thread section mutations", async () => {
     const queue = createFetchQueue([
       {

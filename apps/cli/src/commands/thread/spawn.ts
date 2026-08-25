@@ -30,6 +30,13 @@ import {
   parseServiceTier,
 } from "./helpers.js";
 import { HOLD_UNTIL_HELP, parseHoldUntil } from "./hold-time.js";
+import {
+  autoProviderPluginInputs,
+  parsePluginInputs,
+  parseProviderSelection,
+  PLUGIN_INPUT_HELP,
+  PROVIDER_HELP,
+} from "./plugin-input.js";
 
 interface ThreadSpawnCommandOptions {
   prompt: string;
@@ -57,6 +64,7 @@ interface ThreadSpawnCommandOptions {
   sourceSeqEnd?: string;
   visibility?: string;
   holdUntil?: string;
+  pluginInput?: string[];
 }
 
 export function looksLikePath(value: string): boolean {
@@ -191,10 +199,7 @@ export function registerSpawnCommand(
     .option("--host <id-or-name>", "Alias for --machine")
     .option("--parent-thread <id>", "Parent thread ID for worker thread links")
     .option("--parent-self", "Parent the new thread to BB_THREAD_ID")
-    .option(
-      "--provider <id>",
-      "Provider ID for the thread. Omit to use the project's remembered provider choice",
-    )
+    .option("--provider <id>", PROVIDER_HELP)
     .option(
       "--model <model>",
       "Model ID for the thread. Omit to use the project's remembered default for the resolved provider",
@@ -225,6 +230,12 @@ export function registerSpawnCommand(
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
     .option("--hold-until <when>", HOLD_UNTIL_HELP)
+    .option(
+      "--plugin-input <pluginId=json>",
+      PLUGIN_INPUT_HELP,
+      collectOption,
+      [],
+    )
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
     .option(
@@ -302,6 +313,16 @@ export function registerSpawnCommand(
           opts.holdUntil === undefined
             ? undefined
             : parseHoldUntil(opts.holdUntil);
+        // `auto:<pluginId>[:<entryId>]` sends no providerId at all and speaks
+        // to the router plugin through pluginInputs instead; an explicit
+        // --plugin-input for that same plugin wins over the entry seed.
+        const providerSelection = parseProviderSelection(opts.provider);
+        const pluginInputs = parsePluginInputs(
+          opts.pluginInput,
+          providerSelection === undefined
+            ? {}
+            : autoProviderPluginInputs(providerSelection),
+        );
 
         let thread: Thread;
         try {
@@ -309,7 +330,9 @@ export function registerSpawnCommand(
           thread = await sdk.threads.spawn({
             origin: "cli",
             projectId,
-            ...(opts.provider ? { providerId: opts.provider } : {}),
+            ...(providerSelection?.kind === "provider"
+              ? { providerId: providerSelection.providerId }
+              : {}),
             ...(opts.model ? { model: opts.model } : {}),
             input: buildPromptInputs({
               message: opts.prompt,
@@ -330,6 +353,7 @@ export function registerSpawnCommand(
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
             ...(holdUntil !== undefined ? { holdUntil } : {}),
+            ...(pluginInputs !== undefined ? { pluginInputs } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);

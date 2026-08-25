@@ -357,6 +357,7 @@ type ExpectedThreadsKey =
   | "clearGoal"
   | "compact"
   | "conversationOutline"
+  | "count"
   | "defaultExecutionOptions"
   | "delete"
   | "editMessage"

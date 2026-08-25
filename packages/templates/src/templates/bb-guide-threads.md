@@ -18,7 +18,7 @@ Spawning:
     --project <id>                 Project (required)
     --parent-thread <id>           Parent thread (may be in another project)
     --parent-self                  Parent to the current thread (BB_THREAD_ID)
-    --provider <id>                Provider override
+    --provider <id>                Provider override, or auto:<pluginId>[:<entryId>] to let a router plugin choose
     --model <model>                Model override
     --reasoning-level <level>      Reasoning level: low, medium, high, xhigh, max (provider-dependent)
     --environment <id-or-path>     Attach to an existing environment (ID or workspace path)
@@ -31,6 +31,7 @@ Spawning:
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
     --hold-until <when>            Defer the first turn to an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --plugin-input <pluginId>=<json>  Side-channel input for one plugin's dispatch gates (repeatable)
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork thread
@@ -119,6 +120,20 @@ Listing:
                                              Search threads and messages
   bb thread history <id>                   List prompt history
 
+  bb thread count                          Count threads without listing them
+    --status <status>                      Count threads in this status: idle, starting, active, stopping, error
+    --host <id>                            Count threads whose environment is on this machine
+    --provider <id>                        Count threads running on this provider
+    --project <id>                         Count threads in this project
+    --parent <id|none>                     Count one thread's children, or 'none' for threads with no parent
+    --by <dimension>                       Group the count by host, provider, or project
+
+  Counting happens in the database, so use it instead of listing threads and
+  counting rows: `bb thread list` pages a bounded window and would miscount.
+  Archived, deleted, and hidden threads are excluded. Without --by the command
+  prints one number; with --by it prints a count per group (threads with no
+  host/provider/project group under "-") followed by the total.
+
 Sections:
 
   bb thread section list
@@ -189,6 +204,7 @@ Messaging:
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
     --hold-until <when>                    Defer the send to an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
+    --plugin-input <pluginId>=<json>       Side-channel input for one plugin's dispatch gates (repeatable)
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
 
@@ -294,6 +310,25 @@ Dispatch holds:
   offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
   passed is rejected, as is a bare date, which has no time of day. Several live
   holds on one thread are normal: two scheduled sends coexist.
+
+Plugin input and auto provider selection:
+
+  bb thread spawn ... --plugin-input <pluginId>=<json>
+  bb thread tell <id> "..." --plugin-input <pluginId>=<json>
+  bb thread spawn ... --provider auto:<pluginId>[:<entryId>]
+
+  --plugin-input addresses one plugin's dispatch gates without a side channel.
+  The value is JSON (quote a string as '"text"'), each plugin sees only its own
+  entry, the flag repeats for several plugins, and a later flag for the same
+  plugin replaces the earlier value. The input rides a hold payload and a queued
+  row, so a message that waits still reaches its gate with the input it was sent
+  with. The SDK equivalent is `pluginInputs` on `threads.spawn` / `threads.send`.
+
+  --provider auto:<pluginId>[:<entryId>] is the router convention: bb sends no
+  provider at all and passes `{"entry":"<entryId>"}` to that plugin instead, so
+  the plugin's thread.create gate chooses the provider. A bare auto:<pluginId>
+  uses the entry "default". An explicit --plugin-input for the same plugin
+  overrides the entry. A plain --provider <id> is unchanged.
 
 Persisted panel tabs:
 

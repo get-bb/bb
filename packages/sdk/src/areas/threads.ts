@@ -27,6 +27,9 @@ import type {
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
   ThreadConversationOutlineResponse,
+  ThreadCountGroupBy,
+  ThreadCountQuery,
+  ThreadCountResponse,
   ThreadListResponse,
   ThreadOpenResponse,
   ThreadPaneAction,
@@ -92,6 +95,27 @@ export interface ThreadSearchArgs extends ThreadSearchQuery {
   signal?: AbortSignal;
 }
 
+/**
+ * Counting is a server-side `SELECT count(*)`: a caller that only needs "how
+ * many threads are running on this host" must never page rows through
+ * `threads.list`, which would both cost memory and miscount past its limit.
+ *
+ * Every filter is genuinely absent by default. `parentThreadId` is
+ * three-valued: omitted does not filter on parentage at all, the
+ * `THREAD_COUNT_ROOT_PARENT` sentinel (`"none"`) counts root threads only, and
+ * any other value counts that parent's children. Archived and deleted threads
+ * are excluded by the route.
+ */
+export interface ThreadCountArgs {
+  groupBy?: ThreadCountGroupBy;
+  hostId?: string;
+  parentThreadId?: string;
+  projectId?: string;
+  providerId?: string;
+  signal?: AbortSignal;
+  status?: ThreadStatus;
+}
+
 export interface ThreadResolveMentionsArgs extends ResolveThreadMentionsRequest {
   signal?: AbortSignal;
 }
@@ -103,6 +127,7 @@ export interface ThreadGetArgs {
 }
 
 export type ThreadGetResult = ThreadResponse | ThreadWithIncludesResponse;
+export type ThreadCountResult = ThreadCountResponse;
 export type ThreadListResult = ThreadListResponse;
 export type ThreadSearchResult = ThreadSearchResponse;
 export type ThreadResolveMentionsResult = ResolveThreadMentionsResponse;
@@ -482,6 +507,7 @@ export interface ThreadsArea {
   conversationOutline(
     args: ThreadStatusArgs,
   ): Promise<ThreadConversationOutlineResult>;
+  count(args?: ThreadCountArgs): Promise<ThreadCountResult>;
   defaultExecutionOptions(
     args: ThreadStatusArgs,
   ): Promise<ThreadDefaultExecutionOptionsResult>;
@@ -550,6 +576,19 @@ function listQuery(args: ThreadListArgs | undefined): ThreadListQuery {
   };
 }
 
+function countQuery(args: ThreadCountArgs | undefined): ThreadCountQuery {
+  return {
+    ...(args?.status === undefined ? {} : { status: args.status }),
+    ...(args?.hostId === undefined ? {} : { hostId: args.hostId }),
+    ...(args?.providerId === undefined ? {} : { providerId: args.providerId }),
+    ...(args?.projectId === undefined ? {} : { projectId: args.projectId }),
+    ...(args?.parentThreadId === undefined
+      ? {}
+      : { parentThreadId: args.parentThreadId }),
+    ...(args?.groupBy === undefined ? {} : { groupBy: args.groupBy }),
+  };
+}
+
 function updateJson(args: ThreadUpdateArgs): UpdateThreadRequest {
   return {
     title: args.title,
@@ -574,6 +613,10 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     // Present ⇒ the message parks in a user-owned hold instead of sending or
     // queueing now; the response reports `delivery: "held"`.
     holdUntil: args.holdUntil,
+    // Side-channel input for this send's dispatch gates, keyed by plugin id.
+    // It rides the hold payload and the queued row, so a message that waits
+    // still reaches its gate with the input it was sent with.
+    pluginInputs: args.pluginInputs,
   };
 }
 
@@ -1010,6 +1053,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         transport.api.v1.threads[":id"]["conversation-outline"].$get(
           { param: { id: input.threadId } },
           ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async count(input) {
+      return transport.readJson(
+        transport.api.v1.threads.count.$get(
+          { query: countQuery(input) },
+          ...signalRequestArgs(input?.signal),
         ),
       );
     },
