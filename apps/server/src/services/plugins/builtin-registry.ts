@@ -147,6 +147,15 @@ export const BUILTIN_PLUGINS = [
     category: "Workflow management",
   },
   {
+    name: "model-router",
+    pluginId: "model-router",
+    // Off by default, for the same reason as concurrency-limit: it gates every
+    // thread create and follow-up send, and it changes which model runs — a
+    // decision to put in the hot path only when someone asks for it.
+    defaultEnabled: false,
+    category: "Agent interaction",
+  },
+  {
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,

@@ -1,0 +1,32 @@
+{
+  "name": "bb-plugin-model-router",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Route each prompt to a fast or capable model from length and keyword rules.",
+  "engines": {
+    "bb": ">=0.0"
+  },
+  "bb": {
+    "name": "Model router",
+    "description": "Route each prompt to a fast or capable model from length and keyword rules.",
+    "branding": {
+      "icon": "Brain"
+    },
+    "server": "./server.ts",
+    "app": "./app.tsx"
+  },
+  "keywords": [
+    "bb-plugin"
+  ],
+  "scripts": {
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "workspace:*",
+    "@types/node": "^22.0.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.1"
+  }
+}
