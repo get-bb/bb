@@ -89,7 +89,6 @@ interface BuildCodexConfigArgs {
   threadId: string;
 }
 
-
 interface RealpathContainedDirectoryArgs {
   candidatePath: string;
   trustedParentPath: string;
@@ -686,6 +685,7 @@ export function toCodexDynamicTools(
   dynamicTools: readonly CodexDynamicToolInput[] | undefined,
 ): DynamicToolSpec[] | undefined {
   return dynamicTools?.map((tool) => ({
+    type: "function",
     name: tool.name,
     description: tool.description,
     inputSchema: jsonValueSchema.parse(tool.inputSchema),

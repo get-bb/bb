@@ -29,26 +29,28 @@ adapter imports concrete schema files directly (e.g.
 types are unreachable. The committed tree is therefore pruned to the
 transitive type-import closure of the hand-written importers:
 
-- `adapter.ts`, `visibility.ts`, `permission-mapping.ts`,
-  `interactive-requests.ts`, `adapter.test.ts`.
+- `translator.ts`, `visibility.ts`, `interactive-requests.ts`,
+  `session-params.ts`, `bridge/bridge.ts`, and their `*.test.ts` files.
 
-At the time of pruning that was 336 of the ~580 emitted files; the
-unreachable files and all three `export *` barrels (`index.ts`,
+At the last regenerate (Codex 0.149.1) that was 235 of the 663 emitted
+files; the unreachable files and all three `export *` barrels (`index.ts`,
 `schema/index.ts`, `schema/v2/index.ts`) were removed. Nothing imports the
 barrels, so their removal is type-safe.
 
 ### Re-prune after regenerating
 
 A regenerate (the commands above) re-emits the full set plus the barrels.
-After copying the schema in, delete everything not reachable from the
+The committed tree matches the **stable** surface; the hand-written code
+uses no experimental fields. After copying the schema in, rewrite relative
+imports to `.js` specifiers, delete everything not reachable from the
 importers listed above (and the barrels), then verify:
 
 ```bash
-pnpm exec turbo run typecheck --filter=@bb/agent-runtime
+pnpm exec turbo run typecheck --filter=bb-plugin-provider-codex
 ```
 
 TypeScript reports any over-deletion as a missing-module error; a green
-typecheck plus `pnpm exec turbo run test --filter=@bb/agent-runtime` confirms
+typecheck plus `pnpm exec turbo run test --filter=bb-plugin-provider-codex` confirms
 the kept subset is complete. Keep it pruned to avoid re-vendoring dead types.
 
 ## Source of truth

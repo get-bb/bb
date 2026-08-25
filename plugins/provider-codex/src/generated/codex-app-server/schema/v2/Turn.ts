@@ -6,7 +6,11 @@ import type { TurnError } from "./TurnError.js";
 import type { TurnItemsView } from "./TurnItemsView.js";
 import type { TurnStatus } from "./TurnStatus.js";
 
-export type Turn = { id: string,
+export type Turn = {
+/**
+ * Identifier for this turn. Codex-generated turn IDs are UUIDv7.
+ */
+id: string,
 /**
  * Thread items currently included in this turn payload.
  */

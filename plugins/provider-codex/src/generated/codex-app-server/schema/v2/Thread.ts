@@ -4,87 +4,84 @@
 import type { AbsolutePathBuf } from "../AbsolutePathBuf.js";
 import type { GitInfo } from "./GitInfo.js";
 import type { SessionSource } from "./SessionSource.js";
+import type { ThreadSection } from "./ThreadSection.js";
 import type { ThreadSource } from "./ThreadSource.js";
 import type { ThreadStatus } from "./ThreadStatus.js";
 import type { Turn } from "./Turn.js";
 
-export type Thread = { id: string,
-/**
+export type Thread = {/**
+ * Identifier for this thread. Codex-generated thread IDs are UUIDv7.
+ */
+id: string, /**
  * Session id shared by threads that belong to the same session tree.
  */
-sessionId: string,
-/**
+sessionId: string, /**
  * Source thread id when this thread was created by forking another thread.
  */
-forkedFromId: string | null,
-/**
+forkedFromId: string | null, /**
  * The ID of the parent thread. This will only be set if this thread is a subagent.
  */
-parentThreadId: string | null,
-/**
+parentThreadId: string | null, /**
  * Usually the first user message in the thread, if available.
  */
-preview: string,
-/**
+preview: string, /**
  * Whether the thread is ephemeral and should not be materialized on disk.
  */
-ephemeral: boolean,
-/**
+ephemeral: boolean, /**
+ * The independently persisted section selected for this thread, if any.
+ */
+section: ThreadSection | null, /**
+ * Unix timestamp in seconds when the thread entered its current section.
+ */
+sectionEnteredAt: number | null, /**
+ * Canonical project assignment owned by app-server, if any.
+ */
+projectId: string | null, /**
  * Model provider used for this thread (for example, 'openai').
  */
-modelProvider: string,
-/**
+modelProvider: string, /**
  * Unix timestamp (in seconds) when the thread was created.
  */
-createdAt: number,
-/**
+createdAt: number, /**
  * Unix timestamp (in seconds) when the thread was last updated.
  */
-updatedAt: number,
-/**
+updatedAt: number, /**
+ * Unix timestamp (in seconds) used for thread recency ordering.
+ */
+recencyAt: number | null, /**
  * Current runtime status for the thread.
  */
-status: ThreadStatus,
-/**
+status: ThreadStatus, /**
  * [UNSTABLE] Path to the thread on disk.
  */
-path: string | null,
-/**
+path: string | null, /**
  * Working directory captured for the thread.
  */
-cwd: AbsolutePathBuf,
-/**
+cwd: AbsolutePathBuf, /**
  * Version of the CLI that created the thread.
  */
-cliVersion: string,
-/**
+cliVersion: string, /**
  * Origin of the thread (CLI, VSCode, codex exec, codex app-server, etc.).
  */
-source: SessionSource,
-/**
+source: SessionSource, /**
  * Optional analytics source classification for this thread.
  */
-threadSource: ThreadSource | null,
-/**
+threadSource: ThreadSource | null, /**
  * Optional random unique nickname assigned to an AgentControl-spawned sub-agent.
  */
-agentNickname: string | null,
-/**
+agentNickname: string | null, /**
  * Optional role (agent_role) assigned to an AgentControl-spawned sub-agent.
  */
-agentRole: string | null,
-/**
+agentRole: string | null, /**
  * Optional Git metadata captured when the thread was created.
  */
-gitInfo: GitInfo | null,
-/**
+gitInfo: GitInfo | null, /**
  * Optional user-facing thread title.
  */
-name: string | null,
-/**
+name: string | null, /**
  * Only populated on `thread/resume`, `thread/rollback`, `thread/fork`, and `thread/read`
  * (when `includeTurns` is true) responses.
  * For all other responses and notifications returning a Thread,
  * the turns field will be an empty list.
  */
-turns: Array<Turn>, };
+turns: Array<Turn>};

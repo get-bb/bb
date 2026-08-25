@@ -128,6 +128,7 @@ describe("every codex lifecycle delta carries a presentation", () => {
         text: "hi",
         phase: null,
         memoryCitation: null,
+        delivery: null,
       },
     },
     {
