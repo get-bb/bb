@@ -219,6 +219,7 @@ describe("builtin plugin reconciliation", () => {
     const expectedIcons = new Map([
       ["ask-user-question", "MessageQuestion"],
       ["automations", "Clock"],
+      ["concurrency-limit", "Pause"],
       ["connect", "Smartphone"],
       ["custom-instructions", "EditFile"],
       ["plugin-api-tester", "Beaker"],

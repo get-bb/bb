@@ -92,6 +92,7 @@ describe("official plugin registry invariants", () => {
     const expectedCategories = {
       "ask-user-question": "Agent interaction",
       automations: "Workflow management",
+      "concurrency-limit": "Workflow management",
       connect: "Host access",
       "custom-instructions": "Context & knowledge",
       "plugin-api-tester": "Developer tools",

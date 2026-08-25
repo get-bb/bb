@@ -138,6 +138,15 @@ export const BUILTIN_PLUGINS = [
     category: "Workflow management",
   },
   {
+    name: "concurrency-limit",
+    pluginId: "concurrency-limit",
+    // Off by default: it gates every thread create and follow-up send, so
+    // enabling it on a user's behalf would put a dispatch decision in the hot
+    // path of a server that never asked for admission control.
+    defaultEnabled: false,
+    category: "Workflow management",
+  },
+  {
     name: "side-chat",
     pluginId: "side-chat",
     defaultEnabled: true,
