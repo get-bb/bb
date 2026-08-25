@@ -1,4 +1,8 @@
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
+import {
+  PI_EXTENSION_UI_STATE_NAME,
+  piExtensionUIStateUpdateSchema,
+} from "./extension-state.js";
 import { PI_NATIVE_ROOTS_DECLARATION } from "./native-roots.js";
 
 export function piProviderDeclaration(): PluginProviderDeclaration {
@@ -42,5 +46,11 @@ export function piProviderDeclaration(): PluginProviderDeclaration {
     // scans these beside bb's own.
     ...PI_NATIVE_ROOTS_DECLARATION,
     composerActions: [],
+    // What pi's extensions put beside the composer (`ctx.ui` statuses,
+    // widgets, notifications, title, editor text), as one current snapshot
+    // the bridge keeps and the app bundle renders; null clears it.
+    extensionKinds: {
+      [PI_EXTENSION_UI_STATE_NAME]: { state: piExtensionUIStateUpdateSchema },
+    },
   };
 }

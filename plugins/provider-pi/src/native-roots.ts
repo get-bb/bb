@@ -60,7 +60,7 @@ export interface ResolvePiNativeRootsArgs {
   env: Readonly<Record<string, string | undefined>>;
 }
 
-function resolvePiAgentDir(args: ResolvePiNativeRootsArgs): string {
+export function resolvePiAgentDir(args: ResolvePiNativeRootsArgs): string {
   const configured = args.env.PI_CODING_AGENT_DIR?.trim();
   return configured
     ? resolveStoredPath(args.homeDir, configured, args.homeDir)

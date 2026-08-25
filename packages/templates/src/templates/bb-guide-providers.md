@@ -13,6 +13,12 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
                                           List available providers
   bb provider models [providerId] [--machine <id-or-name> | --environment <id>]
                                           List models for a provider
+  bb pi models list [--machine <id-or-name>] [--json]
+                                          List authenticated Pi models and enabled state
+  bb pi models set <model-id...> [--machine <id-or-name>] [--json]
+                                          Replace Pi's global enabled models
+  bb pi models enable-all [--machine <id-or-name>] [--json]
+                                          Enable every authenticated Pi model
 
 Use these before spawning threads if you are unsure which provider or model to use.
 `--host` is an alias for `--machine`. Machine and environment selectors are

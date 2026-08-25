@@ -342,6 +342,11 @@ environment pull-request show <id>`. Diff commands require an explicit target
   (alias `--host`) or `--environment <id>` to inspect the machine where work
   will run; the selectors cannot be combined. With neither selector they
   intentionally inspect the primary machine.
+- Pi's native cycling preference is available through `bb pi models list`,
+  `bb pi models set <model-id...>`, and `bb pi models enable-all`. Each accepts
+  optional `--machine <id-or-name>` and `--json`; without a machine it targets
+  the primary host. These commands update Pi's global `enabledModels` and do
+  not accept a cwd.
 - Known ACP agents can appear automatically when their CLI is installed on the
   host; for example `opencode`, `omp`, Grok Build's `grok` CLI, or Hermes'
   `hermes` CLI on PATH appears as provider `acp-opencode`, `acp-omp`,

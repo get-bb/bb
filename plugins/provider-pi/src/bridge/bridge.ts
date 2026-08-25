@@ -29,7 +29,10 @@ import {
   createPendingToolCallTracker,
   decodeBridgeJsonRpcResponse,
   experimental_defineProviderBridge,
+  experimental_providerCommandListParamsSchema,
+  experimental_providerCustomCallParamsSchema,
   initializeParamsSchema,
+  USER_QUESTION_MAX_FREE_TEXT_LENGTH,
   providerInstallationRunParamsSchema,
   providerInstallationStatusParamsSchema,
   providerMaintenanceParamsSchema,
@@ -58,6 +61,28 @@ import {
   type PiSessionParams,
 } from "../session-params.js";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
+import {
+  buildPiExtensionDialog,
+  isPiExtensionDialogRequest,
+  piExtensionUiRequestSchema,
+  type PiExtensionDialogRequest,
+  type PiExtensionUiResponse,
+} from "./extension-dialogs.js";
+import {
+  PI_EXTENSION_UI_STATE_KIND,
+  createPiExtensionStateController,
+  type PiExtensionStateController,
+  type PiExtensionUIState,
+} from "./extension-state.js";
+import { readPiModelSettings, writePiEnabledModels } from "./model-settings.js";
+import { buildScopedPiAvailableModels, resolvePiEnabledModelIds } from "./model-scope.js";
+import {
+  createPiPendingInteractionTracker,
+  type PiBridgeInteractionCancelNotification,
+  type PiBridgeInteractionRequest,
+  type PiPendingInteractionTracker,
+} from "./pending-interaction-tracker.js";
+import { readPiEnabledModelPatterns } from "./settings-storage.js";
 import {
   getPiInstallGate,
   getPiProviderInstallationRun,
@@ -91,6 +116,14 @@ const piCommandSchema = z.discriminatedUnion("method", [
     params: initializeParamsSchema,
   }),
   z.object({ method: z.literal("model/list"), params: modelListParamsSchema }),
+  z.object({
+    method: z.literal("provider/custom"),
+    params: experimental_providerCustomCallParamsSchema,
+  }),
+  z.object({
+    method: z.literal("command/list"),
+    params: experimental_providerCommandListParamsSchema,
+  }),
   z.object({
     method: z.literal("provider/health"),
     params: providerMaintenanceParamsSchema,
@@ -182,6 +215,20 @@ interface CurrentThreadSessionArgs {
 
 interface ThreadSession {
   session: PiRpcSession;
+  /** The questions this session's extensions have open in bb. */
+  interactions: PiPendingInteractionTracker;
+  /** What this session's extensions put beside the composer. */
+  extensionState: PiExtensionStateController;
+  /** The last snapshot, replayed once identity is announced. */
+  lastExtensionState: PiExtensionUIState | null;
+  /**
+   * Dialogs raised before identity was announced (an extension asking in
+   * its session_start handler): the runtime cannot attach a question to a
+   * thread it has not been told about yet, so they wait for the announce.
+   */
+  pendingDialogs: PiExtensionDialogRequest[];
+  /** Identity announced: `thread/delta` may carry this session's state. */
+  announced: boolean;
   sessionSerial: number;
   closing: boolean;
   providerThreadId: string;
@@ -195,9 +242,16 @@ interface ThreadSession {
   construction: PiSessionParams;
   /** The model the child spawned on, resolved against pi's catalog. */
   constructionModel: { provider: string; id: string } | undefined;
+  /**
+   * The commands this session's extensions registered, read from pi on the
+   * first slash input. Extensions load once per session: a reload is a new
+   * session.
+   */
+  extensionCommandNames: Set<string> | null;
 }
 
 let sessionSerialCounter = 0;
+let interactionRequestCounter = 0;
 /**
  * The whole stop exchange (abort, in-process leaf read, EOF) fits here, well
  * under the runtime's 30 s request budget.
@@ -205,7 +259,10 @@ let sessionSerialCounter = 0;
 const THREAD_STOP_CLOSE_TIMEOUT_MS = 8_000;
 
 const { send, sendResult, sendError } = createBridgeIo<
-  BridgeEventNotification | BridgeToolCallRequest
+  | BridgeEventNotification
+  | BridgeToolCallRequest
+  | PiBridgeInteractionRequest
+  | PiBridgeInteractionCancelNotification
 >();
 
 const sessions = new Map<string, ThreadSession>();
@@ -282,6 +339,14 @@ async function closeThreadSession(args: {
   if (!threadSession) {
     return;
   }
+  // The state belongs to this session: the null snapshot goes out while
+  // this generation is still current, so it reaches persistence; anything
+  // the child still emits after `closing` flips is fenced off below.
+  threadSession.extensionState.clear();
+  // Withdraw the open questions while this session is still current: each
+  // one answers pi "cancelled" on its way out, which unblocks the tool that
+  // was waiting on the dialog so pi's abort does not sit on it.
+  cancelPendingDialogs(threadSession, args.message);
   threadSession.closing = true;
   resolvePendingToolCalls(threadSession, args.message);
   const closePromise = Promise.resolve()
@@ -317,6 +382,141 @@ function sendThreadDeltas(threadId: string, deltas: readonly ThreadDelta[]): voi
     method: THREAD_DELTA_NOTIFICATION_METHOD,
     params: { threadId, deltas: [...deltas] },
   });
+}
+
+function sendPiExtensionState(threadId: string, state: PiExtensionUIState | null): void {
+  sendThreadDeltas(threadId, [
+    { kind: "extension.state", extensionKind: PI_EXTENSION_UI_STATE_KIND, payload: state },
+  ]);
+}
+
+function updatePiExtensionState(
+  args: CurrentThreadSessionArgs,
+  state: PiExtensionUIState | null,
+): void {
+  const threadSession = sessions.get(args.threadId);
+  // A clear runs while the session closes; later callbacks are fenced.
+  if (!threadSession || threadSession.sessionSerial !== args.sessionSerial) {
+    return;
+  }
+  threadSession.lastExtensionState = state;
+  if (threadSession.announced) {
+    sendPiExtensionState(args.threadId, state);
+  }
+}
+
+/**
+ * A dialog an extension raised: asked in bb as one thread-scoped user
+ * question, answered back to pi as the matching `extension_ui_response`.
+ * Pi's own timeout (`request.timeout`) settles the dialog on its side with
+ * the default answer, so bb's question is withdrawn at the same moment
+ * rather than left open for an answer nobody will read.
+ */
+function requestExtensionDialog(
+  args: CurrentThreadSessionArgs,
+  threadSession: ThreadSession,
+  request: Parameters<typeof buildPiExtensionDialog>[0],
+): void {
+  interactionRequestCounter += 1;
+  const dialog = buildPiExtensionDialog(request, `pi-extension-ui-${interactionRequestCounter}`);
+  const pending = threadSession.interactions.request(dialog.payload);
+  const timeout =
+    "timeout" in request && typeof request.timeout === "number" && request.timeout > 0
+      ? setTimeout(
+          () => pending.cancel("Pi extension dialog timed out"),
+          request.timeout,
+        )
+      : null;
+  timeout?.unref?.();
+  const answer = (response: PiExtensionUiResponse): void => {
+    if (timeout !== null) clearTimeout(timeout);
+    // The session may be closing (stop withdraws its dialogs): pi's child is
+    // still there until the close completes, and the cancelled answer is
+    // what lets its waiting tool return. A replaced session gets nothing.
+    if (sessions.get(args.threadId) !== threadSession) {
+      return;
+    }
+    threadSession.session.respondToExtensionUi(response);
+  };
+  void pending.response.then(
+    (resolution) => answer(dialog.toResponse(resolution)),
+    (error: unknown) => {
+      // bb could not ask (a question the runtime rejected, the session
+      // stopping, pi's own timeout): pi sees "cancelled" either way, and the
+      // reason goes where the runtime logs bridge stderr.
+      process.stderr.write(
+        `pi bridge: extension ${request.method} dialog "${request.title}" cancelled: ${
+          error instanceof Error ? error.message : String(error)
+        }\n`,
+      );
+      answer({ id: request.id, cancelled: true });
+    },
+  );
+}
+
+/** Withdraw every open dialog of a session, queued or asked; pi sees each as cancelled. */
+function cancelPendingDialogs(threadSession: ThreadSession, message: string): void {
+  for (const request of threadSession.pendingDialogs.splice(0)) {
+    threadSession.session.respondToExtensionUi({ id: request.id, cancelled: true });
+  }
+  threadSession.interactions.cancel(message);
+}
+
+function handleExtensionUiRequest(args: CurrentThreadSessionArgs, raw: unknown): void {
+  const threadSession = getCurrentThreadSession(args);
+  if (!threadSession) {
+    return;
+  }
+  const parsed = piExtensionUiRequestSchema.safeParse(raw);
+  if (!parsed.success) {
+    // A dialog bb does not know how to ask is cancelled, never left hanging.
+    const id = typeof (raw as { id?: unknown }).id === "string" ? (raw as { id: string }).id : null;
+    if (id !== null) {
+      threadSession.session.respondToExtensionUi({ id, cancelled: true });
+    }
+    return;
+  }
+  const request = parsed.data;
+  if (isPiExtensionDialogRequest(request)) {
+    if (
+      request.method === "editor" &&
+      request.prefill !== undefined &&
+      request.prefill.length > USER_QUESTION_MAX_FREE_TEXT_LENGTH
+    ) {
+      // bb's verbatim editor caps the prefill and the answer alike; a
+      // shortened document must never round-trip back to the extension as
+      // if the user had edited it that way, so this is pi's "cancelled".
+      process.stderr.write(
+        `pi bridge: extension editor "${request.title}" prefill is ${request.prefill.length} characters; bb supports ${USER_QUESTION_MAX_FREE_TEXT_LENGTH}. Cancelled.\n`,
+      );
+      threadSession.session.respondToExtensionUi({ id: request.id, cancelled: true });
+      return;
+    }
+    if (!threadSession.announced) {
+      threadSession.pendingDialogs.push(request);
+      return;
+    }
+    requestExtensionDialog(args, threadSession, request);
+    return;
+  }
+  const ui = threadSession.extensionState.ui;
+  switch (request.method) {
+    case "notify":
+      ui.notify(request.message, request.notifyType);
+      return;
+    case "setStatus":
+      ui.setStatus(request.statusKey, request.statusText);
+      return;
+    case "setWidget":
+      ui.setWidget(request.widgetKey, request.widgetLines, request.widgetPlacement);
+      return;
+    case "setTitle":
+      ui.setTitle(request.title);
+      return;
+    case "set_editor_text":
+      ui.setEditorText(request.text);
+      return;
+  }
 }
 
 function emitForSession(
@@ -512,6 +712,12 @@ async function handleRequest(request: PiCommand & { id: string | number }): Prom
     case "model/list":
       await handleModelList(request.id, request.params);
       break;
+    case "provider/custom":
+      await handleCustomCall(request.id, request.params);
+      break;
+    case "command/list":
+      await handleCommandList(request.id, request.params);
+      break;
     case "provider/health":
       await handleProviderHealth(request.id, request.params);
       break;
@@ -597,22 +803,108 @@ async function handleModelList(id: string | number, params: { cwd?: string }): P
   if (!gate.ok) {
     // The same wording the other first-party bridges use for a missing CLI,
     // so callers that tolerate an uninstalled provider recognize it.
-    sendError(
-      id,
-      -32000,
-      gate.status === "not_installed"
-        ? "Could not find the pi CLI on this host. Install @earendil-works/pi-coding-agent and retry."
-        : (gate.statusMessage ?? "Pi is not supported on this host."),
-    );
+    sendError(id, -32000, piNotInstalledMessage(gate));
     return;
   }
   try {
-    const catalog = await getPiCatalog(params.cwd ?? process.cwd(), requireExtensionPath());
+    const cwd = params.cwd ?? process.cwd();
+    const catalog = await getPiCatalog(cwd, requireExtensionPath());
     contextWindows.learn(await catalog.rawModels());
-    sendResult(id, await catalog.listModels());
+    // Pi's own `enabledModels` scope: the picker leads with what pi cycles
+    // through, in pi's order; the rest stay selectable but out of the picker.
+    const models = await catalog.catalogModels();
+    sendResult(
+      id,
+      buildScopedPiAvailableModels({
+        models,
+        enabledModelIds: resolvePiEnabledModelIds(readPiEnabledModelPatterns(), models),
+      }),
+    );
   } catch (error) {
     sendError(id, -32000, error instanceof Error ? error.message : String(error));
   }
+}
+
+/**
+ * The plugin's own bridge RPC (`bb.providers.experimental_client`): Pi's
+ * host-local enabled-model preference, read and written on this host. The
+ * catalog is the process cwd's: the global settings file is what is edited,
+ * and the authenticated models do not depend on a workspace.
+ */
+async function handleCustomCall(
+  id: string | number,
+  params: z.infer<typeof experimental_providerCustomCallParamsSchema>,
+): Promise<void> {
+  const gate = await getPiInstallGate();
+  if (!gate.ok) {
+    sendError(id, -32000, piNotInstalledMessage(gate));
+    return;
+  }
+  try {
+    const catalog = await getPiCatalog(process.cwd(), requireExtensionPath());
+    const models = await catalog.catalogModels();
+    if (params.method === "model-settings/read") {
+      if (params.input !== null) {
+        throw new Error("model-settings/read input must be null");
+      }
+      sendResult(id, { result: readPiModelSettings(models) });
+      return;
+    }
+    if (params.method === "model-settings/write") {
+      const input = z
+        .object({ enabledModelIds: z.array(z.string().min(1)).nullable() })
+        .strict()
+        .parse(params.input);
+      sendResult(id, { result: writePiEnabledModels(models, input.enabledModelIds) });
+      return;
+    }
+    sendError(id, BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND, "Unknown Pi custom method");
+  } catch (error) {
+    sendError(id, -32000, error instanceof Error ? error.message : String(error));
+  }
+}
+
+/**
+ * Sessionless command discovery: the commands pi's resources register for
+ * the workspace, listed by the cwd's catalog child (`get_commands`). Partial
+ * answers are pi's: an extension that fails to load is reported on pi's
+ * stderr (the runtime logs it) and the healthy ones are listed.
+ */
+async function handleCommandList(
+  id: string | number,
+  params: z.infer<typeof experimental_providerCommandListParamsSchema>,
+): Promise<void> {
+  if (params.providerId !== "pi") {
+    sendResult(id, { supported: false });
+    return;
+  }
+  // A host where pi cannot answer still has its static skills: the listing
+  // is supported, empty, and says why — never an error that would hide the
+  // daemon's own scan.
+  const gate = await getPiInstallGate();
+  if (!gate.ok) {
+    sendResult(id, { supported: true, commands: [], diagnostics: [piNotInstalledMessage(gate)] });
+    return;
+  }
+  try {
+    const catalog = await getPiCatalog(params.cwd, requireExtensionPath());
+    sendResult(id, { supported: true, commands: await catalog.listCommands(), diagnostics: [] });
+  } catch (error) {
+    sendResult(id, {
+      supported: true,
+      commands: [],
+      diagnostics: [
+        `Pi could not list its commands: ${error instanceof Error ? error.message : String(error)}`,
+      ],
+    });
+  }
+}
+
+/** The wording the other first-party bridges use for a missing or unusable CLI. */
+function piNotInstalledMessage(gate: Awaited<ReturnType<typeof getPiInstallGate>> & { ok: false }): string {
+  return gate.status === "not_installed"
+    ? "Could not find the pi CLI on this host. Install @earendil-works/pi-coding-agent and retry."
+    : (gate.statusMessage ?? "Pi is not supported on this host.");
 }
 
 async function handleProviderHealth(
@@ -745,14 +1037,35 @@ async function constructPiThreadSession(
     providerThreadId,
     threadId,
   });
+  const sessionArgs: CurrentThreadSessionArgs = { sessionSerial, threadId };
   const session = new PiRpcSession(
-    sessionOptions,
+    {
+      ...sessionOptions,
+      onExtensionUiRequest: (request) => handleExtensionUiRequest(sessionArgs, request),
+    },
     createForwardToolCall(() => threadId),
-    createOnPiEvent({ sessionSerial, threadId }),
-    createOnSessionDone({ sessionSerial, threadId }),
+    createOnPiEvent(sessionArgs),
+    createOnSessionDone(sessionArgs),
   );
   const threadSession: ThreadSession = {
     session,
+    interactions: createPiPendingInteractionTracker({
+      nextRequestId: () => {
+        interactionRequestCounter += 1;
+        return `pi-interaction-${interactionRequestCounter}`;
+      },
+      providerThreadId,
+      send,
+      sendCancel: send,
+      threadId,
+    }),
+    extensionState: createPiExtensionStateController((state) =>
+      updatePiExtensionState(sessionArgs, state),
+    ),
+    lastExtensionState: null,
+    pendingDialogs: [],
+    extensionCommandNames: null,
+    announced: false,
     sessionSerial,
     closing: false,
     providerThreadId,
@@ -774,6 +1087,9 @@ async function constructPiThreadSession(
     }
     return threadSession;
   } catch (error) {
+    // A dialog an extension raised during startup has no session to answer
+    // it now: pi sees it cancelled, and nothing stays pending on bb's side.
+    cancelPendingDialogs(threadSession, "Pi session failed to start");
     if (sessions.get(threadId) === threadSession) {
       sessions.delete(threadId);
     }
@@ -873,6 +1189,19 @@ function sendThreadSessionResult(
 ): void {
   sendThreadIdentity(threadId, providerThreadId);
   sendSessionResetBoundary(threadId);
+  const threadSession = sessions.get(threadId);
+  if (threadSession) {
+    threadSession.announced = true;
+    // One snapshot after the reset: it clears what an older session left
+    // and replays what this one's extensions set while identity was pending.
+    sendPiExtensionState(threadId, threadSession.lastExtensionState);
+    // The questions its extensions asked while identity was pending go out
+    // now, in the order pi raised them.
+    const sessionArgs = { sessionSerial: threadSession.sessionSerial, threadId };
+    for (const request of threadSession.pendingDialogs.splice(0)) {
+      requestExtensionDialog(sessionArgs, threadSession, request);
+    }
+  }
   sendResult(id, { providerThreadId, sessionRestorable: true });
 }
 
@@ -967,6 +1296,66 @@ function startPiPrompt(
     });
   });
   return dispatch.consumed;
+}
+
+/**
+ * Pi hands `/name args` to an extension's handler when `name` is a command an
+ * extension registered (`_tryExecuteExtensionCommand`: the text up to the
+ * first space, suffix and all). The session itself says which names those
+ * are.
+ */
+async function isPiExtensionCommand(threadSession: ThreadSession, text: string): Promise<boolean> {
+  if (!text.startsWith("/")) {
+    return false;
+  }
+  const spaceIndex = text.indexOf(" ");
+  const name = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
+  if (name.length === 0) {
+    return false;
+  }
+  try {
+    threadSession.extensionCommandNames ??= await threadSession.session.extensionCommandNames();
+    return threadSession.extensionCommandNames.has(name);
+  } catch (error) {
+    // Unknown is "a prompt": pi itself decides, and the turn waits on its
+    // answer as every prompt does.
+    process.stderr.write(
+      `pi bridge: could not list the session's extension commands: ${
+        error instanceof Error ? error.message : String(error)
+      }\n`,
+    );
+    return false;
+  }
+}
+
+/**
+ * An extension command is not a prompt to wait on. Pi answers `prompt` only
+ * after the handler returns, and a handler that opens a dialog returns only
+ * when bb answers it — an answer the runtime delivers on the same thread
+ * lane `turn/start` is holding. Answering `turn/start` first breaks the
+ * cycle; pi's answer (or the run the handler started) then ends the turn,
+ * which otherwise never closes: no agent run means no `agent_end`.
+ */
+function startPiExtensionCommand(
+  threadSession: ThreadSession,
+  threadId: string,
+  text: string,
+  images: ImageContent[],
+): void {
+  const dispatch = threadSession.session.promptExtensionCommand(
+    text,
+    images.length > 0 ? images : undefined,
+  );
+  void dispatch.settled.then((outcome) => {
+    if (outcome === null) {
+      return;
+    }
+    reportPromptSettled({
+      ...(outcome.error !== undefined ? { error: outcome.error } : {}),
+      sessionSerial: threadSession.sessionSerial,
+      threadId,
+    });
+  });
 }
 
 function startPiCompaction(threadSession: ThreadSession, threadId: string): void {
@@ -1091,6 +1480,16 @@ async function handleTurnStart(id: string | number, params: TurnStartParams): Pr
     sendError(id, BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS, "Missing input text");
     return;
   }
+  if (await isPiExtensionCommand(threadSession, text)) {
+    if (threadSession.closing || sessions.get(params.threadId) !== threadSession) {
+      sendError(id, -32000, "No active pi session");
+      return;
+    }
+    startPiExtensionCommand(threadSession, params.threadId, text, images);
+    recordAcceptedTurnInput(params);
+    sendResult(id, { threadId: params.threadId });
+    return;
+  }
   try {
     await startPiPrompt(threadSession, params.threadId, text, images);
     recordAcceptedTurnInput(params);
@@ -1181,8 +1580,15 @@ function extractInput(input: TurnStartParams["input"]): ExtractedInput {
 
 function handleParsedMessage(parsed: unknown): void {
   const response = decodeBridgeJsonRpcResponse(parsed);
-  if (response && handleToolCallResponse(response)) {
-    return;
+  if (response) {
+    if (handleToolCallResponse(response)) {
+      return;
+    }
+    for (const threadSession of sessions.values()) {
+      if (threadSession.interactions.handleResponse(response)) {
+        return;
+      }
+    }
   }
   const decoded = decodePiJsonRpcRequest(parsed);
   if (decoded.kind === "ignored") {

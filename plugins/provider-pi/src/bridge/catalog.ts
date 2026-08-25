@@ -1,10 +1,14 @@
-import type { AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
+import type {
+  AvailableModel,
+  ExperimentalProviderCommand,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { resolve } from "node:path";
 import {
   createPiModelContextWindowResolverFrom,
   type PiModelContextWindowResolver,
 } from "../delta-translation.js";
 import { buildPiAvailableModels, type PiCatalogModel } from "../model-list.js";
+import { toPiExtensionCommands } from "./command-list.js";
 import { PiRpcChild, buildPiChildEnv } from "./rpc-child.js";
 
 /**
@@ -85,6 +89,10 @@ export interface PiCatalog {
   }>;
   /** Raw models, for the context-window resolver. */
   rawModels(): Promise<PiRpcModel[]>;
+  /** The catalog's models in bb's shape, before any enabled-model scope. */
+  catalogModels(): Promise<PiCatalogModel[]>;
+  /** The commands pi's resources register for this cwd (`get_commands`). */
+  listCommands(): Promise<ExperimentalProviderCommand[]>;
   /** The `get_state` smoke probe: pi booted, loaded the extension, answers. */
   probe(): Promise<Record<string, unknown>>;
   close(): Promise<void>;
@@ -114,6 +122,7 @@ async function spawnCatalog(
       ],
       onEvent: () => {},
       onChannelMessage: () => {},
+      onExtensionUiRequest: null,
       onExit: () => {},
       recordThreadId: null,
     });
@@ -138,23 +147,34 @@ async function spawnCatalog(
   };
   // Readiness: every pi child the bridge spawns opens with `get_state`.
   await probe();
+  const catalogModels = async (): Promise<PiCatalogModel[]> => {
+    const raw = await fetchRaw();
+    const models: PiCatalogModel[] = [];
+    for (const model of raw) {
+      const catalogModel = toCatalogModel(model);
+      if (catalogModel) {
+        models.push(catalogModel);
+      } else {
+        process.stderr.write(
+          `pi bridge: skipped an incomplete model from provider "${String(model.provider)}"\n`,
+        );
+      }
+    }
+    return models;
+  };
   return {
     async listModels() {
-      const raw = await fetchRaw();
-      const models: PiCatalogModel[] = [];
-      for (const model of raw) {
-        const catalogModel = toCatalogModel(model);
-        if (catalogModel) {
-          models.push(catalogModel);
-        } else {
-          process.stderr.write(
-            `pi bridge: skipped an incomplete model from provider "${String(model.provider)}"\n`,
-          );
-        }
-      }
-      return buildPiAvailableModels({ models });
+      return buildPiAvailableModels({ models: await catalogModels() });
     },
     rawModels: fetchRaw,
+    catalogModels,
+    async listCommands() {
+      const data = (await spawnChild().requestOk({ type: "get_commands" })) as
+        | { commands?: unknown }
+        | undefined;
+      touch();
+      return toPiExtensionCommands(data?.commands);
+    },
     probe,
     async close() {
       const activeChild = child;

@@ -14,7 +14,8 @@
       "icon": "./icons/pi.svg"
     },
     "server": "./server.ts",
-    "host": "./src/host.ts"
+    "host": "./src/host.ts",
+    "app": "./app.tsx"
   },
   "keywords": [
     "bb-plugin"
@@ -28,14 +29,24 @@
     "@bb/provider-bridge-protocol": "workspace:*",
     "@earendil-works/pi-ai": "0.84.0",
     "@earendil-works/pi-coding-agent": "0.84.0",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "jsdom": "^29.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "sonner": "^1.7.4",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
     "typebox": "1.3.7",
     "typescript-7": "npm:typescript@^7.0.2",
     "vitest": "^4.1.1"
   },
   "dependencies": {
+    "@bb/shared-ui": "workspace:*",
     "@get-bb/plugin-sdk": "workspace:*",
+    "minimatch": "^10.2.5",
+    "proper-lockfile": "^4.1.2",
     "zod": "^4.3.6"
   }
 }

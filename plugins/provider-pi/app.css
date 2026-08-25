@@ -1,0 +1,44 @@
+.pi-extension-state {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--foreground);
+  font-size: var(--text-xs);
+  line-height: var(--text-xs--line-height);
+}
+
+.pi-extension-state__metadata,
+.pi-extension-state__widget {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.625rem;
+  background: var(--surface-recessed);
+}
+
+.pi-extension-state__title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-extension-state__status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pi-extension-state__widget {
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  line-height: 1.45;
+  white-space: pre;
+}

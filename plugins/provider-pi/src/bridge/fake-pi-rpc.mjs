@@ -60,6 +60,22 @@
  * - `prompt` with `streamingBehavior: "steer"` during a `/hold` run is queued
  *   (`queue_update.steering`), consumed when the run resumes, and the run's
  *   reply names it.
+ * - `/ext [<json>]` is an extension command as pi runs one: the optional
+ *   `extension_ui_request` is raised (and a dialog awaited) before the prompt
+ *   is answered, with no agent run unless the json has `run: true` (a run on
+ *   "ext run" follows the answer); `get_commands` lists `ext` as an
+ *   extension command
+ * - `/ui <json>` emits one `extension_ui_request` line with the given fields
+ *   (a fire-and-forget `ctx.ui` call: notify, setStatus, setWidget, setTitle,
+ *   set_editor_text) and replies "ok". `/ask <json>` emits a dialog request
+ *   (select, confirm, input, editor), waits for the matching
+ *   `extension_ui_response`, and replies with that response as JSON — exactly
+ *   what pi's RPC mode does for `ctx.ui.select` and friends. A `timeout`
+ *   in the dialog's JSON settles it with `{"timedOut":true}` when no answer
+ *   arrives in time, as pi's dialog promise resolves to its default.
+ * - `get_commands` answers FAKE_PI_COMMANDS (a JSON array of pi's
+ *   RpcSlashCommand shape), or a fixed project extension command, global
+ *   extension command, prompt template, and skill.
  */
 
 import { randomUUID } from "node:crypto";
@@ -191,6 +207,8 @@ const followUp = [];
 /** Steering queue: steers that arrived while a run was live. */
 const steering = [];
 let endedWithStreamingFlag = false;
+/** Dialogs raised through `/ask`, awaiting their `extension_ui_response`. */
+const pendingDialogs = new Map();
 
 /** A line held back to go out in one write with the next one. */
 let heldLine = null;
@@ -353,6 +371,26 @@ async function runPrompt(text) {
     // Mid-run death without an answer: the bridge's next write hits EPIPE.
     process.exit(0);
   }
+  let uiReplyText = null;
+  const uiMatch = text.match(/^\/(ui|ask) (.*)$/su);
+  if (uiMatch) {
+    const request = { type: "extension_ui_request", id: randomUUID(), ...JSON.parse(uiMatch[2]) };
+    if (uiMatch[1] === "ui") {
+      event(request);
+      uiReplyText = "ok";
+    } else {
+      const answered = new Promise((resolve) => {
+        pendingDialogs.set(request.id, resolve);
+        if (typeof request.timeout === "number" && request.timeout > 0) {
+          setTimeout(() => {
+            if (pendingDialogs.delete(request.id)) resolve({ timedOut: true });
+          }, request.timeout);
+        }
+      });
+      event(request);
+      uiReplyText = JSON.stringify(await answered);
+    }
+  }
   let toolResultText = "";
   const toolMatch = text.match(/^\/tool (\S+) ?(.*)$/su);
   if (toolMatch) {
@@ -369,7 +407,13 @@ async function runPrompt(text) {
       .join("\n");
   }
   const failed = text === "/fail-run";
-  const reply = failed ? "" : toolMatch ? `Tool said: ${toolResultText}` : `Response to: ${text}`;
+  const reply = failed
+    ? ""
+    : uiReplyText !== null
+      ? uiReplyText
+      : toolMatch
+        ? `Tool said: ${toolResultText}`
+        : `Response to: ${text}`;
   const assistant = {
     role: "assistant",
     content: [{ type: "text", text: reply }],
@@ -464,6 +508,30 @@ async function handle(command) {
       });
       return;
     case "prompt": {
+      const extMatch = command.message.match(/^\/ext(?: (.*))?$/su);
+      if (extMatch) {
+        // An extension command, as pi runs one: the handler (here, one
+        // `ctx.ui` call or nothing) completes before the prompt is answered,
+        // no queue moves, and no agent run starts unless the handler asked
+        // for one (`run: true`, pi.sendMessage with triggerTurn).
+        const { run = false, ...ui } = extMatch[1] ? JSON.parse(extMatch[1]) : {};
+        if (ui.method) {
+          const request = { type: "extension_ui_request", id: randomUUID(), ...ui };
+          const isDialog = ["select", "confirm", "input", "editor"].includes(request.method);
+          const answered = new Promise((resolve) => {
+            if (isDialog) pendingDialogs.set(request.id, resolve);
+            else resolve(null);
+          });
+          event(request);
+          await answered;
+        }
+        respond(id, "prompt");
+        if (run) {
+          await runPrompt("ext run");
+          await drainFollowUps();
+        }
+        return;
+      }
       if (isStreaming && command.streamingBehavior === "steer") {
         // A steer into a live run: pi reports the queue BEFORE it answers the
         // preflight (recorded order), then hands it to the run (a held run
@@ -497,6 +565,54 @@ async function handle(command) {
     }
     case "steer":
       respond(id, "steer");
+      return;
+    case "extension_ui_response": {
+      // No response line: pi answers a dialog's promise and nothing else.
+      const resolve = pendingDialogs.get(command.id);
+      if (resolve) {
+        pendingDialogs.delete(command.id);
+        const { type: _type, id: _id, ...answer } = command;
+        resolve(answer);
+      }
+      return;
+    }
+    case "get_commands":
+      respond(id, "get_commands", {
+        commands: process.env.FAKE_PI_COMMANDS
+          ? JSON.parse(process.env.FAKE_PI_COMMANDS)
+          : [
+              {
+                name: "project-smoke",
+                description: "Project smoke command",
+                source: "extension",
+                sourceInfo: { path: `${process.cwd()}/.pi/extensions/smoke.ts`, source: "extension", scope: "project", origin: "local" },
+              },
+              {
+                name: "global-smoke",
+                description: "Global smoke command",
+                source: "extension",
+                sourceInfo: { path: "/home/user/.pi/agent/extensions/global.ts", source: "extension", scope: "global", origin: "local" },
+              },
+              {
+                name: "ext",
+                description: "Fake extension command: runs one ctx.ui call, or nothing",
+                source: "extension",
+                sourceInfo: { path: "/home/user/.pi/agent/extensions/ext.ts", source: "extension", scope: "global", origin: "local" },
+              },
+              {
+                name: "review",
+                description: "Review the diff",
+                source: "prompt",
+                sourceInfo: { path: "/home/user/.pi/agent/prompts/review.md", source: "prompt", scope: "global", origin: "local" },
+              },
+              {
+                name: "skill:existing",
+                description: "Existing skill",
+                source: "skill",
+                sourceInfo: { path: `${process.cwd()}/.pi/skills/existing/SKILL.md`, source: "skill", scope: "project", origin: "local" },
+              },
+            ],
+      });
       return;
     case "abort":
       if (holdAbort) {
@@ -566,6 +682,7 @@ readLines(process.stdin, (line) => {
   // asynchronously so `abort` — and a steer into a held run — can reach it.
   if (
     command.type === "abort" ||
+    command.type === "extension_ui_response" ||
     command.type === "get_state" ||
     command.type === "get_session_stats" ||
     (command.type === "prompt" && command.streamingBehavior === "steer")

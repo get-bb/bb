@@ -65,6 +65,12 @@ export interface SpawnPiRpcChildArgs {
   args: readonly string[];
   onEvent: (event: Record<string, unknown>) => void;
   onChannelMessage: (message: Record<string, unknown>) => void;
+  /**
+   * Where an `extension_ui_request` line goes (a dialog or a state update an
+   * extension raised through `ctx.ui`). Null for a headless child: every
+   * dialog is cancelled, the way pi's own TUI answers an escaped one.
+   */
+  onExtensionUiRequest: ((request: Record<string, unknown>) => void) | null;
   onExit: (info: PiRpcChildExitInfo) => void;
   /** The bb thread this child serves, for record mode. */
   recordThreadId: string | null;
@@ -282,6 +288,11 @@ export class PiRpcChild {
     return response.data;
   }
 
+  /** Write one command pi answers with no response (`extension_ui_response`). */
+  send(command: Record<string, unknown>): void {
+    this.writeStdin(`${JSON.stringify(command)}\n`);
+  }
+
   /** Write one message to the extension's channel (fd 4). */
   sendChannel(message: Record<string, unknown>): void {
     const writer = this.channelWriter;
@@ -399,15 +410,21 @@ export class PiRpcChild {
       return;
     }
     if (message.type === "extension_ui_request") {
-      // Headless: every dialog another extension raises is cancelled, the
-      // way the in-process bridge's rpc mode binding answered them.
-      this.writeStdin(
-        `${JSON.stringify({
-          type: "extension_ui_response",
-          id: message.id,
-          cancelled: true,
-        })}\n`,
-      );
+      if (this.args.onExtensionUiRequest === null) {
+        // Headless: every dialog another extension raises is cancelled, the
+        // way pi's own TUI answers an escaped dialog; state updates have no
+        // answer and nowhere to go.
+        this.writeStdin(
+          `${JSON.stringify({
+            type: "extension_ui_response",
+            id: message.id,
+            cancelled: true,
+          })}
+`,
+        );
+        return;
+      }
+      this.args.onExtensionUiRequest(message);
       return;
     }
     if (typeof message.type === "string") {

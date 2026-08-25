@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { experimental_buildBridgeToolCallContent as buildBridgeToolCallContent } from "@get-bb/plugin-sdk/provider-bridge";
 import type { ImageContent } from "@earendil-works/pi-ai";
+import { toPiExtensionCommandNames } from "./command-list.js";
 import {
   NO_REQUEST_TIMEOUT,
   PiRpcChild,
@@ -52,6 +53,11 @@ export interface PiRpcSessionOptions {
   scratchDir: string;
   extensionPath: string;
   recordThreadId: string;
+  /**
+   * Where pi's `extension_ui_request` lines go (dialogs and state updates an
+   * extension raises through `ctx.ui`); without it every dialog is cancelled.
+   */
+  onExtensionUiRequest?: (request: Record<string, unknown>) => void;
   /**
    * Spawn without a session file (`--no-session`): a helper that only needs
    * the extension's in-process SDK access (forks) and must not append to any
@@ -116,6 +122,8 @@ function readinessTimeoutMs(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : 60_000;
 }
 const CHANNEL_REQUEST_TIMEOUT_MS = 30_000;
+/** `get_commands` is a memory read; well inside the runtime's 30 s `turn/start` budget. */
+const EXTENSION_COMMAND_LIST_TIMEOUT_MS = 5_000;
 /** How long an `agent_end` waits for the extension's in-process leaf report. */
 const AGENT_END_LEAF_TIMEOUT_MS = 5_000;
 
@@ -179,6 +187,8 @@ export class PiRpcSession {
   private autoRetryInProgress = false;
   private terminalSteerSettlement: Promise<void> | null = null;
   private readonly pendingRunSettlements: PendingRunSettlement[] = [];
+  /** `agent_start` events seen: whether a dispatch started a run at all. */
+  private agentStartCount = 0;
   private readonly channelReplies = new Map<string, ChannelReply>();
   private nextChannelRequestId = 0;
   private lastKnownLeafId: string | null = null;
@@ -220,6 +230,18 @@ export class PiRpcSession {
 
   getProviderCheckpointId(): string | undefined {
     return this.lastKnownLeafId ?? undefined;
+  }
+
+  /**
+   * Answer a dialog an extension raised (`extension_ui_request`). A child
+   * that is gone gets nothing: pi's own timeout or exit settled the dialog.
+   */
+  respondToExtensionUi(response: Record<string, unknown>): void {
+    const child = this.child;
+    if (!child || child.exited) {
+      return;
+    }
+    child.send({ type: "extension_ui_response", ...response });
   }
 
   /**
@@ -305,6 +327,12 @@ export class PiRpcSession {
       onChannelMessage: (message) => {
         if (child === this.child) this.handleChannelMessage(message);
       },
+      onExtensionUiRequest:
+        this.options.onExtensionUiRequest === undefined
+          ? null
+          : (request) => {
+              if (child === this.child) this.options.onExtensionUiRequest?.(request);
+            },
       onExit: (info) => {
         for (const file of scratchFiles) rmSync(file, { force: true });
         if (child === this.child) this.handleExit(info);
@@ -427,6 +455,77 @@ export class PiRpcSession {
       },
     );
     return { consumed: tracked.promise, settled };
+  }
+
+  /**
+   * The names of the commands this session's loaded extensions registered.
+   * Answered from memory; the short budget keeps a wedged pi from eating the
+   * runtime's whole `turn/start` budget before the prompt path reports it.
+   */
+  async extensionCommandNames(): Promise<Set<string>> {
+    const data = (await this.requireChild().requestOk(
+      { type: "get_commands" },
+      EXTENSION_COMMAND_LIST_TIMEOUT_MS,
+    )) as { commands?: unknown } | undefined;
+    return toPiExtensionCommandNames(data?.commands);
+  }
+
+  /**
+   * A slash command an extension registered. Pi runs its handler to
+   * completion before it answers `prompt` — dialogs included — and that
+   * handler moves no input queue and starts no agent run unless it asks for
+   * one. So `consumed` is immediate: the caller must be free to deliver the
+   * dialog answers the handler is waiting on. `settled` is pi's answer, or
+   * the run the handler started, whichever ends the command.
+   */
+  promptExtensionCommand(text: string, images?: ImageContent[]): PiInputDispatch {
+    const child = this.child;
+    if (!child || child.exited) {
+      const consumed = Promise.reject(new Error("No active Pi session"));
+      void consumed.catch(() => undefined);
+      return { consumed, settled: Promise.resolve(null) };
+    }
+    this.isProcessing = true;
+    const runsBefore = this.agentStartCount;
+    const settlement = new Promise<PiPromptRunOutcome>((resolve) => {
+      this.pendingRunSettlements.push({ resolve });
+    });
+    const settled = child
+      .requestOk(
+        {
+          type: "prompt",
+          message: text,
+          ...(images && images.length > 0 ? { images } : {}),
+          streamingBehavior: "followUp",
+        },
+        // The handler owns the wait: a dialog stays open as long as the user
+        // takes, and a dead child rejects every pending request.
+        NO_REQUEST_TIMEOUT,
+      )
+      .then(
+        async (): Promise<PiPromptRunOutcome> => {
+          if (this.agentStartCount === runsBefore) {
+            // A run the handler asked for (pi.sendMessage with triggerTurn)
+            // may surface after pi's answer: pi's own state says whether one
+            // is under way, and its events arrive before that answer does.
+            const state = await this.getState().catch(() => null);
+            if (this.agentStartCount === runsBefore && state?.isStreaming !== true) {
+              // Handled without a run: nothing else will settle the slot.
+              this.dropRunSettlement(settlement);
+              this.isProcessing = false;
+              return {};
+            }
+          }
+          return await settlement;
+        },
+        (error: unknown): PiPromptRunOutcome => {
+          this.isProcessing = false;
+          this.dropRunSettlement(settlement);
+          this.onDone(error);
+          return { error };
+        },
+      );
+    return { consumed: Promise.resolve(), settled };
   }
 
   async steer(text: string, images?: ImageContent[]): Promise<void> {
@@ -872,6 +971,9 @@ export class PiRpcSession {
   }
 
   private trackProcessingState(event: PiRpcEvent): void {
+    if (event.type === "agent_start") {
+      this.agentStartCount += 1;
+    }
     if (
       event.type === "agent_start" ||
       (event.type === "compaction_start" && event.reason === "manual")
