@@ -178,7 +178,7 @@ function SpatialFixture({ children }: { children: ReactNode }) {
       data-guide-responsive-strategy="scroll-together"
       className="overflow-x-auto"
     >
-      <div className="mx-auto w-full min-w-[720px] max-w-5xl">{children}</div>
+      <div className="mx-auto w-full min-w-[720px] max-w-7xl">{children}</div>
     </div>
   );
 }
@@ -463,7 +463,7 @@ export function ProductMap({
             aria-roledescription="carousel"
             aria-label="bb surfaces a plugin can extend"
             onKeyDown={onKeyDown}
-            className="mt-8"
+            className={header ? "mt-8" : "mt-2"}
           >
             {/* The page description and, under a hairline, the navigation —
                 fixed above the stage so panning swaps only the diagram. */}
@@ -513,7 +513,7 @@ export function ProductMap({
               />
             </div>
             <div
-              className="transition-[height] duration-300 ease-out"
+              className="overflow-x-clip transition-[height] duration-300 ease-out"
               style={{
                 ...(stageHeight === null ? undefined : { height: stageHeight }),
                 // Clip the pan sideways only. `overflow: hidden` would also

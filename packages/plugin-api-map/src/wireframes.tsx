@@ -1005,12 +1005,11 @@ function AppShellWireframeBody({
       >
         <MiniIcon icon={SidebarLeftIcon} className="size-4" />
       </span>
-      {/* Sized to the real window's aspect: at the diagram's 1100px width, a
-          650px frame matches the ~1.7:1 footprint of an actual bb window.
-          The thread list and timeline are flex-1, so the height lands there
-          as open canvas. The timeline's explicit minimum keeps this loaded
-          fixture aligned with the same taller loading-placeholder geometry. */}
-      <div className="flex min-h-[650px] items-stretch">
+      {/* Keep the product chrome and pending form at their real density, then
+          give the remaining height to the thread list and timeline. The
+          500px floor leaves the flexible blank canvas compact enough for the
+          fixture and every in-flow card to fit in bb's desktop content area. */}
+      <div className="flex min-h-[500px] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
         <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
@@ -1043,7 +1042,7 @@ function AppShellWireframeBody({
           {/* timeline */}
           <div
             data-guide-fixture="app-window-timeline"
-            className="min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
+            className="min-h-[350px] flex-1 space-y-7 overflow-hidden px-5 py-6"
           >
             {/* user message: right-aligned bubble */}
             <div className="flex justify-end">

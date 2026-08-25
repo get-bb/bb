@@ -69,6 +69,16 @@ describe("Plugin Guide maintenance skill", () => {
       "Every spatial fixture scrolls as one annotated unit",
     );
     expect(normalized).toContain(
+      "must not scroll when its minimum width fits",
+    );
+    expect(normalized).toContain(
+      "Off-stage carousel pages must not contribute inline overflow",
+    );
+    expect(normalized).toContain(
+      "fixture and every open annotation card fit above the fold",
+    );
+    expect(skill).toContain("980px-tall plugin content region");
+    expect(normalized).toContain(
       "The non-spatial capability grid is the only reflowing fixture",
     );
     expect(normalized).toContain("Do not scale a surface fixture");
@@ -92,5 +102,12 @@ describe("Plugin Guide maintenance skill", () => {
     expect(normalized).toContain("provider is exactly `surface`");
     expect(normalized).toContain("item id is exactly `surface:<surface.id>`");
     expect(normalized).toContain("byte-identical clipboard and context output");
+  });
+
+  it("keeps desktop footer spacing from manufacturing page overflow", () => {
+    const app = readFileSync(join(PLUGIN_ROOT, "app.tsx"), "utf8");
+
+    expect(app).toMatch(/pb-6[^"]*lg:pb-0/);
+    expect(app).toMatch(/pt-5[^"]*lg:pt-4/);
   });
 });

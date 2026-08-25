@@ -144,6 +144,21 @@ gutter, highlight rings, menus, and badges move together. Do not scale a
 surface fixture: shrinking its labels and targets makes the teaching surface
 less legible and introduces a second geometry model.
 
+That scroll owner must not scroll when its minimum width fits. At every desktop
+QA width where the complete annotated fixture fits, require
+`scrollWidth <= clientWidth + 1`; at a narrower width, require
+`scrollWidth > clientWidth` and verify that the fixture and its badges move
+together. Off-stage carousel pages must not contribute inline overflow to the
+Guide page. Clip the carousel's inline axis while leaving its block axis
+available to real menus that escape downward.
+
+The desktop app-window fixture and every open annotation card fit above the
+fold in the 980px-tall plugin content region left by a 2048 by 1080 bb window.
+Preserve product-control density and the timeline's readable internal spacing;
+take height from flexible blank timeline canvas rather than shrinking labels,
+controls, or the card. Shorter viewports may scroll vertically to keep the
+card reachable.
+
 Never reflow a spatial fixture into anatomy bb does not have, shrink labels
 until they stop being readable, or add blank canvas to match the tallest page.
 The active carousel stage follows the active fixture's height; off-stage pages

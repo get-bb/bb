@@ -85,9 +85,9 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     // The page owns its scrolling: the host's nav-panel region is a clipped
     // flex column, so without this the part of the page below the fold (the
     // detail card, on a short window) is cut off rather than scrollable.
-    // Full width, no reading-column cap: the wider the page, the more room
-    // the annotation cards have to open beside the fixture instead of below.
-    <div className="h-full min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6 pt-5">
+    // Full width, no reading-column cap: the fixture and its in-flow card use
+    // the available panel width before either needs to scroll.
+    <div className="h-full min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6 pt-5 lg:pb-0 lg:pt-4">
       <ProductMap
         pluginPageHref={pluginPageHref}
         initialSlideId={subPath.split("/")[0] || undefined}

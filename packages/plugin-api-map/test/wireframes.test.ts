@@ -44,6 +44,32 @@ describe("guide fixture boundaries", () => {
     expect(markup).not.toContain("transform:scale(");
   });
 
+  it("clips the off-stage carousel without forcing fitting desktop fixtures to scroll", () => {
+    const markup = renderToStaticMarkup(createElement(ProductMap));
+
+    expect(markup).toContain(
+      "overflow-x-clip transition-[height] duration-300 ease-out",
+    );
+    expect(markup).toContain(
+      "mx-auto w-full min-w-[720px] max-w-7xl",
+    );
+    expect(markup).not.toContain(
+      "mx-auto w-full min-w-[720px] max-w-5xl",
+    );
+  });
+
+  it("does not reserve the full header gap when the compact plugin page omits its header", () => {
+    const compactMarkup = renderToStaticMarkup(createElement(ProductMap));
+    const headedMarkup = renderToStaticMarkup(
+      createElement(ProductMap, {
+        header: createElement("h1", null, "Plugin surfaces"),
+      }),
+    );
+
+    expect(compactMarkup).toContain('class="mt-2"');
+    expect(headedMarkup).toContain('class="mt-8"');
+  });
+
   it("never nests one annotation link inside another", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
     let anchorDepth = 0;
@@ -154,7 +180,7 @@ describe("guide fixture boundaries", () => {
     );
   });
 
-  it("gives the app-window timeline taller, looser placeholder geometry", () => {
+  it("keeps the app window compact enough for its card while retaining loose timeline spacing", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
     const timeline = markup.slice(
       markup.indexOf('data-guide-fixture="app-window-timeline"'),
@@ -162,9 +188,9 @@ describe("guide fixture boundaries", () => {
     );
 
     expect(markup).toContain("min-w-[1180px]");
-    expect(markup).toContain("flex min-h-[650px] items-stretch");
+    expect(markup).toContain("flex min-h-[500px] items-stretch");
     expect(markup).toContain("flex w-[300px] shrink-0 flex-col");
-    expect(timeline).toContain("min-h-[510px] flex-1 space-y-7");
+    expect(timeline).toContain("min-h-[350px] flex-1 space-y-7");
     expect(timeline).toContain("px-5 py-6");
   });
 
