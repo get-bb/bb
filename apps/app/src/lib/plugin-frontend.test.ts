@@ -17,7 +17,6 @@ function candidate(
 ): PluginFrontendCandidate {
   return {
     pluginId,
-    providerIds: [],
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=abc123`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=abc123`,

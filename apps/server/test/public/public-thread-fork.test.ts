@@ -427,7 +427,7 @@ describe("public thread fork route", () => {
     });
   });
 
-  it("stops deferring the seed after a provider turn starts", async () => {
+  it("does not defer the seed to later accepted sends", async () => {
     await withTestHarness(async (harness) => {
       const seed = {
         type: "text" as const,
@@ -462,6 +462,27 @@ describe("public thread fork route", () => {
       if (firstTurn.command.type !== "turn.submit") {
         throw new Error("Expected turn.submit");
       }
+      const rapidInput = textInput("Rapid follow-up");
+      const rapidResponse = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: rapidInput,
+            mode: "auto",
+            permissionMode: "full",
+          }),
+        },
+      );
+      expect(rapidResponse.status).toBe(200);
+      const rapidTurn = await waitForQueuedCommandAfter(
+        harness,
+        firstTurn.row.cursor,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === fork.id,
+      );
+      expect(rapidTurn.command).toMatchObject({ input: rapidInput });
       const lastSequence =
         listEvents(harness.db, { threadId: fork.id }).at(-1)?.sequence ?? 0;
       seedTurnStarted(harness.deps, {
@@ -492,7 +513,7 @@ describe("public thread fork route", () => {
       expect(secondResponse.status).toBe(200);
       const secondTurn = await waitForQueuedCommandAfter(
         harness,
-        firstTurn.row.cursor,
+        rapidTurn.row.cursor,
         ({ command }) =>
           command.type === "turn.submit" && command.threadId === fork.id,
       );

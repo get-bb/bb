@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Button } from "@bb/shared-ui/button";
 import type { JsonValue, PendingInteraction } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
-import { requestProviderPluginFrontend } from "@/lib/plugin-frontend-lazy";
 import { resolvePendingInteraction } from "@/lib/plugin-slot-resolvers";
 import { usePluginSlots } from "@/lib/plugin-slots";
 import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
@@ -48,17 +47,6 @@ export function PluginPendingInteractionComposer({
       ),
     [request.pluginId, request.rendererId, pendingInteractions],
   );
-  // A provider plugin's bundle loads only on the first thread of one of its
-  // providers, so its form is absent when a child thread's request surfaces
-  // on a parent of another provider. Asking for the bundle here loads it and
-  // the form resolves through the slot store; a no-op for a plugin that is
-  // already loaded or is not a provider plugin.
-  useEffect(() => {
-    if (slot === null) {
-      requestProviderPluginFrontend(request.pluginId);
-    }
-  }, [slot, request.pluginId]);
-
   const submit = useCallback(
     async (value: JsonValue) => {
       setSubmitting(true);

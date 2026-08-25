@@ -16,7 +16,6 @@ import {
   markPluginFrontendBootStarted,
   markPluginFrontendsSettled,
 } from "./plugin-frontend-boot-state";
-import { markProviderPluginFrontendWanted } from "./plugin-frontend-provider-gate";
 
 type PluginFrontendModule = typeof import("./plugin-frontend");
 
@@ -91,26 +90,6 @@ export function schedulePluginFrontendReconcile(): void {
       pluginFrontend.schedulePluginFrontendReconcile();
     } catch {
       // Plugin UI stays absent until the next plugins-changed broadcast.
-    }
-  })();
-}
-
-/**
- * The thread view opened a thread of one of `pluginId`'s providers: record
- * the demand in the boot-path-safe gate and, once the runtime is booting,
- * have it reconcile so the deferred provider bundle loads. Before boot the
- * gate alone is enough — boot's own reconcile reads it.
- */
-export function requestProviderPluginFrontend(pluginId: string): void {
-  if (!markProviderPluginFrontendWanted(pluginId) || !bootRequested) return;
-  void (async () => {
-    try {
-      const pluginFrontend = await loadPluginFrontend();
-      await pluginFrontend.bootPluginFrontends();
-      pluginFrontend.schedulePluginFrontendReconcile();
-    } catch {
-      // The provider's rows keep their declarative base until the next
-      // reconcile.
     }
   })();
 }

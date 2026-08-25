@@ -1,4 +1,8 @@
-import { findStoredEventRow, getLastStoredTurnRequestEvent } from "@bb/db";
+import {
+  findStoredEventRow,
+  getLastStoredTurnRequestEvent,
+  getThread,
+} from "@bb/db";
 import type { DbQueryConnection } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import { ApiError } from "../../errors.js";
@@ -19,6 +23,16 @@ interface GroupedPrompt {
   inputGroups: PromptInput[][];
 }
 
+export function getLeadingAgentOnlyInput(input: PromptInput[]): PromptInput[] {
+  const visibleInputIndex = input.findIndex(
+    (item) => item.visibility !== "agent-only",
+  );
+  return input.slice(
+    0,
+    visibleInputIndex === -1 ? input.length : visibleInputIndex,
+  );
+}
+
 export function resolveDeferredFirstTurnContext(
   db: DbQueryConnection,
   threadId: string,
@@ -37,14 +51,9 @@ export function resolveDeferredFirstTurnContext(
   const isUndeliveredRetry =
     request.source === "tell" &&
     request.request.method === "turn/start" &&
-    request.target.kind === "new-turn";
-  const visibleInputIndex = request.input.findIndex(
-    (item) => item.visibility !== "agent-only",
-  );
-  const leadingInput =
-    visibleInputIndex === -1
-      ? request.input
-      : request.input.slice(0, visibleInputIndex);
+    request.target.kind === "new-turn" &&
+    getThread(db, threadId)?.status === "error";
+  const leadingInput = getLeadingAgentOnlyInput(request.input);
   const context = leadingInput.length > 0 ? [...leadingInput] : null;
   if (
     context === null ||

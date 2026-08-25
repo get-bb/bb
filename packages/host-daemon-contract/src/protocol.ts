@@ -326,9 +326,14 @@
 // options are opaque but their bytes and meaning changed and mixed-version
 // compatibility was not deliberately preserved and tested.
 //
+// Version 170 binds deferred agent-only context to its accepted server turn.
+// Rapid later turn.submit input omits that context, while a thread.start that
+// replaces the owning turn retains it. The wire shape is unchanged, but the
+// server-to-daemon payload semantics differ.
+//
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 169 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 170 as const;
 
 /**
  * Absolute ceiling for any executable artifact delivered to a host daemon —

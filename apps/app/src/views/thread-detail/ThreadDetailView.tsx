@@ -26,7 +26,6 @@ import {
   useThreadTimelineController,
 } from "@/components/thread/timeline";
 import { serializePluginPanelParams } from "@/lib/plugin-json-value";
-import { requestProviderPluginFrontend } from "@/lib/plugin-frontend-lazy";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 import {
   defaultAppSettings,
@@ -977,14 +976,7 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
           providerId: thread?.providerId,
         },
   );
-  // A provider plugin's frontend (its timeline renderers) loads on the first
-  // thread of that provider, never at boot (docs/provider-plugin-api.md §5).
   const threadProviderPluginId = threadProviderInfo?.pluginId ?? null;
-  useEffect(() => {
-    if (threadProviderPluginId !== null) {
-      requestProviderPluginFrontend(threadProviderPluginId);
-    }
-  }, [threadProviderPluginId]);
   // Declared here, above the loading / not-found early returns below, so the
   // hook order is the same on every render of this component.
   const threadProviderContextValue = useMemo(

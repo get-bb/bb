@@ -1269,13 +1269,12 @@ export default definePluginApp((app) => {
 (The four first-party provider plugins ship no `app.tsx`: bb vendors their
 marks itself, so an icon-only bundle would only add fetches at boot.)
 
-A provider plugin's `app.tsx` is deferred as a whole, never loaded at boot:
-everything it registers — this icon, a settings section, a nav panel, a
-palette action, a pending-interaction form — arrives on the first thread of
-one of its providers, when one of its forms is asked for, or when its own
-panel route is opened. Until then the served logo stands in for the icon and
-the other slots are absent. UI that must be there at boot belongs in a
-separate, non-provider plugin.
+A provider plugin's `app.tsx` loads in the same deferred boot pass as every
+other plugin's, whether or not one of its providers is selected: everything
+it registers — this icon, a settings section, a nav panel, a palette action,
+a pending-interaction form, composer chrome — is present from that pass on,
+including on the New Thread page. Until the pass runs the served logo stands
+in for the icon. Keep the bundle small; it ships to every window.
 
 Ids are flat and collision-rejected: the first live registration of an id
 wins and a later one from another plugin fails that plugin's load; no id is

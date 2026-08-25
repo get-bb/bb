@@ -13,14 +13,6 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginPendingInteractionComposer } from "./PluginPendingInteractionComposer";
 
-const mocks = vi.hoisted(() => ({
-  requestProviderPluginFrontend: vi.fn(),
-}));
-
-vi.mock("@/lib/plugin-frontend-lazy", () => ({
-  requestProviderPluginFrontend: mocks.requestProviderPluginFrontend,
-}));
-
 // The composer can stop the thread (a provider's request), which needs the
 // query client like every mutation hook.
 function renderComposer(ui: React.ReactElement) {
@@ -129,11 +121,10 @@ describe("PluginPendingInteractionComposer", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDefined();
   });
 
-  it("asks for the owning plugin's frontend while the renderer is missing", () => {
-    // A provider plugin's bundle is deferred until a thread of its provider
-    // opens, so its form is absent when a child thread's request surfaces on
-    // a parent of another provider. The composer requests the bundle; once
-    // it registers, the form resolves through the slot store.
+  it("resolves the form through the slot store once the renderer registers", () => {
+    // A plugin bundle can still be loading when a request surfaces; the
+    // composer shows the fallback and picks the form up from the slot store
+    // without a remount once the renderer registers.
     function Renderer({ interaction: view }: PluginPendingInteractionProps) {
       return <div>form {view.title}</div>;
     }
@@ -151,14 +142,6 @@ describe("PluginPendingInteractionComposer", () => {
       />,
     );
     expect(screen.getByText(/form is unavailable/i)).toBeDefined();
-    expect(mocks.requestProviderPluginFrontend).toHaveBeenCalledWith("secrets");
-    expect(
-      mocks.requestProviderPluginFrontend.mock.calls.every(
-        ([pluginId]) => pluginId === "secrets",
-      ),
-    ).toBe(true);
-    const requestsWhileMissing =
-      mocks.requestProviderPluginFrontend.mock.calls.length;
 
     setPluginSlotRegistrations(
       "secrets",
@@ -174,10 +157,6 @@ describe("PluginPendingInteractionComposer", () => {
       </QueryClientProvider>,
     );
     expect(screen.getByText("form Add secrets")).toBeDefined();
-    // A resolved form never asks again.
-    expect(mocks.requestProviderPluginFrontend.mock.calls.length).toBe(
-      requestsWhileMissing,
-    );
   });
 
   it("keeps cancel available when the renderer crashes", () => {

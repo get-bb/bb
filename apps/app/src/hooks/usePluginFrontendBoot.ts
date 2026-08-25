@@ -6,7 +6,6 @@ import {
 } from "../lib/plugin-frontend-boot-schedule";
 import { markPluginFrontendSettleFloorReached } from "../lib/plugin-frontend-boot-state";
 import { bootPluginFrontends } from "../lib/plugin-frontend-lazy";
-import { markProviderPluginFrontendWanted } from "../lib/plugin-frontend-provider-gate";
 import { whenRouteContentPainted } from "../lib/route-content-paint";
 import { getPluginPanelRoutePluginId } from "../lib/route-paths";
 import { useSystemConfig } from "./queries/system-queries";
@@ -38,10 +37,6 @@ export function usePluginFrontendBoot(): void {
     if (!resolved) return;
     const routePluginId = getPluginPanelRoutePluginId(window.location.pathname);
     if (routePluginId !== null) {
-      // The plugin is the page, so its bundle must load even when it is a
-      // provider plugin whose bundle otherwise waits for a thread of its
-      // provider; the gate is boot-path-safe and a no-op for every other id.
-      markProviderPluginFrontendWanted(routePluginId);
       void bootPluginFrontends();
       return;
     }

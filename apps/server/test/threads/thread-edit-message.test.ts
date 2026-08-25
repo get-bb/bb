@@ -88,6 +88,7 @@ function seedTurn(
     completionStatus?: ThreadEventTurnStatus | null;
     inputGroups?: PromptInput[][];
     initiator?: "agent" | "user";
+    leadingAgentOnlyInput?: PromptInput[];
     requestSequence: number;
     senderThreadId?: string;
     text: string;
@@ -111,7 +112,10 @@ function seedTurn(
         index === 0
           ? group
           : [{ type: "text" as const, text: "\n\n", mentions: [] }, ...group],
-      ) ?? [{ type: "text", text: args.text, mentions: [] }],
+      ) ?? [
+        ...(args.leadingAgentOnlyInput ?? []),
+        { type: "text", text: args.text, mentions: [] },
+      ],
       ...(args.inputGroups !== undefined
         ? { inputGroups: args.inputGroups }
         : {}),
@@ -193,6 +197,7 @@ function seedEditableThread(
     firstProviderCheckpoint?: string | null;
     firstProviderThreadId?: string;
     firstTurnId?: string;
+    firstTurnLeadingAgentOnlyInput?: PromptInput[];
     includeIdentity?: boolean;
     includeSecondTurn?: boolean;
     providerId?: string;
@@ -240,6 +245,9 @@ function seedEditableThread(
     text: "First message",
     threadId: thread.id,
     turnId: args.firstTurnId ?? "turn-first",
+    ...(args.firstTurnLeadingAgentOnlyInput === undefined
+      ? {}
+      : { leadingAgentOnlyInput: args.firstTurnLeadingAgentOnlyInput }),
     ...(args.firstCompletionStatus !== undefined
       ? { completionStatus: args.firstCompletionStatus }
       : {}),
@@ -446,7 +454,14 @@ describe("editThreadMessage", () => {
     "starts a fresh %s session when editing the first turn",
     async (providerId) => {
       await withTestHarness(async (harness) => {
+        const anchor = {
+          type: "text" as const,
+          text: "Reply anchor",
+          mentions: [],
+          visibility: "agent-only" as const,
+        };
         const { environment, thread } = seedEditableThread(harness, {
+          firstTurnLeadingAgentOnlyInput: [anchor],
           includeIdentity: false,
           includeSecondTurn: false,
           providerId,
@@ -478,12 +493,15 @@ describe("editThreadMessage", () => {
         expect(
           listQueuedThreadCommands(harness, "thread.rewind.prepare", thread.id),
         ).toHaveLength(0);
-        await waitForQueuedCommand(
+        const replacement = await waitForQueuedCommand(
           harness,
           (queued) =>
             queued.command.type === "thread.start" &&
             queued.command.threadId === thread.id,
         );
+        expect(replacement.command).toMatchObject({
+          input: [anchor, { text: "Replacement first message" }],
+        });
         expect(
           listQueuedThreadCommands(harness, "thread.start", thread.id),
         ).toEqual([expect.not.objectContaining({ fork: expect.anything() })]);
