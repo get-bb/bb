@@ -81,7 +81,7 @@ describe("surface-entry scaffold", () => {
 
   it("uses one responsive rule for every generated spatial fixture", () => {
     expect(fixtureResponsiveStrategy({ spatialOwner: true })).toBe(
-      "scroll-together",
+      "scale-together",
     );
     expect(fixtureResponsiveStrategy({ spatialOwner: false })).toBe("reflow");
   });
@@ -146,7 +146,7 @@ describe("surface-entry scaffold", () => {
       fixture: {
         groupId: "command-palette",
         fidelity: "flow",
-        responsiveStrategy: "scroll-together",
+        responsiveStrategy: "scale-together",
         requiredStates: ["anchor", "triggered", "outcome"],
         sources: [
           {

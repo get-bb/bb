@@ -59,17 +59,15 @@ describe("Plugin Guide maintenance skill", () => {
     expect(normalized).toContain(
       "Loaded content and its loading skeleton must use aligned height and vertical spacing",
     );
-    expect(normalized).not.toContain("Scale as one unit");
+    expect(normalized).toContain("scales down as one annotated composition");
     expect(normalized).toContain("installed plugin customizations");
     expect(normalized).toContain("visible host scope");
     expect(normalized).toContain("host-owned wrapper or header");
     expect(normalized).toContain("Derive fidelity; do not choose it");
     expect(normalized).toContain("no meaningful spatial owner");
+    expect(normalized).toContain("min(1, availableWidth / authoredWidth)");
     expect(normalized).toContain(
-      "Every spatial fixture scrolls as one annotated unit",
-    );
-    expect(normalized).toContain(
-      "must not scroll when its minimum width fits",
+      "page selector is the sole narrow-width horizontal scroll owner",
     );
     expect(normalized).toContain(
       "Off-stage carousel pages must not contribute inline overflow",
@@ -91,7 +89,10 @@ describe("Plugin Guide maintenance skill", () => {
     expect(normalized).toContain(
       "The non-spatial capability grid is the only reflowing fixture",
     );
-    expect(normalized).toContain("Do not scale a surface fixture");
+    expect(normalized).toContain("Never upscale above `1`");
+    expect(normalized).toContain(
+      "Page tabs are one horizontally scrolling, non-wrapping row",
+    );
 
     expect(normalized).toContain("### Annotation placement decision table");
     expect(normalized).toContain("Never nest interactive annotation anchors");

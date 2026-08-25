@@ -1,5 +1,5 @@
 export type FixtureFidelity = "none" | "anchor" | "state" | "flow";
-export type FixtureResponsiveStrategy = "scroll-together" | "reflow";
+export type FixtureResponsiveStrategy = "scale-together" | "reflow";
 
 export interface SurfaceEntryScaffoldInput {
   id: string | null;
@@ -25,7 +25,7 @@ export interface SurfaceEntryScaffold {
   fixture: null | {
     groupId: string;
     fidelity: Exclude<FixtureFidelity, "none">;
-    responsiveStrategy: "scroll-together";
+    responsiveStrategy: "scale-together";
     requiredStates: string[];
     sources: Array<{ path: string; anchors: string[] }>;
     fixtureClassAnchors: string[];

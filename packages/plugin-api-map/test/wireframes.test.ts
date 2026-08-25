@@ -2,7 +2,11 @@ import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { ProductMap, SURFACE_NUMBERS } from "../src/product-map";
+import {
+  ProductMap,
+  spatialFixtureScale,
+  SURFACE_NUMBERS,
+} from "../src/product-map";
 import { SURFACES_BY_ID } from "../src/surfaces";
 import anatomy from "../src/anatomy-manifest.json";
 import {
@@ -32,30 +36,34 @@ function renderWireframe(
 }
 
 describe("guide fixture boundaries", () => {
-  it("uses one scroll owner for every spatial fixture and reflows only the capability grid", () => {
+  it("scales every spatial fixture together and reflows only the capability grid", () => {
     const markup = renderToStaticMarkup(createElement(ProductMap));
 
     expect(
-      markup.match(/data-guide-responsive-strategy="scroll-together"/g),
+      markup.match(/data-guide-responsive-strategy="scale-together"/g),
     ).toHaveLength(6);
     expect(
       markup.match(/data-guide-responsive-strategy="reflow"/g),
     ).toHaveLength(1);
-    expect(markup).not.toContain("transform:scale(");
+    expect(spatialFixtureScale(360, 720)).toBe(0.5);
+    expect(spatialFixtureScale(720, 720)).toBe(1);
+    expect(spatialFixtureScale(1280, 720)).toBe(1);
   });
 
-  it("clips the off-stage carousel without forcing fitting desktop fixtures to scroll", () => {
+  it("scrolls only the one-line page list and clips off-stage fixture overflow", () => {
     const markup = renderToStaticMarkup(createElement(ProductMap));
 
     expect(markup).toContain(
       "overflow-x-clip transition-[height] duration-300 ease-out",
     );
     expect(markup).toContain(
-      "mx-auto w-full min-w-[720px] max-w-7xl",
+      "mx-auto w-full min-w-[720px] max-w-7xl origin-top-left",
     );
-    expect(markup).not.toContain(
-      "mx-auto w-full min-w-[720px] max-w-5xl",
-    );
+    expect(markup).toContain("data-guide-page-list-scroll");
+    expect(markup).toContain("min-w-0 flex-1 overflow-x-auto");
+    expect(markup).toContain("w-max min-w-full flex-nowrap");
+    expect(markup).not.toContain("flex flex-wrap items-center justify-center");
+    expect(markup).not.toContain("mx-auto w-full min-w-[720px] max-w-5xl");
   });
 
   it("does not reserve the full header gap when the compact plugin page omits its header", () => {

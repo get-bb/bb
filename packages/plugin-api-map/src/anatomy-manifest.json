@@ -20,7 +20,7 @@
     "command-palette-actions": {
       "groupId": "command-palette",
       "fidelity": "flow",
-      "responsiveStrategy": "scroll-together",
+      "responsiveStrategy": "scale-together",
       "requiredStates": ["anchor", "triggered", "outcome"],
       "labels": {
         "anchor": ["Quick palette", "⇧⌘P"],

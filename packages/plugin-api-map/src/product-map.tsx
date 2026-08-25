@@ -16,6 +16,7 @@
 import {
   Fragment,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -171,14 +172,73 @@ function PlatformSlide({ group }: { group: SurfaceGroup }) {
  * its card only once the target slide has actually arrived. */
 const SLIDE_PAN_MS = 300;
 
+/**
+ * A spatial fixture is authored at product scale, then shrinks only when its
+ * complete anatomy cannot fit. The returned value is pure so the boundary is
+ * testable without a layout engine.
+ */
+export function spatialFixtureScale(
+  availableWidth: number,
+  authoredWidth: number,
+): number {
+  if (availableWidth <= 0 || authoredWidth <= 0) return 1;
+  return Math.min(1, availableWidth / authoredWidth);
+}
+
+const useBrowserLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
+
 /** One owner for every spatial fixture's responsive geometry. */
 function SpatialFixture({ children }: { children: ReactNode }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const fixtureRef = useRef<HTMLDivElement>(null);
+  const [geometry, setGeometry] = useState({
+    scale: 1,
+    height: null as number | null,
+  });
+
+  useBrowserLayoutEffect(() => {
+    const frame = frameRef.current;
+    const fixture = fixtureRef.current;
+    if (!frame || !fixture) return;
+
+    const measure = () => {
+      const scale = spatialFixtureScale(frame.clientWidth, fixture.scrollWidth);
+      const height = scale < 1 ? fixture.scrollHeight * scale : null;
+      setGeometry((current) =>
+        Math.abs(current.scale - scale) < 0.0001 && current.height === height
+          ? current
+          : { scale, height },
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    observer.observe(fixture);
+    return () => observer.disconnect();
+  }, []);
+
+  const scaled = geometry.scale < 1;
   return (
     <div
-      data-guide-responsive-strategy="scroll-together"
-      className="overflow-x-auto"
+      ref={frameRef}
+      data-guide-responsive-strategy="scale-together"
+      data-guide-scale={geometry.scale.toFixed(4)}
+      className="w-full overflow-x-clip"
+      style={
+        scaled && geometry.height !== null
+          ? { height: geometry.height }
+          : undefined
+      }
     >
-      <div className="mx-auto w-full min-w-[720px] max-w-7xl">{children}</div>
+      <div
+        ref={fixtureRef}
+        className="mx-auto w-full min-w-[720px] max-w-7xl origin-top-left"
+        style={scaled ? { transform: `scale(${geometry.scale})` } : undefined}
+      >
+        {children}
+      </div>
     </div>
   );
 }
@@ -344,6 +404,8 @@ export function ProductMap({
   const slides = SURFACE_GROUPS;
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const pageListRef = useRef<HTMLDivElement>(null);
+  const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [index, setIndex] = useState(() =>
@@ -353,6 +415,20 @@ export function ProductMap({
     ),
   );
   const stageHeight = useStageHeight(index, slideRefs);
+
+  // The page selector is the sole horizontal scroller. Keep the active page
+  // visible without asking scrollIntoView to move the document vertically.
+  useEffect(() => {
+    const list = pageListRef.current;
+    const button = pageButtonRefs.current[index];
+    if (!list || !button) return;
+    const listRect = list.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    const leftDelta = buttonRect.left - listRect.left;
+    const rightDelta = buttonRect.right - listRect.right;
+    if (leftDelta < 0) list.scrollLeft += leftDelta;
+    else if (rightDelta > 0) list.scrollLeft += rightDelta;
+  }, [index]);
 
   const openSurface = card.openId ? SURFACES_BY_ID.get(card.openId) : undefined;
   const carets = panCarets(index, slides.length);
@@ -481,31 +557,40 @@ export function ProductMap({
                 {slides[index].blurb}
               </p>
             </div>
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <PanButton
                 direction="previous"
                 disabled={!carets.previous}
                 onClick={() => show(index - 1)}
               />
-              <ul className="flex flex-wrap items-center justify-center gap-1">
-                {slides.map((entry, slideIndex) => (
-                  <li key={entry.id}>
-                    <button
-                      type="button"
-                      onClick={() => show(slideIndex)}
-                      aria-current={slideIndex === index ? "true" : undefined}
-                      className={cn(
-                        "cursor-pointer rounded-md px-2.5 py-1 text-xs transition-colors",
-                        slideIndex === index
-                          ? "bg-surface-selected text-foreground"
-                          : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
-                      )}
-                    >
-                      {entry.title}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div
+                ref={pageListRef}
+                data-guide-page-list-scroll
+                className="min-w-0 flex-1 overflow-x-auto"
+              >
+                <ul className="flex w-max min-w-full flex-nowrap items-center justify-center gap-1">
+                  {slides.map((entry, slideIndex) => (
+                    <li key={entry.id} className="shrink-0">
+                      <button
+                        ref={(element) => {
+                          pageButtonRefs.current[slideIndex] = element;
+                        }}
+                        type="button"
+                        onClick={() => show(slideIndex)}
+                        aria-current={slideIndex === index ? "true" : undefined}
+                        className={cn(
+                          "cursor-pointer whitespace-nowrap rounded-md px-2.5 py-1 text-xs transition-colors",
+                          slideIndex === index
+                            ? "bg-surface-selected text-foreground"
+                            : "text-subtle-foreground hover:bg-state-hover hover:text-foreground",
+                        )}
+                      >
+                        {entry.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
               <PanButton
                 direction="next"
                 disabled={!carets.next}

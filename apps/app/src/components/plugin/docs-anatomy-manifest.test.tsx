@@ -46,7 +46,7 @@ const manifest = JSON.parse(
   surfaceFixtures: Record<
     string,
     {
-      responsiveStrategy: "scroll-together";
+      responsiveStrategy: "scale-together";
       sources: Array<{ path: string; anchors: string[] }>;
     }
   >;

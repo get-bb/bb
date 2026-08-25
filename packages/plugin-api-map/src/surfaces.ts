@@ -61,17 +61,17 @@ export interface SurfaceGroup {
   }[];
 }
 
-export type FixtureResponsiveStrategy = "scroll-together" | "reflow";
+export type FixtureResponsiveStrategy = "scale-together" | "reflow";
 
 /**
  * Responsive behavior follows fixture meaning, never an author's per-page
- * preference. Product anatomy scrolls as one readable object; the one
- * non-spatial capability grid uses ordinary document reflow.
+ * preference. Product anatomy scales as one composition; the one non-spatial
+ * capability grid uses ordinary document reflow.
  */
 export function fixtureResponsiveStrategy(
   group: Pick<SurfaceGroup, "fixtureKind">,
 ): FixtureResponsiveStrategy {
-  return group.fixtureKind === "spatial" ? "scroll-together" : "reflow";
+  return group.fixtureKind === "spatial" ? "scale-together" : "reflow";
 }
 
 export const SURFACE_GROUPS: SurfaceGroup[] = [

@@ -137,20 +137,25 @@ replaced boundary and preserve any fallback or original ownership required by
 the API.
 
 Derive responsive behavior from fixture ownership; do not choose it per page.
-Every spatial fixture scrolls as one annotated unit at narrow widths. The
-non-spatial capability grid is the only reflowing fixture. ProductMap owns the
-single horizontal scroll container so the host anatomy, exterior annotation
-gutter, highlight rings, menus, and badges move together. Do not scale a
-surface fixture: shrinking its labels and targets makes the teaching surface
-less legible and introduces a second geometry model.
+Every spatial fixture scales down as one annotated composition when its
+authored product geometry cannot fit. The non-spatial capability grid is the
+only reflowing fixture. ProductMap measures the fixture's authored `scrollWidth`
+and applies exactly `min(1, availableWidth / authoredWidth)` to the host
+anatomy, exterior annotation gutter, highlight rings, menus, and badges
+together. Never upscale above `1`, scale the annotation card, or let an
+individual fixture choose a different responsive mode.
 
-That scroll owner must not scroll when its minimum width fits. At every desktop
-QA width where the complete annotated fixture fits, require
-`scrollWidth <= clientWidth + 1`; at a narrower width, require
-`scrollWidth > clientWidth` and verify that the fixture and its badges move
-together. Off-stage carousel pages must not contribute inline overflow to the
-Guide page. Clip the carousel's inline axis while leaving its block axis
-available to real menus that escape downward.
+The scaled fixture reserves exactly `authoredHeight * scale` in normal flow.
+It must have no horizontal scrollbar, clipped content, or page-level inline
+overflow at any width; require `scrollWidth <= clientWidth + 1` on its outer
+frame after settling. Off-stage carousel pages must not contribute inline
+overflow to the Guide page. Clip the carousel's inline axis while leaving its
+block axis available to real menus that escape downward.
+
+The page selector is the sole narrow-width horizontal scroll owner. Keep its
+labels in one non-wrapping row between fixed Previous and Next carets, and
+horizontally reveal the active label after arrow, click, or linked navigation.
+At wide widths the same row stays centered and does not scroll.
 
 The desktop app-window fixture and every open annotation card fit above the
 fold in the 980px-tall plugin content region left by a 2048 by 1080 bb window.
@@ -168,8 +173,8 @@ vertical room determines whether the in-flow card can remain visible. Keep the
 cap even on very tall displays so blank timeline canvas does not outweigh the
 documented controls and content.
 
-Never reflow a spatial fixture into anatomy bb does not have, shrink labels
-until they stop being readable, or add blank canvas to match the tallest page.
+Never reflow a spatial fixture into anatomy bb does not have, scale any part of
+it independently, or add blank canvas to match the tallest page.
 The active carousel stage follows the active fixture's height; off-stage pages
 are inert and clipped without clipping a live menu that legitimately escapes
 the active fixture.
@@ -188,7 +193,7 @@ pixel nudge:
 | Target shape                                                | Placement rule                                                                                                                              |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | Stable internal region                                      | Put the badge beside an outside corner of the target, clear of its icon, label, selection, and hit area.                                    |
-| Target on a fixture's outer edge                            | Put the badge in an exterior Guide-owned gutter attached to the same scrolling wrapper, not inside the host region.                         |
+| Target on a fixture's outer edge                            | Put the badge in an exterior Guide-owned gutter inside the same scale-together wrapper, not inside the host region.                         |
 | Tab or action on a clipped top edge                         | Put the badge above the actual tab or action in a top-layer sibling. Do not make the product row taller or add host padding to create room. |
 | Target inside a scroll container, menu, palette, or popover | Put the badge outside the clipping subtree, then align it back to the target from the Guide layer. `z-index` alone cannot escape clipping.  |
 | Target nested inside another annotated region               | Keep the target region and its badge as sibling overlays. Never nest interactive annotation anchors.                                        |
@@ -262,9 +267,11 @@ in the top visual layer rather than merely having an unclipped rectangle.
 - Give a surface a dedicated page when it belongs to a different owning host
   surface, overlay, or user job. Do not hide a command palette, file tab, or
   side-panel capability inside a nearby but inaccurate fixture.
-- Keep page tabs and annotations in authored numeric order. Render both
-  page-panning arrows so navigation geometry stays stable; disable the missing
-  direction at the first and last pages rather than removing its control.
+- Keep page tabs and annotations in authored numeric order. Page tabs are one
+  horizontally scrolling, non-wrapping row; fixtures never inherit that
+  overflow. Render both page-panning arrows outside the scroller so navigation
+  geometry stays stable; disable the missing direction at the first and last
+  pages rather than removing its control.
 - Open the annotation card in normal flow below the fixture so it never covers
   the entry point. Panning pages closes the old card; following a cross-page
   reference lands on the destination before opening its card.

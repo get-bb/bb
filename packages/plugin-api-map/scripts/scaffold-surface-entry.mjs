@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 export const FIXTURE_FIDELITY_LEVELS = ["none", "anchor", "state", "flow"];
-export const FIXTURE_RESPONSIVE_STRATEGIES = ["scroll-together", "reflow"];
+export const FIXTURE_RESPONSIVE_STRATEGIES = ["scale-together", "reflow"];
 
 const REQUIRED_STATES = {
   none: [],
@@ -28,7 +28,7 @@ export function classifyFixtureFidelity({
 
 /** Responsive behavior follows spatial ownership, never author preference. */
 export function fixtureResponsiveStrategy({ spatialOwner }) {
-  return spatialOwner ? "scroll-together" : "reflow";
+  return spatialOwner ? "scale-together" : "reflow";
 }
 
 function uniqueSorted(values) {

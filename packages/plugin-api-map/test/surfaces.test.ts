@@ -92,12 +92,12 @@ describe("product-map surfaces", () => {
   it("derives one responsive strategy from each group's fixture kind", () => {
     for (const group of SURFACE_GROUPS) {
       expect(fixtureResponsiveStrategy(group), group.id).toBe(
-        group.fixtureKind === "spatial" ? "scroll-together" : "reflow",
+        group.fixtureKind === "spatial" ? "scale-together" : "reflow",
       );
     }
     expect(
       SURFACE_GROUPS.filter(
-        (group) => fixtureResponsiveStrategy(group) === "scroll-together",
+        (group) => fixtureResponsiveStrategy(group) === "scale-together",
       ).map((group) => group.id),
     ).toEqual([
       "app-shell",
@@ -138,7 +138,7 @@ describe("product-map surfaces", () => {
         `${surfaceId}: missing from ${contract.groupId}`,
       ).toBe(true);
       expect(["anchor", "state", "flow"]).toContain(contract.fidelity);
-      expect(contract.responsiveStrategy).toBe("scroll-together");
+      expect(contract.responsiveStrategy).toBe("scale-together");
       expect(contract.sources.length).toBeGreaterThan(0);
     }
   });

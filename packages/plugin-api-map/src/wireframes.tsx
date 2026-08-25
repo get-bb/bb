@@ -1607,7 +1607,7 @@ export function RealComposerAnnotated() {
     // and the card below sit the same distance from every frame.
     <div className="relative px-7 pb-2 pt-4">
       {/* ProductMap keeps the full-width anatomy and its markers inside the
-          same scroll-together wrapper at every panel width. */}
+          same scale-together wrapper at every panel width. */}
       <div className="mx-auto w-full min-w-[720px] max-w-3xl select-none text-xs leading-none text-muted-foreground">
         <WindowFrame>
           <div className="flex min-h-[506px] flex-col">
