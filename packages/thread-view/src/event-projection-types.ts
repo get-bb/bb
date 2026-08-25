@@ -13,6 +13,7 @@ export type {
   EventProjectionAssistantTextMessage,
   EventProjectionCommandMessage,
   EventProjectionDelegationMessage,
+  EventProjectionDispatchHoldMetadata,
   EventProjectionErrorMessage,
   EventProjectionExtensionMessage,
   EventProjectionFileEditChange,

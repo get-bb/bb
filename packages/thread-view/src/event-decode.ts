@@ -58,6 +58,7 @@ export function getEventProviderThreadId(
     case "system/permissionGrant/lifecycle":
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":
+    case "system/dispatch-hold":
     case "system/provider-turn-watchdog":
       return undefined;
     default:
@@ -117,6 +118,7 @@ export function getEventParentToolCallId(
     case "system/permissionGrant/lifecycle":
     case "system/userQuestion/lifecycle":
     case "system/thread-provisioning":
+    case "system/dispatch-hold":
     case "system/provider-turn-watchdog":
       return undefined;
     default:

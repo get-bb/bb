@@ -77,6 +77,7 @@ export function threadResponse(
     ...base,
     activeBackgroundAgentCount: 0,
     canSpawnChild: true,
+    liveDispatchHoldCount: 0,
     ...overrides,
   };
 }

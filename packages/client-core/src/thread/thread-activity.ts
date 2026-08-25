@@ -15,6 +15,15 @@ export function isRuntimeBusyThread(thread: ThreadRuntimeShape): boolean {
   return isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus);
 }
 
+/**
+ * A never-started thread parked on a live dispatch hold. Display-only state, so
+ * the row reads it off the runtime status rather than the durable thread status
+ * (which is `idle`).
+ */
+export function isHeldThread(thread: ThreadRuntimeShape): boolean {
+  return thread.runtime.displayStatus === "held";
+}
+
 export function hasActiveWorkflowActivity(
   thread: ThreadActivityStateShape,
 ): boolean {
@@ -53,6 +62,7 @@ export interface ThreadListIndicatorState {
   isBackgroundAgentActive: boolean;
   isBackgroundCommandActive: boolean;
   isGoalActive: boolean;
+  isHeld: boolean;
   isPlanModeActive: boolean;
   isRuntimeActive: boolean;
   isWorkflowActive: boolean;
@@ -68,6 +78,7 @@ export type ThreadListIndicatorKind =
   | "plan-mode"
   | "goal"
   | "runtime"
+  | "held"
   | "draft"
   | "unread-success"
   | "none";
@@ -85,6 +96,7 @@ const THREAD_LIST_INDICATOR_LABELS: Record<
   "plan-mode": "Plan mode active",
   goal: "Goal active",
   runtime: "Thread working",
+  held: "Thread held",
   draft: "Thread has unsubmitted draft",
   "unread-success": "Unread thread succeeded",
 };
@@ -124,6 +136,9 @@ export function resolveThreadListIndicator(
   if (state.isWorkflowActive) return "workflow";
   if (state.isBackgroundAgentActive) return "background-agent";
   if (state.isBackgroundCommandActive) return "background-command";
+  // A hold outranks a draft: the draft is the user's to send whenever, while the
+  // hold is work already committed that has not run yet.
+  if (state.isHeld) return "held";
   if (state.hasUnsubmittedDraft) return "draft";
   if (state.hasUnreadSuccess) return "unread-success";
   return "none";

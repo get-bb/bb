@@ -1565,6 +1565,59 @@ describe("buildThreadTimelineFromEvents", () => {
     ).toHaveLength(1);
   });
 
+  it("collapses a hold's events into one row and keeps a live hold pending", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const rows = buildTimelineRows(
+      fromRows([
+        event.dispatchHold({
+          holdId: "hold_1",
+          status: "active",
+          reason: "Scheduled",
+        }),
+        event.dispatchHold({
+          holdId: "hold_1",
+          status: "active",
+          reason: "Waiting for a free slot",
+          entries: [
+            { type: "step", key: "queue", text: "Queued behind 3 threads" },
+          ],
+        }),
+      ]),
+      // Idle is exactly the state a held-before-start thread reports: the row
+      // must not be swept to "interrupted" just because nothing is running.
+      "idle",
+    );
+
+    const holdRows = collectSystemRows(rows).filter(
+      (row) => row.systemKind === "operation" && row.title === "Dispatch held",
+    );
+    expect(holdRows).toHaveLength(1);
+    expect(holdRows[0]?.status).toBe("pending");
+    expect(holdRows[0]?.detail).toBe(
+      ["Waiting for a free slot", "Queued behind 3 threads"].join("\n"),
+    );
+  });
+
+  it("settles a hold row from its own release event", () => {
+    const event = createTimelineEventFactory({ threadId: "thread-1" });
+    const rows = buildTimelineRows(
+      fromRows([
+        event.dispatchHold({ holdId: "hold_1", status: "active" }),
+        event.dispatchHold({ holdId: "hold_1", status: "cancelled" }),
+        // A late report cannot reopen a settled hold.
+        event.dispatchHold({ holdId: "hold_1", status: "active" }),
+      ]),
+      "idle",
+    );
+
+    const holdRows = collectSystemRows(rows).filter(
+      (row) => row.systemKind === "operation" && row.detail === "Scheduled",
+    );
+    expect(holdRows).toHaveLength(1);
+    expect(holdRows[0]?.title).toBe("Dispatch cancelled");
+    expect(holdRows[0]?.status).toBe("interrupted");
+  });
+
   it("normalizes carriage-return provisioning output in operation detail", () => {
     const event = createTimelineEventFactory({ threadId: "thread-1" });
     const rows = buildTimelineRows(

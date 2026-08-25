@@ -17,6 +17,8 @@ export function getFollowUpPromptPlaceholder(
       return "Waiting for host to reconnect...";
     case "error":
       return "Retry by sending a follow-up message";
+    case "held":
+      return "Held until release...";
     case "idle":
     case "active":
       return "Ask for a follow-up. @ to mention files, folders, sections, or threads";
@@ -41,6 +43,8 @@ export function getCompactFollowUpPromptPlaceholder(
       return "Reconnecting...";
     case "error":
       return "Send a follow-up";
+    case "held":
+      return "Held...";
     case "idle":
     case "active":
       return "Ask a follow-up";

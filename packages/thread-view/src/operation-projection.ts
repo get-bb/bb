@@ -8,6 +8,11 @@ import type {
   EventProjectionUserQuestionLifecycleMessage,
 } from "./event-projection-types.js";
 import type { CompactionLifecycleEvent } from "./compaction-lifecycle.js";
+import {
+  dispatchHoldKey,
+  dispatchHoldTitleForStatus,
+  mergeDispatchHoldMetadata,
+} from "./dispatch-hold-helpers.js";
 import type { EventMeta } from "./event-decode.js";
 import type { FileEditPartial } from "./file-edit-parsing.js";
 import { messageId } from "./format-helpers.js";
@@ -41,6 +46,7 @@ export interface OperationProjectionState {
   openCompactionsByKey: Map<string, EventProjectionOperationMessage>;
   finalizedCompactionKeys: Set<string>;
   provisioningOperationsByKey: Map<string, EventProjectionOperationMessage>;
+  dispatchHoldOperationsByKey: Map<string, EventProjectionOperationMessage>;
   permissionGrantsByInteractionId: Map<
     string,
     EventProjectionPermissionGrantLifecycleMessage
@@ -60,6 +66,7 @@ export function createOperationProjectionState(
     openCompactionsByKey: new Map(),
     finalizedCompactionKeys: new Set(),
     provisioningOperationsByKey: new Map(),
+    dispatchHoldOperationsByKey: new Map(),
     permissionGrantsByInteractionId: new Map(),
     userQuestionsByInteractionId: new Map(),
     threadOperationsById: new Map(),
@@ -205,6 +212,49 @@ export function upsertProvisioningOperation(
     incoming,
     key: provisioningKey(incoming),
     mergeExisting: mergeProvisioningOperation,
+    state,
+  });
+}
+
+/**
+ * A hold's row is rewritten in place by every later event for the same hold:
+ * the newest event carries the current status and reason, and the transcript
+ * accumulates. Unlike the provisioning merge, the title comes from the hold's
+ * own status rather than the row's lifecycle status — "released" and
+ * "orphaned" are both completed rows that must not read alike.
+ */
+function mergeDispatchHoldOperation(
+  existing: EventProjectionOperationMessage,
+  incoming: EventProjectionOperationMessage,
+): void {
+  const wasPending = (existing.status ?? "pending") === "pending";
+  existing.dispatchHold = mergeDispatchHoldMetadata(
+    existing.dispatchHold,
+    incoming.dispatchHold,
+  );
+  existing.status = mergeLifecycleStatus(
+    existing.status ?? "pending",
+    incoming.status ?? "pending",
+  );
+  if (existing.dispatchHold) {
+    existing.title = dispatchHoldTitleForStatus(
+      existing.dispatchHold.holdStatus,
+    );
+  }
+  if (wasPending && existing.status !== "pending") {
+    existing.completedAt = incoming.completedAt ?? incoming.createdAt;
+  }
+}
+
+export function upsertDispatchHoldOperation(
+  state: OperationProjectionState,
+  incoming: EventProjectionOperationMessage,
+): void {
+  upsertKeyedLifecycleMessage({
+    index: state.dispatchHoldOperationsByKey,
+    incoming,
+    key: dispatchHoldKey(incoming),
+    mergeExisting: mergeDispatchHoldOperation,
     state,
   });
 }

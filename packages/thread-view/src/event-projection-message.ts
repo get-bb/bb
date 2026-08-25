@@ -1,6 +1,7 @@
 import type {
   BackgroundTaskStatus,
   BackgroundTaskUsage,
+  DispatchHoldHolder,
   ExtensionKind,
   JsonObject,
   JsonValue,
@@ -9,6 +10,7 @@ import type {
   PendingInteractionUserQuestionQuestion,
   ProviderErrorInfo,
   PromptTextMention,
+  SystemDispatchHoldStatus,
   SystemMessageKind,
   SystemMessageSubject,
   Thread,
@@ -289,6 +291,7 @@ const eventProjectionOperationTypeValues = [
   "deprecation",
   "thread-interrupted",
   "thread-provisioning",
+  "dispatch-hold",
   "operation",
   "compaction",
   "context-clear",
@@ -353,6 +356,20 @@ export interface EventProjectionProvisioningMetadata {
   transcript?: EventProjectionProvisioningTranscriptEntry[];
 }
 
+/**
+ * The hold behind a `dispatch-hold` operation row. `holdStatus` is kept
+ * alongside the row's lifecycle status because the two are not the same
+ * question: a hold that released and a hold the owner plugin was gone for both
+ * settle the row, and only the hold status distinguishes them in the title.
+ */
+export interface EventProjectionDispatchHoldMetadata {
+  holdId: string;
+  holder: DispatchHoldHolder;
+  holdStatus: SystemDispatchHoldStatus;
+  reason: string;
+  transcript?: EventProjectionProvisioningTranscriptEntry[];
+}
+
 interface EventProjectionApprovalTarget {
   itemId: string;
   toolName: string | null;
@@ -371,6 +388,7 @@ export interface EventProjectionOperationMessage extends EventProjectionMessageB
   >;
   completedAt: number | null;
   provisioning?: EventProjectionProvisioningMetadata;
+  dispatchHold?: EventProjectionDispatchHoldMetadata;
   threadOperation?: EventProjectionThreadOperationMetadata;
 }
 

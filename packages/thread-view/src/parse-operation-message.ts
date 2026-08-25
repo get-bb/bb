@@ -18,6 +18,10 @@ import type { EventMeta } from "./event-decode.js";
 import { capitalize, messageId } from "./format-helpers.js";
 import { buildProviderUnhandledDetail } from "./provider-unhandled-detail.js";
 import {
+  dispatchHoldOperationStatus,
+  dispatchHoldTitleForStatus,
+} from "./dispatch-hold-helpers.js";
+import {
   provisioningTitleForStatus,
   readProvisioningTranscript,
 } from "./provisioning-helpers.js";
@@ -531,6 +535,23 @@ export function parseOperationMessage(
     });
   }
 
+  if (decoded.type === "system/dispatch-hold") {
+    const { holdId, holder, status, reason } = decoded;
+    const transcript = readProvisioningTranscript(decoded.entries);
+    return op(decoded, meta, "dispatch-hold", {
+      opType: "dispatch-hold",
+      title: dispatchHoldTitleForStatus(status),
+      status: dispatchHoldOperationStatus(status),
+      dispatchHold: {
+        holdId,
+        holder,
+        holdStatus: status,
+        reason,
+        ...(transcript ? { transcript } : {}),
+      },
+    });
+  }
+
   if (decoded.type === "thread/name/updated") {
     return null;
   }
@@ -600,6 +621,10 @@ export function parseOperationMessage(
 export function interruptOperationMessage(
   message: EventProjectionOperationMessage,
 ): void {
+  // A live hold is pending on purpose: the thread is idle precisely because
+  // nothing is dispatching. Only the hold's own `released`/`cancelled` event
+  // settles this row, never the end-of-stream sweep.
+  if (message.opType === "dispatch-hold") return;
   if (message.status !== "pending") return;
   message.status = "interrupted";
   message.completedAt = message.createdAt;

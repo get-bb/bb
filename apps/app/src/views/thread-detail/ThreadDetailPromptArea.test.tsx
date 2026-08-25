@@ -557,6 +557,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     mocks.useThreadQueuedMessages(threadId, options);
     return { data: mocks.queuedMessages };
   },
+  useThreadDispatchHolds: () => ({ data: [] }),
 }));
 
 function makeQueuedMessage(

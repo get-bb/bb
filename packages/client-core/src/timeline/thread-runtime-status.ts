@@ -12,6 +12,9 @@ export function isRunningThreadRuntimeDisplayStatus(
     case "stopping":
       return true;
     case "error":
+    // A held thread has never started: nothing is dispatching until the hold
+    // releases, so it sorts and filters exactly like idle.
+    case "held":
     case "idle":
     case "waiting-for-host":
       return false;

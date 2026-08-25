@@ -62,6 +62,7 @@ import {
   QueuedMessagesList,
   type QueuedMessageInlineEditor,
 } from "@/components/promptbox/banner/QueuedMessagesList";
+import { ThreadHeldDispatches } from "@/components/promptbox/banner/ThreadHeldDispatches";
 import { ThreadEnvironmentSummary } from "@/components/promptbox/ThreadEnvironmentSummary";
 import type { EnvironmentWorkspaceTypeLabel } from "@/lib/environment-workspace-display";
 import type { WorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
@@ -1534,6 +1535,13 @@ export function ThreadDetailPromptArea({
           />
         ) : null}
         {shouldHideComposer ? null : (
+          <ThreadHeldDispatches
+            thread={thread}
+            runtimeDisplayStatus={runtimeDisplayStatus}
+            restoreComposerDraft={setActiveComposerDraft}
+          />
+        )}
+        {shouldHideComposer ? null : (
           <QueuedMessagesList
             queuedMessages={queuedMessages}
             resolveMentionLink={resolveMentionLink}
@@ -1593,10 +1601,10 @@ export function ThreadDetailPromptArea({
       queuedMessages,
       resolveMentionLink,
       runtimeDisplayStatus,
+      setActiveComposerDraft,
       shouldHideComposer,
       submitMode.kind,
-      thread.archivedAt,
-      thread.id,
+      thread,
       workspaceChangedFilesSection,
       workspaceStatusPending,
     ],

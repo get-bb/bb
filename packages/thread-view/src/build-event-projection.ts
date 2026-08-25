@@ -64,6 +64,7 @@ import {
   upsertPermissionGrantLifecycleMessage,
   upsertUserQuestionLifecycleMessage,
   upsertFileEdit,
+  upsertDispatchHoldOperation,
   upsertProvisioningOperation,
   upsertThreadOperationMessage,
 } from "./operation-projection.js";
@@ -943,6 +944,13 @@ function buildFlatProjectionData(
         operation.opType === "thread-provisioning"
       ) {
         upsertProvisioningOperation(state, operation);
+        continue;
+      }
+      if (
+        operation.kind === "operation" &&
+        operation.opType === "dispatch-hold"
+      ) {
+        upsertDispatchHoldOperation(state, operation);
         continue;
       }
       if (operation.kind === "operation" && operation.opType === "operation") {

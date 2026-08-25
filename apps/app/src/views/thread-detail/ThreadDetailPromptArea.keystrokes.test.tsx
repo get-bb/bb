@@ -268,6 +268,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
     interactions.at(-1) ?? null,
   useThreadPromptHistory: () => ({ data: [] }),
   useThreadQueuedMessages: () => ({ data: queryMocks.queuedMessages }),
+  useThreadDispatchHolds: () => ({ data: [] }),
 }));
 
 const PROJECT_ID = "proj_keystrokes";

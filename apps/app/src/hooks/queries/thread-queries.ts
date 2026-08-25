@@ -10,6 +10,7 @@ import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport
 import { getMediaQuerySnapshot } from "@bb/shared-ui/hooks/use-media-query";
 import type { PendingInteraction, ThreadListEntry } from "@bb/domain";
 import type {
+  DispatchHoldListResponse,
   PromptHistoryResponse,
   ThreadQueuedMessageListResponse,
   ThreadListResponse,
@@ -66,6 +67,7 @@ import {
   archivedThreadsListQueryKey,
   disabledThreadListQueryKey,
   threadDetailBootstrapQueryKey,
+  threadDispatchHoldsQueryKey,
   threadQueuedMessagesQueryKey,
   threadListQueryKey,
   threadPendingInteractionsQueryKey,
@@ -122,6 +124,7 @@ type ThreadTimelineQueryOptions = QueryOptions;
 type ThreadTimelineTurnSummaryDetailsQueryOptions = QueryOptions;
 
 type ThreadQueuedMessagesQueryOptions = QueryOptions;
+type ThreadDispatchHoldsQueryOptions = QueryOptions;
 
 type ThreadPromptHistoryQueryOptions = QueryOptions;
 
@@ -647,6 +650,9 @@ function liftThreadListPlaceholder(
     ...thread,
     activeBackgroundAgentCount: thread.activity.activeBackgroundAgentCount,
     canSpawnChild: false,
+    // Placeholder-only, like canSpawnChild above: the list row does not carry
+    // hold counts, and the real response lands moments later.
+    liveDispatchHoldCount: 0,
   };
 }
 
@@ -706,6 +712,33 @@ export function useThreadQueuedMessages(
     queryFn: ({ signal }) =>
       sdk.threads.queuedMessages.list({
         threadId: requireThreadId(id, "useThreadQueuedMessages"),
+        signal,
+      }),
+    enabled,
+    refetchOnMount: options?.refetchOnMount ?? true,
+    refetchOnWindowFocus: true,
+    staleTime: options?.staleTime,
+  });
+}
+
+/**
+ * The thread's live dispatch holds, which the pending region renders in the
+ * same stack as queued messages. Holds ride the `queue-changed` realtime
+ * notification, so this query stays live through the same thread-detail
+ * subscription the queue uses.
+ */
+export function useThreadDispatchHolds(
+  id: string,
+  options?: ThreadDispatchHoldsQueryOptions,
+) {
+  const enabled = (options?.enabled ?? true) && Boolean(id);
+  useThreadDetailRealtimeSubscription(id, { enabled });
+
+  return useQuery<DispatchHoldListResponse>({
+    queryKey: threadDispatchHoldsQueryKey(id),
+    queryFn: ({ signal }) =>
+      sdk.threads.holds.list({
+        threadId: requireThreadId(id, "useThreadDispatchHolds"),
         signal,
       }),
     enabled,

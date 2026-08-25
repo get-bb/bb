@@ -247,6 +247,7 @@ describe("resolveThreadPlaceholder", () => {
       ...makeThreadWithRuntime({ id: "thread-1" }),
       activeBackgroundAgentCount: 0,
       canSpawnChild: false,
+      liveDispatchHoldCount: 0,
     };
 
     expect(

@@ -6,10 +6,12 @@ import {
 import type {
   ApprovalPendingInteractionResolution,
   ClientTurnRequestId,
+  DispatchHoldHolder,
   PromptInput,
   ProviderRawEvent,
   ProvisioningTranscriptEntry,
   ResolvedThreadExecutionOptions,
+  SystemDispatchHoldStatus,
   SystemThreadProvisioningStatus,
   JsonValue,
   ThreadEventItemPresentation,
@@ -255,6 +257,14 @@ interface ThreadProvisioningArgs extends EventFactoryRowOptions {
   status: SystemThreadProvisioningStatus;
 }
 
+interface DispatchHoldArgs extends EventFactoryRowOptions {
+  entries?: ProvisioningTranscriptEntry[];
+  holdId?: string;
+  holder?: DispatchHoldHolder;
+  reason?: string;
+  status: SystemDispatchHoldStatus;
+}
+
 interface SystemErrorArgs extends EventFactoryRowOptions {
   code?: string;
   detail?: string;
@@ -386,6 +396,9 @@ export interface TimelineEventFactory {
   threadProvisioning(
     args: ThreadProvisioningArgs,
   ): ThreadEventRowOfType<"system/thread-provisioning">;
+  dispatchHold(
+    args: DispatchHoldArgs,
+  ): ThreadEventRowOfType<"system/dispatch-hold">;
   toolCallCompleted(
     args: ToolCallCompletedArgs,
   ): ThreadEventRowOfType<"item/completed">;
@@ -939,6 +952,20 @@ export function createTimelineEventFactory(
           status: args.status,
           environmentId: args.environmentId ?? "env-1",
           entries: args.entries,
+        },
+      };
+    },
+    dispatchHold(args) {
+      const base = nextThreadScopedRowBase("dispatch-hold", args);
+      return {
+        ...base,
+        type: "system/dispatch-hold",
+        data: {
+          holdId: args.holdId ?? "hold_test",
+          holder: args.holder ?? "user",
+          status: args.status,
+          reason: args.reason ?? "Scheduled",
+          entries: args.entries ?? [],
         },
       };
     },

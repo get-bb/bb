@@ -214,6 +214,7 @@ function operationKindForMessage(
     case "compaction":
     case "context-clear":
     case "thread-provisioning":
+    case "dispatch-hold":
     case "thread-interrupted":
     case "provider-unhandled":
     case "warning":
@@ -490,9 +491,29 @@ function provisioningTerminalDetailLine(
   return `${label} (${durationToCompactString(elapsedMs)})`;
 }
 
+/**
+ * A hold row reads as its reason plus whatever its owner reported. The
+ * transcript uses the provisioning entry shape, so it flattens the same way —
+ * this is the only place a hold's steps and log tails are rendered.
+ */
+function buildDispatchHoldDetail(
+  message: TimelineOperationMessage,
+): string | null {
+  const hold = message.dispatchHold;
+  const reason = hold?.reason.trim() ?? "";
+  const lines = reason.length > 0 ? [reason] : [];
+  lines.push(
+    ...(hold?.transcript?.flatMap(formatProvisioningTranscriptEntryLines) ?? []),
+  );
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
 function buildTimelineOperationDetail(
   message: TimelineOperationMessage,
 ): string | null {
+  if (message.opType === "dispatch-hold") {
+    return buildDispatchHoldDetail(message);
+  }
   if (message.opType !== "thread-provisioning") {
     return message.detail ?? null;
   }

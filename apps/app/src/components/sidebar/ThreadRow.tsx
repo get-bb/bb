@@ -42,6 +42,7 @@ import {
   hasActiveGoalActivity,
   hasActivePlanModeActivity,
   hasActiveWorkflowActivity,
+  isHeldThread,
   isRuntimeBusyThread,
   isUnreadDoneThread,
   getThreadListIndicatorLabel,
@@ -278,6 +279,7 @@ export function ThreadStatusGlyph({
   isBackgroundAgentActive,
   isBackgroundCommandActive,
   isGoalActive,
+  isHeld,
   isPlanModeActive,
   isRuntimeActive,
   isWorkflowActive,
@@ -290,6 +292,7 @@ export function ThreadStatusGlyph({
     isBackgroundAgentActive,
     isBackgroundCommandActive,
     isGoalActive,
+    isHeld,
     isPlanModeActive,
     isRuntimeActive,
     isWorkflowActive,
@@ -389,6 +392,19 @@ export function ThreadStatusGlyph({
           aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
         />
       );
+    case "held":
+      // Badge only, by design: the reason lives in the thread view, so the row
+      // says "waiting" without competing with the working glyphs for meaning.
+      return (
+        <Icon
+          name="Clock"
+          className={cn(
+            "text-muted-foreground/75",
+            COARSE_POINTER_ICON_SIZE_CLASS,
+          )}
+          aria-label={getThreadListIndicatorLabel(kind) ?? undefined}
+        />
+      );
     case "draft":
       return (
         <ThreadDraftIndicator
@@ -425,6 +441,9 @@ export function CollapsedThreadStatusGlyph({
     isBackgroundAgentActive: activity.backgroundAgent,
     isBackgroundCommandActive: activity.backgroundCommand,
     isGoalActive: activity.goal,
+    // Collapsed parents roll up work, not held state: a held child is waiting,
+    // and the parent row has no glyph slot to spare for a non-working state.
+    isHeld: false,
     isPlanModeActive: activity.planMode,
     isRuntimeActive: activity.runtimeWorking,
     isWorkflowActive: activity.workflow,
@@ -612,6 +631,7 @@ function ThreadRowComponent({
     isBackgroundAgentActive: trailingBackgroundAgentActive,
     isBackgroundCommandActive: trailingBackgroundCommandActive,
     isGoalActive: trailingGoalActive,
+    isHeld: isHeldThread(thread),
     isPlanModeActive: trailingPlanModeActive,
     isRuntimeActive: trailingRuntimeBusy,
     isWorkflowActive: trailingIsWorkflowActive,

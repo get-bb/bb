@@ -1422,6 +1422,8 @@ export function systemOperationLeadingIcon(
       return parentChangeAction === "release" ? "UserRound" : "UserRoundPlus";
     case "thread-provisioning":
       return "Terminal";
+    case "dispatch-hold":
+      return "Clock";
     case "thread-interrupted":
       return "AlertCircle";
     case "compaction":

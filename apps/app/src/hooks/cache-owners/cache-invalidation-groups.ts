@@ -5,6 +5,7 @@ import {
   allProjectSourceBranchesQueryKeyPrefix,
   allThreadConversationOutlineQueryKeyPrefix,
   allThreadPendingInteractionsQueryKeyPrefix,
+  allThreadDispatchHoldsQueryKeyPrefix,
   allThreadQueuedMessagesQueryKeyPrefix,
   allThreadQueryKeyPrefix,
   allThreadTimelineQueryKeyPrefix,
@@ -16,6 +17,7 @@ import {
   projectSourceBranchesQueryKeyPrefix,
   projectsQueryKey,
   sidebarNavigationQueryKey,
+  threadDispatchHoldsQueryKey,
   threadQueuedMessagesQueryKey,
   threadPendingInteractionsQueryKey,
   threadPromptHistoryQueryKey,
@@ -136,14 +138,19 @@ export function getThreadTimelineWindowInvalidationQueryKeys({
 export function getThreadQueueContentInvalidationQueryKeys({
   threadId,
 }: ThreadScopedInvalidationArgs): QueryKey[] {
+  // Dispatch holds ride this group: the server notifies `queue-changed` when a
+  // hold is created, reported on, released, or cancelled, and the pending
+  // region renders holds and queued messages as one stack.
   if (!threadId) {
     return [
       allThreadQueuedMessagesQueryKeyPrefix(),
+      allThreadDispatchHoldsQueryKeyPrefix(),
       threadPromptHistoryQueryKeyPrefix(),
     ];
   }
   return [
     threadQueuedMessagesQueryKey(threadId),
+    threadDispatchHoldsQueryKey(threadId),
     threadPromptHistoryQueryKey(threadId),
   ];
 }
