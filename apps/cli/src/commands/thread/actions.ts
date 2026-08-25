@@ -29,6 +29,7 @@ import {
   buildPromptInputs,
   collectOption,
 } from "./helpers.js";
+import { HOLD_UNTIL_HELP, parseHoldUntil } from "./hold-time.js";
 
 interface ThreadUpdateCommandOptions {
   self?: boolean;
@@ -74,6 +75,7 @@ interface ThreadTellCommandOptions {
   plan?: boolean;
   file?: string[];
   image?: string[];
+  holdUntil?: string;
 }
 
 interface ThreadActionOptions {
@@ -103,10 +105,13 @@ interface PostThreadMessageArgs {
   plan?: boolean;
   files?: readonly string[];
   images?: readonly string[];
+  holdUntil?: number;
 }
 
 type PostThreadMessageResult = ThreadSendResult & {
   mode: ThreadTellDeliveryMode;
+  /** Resolved `--hold-until`, so the outcome line can name the dispatch time. */
+  holdUntil?: number;
 };
 
 interface ThreadUpdateBody {
@@ -426,6 +431,7 @@ export function registerActionsCommands(
     )
     .option("--permission-mode <mode>", PERMISSION_MODE_HELP)
     .option("--mode <mode>", "Message mode: steer (default), queue, or auto")
+    .option("--hold-until <when>", HOLD_UNTIL_HELP)
     .option("--plan", PLAN_HELP)
     .option(
       "--file <path>",
@@ -455,6 +461,9 @@ export function registerActionsCommands(
             plan: opts.plan,
             files: opts.file,
             images: opts.image,
+            ...(opts.holdUntil === undefined
+              ? {}
+              : { holdUntil: parseHoldUntil(opts.holdUntil) }),
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(describeThreadTellOutcome(id, response));
@@ -546,10 +555,12 @@ async function postThreadMessage(
     ...(args.reasoningLevel ? { reasoningLevel: args.reasoningLevel } : {}),
     ...(args.serviceTier ? { serviceTier: args.serviceTier } : {}),
     ...(args.senderThreadId ? { senderThreadId: args.senderThreadId } : {}),
+    ...(args.holdUntil === undefined ? {} : { holdUntil: args.holdUntil }),
   });
   return {
     ...response,
     mode: args.mode,
+    ...(args.holdUntil === undefined ? {} : { holdUntil: args.holdUntil }),
   };
 }
 
@@ -557,6 +568,13 @@ function describeThreadTellOutcome(
   threadId: string,
   response: PostThreadMessageResult,
 ): string {
+  if (response.delivery === "held") {
+    const when =
+      response.holdUntil === undefined
+        ? ""
+        : ` until ${new Date(response.holdUntil).toLocaleString()}`;
+    return `Thread ${threadId} message held${when}; nothing runs until it releases`;
+  }
   if (response.delivery === "deferred") {
     return `Thread ${threadId} is awaiting user interaction; message held and delivers once the interaction settles`;
   }

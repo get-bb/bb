@@ -1,5 +1,6 @@
 import {
   parseThreadEventRow,
+  type DispatchHoldHolder,
   type PromptInput,
   type PendingInteraction,
   type PendingInteractionResolution,
@@ -14,6 +15,9 @@ import { threadTabsResponseSchema } from "@bb/server-contract";
 import type {
   CreateQueuedMessageRequest,
   CreateThreadRequest,
+  DispatchHoldListQuery,
+  DispatchHoldListResponse,
+  DispatchHoldResponse,
   EditMessageRequest,
   EditMessageResponse,
   ForkThreadRequest,
@@ -58,6 +62,7 @@ import type {
   ThreadStoragePathsQuery,
   ThreadTimelineQuery,
   TimelineTurnSummaryDetailsQuery,
+  UpdateDispatchHoldRequest,
   UpdateThreadTabsRequest,
   UpdateThreadRequest,
   UpdateQueuedMessageRequest,
@@ -137,6 +142,8 @@ export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
 export type ThreadQueuedMessageGroupBoundaryResult =
   ThreadQueuedMessageListResponse;
+export type ThreadHoldResult = DispatchHoldResponse;
+export type ThreadHoldListResult = DispatchHoldListResponse;
 export type ThreadTabsResult = ThreadTabsResponse;
 export type ThreadTabsUpdateResult = ThreadTabsResponse;
 export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
@@ -237,6 +244,28 @@ export interface ThreadQueuedMessageReorderArgs
 export interface ThreadQueuedMessageGroupBoundaryArgs extends SetQueuedMessageGroupBoundaryRequest {
   threadId: string;
 }
+
+/**
+ * Both filters are genuinely absent by default: no filter lists every live
+ * hold in the workspace, which is what `bb thread holds` and a limiter
+ * plugin's own bookkeeping ask for.
+ */
+export interface ThreadHoldListArgs {
+  holder?: DispatchHoldHolder;
+  signal?: AbortSignal;
+  threadId?: string;
+}
+
+export interface ThreadHoldTargetArgs {
+  holdId: string;
+}
+
+export interface ThreadHoldGetArgs extends ThreadHoldTargetArgs {
+  signal?: AbortSignal;
+}
+
+export interface ThreadHoldUpdateArgs
+  extends ThreadHoldTargetArgs, UpdateDispatchHoldRequest {}
 
 export interface ThreadStorageFilesArgs extends ThreadStorageFilesQuery {
   signal?: AbortSignal;
@@ -424,6 +453,25 @@ export interface ThreadTabsArea {
   update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
 }
 
+/**
+ * Live dispatch holds. `list` is cross-thread by default because "what is
+ * pending right now" is a workspace question; the rest address one hold by id,
+ * which is all a release needs — a hold row is self-contained.
+ */
+export interface ThreadHoldsArea {
+  /** Discards the held dispatch instead of running it. Always permitted. */
+  cancel(args: ThreadHoldTargetArgs): Promise<ThreadHoldResult>;
+  get(args: ThreadHoldGetArgs): Promise<ThreadHoldResult>;
+  list(args?: ThreadHoldListArgs): Promise<ThreadHoldListResult>;
+  /**
+   * Release now: dispatches the held turn with normal semantics. Rejects with
+   * a 409 when the hold is already released or is not user-releasable.
+   */
+  release(args: ThreadHoldTargetArgs): Promise<ThreadHoldResult>;
+  /** Edits a live hold's inline draft and/or reschedules its timer. */
+  update(args: ThreadHoldUpdateArgs): Promise<ThreadHoldResult>;
+}
+
 export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
@@ -442,6 +490,7 @@ export interface ThreadsArea {
   events: ThreadEventsArea;
   fork(args: ThreadForkArgs): Promise<ThreadForkResult>;
   get(args: ThreadGetArgs): Promise<ThreadGetResult>;
+  holds: ThreadHoldsArea;
   interactions: ThreadInteractionsArea;
   list(args?: ThreadListArgs): Promise<ThreadListResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
@@ -522,6 +571,18 @@ function sendJson(args: ThreadSendArgs): SendMessageRequest {
     senderThreadId: args.senderThreadId,
     serviceTier: args.serviceTier,
     executionInputSources: args.executionInputSources,
+    // Present ⇒ the message parks in a user-owned hold instead of sending or
+    // queueing now; the response reports `delivery: "held"`.
+    holdUntil: args.holdUntil,
+  };
+}
+
+function holdListQuery(
+  args: ThreadHoldListArgs | undefined,
+): DispatchHoldListQuery {
+  return {
+    ...(args?.threadId === undefined ? {} : { threadId: args.threadId }),
+    ...(args?.holder === undefined ? {} : { holder: args.holder }),
   };
 }
 
@@ -857,6 +918,47 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
   };
+  const holds: ThreadHoldsArea = {
+    async cancel(input) {
+      return transport.readJson(
+        transport.api.v1.holds[":id"].cancel.$post({
+          param: { id: input.holdId },
+        }),
+      );
+    },
+    async get(input) {
+      return transport.readJson(
+        transport.api.v1.holds[":id"].$get(
+          { param: { id: input.holdId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.holds.$get(
+          { query: holdListQuery(input) },
+          ...signalRequestArgs(input?.signal),
+        ),
+      );
+    },
+    async release(input) {
+      return transport.readJson(
+        transport.api.v1.holds[":id"].release.$post({
+          param: { id: input.holdId },
+        }),
+      );
+    },
+    async update(input) {
+      const { holdId, ...json } = input;
+      return transport.readJson(
+        transport.api.v1.holds[":id"].$patch({
+          param: { id: holdId },
+          json,
+        }),
+      );
+    },
+  };
   const tabs: ThreadTabsArea = {
     async get(input) {
       const body = await transport.readJson(
@@ -948,6 +1050,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     get: getThread,
+    holds,
     interactions,
     async list(input) {
       return transport.readJson(

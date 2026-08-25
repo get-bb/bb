@@ -30,6 +30,7 @@ Spawning:
     --plan                         Send the prompt as the provider's /plan action (plan first, execute after approval)
     --section <id>                 Create the thread in a section
     --visibility <visibility>      visible or hidden; a child inherits its parent by default
+    --hold-until <when>            Defer the first turn to an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                  Host-readable absolute or uploaded file path
     --image <path>                 Host-readable absolute or uploaded image path
     --origin-kind <kind>           Create a fork thread
@@ -187,6 +188,7 @@ Messaging:
     --model <model>                        Model override for this turn
     --reasoning-level <level>              Reasoning level override
     --plan                                 Send the message as the provider's /plan action
+    --hold-until <when>                    Defer the send to an ISO 8601 timestamp or a duration from now (30s, 10m, 2h, 7d)
     --file <path>                          Host-readable absolute or uploaded file path
     --image <path>                         Host-readable absolute or uploaded image path
 
@@ -196,8 +198,8 @@ Messaging:
   approval) cannot take a prompt; tell then holds the message and delivers it
   in the requested mode once the interaction settles. That outcome is not a
   failure, so do not resend. `--json` reports `delivery` as `sent`, `queued`,
-  or `deferred`. A held message waits for a thread that failed while it was
-  held, and delivers when the thread is retried.
+  `deferred`, or `held`. A deferred message waits for a thread that failed while
+  it was deferred, and delivers when the thread is retried.
 
   --plan sends the same structured /plan command the composer's plan action
   sends, so the agent proposes a plan for approval before executing (Claude
@@ -269,6 +271,29 @@ Queued messages:
   bb thread queue reorder <thread-id> <message-id> [--after <id>] [--before <id>]
   bb thread queue group <thread-id> <boundary-id> --prefix <comma-separated-ids>
   bb thread queue delete <thread-id> <message-id>
+
+Dispatch holds:
+
+  bb thread holds [--thread <id>] [--owner <holder>]
+  bb thread release <hold-id>
+  bb thread cancel-hold <hold-id>
+
+  A hold is a dispatch that is deferred rather than queued: nothing runs, and no
+  environment work starts, until the hold releases. --hold-until on spawn or
+  tell creates one owned by `user` with the reason "Scheduled", released by
+  core's timer at the requested time. Plugins and core own holds too, so
+  `--owner` filters on `user`, `plugin:<plugin-id>`, or `core:<mechanism>`.
+
+  `thread holds` lists live holds across every thread; released holds are
+  history and appear in each thread's timeline. `thread release` dispatches a
+  held turn now (a 409 means it already released, or its holder does not permit
+  a user release). `thread cancel-hold` discards the dispatch instead of running
+  it, and is always permitted.
+
+  --hold-until takes an ISO 8601 timestamp (2026-08-25T09:00, local without an
+  offset) or a duration from now (30s, 10m, 2h, 7d). A time that has already
+  passed is rejected, as is a bare date, which has no time of day. Several live
+  holds on one thread are normal: two scheduled sends coexist.
 
 Persisted panel tabs:
 

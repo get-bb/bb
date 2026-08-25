@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { registerActionsCommands } from "./actions.js";
+import { registerHoldCommands } from "./holds.js";
 import { registerInteractionCommands } from "./interactions.js";
 import { registerListCommand } from "./list.js";
 import { registerOpenCommand } from "./open.js";
@@ -24,5 +25,6 @@ export function registerThreadCommands(
   registerPaneCommand(thread, getUrl);
   registerOrganizationCommands(thread, getUrl);
   registerActionsCommands(thread, getUrl);
+  registerHoldCommands(thread, getUrl);
   registerInteractionCommands(thread, getUrl);
 }

@@ -29,6 +29,7 @@ import {
   PLAN_HELP,
   parseServiceTier,
 } from "./helpers.js";
+import { HOLD_UNTIL_HELP, parseHoldUntil } from "./hold-time.js";
 
 interface ThreadSpawnCommandOptions {
   prompt: string;
@@ -55,6 +56,7 @@ interface ThreadSpawnCommandOptions {
   sourceThread?: string;
   sourceSeqEnd?: string;
   visibility?: string;
+  holdUntil?: string;
 }
 
 export function looksLikePath(value: string): boolean {
@@ -222,6 +224,7 @@ export function registerSpawnCommand(
       "--visibility <visibility>",
       "Thread visibility: visible or hidden (a child inherits its parent)",
     )
+    .option("--hold-until <when>", HOLD_UNTIL_HELP)
     .option("--origin-kind <kind>", "Thread origin: fork")
     .option("--source-thread <id>", "Source thread for a fork")
     .option(
@@ -295,6 +298,10 @@ export function registerSpawnCommand(
         ) {
           throw new Error("--source-seq-end must be a non-negative integer.");
         }
+        const holdUntil =
+          opts.holdUntil === undefined
+            ? undefined
+            : parseHoldUntil(opts.holdUntil);
 
         let thread: Thread;
         try {
@@ -322,6 +329,7 @@ export function registerSpawnCommand(
             ...(opts.section ? { sectionId: opts.section } : {}),
             ...(opts.sourceThread ? { sourceThreadId: opts.sourceThread } : {}),
             ...(sourceSeqEnd !== undefined ? { sourceSeqEnd } : {}),
+            ...(holdUntil !== undefined ? { holdUntil } : {}),
           });
         } catch (err: unknown) {
           throw prependErrorContext("Failed to create thread", err);
@@ -329,6 +337,13 @@ export function registerSpawnCommand(
 
         if (outputJson(opts, thread)) return;
         console.log(`Thread spawned: ${thread.id}`);
+        if (holdUntil !== undefined) {
+          console.log(
+            `First turn held until ${new Date(holdUntil).toLocaleString()}; the thread stays idle until it releases.`,
+          );
+        }
+        // A hidden child reports to its parent too, so the promise follows the
+        // parent link alone.
         if (
           thread.parentThreadId &&
           thread.parentThreadId === resolveContextThreadId()

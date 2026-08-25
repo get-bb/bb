@@ -363,6 +363,7 @@ type ExpectedThreadsKey =
   | "events"
   | "fork"
   | "get"
+  | "holds"
   | "interactions"
   | "list"
   | "markRead"
@@ -391,6 +392,7 @@ type ExpectedThreadsKey =
   | "wait";
 
 type ExpectedThreadEventsKey = "list" | "wait";
+type ExpectedThreadHoldsKey = "cancel" | "get" | "list" | "release" | "update";
 type ExpectedThreadInteractionsKey =
   | "cancel"
   | "get"
@@ -540,6 +542,9 @@ describe("SDK public type entrypoints", () => {
     expectTypeOf<
       keyof RootBbSdk["threads"]["events"]
     >().toEqualTypeOf<ExpectedThreadEventsKey>();
+    expectTypeOf<
+      keyof RootBbSdk["threads"]["holds"]
+    >().toEqualTypeOf<ExpectedThreadHoldsKey>();
     expectTypeOf<
       keyof RootBbSdk["threads"]["interactions"]
     >().toEqualTypeOf<ExpectedThreadInteractionsKey>();
