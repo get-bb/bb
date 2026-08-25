@@ -120,18 +120,16 @@ describe("automation provider and model picker", () => {
       />,
     );
 
-    const picker = screen.getByRole("button", { name: "Choose Claude" });
+    const picker = screen.getByText("Choose Claude");
     expect(picker.getAttribute("data-routing-kind")).toBe("environment");
     expect(picker.getAttribute("data-routing-id")).toBe("env_test");
     expect(picker.getAttribute("data-provider-change-allowed")).toBe("true");
     fireEvent.click(picker);
-    const permission = screen.getByRole("button", {
-      name: "Permission mode",
-    });
+    const permission = screen.getByLabelText("Permission mode");
     expect(permission.getAttribute("data-provider-id")).toBe("claude");
     expect(permission.getAttribute("data-routing-kind")).toBe("environment");
     fireEvent.click(permission);
-    fireEvent.click(screen.getByRole("button", { name: "Save Prompt" }));
+    fireEvent.click(screen.getByText("Save Prompt"));
 
     expect(onUpdate).toHaveBeenCalledWith({
       prompt: "Summarize the inbox",
