@@ -403,7 +403,12 @@ const settings = bb.settings.define({
   teamKey: { type: "string", label: "Team", default: "" },
   // Multi-line editor (JSON, lists); the value is still a string the plugin
   // parses itself. Cannot be combined with `secret`.
-  agents: { type: "string", label: "Agents", experimental_multiline: true, default: "[]" },
+  agents: {
+    type: "string",
+    label: "Agents",
+    experimental_multiline: true,
+    default: "[]",
+  },
   mode: {
     type: "select",
     label: "Mode",
@@ -1032,7 +1037,10 @@ bb.agents.registerTool({
   // tool name and the plugin's branding glyph. Errors/interruptions keep
   // that standard rendering so the failing tool remains identifiable.
   presentation: {
-    label: { pending: "Searching bundled docs", completed: "Searched bundled docs" },
+    label: {
+      pending: "Searching bundled docs",
+      completed: "Searched bundled docs",
+    },
   },
   parameters: z.object({ query: z.string().min(1) }),
   async execute({ query }, { threadId, projectId, signal }) {
@@ -2063,10 +2071,10 @@ openWorkspaceFile }` — register a leaf
   through the bridge's presentation. The component receives `row` (id,
   threadId, turnId, kind, toolName, status, startedAt, completedAt),
   `payload` (the extension item's validated payload, or `{ arguments,
-  output }` for a tool call), `presentation` (the bridge's label, icon,
+output }` for a tool call), `presentation` (the bridge's label, icon,
   title, detail, suppress and tint for the row; null only for a tool row
   persisted before bridges attached one), `thread` (`{ id,
-  providerId }`) and `Original`, the host's declarative base for the body —
+providerId }`) and `Original`, the host's declarative base for the body —
   render `<Original />` to keep it beside your own content. The row header
   (label, glyph, tint, headline) stays host-rendered; a glyph of the form
   `"<pluginId>/<name>"` draws the plugin's declared icon
@@ -2454,7 +2462,7 @@ only `definePluginApp` + the hooks):
   still needs each one's declarations in `node_modules`, so every shimmed
   package is a **type-only `devDependencies` entry at the host's version**
   (the scaffold declares all of them; `bb plugin types` repins them; `bb
-  plugin types --check` reports drift). Never list one in `dependencies` —
+plugin types --check` reports drift). Never list one in `dependencies` —
   the build would not read it, and a git install would bundle a second
   copy of a singleton.
 - Also never bundled, for size rather than singleton reasons: `clsx`,

@@ -149,9 +149,11 @@ describe("migratePluginToPackageLayout", () => {
     });
     expect(raised.enginesFloor).toEqual({ from: ">=0.2.0", to: ">=0.4.3" });
     expect(
-      ((await readJson(join(rootDir, "package.json"))).engines as
-        | Record<string, string>
-        | undefined)?.bbPluginSdk,
+      (
+        (await readJson(join(rootDir, "package.json"))).engines as
+          | Record<string, string>
+          | undefined
+      )?.bbPluginSdk,
     ).toBe(">=0.4.3");
 
     // A plugin that already demands more of the host keeps that requirement:
@@ -171,10 +173,12 @@ describe("migratePluginToPackageLayout", () => {
       });
       expect(result.enginesFloor).toBeNull();
       expect(
-        ((await readJson(join(newer, "package.json"))).engines as Record<
-          string,
-          string
-        >).bbPluginSdk,
+        (
+          (await readJson(join(newer, "package.json"))).engines as Record<
+            string,
+            string
+          >
+        ).bbPluginSdk,
       ).toBe(">=9.1.0");
     } finally {
       await rm(newer, { recursive: true, force: true });
@@ -296,9 +300,9 @@ describe("migratePluginToPackageLayout", () => {
       "@bb/plugin-sdk/app",
     ]);
     const tsconfig = await readJson(join(rootDir, "tsconfig.json"));
-    expect(
-      (tsconfig.compilerOptions as Record<string, unknown>).paths,
-    ).toEqual({ "@/*": ["./*"] });
+    expect((tsconfig.compilerOptions as Record<string, unknown>).paths).toEqual(
+      { "@/*": ["./*"] },
+    );
     expect((await resolvePluginSdkLayout(rootDir)).kind).toBe("package");
   });
 
@@ -548,7 +552,10 @@ describe("migratePluginToPackageLayout", () => {
       join(rootDir, "tsconfig.json"),
       '{\n  // paths\n  "compilerOptions": { "paths": {} }\n}\n',
     );
-    const manifestBefore = await readFile(join(rootDir, "package.json"), "utf8");
+    const manifestBefore = await readFile(
+      join(rootDir, "package.json"),
+      "utf8",
+    );
 
     await expect(
       migratePluginToPackageLayout({ rootDir, sdkVersion: SDK_VERSION }),
@@ -596,7 +603,11 @@ describe("setPluginSdkPin", () => {
       )}\n`,
     );
 
-    const result = await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false });
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: false,
+    });
 
     expect(result).toEqual({
       pin: { from: "0.2.0", to: SDK_VERSION },
@@ -613,7 +624,9 @@ describe("setPluginSdkPin", () => {
     expect((manifest.engines as Record<string, string>).bbPluginSdk).toBe(
       ">=0.2.0",
     );
-    expect(await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false })).toBeNull();
+    expect(
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false }),
+    ).toBeNull();
   });
 
   it("moves a runtime-declared SDK into devDependencies rather than duplicating it", async () => {
@@ -630,7 +643,11 @@ describe("setPluginSdkPin", () => {
       )}\n`,
     );
 
-    const result = await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false });
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: false,
+    });
 
     expect(result?.movedFromDependencies).toBe(true);
     const manifest = await readJson(join(rootDir, "package.json"));
@@ -660,7 +677,11 @@ describe("setPluginSdkPin", () => {
       )}\n`,
     );
 
-    const result = await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false });
+    const result = await setPluginSdkPin({
+      rootDir,
+      sdkVersion: SDK_VERSION,
+      app: false,
+    });
 
     expect(result).toEqual({
       pin: null,
@@ -673,7 +694,9 @@ describe("setPluginSdkPin", () => {
       "@get-bb/plugin-sdk": SDK_VERSION,
     });
     // And now it really is a no-op.
-    expect(await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false })).toBeNull();
+    expect(
+      await setPluginSdkPin({ rootDir, sdkVersion: SDK_VERSION, app: false }),
+    ).toBeNull();
   });
 
   /**

@@ -112,8 +112,7 @@ describe("scaffold dependency classification", () => {
   });
 
   it("declares every bundled import as a dependency", async () => {
-    const { targetDir, dependencies } =
-      await scaffoldWithDependencies(workDir);
+    const { targetDir, dependencies } = await scaffoldWithDependencies(workDir);
 
     const misdeclared: string[] = [];
     for (const file of await generatedSourceFiles(targetDir)) {

@@ -129,13 +129,13 @@ describe("scaffold typechecks the runtime-shimmed imports (#2072)", () => {
   it('the documented `import { toast } from "sonner"` and every other shimmed specifier resolve', async () => {
     const appPath = join(targetDir, "app.tsx");
     const app = await readFile(appPath, "utf8");
-    expect(app).toContain('import { useState } from "react";');
+    // Add the documented import ahead of the scaffold's own imports so the
+    // test does not depend on which React names the starter page uses.
+    const firstImport = app.indexOf("\nimport ");
+    expect(firstImport).toBeGreaterThan(-1);
     await writeFile(
       appPath,
-      app.replace(
-        'import { useState } from "react";',
-        'import { useState } from "react";\nimport { toast } from "sonner";\ntoast.success("hi");',
-      ),
+      `${app.slice(0, firstImport + 1)}import { toast } from "sonner";\ntoast.success("hi");\n${app.slice(firstImport + 1)}`,
     );
     const lines = SHIMMED_SPECIFIERS.map(
       (specifier, i) => `import * as m${i} from "${specifier}";`,
