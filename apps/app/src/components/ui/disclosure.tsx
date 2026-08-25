@@ -140,14 +140,15 @@ interface ExpandablePanelProps {
 interface AnimatedExpandablePanelContentProps {
   collapsedContent: ReactNode;
   contentClassName?: string;
-  isExpanded: boolean;
+  /** The body is mounted; see `ExpandablePanel`'s `isBodyExpanded`. */
+  isBodyExpanded: boolean;
   renderedBody: ReactNode;
 }
 
 function AnimatedExpandablePanelContent({
   collapsedContent,
   contentClassName,
-  isExpanded,
+  isBodyExpanded,
   renderedBody,
 }: AnimatedExpandablePanelContentProps) {
   const regionRef = useRef<HTMLDivElement>(null);
@@ -166,7 +167,7 @@ function AnimatedExpandablePanelContent({
     }
     toggleAnimationDeadlineRef.current =
       performance.now() + EXPANDABLE_PANEL_TRANSITION_MS;
-  }, [isExpanded]);
+  }, [isBodyExpanded]);
 
   useBrowserLayoutEffect(() => {
     const region = regionRef.current;
@@ -206,7 +207,7 @@ function AnimatedExpandablePanelContent({
       read: readHeightSync,
       write: writeHeightSync,
     });
-  }, [collapsedContent, isExpanded, renderedBody]);
+  }, [collapsedContent, isBodyExpanded, renderedBody]);
 
   return (
     <div
@@ -218,7 +219,7 @@ function AnimatedExpandablePanelContent({
       }}
     >
       <div ref={contentRef}>
-        {isExpanded ? (
+        {isBodyExpanded ? (
           <div className={cn("px-2 pb-1 pt-0", contentClassName)}>
             {renderedBody}
           </div>
@@ -263,6 +264,16 @@ export function ExpandablePanel({
     }
     return renderBody ? renderBody() : children;
   }, [children, deferredIsExpanded, renderBody]);
+  // The body region follows the body, not the tap: its content branch,
+  // transition classes, height tween, toggle deadline and in-flight window
+  // all key on this flag. It opens in the commit that mounts the body — the
+  // deferred one, or the reopen tap's own commit while the close window
+  // still retains the subtree (`isClosing` holds only while
+  // `renderedBodyRef` does) — and closes in the collapse tap's commit.
+  // Opening it on the urgent `isExpanded` would swap the collapsed preview
+  // for an empty wrapper and tween toward that, with the body landing a
+  // commit later, possibly after the 200ms window has already closed.
+  const isBodyExpanded = isExpanded && (deferredIsExpanded || isClosing);
 
   // Signal to AutoHeightContainer / HeightTransition wrappers that a
   // CSS-driven layout animation is in flight, so they snap their wrapper to
@@ -291,14 +302,18 @@ export function ExpandablePanel({
       window.clearTimeout(timer);
       release();
     };
-  }, [isExpanded, setLayoutAnimationInFlightCount]);
+  }, [isBodyExpanded, setLayoutAnimationInFlightCount]);
 
+  // Retain the last realized body for the close window. Gated on the
+  // deferred value: between an expand tap and its body commit `expandedBody`
+  // is still null, and writing that would drop the subtree a reopen inside
+  // the close window reuses.
   useBrowserLayoutEffect(() => {
-    if (!isExpanded) {
+    if (!deferredIsExpanded) {
       return;
     }
     renderedBodyRef.current = expandedBody;
-  }, [expandedBody, isExpanded]);
+  }, [deferredIsExpanded, expandedBody]);
 
   useBrowserLayoutEffect(() => {
     if (isExpanded) {
@@ -319,7 +334,10 @@ export function ExpandablePanel({
     }, EXPANDABLE_PANEL_TRANSITION_MS);
     return () => clearTimeout(timeout);
   }, [hasCollapsedContent, isExpanded]);
-  const renderedBody = isExpanded
+  // While the deferred value still says expanded the realized body is the
+  // freshest subtree (a collapse tap animates out from it without a
+  // remount); otherwise the close window's retained one.
+  const renderedBody = deferredIsExpanded
     ? expandedBody
     : isClosing
       ? renderedBodyRef.current
@@ -348,15 +366,17 @@ export function ExpandablePanel({
         <AnimatedExpandablePanelContent
           collapsedContent={collapsedContent}
           contentClassName={contentClassName}
-          isExpanded={isExpanded}
-          renderedBody={renderedBody}
+          isBodyExpanded={isBodyExpanded}
+          // The preview replaces the body the moment the region closes, so
+          // a body it would not show must not re-run its height sync.
+          renderedBody={isBodyExpanded ? renderedBody : null}
         />
       ) : (
         <div
-          aria-hidden={!isExpanded}
+          aria-hidden={!isBodyExpanded}
           className={cn(
             "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
-            isExpanded
+            isBodyExpanded
               ? "pointer-events-auto grid-rows-[1fr] opacity-100"
               : "pointer-events-none grid-rows-[0fr] opacity-0",
           )}
@@ -368,7 +388,7 @@ export function ExpandablePanel({
                 // layer on every collapsed body in the timeline for the
                 // lifetime of the row, only to speed a 200ms toggle.
                 "px-2 pb-1 pt-0 transition-[transform,opacity] duration-200 ease-out",
-                isExpanded
+                isBodyExpanded
                   ? "translate-y-0 opacity-100"
                   : "-translate-y-1 opacity-0",
                 contentClassName,
