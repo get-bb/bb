@@ -1005,11 +1005,11 @@ function AppShellWireframeBody({
       >
         <MiniIcon icon={SidebarLeftIcon} className="size-4" />
       </span>
-      {/* Keep the product chrome and pending form at their real density, then
-          give the remaining height to the thread list and timeline. The
-          500px floor leaves the flexible blank canvas compact enough for the
-          fixture and every in-flow card to fit in bb's desktop content area. */}
-      <div className="flex min-h-[500px] items-stretch">
+      {/* Keep product chrome and the pending form at their real density. At
+          bb's 1028px desktop viewport the 500px floor leaves every card above
+          the fold; each extra viewport pixel then restores one pixel of the
+          roomier fixture until its original 650px footprint is reached. */}
+      <div className="flex min-h-[clamp(500px,calc(100dvh-528px),650px)] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
         <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
@@ -1042,7 +1042,7 @@ function AppShellWireframeBody({
           {/* timeline */}
           <div
             data-guide-fixture="app-window-timeline"
-            className="min-h-[350px] flex-1 space-y-7 overflow-hidden px-5 py-6"
+            className="min-h-[clamp(350px,calc(100dvh-678px),510px)] flex-1 space-y-7 overflow-hidden px-5 py-6"
           >
             {/* user message: right-aligned bubble */}
             <div className="flex justify-end">

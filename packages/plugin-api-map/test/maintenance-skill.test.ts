@@ -79,6 +79,13 @@ describe("Plugin Guide maintenance skill", () => {
     );
     expect(skill).toContain("980px-tall plugin content region");
     expect(normalized).toContain(
+      "the 500px app body grows one CSS pixel per additional viewport pixel and caps at 650px",
+    );
+    expect(normalized).toContain(
+      "its 350px timeline grows at the same rate and caps at 510px",
+    );
+    expect(normalized).toContain("Do not grow from display width alone");
+    expect(normalized).toContain(
       "The non-spatial capability grid is the only reflowing fixture",
     );
     expect(normalized).toContain("Do not scale a surface fixture");

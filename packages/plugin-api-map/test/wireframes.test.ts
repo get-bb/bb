@@ -180,7 +180,7 @@ describe("guide fixture boundaries", () => {
     );
   });
 
-  it("keeps the app window compact enough for its card while retaining loose timeline spacing", () => {
+  it("grows the app window within capped viewport-fit bounds while retaining loose timeline spacing", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
     const timeline = markup.slice(
       markup.indexOf('data-guide-fixture="app-window-timeline"'),
@@ -188,9 +188,13 @@ describe("guide fixture boundaries", () => {
     );
 
     expect(markup).toContain("min-w-[1180px]");
-    expect(markup).toContain("flex min-h-[500px] items-stretch");
+    expect(markup).toContain(
+      "flex min-h-[clamp(500px,calc(100dvh-528px),650px)] items-stretch",
+    );
     expect(markup).toContain("flex w-[300px] shrink-0 flex-col");
-    expect(timeline).toContain("min-h-[350px] flex-1 space-y-7");
+    expect(timeline).toContain(
+      "min-h-[clamp(350px,calc(100dvh-678px),510px)] flex-1 space-y-7",
+    );
     expect(timeline).toContain("px-5 py-6");
   });
 
