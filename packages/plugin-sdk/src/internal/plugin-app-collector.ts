@@ -1,5 +1,7 @@
 import type {
   ComposerCustomization,
+  ExperimentalChangesViewRegistration,
+  ExperimentalSidebarNavigationRegistration,
   PluginAppDefinition,
   PluginContentScriptRegistration,
   PluginDiffRendererRegistration,
@@ -91,11 +93,13 @@ export interface CollectedPluginAppRegistrations {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
+  experimentalChangesViews: ExperimentalChangesViewRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   commandPaletteActions: PluginCommandPaletteActionRegistration[];
@@ -124,11 +128,13 @@ export function collectPluginAppRegistrations(
     composerCustomizations: [],
     pendingInteractions: [],
     sidebarFooterActions: [],
+    experimentalSidebarNavigations: [],
     threadLists: [],
     threadHeaderActions: [],
     fileOpeners: [],
     sourceCodeRenderers: [],
     diffRenderers: [],
+    experimentalChangesViews: [],
     messageDirectives: [],
     messageActions: [],
     commandPaletteActions: [],
@@ -145,11 +151,13 @@ export function collectPluginAppRegistrations(
     composerCustomization: new Set<string>(),
     pendingInteraction: new Set<string>(),
     sidebarFooterAction: new Set<string>(),
+    sidebarNavigation: new Set<string>(),
     threadList: new Set<string>(),
     threadHeaderAction: new Set<string>(),
     fileOpener: new Set<string>(),
     sourceCodeRenderer: new Set<string>(),
     diffRenderer: new Set<string>(),
+    changesView: new Set<string>(),
     messageDirective: new Set<string>(),
     messageAction: new Set<string>(),
     commandPaletteAction: new Set<string>(),
@@ -385,6 +393,22 @@ export function collectPluginAppRegistrations(
           run: registration.run,
         });
       },
+      experimental_sidebarNavigation(registration) {
+        const kind = "slots.experimental_sidebarNavigation";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.sidebarNavigation, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        collected.experimentalSidebarNavigations.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
       experimental_threadList(registration) {
         const kind = "slots.experimental_threadList";
         const id = requireSlotId(kind, registration?.id);
@@ -462,6 +486,22 @@ export function collectPluginAppRegistrations(
           registration.description,
         );
         collected.diffRenderers.push({
+          id,
+          title: requireNonEmptyString(kind, "title", registration.title),
+          ...(description !== undefined ? { description } : {}),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_changesView(registration) {
+        const kind = "slots.experimental_changesView";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.changesView, id);
+        const description = requireOptionalString(
+          kind,
+          "description",
+          registration.description,
+        );
+        collected.experimentalChangesViews.push({
           id,
           title: requireNonEmptyString(kind, "title", registration.title),
           ...(description !== undefined ? { description } : {}),

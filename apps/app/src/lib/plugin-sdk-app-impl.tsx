@@ -3,6 +3,7 @@ import type { MarkdownProps, PluginSdkApp } from "@get-bb/plugin-sdk";
 import { PluginDiff } from "@/components/plugin/PluginDiff";
 import { PluginNewThreadComposer } from "@/components/plugin/PluginNewThreadComposer";
 import { PluginProviderModelPicker } from "@/components/plugin/PluginProviderModelPicker";
+import { PluginResponsiveDrawer } from "@/components/plugin/PluginResponsiveDrawer";
 import { PluginPermissionModePicker } from "@/components/plugin/PluginPermissionModePicker";
 import { PluginSourceCode } from "@/components/plugin/PluginSourceCode";
 import { PluginThreadChat } from "@/components/plugin/PluginThreadChat";
@@ -84,6 +85,7 @@ export const pluginSdkAppImplementation = installDeprecatedAliases(
     // plugins share one boundary.
     experimental_SourceCode: PluginSourceCode,
     experimental_Diff: PluginDiff,
+    experimental_ResponsiveDrawer: PluginResponsiveDrawer,
     // Experimental (see docs/api_to_audit.md): the sidebar thread-list data
     // plane, for plugins that replace the list itself.
     experimental_useSidebarThreads: useSidebarThreads,

@@ -11,6 +11,7 @@ import {
   diffRendererProviderAtom,
   sourceCodeRendererProviderAtom,
 } from "@/components/code/codeRendererProvider";
+import { changesViewProviderAtom } from "@/components/secondary-panel/git-diff/changesViewProvider";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
@@ -43,6 +44,7 @@ describe("CodeRendererSettings", () => {
 
     expect(screen.queryByRole("button", { name: "Source code" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Diffs" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Changes" })).toBeNull();
   });
 
   it("pins BB's diff renderer without touching the source-code choice", async () => {
@@ -74,6 +76,35 @@ describe("CodeRendererSettings", () => {
     // The two renderers are pinned independently — turning off plugin diffs
     // must not silently turn off its source viewer too.
     expect(store.get(sourceCodeRendererProviderAtom)).toBe(
+      AUTOMATIC_REPLACEMENT_PROVIDER,
+    );
+  });
+
+  it("pins BB's Changes view independently from the global diff renderer", async () => {
+    setPluginSlotRegistrations("review", {
+      ...EMPTY_REGISTRATIONS,
+      experimentalChangesViews: [
+        { id: "changes", title: "Review Changes", component: () => null },
+      ],
+      diffRenderers: [
+        { id: "diffs", title: "Review diffs", component: () => null },
+      ],
+    });
+    const store = createStore();
+    render(
+      <JotaiProvider store={store}>
+        <CodeRendererSettings />
+      </JotaiProvider>,
+    );
+
+    const changesTrigger = screen.getByRole("button", { name: "Changes" });
+    fireEvent.pointerDown(changesTrigger, { button: 0 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /built-in/u }));
+
+    expect(store.get(changesViewProviderAtom)).toBe(
+      BUILT_IN_REPLACEMENT_PROVIDER,
+    );
+    expect(store.get(diffRendererProviderAtom)).toBe(
       AUTOMATIC_REPLACEMENT_PROVIDER,
     );
   });
@@ -121,9 +152,7 @@ describe("CodeRendererSettings", () => {
       true,
     );
     expect(
-      items.some((text) =>
-        text.includes("Side-by-side with word highlights."),
-      ),
+      items.some((text) => text.includes("Side-by-side with word highlights.")),
     ).toBe(true);
   });
 });

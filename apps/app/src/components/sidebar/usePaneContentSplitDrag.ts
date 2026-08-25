@@ -1,4 +1,8 @@
-import { useCallback, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useMemo,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useStore } from "jotai";
 import { useNavigate } from "react-router-dom";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
@@ -39,41 +43,51 @@ function routeForContent(content: PaneContent): string {
   });
 }
 
-/** Prototype drag/cmd-click source for non-thread pages. */
-export function usePaneContentSplitDrag({
-  content,
-  enabled,
-  label,
-}: {
+interface PaneContentSplitOptions {
   content: PaneContent;
   enabled: boolean;
   label: string;
-}) {
+  onNavigate?: () => void;
+}
+
+/**
+ * One controller for dynamic sidebar destinations. The navigation replacement
+ * uses it to bind the same split policy to a changing nav-panel item list
+ * without calling one hook per plugin registration.
+ */
+export function usePaneContentSplitActions() {
   const store = useStore();
   const navigate = useNavigate();
   const isCompact = useIsCompactViewport();
 
-  const openInSplit = useCallback(() => {
-    const route = routeForContent(content);
-    const layout = store.get(splitLayoutAtom);
-    if (!enabled || isCompact || layout === null) {
-      navigate(route);
-      return;
-    }
-    const existing = findPaneByContent(layout.root, content);
-    const next =
-      existing !== null
-        ? setFocus(layout, existing.paneId)
-        : countPanes(layout.root) >= MAX_PANES
-          ? replacePaneContent(layout, layout.focusedPaneId, content)
-          : splitPane(layout, layout.focusedPaneId, "right", content);
-    if (next !== layout) store.set(splitLayoutAtom, next);
-    navigate(route, existing !== null ? { replace: true } : undefined);
-  }, [content, enabled, isCompact, navigate, store]);
+  const openInSplit = useCallback(
+    ({ content, enabled, onNavigate }: PaneContentSplitOptions) => {
+      const route = routeForContent(content);
+      const layout = store.get(splitLayoutAtom);
+      onNavigate?.();
+      if (!enabled || isCompact || layout === null) {
+        navigate(route);
+        return;
+      }
+      const existing = findPaneByContent(layout.root, content);
+      const next =
+        existing !== null
+          ? setFocus(layout, existing.paneId)
+          : countPanes(layout.root) >= MAX_PANES
+            ? replacePaneContent(layout, layout.focusedPaneId, content)
+            : splitPane(layout, layout.focusedPaneId, "right", content);
+      if (next !== layout) store.set(splitLayoutAtom, next);
+      navigate(route, existing !== null ? { replace: true } : undefined);
+    },
+    [isCompact, navigate, store],
+  );
 
-  const onPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!enabled || event.button !== 0) return;
+  const beginDrag = useCallback(
+    (
+      event: ReactPointerEvent<HTMLElement>,
+      { content, enabled, label, onNavigate }: PaneContentSplitOptions,
+    ) => {
+      if (!enabled || isCompact || event.button !== 0) return;
       const rowEl = event.currentTarget;
       const sidebarEl = rowEl.closest(SIDEBAR_SELECTOR);
       const sidebarRightEdge = (sidebarEl ?? rowEl).getBoundingClientRect()
@@ -115,6 +129,7 @@ export function usePaneContentSplitDrag({
                 ? replacePaneContent(layout, target.paneId, content)
                 : splitPane(layout, target.paneId, target.zone, content);
           if (next !== layout) store.set(splitLayoutAtom, next);
+          onNavigate?.();
           navigate(
             routeForContent(content),
             existing !== null ? { replace: true } : undefined,
@@ -122,11 +137,31 @@ export function usePaneContentSplitDrag({
         },
       });
     },
-    [content, enabled, label, navigate, store],
+    [isCompact, navigate, store],
+  );
+
+  return useMemo(
+    () => ({ beginDrag, isCompact, openInSplit }),
+    [beginDrag, isCompact, openInSplit],
+  );
+}
+
+/** Split-drag and modifier-click bindings for one stable sidebar destination. */
+export function usePaneContentSplitDrag(options: PaneContentSplitOptions) {
+  const actions = usePaneContentSplitActions();
+  const openInSplit = useCallback(
+    () => actions.openInSplit(options),
+    [actions, options],
+  );
+  const onPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) =>
+      actions.beginDrag(event, options),
+    [actions, options],
   );
 
   return {
-    onPointerDown: enabled && !isCompact ? onPointerDown : undefined,
+    onPointerDown:
+      options.enabled && !actions.isCompact ? onPointerDown : undefined,
     openInSplit,
   };
 }

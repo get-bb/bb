@@ -105,6 +105,71 @@ export interface PluginPendingInteractionProps {
  */
 export interface PluginSidebarFooterActionProps {}
 
+/** Display and accessibility metadata for a host-owned sidebar shortcut. */
+export interface ExperimentalSidebarNavigationShortcut {
+  label: string;
+  ariaKeyShortcuts: string;
+}
+
+/** Host-owned behavior represented by one sidebar navigation item. */
+export type ExperimentalSidebarNavigationAction =
+  | { kind: "new-thread" }
+  | { kind: "search-threads" }
+  | { kind: "open-extensions" }
+  | {
+      kind: "open-plugin-panel";
+      pluginId: string;
+      panelId: string;
+    };
+
+/** Semantic icon identity for one sidebar navigation item. */
+export type ExperimentalSidebarNavigationIcon =
+  | { kind: "host"; name: "new-thread" | "search" | "extensions" }
+  | { kind: "plugin"; pluginId: string; icon: string | null };
+
+/** One host-owned destination or action a plugin may arrange. */
+export interface ExperimentalSidebarNavigationItem {
+  /** Stable identity within the current replacement generation. */
+  id: string;
+  label: string;
+  icon: ExperimentalSidebarNavigationIcon;
+  action: ExperimentalSidebarNavigationAction;
+  isDisabled: boolean;
+  shortcut: ExperimentalSidebarNavigationShortcut | null;
+  /**
+   * Spread onto the item's interactive element to preserve BB's drag-to-split
+   * gesture. Empty when the item cannot split or the viewport is compact.
+   */
+  experimental_splitProps: {
+    onPointerDown?: (event: import("react").PointerEvent<HTMLElement>) => void;
+  };
+}
+
+/** How the host should activate a sidebar navigation item. */
+export interface ExperimentalSidebarNavigationActivationOptions {
+  /** Apply BB's existing modifier-click split placement rules. */
+  openInSplit: boolean;
+}
+
+/** Props passed to an `experimental_sidebarNavigation` component. */
+export interface ExperimentalSidebarNavigationProps {
+  /** Ordered semantic snapshot. A plugin may visually regroup or reorder it. */
+  items: readonly ExperimentalSidebarNavigationItem[];
+  /** Host-derived active item, or null when the route is outside this list. */
+  activeItemId: string | null;
+  isCompactViewport: boolean;
+  /** Resolve and run a current host item by id. */
+  experimental_activate(
+    itemId: string,
+    options: ExperimentalSidebarNavigationActivationOptions,
+  ): void;
+  /**
+   * BB's native navigation controls, bound to this sidebar. Rendering them
+   * delegates without resolving `experimental_sidebarNavigation` again.
+   */
+  experimental_Original: ComponentType;
+}
+
 /**
  * Props passed to an `experimental_threadList` component — the sidebar's
  * scrolling thread area, replaced wholesale by one plugin.
@@ -329,6 +394,39 @@ export interface PluginDiffRendererProps {
   Original: ComponentType;
   /** @deprecated Renamed to `Original` in SDK 0.4.16; removed in bb 0.42. */
   experimental_Original?: ComponentType;
+}
+
+/** A target routed to one pane's fixed Changes tab. */
+export type ExperimentalChangesViewTarget =
+  | { kind: "file"; path: string }
+  | { kind: "commit"; sha: string };
+
+/**
+ * The current session target for one Changes-view instance. `sequence`
+ * changes when the same target is opened again. Call `clear` after handling
+ * the target so a later open can be distinguished from retained state.
+ */
+export interface ExperimentalChangesViewTargetState {
+  readonly sequence: number;
+  readonly target: ExperimentalChangesViewTarget;
+  clear(): void;
+}
+
+/** Props passed to an `experimental_changesView` component. */
+export interface ExperimentalChangesViewProps {
+  /** Thread shown in this pane. */
+  threadId: string;
+  /** Environment whose changes the pane owns. */
+  environmentId: string;
+  /** A file or commit routed to this pane, or null for an ordinary open. */
+  experimental_target: ExperimentalChangesViewTargetState | null;
+  /**
+   * BB's complete Changes toolbar and virtualized body, bound to this pane.
+   * Rendering it delegates without resolving `experimental_changesView`
+   * again. An active `experimental_diffRenderer` still applies to its file
+   * bodies.
+   */
+  experimental_Original: ComponentType;
 }
 
 /**
@@ -891,6 +989,24 @@ export interface PluginSidebarThreadSplit {
 }
 
 /**
+ * Replace BB's bounded sidebar navigation controls while BB retains the
+ * persistent drawer, host search field, thread-list mount, footer, resize
+ * handle, and hidden-body shortcut policy.
+ *
+ * This replacement receives semantic host actions rather than routes or host
+ * elements. Missing and crashing replacements fall back to native controls.
+ */
+export interface ExperimentalSidebarNavigationRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in Appearance settings. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalSidebarNavigationProps>;
+}
+
+/**
  * Replace the sidebar's thread list with a plugin component.
  *
  * Unlike every other slot, this one is EXCLUSIVE: two lists cannot share one
@@ -972,6 +1088,20 @@ export interface PluginDiffRendererRegistration {
   /** Optional one-line description shown with the provider choice. */
   description?: string;
   component: ComponentType<PluginDiffRendererProps>;
+}
+
+/**
+ * Replace the complete fixed Changes view. The fixed tab, routing, shortcut,
+ * split placement, and pane-local target state remain host-owned.
+ */
+export interface ExperimentalChangesViewRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Label shown in Appearance settings. */
+  title: string;
+  /** Optional one-line description shown with the provider choice. */
+  description?: string;
+  component: ComponentType<ExperimentalChangesViewProps>;
 }
 
 /**
@@ -1208,6 +1338,14 @@ export interface PluginTimelineRendererRegistration {
   component: ComponentType<PluginTimelineRendererProps>;
 }
 
+export interface ExperimentalResponsiveDrawerProps {
+  open: boolean;
+  onOpenChange(open: boolean): void;
+  title: string;
+  children: ReactNode;
+  contentClassName?: string;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -1232,6 +1370,14 @@ export interface PluginAppSlots {
   pendingInteraction(registration: PluginPendingInteractionRegistration): void;
   sidebarFooterAction(
     registration: PluginSidebarFooterActionRegistration,
+  ): void;
+  /**
+   * Replace BB's bounded sidebar navigation controls while BB retains the
+   * surrounding drawer, search field, thread list, footer, and shortcuts.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sidebarNavigation(
+    registration: ExperimentalSidebarNavigationRegistration,
   ): void;
   /**
    * Replace the sidebar's thread list (see
@@ -1262,6 +1408,14 @@ export interface PluginAppSlots {
    * docs/api_to_audit.md.
    */
   experimental_diffRenderer(registration: PluginDiffRendererRegistration): void;
+  /**
+   * Replace BB's complete Changes toolbar and body (see
+   * {@link ExperimentalChangesViewRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_changesView(
+    registration: ExperimentalChangesViewRegistration,
+  ): void;
   messageDirective(registration: PluginMessageDirectiveRegistration): void;
   messageAction(registration: PluginMessageActionRegistration): void;
   /**
@@ -2118,5 +2272,10 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_Diff: ComponentType<DiffProps>;
+  /**
+   * Persistent non-modal responsive drawer; no inert or aria-hidden is applied
+   * to the app root. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ResponsiveDrawer: ComponentType<ExperimentalResponsiveDrawerProps>;
   useComposerView(): ComposerView;
 }

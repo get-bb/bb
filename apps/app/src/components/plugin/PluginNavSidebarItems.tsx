@@ -478,6 +478,7 @@ function PluginNavSidebarItem({
     content,
     enabled: splitEnabled,
     label: chrome.title,
+    onNavigate,
   });
   const splitIndicator = usePaneContentSplitIndicator(content, splitEnabled);
   const SidebarAccessory = panel?.experimental_sidebarAccessory;
@@ -507,11 +508,11 @@ function PluginNavSidebarItem({
       // sidebar, so it coexists with the dnd-kit reorder listeners.
       onPointerDown={onPointerDown}
       onSelect={(event) => {
-        onNavigate?.();
         if (event.metaKey || event.ctrlKey) {
           openInSplit();
           return;
         }
+        onNavigate?.();
         void navigate(path);
       }}
     />

@@ -10,6 +10,7 @@ import {
   defaultAppTheme,
   defaultExperiments,
   type AppTheme,
+  type ComposerEscapeBehavior,
   type FaviconColorPreference,
   type PluginThemeMeta,
 } from "@bb/domain";
@@ -44,6 +45,7 @@ import { UsageLimitsSettingsSection } from "@/components/settings/UsageLimitsSet
 import { ProvidersSettingsSection } from "@/components/settings/ProvidersSettingsSection";
 import { CodeRendererSettings } from "@/components/settings/CodeRendererSettings";
 import { SidebarThreadListSetting } from "@/components/settings/SidebarThreadListSetting";
+import { SidebarNavigationSetting } from "@/components/settings/SidebarNavigationSetting";
 import { SplitDimmingSetting } from "@/components/settings/SplitDimmingSetting";
 import { useSettingsNavState } from "@/components/settings/settings-nav";
 import { PluginSettingsPage } from "@/components/plugin/PluginSettings";
@@ -153,12 +155,15 @@ interface GeneralSettingsSectionProps {
   onRewriteLocalhostLinksChange: (enabled: boolean) => void;
   onRichTextEditingChange: (enabled: boolean) => void;
   onSteerActiveThreadOnEnterChange: (enabled: boolean) => void;
+  onComposerEscapeBehaviorChange: (value: ComposerEscapeBehavior) => void;
   onStreamerModeChange: (enabled: boolean) => void;
   openLinksInAppBrowser: boolean;
   rewriteLocalhostLinks: boolean;
   richTextEditing: boolean;
   steerActiveThreadOnEnter: boolean;
   steerActiveThreadOnEnterDisabled: boolean;
+  composerEscapeBehavior: ComposerEscapeBehavior;
+  composerEscapeBehaviorDisabled: boolean;
   streamerMode: boolean;
   streamerModeDisabled: boolean;
 }
@@ -539,6 +544,19 @@ const UNHANDLED_PROVIDER_EVENTS_SETTING_LABEL =
   "Show unhandled provider events";
 const STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL =
   "Steer running threads on Enter";
+const COMPOSER_ESCAPE_BEHAVIOR_SETTING_LABEL = "Escape in composer";
+const COMPOSER_ESCAPE_BEHAVIOR_OPTIONS = [
+  { value: "blur", label: "Blur composer" },
+  { value: "stop-running-thread", label: "Stop running thread" },
+] as const satisfies readonly {
+  value: ComposerEscapeBehavior;
+  label: string;
+}[];
+const COMPOSER_ESCAPE_BEHAVIOR_LABELS: Record<ComposerEscapeBehavior, string> =
+  {
+    blur: "Blur composer",
+    "stop-running-thread": "Stop running thread",
+  };
 const STREAMER_MODE_SETTING_LABEL = "Streamer mode";
 
 export function AppearanceSettingsSection({
@@ -556,6 +574,7 @@ export function AppearanceSettingsSection({
   return (
     <SettingsSection title="Appearance">
       <div className="space-y-5">
+        <SidebarNavigationSetting />
         <SidebarThreadListSetting />
         <CodeRendererSettings />
         <SettingsWithControl label="Theme">
@@ -703,12 +722,15 @@ export function GeneralSettingsSection({
   onRewriteLocalhostLinksChange,
   onRichTextEditingChange,
   onSteerActiveThreadOnEnterChange,
+  onComposerEscapeBehaviorChange,
   onStreamerModeChange,
   openLinksInAppBrowser,
   rewriteLocalhostLinks,
   richTextEditing,
   steerActiveThreadOnEnter,
   steerActiveThreadOnEnterDisabled,
+  composerEscapeBehavior,
+  composerEscapeBehaviorDisabled,
   streamerMode,
   streamerModeDisabled,
 }: GeneralSettingsSectionProps) {
@@ -743,6 +765,47 @@ export function GeneralSettingsSection({
             onCheckedChange={onSteerActiveThreadOnEnterChange}
             aria-label={STEER_ACTIVE_THREAD_ON_ENTER_SETTING_LABEL}
           />
+        </SettingsWithControl>
+
+        <SettingsWithControl
+          label={COMPOSER_ESCAPE_BEHAVIOR_SETTING_LABEL}
+          description="Choose whether unmodified Escape blurs the composer or stops its running thread."
+        >
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className={SETTINGS_DROPDOWN_TRIGGER_CLASS}
+                aria-label={COMPOSER_ESCAPE_BEHAVIOR_SETTING_LABEL}
+                disabled={composerEscapeBehaviorDisabled}
+              >
+                {COMPOSER_ESCAPE_BEHAVIOR_LABELS[composerEscapeBehavior]}
+                <Icon
+                  name="ChevronDown"
+                  className="size-3.5 text-muted-foreground"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {COMPOSER_ESCAPE_BEHAVIOR_OPTIONS.map((option) => (
+                <DropdownMenuItem
+                  key={option.value}
+                  onSelect={() => onComposerEscapeBehaviorChange(option.value)}
+                >
+                  {option.label}
+                  <Icon
+                    name="Check"
+                    className={cn(
+                      "ml-auto",
+                      composerEscapeBehavior !== option.value && "opacity-0",
+                      COARSE_POINTER_ICON_SIZE_CLASS,
+                    )}
+                  />
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SettingsWithControl>
 
         {desktopBrowserAvailable ? (
@@ -1075,6 +1138,11 @@ export function SettingsView() {
             systemConfigQuery.data === undefined ||
             updateGeneralSettingsMutation.isPending
           }
+          composerEscapeBehavior={generalSettings.composerEscapeBehavior}
+          composerEscapeBehaviorDisabled={
+            systemConfigQuery.data === undefined ||
+            updateGeneralSettingsMutation.isPending
+          }
           onNavigateToThreadAfterCreateChange={setNavigateToThreadAfterCreate}
           onOpenLinksInAppBrowserChange={setOpenLinksInAppBrowser}
           onRewriteLocalhostLinksChange={setRewriteLocalhostLinks}
@@ -1083,6 +1151,12 @@ export function SettingsView() {
             updateGeneralSettingsMutation.mutate({
               ...generalSettings,
               steerActiveThreadOnEnter: enabled,
+            })
+          }
+          onComposerEscapeBehaviorChange={(composerEscapeBehavior) =>
+            updateGeneralSettingsMutation.mutate({
+              ...generalSettings,
+              composerEscapeBehavior,
             })
           }
           streamerMode={generalSettings.streamerMode}

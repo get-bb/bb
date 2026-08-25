@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import * as pluginSdkApp from "@get-bb/plugin-sdk/app";
 import {
   type BbPluginApi,
+  type ExperimentalChangesViewProps,
+  type ExperimentalSidebarNavigationProps,
   type PluginAppBuilder,
   type PluginAppSlots,
   type PluginContentScriptContext,
@@ -166,11 +168,13 @@ type SlotPropsByName = {
   experimental_newThreadPanelAction: PluginNewThreadPanelProps;
   pendingInteraction: PluginPendingInteractionProps;
   sidebarFooterAction: PluginSidebarFooterActionProps;
+  experimental_sidebarNavigation: ExperimentalSidebarNavigationProps;
   experimental_threadList: PluginThreadListProps;
   experimental_threadHeaderAction: PluginThreadHeaderActionProps;
   fileOpener: PluginFileOpenerProps;
   experimental_sourceCodeRenderer: PluginSourceCodeRendererProps;
   experimental_diffRenderer: PluginDiffRendererProps;
+  experimental_changesView: ExperimentalChangesViewProps;
   messageDirective: PluginMessageDirectiveProps;
   messageAction: PluginMessageActionContext;
   commandPaletteAction: PluginCommandPaletteActionContext;
@@ -237,6 +241,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
   experimental_newThreadPanelAction: ["projectId", "params"],
   pendingInteraction: ["interaction", "submit", "cancel"],
   sidebarFooterAction: [],
+  experimental_sidebarNavigation: [
+    "items",
+    "activeItemId",
+    "isCompactViewport",
+    "experimental_activate",
+    "experimental_Original",
+  ],
   experimental_threadList: [
     "activeThreadId",
     "activeProjectId",
@@ -268,6 +279,12 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "showLineNumbers",
     "experimental_fullFileContents",
     "Original",
+    "experimental_Original",
+  ],
+  experimental_changesView: [
+    "threadId",
+    "environmentId",
+    "experimental_target",
     "experimental_Original",
   ],
   messageDirective: ["attributes", "source", "message", "openWorkspaceFile"],

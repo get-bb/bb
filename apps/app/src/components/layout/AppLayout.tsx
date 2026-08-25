@@ -862,6 +862,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             hostId={quickCreateProject.hostId}
             hostName={quickCreateProject.hostName}
             hosts={quickCreateProject.hosts}
+            nativeFolderPicker={quickCreateProject.nativeFolderPicker}
             onOpenChange={quickCreateProject.projectPathDialog.onOpenChange}
             onSubmit={quickCreateProject.submitProjectPath}
           />

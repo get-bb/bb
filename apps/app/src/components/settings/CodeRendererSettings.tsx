@@ -14,6 +14,7 @@ import {
   diffRendererProviderAtom,
   sourceCodeRendererProviderAtom,
 } from "@/components/code/codeRendererProvider";
+import { changesViewProviderAtom } from "@/components/secondary-panel/git-diff/changesViewProvider";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
@@ -121,9 +122,10 @@ function CodeRendererSetting({
   );
 }
 
-/** Both code-renderer pins; each row hides itself when no plugin supplies one. */
+/** Replacement pins; each row hides itself when no plugin supplies one. */
 export function CodeRendererSettings() {
-  const { sourceCodeRenderers, diffRenderers } = usePluginSlots();
+  const { sourceCodeRenderers, diffRenderers, experimentalChangesViews } =
+    usePluginSlots();
   return (
     <>
       <CodeRendererSetting
@@ -135,10 +137,17 @@ export function CodeRendererSettings() {
       />
       <CodeRendererSetting
         label="Diffs"
-        description="Applies to file diffs in threads, the diff panel, and plugin views."
+        description="Applies to file diffs in threads, the Changes view, and plugin views."
         builtInDescription="Unified and split diffs from the bb code theme."
         preferenceAtom={diffRendererProviderAtom}
         slots={diffRenderers}
+      />
+      <CodeRendererSetting
+        label="Changes"
+        description="Replaces the complete Changes toolbar and file list on this device."
+        builtInDescription="BB's toolbar and virtualized changed-file list."
+        preferenceAtom={changesViewProviderAtom}
+        slots={experimentalChangesViews}
       />
     </>
   );

@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bbPluginSdk": ">=0.4.3"
+    "bbPluginSdk": ">=0.4.17"
   },
   "bb": {
     "name": "Replacement Lab Alpha",
-    "description": "Exercises thread-list and file-opener replacement behavior.",
+    "description": "Exercises sidebar-navigation, thread-list, Changes-view, and file-opener replacement behavior.",
     "branding": {
       "icon": "Code"
     },

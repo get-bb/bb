@@ -34,8 +34,12 @@ export interface SidebarThreadSearchPanelController {
   onNavigationItemsChange: (
     items: readonly SidebarThreadSearchNavigationItem[],
   ) => void;
+  /** Ends host search after a split click or drag navigates directly. */
+  onNavigate: () => void;
   onSelectItem: (item: SidebarThreadSearchNavigationItem) => void;
   query: string;
+  /** Enables host split bindings for search results in the app sidebar. */
+  splitEnabled?: boolean;
 }
 
 /**

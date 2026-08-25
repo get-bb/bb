@@ -70,13 +70,8 @@ describe("app chrome opts out of text selection", () => {
     expect(getPanel().classList.contains("select-none")).toBe(true);
   });
 
-  it("marks the right panel's top chrome with and without the diff toolbar", () => {
-    expect(getSecondaryPanelChromeStackClassName(false)).toContain(
-      "select-none",
-    );
-    expect(getSecondaryPanelChromeStackClassName(true)).toContain(
-      "select-none",
-    );
+  it("marks the right panel's top chrome", () => {
+    expect(getSecondaryPanelChromeStackClassName()).toContain("select-none");
   });
 
   it("restores native selection on editable controls inside opted-out chrome", () => {

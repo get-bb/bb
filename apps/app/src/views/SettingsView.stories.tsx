@@ -4,6 +4,7 @@ import {
   defaultAppTheme,
   defaultExperiments,
   type AppTheme,
+  type ComposerEscapeBehavior,
   type Experiments,
   type Host,
   defaultAppSettings,
@@ -205,6 +206,8 @@ function useSettingsStoryState() {
   const [richTextEditing, setRichTextEditing] = useState(false);
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
+  const [composerEscapeBehavior, setComposerEscapeBehavior] =
+    useState<ComposerEscapeBehavior>("blur");
   const [streamerMode, setStreamerMode] = useState(false);
   const [showUnhandledProviderEvents, setShowUnhandledProviderEvents] =
     useState(false);
@@ -219,6 +222,7 @@ function useSettingsStoryState() {
 
   return {
     appearance,
+    composerEscapeBehavior,
     directoryTargetId,
     experiments,
     fileTargetId,
@@ -231,6 +235,7 @@ function useSettingsStoryState() {
     streamerMode,
     showUnhandledProviderEvents,
     setAppearance,
+    setComposerEscapeBehavior,
     setDirectoryTargetId,
     setExperiments,
     setFileTargetId,
@@ -274,10 +279,13 @@ function GeneralSettingsStory({
     <>
       <GeneralSettingsSection
         desktopBrowserAvailable={desktopBrowserAvailable}
+        composerEscapeBehavior={state.composerEscapeBehavior}
+        composerEscapeBehaviorDisabled={false}
         navigateToThreadAfterCreate={state.navigateToThreadAfterCreate}
         onNavigateToThreadAfterCreateChange={
           state.setNavigateToThreadAfterCreate
         }
+        onComposerEscapeBehaviorChange={state.setComposerEscapeBehavior}
         onOpenLinksInAppBrowserChange={state.setOpenLinksInAppBrowser}
         onRewriteLocalhostLinksChange={state.setRewriteLocalhostLinks}
         onRichTextEditingChange={state.setRichTextEditing}

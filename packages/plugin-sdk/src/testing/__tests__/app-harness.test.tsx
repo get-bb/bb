@@ -466,6 +466,86 @@ const app = await loadPluginApp(
 );
 
 describe("loadPluginApp", () => {
+  it("captures and validates sidebar-navigation replacement registrations", async () => {
+    const component = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_sidebarNavigation({
+          id: "workspace",
+          title: "Workspace navigation",
+          description: "A compact destination grid.",
+          component,
+        });
+      }),
+    );
+
+    expect(captured.experimentalSidebarNavigations).toEqual([
+      {
+        id: "workspace",
+        title: "Workspace navigation",
+        description: "A compact destination grid.",
+        component,
+      },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_sidebarNavigation({
+            id: "workspace",
+            title: "One",
+            component,
+          });
+          builder.slots.experimental_sidebarNavigation({
+            id: "workspace",
+            title: "Two",
+            component,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      'slots.experimental_sidebarNavigation: duplicate id "workspace"',
+    );
+  });
+
+  it("captures and validates whole-Changes replacement registrations", async () => {
+    const component = () => null;
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.experimental_changesView({
+          id: "review",
+          title: "Review Changes",
+          description: "A complete Changes view.",
+          component,
+        });
+      }),
+    );
+
+    expect(captured.experimentalChangesViews).toEqual([
+      {
+        id: "review",
+        title: "Review Changes",
+        description: "A complete Changes view.",
+        component,
+      },
+    ]);
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.experimental_changesView({
+            id: "review",
+            title: "One",
+            component,
+          });
+          builder.slots.experimental_changesView({
+            id: "review",
+            title: "Two",
+            component,
+          });
+        }),
+      ),
+    ).rejects.toThrow('slots.experimental_changesView: duplicate id "review"');
+  });
+
   it("captures and validates New thread panel action registrations", async () => {
     const run = () => {};
     const captured = await loadPluginApp(

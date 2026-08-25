@@ -3,7 +3,52 @@ import { openAppFixedTabFromDestinations } from "@/lib/app-fixed-tab-navigation"
 import {
   createGitDiffFixedTabDestination,
   GIT_DIFF_FIXED_TAB_REFERENCE,
+  handleGitDiffShortcut,
 } from "./git-diff-fixed-tab-navigation";
+
+describe("handleGitDiffShortcut", () => {
+  it("keeps the fixed Changes shortcut active around replacement rendering", () => {
+    const close = vi.fn();
+    const open = vi.fn();
+
+    expect(
+      handleGitDiffShortcut({
+        close,
+        eligible: true,
+        isActive: true,
+        isFocused: true,
+        isOpen: true,
+        open,
+      }),
+    ).toBe(true);
+    expect(close).toHaveBeenCalledOnce();
+    expect(open).not.toHaveBeenCalled();
+
+    close.mockClear();
+    expect(
+      handleGitDiffShortcut({
+        close,
+        eligible: true,
+        isActive: false,
+        isFocused: true,
+        isOpen: true,
+        open,
+      }),
+    ).toBe(true);
+    expect(open).toHaveBeenCalledOnce();
+
+    expect(
+      handleGitDiffShortcut({
+        close,
+        eligible: true,
+        isActive: false,
+        isFocused: false,
+        isOpen: false,
+        open,
+      }),
+    ).toBe(false);
+  });
+});
 
 describe("createGitDiffFixedTabDestination", () => {
   it("routes core Changes targets through the generic controller while the owner validates them", () => {

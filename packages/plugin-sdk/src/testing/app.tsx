@@ -26,11 +26,14 @@ import {
   type PluginComposerScope,
   type PluginComposerTextEffect,
   type PluginComposerThreadRowStatus,
+  type ExperimentalChangesViewRegistration,
   type PluginFileOpenerRegistration,
   type PluginHomepageSectionRegistration,
   type PluginMessageActionRegistration,
   type PluginMessageDirectiveRegistration,
   type PluginDiffRendererRegistration,
+  type ExperimentalResponsiveDrawerProps,
+  type ExperimentalSidebarNavigationRegistration,
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelActionRegistration,
   type PluginPendingInteractionRegistration,
@@ -667,6 +670,18 @@ function TestSourceCode({
   );
 }
 
+function TestResponsiveDrawer({
+  open,
+  title,
+  children,
+}: ExperimentalResponsiveDrawerProps) {
+  return open ? (
+    <section aria-label={title} data-testid="plugin-responsive-drawer">
+      {children}
+    </section>
+  ) : null;
+}
+
 /**
  * Stand-in for the host-owned diff viewer: emits the raw patch in a
  * recognizable wrapper carrying the resolved presentation.
@@ -799,6 +814,7 @@ const testPluginSdkApp = {
   experimental_PermissionModePicker: TestPermissionModePicker,
   experimental_SourceCode: TestSourceCode,
   experimental_Diff: TestDiff,
+  experimental_ResponsiveDrawer: TestResponsiveDrawer,
   experimental_useSidebarThreads(): PluginSidebarThreadsState {
     return useSlotEnv("experimental_useSidebarThreads").sidebarThreads;
   },
@@ -889,11 +905,13 @@ export interface CapturedPluginApp {
   composerCustomizations: ComposerCustomization[];
   pendingInteractions: PluginPendingInteractionRegistration[];
   sidebarFooterActions: PluginSidebarFooterActionRegistration[];
+  experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadLists: PluginThreadListRegistration[];
   threadHeaderActions: PluginThreadHeaderActionRegistration[];
   fileOpeners: PluginFileOpenerRegistration[];
   sourceCodeRenderers: PluginSourceCodeRendererRegistration[];
   diffRenderers: PluginDiffRendererRegistration[];
+  experimentalChangesViews: ExperimentalChangesViewRegistration[];
   messageDirectives: PluginMessageDirectiveRegistration[];
   messageActions: PluginMessageActionRegistration[];
   providerIcons: PluginProviderIconRegistration[];

@@ -109,9 +109,7 @@ function useMergeBaseOwner(environment: Environment, threadId: string) {
   const diffState = useGitDiffPanelState({
     environmentId: environment.id,
     isDiffPanelActive: true,
-    onClearPendingGitDiffIntent: panel.clearPendingGitDiffIntent,
-    pendingGitDiffCommitSha: panel.pendingGitDiffCommitSha,
-    pendingGitDiffScrollPath: panel.pendingGitDiffScrollPath,
+    experimental_target: panel.pendingGitDiffTarget,
     requestedMergeBaseBranch: effectiveMergeBaseBranch,
   });
   return { ...diffState, ...panel, effectiveMergeBaseBranch };
@@ -204,13 +202,32 @@ it("does not revive an unconsumed file intent after navigating away and back", (
   );
 
   act(() => owner.result.current.openDiffFile("left.ts"));
-  expect(owner.result.current.pendingGitDiffScrollPath).toBe("left.ts");
+  expect(owner.result.current.pendingGitDiffTarget?.target).toEqual({
+    kind: "file",
+    path: "left.ts",
+  });
 
   owner.rerender({ environment: environmentB, threadId: "thread-b" });
-  expect(owner.result.current.pendingGitDiffScrollPath).toBeNull();
+  expect(owner.result.current.pendingGitDiffTarget).toBeNull();
 
   owner.rerender({ environment: environmentA, threadId: "thread-a" });
-  expect(owner.result.current.pendingGitDiffScrollPath).toBeNull();
+  expect(owner.result.current.pendingGitDiffTarget).toBeNull();
+});
+
+it("increments pane-local target identity when routing the same file twice", () => {
+  const owner = renderHook(
+    () => useMergeBaseOwner(makeEnvironment("env-left", "main"), "left"),
+    { wrapper: TestRoot },
+  );
+
+  act(() => owner.result.current.openDiffFile("same.ts"));
+  const firstSequence = owner.result.current.pendingGitDiffTarget?.sequence;
+  expect(firstSequence).toBeTypeOf("number");
+
+  act(() => owner.result.current.openDiffFile("same.ts"));
+  expect(owner.result.current.pendingGitDiffTarget?.sequence).toBe(
+    (firstSequence ?? 0) + 1,
+  );
 });
 
 it("keeps delayed file and commit intents with the owner that requested them", async () => {
@@ -224,20 +241,20 @@ it("keeps delayed file and commit intents with the owner that requested them", a
   );
 
   act(() => left.result.current.openDiffFile("left.ts"));
-  expect(left.result.current.pendingGitDiffScrollPath).toBe("left.ts");
-  expect(right.result.current.pendingGitDiffScrollPath).toBeNull();
+  expect(left.result.current.pendingGitDiffTarget?.target).toEqual({
+    kind: "file",
+    path: "left.ts",
+  });
+  expect(right.result.current.pendingGitDiffTarget).toBeNull();
 
-  act(() => right.result.current.clearPendingGitDiffIntent());
-  expect(left.result.current.pendingGitDiffScrollPath).toBe("left.ts");
-
-  act(() => left.result.current.clearPendingGitDiffIntent());
-  expect(left.result.current.pendingGitDiffScrollPath).toBeNull();
+  act(() => left.result.current.pendingGitDiffTarget?.clear());
+  expect(left.result.current.pendingGitDiffTarget).toBeNull();
 
   act(() => left.result.current.openCommitDiff("sha-left"));
   await waitFor(() => {
     expect(left.result.current.gitDiffSelectValue).toBe("sha-left");
-    expect(left.result.current.pendingGitDiffCommitSha).toBeNull();
+    expect(left.result.current.pendingGitDiffTarget).toBeNull();
   });
   expect(right.result.current.gitDiffSelectValue).toBe("all");
-  expect(right.result.current.pendingGitDiffCommitSha).toBeNull();
+  expect(right.result.current.pendingGitDiffTarget).toBeNull();
 });

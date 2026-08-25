@@ -218,6 +218,13 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.experimentalSidebarNavigations,
+      "sidebar-navigation",
+      "Replaces sidebar navigation controls; configured in Appearance.",
+      () => getSettingsRoutePath("appearance"),
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadLists,
       "thread-list",
       "Can replace the sidebar thread list; configured in Appearance.",
@@ -234,6 +241,13 @@ function pluginAppSurfaceItems(
       slots.diffRenderers,
       "diff-renderer",
       "Replaces how diffs are displayed everywhere in the app.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.experimentalChangesViews,
+      "changes-view",
+      "Replaces the complete Changes toolbar and file list; configured in Appearance.",
+      () => getSettingsRoutePath("appearance"),
     ),
     ...namedSlotItems(
       pluginId,

@@ -17,6 +17,7 @@ import {
   type SidebarThreadSearchNavigationItem,
 } from "./sidebarThreadSearch";
 import { ThreadSearchResultRow } from "./ThreadSearchResultRow";
+import { usePaneContentSplitDrag } from "./usePaneContentSplitDrag";
 
 interface SidebarThreadSearchPanelProps {
   activeIndex: number;
@@ -26,10 +27,12 @@ interface SidebarThreadSearchPanelProps {
   onNavigationItemsChange: (
     items: readonly SidebarThreadSearchNavigationItem[],
   ) => void;
+  onNavigate?: () => void;
   onSelect: (item: SidebarThreadSearchNavigationItem) => void;
   projectNamesById: ReadonlyMap<string, string>;
   query: string;
   recentThreads: readonly ThreadListEntry[];
+  splitEnabled?: boolean;
   showSectionLabels?: boolean;
 }
 
@@ -55,6 +58,7 @@ interface ThreadSearchMessageProps {
 const RECENT_THREAD_LIMIT = 20;
 const EMPTY_MATCHES: readonly ThreadSearchMatch[] = [];
 const EMPTY_SECTION_NAMES_BY_ID = new Map<string, string>();
+const NOOP = () => {};
 // The message (non-title) match drives the deep-link target. Mirrors the row's
 // snippet selection so clicking a result lands on the message shown in the row.
 function getMessageMatchSeq(
@@ -104,23 +108,76 @@ function ThreadSearchMessage({
   );
 }
 
+function SplitThreadSearchResultRow({
+  activeIndex,
+  index,
+  item,
+  matches,
+  onActiveIndexChange,
+  onNavigate,
+  onSelect,
+  projectName,
+  sectionLabel,
+  thread,
+}: {
+  activeIndex: number;
+  index: number;
+  item: SidebarThreadSearchNavigationItem;
+  matches: readonly ThreadSearchMatch[];
+  onActiveIndexChange: (index: number) => void;
+  onNavigate: () => void;
+  onSelect: (item: SidebarThreadSearchNavigationItem) => void;
+  projectName: string | undefined;
+  sectionLabel: string | null;
+  thread: ThreadListEntry;
+}) {
+  const split = usePaneContentSplitDrag({
+    content: {
+      kind: "thread",
+      projectId: item.projectId,
+      threadId: item.threadId,
+    },
+    enabled: true,
+    label: thread.title ?? "Untitled thread",
+    onNavigate,
+  });
+  return (
+    <ThreadSearchResultRow
+      id={item.optionId}
+      isActive={activeIndex === index}
+      matches={matches}
+      sectionLabel={sectionLabel}
+      projectName={projectName}
+      thread={thread}
+      onActive={() => onActiveIndexChange(index)}
+      onOpenInSplit={split.openInSplit}
+      onPointerDown={split.onPointerDown}
+      onSelect={() => onSelect(item)}
+    />
+  );
+}
+
 function renderSectionRows({
   activeIndex,
   sectionNamesById,
   onActiveIndexChange,
+  onNavigate,
   onSelect,
   projectNamesById,
   section,
   showSectionLabels,
+  splitEnabled,
   startIndex,
 }: {
   activeIndex: number;
   sectionNamesById: ReadonlyMap<string, string>;
   onActiveIndexChange: (index: number) => void;
+  onNavigate: () => void;
   onSelect: (item: SidebarThreadSearchNavigationItem) => void;
   projectNamesById: ReadonlyMap<string, string>;
   section: ThreadSearchSection;
   showSectionLabels: boolean;
+  splitEnabled: boolean;
   startIndex: number;
 }) {
   if (section.rows.length === 0) {
@@ -151,22 +208,35 @@ function renderSectionRows({
         {section.rows.map((row, rowIndex) => {
           const index = startIndex + rowIndex;
           const item = toNavigationItem(row);
-          return (
-            <ThreadSearchResultRow
+          const rowProps = {
+            id: item.optionId,
+            isActive: activeIndex === index,
+            matches: row.matches,
+            sectionLabel:
+              showSectionLabels && row.thread.sectionId
+                ? (sectionNamesById.get(row.thread.sectionId) ?? "Section")
+                : null,
+            projectName: projectNamesById.get(row.thread.projectId),
+            thread: row.thread,
+            onActive: () => onActiveIndexChange(index),
+            onSelect: () => onSelect(item),
+          };
+          return splitEnabled ? (
+            <SplitThreadSearchResultRow
               key={row.id}
-              id={item.optionId}
-              isActive={activeIndex === index}
+              activeIndex={activeIndex}
+              index={index}
+              item={item}
               matches={row.matches}
-              sectionLabel={
-                showSectionLabels && row.thread.sectionId
-                  ? (sectionNamesById.get(row.thread.sectionId) ?? "Section")
-                  : null
-              }
-              projectName={projectNamesById.get(row.thread.projectId)}
+              sectionLabel={rowProps.sectionLabel}
+              projectName={rowProps.projectName}
               thread={row.thread}
-              onActive={() => onActiveIndexChange(index)}
-              onSelect={() => onSelect(item)}
+              onActiveIndexChange={onActiveIndexChange}
+              onNavigate={onNavigate}
+              onSelect={onSelect}
             />
+          ) : (
+            <ThreadSearchResultRow key={row.id} {...rowProps} />
           );
         })}
       </div>
@@ -180,10 +250,12 @@ export function SidebarThreadSearchPanel({
   isRecentsLoading,
   onActiveIndexChange,
   onNavigationItemsChange,
+  onNavigate = NOOP,
   onSelect,
   projectNamesById,
   query,
   recentThreads,
+  splitEnabled = false,
   showSectionLabels = false,
 }: SidebarThreadSearchPanelProps) {
   const trimmedQuery = query.trim();
@@ -326,10 +398,12 @@ export function SidebarThreadSearchPanel({
           activeIndex,
           sectionNamesById,
           onActiveIndexChange,
+          onNavigate,
           onSelect,
           projectNamesById,
           section,
           showSectionLabels,
+          splitEnabled,
           startIndex,
         });
         startIndex += section.rows.length;

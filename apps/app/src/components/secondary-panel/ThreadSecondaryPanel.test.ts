@@ -1,15 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  getSecondaryPanelChromeStackClassName,
   getReservedInlinePanelToggleClassName,
   isSecondaryPanelLayoutTransition,
   resolveCollapsedPanelTrafficLightReserveClassName,
 } from "./ThreadSecondaryPanel";
-import {
-  CHROME_ROW_CLASS,
-  CHROME_ROW_HEIGHT_CLASS,
-  MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS,
-} from "@/lib/bb-desktop";
+import { MACOS_COLLAPSED_TOP_LEFT_RESERVE_CLASS } from "@/lib/bb-desktop";
 import { SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS } from "./panelChromeClasses";
 
 describe("secondary panel surface tone", () => {
@@ -23,18 +18,6 @@ describe("secondary panel native browser bounds settling", () => {
     expect(isSecondaryPanelLayoutTransition("flex-grow")).toBe(true);
     expect(isSecondaryPanelLayoutTransition("flex-basis")).toBe(true);
     expect(isSecondaryPanelLayoutTransition("opacity")).toBe(false);
-  });
-});
-
-describe("getSecondaryPanelChromeStackClassName", () => {
-  it("reserves the combined navigation and active Diff toolbar height", () => {
-    const className = getSecondaryPanelChromeStackClassName(true);
-
-    expect(className).toContain("flex");
-    expect(className).toContain("flex-col");
-    expect(className).toContain("shrink-0");
-    expect(className).not.toContain(CHROME_ROW_HEIGHT_CLASS);
-    expect(CHROME_ROW_CLASS).toContain(CHROME_ROW_HEIGHT_CLASS);
   });
 });
 

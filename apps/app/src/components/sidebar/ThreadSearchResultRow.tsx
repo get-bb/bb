@@ -4,6 +4,7 @@ import {
   useEffect,
   useRef,
   type MouseEventHandler,
+  type PointerEventHandler,
   type ReactNode,
 } from "react";
 import type { ThreadListEntry } from "@bb/domain";
@@ -38,6 +39,8 @@ interface ThreadSearchResultRowProps {
   isActive: boolean;
   matches: readonly ThreadSearchMatch[];
   onActive: () => void;
+  onOpenInSplit?: () => void;
+  onPointerDown?: PointerEventHandler<HTMLButtonElement>;
   onSelect: () => void;
   projectName: string | undefined;
   /**
@@ -123,6 +126,8 @@ function ThreadSearchResultRowComponent({
   isActive,
   matches,
   onActive,
+  onOpenInSplit,
+  onPointerDown,
   onSelect,
   projectName,
   sectionLabel,
@@ -200,7 +205,14 @@ function ThreadSearchResultRowComponent({
       )}
       onMouseEnter={handleMouseEnter}
       onFocus={onActive}
-      onClick={onSelect}
+      onPointerDown={onPointerDown}
+      onClick={(event) => {
+        if ((event.metaKey || event.ctrlKey) && onOpenInSplit) {
+          onOpenInSplit();
+          return;
+        }
+        onSelect();
+      }}
     >
       <span className="min-w-0 flex-1 space-y-0.5">
         <span className="block min-w-0 truncate">

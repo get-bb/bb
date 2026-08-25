@@ -796,6 +796,53 @@ function ProjectListNavigationLoadingRow({
   );
 }
 
+export function ProjectListSearchInput({
+  threadSearch,
+}: {
+  threadSearch: SidebarThreadSearchInputController;
+}) {
+  // The host always owns this combobox. A navigation replacement can activate
+  // search, but cannot mount, move, or replace the field itself.
+  return (
+    <div className={PROJECT_LIST_SEARCH_INPUT_ROW_CLASS}>
+      <span className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}>
+        <Icon
+          name="Search"
+          className={COARSE_POINTER_ICON_SIZE_CLASS}
+          aria-hidden="true"
+        />
+      </span>
+      <input
+        ref={threadSearch.inputRef}
+        value={threadSearch.query}
+        role="combobox"
+        aria-label="Search threads"
+        aria-autocomplete="list"
+        aria-activedescendant={threadSearch.activeDescendantId}
+        aria-controls={SIDEBAR_THREAD_SEARCH_LISTBOX_ID}
+        aria-expanded="true"
+        placeholder="Search threads"
+        className={PROJECT_LIST_SEARCH_INPUT_CLASS}
+        onChange={(event) =>
+          threadSearch.onQueryChange(event.currentTarget.value)
+        }
+      />
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        aria-label={
+          threadSearch.query.trim() ? "Clear and close search" : "Close search"
+        }
+        className={PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS}
+        onClick={threadSearch.onClose}
+      >
+        <Icon name="X" className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS} />
+      </Button>
+    </div>
+  );
+}
+
 export function ProjectListActionButtons({
   splitEnabled = false,
   newThreadSplit,
@@ -809,54 +856,11 @@ export function ProjectListActionButtons({
     { kind: "new-thread" },
     splitEnabled,
   );
-  // One click on the X fully dismisses search — it clears the query and closes
-  // the input in a single step (onClose resets the query too). Previously this
-  // was a two-step clear-then-close, which felt like the X "needed two presses".
-  const handleSearchClose = useCallback(() => {
-    threadSearch?.onClose();
-  }, [threadSearch]);
 
   return (
     <div className="space-y-1">
       {threadSearch?.isActive ? (
-        <div className={PROJECT_LIST_SEARCH_INPUT_ROW_CLASS}>
-          <span className={SIDEBAR_LEADING_GLYPH_SLOT_CLASS}>
-            <Icon
-              name="Search"
-              className={COARSE_POINTER_ICON_SIZE_CLASS}
-              aria-hidden="true"
-            />
-          </span>
-          <input
-            ref={threadSearch.inputRef}
-            value={threadSearch.query}
-            role="combobox"
-            aria-label="Search threads"
-            aria-autocomplete="list"
-            aria-activedescendant={threadSearch.activeDescendantId}
-            aria-controls={SIDEBAR_THREAD_SEARCH_LISTBOX_ID}
-            aria-expanded="true"
-            placeholder="Search threads"
-            className={PROJECT_LIST_SEARCH_INPUT_CLASS}
-            onChange={(event) =>
-              threadSearch.onQueryChange(event.currentTarget.value)
-            }
-          />
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            aria-label={
-              threadSearch.query.trim()
-                ? "Clear and close search"
-                : "Close search"
-            }
-            className={PROJECT_LIST_SEARCH_CLOSE_BUTTON_CLASS}
-            onClick={handleSearchClose}
-          >
-            <Icon name="X" className={COARSE_POINTER_COMPACT_ICON_SIZE_CLASS} />
-          </Button>
-        </div>
+        <ProjectListSearchInput threadSearch={threadSearch} />
       ) : (
         <div className="flex min-w-0 items-center gap-0.5">
           <Button
@@ -1976,11 +1980,13 @@ function ProjectListComponent({
           isRecentsLoading={projectsState.status === "loading"}
           onActiveIndexChange={threadSearch.onActiveIndexChange}
           onNavigationItemsChange={threadSearch.onNavigationItemsChange}
+          onNavigate={threadSearch.onNavigate}
           onSelect={threadSearch.onSelectItem}
           sectionNamesById={sectionNamesById}
           projectNamesById={projectNamesById}
           query={threadSearch.query}
           recentThreads={threads}
+          splitEnabled={threadSearch.splitEnabled}
           showSectionLabels={isSectionOrganizationMode}
         />
       </ProjectListShell>

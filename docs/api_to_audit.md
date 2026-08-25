@@ -975,6 +975,18 @@ bridge as provider-scoped static options. Core does not interpret its keys.
    installed-only provider, and that targeted requests may continue resolving
    a registered provider even while discovery says it is absent.
 
+## Persistent plugin responsive drawer (`experimental_ResponsiveDrawer`, `ExperimentalResponsiveDrawerProps`)
+
+**What it does.** Gives a plugin the host's persistent, non-modal bottom drawer.
+The transform begins before content realization; content mounts after two
+animation frames with a timeout fallback and remains mounted after first open.
+The backdrop and focus stack contain interaction without applying `inert` or
+`aria-hidden` to the app root.
+
+**Audit before stabilizing.** Confirm title-only labeling is sufficient, whether
+plugins need animation-end or realization callbacks, and whether arbitrary
+content-height control should remain a class-name escape hatch.
+
 ## `@get-bb/plugin-sdk/provider-bridge` (the provider-bridge authoring surface)
 
 **Kept experimental (2026-08-22).** `experimental_defineProviderBridge` / `experimental_apiVersion` are an artifact↔daemon contract (the bootstrap refuses anything but version 1 by name), and the deprecation window between independently-updating artifacts and daemons (item 4) is undecided.
@@ -1515,6 +1527,47 @@ Before stabilization, audit:
    re-litigate that in the stabilization audit; audit only whether the two
    _contexts_ should merge.
 
+## `app.slots.experimental_sidebarNavigation` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Replaces only BB's bounded, inactive sidebar navigation
+controls: New thread, Search threads, Extensions, and current `navPanel`
+destinations. The plugin receives semantic items, split-drag bindings, and one
+host activation callback; it receives no routes, router, drawer control, or
+host React elements. BB retains the persistent responsive drawer, active search
+combobox and query, thread-list mount and lifecycle, footer, resize handle, and the
+rule that a retained hidden app body cannot claim thread shortcuts.
+
+Navigation uses the same Automatic, BB, or named-provider client preference as
+other replacements. `experimental_Original` bypasses replacement resolution.
+A crash swaps only the bounded controls back to BB and toasts once, leaving the
+retained thread list and footer mounted. Activating Search swaps in BB's field;
+the existing list receives the host query. Native search results preserve
+ordinary navigation, modifier-click splitting, and drag-to-split. Destination
+activation closes the compact drawer.
+
+**Audit before stabilizing.**
+
+1. **Boundary.** Verify external replacements can express useful navigation
+   without control of the drawer, search field, thread list, footer, resize
+   handle, or hidden-body shortcuts. Do not widen by passing those host nodes
+   through plugin props.
+2. **Semantic item schema.** Confirm the four action variants and semantic icon
+   identity are sufficient. Keep routes and host components private.
+3. **Split contract.** Audit `experimental_splitProps` plus
+   `experimental_activate(..., { openInSplit })` against pointer, keyboard,
+   modifier-click, pane-cap, already-open-pane, and compact fallback behavior.
+4. **Search lifecycle.** Confirm unmounting the replacement while the host
+   search field is active is acceptable, and that native and replaced thread
+   lists both filter from the same host query.
+5. **Crash and delegation.** Verify `experimental_Original` and crash fallback never
+   recurse through resolution or remount retained thread-list/footer state.
+6. **Arbitration.** Confirm Automatic remains the right default when several
+   navigation replacements are enabled and unavailable pinned providers should
+   continue to fall back without clearing preference.
+7. **Accessibility.** Validate third-party markup can preserve labels,
+   `aria-current`, shortcut metadata, disabled state, focus order, and the
+   host-owned combobox semantics.
+
 ## `app.slots.experimental_threadList` (`@get-bb/plugin-sdk/app`)
 
 **Kept experimental (2026-08-22).** examples only; no shipped consumer has tested the arbitration/fallback model or the accessibility contract.
@@ -1729,6 +1782,64 @@ is temporarily unavailable renders BB's renderer without erasing the pin.
    acceptable, or promote either capability before stabilization.
 5. **Two slots or one.** Confirm source and diff should stay separately
    replaceable rather than one "code renderer" registration.
+
+## `app.slots.experimental_changesView` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Replaces the complete fixed Changes toolbar and virtualized
+file body in each app pane. BB keeps ownership of the fixed tab, route,
+keyboard shortcut, split placement, and pane-local target state. The props
+identify the pane's thread and environment. `experimental_target` supplies a
+file path or commit SHA plus a sequence and `clear()` callback when core routing
+targets that pane.
+
+The slot uses the exclusive replacement selector. Automatic mode picks the
+first provider in deterministic slot order. Appearance settings can pin BB or
+a named provider on each client. A disabled, missing, or crashing provider
+falls back to BB without clearing the pin. Crash state includes the app pane's
+instance identity, so one pane can fall back while another keeps the plugin.
+`experimental_Original` renders BB's complete Changes owner without resolving
+this slot again. The global `experimental_diffRenderer` still resolves inside
+its file bodies.
+
+**Audit before stabilizing.**
+
+1. Confirm `threadId`, `environmentId`, and the routed target are enough for a
+   useful replacement. Plugins currently load their own change data through
+   backend RPC.
+2. Confirm target acknowledgement belongs in component props. In particular,
+   audit whether a plugin that never calls `clear()` needs a host timeout or a
+   default acknowledgement policy.
+3. Confirm the target union should remain limited to file and commit opens.
+   The native selection picker also represents all, committed, and uncommitted
+   slices, but those are owner-local choices rather than routed intents.
+4. Verify pane identity remains the correct crash boundary if BB later permits
+   the same pane to host multiple simultaneous Changes instances.
+5. Confirm the per-client Automatic, built-in, or named-provider selector is
+   appropriate for a whole product view.
+6. Audit whether `experimental_Original` should remain a bound no-props
+   component if plugins need to decorate the native toolbar or body separately.
+
+## `PluginSourceCodeRendererProps.experimental_Original` / `PluginDiffRendererProps.experimental_Original` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Supplies a renderer replacement with BB's renderer bound to
+the current render. Rendering it delegates without re-entering replacement
+resolution; the host renders the same component as the crash fallback. BB's
+renderers are behind `lazy()`, so a replacement that never delegates never
+downloads them.
+
+**Audit before stabilizing.**
+
+1. Confirm a no-props bound component stays the right delegation contract as
+   the host-only inputs (pre-parsed files, selection-to-chat) grow.
+2. Verify delegation preserves everything the owner path does on BB's own
+   surfaces — context expansion, line selection, highlighted-line scrolling —
+   when the replacement delegates from inside a first-party card.
+3. Confirm the lazy boundary stays lazy: a replacement that never delegates
+   must not pull BB's renderer chunk, and the Suspense fallback must not
+   flash on the owner path.
+4. Decide whether this field should stabilize together with the shared
+   replacement primitive that `PluginThreadListProps` and
+   `PluginFileOpenerProps` also use, rather than per surface.
 
 ## `experimental_useSidebarThreads` / `experimental_useSidebarThreadActions` (`@get-bb/plugin-sdk/app`)
 

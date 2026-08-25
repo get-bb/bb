@@ -14,7 +14,7 @@ interface PluginThreadListProps {
   replacement: ResolvedReplacement<PluginThreadListSlot>;
   /** BB's list bound to this sidebar instance. */
   original: ReactNode;
-  /** The host search field's text; "" when closed or plugin-owned. */
+  /** The host search field's text; "" when closed. */
   searchQuery: string;
   onNavigate: () => void;
 }

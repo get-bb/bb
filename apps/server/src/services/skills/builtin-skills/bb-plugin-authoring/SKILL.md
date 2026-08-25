@@ -1556,6 +1556,11 @@ export default definePluginApp((app) => {
     run: ({ openSettings }) => openSettings(),
   });
   app.slots.messageDirective({ id: "inline-vis", component: InlineVis });
+  app.slots.experimental_sidebarNavigation({
+    id: "workspace-nav",
+    title: "Workspace navigation",
+    component: WorkspaceNavigation,
+  });
   app.slots.experimental_threadList({
     id: "inbox",
     title: "Inbox",
@@ -1591,6 +1596,63 @@ state in the component, never in a module-level singleton.
 A common pairing with a replaced sidebar: hide child threads from the list and
 surface them here instead, filtering `experimental_useSidebarThreads()` by
 `parentThreadId === threadId`.
+
+### Replacing sidebar navigation controls
+
+`app.slots.experimental_sidebarNavigation` lets one selected plugin arrange New
+thread, Search threads, Extensions, and registered plugin destinations. BB
+keeps ownership of the persistent drawer, active search field and query,
+thread-list mount, footer, resize handle, and hidden-body shortcut rules.
+The plugin receives semantic items, not routes or host components.
+
+```tsx
+function WorkspaceNavigation({
+  activeItemId,
+  experimental_Original: Original,
+  experimental_activate,
+  items,
+}: ExperimentalSidebarNavigationProps) {
+  const useNativeNavigation = useMyPluginSetting();
+  if (useNativeNavigation) return <Original />;
+
+  return (
+    <div className="grid grid-cols-2 gap-1 px-2 py-2">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          disabled={item.isDisabled}
+          aria-current={item.id === activeItemId ? "page" : undefined}
+          aria-keyshortcuts={item.shortcut?.ariaKeyShortcuts}
+          {...item.experimental_splitProps}
+          onClick={(event) =>
+            experimental_activate(item.id, {
+              openInSplit: event.metaKey || event.ctrlKey,
+            })
+          }
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+```
+
+Call `experimental_activate` for every item instead of constructing routes.
+Spread `experimental_splitProps` onto the same interactive element so dragging
+out of the sidebar keeps BB's split placement behavior. Pass the modifier state
+through `openInSplit` for Command-click and Control-click. Search activation
+mounts BB's combobox and sends its query to the current thread list. Normal,
+modifier-click, and drag navigation close the compact drawer after they open a
+destination.
+
+The choice is client-local under **Settings → Appearance → Navigation**. An
+unavailable provider falls back without clearing the choice. A crash restores
+only BB's navigation controls, so the retained thread list and footer do not
+remount. `experimental_Original` delegates to those same native controls without
+running replacement resolution again. The complete fixture is
+`examples/plugins/replacement-lab-alpha`.
 
 ### Replacing the sidebar thread list
 
@@ -1987,6 +2049,43 @@ Original }`. `experimental_fullFileContents` is either
 
   Experimental: see `docs/api_to_audit.md`.
 
+- `experimental_changesView` →
+  `{ threadId, environmentId, experimental_target, experimental_Original }` —
+  replaces the complete fixed Changes toolbar and virtualized file body. It
+  does not replace individual diffs. The host keeps the fixed tab, its route,
+  keyboard shortcut, split placement, and target state. Registration:
+  `{ id, title, description?, component }`. The slot is exclusive and uses the
+  same Automatic, built-in, or named-provider selector as the other replacement
+  slots. Users choose a provider under **Settings → Appearance → Changes**.
+  `experimental_target` is `null` for an ordinary open. A targeted open supplies
+  `{ sequence, target, clear }`, where `target` is either
+  `{ kind: "file", path }` or `{ kind: "commit", sha }`. `sequence` changes
+  when the same target opens again. Call `clear()` after handling it.
+
+  Each app pane receives its own props and component instance. If one instance
+  throws, only that pane renders BB's Changes view; other panes keep the plugin.
+  Render `experimental_Original` to delegate without resolving
+  `experimental_changesView` again. It includes BB's toolbar and virtualized
+  body, and a global `experimental_diffRenderer` still applies to every text
+  diff inside it:
+
+  ```tsx
+  app.slots.experimental_changesView({
+    id: "review",
+    title: "Review Changes",
+    component: ({ experimental_target, experimental_Original: Original }) =>
+      experimental_target?.target.kind === "commit" ? (
+        <CommitReview sha={experimental_target.target.sha} />
+      ) : (
+        <Original />
+      ),
+  });
+  ```
+
+  Reference fixtures: `examples/plugins/replacement-lab-alpha` and
+  `examples/plugins/replacement-lab-beta`. Experimental: see
+  `docs/api_to_audit.md`.
+
 - `messageDirective` → `{ attributes, source, message,
 openWorkspaceFile }` — register a leaf
   assistant-message directive. Registration:
@@ -2183,6 +2282,11 @@ routing?, allowProviderChange?, align?, disabled?, className? }`, where `routing
   drives language detection, `overflow` is `"scroll"` (default) or `"wrap"`,
   and `highlightedLines` is a 1-based inclusive `{ start, end }` (default
   null). bb owns syntax highlighting, gutters, and the live code theme.
+- `experimental_ResponsiveDrawer` — bb's persistent non-modal bottom drawer.
+  Props: `{ open, onOpenChange, title, children, contentClassName? }`. It starts
+  its transform before realizing content, retains content after first open,
+  and never applies `inert` or `aria-hidden` to the app root. Alias it to an
+  uppercase name in JSX.
 - `experimental_Diff` — bb's diff viewer. Props:
   `{ patch, path, view?, overflow?, showLineNumbers?, experimental_fullFileContents?,
 className? }` —

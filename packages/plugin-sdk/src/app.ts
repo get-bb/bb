@@ -59,6 +59,8 @@ export const experimental_PermissionModePicker =
 // Host-owned code rendering (experimental — see docs/api_to_audit.md).
 export const experimental_SourceCode = runtime.experimental_SourceCode;
 export const experimental_Diff = runtime.experimental_Diff;
+export const experimental_ResponsiveDrawer =
+  runtime.experimental_ResponsiveDrawer;
 export const useRpc = runtime.useRpc;
 export const useRealtime = runtime.useRealtime;
 export const useRealtimeConnectionState = runtime.useRealtimeConnectionState;

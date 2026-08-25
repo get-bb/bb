@@ -11,6 +11,28 @@ export const GIT_DIFF_FIXED_TAB_REFERENCE: AppFixedTabReference = {
   tabId: "changes",
 };
 
+/** Handle the Changes keyboard shortcut without coupling it to view rendering. */
+export function handleGitDiffShortcut({
+  close,
+  eligible,
+  isActive,
+  isFocused,
+  isOpen,
+  open,
+}: {
+  close: () => void;
+  eligible: boolean;
+  isActive: boolean;
+  isFocused: boolean;
+  isOpen: boolean;
+  open: () => void;
+}): boolean {
+  if (!isFocused || !eligible) return false;
+  if (isOpen && isActive) close();
+  else open();
+  return true;
+}
+
 function normalizeGitDiffFixedTabTarget(
   value: JsonValue,
 ): GitDiffFixedTabTarget | null {

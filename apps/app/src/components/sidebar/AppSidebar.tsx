@@ -16,10 +16,10 @@ import {
   useCloseMobileSidebar,
   useSidebar,
 } from "@/components/ui/sidebar.js";
-import { ProjectList, ProjectListActionButtons } from "./ProjectList";
+import { ProjectList } from "./ProjectList";
 import { PluginThreadList } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
-import { PluginNavSidebarItems } from "@/components/plugin/PluginNavSidebarItems";
+import { SidebarNavigationRegion } from "./SidebarNavigationRegion";
 import { PluginSidebarFooterActions } from "@/components/plugin/PluginSidebarFooterActions";
 import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
@@ -86,18 +86,18 @@ export function AppSidebar({
   mobileHosted,
 }: AppSidebarProps) {
   const quickCreateProject = useQuickCreateProjectController();
-  // The resolved replacement owns the sidebar's scrolling thread list. It never
-  // replaces the chrome around it: the New-thread button, search field,
-  // the plugin nav rows, and the footer stay host-rendered in every sidebar.
+  // Thread-list replacement stays independent from navigation replacement.
+  // AppSidebar retains both mount sites plus the search field and footer.
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
+  const closeOnMobile = useCloseMobileSidebar();
   const newThreadSplit = usePaneContentSplitDrag({
     content: NEW_THREAD_PANE_CONTENT,
     enabled: true,
     label: "New thread",
+    onNavigate: closeOnMobile,
   });
-  const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, setOpen, setOpenMobile } = useSidebar();
   const [desktopInfo] = useState(getBbDesktopInfo);
   const [threadShortcutKeysById, setThreadShortcutKeysById] = useState<
@@ -270,14 +270,17 @@ export function AppSidebar({
       isActive: threadSearch.isActive,
       onActiveIndexChange: threadSearch.onActiveIndexChange,
       onNavigationItemsChange: threadSearch.onNavigationItemsChange,
+      onNavigate: threadSearch.onExternalThreadOpen,
       onSelectItem: threadSearch.onSelectItem,
       query: threadSearch.query,
+      splitEnabled: true,
     }),
     [
       threadSearch.activeIndex,
       threadSearch.isActive,
       threadSearch.onActiveIndexChange,
       threadSearch.onNavigationItemsChange,
+      threadSearch.onExternalThreadOpen,
       threadSearch.onSelectItem,
       threadSearch.query,
     ],
@@ -329,29 +332,21 @@ export function AppSidebar({
           />
         </div>
       ) : null}
-      <div
-        data-testid="app-sidebar-primary-actions"
-        className="shrink-0 px-2 py-2 group-data-[collapsible=icon]:hidden"
-      >
-        <ProjectListActionButtons
-          splitEnabled
-          newThreadSplit={newThreadSplit}
-          onNewChat={handleNewChat}
-          threadSearch={{
-            activeDescendantId: threadSearch.activeDescendantId,
-            inputRef: threadSearch.inputRef,
-            isActive: threadSearch.isActive,
-            onActivate: threadSearch.onActivate,
-            onClose: threadSearch.onClose,
-            onQueryChange: threadSearch.onQueryChange,
-            query: threadSearch.query,
-          }}
-        />
-      </div>
-      <PluginNavSidebarItems
-        onNavigate={closeOnMobile}
+      <SidebarNavigationRegion
         splitEnabled
+        newThreadSplit={newThreadSplit}
+        onNavigate={closeOnMobile}
+        onNewChat={handleNewChat}
         toolsRoutePath={toolsRoutePath}
+        threadSearch={{
+          activeDescendantId: threadSearch.activeDescendantId,
+          inputRef: threadSearch.inputRef,
+          isActive: threadSearch.isActive,
+          onActivate: threadSearch.onActivate,
+          onClose: threadSearch.onClose,
+          onQueryChange: threadSearch.onQueryChange,
+          query: threadSearch.query,
+        }}
       />
       <SidebarContent>
         <PluginThreadList

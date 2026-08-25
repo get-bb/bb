@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   definePluginApp,
+  type ExperimentalChangesViewProps,
   type PluginFileOpenerProps,
   type PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
@@ -45,6 +46,62 @@ function BetaThreadList({
           <p className="text-muted-foreground">
             Disable Alpha to see Automatic reveal this provider.
           </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function BetaChangesView({
+  environmentId,
+  experimental_Original: Original,
+  experimental_target,
+  threadId,
+}: ExperimentalChangesViewProps) {
+  const [embedOriginal, setEmbedOriginal] = useState(false);
+  const [shouldCrash, setShouldCrash] = useState(false);
+  if (shouldCrash) throw new Error("Beta Changes-view test crash");
+
+  return (
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar text-foreground">
+      <LabHeader
+        kind="Changes view"
+        embedOriginal={embedOriginal}
+        onEmbedOriginalChange={setEmbedOriginal}
+        onCrash={() => setShouldCrash(true)}
+      />
+      {embedOriginal ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <Original />
+        </div>
+      ) : (
+        <div className="space-y-3 overflow-auto p-4 text-xs">
+          <p className="rounded-md border border-dashed border-border bg-muted/30 p-3">
+            Beta owns the complete Changes toolbar and body.
+          </p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-muted-foreground">
+            <dt>Thread</dt>
+            <dd className="truncate font-mono">{threadId}</dd>
+            <dt>Environment</dt>
+            <dd className="truncate font-mono">{environmentId}</dd>
+            <dt>Target</dt>
+            <dd className="truncate font-mono">
+              {experimental_target === null
+                ? "none"
+                : experimental_target.target.kind === "file"
+                  ? `file:${experimental_target.target.path}`
+                  : `commit:${experimental_target.target.sha}`}
+            </dd>
+          </dl>
+          {experimental_target === null ? null : (
+            <button
+              type="button"
+              className="rounded border border-border px-2 py-1 hover:bg-muted"
+              onClick={experimental_target.clear}
+            >
+              Clear target
+            </button>
+          )}
         </div>
       )}
     </section>
@@ -131,6 +188,25 @@ export default definePluginApp((app) => {
     title: "Replacement Lab Beta",
     description: "Test provider Beta.",
     component: BetaThreadList,
+  });
+  app.slots.experimental_changesView({
+    id: "beta-changes",
+    title: "Replacement Lab Beta",
+    description: "Test whole-Changes provider Beta.",
+    component: BetaChangesView,
+  });
+  app.slots.experimental_diffRenderer({
+    id: "beta-diff",
+    title: "Replacement Lab Beta diffs",
+    description: "Labels native diffs to verify Changes-view coexistence.",
+    component: ({ experimental_Original: Original, path }) => (
+      <div className="border-l-2 border-primary">
+        <div className="bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+          Beta global diff · {path}
+        </div>
+        {Original ? <Original /> : null}
+      </div>
+    ),
   });
   app.slots.fileOpener({
     id: "beta-markdown",

@@ -33,12 +33,14 @@ export function PluginReplacementSlot<
   Registration extends PluginReplacementRegistration,
 >({
   children,
+  instanceId,
   onCrash,
   original,
   replacement,
   slotKind,
 }: {
   children: (registration: Registration, Original: ComponentType) => ReactNode;
+  instanceId?: string;
   onCrash?: (pluginId: string) => void;
   original: ReactNode;
   replacement: ResolvedReplacement<Registration>;
@@ -50,11 +52,12 @@ export function PluginReplacementSlot<
   return (
     <PluginOwnerRendererContext.Provider value={original}>
       <PluginSlotMount
-        key={`${registration.pluginId}/${registration.id}/${registration.generation}`}
+        key={`${registration.pluginId}/${registration.id}/${registration.generation}/${instanceId ?? "shared"}`}
         pluginId={registration.pluginId}
         slotKind={slotKind}
         slotId={registration.id}
         crashFallback={<PluginOwnerRenderer />}
+        {...(instanceId === undefined ? {} : { instanceId })}
         {...(onCrash === undefined ? {} : { onCrash })}
       >
         {children(registration, PluginOwnerRenderer)}

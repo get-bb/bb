@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  ExperimentalChangesViewTarget,
+  ExperimentalChangesViewTargetState,
+} from "@get-bb/plugin-sdk";
 import { useEnvironmentMergeBaseBranches } from "../../../hooks/queries/environment-queries";
 import type { SecondaryFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 import type { ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
@@ -22,19 +26,12 @@ interface SelectedMergeBaseBranchState {
   environmentId?: string;
 }
 
-type PendingGitDiffIntent =
-  | {
-      environmentId?: string;
-      kind: "commit";
-      sha: string;
-      threadId: string;
-    }
-  | {
-      environmentId?: string;
-      kind: "file";
-      path: string;
-      threadId: string;
-    };
+type PendingGitDiffIntent = {
+  environmentId?: string;
+  sequence: number;
+  target: ExperimentalChangesViewTarget;
+  threadId: string;
+};
 
 export function useGitDiffPanel({
   activeSecondaryTab,
@@ -59,19 +56,12 @@ export function useGitDiffPanel({
   );
   const [pendingGitDiffIntent, setPendingGitDiffIntent] =
     useState<PendingGitDiffIntent | null>(null);
+  const nextPendingGitDiffSequence = useRef(0);
   const currentPendingGitDiffIntent =
     pendingGitDiffIntent !== null &&
     pendingGitDiffIntent.environmentId === environmentId &&
     pendingGitDiffIntent.threadId === threadId
       ? pendingGitDiffIntent
-      : null;
-  const pendingGitDiffCommitSha =
-    currentPendingGitDiffIntent?.kind === "commit"
-      ? currentPendingGitDiffIntent.sha
-      : null;
-  const pendingGitDiffScrollPath =
-    currentPendingGitDiffIntent?.kind === "file"
-      ? currentPendingGitDiffIntent.path
       : null;
   const clearPendingGitDiffIntent = useCallback(() => {
     setPendingGitDiffIntent((current) =>
@@ -82,6 +72,18 @@ export function useGitDiffPanel({
         : current,
     );
   }, [environmentId, threadId]);
+  const pendingGitDiffTarget =
+    useMemo<ExperimentalChangesViewTargetState | null>(
+      () =>
+        currentPendingGitDiffIntent === null
+          ? null
+          : {
+              sequence: currentPendingGitDiffIntent.sequence,
+              target: currentPendingGitDiffIntent.target,
+              clear: clearPendingGitDiffIntent,
+            },
+      [clearPendingGitDiffIntent, currentPendingGitDiffIntent],
+    );
   const [mergeBaseBranchSearchQuery, setMergeBaseBranchSearchQuery] =
     useState("");
   const requestedMergeBaseBranch =
@@ -136,35 +138,46 @@ export function useGitDiffPanel({
     setThreadSecondaryPanel(null);
   }, [setThreadSecondaryPanel]);
 
+  const setPendingTarget = useCallback(
+    (target: ExperimentalChangesViewTarget) => {
+      nextPendingGitDiffSequence.current += 1;
+      setPendingGitDiffIntent({
+        environmentId,
+        sequence: nextPendingGitDiffSequence.current,
+        target,
+        threadId,
+      });
+    },
+    [environmentId, threadId],
+  );
+
   const openDiffFile = useCallback(
     (path: string) => {
       clearActiveFileTabs();
-      setPendingGitDiffIntent({ environmentId, kind: "file", path, threadId });
+      setPendingTarget({ kind: "file", path });
       openThreadDiffPanel();
     },
-    [clearActiveFileTabs, environmentId, openThreadDiffPanel, threadId],
+    [clearActiveFileTabs, openThreadDiffPanel, setPendingTarget],
   );
 
   const openCommitDiff = useCallback(
     (sha: string) => {
       clearActiveFileTabs();
-      setPendingGitDiffIntent({ environmentId, kind: "commit", sha, threadId });
+      setPendingTarget({ kind: "commit", sha });
       openThreadDiffPanel();
     },
-    [clearActiveFileTabs, environmentId, openThreadDiffPanel, threadId],
+    [clearActiveFileTabs, openThreadDiffPanel, setPendingTarget],
   );
 
   return {
     closeThreadSecondaryPanel,
-    clearPendingGitDiffIntent,
     isLoadingMergeBaseBranchOptions,
     mergeBaseBranchOptions,
     mergeBaseRemoteBranchOptions,
     openCommitDiff,
     openDiffFile,
     openThreadDiffPanel,
-    pendingGitDiffCommitSha,
-    pendingGitDiffScrollPath,
+    pendingGitDiffTarget,
     requestedMergeBaseBranch,
     selectedMergeBaseBranch,
     selectedMergeBaseBranchRef,

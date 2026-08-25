@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "engines": {
-    "bbPluginSdk": ">=0.4.3"
+    "bbPluginSdk": ">=0.4.17"
   },
   "bb": {
     "name": "Replacement Lab Beta",
-    "description": "A second provider for precedence and fallback testing.",
+    "description": "Tests Changes-view precedence and global diff-renderer coexistence.",
     "branding": {
       "icon": "Code"
     },

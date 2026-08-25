@@ -12,7 +12,7 @@ import {
   useState,
 } from "react";
 import { useAtomValue } from "jotai";
-import type { DiffFileEntry } from "@bb/server-contract";
+import type { ExperimentalChangesViewTargetState } from "@get-bb/plugin-sdk";
 import { Icon } from "@bb/shared-ui/icon";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { Panel, PanelResizeHandle } from "react-resizable-panels";
@@ -47,26 +47,13 @@ import type {
   SecondaryPanelRenderableTab,
   SecondaryPanelTabReorderHandler,
 } from "./secondaryPanelTab";
-import { useEnvironmentDiffFiles } from "@/hooks/queries/environment-queries";
-import {
-  DEFAULT_CODE_OVERFLOW_MODE,
-  type CodeOverflowMode,
-} from "@/lib/code-overflow-mode";
-import type { DiffPresentation } from "@/components/code/code-rendering";
-import { useGitDiffPanelState } from "./git-diff/useGitDiffPanelState";
 import { useResponsiveGitDiffPanelDisplay } from "./git-diff/useResponsiveGitDiffPanelDisplay";
-import {
-  summarizeDiffFileEntries,
-  useDiffFilesCollapseControls,
-} from "./git-diff/diffFilesStore";
-import { buildGitDiffIdentity } from "./git-diff/gitDiffPanelHelpers";
+import { ChangesViewHost } from "./git-diff/ChangesViewHost";
 import {
   type SecondaryPanelDraggingHandler,
   useSecondaryPanelResize,
 } from "./useSecondaryPanelResize";
 import { threadSecondaryPanelResizingAtom } from "./threadSecondaryPanelAtoms";
-import { GitDiffToolbar } from "./GitDiffToolbar";
-import { GitDiffTabContent } from "./ThreadSecondaryPanelTabContent";
 import {
   CHROME_ROW_CLASS,
   getBbDesktopInfo,
@@ -119,10 +106,6 @@ const SECONDARY_RESIZABLE_PANEL_STYLE: CSSProperties = {
 };
 const SECONDARY_PANEL_CHROME_ICON_BUTTON_CLASS = `${COARSE_POINTER_COMPACT_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
 const SECONDARY_PANEL_HIDE_ICON_BUTTON_CLASS = `${COARSE_POINTER_HEADER_ICON_BUTTON_CLASS} shrink-0 ${CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS}`;
-// Stable empty TOC reference so the collapse-controls hook's derived atom and
-// the stats memo are not rebuilt every render while the diff is loading/absent.
-const EMPTY_DIFF_FILES: readonly DiffFileEntry[] = [];
-
 // The reserved slot occupies the exact footprint of root compose's pinned
 // right-panel toggle (which is painted on top of this slot). On macOS desktop
 // the top chrome is a window-drag region ([app-region:drag]); Electron resolves
@@ -141,17 +124,9 @@ export function getReservedInlinePanelToggleClassName(
   );
 }
 
-/**
- * Keeps the navigation row and optional Diff toolbar in normal document flow.
- * The stack must reserve the combined height of both rows before the flexible
- * panel body begins; only the navigation row owns the fixed chrome-row height.
- */
-export function getSecondaryPanelChromeStackClassName(
-  hasGitDiffToolbar: boolean,
-): string {
+export function getSecondaryPanelChromeStackClassName(): string {
   return cn(
     "shrink-0 select-none",
-    hasGitDiffToolbar && "flex flex-col",
     SECONDARY_PANEL_TOP_CHROME_BACKGROUND_CLASS,
   );
 }
@@ -228,6 +203,8 @@ export interface ThreadSecondaryPanelProps {
   onRetryGitDiffEligibility?: () => void;
   requestedMergeBaseBranch?: string;
   environmentId?: string;
+  threadId?: string;
+  changesViewInstanceId?: string;
   metadataContent: ReactNode;
   tabs: readonly SecondaryPanelRenderableTab[];
   fixedTabs: readonly SecondaryPanelFixedTab[];
@@ -271,10 +248,8 @@ export interface ThreadSecondaryPanelProps {
   onPanelFocus: () => void;
   onCollapse: () => void;
   onClose: () => void;
-  onClearPendingGitDiffIntent?: () => void;
   onOpenNewTab: () => void;
-  pendingGitDiffCommitSha?: string | null;
-  pendingGitDiffScrollPath?: string | null;
+  pendingGitDiffTarget?: ExperimentalChangesViewTargetState | null;
   workspaceRootPath?: string | null;
   onOpenFileInEditor?: (path: string) => void;
   onOpenFilePreview?: (path: string) => void;
@@ -306,6 +281,8 @@ export function ThreadSecondaryPanel({
   gitDiffTabStatus,
   requestedMergeBaseBranch,
   environmentId,
+  threadId,
+  changesViewInstanceId,
   metadataContent,
   tabs,
   fixedTabs,
@@ -320,11 +297,9 @@ export function ThreadSecondaryPanel({
   onPanelFocus,
   onCollapse,
   onClose,
-  onClearPendingGitDiffIntent,
   onOpenNewTab,
   onRetryGitDiffEligibility,
-  pendingGitDiffCommitSha,
-  pendingGitDiffScrollPath,
+  pendingGitDiffTarget = null,
   workspaceRootPath,
   onOpenFileInEditor,
   onOpenFilePreview,
@@ -440,10 +415,6 @@ export function ThreadSecondaryPanel({
   const activeFixedTab =
     fixedTabs.find((fixedTab) => fixedTab.tab.id === activeTab?.id) ??
     (!hasActiveRenderableTab ? fixedTabs[0] : undefined);
-  const isDiffPanelActive =
-    resolvedGitDiffTabStatus === "eligible" &&
-    activeFixedTab?.tab.kind === "git-diff";
-  const isDiffPanelLive = isDiffPanelActive && isLayoutOpen;
   const isDiffEligibilityPending =
     activeFixedTab?.tab.kind === "git-diff" &&
     (resolvedGitDiffTabStatus === "loading" ||
@@ -452,66 +423,10 @@ export function ThreadSecondaryPanel({
   // first full panel mount, then retain it inside their persistent drawer.
   // Removing only this subtree would lose terminal and plugin state and move
   // the later mount cost back into the next open action.
-  const {
-    gitDiffTarget,
-    gitDiffSelectOptions,
-    gitDiffSelectValue,
-    onGitDiffSelectionChange,
-  } = useGitDiffPanelState({
-    environmentId,
-    isDiffPanelActive: isDiffPanelLive,
-    requestedMergeBaseBranch,
-    onClearPendingGitDiffIntent,
-    pendingGitDiffCommitSha,
-    pendingGitDiffScrollPath,
-  });
-  // Share the diff tab's table of contents with the body: React Query dedupes
-  // this against GitDiffTabContent's own fetch (same key), so the toolbar reads
-  // the file list, stats, and merge-base ref without a second round-trip. The
-  // toolbar's stats + collapse-all derive from this TOC, not the (removed)
-  // whole-diff blob.
-  const { data: diffFilesResponse, isLoading: isDiffFilesLoading } =
-    useEnvironmentDiffFiles(environmentId ?? "", {
-      enabled:
-        isDiffPanelLive &&
-        Boolean(environmentId) &&
-        gitDiffTarget !== undefined,
-      target: gitDiffTarget,
-    });
-  const diffFiles = useMemo(
-    () =>
-      diffFilesResponse?.outcome === "available"
-        ? diffFilesResponse.files
-        : EMPTY_DIFF_FILES,
-    [diffFilesResponse],
-  );
-  const diffMergeBaseRef =
-    diffFilesResponse?.outcome === "available"
-      ? diffFilesResponse.mergeBaseRef
-      : null;
-  const isGitDiffTruncated =
-    diffFilesResponse?.outcome === "available" && diffFilesResponse.truncated;
-  const diffIdentity = useMemo(
-    () =>
-      buildGitDiffIdentity({
-        environmentId,
-        mergeBaseRef: diffMergeBaseRef,
-        target: gitDiffTarget,
-      }),
-    [diffMergeBaseRef, environmentId, gitDiffTarget],
-  );
-  const gitDiffStats = useMemo(
-    () => summarizeDiffFileEntries(diffFiles),
-    [diffFiles],
-  );
-  const { areAllCollapsed, toggleAllCollapsed, hasFiles } =
-    useDiffFilesCollapseControls(diffIdentity, diffFiles);
   const isSecondaryPanelResizing = useAtomValue(
     threadSecondaryPanelResizingAtom,
   );
   const [desktopInfo] = useState(getBbDesktopInfo);
-  const [gitDiffLineOverflowMode, setGitDiffLineOverflowMode] =
-    useState<CodeOverflowMode>(DEFAULT_CODE_OVERFLOW_MODE);
   const usesDesktopChrome = shouldUseMacosDesktopChrome(desktopInfo);
   const desktopWindowState = useDesktopWindowState();
   const isSidebarShowing = useOptionalIsSidebarShowing();
@@ -529,14 +444,6 @@ export function ThreadSecondaryPanel({
         windowState: desktopWindowState,
       }),
     });
-  const gitDiffPresentation = useMemo<DiffPresentation>(
-    () => ({
-      view: gitDiffDisplayMode,
-      overflow: gitDiffLineOverflowMode,
-      showLineNumbers: true,
-    }),
-    [gitDiffDisplayMode, gitDiffLineOverflowMode],
-  );
   const handlePanelFocusCapture = (event: FocusEvent<HTMLElement>) => {
     const previousTarget = event.relatedTarget;
     if (
@@ -769,17 +676,12 @@ export function ThreadSecondaryPanel({
     const isSurfaceDiffActive =
       activeSurfaceFixedTab?.tab.kind === "git-diff" &&
       resolvedGitDiffTabStatus === "eligible";
-    const showsSurfaceDiffToolbar = isSurfaceDiffActive && !hasActiveSurfaceTab;
     const isSurfaceTerminalActive =
       activeSurfaceModel?.kind === "terminal" && hasActiveSurfaceTab;
 
     return (
       <>
-        <div
-          className={getSecondaryPanelChromeStackClassName(
-            showsSurfaceDiffToolbar,
-          )}
-        >
+        <div className={getSecondaryPanelChromeStackClassName()}>
           <div
             data-testid="thread-secondary-panel-top-chrome"
             className={cn(
@@ -834,25 +736,6 @@ export function ThreadSecondaryPanel({
               </div>
             ) : null}
           </div>
-          {showsSurfaceDiffToolbar ? (
-            <GitDiffToolbar
-              selectionValue={gitDiffSelectValue}
-              selectionOptions={gitDiffSelectOptions}
-              onSelectionChange={onGitDiffSelectionChange}
-              isSelectorDisabled={
-                isDiffFilesLoading || gitDiffTarget === undefined
-              }
-              stats={gitDiffStats}
-              isTruncated={isGitDiffTruncated}
-              areAllFilesCollapsed={areAllCollapsed}
-              isCollapseAllDisabled={!hasFiles || isDiffFilesLoading}
-              onToggleAllCollapsed={toggleAllCollapsed}
-              displayMode={gitDiffDisplayMode}
-              onDisplayModeChange={handleGitDiffDisplayModeChange}
-              lineOverflowMode={gitDiffLineOverflowMode}
-              onLineOverflowModeChange={setGitDiffLineOverflowMode}
-            />
-          ) : null}
         </div>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-sidebar">
           {browserSurface}
@@ -909,17 +792,18 @@ export function ThreadSecondaryPanel({
               )}
             </EmptyStatePanel>
           ) : isSurfaceDiffActive ? (
-            <GitDiffTabContent
+            <ChangesViewHost
+              displayMode={gitDiffDisplayMode}
               environmentId={environmentId}
-              target={gitDiffTarget}
-              isDiffPanelActive={isSurfaceDiffActive}
+              experimental_target={pendingGitDiffTarget}
+              instanceId={changesViewInstanceId}
               isPanelOpen={isLayoutOpen}
-              gitDiffPresentation={gitDiffPresentation}
-              onClearPendingGitDiffIntent={onClearPendingGitDiffIntent}
+              onDisplayModeChange={handleGitDiffDisplayModeChange}
               onOpenFileInEditor={onOpenFileInEditor}
               onOpenFilePreview={onOpenFilePreview}
               onSelectionAddToChat={onSelectionAddToChat}
-              pendingGitDiffScrollPath={pendingGitDiffScrollPath}
+              requestedMergeBaseBranch={requestedMergeBaseBranch}
+              threadId={threadId}
               workspaceRootPath={workspaceRootPath}
             />
           ) : activeSurfaceFixedTab?.tab.kind === "thread-info" ? (

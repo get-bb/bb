@@ -2,4 +2,6 @@
 
 The second provider for `replacement-lab-alpha`. Install both fixtures, then
 use Automatic/provider selection, **Embed BB original**, **Crash**, and plugin
-enable/disable to exercise precedence and fallback behavior.
+enable/disable to exercise precedence and fallback behavior. Beta's global diff
+renderer labels native file diffs, including diffs inside an embedded BB
+Changes view.
