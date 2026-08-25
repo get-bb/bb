@@ -511,7 +511,7 @@ export function createApp(
   registerInternalSkillRoutes(internalApi, deps);
   registerInternalPluginHostArtifactRoutes(internalApi, deps);
   registerInternalEventRoutes(internalApi, deps);
-  registerInternalToolCallRoutes(internalApi, deps);
+  registerInternalToolCallRoutes(internalApi, deps, pluginService);
   registerInternalInteractiveRequestRoutes(internalApi, deps);
   app.route("/internal", internalApi);
 

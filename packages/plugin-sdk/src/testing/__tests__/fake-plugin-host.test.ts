@@ -5,6 +5,7 @@ import {
   type BbPluginApi,
   type PluginAgentConfigurationContext,
   type PluginAgentToolPresentation,
+  type PluginBeforeInvocationEvent,
 } from "../../backend-contract.js";
 import { defineRpcContract } from "../../rpc-contract.js";
 import {
@@ -718,6 +719,70 @@ describe("sdk", () => {
     await expect(bb.sdk.projects.list({})).resolves.toEqual([]);
     // Both calls were recorded, including the unstubbed one.
     expect(harness.sdk.callsTo("projects.list")).toHaveLength(2);
+  });
+});
+
+describe("before-invocation events", () => {
+  function cliEvent(): PluginBeforeInvocationEvent {
+    return {
+      kind: "cli",
+      argv: ["plugin", "disable", "policy"],
+      cwd: "/workspace",
+      threadId: null,
+      projectId: null,
+      signal: new AbortController().signal,
+    };
+  }
+
+  it("runs handlers in order, isolates mutations, and stops on a block", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "policy" });
+    const calls: string[] = [];
+    bb.events.on("experimental_invocation.before", (event) => {
+      calls.push("first");
+      if (event.kind === "cli") {
+        (event.argv as string[])[0] = "changed";
+      }
+    });
+    bb.events.on("experimental_invocation.before", (event) => {
+      calls.push(`second:${event.kind === "cli" ? event.argv[0] : event.name}`);
+      return { block: true, reason: "Denied by policy" };
+    });
+    bb.events.on("experimental_invocation.before", () => {
+      calls.push("third");
+    });
+
+    await expect(
+      harness.experimental_evaluateInvocation(cliEvent()),
+    ).resolves.toEqual({ allowed: false, reason: "Denied by policy" });
+    expect(calls).toEqual(["first", "second:plugin"]);
+    expect(harness.registrations.beforeInvocationHandlers).toBe(3);
+  });
+
+  it("fails closed when a handler throws or returns a malformed result", async () => {
+    const thrown = createFakePluginHost({ pluginId: "throwing-policy" });
+    thrown.bb.events.on("experimental_invocation.before", () => {
+      throw new Error("policy unavailable");
+    });
+    await expect(
+      thrown.harness.experimental_evaluateInvocation(cliEvent()),
+    ).resolves.toEqual({
+      allowed: false,
+      reason:
+        'Plugin "throwing-policy" invocation handler failed: policy unavailable',
+    });
+
+    const malformed = createFakePluginHost({ pluginId: "malformed-policy" });
+    malformed.bb.events.on("experimental_invocation.before", (() => ({
+      block: false,
+    })) as never);
+    const decision =
+      await malformed.harness.experimental_evaluateInvocation(cliEvent());
+    expect(decision).toMatchObject({ allowed: false });
+    if (!decision.allowed) {
+      expect(decision.reason).toContain(
+        "invocation handler must return undefined or",
+      );
+    }
   });
 });
 

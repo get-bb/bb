@@ -381,6 +381,7 @@ let pluginCliDispatcher: Dispatcher | undefined;
 function getPluginCliDispatcher(): Dispatcher {
   pluginCliDispatcher ??= new Agent({
     headersTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS,
+    bodyTimeout: PLUGIN_CLI_HEADERS_TIMEOUT_MS,
   });
   return pluginCliDispatcher;
 }

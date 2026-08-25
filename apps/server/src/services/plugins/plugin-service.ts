@@ -19,6 +19,8 @@ import {
   type ToolCallResponse,
 } from "@bb/domain";
 import {
+  type PluginBeforeInvocationEvent,
+  type PluginBeforeInvocationResult,
   type PluginCliExecutionResult,
   type PluginRpcError,
   type PluginRpcValidationIssue,
@@ -145,6 +147,10 @@ export interface PluginSkillRootContribution {
   pluginId: string;
   rootPath: string;
 }
+
+export type PluginInvocationDecision =
+  | { allowed: true }
+  | { allowed: false; reason: string };
 
 /**
  * Result of `reload`. `plugins` is the full inventory after the reload. A
@@ -377,6 +383,15 @@ export interface PluginService {
    * code execution. Sorted by plugin id.
    */
   listCliContributions(): PluginCliContribution[];
+  /**
+   * Run every loaded plugin's blocking invocation handlers in deterministic
+   * plugin and registration order. The first block or handler failure stops
+   * the chain. Event data is cloned for each handler so it cannot alter the
+   * invocation that follows.
+   */
+  runBeforeInvocation(
+    event: PluginBeforeInvocationEvent,
+  ): Promise<PluginInvocationDecision>;
   /**
    * Run a plugin's registered CLI command wrapped in the failure-isolation
    * discipline. Never throws for dispatch problems: an unknown / not-running
@@ -665,6 +680,36 @@ function normalizeRpcJsonResult(value: unknown): JsonValue {
  * ToolCallResponse the daemon round-trip expects. Malformed results throw —
  * the caller runs this inside invokeWrapped so they count as handler errors.
  */
+function normalizeBeforeInvocationResult(
+  result: unknown,
+): PluginBeforeInvocationResult {
+  if (result === undefined) return undefined;
+  if (
+    result !== null &&
+    typeof result === "object" &&
+    !Array.isArray(result) &&
+    (result as { block?: unknown }).block === true &&
+    typeof (result as { reason?: unknown }).reason === "string" &&
+    (result as { reason: string }).reason.trim().length > 0
+  ) {
+    return {
+      block: true,
+      reason: (result as { reason: string }).reason,
+    };
+  }
+  throw new Error(
+    "invocation handler must return undefined or { block: true, reason: string }",
+  );
+}
+
+function cloneBeforeInvocationEvent(
+  event: PluginBeforeInvocationEvent,
+): PluginBeforeInvocationEvent {
+  return event.kind === "cli"
+    ? { ...event, argv: [...event.argv] }
+    : { ...event, input: structuredClone(event.input) };
+}
+
 function normalizeAgentToolResult(
   name: string,
   result: unknown,
@@ -2138,6 +2183,40 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
 
     listCliContributions() {
       return cliContributions();
+    },
+
+    async runBeforeInvocation(event) {
+      const pluginIds = [...loaded.keys()].sort((a, b) => a.localeCompare(b));
+      for (const id of pluginIds) {
+        const plugin = loaded.get(id);
+        if (!plugin || plugin.handle.beforeInvocationHandlers.length === 0) {
+          continue;
+        }
+        const handlers = [...plugin.handle.beforeInvocationHandlers];
+        const outcome = await invokeWrapped(
+          id,
+          `${event.kind} invocation handler`,
+          async () => {
+            for (const handler of handlers) {
+              const result = normalizeBeforeInvocationResult(
+                await handler(cloneBeforeInvocationEvent(event)),
+              );
+              if (result?.block === true) return result;
+            }
+            return undefined;
+          },
+        );
+        if (!outcome.ok) {
+          return {
+            allowed: false,
+            reason: `Plugin "${id}" invocation handler failed: ${outcome.error}`,
+          };
+        }
+        if (outcome.value?.block === true) {
+          return { allowed: false, reason: outcome.value.reason };
+        }
+      }
+      return { allowed: true };
     },
 
     async runCliCommand(id, argv, ctx) {

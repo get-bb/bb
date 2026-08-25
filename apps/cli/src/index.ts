@@ -53,8 +53,9 @@ function createCommandGroupDeps(
  */
 async function tryPluginCommandProxy(
   candidate: string,
-  getUrl: () => string,
+  deps: CommandGroupDeps,
 ): Promise<void> {
+  const { getUrl } = deps;
   const proxy = await import("./plugin-cli-proxy.js");
   const result = await proxy.fetchPluginCliContributions(getUrl());
   if (result.outcome === "unreachable") {
@@ -90,6 +91,14 @@ async function tryPluginCommandProxy(
     }
     return;
   }
+  // A plugin command is a bb action too: the invocation policy sees it.
+  const preflight = await import("./invocation-preflight.js");
+  await preflight.assertCliInvocationAllowed({
+    baseUrl: getUrl(),
+    argv: process.argv.slice(2),
+    cwd: process.cwd(),
+    context: deps.getContext(),
+  });
   process.exit(
     await proxy.runPluginCliCommand(
       getUrl(),
@@ -137,10 +146,17 @@ Quick start:
   for (const register of registrars) {
     register(program, deps);
   }
+  // Loaded with the command groups, not at startup: `bb --version` returned
+  // above, and the policy client pulls in the fetch stack.
+  const preflight = await import("./invocation-preflight.js");
+  preflight.registerCliInvocationPreflight(program, {
+    getUrl: deps.getUrl,
+    getContext: deps.getContext,
+  });
 
   const candidate = pluginProxyCandidate(firstArg, KNOWN_COMMAND_NAMES);
   if (candidate !== null) {
-    await tryPluginCommandProxy(candidate, deps.getUrl);
+    await tryPluginCommandProxy(candidate, deps);
   }
   await program.parseAsync(process.argv);
 }

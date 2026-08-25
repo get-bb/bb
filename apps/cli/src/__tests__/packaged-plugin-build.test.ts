@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import {
   mkdir,
   mkdtemp,
@@ -7,6 +8,8 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -99,30 +102,46 @@ describe("packaged CLI plugin build", () => {
       ].join("\n"),
     );
 
-    const childEnv: NodeJS.ProcessEnv = {
-      ...process.env,
-      BB_CLI_REEXEC: "1",
-    };
-    delete childEnv.BB_CLI;
-    delete childEnv.BB_APP_VERSION;
+    const preflightServer = createServer((_request, response) => {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ allowed: true }));
+    });
+    preflightServer.listen(0, "127.0.0.1");
+    if (!preflightServer.listening) await once(preflightServer, "listening");
+    const address = preflightServer.address() as AddressInfo;
+    try {
+      const childEnv: NodeJS.ProcessEnv = {
+        ...process.env,
+        BB_CLI_REEXEC: "1",
+        BB_SERVER_URL: `http://127.0.0.1:${address.port}`,
+      };
+      delete childEnv.BB_CLI;
+      delete childEnv.BB_APP_VERSION;
 
-    // version.ts lands in a shared chunk and walks up from cli-chunks/ to the
-    // workspace's packages/bb-app/package.json; a single-file bundle or the
-    // tsx sources start that walk one directory higher and would not notice
-    // a lookup that stops short.
-    expect(await readdir(join(tempRoot, "cli-chunks"))).not.toHaveLength(0);
-    const { stdout: versionOutput } = await execFileAsync(
-      process.execPath,
-      [cliEntry, "--version"],
-      { cwd: workspaceRoot, env: childEnv },
-    );
-    expect(versionOutput.trim()).toBe(await readBbAppVersion());
+      // version.ts lands in a shared chunk and walks up from cli-chunks/ to the
+      // workspace's packages/bb-app/package.json; a single-file bundle or the
+      // tsx sources start that walk one directory higher and would not notice
+      // a lookup that stops short.
+      expect(await readdir(join(tempRoot, "cli-chunks"))).not.toHaveLength(0);
+      const { stdout: versionOutput } = await execFileAsync(
+        process.execPath,
+        [cliEntry, "--version"],
+        { cwd: workspaceRoot, env: childEnv },
+      );
+      expect(versionOutput.trim()).toBe(await readBbAppVersion());
 
-    await execFileAsync(
-      process.execPath,
-      [cliEntry, "plugin", "build", pluginRoot],
-      { cwd: workspaceRoot, env: childEnv },
-    );
+      await execFileAsync(
+        process.execPath,
+        [cliEntry, "plugin", "build", pluginRoot],
+        { cwd: workspaceRoot, env: childEnv },
+      );
+    } finally {
+      await new Promise<void>((resolveClose, rejectClose) => {
+        preflightServer.close((error) =>
+          error ? rejectClose(error) : resolveClose(),
+        );
+      });
+    }
 
     const appBundle = await readFile(
       join(pluginRoot, "dist", "app.js"),

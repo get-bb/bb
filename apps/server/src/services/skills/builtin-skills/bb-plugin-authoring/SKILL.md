@@ -68,11 +68,12 @@ The manifest is `package.json`:
   Installing or updating a git plugin needs `npm` on PATH; checking for
   updates does not, because a check reads the manifest and never builds. Path
   installs build from dependencies you have already installed.
-- Building yourself (CI, or verifying a build without a running bb): add
-  `bb-app` to `devDependencies` and set `"build": "bb plugin build"`.
-  `bb plugin build` needs no server, and depending on `bb-app@X` builds
-  against exactly that release's shim configuration. bb downloads its build
-  toolchain on first use, so cache `<dataDir>/plugins/toolchain-*` in CI.
+- Building yourself: add `bb-app` to `devDependencies`. Set
+  `"build": "bb plugin build"`. The build work is local, and depending on
+  `bb-app@X` uses exactly that release's shim configuration. A reachable BB
+  server is asked for its invocation policy first; an unreachable one is
+  skipped. bb downloads its build toolchain on first use, so cache
+  `<dataDir>/plugins/toolchain-*` in CI.
 - `bb.skills` (optional) — relocates the auto-imported skills directories
   (default `skills/`; `[]` opts out). Every `skills/<name>/SKILL.md` is
   injected into agent threads as the plugin skills tier.
@@ -196,7 +197,7 @@ This skill is a guide, not the contract. For an exact signature or a symbol it
 does not cover:
 
 1. **`bb plugin types`**, run in the plugin directory (or given its path),
-   syncs that plugin's SDK surface to the running bb — no server needed. For a
+   syncs that plugin's SDK surface to the running bb. For a
    plugin that depends on the npm package it repins the exact
    `@get-bb/plugin-sdk` devDependency to this bb's SDK version (run
    `npm install` after); for an older plugin that still vendors `types/*.d.ts`
@@ -631,22 +632,22 @@ that need the singleton personal project use
 methods, not their arguments — read the bundled `bb-plugin-sdk.d.ts` for exact
 signatures (see "Looking up the exact API").
 
-| Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storageLocation` `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
-| `threadSections` | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `projects`       | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                         |
-| `environments`   | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge`                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `hosts`          | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli`                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `files`          | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `terminals`      | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `providers`      | `list` `models`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `skills`         | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `plugins`        | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`)                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `theme`          | `get` `catalog` `set`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `status`         | `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `system`         | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `providerStates` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills`                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `guide`          | `render` (the `bb guide` text; local, no request)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Area             | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `threads`        | `list` `get` `search` `spawn` `fork` `send` `update` `delete` `stop` `experimental_reload` `compact` `wait` `open` `output` `timeline` `conversationOutline` `promptHistory` `archive` `archiveAll` `unarchive` `pin` `unpin` `reorderPinned` `markRead` `markUnread` `childSummary` `paneAction` `timelineTurnSummaryDetails` `storageFiles` `storageLocation` `storagePaths` `cancelPlan` `clearGoal` `defaultExecutionOptions`; sub-areas `events` (`list` `wait`), `interactions` (`get` `list` `cancel` `resolve` `respond`), `queuedMessages` (`create` `list` `update` `delete` `send` `reorder` `setGroupBoundary`), `tabs` (`get` `update`) |
+| `threadSections` | `list` `create` `update` `delete`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `projects`       | `list` `get` `create` `update` `delete` `reorder` `paths` `files` `fileContent` `branches` `commands` `defaultExecutionOptions` `promptHistory`; sub-areas `attachments` (`upload` `read` `copy`), `sources` (`add` `update` `delete`)                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `environments`   | `get` `update` `status` `paths` `commit` `archiveThreads` `diff` `diffFile` `diffFiles` `diffBranches` `diffPatch` `pullRequest` `markPullRequestDraft` `markPullRequestReady` `mergePullRequest` `squashMerge`                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `hosts`          | `list` `get` `update` `delete` `directory` `pathsExist` `pickFolder` `cloneDefaultPath` `createJoinCode` `retryUpdate` `providerCliStatus` `installProviderCli`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `files`          | `read` `write` `list` `listPaths` `mkdir` `move` `remove` `createPreview`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `terminals`      | `list` `create` `get` `input` `output` `resize` `rename` `restart` `close`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `providers`      | `list` `models`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `skills`         | `list` `listFiles` `getContent` `update` `remove`; sub-area `registry` (`search` `get` `detail` `install` `repositoryStars`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `plugins`        | `list` `install` `remove` `enable` `disable` `reload` `token` `callRpc` `getSource` `getSettings` `updateSettings` `checkUpdates` `listUpdateResults` `applyUpdate`; sub-area `catalog` (`search` `status` `install`)                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `theme`          | `get` `catalog` `set`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `status`         | `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `system`         | `version` `config` `reloadConfig` `attention` `usageLimits` `executionOptions` `providerStates` `transcribeVoice` `updateGeneralSettings` `updateKeyboardSettings` `updateExperiments` `cliSkillsStatus` `installCliSkills`                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `guide`          | `render` (the `bb guide` text; local, no request)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
 Prefer your own `bb.settings` and `bb.storage` over `sdk.system` and
 `sdk.plugins` for your plugin's own configuration. The `system` and `plugins`
@@ -797,13 +798,13 @@ bb.events.on("thread.archived", ({ thread }) => { ... });
 bb.events.on("thread.deleted", ({ thread }) => { ... });
 ```
 
-Exactly six events. `thread.active` fires when an applied lifecycle
-transition enters the running `active` state. `thread.archived` fires after a
-thread is archived, including cascade archives (archiving a parent archives
-its children too, each with its own event). Observe-only handlers run
-fire-and-forget after the transition and can never block or veto it. `thread`
-is the same DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged,
-and counted in the plugin's handler stats (`bb plugin list`).
+There are exactly six thread lifecycle events. `thread.active` fires when an
+applied lifecycle transition enters the running `active` state.
+`thread.archived` fires after a thread is archived, including cascade archives.
+Each archived child gets its own event. Observe-only handlers run
+fire-and-forget after the transition and cannot block it. `thread` is the same
+DTO `GET /api/v1/threads/:id` serves. Errors are caught, logged, and counted in
+the plugin's handler stats (`bb plugin list`).
 
 Lifecycle events are broadcast to all loaded plugins regardless of sidebar
 visibility.
@@ -812,8 +813,49 @@ visibility.
 always in the timeline yet. To react to a thread's content, listen on
 `thread.active` or `thread.idle`, then read the messages with
 `bb.sdk.threads.timeline`. Because handlers are fire-and-forget, work you do
-in a handler — including `bb.sdk.threads.update({ threadId, title })` —
-cannot delay or interrupt the thread's turn.
+in a handler, including `bb.sdk.threads.update({ threadId, title })`, cannot
+delay or interrupt the thread's turn.
+
+### bb.events.on — blocking invocation events
+
+Use the experimental `experimental_invocation.before` event to inspect and
+block executable `bb` CLI commands or BB-defined agent tools before they run:
+
+```ts
+bb.events.on("experimental_invocation.before", async (event) => {
+  if (event.kind === "cli" && event.argv[0] === "plugin") {
+    return { block: true, reason: "Plugin commands are disabled by policy." };
+  }
+
+  if (event.kind === "agent-tool" && event.name === "deploy_release") {
+    return { block: true, reason: "Deployments require an owner." };
+  }
+});
+```
+
+CLI events contain the exact `argv`, the invoking `cwd`, nullable thread and
+project ids, and an abort signal. Every executable core or plugin-contributed
+command runs this check. `--help` and `--version` do not execute command actions
+and therefore do not emit it. A standalone CLI call has `threadId: null`.
+
+Agent-tool events contain the globally unique tool name, raw input, thread and
+project ids, and the request abort signal. They cover tools registered through
+`bb.agents.registerTool` and core dynamic tools such as
+`update_environment_directory`. Provider-native tools such as Pi's `bash`,
+`read`, `edit`, and `write` run outside the BB server and do not emit this
+event.
+
+Handlers run sequentially by plugin id, then registration order. Returning
+nothing continues the chain. The first `{ block: true, reason }` stops it.
+A throw or malformed result blocks the invocation and identifies the failing
+plugin. Each handler receives a fresh copy of `argv` or tool `input`, so
+mutating the event cannot change the invocation or what another handler sees.
+CLI preflight asks the server once per command; a server that cannot be
+reached, or that predates the preflight route, has no policy to apply and the
+command proceeds (its server-side actions still land on that same server). A
+server that answers decides: a block, a malformed answer, or a server error
+stops the command. There is no CLI bypass flag. Disable a broken policy
+plugin in the Extensions UI.
 
 ### bb.http — HTTP routes
 
@@ -2806,9 +2848,10 @@ Remaining reference examples in `examples/plugins/`:
   plugin is `needs-configuration`; `bb plugin reload <id>` remains available
   for other recovery cases.
 - Descriptors without `default` produce `| undefined` values.
-- Thread events are observe-only; there are exactly six
+- Thread lifecycle events are observe-only; there are exactly six
   (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
-  `thread.archived`, `thread.deleted`).
+  `thread.archived`, `thread.deleted`). The experimental invocation event is
+  blocking, runs sequentially, and fails closed.
 - Service throw of NeedsConfigurationError changes plugin status; schedule
   throws only set the schedule's last_error. Name-matching means no import
   is needed for the error class.

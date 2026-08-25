@@ -266,7 +266,9 @@ added/updated/unchanged counts.
                                  *.meta.json is stamped with SDK
                                  major/version, artifactFormatVersion,
                                  pluginId, pluginVersion, and builtWith (bb +
-                                 plugin SDK versions); no server required
+                                 plugin SDK versions). Build work is local;
+                                 a reachable server is asked for its
+                                 invocation policy first
   bb plugin dev [path]           Watch a plugin's sources (default: cwd) and
                                  on every change rebuild its declared frontend
                                  (unminified, for readable stack traces),
@@ -475,8 +477,8 @@ a machine, bb downloads a pinned esbuild + Tailwind set into
 `<dataDir>/plugins/toolchain-<versions>/` and reuses it afterwards. Installing
 a prebuilt npm plugin never triggers that download.
 
-To build a plugin yourself — in CI, or to check it compiles without a running
-bb — depend on the published `bb-app` package and call the CLI:
+To build a plugin yourself, depend on the published `bb-app` package and call
+the CLI:
 
 ```jsonc
 // your plugin's package.json
@@ -484,11 +486,12 @@ bb — depend on the published `bb-app` package and call the CLI:
 "scripts": { "build": "bb plugin build" }
 ```
 
-`bb plugin build` talks to no server. Depending on `bb-app@X` builds with
-exactly that release's shim configuration, so the bundle cannot be built
-against a mismatched host runtime. Cache the toolchain directory in CI to skip
-the download on later runs. Only `bb plugin dev` needs a running bb, because
-it reloads the installed plugin after each rebuild.
+The build work runs locally. Depending on `bb-app@X` builds with exactly that
+release's shim configuration, so the bundle cannot be built against a
+mismatched host runtime. A reachable BB server is asked for its invocation
+policy first; an unreachable one is skipped. Cache the toolchain directory to
+skip the download on later runs. `bb plugin dev` also needs the server because it reloads the
+installed plugin after each rebuild.
 
 The backend half is prebuilt too: when a builtin/official/git/npm install ships
 a dist/server.js built for the running SDK major, the server loads it instead
@@ -622,6 +625,16 @@ plugins and proxied to the server, so plugin commands work exactly like core
 commands; core command names always win. A collision logs an activation warning,
 and `bb plugin list` shows the required `bb plugin run <id>` form. Inside agent
 threads the generated `plugin-commands` skill lists the available plugin commands.
+
+Before any executable core or plugin command runs, the CLI asks the server to
+run plugin invocation handlers. A policy plugin can block the command with a
+reason. A server that answers decides: a block, a handler failure, or an
+unreadable answer stops the command. A server that cannot be reached, or that
+predates the check, has no policy to apply and the command proceeds (its
+server-side actions still land on that same server). `bb --help`,
+`bb --version`, `bb guide`, and `bb manager` execute no bb action and skip the
+check. Disable a broken policy plugin in the Extensions UI; there is no CLI
+bypass flag.
 
 Settings changes do not auto-reload a plugin — run `bb plugin reload <id>`
 after configuring. Add --json to plugin commands for machine-readable output.

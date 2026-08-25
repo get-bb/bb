@@ -176,6 +176,33 @@ export type PluginThreadEventHandler<E extends PluginThreadEventName> = (
   payload: PluginThreadEventPayloads[E],
 ) => void | Promise<void>;
 
+export type PluginBeforeInvocationEvent =
+  | {
+      kind: "cli";
+      argv: readonly string[];
+      cwd: string;
+      threadId: string | null;
+      projectId: string | null;
+      signal: AbortSignal;
+    }
+  | {
+      kind: "agent-tool";
+      name: string;
+      input: unknown;
+      threadId: string;
+      projectId: string;
+      signal: AbortSignal;
+    };
+
+export type PluginBeforeInvocationResult = void | {
+  block: true;
+  reason: string;
+};
+
+export type PluginBeforeInvocationHandler = (
+  event: PluginBeforeInvocationEvent,
+) => PluginBeforeInvocationResult | Promise<PluginBeforeInvocationResult>;
+
 // ---------------------------------------------------------------------------
 // Wire surfaces: HTTP, rpc, realtime (design §4.6/§4.7).
 // ---------------------------------------------------------------------------
@@ -1058,6 +1085,17 @@ export interface PluginEvents {
   on<E extends PluginThreadEventName>(
     event: E,
     handler: PluginThreadEventHandler<E>,
+  ): void;
+  /**
+   * Run before any executable `bb` CLI command or BB-defined agent tool.
+   * Handlers run in plugin and registration order. Returning `{ block: true,
+   * reason }` stops the chain and blocks the invocation. A throwing or
+   * malformed handler also blocks it. Event values are inspection-only.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  on(
+    event: "experimental_invocation.before",
+    handler: PluginBeforeInvocationHandler,
   ): void;
 }
 

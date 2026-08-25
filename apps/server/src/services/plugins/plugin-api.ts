@@ -24,6 +24,7 @@ import type {
   PluginAgentToolResult,
   PluginAgents,
   PluginBackground,
+  PluginBeforeInvocationHandler,
   PluginCli,
   PluginCliCommandInfo,
   PluginCliContext,
@@ -244,6 +245,8 @@ export interface PluginApiHandle {
   databaseHandles: Database.Database[];
   /** Thread lifecycle handlers recorded by `bb.events.on`. */
   threadEventHandlers: PluginThreadEventHandlers;
+  /** Blocking invocation handlers recorded by `bb.events.on`. */
+  beforeInvocationHandlers: PluginBeforeInvocationHandler[];
   /** HTTP routes recorded by `bb.http.route`; dropped with the handle. */
   httpRoutes: PluginHttpRouteRecord[];
   /** RPC handlers recorded by `bb.rpc.register`; dropped with the handle. */
@@ -567,6 +570,7 @@ export function createPluginApi(options: {
     "thread.archived": [],
     "thread.deleted": [],
   };
+  const beforeInvocationHandlers: PluginBeforeInvocationHandler[] = [];
   const httpRoutes: PluginHttpRouteRecord[] = [];
   const rpcHandlers = new Map<string, PluginRpcHandler>();
   const hostWorkerExitHandlers: PluginHostWorkerExitHandler[] = [];
@@ -1368,22 +1372,39 @@ export function createPluginApi(options: {
       }
     },
   };
-  const events: PluginEvents = {
-    on(event, handler) {
-      assertLive();
-      const handlers = threadEventHandlers[event];
-      if (handlers === undefined) {
-        // Plugin sources are untyped at runtime; fail loudly at registration
-        // instead of silently never firing.
-        throw new Error(
-          `unknown event "${String(event)}" — supported events: ${Object.keys(
-            threadEventHandlers,
-          ).join(", ")}`,
-        );
-      }
-      handlers.push(handler);
-    },
-  };
+  function onPluginEvent<E extends PluginThreadEventName>(
+    event: E,
+    handler: PluginThreadEventHandler<E>,
+  ): void;
+  function onPluginEvent(
+    event: "experimental_invocation.before",
+    handler: PluginBeforeInvocationHandler,
+  ): void;
+  function onPluginEvent(
+    event: PluginThreadEventName | "experimental_invocation.before",
+    handler:
+      | PluginThreadEventHandler<PluginThreadEventName>
+      | PluginBeforeInvocationHandler,
+  ): void {
+    assertLive();
+    if (event === "experimental_invocation.before") {
+      beforeInvocationHandlers.push(handler as PluginBeforeInvocationHandler);
+      return;
+    }
+    const handlers = threadEventHandlers[event];
+    if (handlers === undefined) {
+      // Plugin sources are untyped at runtime; fail loudly at registration
+      // instead of silently never firing.
+      throw new Error(
+        `unknown event "${String(event)}" — supported events: ${[
+          ...Object.keys(threadEventHandlers),
+          "experimental_invocation.before",
+        ].join(", ")}`,
+      );
+    }
+    handlers.push(handler as never);
+  }
+  const events: PluginEvents = { on: onPluginEvent };
 
   const providers: PluginProviders = {
     register: providerRegistrations.register,
@@ -1447,6 +1468,7 @@ export function createPluginApi(options: {
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
+    beforeInvocationHandlers,
     httpRoutes,
     rpcHandlers,
     hostWorkerExitHandlers,

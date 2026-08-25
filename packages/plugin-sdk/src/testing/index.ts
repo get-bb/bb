@@ -11,6 +11,7 @@ export {
   createFakePluginHost,
   PluginContextStaleError,
   type CreateFakePluginHostOptions,
+  type ExperimentalFakeInvocationDecision,
   type FakeAgentToolRecord,
   type FakeCliRecord,
   type FakeHttpRouteRecord,

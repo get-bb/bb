@@ -218,6 +218,38 @@ clients fall back). Settle whether a row persisted with a namespaced glyph
 should ever be rewritten when the plugin renames or removes the icon; today
 rows are never rewritten and simply fall back.
 
+## Invocation interception (`bb.events.on("experimental_invocation.before", ...)` and `experimental_evaluateInvocation`)
+
+**What it does.** Lets a server plugin inspect and block every executable `bb`
+CLI command and each BB-defined agent tool before execution. CLI events carry
+exact arguments, working directory, nullable thread and project context, and an
+abort signal. Agent-tool events carry the globally unique tool name, raw input,
+thread and project ids, and an abort signal. Handlers run sequentially by plugin
+id and registration order. The first block wins. Throws and malformed results
+block the invocation, and so does a server that answers the CLI preflight
+with anything the CLI cannot read. A server the CLI cannot reach, or one that
+predates the preflight route (HTTP 404), has no policy to apply, so the CLI
+proceeds: every server-side action still lands on that same server, and
+agent tools are checked server-side regardless. Event mutation cannot alter
+the invocation. The tool boundary includes native plugin tools and core dynamic
+tools, but not provider-native tools that never reach the BB server. The fake
+plugin host's `experimental_evaluateInvocation` driver runs one plugin's
+handlers with the same ordering, result validation, mutation isolation, and
+fail-closed behavior.
+
+**Audit before stabilizing.** Confirm that every shipped CLI execution path
+preflights once, that `--help`, `--version`, and the local commands (`bb
+guide`, `bb manager`) should remain outside the event, and that skipping the
+policy for an unreachable or older server is the right failure mode (an
+earlier fail-closed draft bricked every `bb` command whenever the server was
+down or one release behind).
+Review recovery when a policy plugin blocks plugin management. Confirm
+first-block-wins remains preferable to running later logging handlers. Measure
+handler latency and long-lived user prompts. Decide whether a post-invocation
+observation event is needed instead of weakening short-circuit behavior. Audit
+whether raw tool input needs a size limit before plugins inspect it. Confirm
+that provider-native tools should remain a provider-extension concern.
+
 ## `experimental_buildBridgeToolCallContent`
 
 **Kept experimental (2026-08-22).** it still accepts two input shapes (ordered `contentBlocks` and the legacy aggregate `{ content, images }`) though every first-party caller now passes the ordered form, and no image MIME/size policy exists at the server boundary; drop the legacy input and settle the policy, then stabilize.

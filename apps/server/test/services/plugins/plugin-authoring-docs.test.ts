@@ -139,7 +139,9 @@ const THREAD_EVENT_PAYLOAD_FIELDS = {
   "thread.archived": ["thread"],
   "thread.deleted": ["thread"],
 } as const satisfies {
-  [E in keyof PluginThreadEventPayloads]: readonly (keyof PluginThreadEventPayloads[E])[];
+  [
+    E in keyof PluginThreadEventPayloads
+  ]: readonly (keyof PluginThreadEventPayloads[E])[];
 };
 
 type MissingThreadEventField = {
@@ -433,6 +435,13 @@ describe("bb-plugin-authoring skill", () => {
 
   it("has frontmatter naming the skill after its directory", () => {
     expect(skill).toMatch(/^---\nname: bb-plugin-authoring\n/);
+  });
+
+  it("documents blocking invocation events and their execution boundary", () => {
+    expect(skill).toContain("experimental_invocation.before");
+    expect(skill).toContain("The first `{ block: true, reason }` stops it");
+    expect(skill).toContain("CLI preflight asks the server once per command");
+    expect(skill).toContain("Provider-native tools");
   });
 
   it("documents every BbPluginApi property", () => {

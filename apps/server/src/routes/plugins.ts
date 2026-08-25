@@ -40,6 +40,7 @@ const compressBrotli = promisify(brotliCompress);
 const compressGzip = promisify(gzip);
 const MIN_COMPRESSED_APP_ASSET_BYTES = 1_024;
 const MAX_CACHED_APP_ASSETS = 64;
+const textEncoder = new TextEncoder();
 const APP_ASSET_ENCODINGS = [
   {
     encoding: "br",
@@ -137,6 +138,34 @@ function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((entry) => typeof entry === "string")
   );
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function streamJsonResult(result: Promise<unknown>): Response {
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      void result.then(
+        (value) => {
+          try {
+            controller.enqueue(textEncoder.encode(JSON.stringify(value)));
+            controller.close();
+          } catch (error) {
+            controller.error(error);
+          }
+        },
+        (error) => controller.error(error),
+      );
+    },
+  });
+  return new Response(body, {
+    headers: {
+      "cache-control": "no-transform",
+      "content-type": "application/json; charset=UTF-8",
+    },
+  });
 }
 
 function timingSafeEqualStrings(a: string, b: string): boolean {
@@ -238,6 +267,52 @@ export function registerPluginRoutes(
       threadId: threadId !== null && threadId.length > 0 ? threadId : null,
     });
     return context.json({ ok: true, groups });
+  });
+
+  // Every executable bb CLI command calls this before its action. The streamed
+  // body lets a policy handler wait on user input without delaying the response
+  // head past BB Connect's origin timeout.
+  app.post("/plugins/invocations/preflight", async (context) => {
+    const authProblem = localAuthProblem(context, deps);
+    if (authProblem) {
+      return context.json(
+        { allowed: false, error: authProblem.error },
+        authProblem.status,
+      );
+    }
+    const body = (await context.req.json().catch(() => null)) as {
+      argv?: unknown;
+      cwd?: unknown;
+      threadId?: unknown;
+      projectId?: unknown;
+    } | null;
+    if (
+      !isStringArray(body?.argv) ||
+      body.argv.length === 0 ||
+      typeof body.cwd !== "string" ||
+      body.cwd.length === 0 ||
+      !isNullableString(body.threadId) ||
+      !isNullableString(body.projectId)
+    ) {
+      return context.json(
+        {
+          allowed: false,
+          error:
+            "expected { argv: string[], cwd: string, threadId: string | null, projectId: string | null }",
+        },
+        400,
+      );
+    }
+    return streamJsonResult(
+      plugins.runBeforeInvocation({
+        kind: "cli",
+        argv: body.argv,
+        cwd: body.cwd,
+        threadId: body.threadId,
+        projectId: body.projectId,
+        signal: context.req.raw.signal,
+      }),
+    );
   });
 
   // Proxied `bb <plugin-command>` / `bb plugin run` invocation (design §4.4).
