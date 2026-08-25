@@ -182,6 +182,7 @@ function executionOptions(args: {
 }
 
 interface AgentLaunchArgs {
+  dialectId?: string;
   agent?: { command: string; args: string[] };
   envVars?: Record<string, string>;
   /** `listArgs` the agent binary itself understands (see the fake agent). */
@@ -264,6 +265,7 @@ async function startThread(args?: StartThreadArgs): Promise<{
     options: executionOptions({
       ...args,
       providerOptions: {
+        ...(args?.dialectId ? { acpDialect: args.dialectId } : {}),
         acpLaunchSpec: acpLaunchSpec(args ?? {}),
         ...(args?.additionalWorkspaceWriteRoots
           ? {
@@ -385,6 +387,7 @@ function sendModelList(
   const { modelLines, ...launch } = args;
   return sendRequest("model/list", {
     providerOptions: {
+      ...(launch.dialectId ? { acpDialect: launch.dialectId } : {}),
       acpLaunchSpec: acpLaunchSpec(
         modelLines === undefined
           ? launch
@@ -434,6 +437,21 @@ function loggedPrompts(path: string): string[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line) as string);
+}
+
+interface LoggedAcpRequest {
+  method?: string;
+  params?: Record<string, unknown>;
+}
+
+function loggedAcpRequests(path: string): LoggedAcpRequest[] {
+  if (!existsSync(path)) {
+    return [];
+  }
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as LoggedAcpRequest);
 }
 
 async function waitForTurnCompleted(): Promise<Record<string, unknown>> {
@@ -661,6 +679,38 @@ describe("acp bridge", () => {
       ],
       selectedOnlyModels: [],
     });
+  });
+
+  it("advertises Cursor's parameterized model picker during discovery", async () => {
+    const requestLog = join(workspaceDir, "cursor-discovery-requests.jsonl");
+    const modelListId = sendModelList({
+      dialectId: "cursor",
+      envVars: {
+        FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+
+    const result = (await waitForResponse(modelListId)).result as {
+      models: {
+        id: string;
+        supportedReasoningEfforts: { reasoningEffort: string }[];
+      }[];
+    };
+    const initialize = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "initialize",
+    );
+    expect.soft(initialize?.params).toMatchObject({
+      clientCapabilities: {
+        _meta: { parameterizedModelPicker: true },
+      },
+    });
+    expect.soft(result.models.map((model) => model.id)).toContain("grok-4.6");
+    expect(
+      result.models
+        .find((model) => model.id === "grok-4.6")
+        ?.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
+    ).toEqual(["low", "medium", "high", "xhigh"]);
   });
 
   it("discovers ACP-native models from session models state", async () => {

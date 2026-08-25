@@ -31,6 +31,10 @@
  *                              advertising a thought_level config option
  * - FAKE_ACP_SET_CONFIG_MODEL_ERROR=1
  *                            → fail session/set_config_option for model values
+ * - FAKE_ACP_CURSOR_PARAMETERIZED_MODELS=1
+ *                            → mirror Cursor compatibility-vs-parameterized
+ *                              model/config-option responses
+ * - FAKE_ACP_REQUEST_LOG     → append each client request as JSON
  * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
  *                              (exercises large-catalog reasoning discovery)
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
@@ -77,6 +81,9 @@ const unmappedReasoningConfig =
 const acceptNativeReasoning =
   process.env.FAKE_ACP_ACCEPT_NATIVE_REASONING === "1";
 const setConfigModelError = process.env.FAKE_ACP_SET_CONFIG_MODEL_ERROR === "1";
+const cursorParameterizedModels =
+  process.env.FAKE_ACP_CURSOR_PARAMETERIZED_MODELS === "1";
+const requestLog = process.env.FAKE_ACP_REQUEST_LOG;
 const hangInitialize = process.env.FAKE_ACP_HANG_INITIALIZE === "1";
 const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
   .split(",")
@@ -111,6 +118,8 @@ let activePromptId = null;
 let nextAgentRequestId = 1000;
 let selectedModel = "fake/default";
 let selectedEffort = "none";
+let selectedFast = "true";
+let clientSupportsParameterizedModels = false;
 let authenticatedMethod = null;
 let activeSessionId = sessionId;
 const pendingClientRequests = new Map();
@@ -189,7 +198,73 @@ function effortOptionForModel(model) {
   };
 }
 
+function cursorModelOptions() {
+  return clientSupportsParameterizedModels
+    ? [
+        { value: "default", name: "Auto" },
+        { value: "grok-4.6", name: "Cursor Grok 4.6" },
+        { value: "grok-4.5", name: "Cursor Grok 4.5" },
+      ]
+    : [
+        { value: "default[]", name: "Auto" },
+        {
+          value: "grok-4.6[effort=high,fast=true]",
+          name: "grok-4.6",
+        },
+        {
+          value: "grok-4.5[effort=high,fast=true]",
+          name: "grok-4.5",
+        },
+      ];
+}
+
+function cursorConfigOptions() {
+  const models = cursorModelOptions();
+  if (!models.some((model) => model.value === selectedModel)) {
+    selectedModel = models[0].value;
+  }
+  const options = [
+    {
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: selectedModel,
+      options: models,
+    },
+  ];
+  if (
+    clientSupportsParameterizedModels &&
+    selectedModel.startsWith("grok-")
+  ) {
+    options.push(
+      {
+        id: "effort",
+        name: "Effort",
+        category: "thought_level",
+        type: "select",
+        currentValue: selectedEffort,
+        options: ["low", "medium", "high", "xhigh"].map((value) => ({
+          value,
+        })),
+      },
+      {
+        id: "fast",
+        name: "Fast",
+        category: "model_config",
+        type: "select",
+        currentValue: selectedFast,
+        options: [{ value: "false" }, { value: "true" }],
+      },
+    );
+  }
+  return options;
+}
+
 function configOptions() {
+  if (cursorParameterizedModels) {
+    return cursorConfigOptions();
+  }
   if (!modelConfig) {
     return undefined;
   }
@@ -220,7 +295,16 @@ function configState() {
   if (options !== undefined) {
     state.configOptions = options;
   }
-  if (modelsField) {
+  if (cursorParameterizedModels) {
+    const availableModels = cursorModelOptions();
+    state.models = {
+      currentModelId: selectedModel,
+      availableModels: availableModels.map((model) => ({
+        modelId: model.value,
+        name: model.name,
+      })),
+    };
+  } else if (modelsField) {
     state.models = {
       currentModelId: selectedModel,
       availableModels: fakeModels.map((model) => ({
@@ -467,10 +551,21 @@ async function handlePrompt(message) {
 }
 
 async function handleMessage(message) {
+  if (requestLog) {
+    appendFileSync(requestLog, `${JSON.stringify(message)}\n`);
+  }
   switch (message.method) {
     case "initialize":
       if (hangInitialize) {
         return;
+      }
+      if (cursorParameterizedModels) {
+        clientSupportsParameterizedModels =
+          message.params?.clientCapabilities?._meta
+            ?.parameterizedModelPicker === true;
+        selectedModel = clientSupportsParameterizedModels
+          ? "default"
+          : "default[]";
       }
       send({
         jsonrpc: "2.0",
@@ -594,10 +689,13 @@ async function handleMessage(message) {
       return;
     case "session/set_model": {
       const modelId = message.params?.modelId;
+      const availableModels = cursorParameterizedModels
+        ? cursorModelOptions()
+        : fakeModels;
       if (
-        (!modelConfig && !modelsField) ||
+        (!cursorParameterizedModels && !modelConfig && !modelsField) ||
         typeof modelId !== "string" ||
-        !fakeModels.some((model) => model.value === modelId)
+        !availableModels.some((model) => model.value === modelId)
       ) {
         send({
           jsonrpc: "2.0",
@@ -622,10 +720,13 @@ async function handleMessage(message) {
           });
           return;
         }
+        const availableModels = cursorParameterizedModels
+          ? cursorModelOptions()
+          : fakeModels;
         if (
-          !modelConfig ||
+          (!cursorParameterizedModels && !modelConfig) ||
           typeof value !== "string" ||
-          !fakeModels.some((model) => model.value === value)
+          !availableModels.some((model) => model.value === value)
         ) {
           send({
             jsonrpc: "2.0",
@@ -639,9 +740,11 @@ async function handleMessage(message) {
         return;
       }
       if (configId === "effort") {
-        const efforts = effortsByModel.get(selectedModel);
+        const efforts = cursorParameterizedModels
+          ? ["low", "medium", "high", "xhigh"]
+          : effortsByModel.get(selectedModel);
         if (
-          !thoughtLevelConfig ||
+          (!cursorParameterizedModels && !thoughtLevelConfig) ||
           typeof value !== "string" ||
           !efforts?.includes(value)
         ) {
@@ -653,6 +756,15 @@ async function handleMessage(message) {
           return;
         }
         selectedEffort = value;
+        send({ jsonrpc: "2.0", id: message.id, result: configState() });
+        return;
+      }
+      if (
+        configId === "fast" &&
+        cursorParameterizedModels &&
+        (value === "true" || value === "false")
+      ) {
+        selectedFast = value;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }
