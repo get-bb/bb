@@ -1,21 +1,13 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { Command } from "commander";
 import { Agent, getGlobalDispatcher, setGlobalDispatcher } from "undici";
 import { RESERVED_BB_CLI_COMMANDS } from "@bb/domain/plugin-cli";
 
-import { registerEnvironmentCommands } from "../commands/environment.js";
-import { registerGuideCommand } from "../commands/guide.js";
-import { registerManagerCommands } from "../commands/manager.js";
-import { registerPluginCommands } from "../commands/plugin.js";
-import { registerProjectCommands } from "../commands/project.js";
-import { registerProviderCommands } from "../commands/provider.js";
-import { registerSkillCommands } from "../commands/skill.js";
-import { registerStatusCommand } from "../commands/status.js";
-import { registerThemeCommands } from "../commands/theme.js";
-import { registerThreadCommands } from "../commands/thread/index.js";
-import { pluginProxyCandidate } from "../command-groups.js";
+import {
+  CORE_COMMAND_GROUPS,
+  pluginProxyCandidate,
+} from "../command-groups.js";
 import {
   describeUnreachableServer,
   fetchPluginCliContributions,
@@ -26,50 +18,11 @@ import {
   type PluginCliContributionEntry,
 } from "../plugin-cli-proxy.js";
 
-function buildProgram(): Command {
-  const program = new Command();
-  const getUrl = () => "http://localhost";
-  registerStatusCommand(program, getUrl);
-  registerProjectCommands(program, getUrl);
-  registerProviderCommands(program, getUrl);
-  registerManagerCommands(program);
-  registerThreadCommands(program, getUrl);
-  registerEnvironmentCommands(program, getUrl);
-  registerThemeCommands(program, getUrl);
-  registerPluginCommands(program, getUrl);
-  registerSkillCommands(program, getUrl, () => ({ serverUrl: getUrl() }));
-  registerGuideCommand(program);
-  return program;
-}
-
-function topLevelCommandNames(program: Command): string[] {
-  return program.commands.flatMap((command) => [
-    command.name(),
-    ...command.aliases(),
-  ]);
-}
-
 describe("reserved bb CLI command names", () => {
-  it("every core top-level command is on the server's reserved list", () => {
-    const names = topLevelCommandNames(buildProgram());
-    const reserved = new Set(RESERVED_BB_CLI_COMMANDS);
-    for (const name of names) {
-      expect(
-        reserved,
-        `"${name}" is missing from RESERVED_BB_CLI_COMMANDS`,
-      ).toContain(name);
-    }
-  });
-
-  it("the reserved list carries no stale entries", () => {
-    const names = new Set(topLevelCommandNames(buildProgram()));
-    names.add("help"); // commander built-in
-    for (const reserved of RESERVED_BB_CLI_COMMANDS) {
-      expect(
-        names,
-        `"${reserved}" is reserved but not a core command`,
-      ).toContain(reserved);
-    }
+  it("matches the complete core command-group registry plus help", () => {
+    expect([...RESERVED_BB_CLI_COMMANDS].sort()).toEqual(
+      [...CORE_COMMAND_GROUPS.map((group) => group.name), "help"].sort(),
+    );
   });
 });
 
@@ -84,7 +37,7 @@ describe("pluginProxyCandidate", () => {
     // `automation` and `connect` moved into builtin plugins: they must not
     // be reserved, and the real program must not register them, so the
     // proxy resolves them against the running server.
-    const names = new Set(topLevelCommandNames(buildProgram()));
+    const names = new Set(CORE_COMMAND_GROUPS.map((group) => group.name));
     names.add("help");
     for (const moved of ["automation", "connect"]) {
       expect(RESERVED_BB_CLI_COMMANDS).not.toContain(moved);
