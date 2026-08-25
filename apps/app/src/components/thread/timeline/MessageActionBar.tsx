@@ -1,5 +1,7 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -174,11 +176,18 @@ export function computeMessageActionRowLayout({
  * Width of the action row's slot. A callback ref (rather than an object ref
  * plus a mount effect) so the observer re-attaches when the bar swaps between
  * its desktop and touch trees — an effect keyed on mount would keep observing
- * the unmounted tree's detached node.
+ * the unmounted tree's detached node. `enabled: false` keeps the hook (and a
+ * branch-stable hook order) without constructing an observer, for branches
+ * whose layout never reads the width.
  */
-function useMeasuredWidth(
-  resolveTarget?: (node: HTMLElement) => Element | null,
-): {
+export function useMeasuredWidth({
+  enabled,
+  resolveTarget,
+}: {
+  enabled: boolean;
+  /** Measure a related element (e.g. the message column) instead of the attached node. */
+  resolveTarget?: (node: HTMLElement) => Element | null;
+}): {
   measureRef: (node: HTMLElement | null) => void;
   width: number | undefined;
 } {
@@ -188,7 +197,7 @@ function useMeasuredWidth(
     (node: HTMLElement | null) => {
       observerRef.current?.disconnect();
       observerRef.current = null;
-      if (node === null || typeof ResizeObserver === "undefined") {
+      if (!enabled || node === null || typeof ResizeObserver === "undefined") {
         return;
       }
       const target = resolveTarget ? resolveTarget(node) : node;
@@ -204,10 +213,28 @@ function useMeasuredWidth(
       observer.observe(target);
       observerRef.current = observer;
     },
-    [resolveTarget],
+    [enabled, resolveTarget],
   );
   return { measureRef, width };
 }
+
+/**
+ * Timeline-list-level share of the message column width.
+ *
+ * Every top-level row's `[data-message-column]` spans the full list width, so
+ * per-bar column observers would all report the same number. The top-level
+ * `TimelineRowsList` measures its root once and provides it here. `null` — no
+ * provider (stories, isolated renders) or a nested, narrower list shadowing
+ * the top-level value — means no shared measurement applies and the bar
+ * observes its own column.
+ */
+export interface SharedMessageColumnWidth {
+  /** Measured width; undefined until the observer first reports. */
+  width: number | undefined;
+}
+
+export const MessageColumnWidthContext =
+  createContext<SharedMessageColumnWidth | null>(null);
 
 /**
  * The message column this row belongs to — the full timeline width, which for
@@ -478,9 +505,21 @@ export function MessageActionBar({
   const [collisionBoundary, setCollisionBoundary] = useState<
     HTMLElement | undefined
   >();
-  const { measureRef, width: availableWidth } = useMeasuredWidth();
-  const { measureRef: measureColumnRef, width: columnWidth } =
-    useMeasuredWidth(resolveMessageColumn);
+  const useMobileOverflowPopover = isCompactViewport && isPointerCoarse;
+  // The mobile overflow branch lays out a constant row (every action behind
+  // the "⋯" trigger), so the measured slot width feeds nothing there — skip
+  // that observer entirely.
+  const { measureRef, width: availableWidth } = useMeasuredWidth({
+    enabled: !(useMobileOverflowPopover && mobileActionDisplay === "overflow"),
+  });
+  const sharedColumnWidth = useContext(MessageColumnWidthContext);
+  const { measureRef: measureColumnRef, width: ownColumnWidth } =
+    useMeasuredWidth({
+      enabled: sharedColumnWidth === null,
+      resolveTarget: resolveMessageColumn,
+    });
+  const columnWidth =
+    sharedColumnWidth === null ? ownColumnWidth : sharedColumnWidth.width;
   // Touch-only: the hidden actions revealed in place by the "⋯" trigger.
   const [expanded, setExpanded] = useState(false);
   const expandedRowRef = useRef<HTMLDivElement | null>(null);
@@ -601,7 +640,6 @@ export function MessageActionBar({
       onSelect: action.onSelect,
     })),
   ];
-  const useMobileOverflowPopover = isCompactViewport && isPointerCoarse;
 
   if (actions.length === 0) {
     return null;

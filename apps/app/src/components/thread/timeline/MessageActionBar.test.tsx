@@ -16,6 +16,7 @@ import {
   computeMessageActionRowLayout,
   findMessageActionTooltipCollisionBoundary,
   MessageActionBar,
+  MessageColumnWidthContext,
 } from "./MessageActionBar";
 
 afterEach(() => {
@@ -635,6 +636,84 @@ describe("MessageActionBar", () => {
     );
     const fork = screen.getByRole("button", { name: "Fork into new thread" });
     expect(fork.getAttribute("data-state")).toBe("closed");
+  });
+});
+
+describe("MessageActionBar observer budget", () => {
+  /** Counts `ResizeObserver` constructions without ever delivering entries. */
+  function spyResizeObserverConstructions(): () => number {
+    let constructions = 0;
+    class CountingResizeObserver {
+      constructor(_callback: ResizeObserverCallback) {
+        constructions += 1;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", CountingResizeObserver);
+    return () => constructions;
+  }
+
+  it("constructs only the column fallback observer for a mobile overflow bar without a provider", () => {
+    mockMobileCoarsePointer();
+    const constructionCount = spyResizeObserverConstructions();
+    render(
+      <div data-message-column="">
+        <MessageActionBar
+          messageText="An answer."
+          alignment="start"
+          mobileActionDisplay="overflow"
+          onAddToChat={vi.fn()}
+        />
+      </div>,
+    );
+
+    // The overflow branch renders a constant layout, so the slot-width
+    // observer is skipped; only the column fallback remains.
+    expect(constructionCount()).toBe(1);
+  });
+
+  it("creates no per-bar observer on the mobile overflow branch under the shared column width", () => {
+    mockMobileCoarsePointer();
+    const constructionCount = spyResizeObserverConstructions();
+    render(
+      <MessageColumnWidthContext.Provider value={{ width: 358 }}>
+        <MessageActionBar
+          messageText="An answer."
+          alignment="end"
+          mobileActionDisplay="overflow"
+          onAddToChat={vi.fn()}
+          onFork={vi.fn()}
+        />
+      </MessageColumnWidthContext.Provider>,
+    );
+    expect(constructionCount()).toBe(0);
+
+    // The shared width is what admits the in-place expansion: three 28px
+    // touch actions (100px with gaps) fit the 358px column comfortably.
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Copy message", "Add to chat", "Fork into new thread"]);
+  });
+
+  it("constructs only the slot observer for a desktop bar under the shared column width", () => {
+    const constructionCount = spyResizeObserverConstructions();
+    render(
+      <MessageColumnWidthContext.Provider value={{ width: 400 }}>
+        <MessageActionBar
+          messageText="An answer."
+          alignment="end"
+          mobileActionDisplay="overflow"
+          onAddToChat={vi.fn()}
+          onFork={vi.fn()}
+        />
+      </MessageColumnWidthContext.Provider>,
+    );
+    expect(constructionCount()).toBe(1);
   });
 });
 
