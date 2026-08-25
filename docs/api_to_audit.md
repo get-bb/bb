@@ -1367,9 +1367,8 @@ the host's declarative base for the body. The row header (the presentation's
 label, glyph, tint and headline) stays host-rendered. The host drops a kind
 outside the plugin's namespace with a warning, scopes `"tool"` to the plugin
 that owns the thread's provider (`ProviderInfo.pluginId`), contains a crash
-to the row (the declarative base renders instead), and loads a provider
-plugin's bundle only on the first thread of one of its providers, never at
-boot (`InstalledPlugin.providerIds` marks the candidates the loader defers).
+to the row (the declarative base renders instead). A provider plugin's
+bundle loads in the same deferred boot pass as every other plugin's.
 
 **Audit before stabilizing.**
 

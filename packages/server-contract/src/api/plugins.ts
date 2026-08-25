@@ -204,9 +204,8 @@ export const installedPluginSchema = z.object({
   logoDarkUrl: z.string().nullable(),
   /**
    * The agent providers this plugin registered (`bb.providers.register`),
-   * empty for every other plugin. The app defers a provider plugin's frontend
-   * bundle until the first thread of one of its providers opens, so the boot
-   * payload never carries provider code (docs/provider-plugin-api.md §5).
+   * empty for every other plugin. An inventory field: which providers a
+   * plugin owns, for clients that group or label plugins by provider.
    * The server fills it for every plugin; a client that reads a response
    * from a server older than this field tolerates its absence on its own
    * response schema (see @bb/sdk), never by defaulting it here, where the

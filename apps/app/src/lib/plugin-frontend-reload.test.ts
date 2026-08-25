@@ -44,7 +44,6 @@ function candidate(
 ): PluginFrontendCandidate {
   return {
     pluginId,
-    providerIds: [],
     bundle: {
       jsUrl: `/api/v1/plugins/${pluginId}/assets/app.js?h=${hash}`,
       cssUrl: `/api/v1/plugins/${pluginId}/assets/app.css?h=${hash}`,
@@ -113,8 +112,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     fetchCandidates: vi.fn(
       async (): Promise<PluginFrontendCandidate[]> => initial,
     ),
-    importModule: vi.fn(async (_url: string): Promise<unknown> =>
-      pluginModule("hello"),
+    importModule: vi.fn(
+      async (_url: string): Promise<unknown> => pluginModule("hello"),
     ),
     applyCss: vi.fn(),
     retainCss: vi.fn(() => vi.fn()),
@@ -124,7 +123,6 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     beginSlotBatch: () => () => {},
     warn: vi.fn(),
     routePluginId: () => null,
-    wantedProviderPluginIds: () => new Set<string>(),
     mountTimeoutMs: undefined as number | undefined,
   };
 }
@@ -195,7 +193,6 @@ describe("reconcilePluginFrontends", () => {
       beginSlotBatch: () => () => {},
       warn: vi.fn(),
       routePluginId: () => null,
-      wantedProviderPluginIds: () => new Set<string>(),
     };
 
     await reconcilePluginFrontends(state, deps); // boot

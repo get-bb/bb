@@ -48,7 +48,6 @@ import {
   isPluginAppDefinition,
 } from "./plugin-app-definition";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
-import { getWantedProviderPluginIds } from "./plugin-frontend-provider-gate";
 import { createGatedPierreDiffsReact } from "./plugin-pierre-diffs-react";
 import { getPluginPanelRoutePluginId } from "./route-paths";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
@@ -100,13 +99,6 @@ interface PluginFrontendBundle {
 export interface PluginFrontendCandidate {
   pluginId: string;
   bundle: PluginFrontendBundle;
-  /**
-   * The agent providers the plugin registered. A plugin with any is a
-   * provider plugin: its bundle is deferred until a thread of one of its
-   * providers opens (`markProviderPluginFrontendWanted`), so provider code
-   * never rides the boot payload. Empty for every other plugin.
-   */
-  providerIds: readonly string[];
 }
 
 type PluginFrontendRecord =
@@ -329,7 +321,6 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
       iconUrl?: unknown;
       icons?: unknown;
       app?: { bundle?: unknown };
-      providerIds?: unknown;
     } | null;
     if (typeof typed?.id !== "string") continue;
     const logoUrl = typeof typed.logoUrl === "string" ? typed.logoUrl : null;
@@ -360,32 +351,10 @@ async function fetchFrontendCandidates(): Promise<PluginFrontendCandidate[]> {
     }
     const bundle = typed.app?.bundle;
     if (!isFrontendBundle(bundle)) continue;
-    const providerIds = Array.isArray(typed.providerIds)
-      ? typed.providerIds.filter(
-          (providerId): providerId is string => typeof providerId === "string",
-        )
-      : [];
-    candidates.push({ pluginId: typed.id, bundle, providerIds });
+    candidates.push({ pluginId: typed.id, bundle });
   }
   setPluginLogoUrls(logoUrls);
   return candidates;
-}
-
-/**
- * The candidates a reconcile pass loads now: every non-provider plugin, plus
- * the provider plugins whose threads the page has opened. A deferred
- * provider plugin is still a candidate for pruning purposes (it is known,
- * not gone), so a later pass that wants it loads it like any other.
- */
-export function selectLoadablePluginFrontendCandidates(
-  candidates: readonly PluginFrontendCandidate[],
-  wantedProviderPluginIds: ReadonlySet<string>,
-): PluginFrontendCandidate[] {
-  return candidates.filter(
-    (candidate) =>
-      candidate.providerIds.length === 0 ||
-      wantedProviderPluginIds.has(candidate.pluginId),
-  );
 }
 
 export { applyPluginCss } from "./plugin-css";
@@ -487,12 +456,6 @@ export interface PluginFrontendReconcileDeps {
    * queued behind unrelated plugins.
    */
   routePluginId: () => string | null;
-  /**
-   * Provider plugins whose threads have opened this page load; only their
-   * bundles may load among the provider plugins (docs/provider-plugin-api.md
-   * §5). Production binds the provider gate.
-   */
-  wantedProviderPluginIds: () => ReadonlySet<string>;
   /** Test override; production allows 10s for async mount setup. */
   mountTimeoutMs?: number;
   diagnosticsChanged?: () => void;
@@ -786,14 +749,7 @@ export async function reconcilePluginFrontends(
   // per bundle as they resolve.
   const closeSlotBatch = deps.beginSlotBatch();
   try {
-    await reconcileCandidates(
-      selectLoadablePluginFrontendCandidates(
-        candidates,
-        deps.wantedProviderPluginIds(),
-      ),
-      state,
-      deps,
-    );
+    await reconcileCandidates(candidates, state, deps);
   } finally {
     closeSlotBatch();
   }
@@ -1080,7 +1036,6 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   applyCss: applyPluginCss,
   retainCss: retainPluginCss,
   routePluginId: () => getPluginPanelRoutePluginId(window.location.pathname),
-  wantedProviderPluginIds: getWantedProviderPluginIds,
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,

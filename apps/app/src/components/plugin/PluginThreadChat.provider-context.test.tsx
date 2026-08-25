@@ -35,10 +35,6 @@ import {
 } from "@/components/plugin/PluginSlotMount";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
 
-const mocks = vi.hoisted(() => ({
-  requestProviderPluginFrontend: vi.fn(),
-}));
-
 vi.mock("@/lib/sdk", async (importOriginal) => {
   const mod = await importOriginal<typeof import("@/lib/sdk")>();
   return {
@@ -50,9 +46,6 @@ vi.mock("@/lib/sdk", async (importOriginal) => {
     },
   };
 });
-vi.mock("@/lib/plugin-frontend-lazy", () => ({
-  requestProviderPluginFrontend: mocks.requestProviderPluginFrontend,
-}));
 vi.mock("@/hooks/useRealtimeSubscription", () => ({
   useThreadDetailRealtimeSubscription: vi.fn(),
   useThreadListRealtimeSubscription: vi.fn(),
@@ -215,10 +208,6 @@ describe("PluginThreadChat provider context", () => {
     );
     expect(seen[0]).toEqual({ id: "thr_b", providerId: "agent-b" });
     expect(screen.queryByTestId("tool-renderer-a")).toBeNull();
-    // The chat asks for B's provider bundle the way the route view does.
-    expect(mocks.requestProviderPluginFrontend).toHaveBeenCalledWith(
-      "plugin-b",
-    );
   });
 
   it("renders the declarative base when only the embedding page's plugin has a renderer", async () => {

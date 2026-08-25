@@ -365,14 +365,14 @@ app.slots.experimental_timelineRenderer({ kind, component })
 ```
 
 Core kinds always use core renderers, customized through `presentation` only.
-Provider frontend bundles load lazily on the first thread of that provider and
-never enter the boot payload. Everything the bundle registers arrives with it:
-a settings section, nav panel, palette action, provider icon or
-pending-interaction form registered from a provider plugin's `app.tsx` appears
-on the first thread of one of its providers, when one of its forms is asked
-for, or when its own panel route is opened — not at boot. Boot-time UI belongs
-in a separate, non-provider plugin. Mobile renders the declarative base for
-every kind.
+A provider plugin's frontend bundle loads like every other plugin's: in the
+deferred boot pass after the first route paints, not on first paint and not
+only when one of its providers is in use. Everything its `app.tsx` registers —
+a settings section, nav panel, palette action, provider icon,
+pending-interaction form, or `app.composer.customize` chrome — is present from
+that boot pass on, including on the New Thread page. Keep the bundle small: it
+ships to every window whether or not the provider is selected. Mobile renders
+the declarative base for every kind.
 
 The provider directory is available to plugins through
 `app.experimental_useProviders()` (frontend) and `bb.sdk.providers`

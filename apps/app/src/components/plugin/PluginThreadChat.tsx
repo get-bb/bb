@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  type ReactNode,
-} from "react";
+import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
   ThreadChatMessageAction,
@@ -31,7 +25,6 @@ import { useEnvironment } from "@/hooks/queries/environment-queries";
 import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { requestProviderPluginFrontend } from "@/lib/plugin-frontend-lazy";
 import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import { BbHttpError } from "@/lib/sdk";
@@ -118,11 +111,6 @@ function PluginThreadChatBody({
         },
   );
   const threadProviderPluginId = threadProviderInfo?.pluginId ?? null;
-  useEffect(() => {
-    if (threadProviderPluginId !== null) {
-      requestProviderPluginFrontend(threadProviderPluginId);
-    }
-  }, [threadProviderPluginId]);
   const threadProviderContextValue = useMemo(
     () => ({
       providerId: thread?.providerId ?? null,
