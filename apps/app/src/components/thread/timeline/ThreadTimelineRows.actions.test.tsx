@@ -1522,3 +1522,86 @@ describe("ThreadTimelineRows actions", () => {
     );
   });
 });
+
+describe("ThreadTimelineRows shared message column width", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("expands overflow actions in place from the row list's one column measurement", () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
+    const observations: { callback: ResizeObserverCallback; node: Element }[] =
+      [];
+    class ControlledResizeObserver {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.#callback = callback;
+      }
+      observe(node: Element) {
+        observations.push({ callback: this.#callback, node });
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_agent_message",
+            role: "assistant",
+            text: "An earlier answer.",
+          }),
+          conversationRow({
+            id: "latest_agent_message",
+            role: "assistant",
+            text: "The latest answer.",
+          }),
+        ]}
+        canSpawnChild
+        onForkMessage={vi.fn()}
+        onMessageAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+
+    // Report a width only for the top-level row list: the bars' own columns
+    // are never observed here, so an in-place expansion can only come from
+    // the shared list-level measurement flowing down through context.
+    act(() => {
+      for (const { callback, node } of observations) {
+        if (!node.hasAttribute("data-timeline-row-list")) continue;
+        callback(
+          [
+            {
+              target: node,
+              contentRect: { width: 358, height: 600 },
+            } as unknown as ResizeObserverEntry,
+          ],
+          undefined as unknown as ResizeObserver,
+        );
+      }
+    });
+
+    const earlierMessage = container.querySelector(
+      '[data-timeline-row-id="earlier_agent_message"]',
+    );
+    const trigger = earlierMessage?.querySelector<HTMLButtonElement>(
+      '[aria-label="Message actions"]',
+    );
+    if (!trigger) throw new Error("Missing overflow trigger");
+    fireEvent.click(trigger);
+
+    // In-place expansion, not the popover: the 358px column fits all three
+    // 28px touch actions with the comfort margin to spare.
+    expect(document.body.querySelector('[data-side="top"]')).toBeNull();
+    expect(
+      earlierMessage?.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
+    expect(
+      earlierMessage?.querySelector('[aria-label="Fork into new thread"]'),
+    ).not.toBeNull();
+  });
+});
