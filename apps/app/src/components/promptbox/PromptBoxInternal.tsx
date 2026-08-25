@@ -1906,6 +1906,24 @@ export function PromptBoxInternal({
       },
       onUpdate({ editor: updatedEditor, transaction }) {
         if (skipEditorChangeRef.current) return;
+        const dismissedTrigger = dismissedTriggerRef.current;
+        if (
+          dismissedTrigger !== null &&
+          transaction.docChanged &&
+          !isRestoringAppliedMentionRef.current
+        ) {
+          const mappedStart = transaction.mapping.mapResult(
+            dismissedTrigger.start,
+            1,
+          );
+          dismissedTriggerRef.current = mappedStart.deleted
+            ? null
+            : {
+                ...dismissedTrigger,
+                start: mappedStart.pos,
+                end: transaction.mapping.map(dismissedTrigger.end, -1),
+              };
+        }
         const nextValue = promptEditorValueFromDoc(updatedEditor.state.doc);
         lastSyncedEditorValueRef.current = nextValue;
         onChangeRef.current(nextValue.text, nextValue.mentions);
@@ -2018,6 +2036,11 @@ export function PromptBoxInternal({
     ) {
       return;
     }
+
+    // A controlled replacement is a new occurrence. Parent echoes of editor
+    // updates return above because `lastSyncedEditorValueRef` already matches.
+    dismissedTriggerRef.current = null;
+    triggerKeyRef.current = "";
 
     try {
       skipEditorChangeRef.current = true;
