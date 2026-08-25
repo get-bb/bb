@@ -9,37 +9,12 @@
  * workspace write policy on client `fs/write_text_file` requests.
  */
 
-import {
-  isStandaloneBuiltinCompactCommand,
-  pendingInteractionResolutionSchema,
-  reasoningEffortsForLevels,
-} from "@bb/domain";
+import { isStandaloneBuiltinCompactCommand, pendingInteractionResolutionSchema, reasoningEffortsForLevels } from "@bb/domain";
 import type { AvailableModel, PromptInput, ReasoningLevel } from "@bb/domain";
 import { acpLaunchSpecSchema, type AcpLaunchSpec } from "../launch-spec.js";
-import {
-  BRIDGE_INBOUND_REQUEST_METHODS,
-  BRIDGE_JSON_RPC_ERRORS,
-  BRIDGE_NOTIFICATION_METHODS,
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  THREAD_DELTA_GRAMMAR_V3,
-  THREAD_DELTA_NOTIFICATION_METHOD,
-} from "@bb/provider-bridge-protocol";
-import type {
-  InitializeResult,
-  ThreadDelta,
-} from "@bb/provider-bridge-protocol";
-import {
-  BridgeRecoveryError,
-  bridgeRequestEnvelopeSchema,
-  createBridgeIo,
-  createBridgeLineHandler,
-  decodeBridgeJsonRpcResponse,
-  decodeToolCallResponsePayload,
-  experimental_defineProviderBridge,
-  mimeTypeFromExtension,
-  runBridgeRequest,
-  withoutBridgeRuntimeEnv,
-} from "@bb/provider-bridge-protocol/bridge-kit";
+import { BRIDGE_INBOUND_REQUEST_METHODS, BRIDGE_JSON_RPC_ERRORS, BRIDGE_NOTIFICATION_METHODS, PROVIDER_BRIDGE_PROTOCOL_VERSION, THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
+import type { InitializeResult, ThreadDelta } from "@bb/provider-bridge-protocol";
+import { BridgeRecoveryError, bridgeRequestEnvelopeSchema, createBridgeIo, createBridgeLineHandler, decodeBridgeJsonRpcResponse, decodeToolCallResponsePayload, experimental_defineProviderBridge, mimeTypeFromExtension, runBridgeRequest, withoutBridgeRuntimeEnv } from "@bb/provider-bridge-protocol/bridge-kit";
 import type { BridgeJsonRpcResponse } from "@bb/provider-bridge-protocol/bridge-kit";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -802,7 +777,7 @@ async function authenticateAcpAgent(args: {
 }
 
 function acpClientCapabilities(
-  parameterizedModelPicker?: boolean,
+  parameterizedModelPicker: boolean,
   fsAccess = false,
 ) {
   return {
@@ -873,12 +848,12 @@ async function loadAgentModelCatalog(
 
 async function loadSessionDiscoveredModels(
   agent: AcpAgentCommandParam,
-  primaryModels: readonly string[],
-  parameterizedModelPicker?: boolean,
+  reasoningProbePriorityModelIds: readonly string[],
+  parameterizedModelPicker: boolean,
 ): Promise<AvailableModel[] | null> {
   const key = JSON.stringify({
     agent,
-    primaryModels,
+    reasoningProbePriorityModelIds,
     parameterizedModelPicker,
   });
   if (
@@ -968,7 +943,7 @@ async function loadSessionDiscoveredModels(
       connection,
       sessionId: newSession.sessionId,
       modelOption,
-      primaryModels,
+      reasoningProbePriorityModelIds,
     });
     const models =
       reasoningByModel === null
@@ -999,7 +974,7 @@ async function discoverAcpNativeReasoningByModel(args: {
   connection: AcpAgentConnection;
   sessionId: string;
   modelOption: AcpConfigOption | undefined;
-  primaryModels: readonly string[];
+  reasoningProbePriorityModelIds: readonly string[];
 }): Promise<ReadonlyMap<string, AcpNativeReasoningSupport> | null> {
   const modelOptions = args.modelOption?.options ?? [];
   if (!args.modelOption || modelOptions.length === 0) {
@@ -1011,7 +986,7 @@ async function discoverAcpNativeReasoningByModel(args: {
   );
   const modelsToProbe: typeof modelOptions = [];
   const addedModels = new Set<string>();
-  for (const value of args.primaryModels) {
+  for (const value of args.reasoningProbePriorityModelIds) {
     const model = modelByValue.get(value);
     if (model && !addedModels.has(model.value)) {
       modelsToProbe.push(model);
@@ -2113,10 +2088,7 @@ async function startAgentSession(
     sendThreadDeltas(bbThreadId, [{ kind: "session.reset" }]);
     session.deferStartEmit = undefined;
     for (const deferred of deferredEmits) {
-      if (
-        deferred.sessionId !== undefined &&
-        deferred.sessionId !== sessionId
-      ) {
+      if (deferred.sessionId !== undefined && deferred.sessionId !== sessionId) {
         continue;
       }
       emitForSession(session, deferred.method, deferred.params);
@@ -2625,7 +2597,7 @@ async function handleModelList(
     params.listCommand === undefined && params.agent
       ? await loadSessionDiscoveredModels(
           params.agent,
-          params.primaryModels,
+          params.reasoningProbePriorityModelIds,
           params.parameterizedModelPicker,
         )
       : null;
@@ -2682,13 +2654,13 @@ const acpProviderOptionsSchema = z
     /** Enables an agent's separate model configuration options. */
     parameterizedModelPicker: z.boolean().optional(),
     /** Model ids to probe first during bounded native discovery. */
-    primaryModels: z.array(z.string().min(1)).optional(),
+    reasoningProbePriorityModelIds: z.array(z.string().min(1)).optional(),
   })
   .passthrough();
 
 interface AcpModelPickerOptions {
   parameterizedModelPicker: boolean;
-  primaryModels: string[];
+  reasoningProbePriorityModelIds: string[];
 }
 
 function decodeAcpModelPickerOptions(
@@ -2697,7 +2669,9 @@ function decodeAcpModelPickerOptions(
   const parsed = acpProviderOptionsSchema.parse(providerOptions ?? {});
   return {
     parameterizedModelPicker: parsed.parameterizedModelPicker === true,
-    primaryModels: [...(parsed.primaryModels ?? [])],
+    reasoningProbePriorityModelIds: [
+      ...(parsed.reasoningProbePriorityModelIds ?? []),
+    ],
   };
 }
 

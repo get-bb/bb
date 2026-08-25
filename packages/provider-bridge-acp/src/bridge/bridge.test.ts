@@ -13,10 +13,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createStandaloneBuiltinCompactCommandInput } from "@bb/domain";
 import type { DynamicTool, ReasoningLevel } from "@bb/domain";
-import {
-  PROVIDER_BRIDGE_PROTOCOL_VERSION,
-  THREAD_DELTA_NOTIFICATION_METHOD,
-} from "@bb/provider-bridge-protocol";
+import { PROVIDER_BRIDGE_PROTOCOL_VERSION, THREAD_DELTA_NOTIFICATION_METHOD } from "@bb/provider-bridge-protocol";
 import {
   assembleCapturedThreadEvents,
   captureBridgeJsonRpcOutput,
@@ -193,6 +190,7 @@ interface AgentLaunchArgs {
   modelListArgs?: string[];
   selectFlag?: string;
   primaryModels?: string[];
+  reasoningProbePriorityModelIds?: string[];
   reasoningCli?: {
     flag: string;
     supportedLevels: ReasoningLevel[];
@@ -273,7 +271,12 @@ async function startThread(args?: StartThreadArgs): Promise<{
         ...(args?.parameterizedModelPicker === true
           ? { parameterizedModelPicker: true }
           : {}),
-        ...(args?.primaryModels ? { primaryModels: args.primaryModels } : {}),
+        ...(args?.reasoningProbePriorityModelIds
+          ? {
+              reasoningProbePriorityModelIds:
+                args.reasoningProbePriorityModelIds,
+            }
+          : {}),
         acpLaunchSpec: acpLaunchSpec(args ?? {}),
         ...(args?.additionalWorkspaceWriteRoots
           ? {
@@ -365,7 +368,9 @@ function deltaKindsOf(message: BridgeJsonRpcOutputMessage): string[] {
   if (message.method !== THREAD_DELTA_NOTIFICATION_METHOD) {
     return [];
   }
-  const params = message.params as { deltas?: { kind?: string }[] } | undefined;
+  const params = message.params as
+    | { deltas?: { kind?: string }[] }
+    | undefined;
   return (params?.deltas ?? []).map((delta) => delta.kind ?? "");
 }
 
@@ -397,7 +402,12 @@ function sendModelList(
       ...(launch.parameterizedModelPicker === true
         ? { parameterizedModelPicker: true }
         : {}),
-      ...(launch.primaryModels ? { primaryModels: launch.primaryModels } : {}),
+      ...(launch.reasoningProbePriorityModelIds
+        ? {
+            reasoningProbePriorityModelIds:
+              launch.reasoningProbePriorityModelIds,
+          }
+        : {}),
       acpLaunchSpec: acpLaunchSpec(
         modelLines === undefined
           ? launch
@@ -696,7 +706,7 @@ describe("acp bridge", () => {
     const modelListId = sendModelList({
       dialectId: "cursor",
       parameterizedModelPicker: true,
-      primaryModels: ["grok-4.6", "grok-4.5"],
+      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
       envVars: {
         FAKE_ACP_CURSOR_PARAMETERIZED_MODELS: "1",
         FAKE_ACP_REQUEST_LOG: requestLog,

@@ -105,9 +105,13 @@ export function acpProviderDeclaration(
       ...(agent.parameterizedModelPicker === true
         ? { parameterizedModelPicker: true }
         : {}),
-      ...(agent.primaryModels === undefined
+      ...(agent.reasoningProbePriorityModelIds === undefined
         ? {}
-        : { primaryModels: [...agent.primaryModels] }),
+        : {
+            reasoningProbePriorityModelIds: [
+              ...agent.reasoningProbePriorityModelIds,
+            ],
+          }),
       acpLaunchSpec: { ...agent.launch },
     },
     // Every ACP agent answers `model/list` from its own account or agent

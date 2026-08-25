@@ -4,12 +4,7 @@
  * model-list params out.
  */
 
-import type {
-  DynamicTool,
-  PermissionMode,
-  ReasoningLevel,
-  ServiceTier,
-} from "@bb/domain";
+import type { DynamicTool, PermissionMode, ReasoningLevel, ServiceTier } from "@bb/domain";
 import path from "node:path";
 
 import {
@@ -70,13 +65,15 @@ export interface AcpModelListParams {
    * from the `session/new` result's config state.
    */
   agent?: AcpAgentCommandParam;
+  /** Family ids served in the CLI catalog's default list. */
+  primaryModels: string[];
   /**
    * Model ids to probe first within ACP-native reasoning discovery's fixed
    * deadline. Discovery still returns every advertised model in agent order.
    */
-  primaryModels: string[];
+  reasoningProbePriorityModelIds: string[];
   /** Enables separate model, reasoning, and service-tier ACP options. */
-  parameterizedModelPicker?: boolean;
+  parameterizedModelPicker: boolean;
   reasoningCli?: AcpBridgeReasoningCli;
   nativeReasoning?: AcpBridgeNativeReasoning;
 }
@@ -118,7 +115,7 @@ export interface AcpSessionParams {
   reasoningCli?: AcpBridgeReasoningCli;
   nativeReasoning?: AcpBridgeNativeReasoning;
   /** Enables the agent's separate model configuration options. */
-  parameterizedModelPicker?: boolean;
+  parameterizedModelPicker: boolean;
   /**
    * Launch-time permission flags for agents whose own prompt policy must be
    * selected by CLI args rather than by ACP permission responses.
@@ -183,9 +180,9 @@ function buildAcpSessionInstructions(
 }
 
 /** The spec's `env` is always a record; an empty one adds no envVars key. */
-function launchEnvVars(launchSpec: AcpLaunchSpec): {
-  envVars?: Record<string, string>;
-} {
+function launchEnvVars(
+  launchSpec: AcpLaunchSpec,
+): { envVars?: Record<string, string> } {
   return Object.keys(launchSpec.env).length > 0
     ? { envVars: launchSpec.env }
     : {};
@@ -220,8 +217,8 @@ function buildAcpModelDiscoveryAgentCommand(
 }
 
 interface AcpModelListOptions {
-  parameterizedModelPicker?: boolean;
-  primaryModels?: readonly string[];
+  parameterizedModelPicker: boolean;
+  reasoningProbePriorityModelIds: readonly string[];
 }
 
 /**
@@ -231,17 +228,18 @@ interface AcpModelListOptions {
  */
 export function buildAcpModelListParams(
   launchSpec: AcpLaunchSpec | null,
-  options: AcpModelListOptions = {},
+  options: AcpModelListOptions,
 ): AcpModelListParams {
-  const primaryModels = [
-    ...(options.primaryModels ?? launchSpec?.modelCli?.primaryModels ?? []),
+  const primaryModels = [...(launchSpec?.modelCli?.primaryModels ?? [])];
+  const reasoningProbePriorityModelIds = [
+    ...options.reasoningProbePriorityModelIds,
   ];
-  const parameterizedModelPicker =
-    options.parameterizedModelPicker === true
-      ? { parameterizedModelPicker: true as const }
-      : {};
   if (launchSpec === null) {
-    return { primaryModels, ...parameterizedModelPicker };
+    return {
+      primaryModels,
+      reasoningProbePriorityModelIds,
+      parameterizedModelPicker: options.parameterizedModelPicker,
+    };
   }
   const listCommand = buildAcpModelListCommand(launchSpec);
   const agent = buildAcpModelDiscoveryAgentCommand(launchSpec);
@@ -249,7 +247,8 @@ export function buildAcpModelListParams(
     ...(listCommand !== undefined ? { listCommand } : {}),
     ...(agent !== undefined ? { agent } : {}),
     primaryModels,
-    ...parameterizedModelPicker,
+    reasoningProbePriorityModelIds,
+    parameterizedModelPicker: options.parameterizedModelPicker,
     ...(launchSpec.reasoningCli !== undefined
       ? { reasoningCli: launchSpec.reasoningCli }
       : {}),
@@ -314,7 +313,7 @@ interface BuildAcpSessionParamsArgs {
   /** Provider label used in user-facing capability errors. */
   providerLabel: string;
   threadId: string;
-  parameterizedModelPicker?: boolean;
+  parameterizedModelPicker: boolean;
 }
 
 /** The bridge's session-construction params for a thread start/resume/fork. */
@@ -344,11 +343,9 @@ export function buildAcpSessionParams(
     ...buildAcpModelSelectionParam(
       launchSpec,
       options,
-      args.parameterizedModelPicker === true,
+      args.parameterizedModelPicker,
     ),
-    ...(args.parameterizedModelPicker === true
-      ? { parameterizedModelPicker: true }
-      : {}),
+    parameterizedModelPicker: args.parameterizedModelPicker,
     ...(launchSpec.reasoningCli !== undefined
       ? { reasoningCli: launchSpec.reasoningCli }
       : {}),

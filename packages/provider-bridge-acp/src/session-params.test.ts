@@ -26,7 +26,7 @@ function launchSpecFor(spec: AcpLaunchSpec): AcpLaunchSpec {
 }
 
 describe("buildAcpModelListParams", () => {
-  it("discovers models with the spec's list command, cwd, and env", () => {
+  it("keeps a custom CLI catalog when model-picker options are absent", () => {
     const params = buildAcpModelListParams(
       launchSpecFor({
         displayName: "Custom ACP",
@@ -40,6 +40,10 @@ describe("buildAcpModelListParams", () => {
           primaryModels: ["model-a"],
         },
       }),
+      {
+        parameterizedModelPicker: false,
+        reasoningProbePriorityModelIds: [],
+      },
     );
 
     expect(params).toEqual({
@@ -50,6 +54,8 @@ describe("buildAcpModelListParams", () => {
         envVars: { CUSTOM_AGENT_TOKEN: "token" },
       },
       primaryModels: ["model-a"],
+      reasoningProbePriorityModelIds: [],
+      parameterizedModelPicker: false,
     });
   });
 
@@ -70,10 +76,16 @@ describe("buildAcpModelListParams", () => {
           env: {},
           reasoningCli,
         }),
+        {
+          parameterizedModelPicker: false,
+          reasoningProbePriorityModelIds: [],
+        },
       ),
     ).toEqual({
       agent: { command: "custom-agent", args: ["serve"] },
       primaryModels: [],
+      reasoningProbePriorityModelIds: [],
+      parameterizedModelPicker: false,
       reasoningCli,
     });
   });
@@ -95,11 +107,17 @@ describe("buildAcpModelListParams", () => {
           env: {},
           ...(modelCli !== undefined ? { modelCli } : {}),
         }),
+        {
+          parameterizedModelPicker: false,
+          reasoningProbePriorityModelIds: [],
+        },
       );
 
       expect(params).toEqual({
         agent: { command: "custom-agent", args: ["serve"] },
         primaryModels: [],
+        reasoningProbePriorityModelIds: [],
+        parameterizedModelPicker: false,
       });
       expect(params).not.toHaveProperty("listCommand");
     },
@@ -115,13 +133,14 @@ describe("buildAcpModelListParams", () => {
         }),
         {
           parameterizedModelPicker: true,
-          primaryModels: ["grok-4.6", "grok-4.5"],
+          reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
         },
       ),
     ).toEqual({
       agent: { command: "cursor-agent", args: ["acp"] },
       parameterizedModelPicker: true,
-      primaryModels: ["grok-4.6", "grok-4.5"],
+      primaryModels: [],
+      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
     });
   });
 });
@@ -136,6 +155,7 @@ describe("buildAcpSessionParams", () => {
           ...BASE_OPTIONS,
           envVars: { BB_THREAD_ID: "thread-1" },
         },
+        parameterizedModelPicker: false,
         launchSpec: launchSpecFor({
           displayName: "Custom ACP",
           command: "custom-agent",
@@ -168,6 +188,7 @@ describe("buildAcpSessionParams", () => {
         additionalWorkspaceWriteRoots: [],
         cwd: "/workspace",
         options: { ...BASE_OPTIONS, model: "requested-model" },
+        parameterizedModelPicker: false,
         launchSpec: launchSpecFor({
           displayName: "Custom ACP",
           command: "custom-agent",
@@ -196,6 +217,7 @@ describe("buildAcpSessionParams", () => {
       options: { ...BASE_OPTIONS, reasoningLevel: "max" },
       providerLabel: "acp-custom",
       threadId: "thread-1",
+      parameterizedModelPicker: false,
     } as const;
 
     expect(
@@ -267,14 +289,14 @@ describe("buildAcpSessionParams parameterized model selection", () => {
     expect("reasoningLevel" in selection).toBe(false);
   });
 
-  it.each([
-    ["default", "default"],
-    ["fast", "fast"],
-  ] as const)("forwards the %s service tier explicitly", (_, serviceTier) => {
-    expect(
-      cursorSessionParams({ model: "grok-4.6", serviceTier }).modelSelection,
-    ).toMatchObject({ modelId: "grok-4.6", serviceTier });
-  });
+  it.each(["default", "fast"] as const)(
+    "forwards the %s service tier explicitly",
+    (serviceTier) => {
+      expect(
+        cursorSessionParams({ model: "grok-4.6", serviceTier }).modelSelection,
+      ).toMatchObject({ modelId: "grok-4.6", serviceTier });
+    },
+  );
 
   it("never forwards the synthetic default model id", () => {
     // "acp-default" is bb's placeholder for "the agent's own default"; leaking
@@ -289,6 +311,7 @@ describe("buildAcpSessionParams parameterized model selection", () => {
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
       options: { ...BASE_OPTIONS, model: "custom/strong" },
+      parameterizedModelPicker: false,
       launchSpec: launchSpecFor({
         displayName: "Custom ACP",
         command: "custom-acp",
@@ -321,6 +344,7 @@ describe("buildAcpSessionParams skill instructions", () => {
       additionalWorkspaceWriteRoots: [],
       cwd: "/workspace",
       options: { ...BASE_OPTIONS, ...options },
+      parameterizedModelPicker: false,
       launchSpec: launchSpecFor({
         displayName: "Custom ACP",
         command: "custom-agent",

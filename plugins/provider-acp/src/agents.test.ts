@@ -6,7 +6,10 @@ import {
   type CustomAcpAgent,
 } from "./agents.js";
 import { acpProviderDeclaration } from "./declaration.js";
-import { KNOWN_ACP_AGENTS, RESERVED_ACP_PROVIDER_IDS } from "./known-agents.js";
+import {
+  KNOWN_ACP_AGENTS,
+  RESERVED_ACP_PROVIDER_IDS,
+} from "./known-agents.js";
 import { experimental_acpLaunchSpecSchema } from "@get-bb/plugin-sdk/provider-bridge/acp";
 
 const reserved = RESERVED_ACP_PROVIDER_IDS;
@@ -46,9 +49,7 @@ describe("parseCustomAcpAgents", () => {
 
     expect(parsed.agents.map((agent) => agent.id)).toEqual(["amp"]);
     expect(parsed.problems).toHaveLength(3);
-    expect(parsed.problems[1]).toContain(
-      'resolves to built-in provider "acp-cursor"',
-    );
+    expect(parsed.problems[1]).toContain('resolves to built-in provider "acp-cursor"');
     expect(parsed.problems[2]).toContain("configured more than once");
   });
 
@@ -220,6 +221,7 @@ describe("acpProviderDeclaration", () => {
     }
   });
 
+
   it("groups every agent under the acp family instead of an id prefix", () => {
     for (const agent of KNOWN_ACP_AGENTS) {
       expect(acpProviderDeclaration(agent).family).toBe("acp");
@@ -244,7 +246,7 @@ describe("acpProviderDeclaration", () => {
     expect(byId.get("acp-cursor")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "cursor",
       parameterizedModelPicker: true,
-      primaryModels: ["grok-4.6", "grok-4.5"],
+      reasoningProbePriorityModelIds: ["grok-4.6", "grok-4.5"],
       acpLaunchSpec: {
         command: "cursor-agent",
         args: ["acp"],
@@ -256,9 +258,9 @@ describe("acpProviderDeclaration", () => {
     expect(byId.get("acp-opencode")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "opencode",
     });
-    expect(
-      byId.get("acp-opencode")?.capabilities.supportsManualCompaction,
-    ).toBe(true);
+    expect(byId.get("acp-opencode")?.capabilities.supportsManualCompaction).toBe(
+      true,
+    );
     expect(byId.get("acp-cursor")?.capabilities.supportsManualCompaction).toBe(
       false,
     );
@@ -268,11 +270,7 @@ describe("acpProviderDeclaration", () => {
     const grok = acpProviderDeclaration(
       KNOWN_ACP_AGENTS.find((agent) => agent.id === "acp-grok")!,
     );
-    expect(grok.capabilities.reasoningLevels).toEqual([
-      "low",
-      "medium",
-      "high",
-    ]);
+    expect(grok.capabilities.reasoningLevels).toEqual(["low", "medium", "high"]);
     expect(grok.experimental_visibility).toBe("installed");
 
     const cursor = acpProviderDeclaration(

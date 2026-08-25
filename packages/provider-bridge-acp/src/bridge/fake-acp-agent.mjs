@@ -24,9 +24,7 @@
  * - FAKE_ACP_MODELS_FIELD=1  → advertise legacy ACP models state
  * - FAKE_ACP_THOUGHT_LEVEL_CONFIG=1
  *                            → advertise per-model effort configOptions
- * - FAKE_ACP_FAST_CONFIG=1   → advertise the Fast mode config option
  * - FAKE_ACP_INITIAL_FAST    → set the initial Fast mode value
- * - FAKE_ACP_INITIALIZE_LOG  → append initialize params as JSON
  * - FAKE_ACP_UNMAPPED_REASONING_CONFIG=1
  *                            → advertise unmapped thought_level values
  * - FAKE_ACP_ACCEPT_NATIVE_REASONING=1
@@ -38,7 +36,6 @@
  *                            → mirror Cursor compatibility-vs-parameterized
  *                              model/config-option responses
  * - FAKE_ACP_REQUEST_LOG     → append each client request as JSON
- * - FAKE_ACP_SET_CONFIG_LOG  → append selected model values
  * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
  *                              (exercises large-catalog reasoning discovery)
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
@@ -80,7 +77,6 @@ const usageSessionId = process.env.FAKE_ACP_USAGE_SESSION_ID;
 const modelConfig = process.env.FAKE_ACP_MODEL_CONFIG === "1";
 const modelsField = process.env.FAKE_ACP_MODELS_FIELD === "1";
 const thoughtLevelConfig = process.env.FAKE_ACP_THOUGHT_LEVEL_CONFIG === "1";
-const fastConfig = process.env.FAKE_ACP_FAST_CONFIG === "1";
 const unmappedReasoningConfig =
   process.env.FAKE_ACP_UNMAPPED_REASONING_CONFIG === "1";
 const acceptNativeReasoning =
@@ -97,9 +93,7 @@ const authMethods = (process.env.FAKE_ACP_AUTH_METHODS ?? "")
 const authOptional = process.env.FAKE_ACP_AUTH_OPTIONAL === "1";
 const sessionNewError = process.env.FAKE_ACP_SESSION_NEW_ERROR;
 const exitOnSessionNew = process.env.FAKE_ACP_EXIT_ON_SESSION_NEW;
-const sessionNewDelayMs = Number(
-  process.env.FAKE_ACP_SESSION_NEW_DELAY_MS ?? "0",
-);
+const sessionNewDelayMs = Number(process.env.FAKE_ACP_SESSION_NEW_DELAY_MS ?? "0");
 const updatesWithSessionResponse =
   process.env.FAKE_ACP_UPDATES_WITH_SESSION_RESPONSE === "1";
 const ignoreCancel = process.env.FAKE_ACP_IGNORE_CANCEL === "1";
@@ -295,17 +289,6 @@ function configOptions() {
       options: fakeModels,
     },
     effortOptionForModel(selectedModel),
-    ...(fastConfig
-      ? [
-          {
-            id: "fast",
-            name: "Fast mode",
-            type: "select",
-            currentValue: selectedFast,
-            options: [{ value: "false" }, { value: "true" }],
-          },
-        ]
-      : []),
   ].filter(Boolean);
 }
 
@@ -337,11 +320,7 @@ function configState() {
 }
 
 function requireAuthenticated(message) {
-  if (
-    authMethods.length === 0 ||
-    authOptional ||
-    authenticatedMethod !== null
-  ) {
+  if (authMethods.length === 0 || authOptional || authenticatedMethod !== null) {
     return true;
   }
   // ACP's reserved auth-required error: code -32000 with this message.
@@ -593,12 +572,6 @@ async function handleMessage(message) {
           ? "default"
           : "default[]";
       }
-      if (process.env.FAKE_ACP_INITIALIZE_LOG) {
-        appendFileSync(
-          process.env.FAKE_ACP_INITIALIZE_LOG,
-          `${JSON.stringify(message.params)}\n`,
-        );
-      }
       send({
         jsonrpc: "2.0",
         id: message.id,
@@ -767,9 +740,6 @@ async function handleMessage(message) {
           });
           return;
         }
-        if (process.env.FAKE_ACP_SET_CONFIG_LOG) {
-          appendFileSync(process.env.FAKE_ACP_SET_CONFIG_LOG, `${value}\n`);
-        }
         selectedModel = value;
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
@@ -794,11 +764,8 @@ async function handleMessage(message) {
         send({ jsonrpc: "2.0", id: message.id, result: configState() });
         return;
       }
-      if (configId === "fast") {
-        if (
-          (!fastConfig && !cursorParameterizedModels) ||
-          (value !== "false" && value !== "true")
-        ) {
+      if (configId === "fast" && cursorParameterizedModels) {
+        if (value !== "false" && value !== "true") {
           send({
             jsonrpc: "2.0",
             id: message.id,

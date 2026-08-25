@@ -309,11 +309,12 @@
 //
 // Version 167 changes Cursor's provider bridge options and session behavior.
 // Server → daemon: `bridgeLaunch.providerOptions` removes Cursor's CLI
-// `modelCli` variant catalog and adds `parameterizedModelPicker` plus bare
-// `primaryModels`. The bridge advertises that capability to Cursor for model
-// discovery and live sessions, then sends bare model ids with explicit effort
-// and Fast config options. An older daemon can retain a stale bridge process
-// keyed by the old provider options and continue launching combined variants.
+// `modelCli` variant catalog and adds `parameterizedModelPicker` plus
+// `reasoningProbePriorityModelIds`. The bridge advertises that capability to
+// Cursor for discovery and live sessions, then sends bare model ids with
+// explicit effort and Fast config options. Those provider options are opaque
+// but their bytes and meaning changed and mixed-version compatibility was not
+// deliberately preserved and tested.
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.

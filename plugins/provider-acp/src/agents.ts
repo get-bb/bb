@@ -47,7 +47,7 @@ export interface AcpAgentDefinition {
   /** Enables separate model, reasoning, and service-tier ACP options. */
   parameterizedModelPicker?: boolean;
   /** Model ids to probe first during bounded ACP-native discovery. */
-  primaryModels?: readonly string[];
+  reasoningProbePriorityModelIds?: readonly string[];
   /** Listed always, or only where the bridge reports the agent installed. */
   visibility?: "always" | "installed";
   /** How the user signs in and installs the agent. */
@@ -196,9 +196,7 @@ export function parseCustomAcpAgents(args: {
   for (const [index, entry] of args.entries.entries()) {
     const parsed = customAcpAgentSchema.safeParse(entry);
     if (!parsed.success) {
-      problems.push(
-        `entry ${index} is not a valid agent: ${parsed.error.message}`,
-      );
+      problems.push(`entry ${index} is not a valid agent: ${parsed.error.message}`);
       continue;
     }
     const providerId = formatCustomAcpProviderId(parsed.data.id);
