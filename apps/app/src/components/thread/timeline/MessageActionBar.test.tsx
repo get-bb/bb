@@ -717,6 +717,67 @@ describe("MessageActionBar observer budget", () => {
   });
 });
 
+describe("MessageActionBar shared column width", () => {
+  /**
+   * Mounts a mobile bar with three 28px touch actions (a 100px row, so the
+   * in-place expansion needs a 116px column with its 16px comfort margin)
+   * under the shared list width, taps "⋯", and reports whether the actions
+   * expanded in place rather than opening the popover.
+   */
+  function expandsInPlaceAt({
+    alignment,
+    listWidth,
+  }: {
+    alignment: "start" | "end";
+    listWidth: number;
+  }): boolean {
+    const { container, unmount } = render(
+      <MessageColumnWidthContext.Provider value={{ width: listWidth }}>
+        <MessageActionBar
+          messageText="An answer."
+          alignment={alignment}
+          mobileActionDisplay="overflow"
+          onAddToChat={vi.fn()}
+          onFork={vi.fn()}
+        />
+      </MessageColumnWidthContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Message actions" }));
+    // The popover portals its items outside the container, so only a button
+    // inside the bar's own tree is the in-place row.
+    const popover = document.body.querySelector('[data-side="top"]');
+    const inPlaceRow = within(container).queryByRole("button", {
+      name: "Fork into new thread",
+    });
+    unmount();
+    if (popover === null) {
+      expect(inPlaceRow).not.toBeNull();
+      return true;
+    }
+    expect(inPlaceRow).toBeNull();
+    return false;
+  }
+
+  it("reads the assistant column as the shared list width minus its px-2 padding", () => {
+    mockMobileCoarsePointer();
+    // The bar's own column observer reports the padded assistant column's
+    // content box: 16px narrower than the list root the shared measurement
+    // observes. The shared path has to land on the same threshold.
+    expect(expandsInPlaceAt({ alignment: "start", listWidth: 131 })).toBe(
+      false,
+    );
+    expect(expandsInPlaceAt({ alignment: "start", listWidth: 132 })).toBe(
+      true,
+    );
+  });
+
+  it("reads the unpadded user column at the full shared list width", () => {
+    mockMobileCoarsePointer();
+    expect(expandsInPlaceAt({ alignment: "end", listWidth: 115 })).toBe(false);
+    expect(expandsInPlaceAt({ alignment: "end", listWidth: 116 })).toBe(true);
+  });
+});
+
 describe("computeMessageActionRowLayout", () => {
   const metrics = { actionWidth: 20, overflowTriggerWidth: 20 };
 

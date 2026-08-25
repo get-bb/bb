@@ -2150,8 +2150,9 @@ function TimelineRowsList({
     null;
   const isTopLevelList = spacing === "top-level";
   // One observer for every action bar below: each top-level row's message
-  // column spans this list's full width, so the bars read this shared
-  // measurement (MessageColumnWidthContext) instead of observing their own
+  // column is as wide as this list, so the bars derive their column's content
+  // width from this shared measurement (MessageColumnWidthContext; the bar
+  // subtracts its own column's padding) instead of observing their own
   // columns. Nested lists are narrower, so they shadow the value with null
   // and their bars fall back to per-bar measurement.
   const { measureRef: messageColumnWidthSourceRef, width: messageColumnWidth } =

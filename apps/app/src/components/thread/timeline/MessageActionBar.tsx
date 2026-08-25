@@ -221,12 +221,15 @@ export function useMeasuredWidth({
 /**
  * Timeline-list-level share of the message column width.
  *
- * Every top-level row's `[data-message-column]` spans the full list width, so
- * per-bar column observers would all report the same number. The top-level
- * `TimelineRowsList` measures its root once and provides it here. `null` — no
- * provider (stories, isolated renders) or a nested, narrower list shadowing
- * the top-level value — means no shared measurement applies and the bar
- * observes its own column.
+ * Every top-level row's `[data-message-column]` is as wide as the list root,
+ * so one list-level measurement stands in for the per-bar column observers.
+ * The top-level `TimelineRowsList` measures its root once and provides that
+ * width here; each bar recovers its column's content box from it by
+ * subtracting its column's own padding (`PROSE_COLUMN_INSET_PX` for the
+ * assistant column), which is what its own observer would have reported.
+ * `null` — no provider (stories, isolated renders) or a nested, narrower list
+ * shadowing the top-level value — means no shared measurement applies and the
+ * bar observes its own column.
  */
 export interface SharedMessageColumnWidth {
   /** Measured width; undefined until the observer first reports. */
@@ -393,6 +396,18 @@ const BUBBLE_ALIGN_OFFSET_CLASS =
   "right-[13px] max-md:pointer-coarse:right-[11px]";
 // Prose rows have no bubble padding, so only the hit-box slack is corrected.
 const PROSE_ALIGN_INSET_CLASS = "-ml-1 max-md:pointer-coarse:-ml-1.5";
+/**
+ * Horizontal padding of the assistant (prose) `[data-message-column]` in
+ * ConversationMessageContent, as the class it applies and the pixels it
+ * removes from the column's content box (8px a side). A bar observing that
+ * column reads its content box, so the shared list-level width — the
+ * unpadded list root — is this much wider than what a `start` bar's own
+ * observer would report; the bar subtracts it to land on the same number.
+ * The user column is unpadded (its bubble insets itself), so `end` bars take
+ * the shared width as is. Keep the pair in sync.
+ */
+export const PROSE_COLUMN_INSET_CLASS = "px-2";
+const PROSE_COLUMN_INSET_PX = 16;
 
 export function findMessageActionTooltipCollisionBoundary(
   node: HTMLElement | null,
@@ -518,8 +533,16 @@ export function MessageActionBar({
       enabled: sharedColumnWidth === null,
       resolveTarget: resolveMessageColumn,
     });
+  // The shared value is the unpadded list root's width; the own observer
+  // reports the column's content box, which the assistant column's padding
+  // narrows — subtract it so both paths gate the expansion identically.
   const columnWidth =
-    sharedColumnWidth === null ? ownColumnWidth : sharedColumnWidth.width;
+    sharedColumnWidth === null
+      ? ownColumnWidth
+      : sharedColumnWidth.width === undefined
+        ? undefined
+        : sharedColumnWidth.width -
+          (alignment === "start" ? PROSE_COLUMN_INSET_PX : 0);
   // Touch-only: the hidden actions revealed in place by the "⋯" trigger.
   const [expanded, setExpanded] = useState(false);
   const expandedRowRef = useRef<HTMLDivElement | null>(null);

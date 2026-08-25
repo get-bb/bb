@@ -1604,4 +1604,93 @@ describe("ThreadTimelineRows shared message column width", () => {
       earlierMessage?.querySelector('[aria-label="Fork into new thread"]'),
     ).not.toBeNull();
   });
+
+  it("subtracts the assistant column's padding from the shared list width", () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
+    const observations: { callback: ResizeObserverCallback; node: Element }[] =
+      [];
+    class ControlledResizeObserver {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.#callback = callback;
+      }
+      observe(node: Element) {
+        observations.push({ callback: this.#callback, node });
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
+
+    const { container } = renderWithRouter(
+      <ThreadTimelineRows
+        timelineRows={[
+          conversationRow({
+            id: "earlier_agent_message",
+            role: "assistant",
+            text: "An earlier answer.",
+          }),
+          conversationRow({
+            id: "latest_agent_message",
+            role: "assistant",
+            text: "The latest answer.",
+          }),
+        ]}
+        canSpawnChild
+        onForkMessage={vi.fn()}
+        onMessageAddToChat={vi.fn()}
+        threadRuntimeDisplayStatus="idle"
+        workspaceRootPath={undefined}
+      />,
+    );
+    const reportListWidth = (width: number) => {
+      act(() => {
+        for (const { callback, node } of observations) {
+          if (!node.hasAttribute("data-timeline-row-list")) continue;
+          callback(
+            [
+              {
+                target: node,
+                contentRect: { width, height: 600 },
+              } as unknown as ResizeObserverEntry,
+            ],
+            undefined as unknown as ResizeObserver,
+          );
+        }
+      });
+    };
+    const earlierMessage = container.querySelector(
+      '[data-timeline-row-id="earlier_agent_message"]',
+    );
+    if (!earlierMessage) throw new Error("Missing earlier assistant row");
+    const clickTrigger = () => {
+      const trigger = earlierMessage.querySelector<HTMLButtonElement>(
+        '[aria-label="Message actions"]',
+      );
+      if (!trigger) throw new Error("Missing overflow trigger");
+      fireEvent.click(trigger);
+    };
+
+    // The assistant `[data-message-column]` is `px-2`, so a 131px list leaves
+    // it a 115px content box: one short of the 116px the three 28px touch
+    // actions need with their comfort margin. The popover must win, exactly
+    // as it did when each bar observed its own column.
+    reportListWidth(131);
+    clickTrigger();
+    expect(document.body.querySelector('[data-side="top"]')).not.toBeNull();
+    expect(
+      earlierMessage.querySelector('[aria-label="Copy message"]'),
+    ).toBeNull();
+
+    // One more pixel of list width clears the threshold: in place, no popover.
+    reportListWidth(132);
+    clickTrigger();
+    expect(document.body.querySelector('[data-side="top"]')).toBeNull();
+    expect(
+      earlierMessage.querySelector('[aria-label="Copy message"]'),
+    ).not.toBeNull();
+    expect(
+      earlierMessage.querySelector('[aria-label="Fork into new thread"]'),
+    ).not.toBeNull();
+  });
 });
