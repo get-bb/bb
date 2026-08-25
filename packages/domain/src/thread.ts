@@ -23,6 +23,10 @@ const threadRuntimeDisplayStatusValues = [
   "provisioning",
   "host-reconnecting",
   "waiting-for-host",
+  // A never-started thread whose first turn is parked in a live dispatch
+  // hold. The row is `idle` — nothing is running and nothing is queued — so
+  // this is display-only, exactly like `waiting-for-host`.
+  "held",
 ] as const;
 const threadRuntimeDisplayStatusSchema = z.enum(
   threadRuntimeDisplayStatusValues,

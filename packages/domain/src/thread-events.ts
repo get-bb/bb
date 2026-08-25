@@ -13,6 +13,7 @@ import {
 } from "./shared-types.js";
 import { jsonValueSchema } from "./json-value.js";
 import { clientTurnRequestIdSchema } from "./protocol-ids.js";
+import { dispatchHoldHolderSchema } from "./dispatch-hold.js";
 
 export const systemEventTypeValues = [
   "client/thread/start",
@@ -27,6 +28,9 @@ export const systemEventTypeValues = [
   "system/permissionGrant/lifecycle",
   "system/userQuestion/lifecycle",
   "system/thread-provisioning",
+  "system/dispatch-hold",
+  // Legacy persisted watchdog diagnostic; retained for read/decode/render
+  // only, with no current producer.
   "system/provider-turn-watchdog",
 ] as const;
 
@@ -256,6 +260,34 @@ export const systemThreadProvisioningEventDataSchema = z.object({
   environmentId: z.string(),
   entries: z.array(provisioningTranscriptEntrySchema),
 });
+
+const systemDispatchHoldStatusValues = [
+  "active",
+  "released",
+  "cancelled",
+  "orphaned",
+] as const;
+const systemDispatchHoldStatusSchema = z.enum(systemDispatchHoldStatusValues);
+export type SystemDispatchHoldStatus = z.infer<
+  typeof systemDispatchHoldStatusSchema
+>;
+
+/**
+ * The one timeline row a hold owns, rewritten in place as the hold progresses.
+ * It sits where the held turn will land and renders exactly like
+ * `system/thread-provisioning` — hence the shared transcript entry shape, which
+ * is what `bb.experimental_dispatch.report` steps and output tails append to.
+ */
+export const systemDispatchHoldEventDataSchema = z.object({
+  holdId: z.string().min(1),
+  holder: dispatchHoldHolderSchema,
+  status: systemDispatchHoldStatusSchema,
+  reason: z.string(),
+  entries: z.array(provisioningTranscriptEntrySchema),
+});
+export type SystemDispatchHoldEventData = z.infer<
+  typeof systemDispatchHoldEventDataSchema
+>;
 
 export const systemLegacyUserMessageEventDataSchema = z.object({
   text: z.string(),

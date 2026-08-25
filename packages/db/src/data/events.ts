@@ -75,7 +75,7 @@ interface QueryInSqliteVariableBatchesArgs<TValue, TRow> {
   variableCountPerValue: number;
 }
 
-function queryInSqliteVariableBatches<TValue, TRow>(
+export function queryInSqliteVariableBatches<TValue, TRow>(
   args: QueryInSqliteVariableBatchesArgs<TValue, TRow>,
 ): TRow[] {
   const values = [

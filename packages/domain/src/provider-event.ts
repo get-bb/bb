@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  systemDispatchHoldEventDataSchema,
   systemErrorEventDataSchema,
   systemInteractionLifecycleEventDataSchema,
   systemPermissionGrantLifecycleEventDataSchema,
@@ -789,6 +790,12 @@ const unscopedSystemEventSchema = z.discriminatedUnion("type", [
       threadId: z.string(),
     })
     .merge(systemThreadProvisioningEventDataSchema),
+  z
+    .object({
+      type: z.literal("system/dispatch-hold"),
+      threadId: z.string(),
+    })
+    .merge(systemDispatchHoldEventDataSchema),
   z
     .object({
       type: z.literal("system/provider-turn-watchdog"),

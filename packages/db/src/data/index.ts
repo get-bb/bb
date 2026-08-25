@@ -387,6 +387,24 @@ export type {
   CreateDeferredThreadMessageInput,
   DeferredThreadMessageRow,
 } from "./deferred-thread-messages.js";
+export {
+  createDispatchHold,
+  getDispatchHold,
+  listDispatchHolds,
+  listDueDispatchHolds,
+  listLiveDispatchHoldCountsByThreadIds,
+  listStaleDispatchHolds,
+  releaseDispatchHold,
+  updateDispatchHoldPayload,
+  updateDispatchHoldReport,
+  updateDispatchHoldResumeAt,
+} from "./dispatch-holds.js";
+export type {
+  CreateDispatchHoldInput,
+  DispatchHoldRow,
+  ListDispatchHoldsFilter,
+  UpdateDispatchHoldReportInput,
+} from "./dispatch-holds.js";
 export type {
   QueuedThreadMessageRow,
   ReorderQueuedThreadMessageResult,

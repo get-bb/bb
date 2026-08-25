@@ -422,9 +422,16 @@ const threadExecutionSourceSchema = z.enum([
 ]);
 export type ThreadExecutionSource = z.infer<typeof threadExecutionSourceSchema>;
 
+/**
+ * Where a caller-supplied execution value came from. `explicit` is a user
+ * choice, `client-preference` is a remembered client-side default, and
+ * `plugin` is a dispatch-gate amendment. Only `explicit` is a user decision:
+ * a plugin's choice is never promoted to a project execution default.
+ */
 const callerExecutionInputSourceValues = [
   "explicit",
   "client-preference",
+  "plugin",
 ] as const;
 export const callerExecutionInputSourceSchema = z.enum(
   callerExecutionInputSourceValues,

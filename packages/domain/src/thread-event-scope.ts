@@ -215,6 +215,11 @@ const threadEventScopeDefinitionByType = {
     rationale:
       "Workspace provisioning lifecycle event; environment setup belongs to the thread, not a turn.",
   },
+  "system/dispatch-hold": {
+    policy: "thread",
+    rationale:
+      "A hold defers a turn that has not started, so there is no turn to scope it to; the row sits in the thread timeline where that turn will land.",
+  },
   "system/provider-turn-watchdog": {
     policy: "thread",
     rationale:

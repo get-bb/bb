@@ -643,6 +643,8 @@ function dropEventToolNameColumn(db: DbConnection): void {
   db.$client.exec("DROP INDEX IF EXISTS events_delegating_item_lookup_idx");
   db.$client.exec("DROP INDEX IF EXISTS events_plan_steps_thread_sequence_idx");
   db.$client.prepare("DROP TABLE IF EXISTS deferred_thread_messages").run();
+  db.$client.prepare("DROP TABLE IF EXISTS dispatch_holds").run();
+  // Generated columns are omitted from table_info but included in table_xinfo.
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_xinfo(events)")
     .all();

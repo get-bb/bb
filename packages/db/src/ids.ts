@@ -54,6 +54,10 @@ export function createDeferredThreadMessageId(): string {
   return createId("dmsg");
 }
 
+export function createDispatchHoldId(): string {
+  return createId("hold");
+}
+
 export function createQueuedThreadMessageClaimToken(): string {
   return createId("qclaim");
 }
