@@ -1,5 +1,6 @@
 import { and, eq, isNull } from "drizzle-orm";
 import {
+  capPromptHistoryEntries,
   CLOSED_SESSION_ROW_RETENTION_MS,
   compactDatabase,
   COMPLETED_EVENT_OUTPUT_RETENTION_MS,
@@ -10,6 +11,8 @@ import {
   DEFAULT_CLOSED_SESSION_PRUNE_BATCH_SIZE,
   DEFAULT_COMPLETED_EVENT_OUTPUT_TRUNCATION_BATCH_SIZE,
   DEFAULT_DESTROYED_ENVIRONMENT_PRUNE_BATCH_SIZE,
+  DEFAULT_PROMPT_HISTORY_CAP_SCOPE_BATCH_SIZE,
+  DEFAULT_SETTLED_PENDING_INTERACTION_PRUNE_BATCH_SIZE,
   DESTROYED_ENVIRONMENT_TTL_MS,
   dropDeferredLegacyTables,
   getDatabaseAutoVacuumMode,
@@ -19,9 +22,12 @@ import {
   isDatabaseMaintenanceIdle,
   listDeferredLegacyTables,
   environments,
+  PROMPT_HISTORY_KEEP_PER_SCOPE,
   pruneClosedSessions,
   pruneDestroyedEnvironments,
+  pruneSettledPendingInteractions,
   runIncrementalVacuum,
+  SETTLED_PENDING_INTERACTION_RETENTION_MS,
   shouldCompactDatabase,
   shouldRunIncrementalVacuum,
   sweepManagedEnvironments,
@@ -549,6 +555,29 @@ async function runDestroyedEnvironmentPruneSweep(
   }
 }
 
+function runSettledInteractionPruneSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  now: number,
+): void {
+  pruneSettledPendingInteractions(deps.db, {
+    createdBefore: now - SETTLED_PENDING_INTERACTION_RETENTION_MS,
+    limit: DEFAULT_SETTLED_PENDING_INTERACTION_PRUNE_BATCH_SIZE,
+  });
+}
+
+// The over-cap probe is a grouped index walk over the whole table, so this
+// job runs on a cadence instead of every tick.
+const PROMPT_HISTORY_CAP_INTERVAL_MS = 15 * 60_000;
+
+function runPromptHistoryCapSweep(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+): void {
+  capPromptHistoryEntries(deps.db, {
+    keepPerScope: PROMPT_HISTORY_KEEP_PER_SCOPE,
+    maxScopes: DEFAULT_PROMPT_HISTORY_CAP_SCOPE_BATCH_SIZE,
+  });
+}
+
 const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
   {
     cadenceMs: 0,
@@ -573,6 +602,18 @@ const PERIODIC_SWEEP_JOBS: PeriodicSweepJob[] = [
     category: "retention",
     name: "destroyed-environment-prune",
     run: runDestroyedEnvironmentPruneSweep,
+  },
+  {
+    cadenceMs: 0,
+    category: "retention",
+    name: "settled-interaction-prune",
+    run: runSettledInteractionPruneSweep,
+  },
+  {
+    cadenceMs: PROMPT_HISTORY_CAP_INTERVAL_MS,
+    category: "retention",
+    name: "prompt-history-cap",
+    run: runPromptHistoryCapSweep,
   },
   {
     cadenceMs: 0,

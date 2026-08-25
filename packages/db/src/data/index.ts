@@ -29,9 +29,12 @@ export {
   renameThreadSection,
 } from "./thread-sections.js";
 export {
+  capPromptHistoryEntries,
   createPromptHistoryEntry,
+  DEFAULT_PROMPT_HISTORY_CAP_SCOPE_BATCH_SIZE,
   listStoredProjectPromptHistoryRows,
   listStoredThreadPromptHistoryRows,
+  PROMPT_HISTORY_KEEP_PER_SCOPE,
 } from "./prompt-history.js";
 export type {
   StoredPromptHistoryEntryRow,
@@ -323,6 +326,7 @@ export type {
 
 export {
   createPendingInteraction,
+  DEFAULT_SETTLED_PENDING_INTERACTION_PRUNE_BATCH_SIZE,
   getActivePendingInteractionForThread,
   getPendingInteraction,
   getPendingInteractionByProviderRequest,
@@ -331,6 +335,8 @@ export {
   interruptPendingInteractionsForPlugin,
   listActivePluginPendingInteractions,
   listPendingInteractionsByThread,
+  pruneSettledPendingInteractions,
+  SETTLED_PENDING_INTERACTION_RETENTION_MS,
   setPendingInteractionInterrupted,
   setPendingInteractionResolving,
   setPendingInteractionResolved,

@@ -76,7 +76,79 @@ export interface InterruptPendingInteractionsForPluginArgs {
   statusReason: string;
 }
 
+export interface PruneSettledPendingInteractionsArgs {
+  createdBefore: number;
+  limit: number;
+}
+
+export interface PruneSettledPendingInteractionsResult {
+  deleted: number;
+}
+
 const SQLITE_IN_CLAUSE_BATCH_SIZE = 900;
+
+/**
+ * Settled interaction rows stay inspectable for a month, then their payloads
+ * (full approval diffs and command text) are reclaimed. Retention policy —
+ * revisit deliberately, not incidentally.
+ */
+export const SETTLED_PENDING_INTERACTION_RETENTION_MS = 30 * 24 * 60 * 60_000;
+export const DEFAULT_SETTLED_PENDING_INTERACTION_PRUNE_BATCH_SIZE = 1_000;
+
+/** Terminal statuses; rows in these statuses are never read for live work. */
+const SETTLED_PENDING_INTERACTION_STATUSES = [
+  "resolved",
+  "interrupted",
+] as const satisfies readonly PendingInteractionStatus[];
+
+type SettledPendingInteractionDeleteParameters = [
+  PendingInteractionStatus,
+  number,
+  number,
+];
+
+/**
+ * Deletes settled (resolved or interrupted) interaction rows created before
+ * the cutoff. Their payloads hold full approval prompts (diffs, command
+ * text), so without a prune they accumulate forever. Retention keys on
+ * `created_at` rather than `resolved_at` because the covering
+ * `pending_interactions_status_created_idx` exists for `(status, created_at)`
+ * and a settled row's resolution follows its creation within the same
+ * approval flow, so a creation-time cutoff is equivalent at retention
+ * horizons. Pending/resolving rows are never touched.
+ */
+export function pruneSettledPendingInteractions(
+  db: DbConnection,
+  args: PruneSettledPendingInteractionsArgs,
+): PruneSettledPendingInteractionsResult {
+  let deleted = 0;
+  for (const status of SETTLED_PENDING_INTERACTION_STATUSES) {
+    const remainingLimit = args.limit - deleted;
+    if (remainingLimit <= 0) {
+      break;
+    }
+    // Keep the prune plan pinned to the retention index; this path runs
+    // periodically and can otherwise regress into a scan plus temp sort.
+    const result = db.$client
+      .prepare<SettledPendingInteractionDeleteParameters>(
+        `
+          DELETE FROM pending_interactions
+          WHERE id IN (
+            SELECT id
+            FROM pending_interactions INDEXED BY pending_interactions_status_created_idx
+            WHERE status = ?
+              AND created_at < ?
+            ORDER BY created_at
+            LIMIT ?
+          )
+        `,
+      )
+      .run(status, args.createdBefore, remainingLimit);
+    deleted += result.changes;
+  }
+
+  return { deleted };
+}
 
 function sliceInClauseBatches<T>(values: readonly T[]): T[][] {
   const batches: T[][] = [];

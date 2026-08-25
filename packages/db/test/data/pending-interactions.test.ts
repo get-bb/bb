@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import { noopNotifier } from "../../src/notifier.js";
 import { createEnvironment } from "../../src/data/environments.js";
 import { upsertHost } from "../../src/data/hosts.js";
@@ -10,9 +11,12 @@ import {
   interruptPendingInteractionsForThreadIds,
   interruptPendingInteractionsForThreads,
   listPendingInteractionsByThread,
+  pruneSettledPendingInteractions,
+  setPendingInteractionInterrupted,
   setPendingInteractionResolved,
 } from "../../src/data/pending-interactions.js";
 import { createThread } from "../../src/data/threads.js";
+import { pendingInteractions } from "../../src/schema.js";
 import { createMigratedConnection } from "../helpers/migrated-connection.js";
 
 function setup() {
@@ -281,4 +285,158 @@ describe("pending interactions", () => {
     },
   );
 
+});
+
+describe("pruneSettledPendingInteractions", () => {
+  interface SeedSettledInteractionArgs {
+    createdAt: number;
+    requestId: string;
+    settle: "resolved" | "interrupted" | null;
+    threadId: string;
+  }
+
+  function seedInteractionAt(
+    db: ReturnType<typeof setup>["db"],
+    args: SeedSettledInteractionArgs,
+  ): string {
+    const created = createPendingInteraction(db, {
+      threadId: args.threadId,
+      providerId: "codex",
+      providerThreadId: "provider-thread-1",
+      providerRequestId: args.requestId,
+      turnId: "turn-1",
+      payload: commandApprovalPayload("rm -rf build", args.requestId),
+    });
+    if (args.settle === "resolved") {
+      setPendingInteractionResolved(db, {
+        id: created.id,
+        resolution: JSON.stringify({ decision: "allow_once" }),
+      });
+    } else if (args.settle === "interrupted") {
+      setPendingInteractionInterrupted(db, {
+        id: created.id,
+        statusReason: "Thread stopped",
+      });
+    }
+    db.update(pendingInteractions)
+      .set({ createdAt: args.createdAt })
+      .where(eq(pendingInteractions.id, created.id))
+      .run();
+    return created.id;
+  }
+
+  function listRemainingIds(db: ReturnType<typeof setup>["db"]): string[] {
+    return db
+      .select({ id: pendingInteractions.id })
+      .from(pendingInteractions)
+      .all()
+      .map((row) => row.id)
+      .sort();
+  }
+
+  it("deletes settled rows older than the cutoff and never touches live rows", () => {
+    const { db, thread } = setup();
+    const now = Date.now();
+    const staleCreatedAt = now - 10_000;
+
+    const staleResolved = seedInteractionAt(db, {
+      createdAt: staleCreatedAt,
+      requestId: "req-stale-resolved",
+      settle: "resolved",
+      threadId: thread.id,
+    });
+    const staleInterrupted = seedInteractionAt(db, {
+      createdAt: staleCreatedAt,
+      requestId: "req-stale-interrupted",
+      settle: "interrupted",
+      threadId: thread.id,
+    });
+    const freshResolved = seedInteractionAt(db, {
+      createdAt: now - 1_000,
+      requestId: "req-fresh-resolved",
+      settle: "resolved",
+      threadId: thread.id,
+    });
+    const stalePending = seedInteractionAt(db, {
+      createdAt: staleCreatedAt,
+      requestId: "req-stale-pending",
+      settle: null,
+      threadId: thread.id,
+    });
+
+    expect(
+      pruneSettledPendingInteractions(db, {
+        createdBefore: now - 5_000,
+        limit: 100,
+      }),
+    ).toEqual({ deleted: 2 });
+    const remaining = listRemainingIds(db);
+    expect(remaining).toEqual([freshResolved, stalePending].sort());
+    expect(remaining).not.toContain(staleResolved);
+    expect(remaining).not.toContain(staleInterrupted);
+  });
+
+  it("honors the delete batch limit across both settled statuses", () => {
+    const { db, thread } = setup();
+    const now = Date.now();
+    const staleCreatedAt = now - 10_000;
+
+    for (let index = 0; index < 3; index += 1) {
+      seedInteractionAt(db, {
+        createdAt: staleCreatedAt,
+        requestId: `req-batch-resolved-${index}`,
+        settle: "resolved",
+        threadId: thread.id,
+      });
+      seedInteractionAt(db, {
+        createdAt: staleCreatedAt,
+        requestId: `req-batch-interrupted-${index}`,
+        settle: "interrupted",
+        threadId: thread.id,
+      });
+    }
+
+    // A limit of 4 spans the resolved batch (3) and part of the interrupted
+    // batch (1), proving the limit is shared across statuses.
+    expect(
+      pruneSettledPendingInteractions(db, {
+        createdBefore: now - 5_000,
+        limit: 4,
+      }),
+    ).toEqual({ deleted: 4 });
+    expect(listRemainingIds(db)).toHaveLength(2);
+    expect(
+      pruneSettledPendingInteractions(db, {
+        createdBefore: now - 5_000,
+        limit: 100,
+      }),
+    ).toEqual({ deleted: 2 });
+    expect(listRemainingIds(db)).toHaveLength(0);
+  });
+
+  it("keeps a resolving row even when it is old", () => {
+    const { db, thread } = setup();
+    const now = Date.now();
+
+    const created = createPendingInteraction(db, {
+      threadId: thread.id,
+      providerId: "codex",
+      providerThreadId: "provider-thread-1",
+      providerRequestId: "req-old-resolving",
+      turnId: "turn-1",
+      payload: commandApprovalPayload("git push", "req-old-resolving"),
+    });
+    db.update(pendingInteractions)
+      .set({ createdAt: now - 10_000, status: "resolving" })
+      .where(eq(pendingInteractions.id, created.id))
+      .run();
+
+    expect(
+      pruneSettledPendingInteractions(db, {
+        createdBefore: now - 5_000,
+        limit: 100,
+      }),
+    ).toEqual({ deleted: 0 });
+    expect(listRemainingIds(db)).toEqual([created.id]);
+  });
 });

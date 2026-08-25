@@ -4,7 +4,7 @@ import {
   type PromptHistoryScope,
   type PromptInput,
 } from "@bb/domain";
-import type { DbQueryConnection } from "../connection.js";
+import type { DbConnection, DbQueryConnection } from "../connection.js";
 import { promptHistoryEntries, threads } from "../schema.js";
 import { createPromptHistoryEntryId } from "../ids.js";
 
@@ -102,6 +102,81 @@ export function listStoredProjectPromptHistoryRows(
     )
     .limit(rawPromptHistoryRowLimit(args.limit))
     .all();
+}
+
+/**
+ * Newest prompt-history entries kept per `(thread, scope)`. Four times the
+ * largest read window (`PROMPT_HISTORY_ENTRY_LIMIT * 2`), so capping never
+ * changes what the history pickers can page to. Retention policy — revisit
+ * deliberately, not incidentally.
+ */
+export const PROMPT_HISTORY_KEEP_PER_SCOPE = 200;
+export const DEFAULT_PROMPT_HISTORY_CAP_SCOPE_BATCH_SIZE = 100;
+
+export interface CapPromptHistoryEntriesArgs {
+  keepPerScope: number;
+  maxScopes: number;
+}
+
+export interface CapPromptHistoryEntriesResult {
+  deleted: number;
+  scopesCapped: number;
+}
+
+interface OverCapPromptHistoryScopeRow {
+  scope: PromptHistoryScope;
+  threadId: string;
+}
+
+type OverCapScopeParameters = [number, number];
+type CapDeleteParameters = [string, PromptHistoryScope, number];
+
+/**
+ * Caps stored prompt history at the newest `keepPerScope` entries per
+ * `(thread, scope)` pair — the exact granularity the history reads use — so a
+ * long-lived thread stops accumulating a second full copy of every prompt.
+ * Deletion order matches the read order (newest by `created_at`,
+ * `request_sequence`, `id`), so the kept window is exactly what the reads
+ * page over. Bounded per pass by `maxScopes`; the sweep converges across
+ * passes.
+ */
+export function capPromptHistoryEntries(
+  db: DbConnection,
+  args: CapPromptHistoryEntriesArgs,
+): CapPromptHistoryEntriesResult {
+  const overCapScopes = db.$client
+    .prepare<OverCapScopeParameters, OverCapPromptHistoryScopeRow>(
+      `
+        SELECT thread_id AS threadId, scope
+        FROM prompt_history_entries
+        GROUP BY thread_id, scope
+        HAVING COUNT(*) > ?
+        LIMIT ?
+      `,
+    )
+    .all(args.keepPerScope, args.maxScopes);
+
+  let deleted = 0;
+  for (const overCapScope of overCapScopes) {
+    const result = db.$client
+      .prepare<CapDeleteParameters>(
+        `
+          DELETE FROM prompt_history_entries
+          WHERE id IN (
+            SELECT id
+            FROM prompt_history_entries
+            WHERE thread_id = ?
+              AND scope = ?
+            ORDER BY created_at DESC, request_sequence DESC, id DESC
+            LIMIT -1 OFFSET ?
+          )
+        `,
+      )
+      .run(overCapScope.threadId, overCapScope.scope, args.keepPerScope);
+    deleted += result.changes;
+  }
+
+  return { deleted, scopesCapped: overCapScopes.length };
 }
 
 export function listStoredThreadPromptHistoryRows(
