@@ -1,4 +1,8 @@
-<!-- Keep the four sections. Delete this comment. See docs/filing-issues.md for the issue side. -->
+<!-- Keep the below sections. Delete this comment. See docs/filing-issues.md for the issue side. -->
+
+## Human comments
+
+<!-- Agents: Do not fill in this section. This is for human users to fill in. -->
 
 ## What was wrong
 

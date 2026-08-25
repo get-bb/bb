@@ -3,6 +3,7 @@ import os from "node:os";
 import path, { delimiter } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createUserShellPathResolver,
   prepareRuntimeShellEnv,
   resolveLocalBbExecutablePath,
   resolveUserShellPath,
@@ -311,6 +312,35 @@ describe("resolveUserShellPath", () => {
     expect(fakeSpawn.calls.map((call) => call.args[0])).toEqual([
       "-ilc",
       "-lc",
+    ]);
+  });
+
+  it("retains the previous PATH when a refreshed interactive probe fails", async () => {
+    const interactivePath = "/home/me/.local/bin:/usr/bin";
+    const fakeSpawn = createFakeShellEnvSpawn({
+      results: [
+        createShellEnvSpawnResult({
+          stdout: createMarkedShellEnvOutput(interactivePath),
+        }),
+        createShellEnvSpawnResult({
+          status: 1,
+          stderr: "interactive shell failed",
+        }),
+      ],
+    });
+
+    const resolvePath = createUserShellPathResolver({
+      env: { SHELL: "/bin/zsh", PATH: "/usr/bin" },
+      platform: "linux",
+      spawnUserShellEnv: fakeSpawn.spawn,
+    });
+
+    await expect(resolvePath()).resolves.toBe(interactivePath);
+    await expect(resolvePath()).resolves.toBe(interactivePath);
+
+    expect(fakeSpawn.calls.map((call) => call.args[0])).toEqual([
+      "-ilc",
+      "-ilc",
     ]);
   });
 

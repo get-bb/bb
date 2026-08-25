@@ -327,6 +327,13 @@ function parsePathFromUserShellEnv(stdout: string): string | null {
 export async function resolveUserShellPath(
   options: ResolveUserShellPathOptions = {},
 ): Promise<string | null> {
+  return resolveUserShellPathWithPrevious(options, null);
+}
+
+async function resolveUserShellPathWithPrevious(
+  options: ResolveUserShellPathOptions,
+  previousPath: string | null,
+): Promise<string | null> {
   const env = options.env ?? process.env;
   const shell = resolveUserShellCommand(
     env,
@@ -338,7 +345,8 @@ export async function resolveUserShellPath(
 
   const spawnUserShellEnv =
     options.spawnUserShellEnv ?? defaultSpawnUserShellEnv;
-  for (const shellArgs of userShellEnvArgSets(shell)) {
+  const shellArgSets = userShellEnvArgSets(shell);
+  for (const [index, shellArgs] of shellArgSets.entries()) {
     const result = await spawnUserShellEnv({
       command: shell,
       args: shellArgs,
@@ -350,15 +358,41 @@ export async function resolveUserShellPath(
       result.signal !== null ||
       result.status !== 0
     ) {
+      if (index === 0 && previousPath !== null) {
+        return previousPath;
+      }
       continue;
     }
     const path = parsePathFromUserShellEnv(result.stdout);
     if (path !== null) {
       return path;
     }
+    // The plain-login fallback is good enough to start a daemon that has no
+    // shell PATH yet. During a refresh, however, replacing a previously good
+    // interactive PATH after one slow or failed probe can resolve an entirely
+    // different npm prefix and provider executable. Keep the last answer and
+    // let a later successful interactive probe update it.
+    if (index === 0 && previousPath !== null) {
+      return previousPath;
+    }
   }
 
   return null;
+}
+
+/**
+ * Re-resolves the user's interactive shell PATH without downgrading a known
+ * answer to the plain-login fallback after a transient probe failure.
+ */
+export function createUserShellPathResolver(
+  options: ResolveUserShellPathOptions = {},
+): () => Promise<string | null> {
+  let previousPath: string | null = null;
+  return async () => {
+    const path = await resolveUserShellPathWithPrevious(options, previousPath);
+    if (path !== null) previousPath = path;
+    return path;
+  };
 }
 
 /**

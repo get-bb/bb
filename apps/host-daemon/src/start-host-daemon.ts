@@ -20,10 +20,10 @@ import { loadHostIdentity, persistHostId } from "./identity.js";
 import { acquireDaemonLock } from "./lock.js";
 import { resolveHostDaemonLocalApiConfig } from "./local-api-config.js";
 import {
+  createUserShellPathResolver,
   prepareRuntimeShellEnv,
   resolveBbExecutablePathInDirectory,
   resolveLocalBbExecutablePath,
-  resolveUserShellPath,
 } from "./runtime-shell-env.js";
 import type { HostDaemonLogger } from "./logger.js";
 import {
@@ -180,6 +180,7 @@ export async function startHostDaemon(
       }),
     );
     const hostWatcher = createHostWatcher();
+    const resolveUserShellPath = createUserShellPathResolver();
     const resolveRuntimeShellEnv = async () =>
       prepareRuntimeShellEnv({
         bbExecutableDirectory,
