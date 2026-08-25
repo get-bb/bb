@@ -116,7 +116,9 @@ describe("ThreadBackgroundCommandsCard", () => {
     );
 
     const card = screen.getByRole("region", { name: "Background commands" });
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Running 1 background command" }),
+    ).toBeNull();
 
     reportCardWidth(card, 320);
 
@@ -187,12 +189,254 @@ describe("ThreadBackgroundCommandsCard", () => {
       </CompactViewportOverrideProvider>,
     );
 
-    const item = screen.getByLabelText(
-      `Background agent: ${description} · Model haiku`,
-    );
+    const item = screen.getByRole("button", {
+      name: `Background agent: ${description} · Model haiku`,
+    });
     expect(item.textContent).toContain("Running background agent:");
     expect(item.textContent).toContain(description);
     expect(screen.getByTitle("Model: haiku").textContent).toBe("haiku");
-    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  describe("row click-through", () => {
+    it("scrolls to and flashes the row when it is already rendered in the main timeline", () => {
+      const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+      const description = "Sleep 45 then echo done";
+      const row = backgroundCommandRow({
+        id: "wf-1",
+        description,
+        status: "pending",
+        taskStatus: "running",
+      });
+
+      render(
+        <>
+          <div data-timeline-row-id="wf-1">Main timeline row</div>
+          <ThreadBackgroundCommandsCard
+            commands={[row]}
+            isExpanded={false}
+            onToggle={() => {}}
+          />
+        </>,
+      );
+
+      const target = document.querySelector('[data-timeline-row-id="wf-1"]');
+      expect(target).not.toBeNull();
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `Background command: ${description}`,
+        }),
+      );
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "center" });
+      expect(target?.classList.contains("bb-search-flash")).toBe(true);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("opens a detail drawer when the row is not rendered in the main timeline", () => {
+      const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+      const description = "Sleep 45 then echo done";
+      const row = backgroundCommandRow({
+        id: "wf-1",
+        description,
+        status: "pending",
+        taskStatus: "running",
+      });
+
+      render(
+        <ThreadBackgroundCommandsCard
+          commands={[row]}
+          isExpanded={false}
+          onToggle={() => {}}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `Background command: ${description}`,
+        }),
+      );
+
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.textContent).toContain(description);
+    });
+
+    it("targets the clicked row's own id, not always the primary row's, when expanded", () => {
+      const primaryDescription = "Poll CI batching head";
+      const secondaryDescription = "Sleep 45 then echo done";
+      const primary = backgroundCommandRow({
+        id: "wf-primary",
+        description: primaryDescription,
+        status: "pending",
+        taskStatus: "running",
+      });
+      const secondary = backgroundCommandRow({
+        id: "wf-secondary",
+        description: secondaryDescription,
+        status: "pending",
+        taskStatus: "running",
+      });
+
+      render(
+        <>
+          <div data-timeline-row-id="wf-secondary">Main timeline row</div>
+          <ThreadBackgroundCommandsCard
+            commands={[primary, secondary]}
+            isExpanded
+            onToggle={() => {}}
+          />
+        </>,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: `Background command: ${secondaryDescription}`,
+        }),
+      );
+
+      expect(screen.queryByRole("dialog")).toBeNull();
+      const target = document.querySelector(
+        '[data-timeline-row-id="wf-secondary"]',
+      );
+      expect(target?.classList.contains("bb-search-flash")).toBe(true);
+    });
+
+    it("does not navigate when the header toggle is clicked", () => {
+      const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView");
+      const description = "Sleep 45 then echo done";
+      const primary = backgroundCommandRow({
+        id: "wf-1",
+        description,
+        status: "pending",
+        taskStatus: "running",
+      });
+      const secondary = backgroundCommandRow({
+        id: "wf-2",
+        description: "Another background command",
+        status: "pending",
+        taskStatus: "running",
+      });
+
+      render(
+        <ThreadBackgroundCommandsCard
+          commands={[primary, secondary]}
+          isExpanded={false}
+          onToggle={() => {}}
+        />,
+      );
+
+      fireEvent.click(
+        screen.getByRole("button", { name: /^Background commands:/ }),
+      );
+
+      expect(scrollIntoView).not.toHaveBeenCalled();
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("keeps the drawer in sync when the row's own data updates while it is open", () => {
+      function Wrapper() {
+        const [row, setRow] = useState(
+          backgroundCommandRow({
+            id: "wf-1",
+            description: "Sleep 45 then echo done",
+            status: "pending",
+            taskStatus: "running",
+          }),
+        );
+        return (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                setRow(
+                  backgroundCommandRow({
+                    id: "wf-1",
+                    description: "Sleep 45 then echo done",
+                    status: "completed",
+                    taskStatus: "completed",
+                    summary: "Background command finished, exit 0",
+                  }),
+                )
+              }
+            >
+              simulate update
+            </button>
+            <ThreadBackgroundCommandsCard
+              commands={[row]}
+              isExpanded={false}
+              onToggle={() => {}}
+            />
+          </>
+        );
+      }
+
+      render(<Wrapper />);
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Background command: Sleep 45 then echo done",
+        }),
+      );
+      expect(screen.getByRole("dialog").textContent).not.toContain(
+        "finished, exit 0",
+      );
+
+      fireEvent.click(screen.getByText("simulate update"));
+
+      expect(screen.getByRole("dialog").textContent).toContain(
+        "finished, exit 0",
+      );
+    });
+
+    it("keeps showing the row's last known data if it drops out of the commands list while the drawer is open", () => {
+      const row = backgroundCommandRow({
+        id: "wf-1",
+        description: "Sleep 45 then echo done",
+        status: "pending",
+        taskStatus: "running",
+      });
+      const other = backgroundCommandRow({
+        id: "wf-2",
+        description: "Another background command",
+        status: "pending",
+        taskStatus: "running",
+      });
+
+      function Wrapper() {
+        // `other` stays primary throughout so the card never unmounts;
+        // `row` sits in the expanded list, individually clickable.
+        const [commands, setCommands] = useState([other, row]);
+        return (
+          <>
+            <button type="button" onClick={() => setCommands([other])}>
+              drop wf-1
+            </button>
+            <ThreadBackgroundCommandsCard
+              commands={commands}
+              isExpanded
+              onToggle={() => {}}
+            />
+          </>
+        );
+      }
+
+      render(<Wrapper />);
+
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Background command: Sleep 45 then echo done",
+        }),
+      );
+      expect(screen.getByRole("dialog").textContent).toContain(
+        "Sleep 45 then echo done",
+      );
+
+      fireEvent.click(screen.getByText("drop wf-1"));
+
+      expect(screen.getByRole("dialog").textContent).toContain(
+        "Sleep 45 then echo done",
+      );
+    });
   });
 });

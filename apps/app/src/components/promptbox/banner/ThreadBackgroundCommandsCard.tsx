@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isBackgroundAgentTaskType } from "@bb/domain";
 import type { TimelineWorkflowWorkRow } from "@bb/server-contract";
 import { durationToCompactString } from "@bb/thread-view";
@@ -8,9 +8,13 @@ import {
   PROMPT_STACK_CARD_ROW_HEIGHT,
   PromptStackCard,
 } from "@/components/promptbox/banner/PromptStackCard";
+import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body";
+import { WorkflowWorkRowBody } from "@/components/thread/timeline/WorkflowWorkRowBody";
+import { revealRenderedTimelineRow } from "@/components/thread/timeline/timelineRowNavigation";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { PersistentResponsiveDrawerShell } from "@bb/shared-ui/responsive-overlay";
 import {
   activityIconClass,
   activityMetaClass,
@@ -187,6 +191,42 @@ function BackgroundActivitySummary({
   );
 }
 
+/**
+ * Detail drawer body for a background activity row that isn't rendered in
+ * the main timeline yet (its spawning turn was already summarized away —
+ * the common case for a task that outlives the turn that spawned it).
+ * Reuses the same row-level data the card already has plus
+ * `WorkflowWorkRowBody`, the renderer the main timeline itself uses for
+ * `workKind: "workflow"` rows, so a row with richer progress (e.g. a
+ * background agent) still shows it.
+ */
+function BackgroundActivityDetailBody({
+  row,
+}: {
+  row: TimelineWorkflowWorkRow;
+}) {
+  const display = backgroundActivityDisplay(row);
+  const model = backgroundActivityModel(row);
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4">
+      <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+        <Icon
+          name={display.icon}
+          className="size-4 shrink-0"
+          aria-hidden="true"
+        />
+        <span className="min-w-0 flex-1 truncate">{row.description}</span>
+        {model ? (
+          <span className="shrink-0 whitespace-nowrap font-mono text-2xs text-subtle-foreground">
+            {model}
+          </span>
+        ) : null}
+      </div>
+      <WorkflowWorkRowBody row={row} />
+    </div>
+  );
+}
+
 interface ThreadBackgroundCommandsCardProps {
   commands: TimelineWorkflowWorkRow[];
   isExpanded: boolean;
@@ -210,6 +250,34 @@ export function ThreadBackgroundCommandsCard({
   const isCompactViewport = useIsCompactViewport();
   const cardRef = useRef<HTMLElement>(null!);
   const [isCompactCard, setIsCompactCard] = useState<boolean | null>(null);
+  const bottomAnchor = useBottomAnchoredScroll();
+  const [detailRowId, setDetailRowId] = useState<string | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const liveDetailRow =
+    detailRowId === null
+      ? null
+      : (commands.find((row) => row.id === detailRowId) ?? null);
+  // Keeps showing the row's last known data once it drops out of `commands`
+  // (e.g. the task completed) so the drawer's own close animation has
+  // content to show instead of going blank mid-transition.
+  const [lastKnownDetailRow, setLastKnownDetailRow] =
+    useState<TimelineWorkflowWorkRow | null>(null);
+  useEffect(() => {
+    if (liveDetailRow !== null) {
+      setLastKnownDetailRow(liveDetailRow);
+    }
+  }, [liveDetailRow]);
+  const detailRow = liveDetailRow ?? lastKnownDetailRow;
+  const activateRow = useCallback(
+    (row: TimelineWorkflowWorkRow) => {
+      if (revealRenderedTimelineRow(row.id, bottomAnchor)) {
+        return;
+      }
+      setDetailRowId(row.id);
+      setIsDetailOpen(true);
+    },
+    [bottomAnchor],
+  );
   useResizeObserver({
     ref: cardRef,
     box: "border-box",
@@ -235,134 +303,157 @@ export function ThreadBackgroundCommandsCard({
   const groupLabel = backgroundActivityGroupLabel(commands);
 
   return (
-    <PromptStackCard
-      rootRef={cardRef}
-      ariaLabel={groupLabel}
-      className="overflow-hidden"
-      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
-    >
-      <div className="flex items-center">
-        {canExpand ? (
-          <button
-            type="button"
-            id={TOGGLE_ID}
-            aria-expanded={isExpanded}
-            aria-controls={BODY_ID}
-            aria-label={
-              useCompactSummary
-                ? compactLabel
-                : backgroundActivityAriaLabel(primary, groupLabel)
-            }
-            onClick={onToggle}
-            className={activityRowClass(
-              "active",
-              "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
-            )}
-          >
-            <Icon
-              name={primaryDisplay.icon}
-              className={activityIconClass("active", "size-3.5 shrink-0")}
-              aria-hidden="true"
-            />
-            {useCompactSummary ? (
-              <span className="min-w-0 flex-1 truncate text-left font-medium">
-                {compactLabel}
-              </span>
-            ) : (
-              <>
-                <BackgroundActivitySummary
-                  row={primary}
-                  showDuration={false}
-                  active
-                />
-                <span className={activityMetaClass("active", "shrink-0")}>
-                  +{others.length} more
-                </span>
-              </>
-            )}
-            <Icon
-              name="ChevronDown"
-              className={cn(
-                activityIconClass("active"),
-                "size-3.5 shrink-0 transition-transform duration-200",
-                isExpanded && "rotate-180",
+    <>
+      <PromptStackCard
+        rootRef={cardRef}
+        ariaLabel={groupLabel}
+        className="overflow-hidden"
+        style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
+      >
+        <div className="flex items-center">
+          {canExpand ? (
+            <button
+              type="button"
+              id={TOGGLE_ID}
+              aria-expanded={isExpanded}
+              aria-controls={BODY_ID}
+              aria-label={
+                useCompactSummary
+                  ? compactLabel
+                  : backgroundActivityAriaLabel(primary, groupLabel)
+              }
+              onClick={onToggle}
+              className={activityRowClass(
+                "active",
+                "flex min-h-8 w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground transition-colors hover:bg-background/80",
               )}
-              aria-hidden="true"
-            />
-          </button>
-        ) : (
-          <div
-            className={activityRowClass(
-              "active",
-              "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
-            )}
-            aria-label={backgroundActivityAriaLabel(primary)}
-          >
-            <Icon
-              name={primaryDisplay.icon}
-              className={activityIconClass("active", "size-3.5 shrink-0")}
-              aria-hidden="true"
-            />
-            <BackgroundActivitySummary row={primary} showDuration active />
-          </div>
-        )}
-      </div>
-      {canExpand ? (
-        <AnimatedBody
-          id={BODY_ID}
-          labelledBy={TOGGLE_ID}
-          isExpanded={isExpanded}
-          collapsedBorder="none"
-        >
-          <div className="flex flex-col gap-0.5 py-1">
-            {expandedRows.map((row) => {
-              const display = backgroundActivityDisplay(row);
-              const model = backgroundActivityModel(row);
-              return (
-                <div
-                  key={row.id}
-                  // px-3 matches the full-width header row's padding so the
-                  // icon lines up under the header icon.
-                  className={cn(
-                    "flex min-w-0 gap-1.5 px-3 py-0.5 text-xs",
-                    useCompactSummary ? "items-start" : "items-center",
-                  )}
-                >
-                  <Icon
-                    name={display.icon}
-                    className="size-3.5 shrink-0 text-muted-foreground/60"
-                    aria-hidden="true"
+            >
+              <Icon
+                name={primaryDisplay.icon}
+                className={activityIconClass("active", "size-3.5 shrink-0")}
+                aria-hidden="true"
+              />
+              {useCompactSummary ? (
+                <span className="min-w-0 flex-1 truncate text-left font-medium">
+                  {compactLabel}
+                </span>
+              ) : (
+                <>
+                  <BackgroundActivitySummary
+                    row={primary}
+                    showDuration={false}
+                    active
                   />
-                  <span
+                  <span className={activityMetaClass("active", "shrink-0")}>
+                    +{others.length} more
+                  </span>
+                </>
+              )}
+              <Icon
+                name="ChevronDown"
+                className={cn(
+                  activityIconClass("active"),
+                  "size-3.5 shrink-0 transition-transform duration-200",
+                  isExpanded && "rotate-180",
+                )}
+                aria-hidden="true"
+              />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => activateRow(primary)}
+              className={activityRowClass(
+                "active",
+                "flex min-h-8 w-full min-w-0 items-center gap-1.5 rounded-none px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-background/80",
+              )}
+              aria-label={backgroundActivityAriaLabel(primary)}
+            >
+              <Icon
+                name={primaryDisplay.icon}
+                className={activityIconClass("active", "size-3.5 shrink-0")}
+                aria-hidden="true"
+              />
+              <BackgroundActivitySummary row={primary} showDuration active />
+            </button>
+          )}
+        </div>
+        {canExpand ? (
+          <AnimatedBody
+            id={BODY_ID}
+            labelledBy={TOGGLE_ID}
+            isExpanded={isExpanded}
+            collapsedBorder="none"
+          >
+            <div className="flex flex-col gap-0.5 py-1">
+              {expandedRows.map((row) => {
+                const display = backgroundActivityDisplay(row);
+                const model = backgroundActivityModel(row);
+                return (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => activateRow(row)}
+                    aria-label={backgroundActivityAriaLabel(row)}
+                    // px-3 matches the full-width header row's padding so the
+                    // icon lines up under the header icon.
                     className={cn(
-                      "min-w-0 flex-1 text-muted-foreground",
-                      useCompactSummary
-                        ? "whitespace-normal [overflow-wrap:anywhere]"
-                        : "truncate",
+                      "flex min-w-0 gap-1.5 px-3 py-0.5 text-left text-xs transition-colors hover:bg-background/80",
+                      useCompactSummary ? "items-start" : "items-center",
                     )}
-                    title={row.description}
                   >
-                    {row.description}
-                  </span>
-                  {model ? (
+                    <Icon
+                      name={display.icon}
+                      className="size-3.5 shrink-0 text-muted-foreground/60"
+                      aria-hidden="true"
+                    />
                     <span
-                      className="shrink-0 whitespace-nowrap font-mono text-2xs text-subtle-foreground"
-                      title={`Model: ${model}`}
+                      className={cn(
+                        "min-w-0 flex-1 text-muted-foreground",
+                        useCompactSummary
+                          ? "whitespace-normal [overflow-wrap:anywhere]"
+                          : "truncate",
+                      )}
+                      title={row.description}
                     >
-                      {model}
+                      {row.description}
                     </span>
-                  ) : null}
-                  <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
-                    {isExpanded ? (
-                      <BackgroundActivityDuration startedAt={row.startedAt} />
+                    {model ? (
+                      <span
+                        className="shrink-0 whitespace-nowrap font-mono text-2xs text-subtle-foreground"
+                        title={`Model: ${model}`}
+                      >
+                        {model}
+                      </span>
                     ) : null}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </AnimatedBody>
-      ) : null}
-    </PromptStackCard>
+                    <span className="shrink-0 whitespace-nowrap text-subtle-foreground">
+                      {isExpanded ? (
+                        <BackgroundActivityDuration
+                          startedAt={row.startedAt}
+                        />
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </AnimatedBody>
+        ) : null}
+      </PromptStackCard>
+      <PersistentResponsiveDrawerShell
+        open={isDetailOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsDetailOpen(false);
+          }
+        }}
+        srLabel={
+          detailRow ? backgroundActivityAriaLabel(detailRow) : undefined
+        }
+        contentClassName="max-h-[70dvh]"
+      >
+        {detailRow ? <BackgroundActivityDetailBody row={detailRow} /> : null}
+      </PersistentResponsiveDrawerShell>
+    </>
   );
 }
