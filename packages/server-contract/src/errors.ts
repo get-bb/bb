@@ -1,7 +1,9 @@
 import { z } from "zod";
 import {
+  dispatchGateStageSchema,
   environmentStatusSchema,
   hostStatusSchema,
+  pluginIdSchema,
   threadStatusSchema,
 } from "@bb/domain";
 
@@ -114,6 +116,17 @@ export type ParentThreadInvalidErrorDetails = z.infer<
   typeof parentThreadInvalidErrorDetailsSchema
 >;
 
+/** Which plugin's gate ended the dispatch, and at which stage. Shared by the
+ *  gate's `reject` verdict (409) and its fail-closed failure (502): both name
+ *  the same gate, so the client can attribute either one without guessing. */
+export const dispatchGateErrorDetailsSchema = z.object({
+  pluginId: pluginIdSchema,
+  stage: dispatchGateStageSchema,
+});
+export type DispatchGateErrorDetails = z.infer<
+  typeof dispatchGateErrorDetailsSchema
+>;
+
 export const environmentNotReadyApiErrorSchema = apiErrorSchema.extend({
   code: z.literal("environment_not_ready"),
   details: environmentNotReadyErrorDetailsSchema,
@@ -146,6 +159,16 @@ export const parentThreadInvalidApiErrorSchema = apiErrorSchema.extend({
   details: parentThreadInvalidErrorDetailsSchema,
 });
 
+export const dispatchRejectedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("dispatch_rejected"),
+  details: dispatchGateErrorDetailsSchema,
+});
+
+export const dispatchGateFailedApiErrorSchema = apiErrorSchema.extend({
+  code: z.literal("dispatch_gate_failed"),
+  details: dispatchGateErrorDetailsSchema,
+});
+
 export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
   environmentNotReadyApiErrorSchema,
   threadNotWritableApiErrorSchema,
@@ -153,5 +176,7 @@ export const lifecycleApiErrorSchema = z.discriminatedUnion("code", [
   hostUnavailableApiErrorSchema,
   projectUnavailableApiErrorSchema,
   parentThreadInvalidApiErrorSchema,
+  dispatchRejectedApiErrorSchema,
+  dispatchGateFailedApiErrorSchema,
 ]);
 export type LifecycleApiError = z.infer<typeof lifecycleApiErrorSchema>;

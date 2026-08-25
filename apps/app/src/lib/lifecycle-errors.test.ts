@@ -552,6 +552,39 @@ const descriptionCases: DescriptionCase[] = [
       severity: "error",
     },
   },
+  {
+    name: "dispatch_rejected shows the plugin's message verbatim",
+    body: {
+      code: "dispatch_rejected",
+      message: "Sandbox quota is exhausted. Free a slot first.",
+      details: {
+        pluginId: "policy-guard",
+        stage: "turn.submit",
+      },
+    },
+    expected: {
+      title: "Blocked by a plugin",
+      body: 'Blocked by the "policy-guard" plugin: Sandbox quota is exhausted. Free a slot first.',
+      severity: "warning",
+    },
+  },
+  {
+    name: "dispatch_gate_failed adds the recovery hint",
+    body: {
+      code: "dispatch_gate_failed",
+      message:
+        'The "policy-guard" plugin\'s thread.create dispatch gate failed: gate timed out after 5000ms',
+      details: {
+        pluginId: "policy-guard",
+        stage: "thread.create",
+      },
+    },
+    expected: {
+      title: "Plugin dispatch gate failed",
+      body: 'The "policy-guard" plugin\'s thread.create dispatch gate failed: gate timed out after 5000ms. Disable that plugin to continue.',
+      severity: "error",
+    },
+  },
 ];
 
 describe("parseLifecycleError", () => {
@@ -632,5 +665,48 @@ describe("describeLifecycleError", () => {
         error: new Error("Failed"),
       }),
     ).toBeNull();
+  });
+
+  it("keeps a gate rejection readable under an operation title", () => {
+    const pluginMessage = "This project is frozen until the release ships.";
+    const body: LifecycleApiError = {
+      code: "dispatch_rejected",
+      message: pluginMessage,
+      details: { pluginId: "release-freeze", stage: "turn.submit" },
+    };
+
+    const description = describeLifecycleError({
+      error: httpError(body),
+      operation: "send_message",
+    });
+
+    if (!description) {
+      throw new Error("expected a lifecycle description");
+    }
+    expect(description.body).toContain(pluginMessage);
+    expect(description.body).toContain('"release-freeze"');
+    expect(formatLifecycleErrorDescription(description)).toBe(
+      'Failed to send message. Blocked by the "release-freeze" plugin: This project is frozen until the release ships.',
+    );
+  });
+
+  it("names the plugin once when a gate fails closed", () => {
+    const body: LifecycleApiError = {
+      code: "dispatch_gate_failed",
+      message:
+        'The "release-freeze" plugin\'s turn.submit dispatch gate failed: handler threw',
+      details: { pluginId: "release-freeze", stage: "turn.submit" },
+    };
+
+    const description = describeLifecycleError({
+      error: httpError(body),
+      operation: "queue_message",
+    });
+
+    if (!description) {
+      throw new Error("expected a lifecycle description");
+    }
+    expect(description.body.match(/release-freeze/gu)).toHaveLength(1);
+    expect(description.body).toContain("Disable that plugin to continue.");
   });
 });

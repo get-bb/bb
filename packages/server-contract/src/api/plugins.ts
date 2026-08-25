@@ -1,4 +1,4 @@
-import { jsonValueSchema } from "@bb/domain";
+import { dispatchGateStageSchema, jsonValueSchema } from "@bb/domain";
 import { z } from "zod";
 
 export const pluginRuntimeStatusSchema = z.enum([
@@ -176,6 +176,29 @@ export const installedPluginSchema = z.object({
   logoUrl: z.string().nullable(),
   logoDarkUrl: z.string().nullable(),
   providerIds: z.array(z.string()),
+  /**
+   * The dispatch stages this plugin registered a gate for
+   * (`bb.experimental_dispatch.gate`), empty for every other plugin. A
+   * display/ordering read model, never a control surface: the settings panel
+   * uses it to know which stages have a chain worth reordering and which
+   * plugins sit in each one. Registration itself happens in the plugin's
+   * backend and is not editable through this response, so a plugin that is
+   * disabled or failed to load reports `[]` — exactly like `providerIds`,
+   * whose old-server tolerance convention this field shares (required in the
+   * contract, filled by the server, `.default([])` only on @bb/sdk's
+   * response-side schema).
+   */
+  dispatchGateStages: z.array(dispatchGateStageSchema),
+  /**
+   * The plugin's declared icons (`bb.branding.experimental_icons`): declared
+   * name → hashed asset URL (`/api/v1/plugins/<id>/assets/icons/<name>.svg?h=…`).
+   * A timeline row or provider whose glyph is `"<pluginId>/<name>"` resolves
+   * here; a name that is absent (the plugin changed its map, or is gone)
+   * renders the per-kind fallback glyph. Identity-backed like `iconUrl`, so a
+   * disabled plugin's icons still resolve. Empty for a plugin that declares
+   * none; the server fills it for every plugin, with the same response-side
+   * tolerance as `providerIds` in @bb/sdk for servers older than the field.
+   */
   icons: z.record(z.string(), z.string()),
 });
 export type InstalledPlugin = z.infer<typeof installedPluginSchema>;

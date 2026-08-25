@@ -217,6 +217,7 @@ function rowPlugin(
     schedules: [],
     cliCommand: null,
     capabilities: [],
+    dispatchGateStages: [],
     app: { hasApp: false, bundle: null },
     provenance: "direct" as const,
     isOrphanedBuiltin: false,

@@ -39,6 +39,7 @@ function plugin(
     schedules: [],
     cliCommand: null,
     capabilities: [],
+    dispatchGateStages: [],
     app: { hasApp: false, bundle: null },
     ...overrides,
   };

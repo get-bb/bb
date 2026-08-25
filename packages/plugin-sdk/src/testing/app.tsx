@@ -159,6 +159,13 @@ export interface ComposerLog {
   quotes: string[];
   mentions: PluginComposerMention[];
   focusCount: number;
+  /**
+   * Latest value this plugin addressed to its own dispatch gates for the next
+   * submission, and every value it set. `null` is the explicit clear, so a
+   * test can assert that a control cleaned up after itself.
+   */
+  pluginInput: JsonValue | null;
+  pluginInputCalls: Array<JsonValue | null>;
 }
 
 interface TestComposerStore {
@@ -1492,6 +1499,8 @@ export function renderSlot<
     quotes: [],
     mentions: [],
     focusCount: 0,
+    pluginInput: null,
+    pluginInputCalls: [],
   };
   const composerOwnership = { active: true };
   const composer: TestComposerStore = {
@@ -1548,6 +1557,11 @@ export function renderSlot<
       focus() {
         composerLog.focusCount += 1;
       },
+      experimental_setPluginInput(input) {
+        if (!composerOwnership.active) return;
+        composerLog.pluginInput = input;
+        composerLog.pluginInputCalls.push(input);
+      },
     },
   };
 
@@ -1578,6 +1592,7 @@ export function renderSlot<
     composerOwnership.active = false;
     composerLog.textEffect = null;
     composerLog.inputLocked = false;
+    composerLog.pluginInput = null;
   };
   const renderSlotTree = (ui: ReactNode): ReactElement => (
     <SlotEnvContext.Provider value={env}>

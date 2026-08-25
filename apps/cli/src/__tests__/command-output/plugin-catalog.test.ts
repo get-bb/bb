@@ -95,6 +95,7 @@ const installedPlugin = {
   logoUrl: null,
   logoDarkUrl: null,
   providerIds: [],
+  dispatchGateStages: [],
   icons: {},
 };
 

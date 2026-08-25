@@ -85,10 +85,21 @@ const eventProjectionTurnRequestStatusValues = [
 type EventProjectionTurnRequestStatus =
   (typeof eventProjectionTurnRequestStatusValues)[number];
 
+/** Dispatch-gate provenance carried off `client/turn/requested`. */
+export interface EventProjectionTurnRequestAmendment {
+  pluginId: string;
+  model: string;
+}
+
 export interface EventProjectionTurnRequest {
   isGrouped: boolean;
   kind: EventProjectionTurnRequestKind;
   status: EventProjectionTurnRequestStatus;
+  /**
+   * Set only when a gate amended the turn. Mirrors the event's optional
+   * `amendedByPluginId`: absence is "no gate ran", not a default.
+   */
+  amendment?: EventProjectionTurnRequestAmendment;
 }
 
 export interface EventProjectionUserMessage extends EventProjectionMessageBase {

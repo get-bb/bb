@@ -14,7 +14,6 @@ import {
   type ServiceTier,
   type ThreadListEntry,
 } from "@bb/domain";
-import type { NewThreadRequest } from "@get-bb/plugin-sdk";
 import type {
   SidebarBootstrapResponse,
   TerminalSession,
@@ -22,6 +21,7 @@ import type {
 import {
   NewThreadComposer,
   type NewThreadComposerState,
+  type NewThreadComposerSubmission,
 } from "@/components/promptbox/NewThreadComposer";
 import { ProviderCliVersionBanner } from "@/components/promptbox/banner/ProviderCliVersionBanner";
 import {
@@ -529,15 +529,26 @@ export function RootComposeView() {
     [setRootComposeProjectId],
   );
   const handleSubmit = useCallback(
-    async (request: NewThreadRequest) => {
+    async (request: NewThreadComposerSubmission) => {
       const shouldNavigateToCreatedThread = shouldNavigateAfterThreadCreate({
         isForkDraft: forkSeed !== null,
         navigateToThreadAfterCreate,
       });
+      // A plugin picker entry means the user chose "let this plugin decide",
+      // so the request must carry no provider at all: the server resolves the
+      // project default and the plugin's thread.create gate amends it. Sending
+      // the composer's fallback provider instead would record a user choice
+      // the user never made, and could be remembered as a project default.
+      const {
+        providerDecidedByPluginEntry,
+        providerId,
+        ...requestFields
+      } = request;
       const createRequest =
         forkSeed === null
           ? {
-              ...request,
+              ...requestFields,
+              ...(providerDecidedByPluginEntry ? {} : { providerId }),
               ...(rootComposeSectionId
                 ? { sectionId: rootComposeSectionId }
                 : {}),
@@ -603,6 +614,7 @@ export function RootComposeView() {
       seed={composerSeed}
       resetKey={forkSeed?.sourceThreadId ?? null}
       preferReadyProviderWhenUnset={forkSeed === null}
+      allowPluginExecutionEntries={forkSeed === null}
       onSubmit={handleSubmit}
     >
       {(composer) => (

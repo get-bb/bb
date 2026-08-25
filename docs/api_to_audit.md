@@ -1958,3 +1958,90 @@ other pane's copy (or release its owned state). The thread-list slot omits it
 deliberately: it mounts once, and a crash there should disable it everywhere.
 Confirm that split before stabilizing, and decide whether other multi-mount
 slots need the same treatment.
+
+## `app.slots.experimental_executionPickerEntry` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Adds one row to bb's provider/model picker beside the real
+agent providers — the "Auto" affordance a routing plugin needs.
+`{ id, label, description?, iconName?, pluginInput }`. Choosing the entry is
+explicitly NOT choosing a provider: bb submits the create request with
+`providerId` omitted and delivers `pluginInput` verbatim as that plugin's
+`pluginInputs` entry, so the plugin's `thread.create` gate is what decides the
+provider and model. Entries sort among providers under the `providerOrder`
+token `plugin:<pluginId>:<entryId>` (provider ids are `/^[a-zA-Z0-9_-]+$/`, so
+the two namespaces cannot collide). The selection is remembered as a client
+preference only (`bb.promptbox.execution-entry` in localStorage) and is never
+promoted to a project execution default; when the plugin is disabled the entry
+disappears and the next submission resolves the project default. The
+registration's `pluginInput` is validated as JSON and deep-frozen at
+registration time.
+
+**Audit before stabilizing.**
+
+1. **Zero consumers.** The reference `model-router` plugin does not exist yet.
+   Every item below wants a real routing plugin to answer it.
+2. **No model, no reasoning, no service tier.** While an entry is selected the
+   picker replaces the model/reasoning/fast-mode rows with the entry's
+   description, because the gate has not chosen a model yet. Decide whether a
+   plugin should instead be able to declare a *preview* tuple (what it would
+   probably pick), and whether the user must be able to pin reasoning level
+   independently of the routed model.
+3. **Follow-ups are excluded.** A thread's provider is immutable after
+   creation, so entries are offered only where the provider is still open —
+   bb's root compose. Confirm that a routing plugin does not also want a
+   per-turn entry at `turn.submit` (which would amend model but not provider).
+4. **Deliberate exclusion from `experimental_ProviderModelPicker`.** That
+   component's `ExperimentalProviderModelPickerValue` stays a single concrete
+   shape — a plugin forwards it verbatim to `threads.spawn`, and an entry
+   resolves to "no provider; a gate decides", which a plugin cannot forward.
+   Entries therefore render only in bb's own composers. Confirm no plugin
+   genuinely needs to offer another plugin's entry inside its own compose UI;
+   if one does, the value needs the `{ kind: "plugin-entry" }` arm and every
+   consumer needs updating at once.
+5. **Ordering default.** Unpinned entries sort AFTER unpinned providers, so a
+   newly installed routing plugin cannot displace the user's provider without
+   the user pinning it in `providerOrder`. Confirm that is the right default
+   rather than "Auto leads".
+6. **Cross-plugin id collisions.** Unlike `experimental_providerIcon`, entries
+   are namespaced by plugin id, so two plugins cannot claim the same row and
+   there is no first-wins warning. Confirm nothing else needs to dedupe.
+
+## `useComposer().experimental_setPluginInput` (`@get-bb/plugin-sdk/app`)
+
+**What it does.** Addresses a JSON value to the calling plugin's own dispatch
+gates for the next submission from that composer — the `pluginInputs` side
+channel written from a composer control ("Sandbox: large", "Skip routing")
+rather than from a picker entry. One value per plugin per composer; a second
+call replaces the first, `null` clears it. The value is transient: it is
+attached to the next send from that composer and cleared once that send is
+committed, and it is deliberately NOT persisted with the draft (the draft is
+localStorage-backed; this is not). Writes are scoped by composer storage key
+and released with the slot's ownership, like `setTextEffect` and
+`setInputLock`. Only the calling plugin's gates receive it, and it counts
+against the request's 8KB `pluginInputs` budget.
+
+**Audit before stabilizing.**
+
+1. **Zero consumers.** No shipped plugin sets one yet.
+2. **Clear-on-submit timing.** The input is consumed when the user commits the
+   message, not when the request settles — so a send that FAILS keeps the
+   restored draft text but loses the plugin input. That assumes the control
+   that set it re-renders and can set it again. Confirm against a real control
+   whether a failed send should instead restore the input with the draft.
+3. **No read-back.** There is no `getPluginInput`, so a control cannot render
+   its own current state from the composer; it must hold that state itself.
+   Decide whether the reactive read belongs on `useComposerView()`.
+4. **Queued and steer paths, and the embedded chat.** The value rides bb's
+   new-thread composer and the thread-detail follow-up composer (send and
+   queue). It is deliberately NOT attached to a steer, which bypasses
+   `turn.submit` gates entirely — confirm that silent no-op is right, or make
+   `setPluginInput` refuse while a steer is the pending action. It is also not
+   yet consumed by the SDK `ThreadChat` embedded composer, whose composer-host
+   identity is built after its submit callback; a control mounted there can
+   set an input that is never delivered. Wire that up or refuse the write
+   there before dropping the prefix.
+5. **Budget accounting.** The picker entry's input and this one are merged at
+   submit (the picker entry wins a key collision) and only then measured
+   against the 8KB cap, so an oversized combination fails the whole send at
+   the server boundary. Decide whether the client should refuse earlier and
+   how that would surface.

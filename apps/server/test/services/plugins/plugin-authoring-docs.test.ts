@@ -22,6 +22,7 @@ import {
   type PluginNavPanelRegistration,
   type PluginNewThreadPanelProps,
   type PluginPendingInteractionProps,
+  type PluginExecutionPickerEntryRegistration,
   type PluginProviderIconRegistration,
   type PluginTimelineRendererProps,
   type PluginSettingDescriptor,
@@ -246,6 +247,9 @@ type SlotPropsByName = {
   commandPaletteAction: PluginCommandPaletteActionContext;
   experimental_providerIcon: PluginProviderIconRegistration;
   experimental_timelineRenderer: PluginTimelineRendererProps;
+  // Registration-object slot: this one mounts no component at all — bb renders
+  // the row — so the registration type IS the documented surface.
+  experimental_executionPickerEntry: PluginExecutionPickerEntryRegistration;
 };
 
 type MissingSlot = Exclude<keyof PluginAppSlots, keyof SlotPropsByName>;
@@ -348,6 +352,13 @@ const FRONTEND_SLOT_PROP_FIELDS = {
     "presentation",
     "thread",
     "Original",
+  ],
+  experimental_executionPickerEntry: [
+    "id",
+    "label",
+    "description",
+    "iconName",
+    "pluginInput",
   ],
 } as const satisfies {
   [S in keyof SlotPropsByName]: readonly (keyof SlotPropsByName[S])[];

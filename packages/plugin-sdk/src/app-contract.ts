@@ -1256,6 +1256,49 @@ export interface PluginTimelineRendererRegistration {
   component: ComponentType<PluginTimelineRendererProps>;
 }
 
+/**
+ * An entry this plugin adds to bb's provider/model picker, beside the real
+ * agent providers — the "Auto" affordance a routing plugin needs.
+ *
+ * Choosing it is not choosing a provider. bb submits the create request with
+ * **no** `providerId` and delivers `pluginInput` as this plugin's
+ * `pluginInputs` entry, so the plugin's `thread.create` gate is what
+ * ultimately decides the provider and model. Entries sort among providers by
+ * the user's `providerOrder` setting under the token
+ * `plugin:<pluginId>:<id>`; unpinned entries sort after the unpinned
+ * providers.
+ *
+ * Entries appear only where the provider is still open — bb's own new-thread
+ * composer. A thread's provider is immutable after creation, so no entry is
+ * offered on a follow-up.
+ *
+ * The selection is remembered as a client preference only and is never
+ * promoted to a project execution default: when the plugin is disabled the
+ * entry disappears and the next submission resolves the project default. An
+ * entry therefore has no model, reasoning level, or service tier of its own —
+ * the picker hides those rows while one is selected.
+ */
+export interface PluginExecutionPickerEntryRegistration {
+  /** Unique within the plugin; letters, digits, `-`, `_`. */
+  id: string;
+  /** Row and trigger label, e.g. "Auto". */
+  label: string;
+  /** One-line explanation rendered under the label. */
+  description?: string;
+  /**
+   * Icon hint (BB icon name). An unknown name falls back to the label's first
+   * letter, matching how a provider with no icon renders in the same strip.
+   */
+  iconName?: string;
+  /**
+   * Delivered verbatim as this plugin's `pluginInputs` entry on every
+   * submission made while the entry is selected. Must be a JSON value —
+   * validated and deep-frozen at registration — and it counts against the
+   * request's 8KB `pluginInputs` budget.
+   */
+  pluginInput: JsonValue;
+}
+
 // ---------------------------------------------------------------------------
 // definePluginApp
 // ---------------------------------------------------------------------------
@@ -1334,6 +1377,14 @@ export interface PluginAppSlots {
    */
   experimental_timelineRenderer(
     registration: PluginTimelineRendererRegistration,
+  ): void;
+  /**
+   * Add an entry to bb's provider/model picker beside the real providers (see
+   * {@link PluginExecutionPickerEntryRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_executionPickerEntry(
+    registration: PluginExecutionPickerEntryRegistration,
   ): void;
 }
 
@@ -1614,6 +1665,24 @@ export interface PluginComposerApi {
   insertMention(mention: PluginComposerMention): void;
   /** Focus the composer caret at the end of the draft. */
   focus(): void;
+  /**
+   * Address a JSON value to THIS plugin's dispatch gates for the next
+   * submission from this composer — the `pluginInputs` side channel, written
+   * from a composer control ("Sandbox: large", "Skip routing") instead of a
+   * picker entry.
+   *
+   * One value per plugin per composer: a second call replaces the first.
+   * `null` clears it. The value is transient by design — it is attached to the
+   * next send from this composer and cleared once that send is accepted, so a
+   * per-message choice never silently applies to every later message. It is
+   * not persisted with the draft and does not survive a reload.
+   *
+   * Only this plugin's gates receive it, and it counts against the request's
+   * 8KB `pluginInputs` budget.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_setPluginInput(input: JsonValue | null): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1692,7 +1761,17 @@ export interface ThreadChatProps {
 // experimental_ProviderModelPicker — host-owned execution selection.
 // ---------------------------------------------------------------------------
 
-/** The controlled execution selection resolved by the picker. */
+/**
+ * The controlled execution selection resolved by the picker.
+ *
+ * Deliberately a single concrete shape, not a union: this value exists to be
+ * forwarded verbatim to `bb.sdk.threads.spawn`, so every arm must name a real
+ * provider and model. `app.slots.experimental_executionPickerEntry` entries
+ * are therefore NOT offered by this component — an entry resolves to "no
+ * provider; a gate decides", which a plugin cannot forward. Plugin picker
+ * entries appear only in bb's own composers, where bb owns the submission and
+ * can omit `providerId`.
+ */
 export interface ExperimentalProviderModelPickerValue {
   providerId: string;
   model: string;

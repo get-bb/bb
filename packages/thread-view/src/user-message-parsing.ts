@@ -10,6 +10,7 @@ import type {
   EventProjectionAssistantTextMessage,
   EventProjectionTurnRequestKind,
   EventProjectionTurnRequest,
+  EventProjectionTurnRequestAmendment,
   EventProjectionUserMessage,
 } from "./event-projection-types.js";
 import { messageId } from "./format-helpers.js";
@@ -224,11 +225,29 @@ function isSteerRequest(decoded: ClientTurnRequestedEvent): boolean {
   );
 }
 
+/**
+ * Dispatch-gate provenance, straight off the event. `amendedByPluginId` is
+ * written only when a gate actually amended the turn, so its absence — the
+ * common case — leaves the row with no provenance at all rather than a null
+ * that would read as "a gate ran and changed nothing". The model is the one
+ * recorded on the amended request, which is what the turn dispatched with.
+ */
+function turnRequestAmendment(
+  decoded: ClientTurnRequestedEvent,
+): EventProjectionTurnRequestAmendment | undefined {
+  const pluginId = decoded.amendedByPluginId;
+  if (pluginId === undefined) {
+    return undefined;
+  }
+  return { pluginId, model: decoded.execution.model };
+}
+
 function buildTurnRequest(
   decoded: ClientTurnRequestedEvent,
   status: EventProjectionTurnRequest["status"],
   acceptedClientRequest: AcceptedClientRequest | undefined,
 ): EventProjectionTurnRequest {
+  const amendment = turnRequestAmendment(decoded);
   return {
     isGrouped: decoded.inputGroups !== undefined,
     kind: resolveTurnRequestKind({
@@ -236,6 +255,7 @@ function buildTurnRequest(
       decoded,
     }),
     status,
+    ...(amendment === undefined ? {} : { amendment }),
   };
 }
 

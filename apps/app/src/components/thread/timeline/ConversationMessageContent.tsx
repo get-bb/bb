@@ -53,6 +53,7 @@ import {
 } from "@bb/client-core";
 import { turnRequestLabel } from "@bb/client-core";
 import { splitStreamingMarkdown } from "./streaming-markdown-split.js";
+import { TurnRequestAmendmentLabel } from "./TurnRequestAmendmentLabel.js";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
 import {
   MessageActionBar,
@@ -420,12 +421,15 @@ function UserConversationMessage({
   return (
     <div className="w-full" data-message-column="">
       <div className="group/message ml-auto flex w-fit max-w-[70%] flex-col items-end">
-        {requestLabel ? (
-          <div className="mb-1 flex justify-end">
+        {requestLabel || turnRequest.amendment !== undefined ? (
+          <div className="mb-1 flex items-center justify-end gap-2">
             <TurnRequestLabel
               turnRequest={turnRequest}
               icon="ArrowTurnForward"
             />
+            {turnRequest.amendment === undefined ? null : (
+              <TurnRequestAmendmentLabel amendment={turnRequest.amendment} />
+            )}
           </div>
         ) : null}
         {}

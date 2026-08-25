@@ -10,6 +10,7 @@ import {
   type ModelReasoningPickerFooterAction,
 } from "@/components/pickers/ModelReasoningPicker";
 import { type PickerOption } from "@/components/pickers/OptionPicker";
+import type { PluginExecutionPickerEntrySlot } from "@/lib/plugin-slots";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 
@@ -18,6 +19,21 @@ interface ExecutionProviderConfig {
   selectedId?: string;
   onChange?: (value: string) => void;
   hasMultiple?: boolean;
+}
+
+/**
+ * A plugin's picker entries beside the providers. Omitted entirely by
+ * surfaces that cannot submit without a provider (the plugin-facing picker,
+ * read-only side chats), which is what keeps the entry from being offered
+ * where selecting it would produce an unsendable request.
+ */
+interface ExecutionPluginEntryConfig {
+  entries: readonly PluginExecutionPickerEntrySlot[];
+  /** `providerOrder`, which sorts providers and entries together. */
+  order: readonly string[];
+  /** The selected entry's token, or null while a provider is selected. */
+  selectedToken: string | null;
+  onChange: (token: string | null) => void;
 }
 
 interface ExecutionModelConfig {
@@ -58,6 +74,7 @@ export interface ExecutionControlsProps {
   model: ExecutionModelConfig;
   serviceTier?: ExecutionServiceTierConfig;
   reasoning: ExecutionReasoningConfig;
+  pluginEntries?: ExecutionPluginEntryConfig;
   footerAction?: ModelReasoningPickerFooterAction;
   disabled?: boolean;
 }
@@ -68,6 +85,7 @@ export const ExecutionControls = memo(function ExecutionControls({
   model,
   serviceTier,
   reasoning,
+  pluginEntries,
   footerAction,
   disabled,
 }: ExecutionControlsProps) {
@@ -81,6 +99,7 @@ export const ExecutionControls = memo(function ExecutionControls({
     provider.options.length > 1,
   );
   const showModelPicker =
+    (pluginEntries !== undefined && pluginEntries.entries.length > 0) ||
     model.isLoading ||
     model.loadFailed ||
     model.options.length > 0 ||
@@ -114,6 +133,10 @@ export const ExecutionControls = memo(function ExecutionControls({
           }
           showFastModeToggle={serviceTier?.supported ?? false}
           serviceTierSupportByProvider={serviceTier?.supportByProvider}
+          pluginEntries={pluginEntries?.entries}
+          executionOrder={pluginEntries?.order}
+          selectedPluginEntryToken={pluginEntries?.selectedToken ?? null}
+          onSelectPluginEntry={pluginEntries?.onChange}
           fastModeLabel={serviceTier?.fastLabel}
           muted
           disabled={disabled}

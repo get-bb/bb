@@ -82,6 +82,8 @@ interface DefaultTurnEventOptions extends EventFactoryRowOptions {
 }
 
 type ClientTurnRequestedArgs = EventFactoryRowOptions & {
+  /** Dispatch-gate provenance; omitted means no gate amended the turn. */
+  amendedByPluginId?: string;
   execution?: ResolvedThreadExecutionOptions;
   initiator?: ThreadTurnInitiator;
   input?: PromptInput[];
@@ -650,6 +652,9 @@ export function createTimelineEventFactory(
           ],
           ...(args.inputGroups !== undefined
             ? { inputGroups: args.inputGroups }
+            : {}),
+          ...(args.amendedByPluginId !== undefined
+            ? { amendedByPluginId: args.amendedByPluginId }
             : {}),
           target: args.target ?? { kind: "new-turn" },
           request: {

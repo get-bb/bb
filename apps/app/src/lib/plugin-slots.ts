@@ -18,6 +18,7 @@ import type {
   PluginThreadListRegistration,
   PluginThreadPanelActionRegistration,
   PluginTimelineRendererRegistration,
+  PluginExecutionPickerEntryRegistration,
 } from "@get-bb/plugin-sdk";
 
 export interface PluginRegistrationSet {
@@ -39,6 +40,8 @@ export interface PluginRegistrationSet {
   commandPaletteActions?: readonly PluginCommandPaletteActionRegistration[];
   providerIcons?: readonly PluginProviderIconRegistration[];
   timelineRenderers?: readonly PluginTimelineRendererRegistration[];
+  /** Optional for the same reason as `threadLists`: bundles built earlier. */
+  executionPickerEntries?: readonly PluginExecutionPickerEntryRegistration[];
 }
 
 interface PluginSlotBase {
@@ -82,6 +85,8 @@ interface PluginProviderIconSlot
   extends PluginProviderIconRegistration, PluginSlotBase {}
 export interface PluginTimelineRendererSlot
   extends PluginTimelineRendererRegistration, PluginSlotBase {}
+export interface PluginExecutionPickerEntrySlot
+  extends PluginExecutionPickerEntryRegistration, PluginSlotBase {}
 
 export interface PluginSlotSnapshot {
   homepageSections: readonly PluginHomepageSectionSlot[];
@@ -102,6 +107,7 @@ export interface PluginSlotSnapshot {
   commandPaletteActions: readonly PluginCommandPaletteActionSlot[];
   providerIcons: readonly PluginProviderIconSlot[];
   timelineRenderers: readonly PluginTimelineRendererSlot[];
+  executionPickerEntries: readonly PluginExecutionPickerEntrySlot[];
 }
 
 export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
@@ -123,6 +129,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   commandPaletteActions: [],
   providerIcons: [],
   timelineRenderers: [],
+  executionPickerEntries: [],
 };
 
 const registrationsByPluginId = new Map<string, PluginRegistrationSet>();
@@ -151,6 +158,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "commandPaletteActions",
   "providerIcons",
   "timelineRenderers",
+  "executionPickerEntries",
 ];
 
 type FlattenedPluginSlots = {
@@ -191,6 +199,7 @@ function flattenRegistrations(
     commandPaletteActions: stamp(set.commandPaletteActions),
     providerIcons: stamp(set.providerIcons),
     timelineRenderers: stamp(set.timelineRenderers),
+    executionPickerEntries: stamp(set.executionPickerEntries),
   };
 }
 

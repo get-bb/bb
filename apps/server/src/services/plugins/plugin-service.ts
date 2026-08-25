@@ -7,6 +7,7 @@ import type { Context } from "hono";
 import {
   CUSTOM_THEME_CSS_MAX_LENGTH,
   derivePluginId,
+  dispatchGateStageValues,
   formatPluginThemeId,
   isNamespacedGlyph,
   isPluginOwnedIconPath,
@@ -1267,6 +1268,17 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             loadedPlugin?.handle
               .listProviderDeclarations()
               .map((declaration) => declaration.id) ?? [],
+          // Gates live on the runtime handle, so a disabled or unloaded
+          // plugin registers none and reports [] — same as providerIds.
+          dispatchGateStages:
+            loadedPlugin === undefined
+              ? []
+              : dispatchGateStageValues.filter(
+                  (stage) => loadedPlugin.handle.dispatchGates[stage] !== null,
+                ),
+          // Declared icons ride the identity like the compact icon, so a
+          // row referencing "<pluginId>/<name>" resolves while the plugin is
+          // disabled and stops resolving only once it is uninstalled.
           icons: Object.fromEntries(
             [
               ...((loadedPlugin !== undefined

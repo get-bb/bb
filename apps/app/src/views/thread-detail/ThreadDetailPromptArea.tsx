@@ -99,6 +99,7 @@ import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { buildThreadHandoffLocationState } from "@bb/client-core";
 import { appToast } from "@/components/ui/app-toast";
+import { takeComposerPluginInputs } from "@/lib/composer-plugin-inputs";
 import {
   emptyPromptDraftState,
   promptDraftToInput,
@@ -789,6 +790,9 @@ export function ThreadDetailPromptArea({
 
     promptDraft.clearIfCurrentMatches(submittedDraft);
     setBottomAttachmentError(null);
+    // Spent with the message the user just committed, whether it sends or
+    // queues: a per-message plugin input must not carry into the next one.
+    const pluginInputs = takeComposerPluginInputs(promptDraft.storageKey);
 
     try {
       if (isQueuingMessage) {
@@ -796,6 +800,7 @@ export function ThreadDetailPromptArea({
           threadId: thread.id,
           input: submittedInput,
           execution: followUpExecutionSelection,
+          pluginInputs,
         });
         if (request) {
           await createQueuedMessage.mutateAsync(request);
@@ -805,6 +810,7 @@ export function ThreadDetailPromptArea({
           threadId: thread.id,
           input: submittedInput,
           execution: followUpExecutionSelection,
+          pluginInputs,
         });
         if (request) {
           await sendMessage.mutateAsync(request);

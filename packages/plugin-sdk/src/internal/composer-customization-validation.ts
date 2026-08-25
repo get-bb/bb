@@ -2,6 +2,7 @@ import type {
   ComposerCustomization,
   PluginComposerThreadRowStatus,
 } from "@get-bb/plugin-sdk";
+import type { JsonValue } from "../json-value.js";
 
 export const PLUGIN_SLOT_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const PLUGIN_MESSAGE_DIRECTIVE_ID_PATTERN = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
@@ -138,6 +139,74 @@ export function requireOptionalString(
     throw new Error(`${kind}: "${field}" must be a string when set`);
   }
   return value;
+}
+
+/**
+ * A deep-frozen JSON copy of `value`, or a throw naming the offending path.
+ *
+ * Registrations that carry data rather than behavior (a picker entry's
+ * `pluginInput`) end up on the wire, so a non-JSON value must fail at
+ * registration where the plugin author sees it — not at submit time, inside
+ * someone else's send. Freezing means a plugin cannot mutate the value after
+ * bb has accepted it and quietly change what later submissions carry.
+ */
+export function requireJsonValue(
+  kind: string,
+  field: string,
+  value: unknown,
+): JsonValue {
+  const active = new Set<object>();
+  function visit(current: unknown, path: string): JsonValue {
+    if (
+      current === null ||
+      typeof current === "string" ||
+      typeof current === "boolean"
+    ) {
+      return current;
+    }
+    if (typeof current === "number") {
+      if (!Number.isFinite(current)) {
+        throw new Error(`${kind}: "${field}${path}" must be finite JSON`);
+      }
+      return current;
+    }
+    if (typeof current !== "object") {
+      throw new Error(`${kind}: "${field}${path}" must be a JSON value`);
+    }
+    if (active.has(current)) {
+      throw new Error(`${kind}: "${field}" must not contain cycles`);
+    }
+    active.add(current);
+    try {
+      if (Array.isArray(current)) {
+        const entries: JsonValue[] = current.map((entry, index) =>
+          visit(entry, `${path}[${index}]`),
+        );
+        Object.freeze(entries);
+        return entries;
+      }
+      const prototype: unknown = Object.getPrototypeOf(current);
+      if (prototype !== Object.prototype && prototype !== null) {
+        throw new Error(
+          `${kind}: "${field}${path}" must contain only plain JSON objects`,
+        );
+      }
+      const members: Record<string, JsonValue> = Object.fromEntries(
+        Object.entries(current).map(([key, entry]) => [
+          key,
+          visit(entry, `${path}.${key}`),
+        ]),
+      );
+      Object.freeze(members);
+      return members;
+    } finally {
+      active.delete(current);
+    }
+  }
+  if (value === undefined) {
+    throw new Error(`${kind}: "${field}" is required and must be a JSON value`);
+  }
+  return visit(value, "");
 }
 
 export function requireComponent<T>(kind: string, value: unknown): T {

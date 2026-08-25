@@ -25,6 +25,18 @@ function isIconName(name: string): name is IconName {
   return (ICON_NAMES as readonly string[]).includes(name);
 }
 
+/**
+ * Whether a declared glyph name exists in the shared icon set.
+ *
+ * Exported so callers that must render `<Icon name={...} />` themselves — a
+ * React-compiler requirement wherever minting a component during render would
+ * be flagged — can narrow a plugin-supplied string to an `IconName` without
+ * duplicating the membership test.
+ */
+export function isKnownIconName(name: string): name is IconName {
+  return isIconName(name);
+}
+
 const declaredGlyphIcons = new Map<
   string,
   ComponentType<{ className?: string }>

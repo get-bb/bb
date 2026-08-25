@@ -81,6 +81,16 @@ interface ParentThreadInvalidDescriptionArgs {
   operation?: LifecycleErrorOperation | undefined;
 }
 
+interface DispatchRejectedDescriptionArgs {
+  error: Extract<LifecycleApiError, { code: "dispatch_rejected" }>;
+  operation?: LifecycleErrorOperation | undefined;
+}
+
+interface DispatchGateFailedDescriptionArgs {
+  error: Extract<LifecycleApiError, { code: "dispatch_gate_failed" }>;
+  operation?: LifecycleErrorOperation | undefined;
+}
+
 function operationTitle(operation: LifecycleErrorOperation): string {
   switch (operation) {
     case "archive_thread":
@@ -411,6 +421,42 @@ function describeParentThreadInvalid({
   }
 }
 
+/**
+ * A gate's `reject` verdict. The plugin wrote the refusal for this user, so it
+ * is the body verbatim; we only say which plugin it came from, because the
+ * title is replaced by the operation ("Failed to send message") whenever the
+ * caller passes one. Treated like the other refusals a user can act on and
+ * retry rather than as a failure.
+ */
+function describeDispatchRejected({
+  error,
+  operation,
+}: DispatchRejectedDescriptionArgs): LifecycleErrorDescription {
+  return warning({
+    operation,
+    title: "Blocked by a plugin",
+    body: `Blocked by the "${error.details.pluginId}" plugin: ${error.message}`,
+  });
+}
+
+/**
+ * A gate that threw or timed out, failing closed. The server message already
+ * names the plugin and the stage, so it is passed through rather than rebuilt,
+ * and the recovery hint says "that plugin" to avoid naming it twice.
+ */
+function describeDispatchGateFailed({
+  error,
+  operation,
+}: DispatchGateFailedDescriptionArgs): LifecycleErrorDescription {
+  const reason = error.message.trim();
+  const sentence = reason.endsWith(".") ? reason : `${reason}.`;
+  return errorDescription({
+    operation,
+    title: "Plugin dispatch gate failed",
+    body: `${sentence} Disable that plugin to continue.`,
+  });
+}
+
 export function parseLifecycleError(error: unknown): LifecycleApiError | null {
   if (!(error instanceof HttpError) && !(error instanceof BbHttpError)) {
     return null;
@@ -460,6 +506,10 @@ export function describeLifecycleError({
         error: lifecycleError,
         operation,
       });
+    case "dispatch_rejected":
+      return describeDispatchRejected({ error: lifecycleError, operation });
+    case "dispatch_gate_failed":
+      return describeDispatchGateFailed({ error: lifecycleError, operation });
     default:
       return assertNever(lifecycleError);
   }

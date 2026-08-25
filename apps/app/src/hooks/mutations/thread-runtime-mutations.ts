@@ -165,6 +165,7 @@ export function useSendThreadMessage() {
       mode,
       senderThreadId,
       executionInputSources,
+      pluginInputs,
     }: SendThreadMessageMutationRequest) => {
       return await sdk.threads.send({
         threadId: id,
@@ -173,6 +174,7 @@ export function useSendThreadMessage() {
         serviceTier,
         reasoningLevel,
         permissionMode,
+        ...(pluginInputs === undefined ? {} : { pluginInputs }),
         executionInputSources,
         mode,
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
@@ -242,6 +244,7 @@ export function useCreateThreadQueuedMessage() {
       permissionMode,
       senderThreadId,
       executionInputSources,
+      pluginInputs,
     }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
       sdk.threads.queuedMessages.create({
         threadId: id,
@@ -251,6 +254,7 @@ export function useCreateThreadQueuedMessage() {
         reasoningLevel,
         permissionMode,
         executionInputSources,
+        ...(pluginInputs === undefined ? {} : { pluginInputs }),
         ...(senderThreadId !== undefined ? { senderThreadId } : {}),
       }),
     onMutate: async (variables): Promise<CreateQueuedMessageTransaction> =>

@@ -1509,6 +1509,7 @@ describe("@bb/sdk", () => {
       logoUrl: null,
       logoDarkUrl: null,
       providerIds: [],
+      dispatchGateStages: [],
       icons: {},
     };
     const catalog = {
