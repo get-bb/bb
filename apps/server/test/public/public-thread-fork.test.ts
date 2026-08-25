@@ -730,106 +730,99 @@ describe("public thread fork route", () => {
     });
   });
 
-  it("forks a custom ACP provider and uses the returned child session", async () => {
-    await withTestHarness(
-      {
-        customAcpAgents: [
-          {
-            id: "test-agent",
-            displayName: "Test Agent",
-            command: "test-agent",
-            args: ["acp"],
-            env: {},
-            supportsManualCompaction: false,
-          },
-        ],
-      },
-      async (harness) => {
-        const { host } = seedHostSession(harness.deps);
-        const { project } = seedProjectWithSource(harness.deps, {
-          hostId: host.id,
-        });
-        const environment = seedEnvironment(harness.deps, {
-          hostId: host.id,
-          projectId: project.id,
-        });
-        const sourceThread = seedThread(harness.deps, {
-          environmentId: environment.id,
-          projectId: project.id,
-          providerId: "acp-test-agent",
-        });
-        seedThreadRuntimeState(harness.deps, {
-          environmentId: environment.id,
-          model: "acp-default",
-          providerThreadId: "provider-acp-source",
-          threadId: sourceThread.id,
-        });
-        seedTurnStarted(harness.deps, {
-          environmentId: environment.id,
-          providerThreadId: "provider-acp-source",
-          sequence: 3,
-          threadId: sourceThread.id,
-          turnId: "turn-acp-source",
-        });
+  // A shipped ACP agent that declares `fork: "tip"`. A user-CONFIGURED agent
+  // cannot stand in for it: the plugin declares every configured agent
+  // `fork: "none"`, because bb has not verified its session/fork support and
+  // the bridge refuses a fork only after bb created the fork thread (#1833).
+  it("forks an ACP provider that declares it and uses the returned child session", async () => {
+    await withTestHarness({}, async (harness) => {
+      const { host } = seedHostSession(harness.deps);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+      });
+      const sourceThread = seedThread(harness.deps, {
+        environmentId: environment.id,
+        projectId: project.id,
+        providerId: "acp-opencode",
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        model: "acp-default",
+        providerThreadId: "provider-acp-source",
+        threadId: sourceThread.id,
+      });
+      seedTurnStarted(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-acp-source",
+        sequence: 3,
+        threadId: sourceThread.id,
+        turnId: "turn-acp-source",
+      });
 
-        const response = await postFork(harness, {
-          sourceThreadId: sourceThread.id,
-          workspace: "reuse",
-        });
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        workspace: "reuse",
+      });
 
-        expect(response.status).toBe(201);
-        const fork = threadResponseSchema.parse(await readJson(response));
-        const start = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "thread.start" && command.threadId === fork.id,
-        );
-        if (start.command.type !== "thread.start") {
-          throw new Error("Expected thread.start");
-        }
-        expect(start.command).toMatchObject({
-          providerId: "acp-test-agent",
-          acpLaunchSpec: {
-            command: "test-agent",
-            args: ["acp"],
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const start = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "thread.start" && command.threadId === fork.id,
+      );
+      if (start.command.type !== "thread.start") {
+        throw new Error("Expected thread.start");
+      }
+      // The launch spec reaches the bridge through the opaque provider
+      // options every provider uses, from the plugin's own registration.
+      expect(start.command).toMatchObject({
+        providerId: "acp-opencode",
+        bridgeLaunch: {
+          providerOptions: {
+            acpLaunchSpec: { command: "opencode", args: ["acp"] },
           },
-          fork: {
-            sourceProviderThreadId: "provider-acp-source",
-          },
-        });
+        },
+        fork: {
+          sourceProviderThreadId: "provider-acp-source",
+        },
+      });
 
-        await reportQueuedCommandSuccess(harness, start, {
-          providerThreadId: "provider-acp-child",
-        });
-        expect(
-          listEvents(harness.db, { threadId: fork.id }).some(
-            (event) => event.providerThreadId === "provider-acp-child",
-          ),
-        ).toBe(true);
+      await reportQueuedCommandSuccess(harness, start, {
+        providerThreadId: "provider-acp-child",
+      });
+      expect(
+        listEvents(harness.db, { threadId: fork.id }).some(
+          (event) => event.providerThreadId === "provider-acp-child",
+        ),
+      ).toBe(true);
 
-        const sendResponse = await harness.app.request(
-          `/api/v1/threads/${fork.id}/send`,
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              input: [{ type: "text", text: "Continue the fork" }],
-              mode: "auto",
-              permissionMode: "full",
-            }),
-          },
-        );
-        expect(sendResponse.status).toBe(200);
-        const turn = await waitForQueuedCommand(
-          harness,
-          ({ command }) =>
-            command.type === "turn.submit" && command.threadId === fork.id,
-        );
-        expect(turn.command).toMatchObject({
-          resumeContext: { providerThreadId: "provider-acp-child" },
-        });
-      },
-    );
+      const sendResponse = await harness.app.request(
+        `/api/v1/threads/${fork.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            input: [{ type: "text", text: "Continue the fork" }],
+            mode: "auto",
+            permissionMode: "full",
+          }),
+        },
+      );
+      expect(sendResponse.status).toBe(200);
+      const turn = await waitForQueuedCommand(
+        harness,
+        ({ command }) =>
+          command.type === "turn.submit" && command.threadId === fork.id,
+      );
+      expect(turn.command).toMatchObject({
+        resumeContext: { providerThreadId: "provider-acp-child" },
+      });
+    });
   });
 });
 
@@ -1278,8 +1271,7 @@ describe("fork branch point and inherited history", () => {
       expect(earlier.status).toBe(400);
       expect(await readJson(earlier)).toMatchObject({
         code: "fork_source_session_unavailable",
-        message:
-          "Provider acp-test-agent can only fork at the end of a session, not from an earlier point in it",
+        message: `Provider ${TIP_ONLY_PROVIDER_ID} can only fork at the end of a session, not from an earlier point in it`,
       });
 
       // Sequence 10 sits in turn 2, the source's latest turn: the whole

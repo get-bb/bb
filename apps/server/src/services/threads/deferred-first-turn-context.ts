@@ -1,7 +1,4 @@
-import {
-  findStoredEventRow,
-  getLastStoredTurnRequestEvent,
-} from "@bb/db";
+import { findStoredEventRow, getLastStoredTurnRequestEvent } from "@bb/db";
 import type { DbQueryConnection } from "@bb/db";
 import type { PromptInput } from "@bb/domain";
 import { ApiError } from "../../errors.js";
@@ -21,7 +18,6 @@ interface GroupedPrompt {
   input: PromptInput[];
   inputGroups: PromptInput[][];
 }
-
 
 export function resolveDeferredFirstTurnContext(
   db: DbQueryConnection,

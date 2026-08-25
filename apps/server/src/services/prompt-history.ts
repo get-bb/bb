@@ -252,9 +252,7 @@ export function recordAcceptedPromptHistoryEntry(
 ): boolean {
   // Prompt history is user-editable composer state. Provider-only context
   // belongs on the accepted turn request, never in a recalled draft.
-  const input = args.input.filter(
-    (item) => item.visibility !== "agent-only",
-  );
+  const input = args.input.filter((item) => item.visibility !== "agent-only");
   // Empty input also reaches this path when an idle side-chat/fork provider
   // session is preloaded. The stored schema requires at least one item.
   if (input.length === 0) {

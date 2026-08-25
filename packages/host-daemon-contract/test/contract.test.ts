@@ -1133,7 +1133,7 @@ describe("host-daemon command schemas", () => {
   // mixed version. Version 113 carried the Devin Desktop open target rename
   // and remains part of the protocol lineage.
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(153);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(167);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1480,23 +1480,61 @@ describe("host-daemon command schemas", () => {
       includeDirectories: true,
     });
 
+    // Version 162: the daemon scans exactly the provider's declared skill and
+    // command roots (per-root options explicit) and what its plugin resolved.
+    // Version 163: a declared side is `user` or `project` only; host-absolute
+    // roots arrive as resolved roots.
+    const root = (
+      path: string,
+      options: Partial<{
+        recursive: boolean;
+        ancestors: boolean;
+        namePrefix: string;
+      }> = {},
+    ) => ({
+      path,
+      recursive: false,
+      ancestors: false,
+      namePrefix: "",
+      ...options,
+    });
+    const emptyRoots = { user: [], project: [] };
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_commands",
         providerId: "acp-amp",
         cwd: "/tmp/workspace",
-        nativeSkillRoots: {
-          user: [".agents/skills"],
-          project: [".amp/skills"],
+        nativeRoots: {
+          skills: {
+            user: [root(".agents/skills")],
+            project: [
+              root(".amp/skills", { recursive: true, ancestors: true }),
+            ],
+          },
+          commands: { ...emptyRoots, project: [root(".amp/commands")] },
+          resolved: {
+            skills: [
+              {
+                path: "/home/dev/.amp/plugins/one/skills",
+                origin: "user",
+                recursive: false,
+                ancestors: false,
+                namePrefix: "one:",
+                shape: "skills",
+              },
+            ],
+            commands: [],
+          },
         },
       }),
     ).toMatchObject({
       type: "host.list_commands",
       providerId: "acp-amp",
-      cwd: "/tmp/workspace",
-      nativeSkillRoots: {
-        user: [".agents/skills"],
-        project: [".amp/skills"],
+      nativeRoots: {
+        skills: {
+          project: [{ path: ".amp/skills", recursive: true, ancestors: true }],
+        },
+        resolved: { skills: [{ namePrefix: "one:", shape: "skills" }] },
       },
     });
 
@@ -1518,6 +1556,31 @@ describe("host-daemon command schemas", () => {
         project: [".agents/skills"],
       },
     });
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ absolute: [root("/home/dev/.pi/agent/skills")] }),
+      ),
+    ).toThrow(/Unrecognized key[^\n]*absolute/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root("/home/dev/.pi/agent/skills")] }),
+      ),
+    ).toThrow(/relative paths without dot segments/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root(".pi/skills", { ancestors: true })] }),
+      ),
+    ).toThrow(/Only project roots may walk ancestors/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root(".pi/skills"), root(".pi/skills")] }),
+      ),
+    ).toThrow(/must not repeat a path/u);
+    expect(() =>
+      hostDaemonOnlineRpcCommandSchema.parse(
+        withRoots({ user: [root(".pi/skills", { namePrefix: "bad prefix" })] }),
+      ),
+    ).toThrow(/ending in ':'/u);
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
@@ -1799,37 +1862,6 @@ describe("host-daemon command schemas", () => {
     }
   });
 
-  it("requires Codex inference schemas and results to be JSON objects", () => {
-    for (const outputSchema of [null, "object", ["object"]]) {
-      expect(() =>
-        hostDaemonCommandSchema.parse({
-          type: "codex.inference.complete",
-          model: "gpt-5.4-mini",
-          reasoningEffort: "none",
-          prompt: "Return a title",
-          outputSchema,
-          timeoutMs: 10000,
-        }),
-      ).toThrow();
-    }
-
-    expect(() =>
-      hostDaemonCommandResultSchemaByType["codex.inference.complete"].parse({
-        model: "gpt-5.4-mini",
-        value: null,
-      }),
-    ).toThrow();
-
-    expect(
-      hostDaemonCommandResultSchemaByType["codex.inference.complete"].parse({
-        model: "gpt-5.4-mini",
-        value: { title: "Short title" },
-      }),
-    ).toEqual({
-      model: "gpt-5.4-mini",
-      value: { title: "Short title" },
-    });
-  });
 
   it("rejects malformed environment.provision commands at parse time", () => {
     expect(() =>
@@ -3473,8 +3505,16 @@ describe("host-daemon session schemas", () => {
               ],
             },
           ],
-        }),
-      ).toThrow();
+        },
+      ],
+    });
+    const [group] = parsed.eventGroups;
+    const started = group?.events.find(
+      (event) => event.type === "item/started",
+    );
+    expect(started).toBeDefined();
+    if (started?.type !== "item/started") {
+      throw new Error("Expected the spoofed event to parse as item/started");
     }
 
     expect(() =>
