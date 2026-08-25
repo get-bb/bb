@@ -1048,8 +1048,17 @@ export function BottomAnchoredScrollBody({
     if (!scrollArea || !scrollContent) return;
 
     let scrollbarIdleTimeout: number | null = null;
-    const handleScrollWithTransientScrollbar = () => {
-      scrollArea.dataset.scrollbarScrolling = "true";
+    const handleScrollEvent = () => {
+      // `.thread-scrollbar` hides the thumb at rest on every platform
+      // (app.css sets `scrollbar-color: transparent transparent` with no
+      // pointer gate, and Android Chrome / iOS paint their overlay indicators
+      // with it), so this attribute is what shows the thumb during a touch
+      // flick too. Write it once per burst: a same-value write is still a
+      // style invalidation, and that per-event cost is what a scrolling phone
+      // cannot afford.
+      if (scrollArea.dataset.scrollbarScrolling !== "true") {
+        scrollArea.dataset.scrollbarScrolling = "true";
+      }
       if (scrollbarIdleTimeout !== null) {
         window.clearTimeout(scrollbarIdleTimeout);
       }
@@ -1059,12 +1068,6 @@ export function BottomAnchoredScrollBody({
       }, SCROLLBAR_IDLE_DELAY_MS);
       handleScroll();
     };
-    // The transient-scrollbar attribute only feeds the desktop-only
-    // ::-webkit-scrollbar rules; on coarse pointers (overlay scrollbars) the
-    // write would be a pure per-scroll-event style invalidation.
-    const handleScrollEvent = isPointerCoarse
-      ? handleScroll
-      : handleScrollWithTransientScrollbar;
 
     let resizeObserver: ResizeObserver | undefined;
     if (typeof ResizeObserver !== "undefined") {
@@ -1118,7 +1121,6 @@ export function BottomAnchoredScrollBody({
     endPointerScrollIntent,
     handleScroll,
     handleScrollAreaResize,
-    isPointerCoarse,
     markKeyboardScrollIntent,
     markTouchMoveScrollIntent,
     markTouchStartScrollIntent,

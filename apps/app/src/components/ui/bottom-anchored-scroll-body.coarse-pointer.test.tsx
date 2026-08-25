@@ -6,8 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
 import { threadTimelineScrollAnchorAtomFamily } from "@/lib/thread-timeline-scroll-anchor";
 
-// Per-scroll-event costs that differ by pointer type: the transient-scrollbar
-// attribute (desktop-scrollbar-only CSS) is skipped on coarse pointers, the
+// Per-scroll-event costs on coarse pointers: the transient-scrollbar attribute
+// is written once per scroll burst (the at-rest `.thread-scrollbar` rules hide
+// the thumb on every platform, so a touch flick still has to flip it), the
 // scroll-anchor capture throttle relaxes to the coarse cadence, and captures
 // reuse a cached row NodeList that the ResizeObserver invalidates.
 
@@ -145,15 +146,32 @@ afterEach(() => {
 });
 
 describe("BottomAnchoredScrollBody on coarse pointers", () => {
-  it("never writes the transient scrollbar attribute", () => {
+  it("shows the transient scrollbar with one attribute write per scroll burst", () => {
     stubMediaQueries(new Set(["(pointer: coarse)"]));
+    vi.useFakeTimers();
     const { scrollArea } = renderTimeline("coarse-thread", ["row-a"]);
+    const attributeWrites = new MutationObserver(() => {});
+    attributeWrites.observe(scrollArea, {
+      attributes: true,
+      attributeFilter: ["data-scrollbar-scrolling"],
+    });
 
-    fireEvent.scroll(scrollArea);
+    // `.thread-scrollbar` paints the thumb transparent at rest on every
+    // platform, and Android Chrome / iOS apply `scrollbar-color` to their
+    // overlay indicators, so a touch flick still has to flip the attribute —
+    // once per burst: the steady-state events must not re-set it, since each
+    // attribute write is a style invalidation while the browser is scrolling.
+    for (let scrollTop = 10; scrollTop <= 50; scrollTop += 10) {
+      scrollArea.scrollTop = scrollTop;
+      fireEvent.scroll(scrollArea);
+    }
+    expect(scrollArea.getAttribute("data-scrollbar-scrolling")).toBe("true");
+    expect(attributeWrites.takeRecords()).toHaveLength(1);
 
-    // The attribute only feeds desktop ::-webkit-scrollbar rules; on touch it
-    // would be a per-scroll-event style invalidation with no visible effect.
+    // The thumb hides again once scrolling goes idle.
+    vi.runAllTimers();
     expect(scrollArea.hasAttribute("data-scrollbar-scrolling")).toBe(false);
+    attributeWrites.disconnect();
   });
 
   it("captures scroll anchors at the relaxed coarse cadence", () => {
@@ -162,10 +180,12 @@ describe("BottomAnchoredScrollBody on coarse pointers", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
     const { scrollArea } = renderTimeline("coarse-thread", ["row-a"]);
 
-    // Settle the first capture (immediate or trailing, depending on where the
-    // faked clock started) so the throttle's lastWriteAt equals now.
+    // Move the clock past the throttle window so the first capture writes
+    // immediately, leaving the throttle's lastWriteAt equal to now. (Running
+    // pending timers instead would also fire the scrollbar idle timeout and
+    // advance the clock 600ms past that write.)
+    vi.advanceTimersByTime(1_000);
     fireEvent.scroll(scrollArea);
-    vi.runOnlyPendingTimers();
     expect(readAnchor("coarse-thread")).not.toBeNull();
     getDefaultStore().set(
       threadTimelineScrollAnchorAtomFamily("coarse-thread"),
