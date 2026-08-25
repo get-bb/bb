@@ -858,12 +858,15 @@ describe("runtime recovery hints", () => {
       threadId: "t-restart",
     });
     await waitForRuntimeState({
+      describeFailure: () =>
+        `processLog=[${processLog.read().join(",")}], resumedThreadIds=[${resumedThreadIds(record).join(",")}]`,
       label: "the thread was resumed on a fresh process",
       predicate: () =>
         processLog.read().filter((line) => line.startsWith("spawn:"))
           .length === 2 &&
         record.last("thread/resume") !== undefined &&
         runtime.listRunningProviders().length === 1,
+      runtime,
       timeoutMs: 5_000,
     });
 
@@ -1114,10 +1117,13 @@ describe("runtime recovery hints", () => {
     });
     await waitForThreadTurnCompleted({ events, threadId: "t-batch" });
     await waitForRuntimeState({
+      describeFailure: () =>
+        `processLog=[${processLog.read().join(",")}], resumedThreadIds=[${resumedThreadIds(record).join(",")}], stderr=[${stderr.join(",")}]`,
       label: "the restart ran once the turn operation settled",
       predicate: () =>
         countSpawns(processLog) === 2 &&
         record.last("thread/resume") !== undefined,
+      runtime,
       timeoutMs: 5_000,
     });
     expect(resumedThreadIds(record)).toEqual(["t-batch"]);
