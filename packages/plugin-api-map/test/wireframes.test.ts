@@ -11,6 +11,10 @@ import {
   spatialFixtureScale,
   SURFACE_NUMBERS,
 } from "../src/product-map";
+import {
+  annotationChipCounterScale,
+  MAX_CHIP_COUNTER_SCALE,
+} from "../src/annotation";
 import { SURFACES_BY_ID } from "../src/surfaces";
 import anatomy from "../src/anatomy-manifest.json";
 import {
@@ -58,6 +62,32 @@ describe("guide fixture boundaries", () => {
     expect(spatialFixtureScale(1280, 720, 350, 700)).toBe(0.5);
     expect(spatialFixtureScale(1280, 720, 7000, 700)).toBe(MAX_FIXTURE_SCALE);
     expect(spatialFixtureScale(360, 720, 7000, 700)).toBe(0.5);
+  });
+
+  it("keeps annotation chips legible while the fixture shrinks under them", () => {
+    // A chip never renders below its authored size: the counter-scale is the
+    // exact inverse of a shrunken fixture, so size x scale x counter = 1.
+    expect(annotationChipCounterScale(0.5)).toBe(2);
+    expect(annotationChipCounterScale(0.8)).toBeCloseTo(1.25, 10);
+    for (const scale of [0.5, 0.6, 0.8, 0.95]) {
+      expect(scale * annotationChipCounterScale(scale)).toBeCloseTo(1, 10);
+    }
+    // A fixture at or above authored scale leaves chips alone, so they grow
+    // with a roomy mock instead of pinning to one size.
+    expect(annotationChipCounterScale(1)).toBe(1);
+    expect(annotationChipCounterScale(MAX_FIXTURE_SCALE)).toBe(1);
+    // The ceiling stops a thumbnail-sized fixture from being blanketed by
+    // constant-size chips.
+    expect(annotationChipCounterScale(0.2)).toBe(MAX_CHIP_COUNTER_SCALE);
+    // Degenerate measurements fall back to the authored size.
+    expect(annotationChipCounterScale(0)).toBe(1);
+    expect(annotationChipCounterScale(Number.NaN)).toBe(1);
+
+    // The fixture publishes the counter-scale; the chip consumes it with an
+    // authored-size fallback for chips rendered outside any fixture.
+    const markup = renderToStaticMarkup(createElement(ProductMap));
+    expect(markup).toContain("--guide-chip-scale");
+    expect(markup).toContain("scale-[var(--guide-chip-scale,1)]");
   });
 
   it("scrolls only the one-line page list and clips off-stage fixture overflow", () => {

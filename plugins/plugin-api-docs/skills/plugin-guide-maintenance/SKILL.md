@@ -338,6 +338,16 @@ in the top visual layer rather than merely having an unclipped rectangle.
 - A fixture demo may hide its page's subject (the command palette, the
   composer) only as a timed beat that restores itself; it must never latch
   the subject away behind a manual reopen control.
+- Numbered chips are Guide chrome, not product chrome: they stay legible
+  while the fixture shrinks under them, because a chip the reader cannot read
+  or click cannot do its job. The fixture publishes a counter-scale
+  (`annotationChipCounterScale`) that chips undo the shrink with, bounded by
+  `MAX_CHIP_COUNTER_SCALE` so a thumbnail-scale fixture is not blanketed by
+  its own annotations. Measure every chip gap, tuck, and clamp against the
+  chip's effective footprint, never its authored one. The annotation gutter is
+  authored for a chip at its own size, so a counter-scaled chip can outgrow
+  it: a measured chip clamps into its slide and rides the frame edge rather
+  than leaving the slide to be clipped away.
 - Use one Guide-owned gap between a fixture and its card: the card wrapper
   owns `clamp(8px, 3cqh, 28px)`, derived from the consumer's declared
   container and floored at 8 CSS pixels without one. The active carousel slide

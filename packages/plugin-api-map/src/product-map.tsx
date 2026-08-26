@@ -19,6 +19,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
@@ -37,6 +38,8 @@ import {
   type SurfaceGroup,
 } from "./surfaces";
 import {
+  annotationChipCounterScale,
+  CHIP_COUNTER_SCALE_PROPERTY,
   ExperimentalBadge,
   FOCUS_RING_CLASS,
   renderSurfaceCopy,
@@ -402,9 +405,15 @@ function SpatialFixture({
       <div
         ref={fixtureRef}
         className="mx-auto w-full origin-top transition-transform duration-300 ease-out"
+        // Cast: React's CSSProperties has no slot for custom properties.
         style={{
           minWidth: band?.min,
           maxWidth: band?.max,
+          // Published for every annotation chip inside this fixture: chips
+          // undo the shrink so they stay legible while the mock scales down.
+          [CHIP_COUNTER_SCALE_PROPERTY]: annotationChipCounterScale(
+            geometry.scale,
+          ),
           ...(scaled
             ? {
                 transform: `scale(${geometry.scale})`,
@@ -413,7 +422,7 @@ function SpatialFixture({
                 marginRight: 0,
               }
             : undefined),
-        }}
+        } as CSSProperties}
       >
         {children}
       </div>

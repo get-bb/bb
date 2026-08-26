@@ -21,11 +21,42 @@ export function annotationChipClass(active: boolean, className?: string) {
     // marker beside the mockups' own chrome rather than a badge competing
     // with it, and the heavier digit carries the smaller ring.
     "flex size-5 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold leading-none transition-colors",
+    // Chips are Guide chrome, not product chrome: they carry the reader
+    // between the mock and its card, so they hold a legible size while the
+    // fixture around them shrinks. SpatialFixture publishes the counter-
+    // scale (see annotationChipCounterScale); outside a fixture the
+    // fallback leaves the chip at its authored size.
+    "scale-[var(--guide-chip-scale,1)]",
     active
       ? "bg-file-accent text-background"
       : "bg-[color-mix(in_oklch,var(--ink)_18%,var(--canvas))] text-foreground",
     className,
   );
+}
+
+/** The CSS custom property SpatialFixture publishes for {@link annotationChipClass}. */
+export const CHIP_COUNTER_SCALE_PROPERTY = "--guide-chip-scale";
+
+/**
+ * A chip never renders smaller than its authored size, and never grows more
+ * than this multiple of its footprint inside the mock. The floor keeps the
+ * digits readable and the chip tappable when a dense fixture scales down for
+ * a narrow panel; the ceiling stops chips from blanketing a fixture that has
+ * shrunk to a thumbnail, where a constant-size chip would cover the very
+ * chrome it points at.
+ */
+export const MAX_CHIP_COUNTER_SCALE = 3;
+
+/**
+ * Undo the fixture's shrink for the annotation chip riding inside it, so
+ * `CHIP_SIZE * fixtureScale * counterScale` lands at the authored size until
+ * the ceiling takes over. A fixture at or above its authored scale returns 1:
+ * chips grow with a roomy mock, they just never shrink with a cramped one.
+ * Pure, so the boundary is testable without a layout engine.
+ */
+export function annotationChipCounterScale(fixtureScale: number): number {
+  if (!Number.isFinite(fixtureScale) || fixtureScale <= 0) return 1;
+  return Math.min(MAX_CHIP_COUNTER_SCALE, Math.max(1, 1 / fixtureScale));
 }
 
 /**

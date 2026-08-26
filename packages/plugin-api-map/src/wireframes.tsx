@@ -59,6 +59,7 @@ import {
 import { cn } from "./cn";
 import {
   annotationChipClass,
+  annotationChipCounterScale,
   CHIP_PLACEMENT_CLASS,
   FOCUS_RING_CLASS,
   type AnnotationChipPlacement,
@@ -455,6 +456,21 @@ function MeasuredBadge({
       return { x, y };
     };
     const measure = () => {
+      // Chips counter-scale to stay legible inside a shrunken fixture, so
+      // every gap and clamp below is measured against the chip's effective
+      // footprint, not its authored one. The element keeps its authored
+      // layout box and grows about its own center, so the final left/top
+      // shifts back by half the difference.
+      const strategy = container.closest<HTMLElement>(
+        "[data-guide-responsive-strategy]",
+      );
+      const counterScale = annotationChipCounterScale(
+        Number(strategy?.dataset.guideScale ?? "1"),
+      );
+      const chipBox = CHIP_SIZE * counterScale;
+      const chipGap = CHIP_GAP * counterScale;
+      const chipTuck = 4 * counterScale;
+      const recenter = (chipBox - CHIP_SIZE) / 2;
       const containerOrigin = layoutOrigin(container);
       const targetOrigin = layoutOrigin(target);
       const local = {
@@ -463,9 +479,9 @@ function MeasuredBadge({
         width: target.offsetWidth,
         height: target.offsetHeight,
       };
-      const centerY = local.top + local.height / 2 - CHIP_SIZE / 2;
+      const centerY = local.top + local.height / 2 - chipBox / 2;
       const anchoredY =
-        align === "end" ? local.top + local.height - CHIP_SIZE : centerY;
+        align === "end" ? local.top + local.height - chipBox : centerY;
       // The exterior columns and the lane derive from the window frame's own
       // box: chips sit just outside the frame edge (inside the slide gutter,
       // so nothing clips them) and the lane centers in the band the gutter
@@ -480,17 +496,17 @@ function MeasuredBadge({
       };
       const next =
         at === "start"
-          ? { left: frameLocal.left - CHIP_SIZE - CHIP_GAP, top: anchoredY }
+          ? { left: frameLocal.left - chipBox - chipGap, top: anchoredY }
           : at === "end"
-            ? { left: frameLocal.right + CHIP_GAP, top: anchoredY }
+            ? { left: frameLocal.right + chipGap, top: anchoredY }
             : at === "above"
               ? {
-                  left: local.left + local.width / 2 - CHIP_SIZE / 2,
-                  top: local.top - CHIP_SIZE - 4,
+                  left: local.left + local.width / 2 - chipBox / 2,
+                  top: local.top - chipBox - chipTuck,
                 }
               : {
-                  left: local.left + local.width / 2 - CHIP_SIZE / 2,
-                  top: Math.max(0, (frameLocal.top - CHIP_SIZE) / 2),
+                  left: local.left + local.width / 2 - chipBox / 2,
+                  top: Math.max(0, (frameLocal.top - chipBox) / 2),
                 };
       // A container inside a clipping window frame (the palette dialog)
       // cannot hang chips past that frame's edge — they would clip to
@@ -503,10 +519,21 @@ function MeasuredBadge({
         const clipOrigin = layoutOrigin(clippingFrame);
         const clipLeft = clipOrigin.x - containerOrigin.x;
         next.left = Math.min(
-          Math.max(next.left, clipLeft + 4),
-          clipLeft + clippingFrame.offsetWidth - CHIP_SIZE - 4,
+          Math.max(next.left, clipLeft + chipTuck),
+          clipLeft + clippingFrame.offsetWidth - chipBox - chipTuck,
         );
       }
+      // The annotation gutter is authored for a chip at its own size, so a
+      // counter-scaled chip can outgrow it. A chip that left the slide would
+      // be clipped away entirely; riding the frame edge keeps it visible and
+      // clickable, which is what the chip is for. The gutter still holds it
+      // whenever the fixture is roomy enough not to counter-scale much.
+      const clamp = (value: number, extent: number) =>
+        Math.max(0, Math.min(value, Math.max(0, extent - chipBox)));
+      next.left = clamp(next.left, container.offsetWidth);
+      next.top = clamp(next.top, container.offsetHeight);
+      next.left += recenter;
+      next.top += recenter;
       setPosition((current) =>
         current &&
         Math.abs(current.left - next.left) < 0.5 &&
