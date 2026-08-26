@@ -105,26 +105,19 @@ CI builds Linux artifacts on the pinned `ubuntu-22.04` runner. The AppImage
 links against the build machine's glibc, so that pin sets the oldest
 distribution that can run a published build. Raise it deliberately.
 
-Linux gets both update paths, but they are not equivalent:
+Linux only uses the JSON version feed (`desktop-version-linux.json`), which is
+polled to report that a newer release exists. Self-installing Linux updates are
+disabled until the updater can verify publisher provenance independently of the
+feed metadata. Download a replacement manually only after verifying the
+published asset and its GitHub Artifact Attestation.
 
-- The JSON version feed (`desktop-version-linux.json`) is polled on every Linux
-  install and reports that a newer release exists.
-- Self-installing auto-update runs only inside an AppImage whose directory the
-  app can write to. electron-updater detects the AppImage through the `APPIMAGE`
-  environment variable, and its install step unlinks the running file _before_
-  moving the replacement in — so a read-only directory would delete the app and
-  leave nothing behind. Both the startup check and the install handler verify
-  write and search access on the parent directory first.
-- Everything else — an extracted directory, a distribution package, or an
-  AppImage in a read-only location — reports new versions without installing
-  them.
-
-The Linux AppImage is unsigned, and electron-updater performs no signature
-check on Linux: it verifies only the SHA-512 recorded in the update metadata
-that ships beside it. macOS installs through Squirrel, which additionally
-requires the replacement to satisfy the running app's code-signing
-requirement. Write access to the release assets is therefore sufficient to
-push code to Linux clients. Treat the release token accordingly.
+The Linux AppImage is unsigned. The release publisher creates a GitHub Artifact
+Attestation for desktop binaries; verify a downloaded asset with `gh attestation
+verify <asset> -R get-bb/bb`. That attestation is Sigstore-signed publisher
+provenance, not a Linux code signature. Linux self-installing updates remain
+disabled, while macOS installs through Squirrel, which additionally requires
+the replacement to satisfy the running app's code-signing requirement. Treat
+release-asset write access as sufficient to push code to Linux clients.
 
 ## Releasing
 

@@ -35,15 +35,14 @@ Settings → Machines so its installer records the account-gated route. The
 private alternative is to open bb through the Tailscale Serve URL and re-run
 the Add machine installer from there.
 
-For compatibility only, `npx bb-app --server-bind-host 0.0.0.0` restores direct
-IPv4 network access. The public API is unauthenticated and permits command
-execution and file reads, so use wildcard binding only behind a trusted network
-boundary and never through Funnel or the public internet.
+The server does not support direct LAN or tailnet binding: its unauthenticated
+API always listens on loopback, and off-loopback `BB_SERVER_BIND_HOST` values are
+refused. Use bb connect or Tailscale Serve with private ACLs for remote access.
+The Origin check is a browser CSRF boundary, not authentication.
 
-Inside a container, `0.0.0.0` listens on the container's IPv4 interfaces; the
-container runtime must still publish that port to the host (for example,
-`docker run -p 3000:3000 ...`). Host firewall and upstream network rules also
-remain separate from bb's bind setting.
+Inside a container, publish a loopback listener through a private access
+boundary rather than exposing the unauthenticated API itself. Host firewall and
+upstream network rules remain separate from bb's bind setting.
 
 ### Use editors installed on the browser device
 
@@ -106,10 +105,10 @@ The phone keeps its credential in the device keychain and mints short-lived
 sessions from it; it never holds the server's pairing secret. To cut a phone
 off, revoke it in the getbb.app dashboard machine list. Every phone takes one of
 the account's machine slots, so a machine-limit error means an unused device
-should be revoked first. On a trusted network the app can also use a direct
-server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
-caveats as a browser. Platforms (iOS first) and what the phone cannot do are
-listed in [platform-support.md](platform-support.md).
+should be revoked first. The app can use a Tailscale Serve URL protected by
+private ACLs, or bb connect; direct LAN/tailnet server URLs are not supported.
+Platforms (iOS first) and what the phone cannot do are listed in
+[platform-support.md](platform-support.md).
 
 ## Point the desktop app at another bb
 
@@ -140,16 +139,19 @@ not directly reachable from another machine. When bb connect is not paired and
 the server URL is a loopback or unspecified address, the dialog does not show an
 installer. It links to Settings → Remote access instead.
 
-The installer always installs the exact `bb-app` package exposed by that
-server at `/install/bb-app.tgz`; a `bb-app` already on PATH is reused, and the
-npm registry consulted, only when the server provides no package. Version
-strings cannot distinguish unpublished builds, so this keeps remote machines
-aligned with development and pre-release servers whose build may not exist on
-npm. The package route is public like `/install.sh`: `bb-app` is public
-software, and exposing an unpublished build slightly early through a paired
-tunnel is an accepted tradeoff. npm installs the package into the machine's bb
-data directory, not its system-wide global prefix, so enrollment needs neither
+The installer requires HTTPS for non-loopback server URLs; HTTP is accepted only
+for explicit loopback local development (`127.0.0.1`, `localhost`, or `::1`). It
+installs only the exact `bb-app` package exposed by that server at
+`/install/bb-app.tgz` and fails if the route is unavailable. It never reuses a
+`bb-app` from PATH or falls back to the npm registry, so enrollment cannot
+silently change publishers. npm installs the package into the machine's bb data
+directory, not its system-wide global prefix, so enrollment needs neither
 `sudo` nor a PATH change.
+
+The package route is public like `/install.sh`. The initial exact-package
+installation is an intentional consequence of running the installer for this
+server; the package is not currently publisher-signed or client-side digest
+bound, so use a trusted HTTPS server and review the server/build pipeline.
 
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
@@ -160,20 +162,23 @@ elsewhere. Subsequent runs reuse the reservation; pass `--host-daemon-port
 <port>` to the installer to override the selection. One machine can therefore
 serve several bb servers at once, and joining never touches a full local bb
 install's `~/.bb`. Each instance keeps its own `bb-app` under that data
-directory and self-updates against its own server, so servers running different
-bb versions on one machine remain isolated.
+directory and can self-update against its own server when the operator has
+explicitly opted in, so servers running different bb versions on one machine
+remain isolated.
 
-The installed launchd/systemd service enables `--auto-update`. If session open
-reports a newer server protocol, the daemon downloads the server artifact,
-updates its private install, then exits so the service manager restarts it.
-Failed attempts fall back to normal reconnect behavior with a persisted
-exponential retry backoff from 5 seconds to 5 minutes. Settings → Machines and
-`bb machine retry-update <id-or-name>` can bypass the current backoff. A daemon
-never downgrades itself to an older server protocol. To opt out, remove
-`--auto-update` from
-`~/Library/LaunchAgents/app.getbb.host-daemon.<server>.plist` or
-`~/.config/systemd/user/bb-host-daemon-<server>.service`, then reload the
-service.
+The installed launchd/systemd service leaves unattended daemon auto-update off
+by default. If the operator explicitly passes `--auto-update` to the installer,
+the service may, on a newer server protocol, download the server artifact, update
+its private install, and exit so the service manager restarts it. This is an
+explicit trust decision for an unsigned server-delivered package; HTTPS protects
+transport but does not replace publisher signing or digest verification. Keep
+this opt-in disabled until that distribution contract exists unless the server
+and its build pipeline are trusted. Failed attempts fall back to normal
+reconnect behavior with a persisted exponential retry backoff from 5 seconds to
+5 minutes. Settings → Machines and `bb machine retry-update <id-or-name>` can
+bypass the current backoff. A daemon never downgrades itself to an older server
+protocol. Existing service files that already contain `--auto-update` must have
+that flag removed manually to opt out, then the service reloaded.
 
 After it connects:
 

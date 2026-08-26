@@ -71,23 +71,13 @@ export const DESKTOP_AUTO_UPDATE_FEED_CONFIG: DesktopAutoUpdateFeedConfig = {
 };
 
 interface DesktopUpdateSupport {
-  /**
-   * electron-updater can download a replacement build and install it. Linux
-   * only qualifies inside an AppImage, which is the one Linux target that can
-   * replace its own file in place.
-   */
+  /** Whether the app may download and install a replacement automatically. */
   autoUpdate: boolean;
   /** The JSON version feed can be polled to tell the user a release exists. */
   versionCheck: boolean;
 }
 
 interface ResolveDesktopUpdateSupportArgs {
-  /**
-   * Whether the AppImage at this path can actually be replaced in place.
-   * Injected so the decision stays testable without touching a real file.
-   */
-  canReplaceAppImage: (appImagePath: string) => boolean;
-  env: NodeJS.ProcessEnv;
   platform: BbDesktopVersionFeedPlatform;
 }
 
@@ -98,18 +88,8 @@ export function resolveDesktopUpdateSupport(
     return { autoUpdate: true, versionCheck: true };
   }
 
-  // A distro package or an extracted directory cannot rewrite itself, so those
-  // Linux installs still learn that a release exists but never self-install.
-  const appImagePath = args.env.APPIMAGE?.trim() ?? "";
-  if (appImagePath.length === 0) {
-    return { autoUpdate: false, versionCheck: true };
-  }
-
-  // electron-updater's AppImage install unlinks the running file before it
-  // moves the replacement in, so a read-only directory destroys the user's
-  // install instead of failing harmlessly. Never offer the install path there.
-  return {
-    autoUpdate: args.canReplaceAppImage(appImagePath),
-    versionCheck: true,
-  };
+  // Linux AppImage updates have no publisher signature check. Keep the feed
+  // available so users can see and manually verify releases, but do not let
+  // electron-updater download and replace executable code automatically.
+  return { autoUpdate: false, versionCheck: true };
 }

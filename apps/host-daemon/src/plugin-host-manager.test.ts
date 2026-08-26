@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { HostDaemonOnlineRpcCommand } from "@bb/host-daemon-contract";
 import type { WatchPathRootArgs } from "@bb/host-watcher";
-import { sanitizeInheritedChildProcessEnv } from "@bb/process-utils";
+import { sanitizePluginProcessEnv } from "@bb/process-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PluginHostManager } from "./plugin-host-manager.js";
 
@@ -31,7 +31,9 @@ export default {
   experimental_apiVersion: 1,
   contract: {
     echo: { input: anySchema, output: anySchema },
+    env: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
+    stderr: { input: anySchema, output: anySchema },
     crash: { input: anySchema, output: anySchema },
     stringEcho: { input: stringSchema, output: stringSchema },
     invalidOutput: { input: anySchema, output: stringSchema },
@@ -44,11 +46,21 @@ export default {
   experimental_signals: { changed: { payload: anySchema } },
   handlers: {
     echo(input) { return { input, pid: process.pid }; },
+    env() {
+      return {
+        CODEX_HOME: process.env.CODEX_HOME ?? "missing",
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? "missing",
+        HOME: process.env.HOME ?? "missing",
+        OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? "missing",
+        PATH: process.env.PATH ?? "missing",
+      };
+    },
     wait(_input, context) {
       return new Promise((resolve) => {
         context.signal.addEventListener("abort", () => resolve({ aborted: true }), { once: true });
       });
     },
+    stderr(input) { process.stderr.write(String(input.text) + String.fromCharCode(10)); return { ok: true }; },
     crash() { process.exit(17); },
     stringEcho(input) { return input; },
     invalidOutput() { return { nope: true }; },
@@ -129,6 +141,7 @@ describe("PluginHostManager", () => {
         .splice(0)
         .map((dir) => rm(dir, { recursive: true, force: true })),
     );
+    vi.unstubAllEnvs();
   });
 
   async function createManager(
@@ -236,6 +249,35 @@ describe("PluginHostManager", () => {
     );
     expect(logger.info).toHaveBeenCalledTimes(2);
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("redacts host plugin stderr before logging it", async () => {
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const manager = await createManager({ logger });
+    const credential = "sk-example-host-stderr";
+
+    await manager.call(
+      callCommand({
+        method: "stderr",
+        input: { text: `OPENAI_API_KEY=${credential}` },
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        {
+          pluginId: "fixture",
+          origin: "host",
+          stderr: "OPENAI_API_KEY=[REDACTED]",
+        },
+        "Host plugin stderr",
+      ),
+    );
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(credential);
   });
 
   it("bounds call count and input bytes while worker startup is pending", async () => {
@@ -631,16 +673,38 @@ describe("PluginHostManager", () => {
       ),
     ).rejects.toThrow(/changed artifact digest/u);
   });
+
+  it("does not expose ambient secret-shaped variables to the worker", async () => {
+    vi.stubEnv("CODEX_HOME", "/Users/test/.codex");
+    vi.stubEnv("GITHUB_TOKEN", "ambient-github-secret");
+    vi.stubEnv("HOME", "/Users/test");
+    vi.stubEnv("OPENAI_API_KEY", "ambient-openai-secret");
+
+    const manager = await createManager({
+      shellEnv: () => ({ PATH: "/Users/test/bin:/usr/bin" }),
+    });
+    const result = await manager.call(
+      callCommand({ method: "env", input: {} }),
+    );
+
+    expect(result.output).toEqual({
+      CODEX_HOME: "/Users/test/.codex",
+      GITHUB_TOKEN: "missing",
+      HOME: "/Users/test",
+      OPENAI_API_KEY: "missing",
+      PATH: "/Users/test/bin:/usr/bin",
+    });
+  });
 });
 
 describe("host plugin worker env", () => {
-  it("uses the login-shell PATH without forwarding daemon BB variables", () => {
+  it("uses the login-shell PATH without forwarding ambient secrets", () => {
     expect(
-      sanitizeInheritedChildProcessEnv({
+      sanitizePluginProcessEnv({
         env: {
           HOME: "/Users/test",
           PATH: "/usr/bin",
-          GH_TOKEN: "user-token",
+          GH_TOKEN: "ambient-secret",
           BB_CONNECT_MACHINE_CREDENTIAL: "daemon-secret",
           BB_SERVER_URL: "http://daemon.internal",
         },
@@ -649,7 +713,6 @@ describe("host plugin worker env", () => {
     ).toEqual({
       HOME: "/Users/test",
       PATH: "/Users/test/bin:/usr/bin",
-      GH_TOKEN: "user-token",
     });
   });
 });

@@ -135,8 +135,9 @@ console.log(await bb.threads.output({ threadId: String(thread.id) }));
 ```
 
 `new BBSdk()` uses the same `BB_SERVER_URL` and bb config resolution as the
-CLI. Pass `new BBSdk({ baseUrl: "http://host:38886" })` for remote or test
-targets (see the remote-access note below). Scripts launched by bb already receive `BB_SERVER_URL` and
+CLI. Pass `new BBSdk({ baseUrl: "https://host.example.test" })` for remote
+targets, or a loopback HTTP URL for local tests (see the remote-access note
+below). Scripts launched by bb already receive `BB_SERVER_URL` and
 `BB_THREAD_ID` in their environment.
 
 ## Provider Credentials
@@ -198,9 +199,8 @@ npx bb-app config refresh
 ```
 
 For remote access, use bb connect or publish the default loopback listener with
-Tailscale Serve. Direct tailnet or LAN access to port `38886` requires the
-explicit, security-sensitive `--server-bind-host 0.0.0.0` compatibility option;
-see the multiple-devices guide.
+Tailscale Serve. Direct tailnet or LAN binding is not supported because the
+server API is unauthenticated; see the multiple-devices guide.
 
 Use `bb-app client ssh-target` to configure local editor opens for remote
 bb servers under `~/.bb/client.json`. The target is the value that works after

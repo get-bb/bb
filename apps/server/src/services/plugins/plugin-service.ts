@@ -48,6 +48,7 @@ import {
   pluginPublisherLabel,
 } from "../plugin-catalog/marketplace-publishers.js";
 import { deleteSecretFile, readOrCreateSecretFile } from "@bb/secret-storage";
+import { redactSensitiveText } from "@bb/logger";
 import {
   ROOT_PLUGIN_SOURCE_SELECTION,
   type PluginCapabilitySummary,
@@ -2143,7 +2144,7 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
     async runCliCommand(id, argv, ctx) {
       const fail = (stderr: string) =>
         enforcePluginCliOutputLimit(
-          { exitCode: 1, stdout: "", stderr },
+          { exitCode: 1, stdout: "", stderr: redactSensitiveText(stderr) },
           argv.includes("--json"),
         );
       const plugin = loaded.get(id);
@@ -2175,7 +2176,10 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
             {
               exitCode: result.exitCode,
               stdout: typeof result.stdout === "string" ? result.stdout : "",
-              stderr: typeof result.stderr === "string" ? result.stderr : "",
+              stderr:
+                typeof result.stderr === "string"
+                  ? redactSensitiveText(result.stderr)
+                  : "",
             },
             argv.includes("--json"),
           );

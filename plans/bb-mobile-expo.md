@@ -424,10 +424,10 @@ Each fact comes from the code. Paths are relative to the repo root.
 Server profiles live in SecureStore, one key per profile:
 `{id, mode: direct|connect, serverUrl, label, handle?, credential?}`.
 
-1. **Direct** (first): user enters `http(s)://host:port` (LAN with
-   `--server-bind-host 0.0.0.0`, Tailscale Serve HTTPS URL, or
-   `http://127.0.0.1:<port>` in the simulator, `http://10.0.2.2:<port>` in the
-   Android emulator). No auth, same trust model as the PWA today. Constraints:
+1. **Direct** (first): user enters a loopback `http://127.0.0.1:<port>` URL in
+   the simulator or `http://10.0.2.2:<port>` in the Android emulator. Remote
+   phones use a Tailscale Serve HTTPS URL or bb connect, not direct LAN binding.
+   No auth applies to loopback direct mode. Constraints:
    iOS needs `NSLocalNetworkUsageDescription`; ATS allows raw LAN IPs /
    `.local` but blocks plain `http://` to FQDNs (Tailscale hosts must use
    Serve HTTPS); Android release builds need `usesCleartextTraffic` for
@@ -881,9 +881,8 @@ green per PR.
   Simulator (`127.0.0.1`) and Android emulator (`10.0.2.2` / `adb reverse`).
   Deterministic seeds; e2e reset entry; screenshots kept as artifacts.
 - **Live QA**: `scripts/bb-dev-app current` + the dev-client on the simulator
-  against real providers; physical iPhone via a Tailscale Serve URL, a
-  temporary `BB_SERVER_BIND_HOST=0.0.0.0` LAN URL, or `bb connect expose
-<server-port>` from this thread.
+  against real providers; physical iPhone via a Tailscale Serve URL or `bb
+  connect expose <server-port>` from this thread.
 - **Connect QA**: stubbed apex + gate for automated flows; a staging handle
   for manual checks; push and universal links on a physical device.
 - **Contract drift**: typecheck of the typed client from `@bb/server-contract`;

@@ -43,6 +43,9 @@ jobs:
           pnpm-version: ${{ env.PNPM_VERSION }}
           cache-prefix: checks
 
+      - name: Check release workflow hardening
+        run: node .github/workflows/check-release-hardening.mjs
+
       # Four tasks for four vCPUs: TypeScript 7 and esbuild are multi-threaded,
       # so turbo's default of ten concurrent tasks only adds contention here.
       # Measured pinned to 4 CPUs, two rounds each: 96 s / 110 s at the

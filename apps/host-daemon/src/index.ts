@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadHostDaemonStartConfig } from "@bb/config/host-daemon";
 import { loadHostDaemonEntrypointConfig } from "@bb/config/host-daemon-entrypoint";
+import { ensurePrivateDirectory } from "@bb/logger";
 import {
   installSafeProcessDiagnostics,
   writeSafeProcessDiagnosticReport,
@@ -82,6 +83,7 @@ const isMainModule =
 
 if (isMainModule) {
   const diagnosticsLogsDir = resolveDiagnosticsLogsDir();
+  ensurePrivateDirectory(diagnosticsLogsDir);
   installSafeProcessDiagnostics({
     logsDir: diagnosticsLogsDir,
     processName: "host-daemon",

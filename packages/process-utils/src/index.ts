@@ -519,10 +519,11 @@ export function resolveContainedPath(
 }
 
 /**
- * The one answer to "what does a bb-spawned child process inherit": the
- * parent's env minus bb runtime-owned variables (`BB_*`) and `NODE_ENV`,
- * optionally with the user's login-shell PATH substituted. Callers overlay
- * only the child-specific bb env they intentionally expose afterward.
+ * The environment for user-facing child processes: the parent's env minus bb
+ * runtime-owned variables (`BB_*`) and `NODE_ENV`, optionally with the user's
+ * login-shell PATH substituted. These children intentionally retain the
+ * user's other environment (for example, `gh` credentials and git config).
+ * Plugin and provider processes must use `sanitizePluginProcessEnv` instead.
  */
 export function sanitizeInheritedChildProcessEnv(
   args: SanitizeInheritedChildProcessEnvArgs,
@@ -539,6 +540,93 @@ export function sanitizeInheritedChildProcessEnv(
   }
   if (args.shellPath !== undefined) {
     sanitizedEnv.PATH = args.shellPath;
+  }
+  return sanitizedEnv;
+}
+
+export interface SanitizePluginProcessEnvArgs {
+  env: NodeJS.ProcessEnv;
+  /** The user's login-shell PATH, when executable discovery needs it. */
+  shellPath?: string;
+}
+
+/**
+ * The minimal inherited environment for isolated plugin/provider processes.
+ *
+ * Credentials, runtime wiring, loader flags, proxy settings, and package
+ * manager configuration are intentionally absent. The process launcher must
+ * overlay provider/plugin-specific values explicitly after this function
+ * returns. The provider path selectors below are locations, not credentials;
+ * built-in providers use them to find their on-disk auth/config state.
+ */
+const MINIMAL_PLUGIN_PROCESS_ENV_KEYS: ReadonlySet<string> = new Set([
+  "PATH",
+  "Path",
+  "HOME",
+  "Home",
+  "USERPROFILE",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LANGUAGE",
+  "LC_ALL",
+  "LC_CTYPE",
+  "LC_MESSAGES",
+  "LC_MONETARY",
+  "LC_NUMERIC",
+  "LC_TIME",
+  "SHELL",
+  "COMSPEC",
+  "ComSpec",
+  "PATHEXT",
+  "SYSTEMROOT",
+  "SystemRoot",
+  "USER",
+  "LOGNAME",
+  "PWD",
+  "TERM",
+  "COLORTERM",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "TZ",
+  "VOLTA_HOME",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "CLAUDE_CONFIG_DIR",
+  "CODEX_HOME",
+  "PI_CODING_AGENT_DIR",
+  "PI_CONFIG_FILES",
+  "PI_PROFILE",
+  "OMP_PROFILE",
+  "OPENCODE_CONFIG_DIR",
+  "GROK_HOME",
+  "HERMES_HOME",
+  "GROK_CLAUDE_SKILLS_ENABLED",
+  "GROK_CURSOR_SKILLS_ENABLED",
+]);
+
+/**
+ * Returns only the baseline needed to execute an isolated plugin/provider.
+ * Callers overlay explicit provider/plugin credentials and runtime values
+ * after this function returns; no ambient secret-shaped variable is copied.
+ */
+export function sanitizePluginProcessEnv(
+  args: SanitizePluginProcessEnvArgs,
+): NodeJS.ProcessEnv {
+  const sanitizedEnv: NodeJS.ProcessEnv = {};
+  for (const key of MINIMAL_PLUGIN_PROCESS_ENV_KEYS) {
+    const value = args.env[key];
+    if (value !== undefined) {
+      sanitizedEnv[key] = value;
+    }
+  }
+  if (args.shellPath !== undefined) {
+    sanitizedEnv.PATH = args.shellPath;
+    if (sanitizedEnv.Path !== undefined) {
+      sanitizedEnv.Path = args.shellPath;
+    }
   }
   return sanitizedEnv;
 }

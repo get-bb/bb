@@ -14,21 +14,28 @@ The server listens on loopback by default. Remote execution machines need the
 account-gated bb connect route or a private Tailscale Serve URL; generate their
 installer while using that reachable server URL.
 
-The Settings installer first uses the exact `bb-app` tarball served by that bb
-server at `/install/bb-app.tgz`; only servers that do not implement the route
-(HTTP 404) fall back to the npm registry. npm installs bb-app under this
-machine enrollment's bb data directory, so the installer needs neither `sudo`
-nor a global npm configuration. Installed launchd/systemd services pass
-`--auto-update`. On a newer server protocol mismatch, the daemon downloads that
-same artifact, updates its private install, and exits for the service manager to
-restart. Failed attempts use a persisted exponential backoff that starts at 5
-seconds and caps at 5 minutes. A daemon never auto-downgrades to an older server
-protocol. Use Settings → Machines or `bb machine retry-update` to bypass the
-current backoff after a transient failure.
+The Settings installer requires HTTPS for non-loopback server URLs (HTTP is
+allowed only for explicit loopback local development). It installs only the exact
+`bb-app` tarball served by that server at `/install/bb-app.tgz` and fails if the
+route is unavailable; it never reuses PATH or falls back to the npm registry.
+npm installs bb-app under this machine enrollment's bb data directory, so the
+installer needs neither `sudo` nor a global npm configuration.
 
-To opt out, remove `--auto-update` from the launchd plist or systemd user unit
-and reload that service. Foreground/manual `bb-app host-daemon` runs leave it off
-unless you pass `--auto-update` explicitly.
+Installed launchd/systemd services leave unattended daemon auto-update off by
+default. Pass `--auto-update` to the installer only after explicitly trusting
+that server's unsigned package for unattended updates. On a newer server
+protocol mismatch, an opted-in daemon downloads that same artifact, updates its
+private install, and exits for the service manager to restart. HTTPS protects
+transport but does not provide publisher signing or digest binding; keep this
+opt-in disabled until that distribution contract exists unless the server and
+build pipeline are trusted. Failed attempts use a persisted exponential backoff
+that starts at 5 seconds and caps at 5 minutes. A daemon never auto-downgrades to
+an older server protocol. Use Settings → Machines or `bb machine retry-update`
+to bypass the current backoff after a transient failure.
+
+Existing service files containing `--auto-update` must have that flag removed
+manually to opt out, then be reloaded. Foreground/manual `bb-app host-daemon`
+runs leave it off unless you pass `--auto-update` explicitly.
 
   bb machine list                         List machines with ID, connection
                                           status, and relative last-seen time
@@ -68,7 +75,8 @@ CLI counterpart of Settings → Updates and the sidebar Updates badge.
 
 `bb updates apply` covers provider CLIs only. Update bb-app itself with the
 printed upgrade command (`npx bb-app@latest`) or the desktop app's relaunch;
-connected daemons then follow the server version automatically.
+connected daemons with explicit auto-update opt-in can then follow the server
+version.
 
 Machine selectors accept either an exact machine ID or an unambiguous machine
 name. `--host` is an alias for `--machine`.

@@ -7,6 +7,7 @@ import {
   installSafeProcessDiagnostics,
   resolveContainedPath,
   sanitizeInheritedChildProcessEnv,
+  sanitizePluginProcessEnv,
   spawnPortableOutputProcess,
   spawnPortablePipedProcess,
   writeSafeProcessDiagnosticReport,
@@ -298,6 +299,40 @@ describe("process utils", () => {
       PATH: "/bin",
     });
     expect("SKIP_ME" in sanitizedEnv).toBe(false);
+  });
+
+  it("builds a minimal plugin env and substitutes the login-shell PATH", () => {
+    const env: NodeJS.ProcessEnv = {
+      AWS_SECRET_ACCESS_KEY: "ambient-aws-secret",
+      CODEX_HOME: "/Users/test/.codex",
+      GITHUB_TOKEN: "ambient-github-secret",
+      HOME: "/Users/test",
+      LANG: "en_US.UTF-8",
+      LC_ALL: "en_US.UTF-8",
+      NODE_OPTIONS: "--require=ambient-loader",
+      OPENAI_API_KEY: "ambient-openai-secret",
+      PATH: "/usr/bin",
+      SHELL: "/bin/zsh",
+      TMPDIR: "/tmp/test",
+      VOLTA_HOME: "/Users/test/.volta",
+      BB_SERVER_URL: "http://daemon.internal",
+    };
+
+    expect(
+      sanitizePluginProcessEnv({
+        env,
+        shellPath: "/Users/test/bin:/usr/bin",
+      }),
+    ).toEqual({
+      CODEX_HOME: "/Users/test/.codex",
+      HOME: "/Users/test",
+      LANG: "en_US.UTF-8",
+      LC_ALL: "en_US.UTF-8",
+      PATH: "/Users/test/bin:/usr/bin",
+      SHELL: "/bin/zsh",
+      TMPDIR: "/tmp/test",
+      VOLTA_HOME: "/Users/test/.volta",
+    });
   });
 
   it("does not mutate the inherited env", () => {

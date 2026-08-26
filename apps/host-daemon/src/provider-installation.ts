@@ -1,5 +1,6 @@
 import { PassThrough, type Readable } from "node:stream";
 import type { ProviderInstallationCommand } from "@bb/provider-bridge-protocol";
+import { redactSensitiveText } from "@bb/logger";
 import {
   providerCliInstallEventSchema,
   type ProviderCliInstallEvent,
@@ -128,7 +129,9 @@ export function streamProviderInstallation(args: {
         write({
           type: "error",
           provider: args.providerId,
-          message: error instanceof Error ? error.message : String(error),
+          message: redactSensitiveText(
+            error instanceof Error ? error.message : String(error),
+          ),
         });
         close();
         return;
@@ -148,14 +151,14 @@ export function streamProviderInstallation(args: {
           type: "output",
           provider: args.providerId,
           stream: "stderr",
-          text,
+          text: redactSensitiveText(text),
         }),
       );
       child.onError((error) => {
         write({
           type: "error",
           provider: args.providerId,
-          message: error.message,
+          message: redactSensitiveText(error.message),
         });
         close();
       });

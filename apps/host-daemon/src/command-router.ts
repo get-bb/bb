@@ -26,6 +26,7 @@ import {
 } from "./command-dispatch.js";
 import { isExpectedOnlineRpcFailureError } from "./command-dispatch-support.js";
 import { roundDurationMs } from "./event-loop-stall-monitor.js";
+import { redactSensitiveText } from "@bb/logger";
 import type { HostDaemonLogger } from "./logger.js";
 import { RuntimeManager } from "./runtime-manager.js";
 import type { PluginHostManager } from "./plugin-host-manager.js";
@@ -144,13 +145,15 @@ export class CommandRouter {
         handlerMs: elapsedMs(handlerStartedAtMs),
         ok: false,
       });
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       return {
         type: "host-rpc.response",
         requestId: message.requestId,
         commandType: message.command.type,
         ok: false,
         errorCode,
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: redactSensitiveText(errorMessage),
       };
     }
   }

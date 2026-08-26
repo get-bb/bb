@@ -337,14 +337,14 @@ describe("consumer-specific config", () => {
     expect(serverConfig.BB_SERVER_BIND_HOST).toBe("127.0.0.1");
   });
 
-  it("honors an explicit wildcard server bind host", () => {
-    const serverConfig = loadServerConfig({
-      env: createServerRuntimeEnv({
-        BB_SERVER_BIND_HOST: "0.0.0.0",
+  it("rejects an explicit non-loopback server bind host", () => {
+    expect(() =>
+      loadServerConfig({
+        env: createServerRuntimeEnv({
+          BB_SERVER_BIND_HOST: "0.0.0.0",
+        }),
       }),
-    });
-
-    expect(serverConfig.BB_SERVER_BIND_HOST).toBe("0.0.0.0");
+    ).toThrow(/loopback/u);
   });
 
   it("rejects an unsupported server bind host", () => {
@@ -532,6 +532,24 @@ describe("consumer-specific config", () => {
         }),
       }),
     ).toThrow(/BB_SERVER_URL/u);
+  });
+
+  it("requires HTTPS for non-loopback server URLs", () => {
+    expect(() =>
+      loadCliConfig({
+        env: createHostDaemonRuntimeEnv({
+          BB_SERVER_URL: "http://server.example.test:38886",
+        }),
+      }),
+    ).toThrow(/HTTPS/u);
+
+    expect(
+      loadCliConfig({
+        env: createHostDaemonRuntimeEnv({
+          BB_SERVER_URL: "https://server.example.test:38886",
+        }),
+      }).BB_SERVER_URL,
+    ).toBe("https://server.example.test:38886");
   });
 
   it("normalizes server URL whitespace consistently for the daemon and CLI", () => {

@@ -42,14 +42,13 @@ talks to a server over the same HTTP + WebSocket contract as the web app.
 - Platforms: iOS first (iPhone; iPad runs the phone layout). Android is
   planned next; the code is platform-neutral but no Android build has been
   produced or tested yet.
-- Connecting: **Direct** mode takes any `http(s)://` URL the phone can reach
-  (the iOS Simulator's `http://127.0.0.1:<port>`, a LAN address with
-  `--server-bind-host 0.0.0.0`, a Tailscale Serve HTTPS URL). It is
-  unauthenticated, the same trust model as the browser PWA on a LAN; iOS
-  allows plain `http://` only for LAN IPs and `.local` names, so Tailscale
-  hosts need Serve HTTPS. **bb connect** mode pairs the phone as a connect
-  machine (QR / code from Settings → Remote access or
-  `bb connect machine-code`, both behind the `mobileApp` experiment during
+- Connecting: **Direct** mode supports the iOS Simulator's
+  `http://127.0.0.1:<port>` loopback URL and private Tailscale Serve HTTPS URLs.
+  The server no longer supports direct LAN or tailnet binding because its API
+  is unauthenticated. iOS allows plain `http://` only for loopback, LAN IPs,
+  and `.local` names, so Tailscale hosts need Serve HTTPS. **bb connect** mode
+  pairs the phone as a connect machine (QR / code from Settings → Remote access
+  or `bb connect machine-code`, both behind the `mobileApp` experiment during
   early access), keeps the credential in the device keychain, and mints
   short-lived sessions; see [multiple-devices.md](multiple-devices.md).
 - Distribution: developer builds from source (Xcode 26.2, iOS 26 simulator

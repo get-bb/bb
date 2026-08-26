@@ -180,7 +180,10 @@ export function openServerUrlDialog(
         }
         const parsed = serverUrlDialogSubmitRequestSchema.safeParse(payload);
         if (!parsed.success) {
-          return { ok: false, message: "Enter a valid http(s) URL." };
+          return {
+            ok: false,
+            message: "Enter an HTTPS URL, or an HTTP loopback URL.",
+          };
         }
         if (parsed.data.url.trim().length === 0) {
           finish({ kind: "clear" });
@@ -188,7 +191,10 @@ export function openServerUrlDialog(
         }
         const normalized = normalizeCustomServerUrl(parsed.data.url);
         if (normalized === null) {
-          return { ok: false, message: "Enter a valid http(s) URL." };
+          return {
+            ok: false,
+            message: "Enter an HTTPS URL, or an HTTP loopback URL.",
+          };
         }
         finish({ kind: "set", url: normalized });
         return { ok: true };

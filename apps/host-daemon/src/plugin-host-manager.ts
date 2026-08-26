@@ -14,8 +14,9 @@ import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   createPluginProcessTempDir,
   ensurePluginProcessDataDir,
-  sanitizeInheritedChildProcessEnv,
+  sanitizePluginProcessEnv,
 } from "@bb/process-utils";
+import { redactSensitiveText } from "@bb/logger";
 import type { HostDaemonLogger } from "./logger.js";
 import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
 
@@ -174,7 +175,9 @@ function defaultWorkerEntryPath(): string {
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return redactSensitiveText(
+    error instanceof Error ? error.message : String(error),
+  );
 }
 
 function observeBoundedStderr(
@@ -206,7 +209,7 @@ function observeBoundedStderr(
       return;
     }
     emittedLines += 1;
-    onLine(tail.toString("utf8").replace(/\r$/u, ""));
+    onLine(redactSensitiveText(tail.toString("utf8").replace(/\r$/u, "")));
     tail = Buffer.alloc(0);
   };
   source.on("data", (chunk: Buffer) => {
@@ -465,9 +468,11 @@ export class PluginHostManager {
         defaultWorkerEntryPath(),
         [artifactPath, command.pluginId, command.generation, dataDir, tempDir],
         {
-          // Same answer every daemon-spawned child gets, plus the user's
-          // login-shell PATH so a host plugin can find their executables.
-          env: sanitizeInheritedChildProcessEnv({
+          // Host workers get only the process-execution baseline, plus the
+          // user's login-shell PATH so a host plugin can find executables.
+          // Plugin-specific credentials must be overlaid explicitly by the
+          // caller; never hand the worker the daemon's ambient env.
+          env: sanitizePluginProcessEnv({
             env: process.env,
             ...(shellPath !== undefined ? { shellPath } : {}),
           }),
@@ -598,7 +603,7 @@ export class PluginHostManager {
       }
       if (record.type === "startup-error" && typeof record.error === "string") {
         clearTimeout(startTimer);
-        failWorker(record.error);
+        failWorker(redactSensitiveText(record.error));
         return;
       }
       if (
@@ -797,7 +802,11 @@ export class PluginHostManager {
     watchId: string,
     error: string,
   ): void {
-    sendToWorker(worker.child, { type: "watch-start-error", watchId, error });
+    sendToWorker(worker.child, {
+      type: "watch-start-error",
+      watchId,
+      error: redactSensitiveText(error),
+    });
   }
 
   private queueWorkerWatchChanges(
@@ -946,7 +955,7 @@ export class PluginHostManager {
       pending.reject(
         new Error(
           typeof result.error === "string"
-            ? result.error
+            ? redactSensitiveText(result.error)
             : "host handler failed",
         ),
       );

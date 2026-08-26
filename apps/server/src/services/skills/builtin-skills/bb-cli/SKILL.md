@@ -22,14 +22,12 @@ message agents, or inspect projects, providers, and environments.
   targets. The Add machine installer injects its enrolled daemon's selected
   local API port automatically and atomically reserves it across default and
   custom machine data directories.
-- The main server and source Vite app bind to loopback by default. Use bb
-  connect or a private Tailscale Serve URL for remote browsers and execution
-  machines. `--server-bind-host 0.0.0.0` is a compatibility escape hatch only:
-  the public API is unauthenticated and permits command execution and file
-  reads, so wildcard binding requires a trusted network boundary. The startup
-  listener and `app` rows then show `http://0.0.0.0:<port>`; health checks and
-  the colocated daemon still use loopback. This opt-in is IPv4-only. Containers
-  must also publish the port to the host.
+- The main server and source Vite app bind to loopback. Use bb connect or a
+  private Tailscale Serve URL for remote browsers and execution machines. The
+  public API is unauthenticated and permits command execution and file reads,
+  so off-loopback `BB_SERVER_BIND_HOST` values are refused. The Origin check is
+  a browser CSRF boundary, not authentication. Containers must publish a
+  loopback listener only through a private access boundary.
 
 ## Environment Setup Script
 
@@ -73,9 +71,9 @@ message agents, or inspect projects, providers, and environments.
   roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
   `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
   `BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
-  change, run `bb-app stop && bb-app start` or restart the desktop app. Until
-  then, a server previously bound to `0.0.0.0` remains exposed even if
-  `BB_SERVER_BIND_HOST` was changed or unset.
+  change, run `bb-app stop && bb-app start` or restart the desktop app. A server
+  from an older release that was bound off-loopback remains exposed until it is
+  restarted.
 - Settings → General holds server-backed app-wide preferences. For details, read
   `references/app-settings.md` (in this skill's directory).
 - Keep Awake is a standalone builtin plugin. Use `bb keep-awake enable` and
@@ -248,15 +246,23 @@ connect` restores the command. Plugins → Connect shows the current URL, QR
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
-  gate; revoke a lost machine from the getbb.app dashboard. The installer uses
-  the server's exact `/install/bb-app.tgz` artifact and uses the npm registry
-  only on a 404. It installs under the enrollment's bb data directory, without
-  `sudo` or a global npm configuration, and enables daemon `--auto-update`.
-  Newer protocol mismatches update that private install with a persisted
-  exponential retry backoff from 5 seconds to 5 minutes, then let
-  launchd/systemd restart the daemon. Auto-update never downgrades. To bypass a
-  transient backoff, use `bb machine retry-update <id-or-name>`. Remove
-  `--auto-update` from the service definition and reload it to opt out.
+  gate; revoke a lost machine from the getbb.app dashboard. The installer
+  requires HTTPS for non-loopback server URLs (HTTP is allowed only for explicit
+  loopback local development), installs only the server's exact
+  `/install/bb-app.tgz` artifact, and fails if it is unavailable. It never
+  reuses PATH or falls back to the npm registry. It installs under the
+  enrollment's bb data directory, without `sudo` or a global npm configuration.
+  Installed services leave daemon auto-update off by default; pass
+  `--auto-update` to the installer only after explicitly trusting that server's
+  unsigned package for unattended updates. Newer protocol mismatches then update
+  that private install with a persisted exponential retry backoff from 5 seconds
+  to 5 minutes, then let launchd/systemd restart the daemon. HTTPS protects
+  transport but does not provide publisher signing or digest binding, so keep
+  this opt-in disabled until that distribution contract exists unless the server
+  and build pipeline are trusted. Auto-update never downgrades. To bypass a
+  transient backoff, use `bb machine retry-update <id-or-name>`. Existing service
+  files containing `--auto-update` must have that flag removed manually and the
+  service reloaded to opt out.
 - Run `bb machine list` to see machine names, IDs, connection status, and last
   seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged

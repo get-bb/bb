@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { chmodSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
@@ -706,7 +706,8 @@ export function createPluginApi(options: {
         if (index !== -1) databaseHandles.splice(index, 1);
       }
       const dir = join(dataDir, "plugins", pluginId);
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { mode: 0o700, recursive: true });
+      chmodSync(dir, 0o700);
       const database = new Database(join(dir, "data.db"));
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");

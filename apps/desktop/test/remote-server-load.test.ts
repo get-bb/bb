@@ -28,8 +28,7 @@ function createElectronLoadError(url: string): Error {
 function createHarness(
   overrides: Partial<LoadRemoteServerPageArgs> = {},
 ): TestHarness {
-  const serverUrl =
-    overrides.serverUrl ?? "http://bb-host.tailnet.ts.net:38886";
+  const serverUrl = overrides.serverUrl ?? "https://bb-host.tailnet.ts.net";
   const shownErrors: StartupErrorView[] = [];
   const warnings: string[] = [];
   return {
@@ -59,7 +58,7 @@ describe("loadRemoteServerPage", () => {
     expect(harness.shownErrors).toHaveLength(1);
     const view = harness.shownErrors[0];
     expect(view?.title).toBe("Could not reach this bb server");
-    expect(view?.details).toContain("http://bb-host.tailnet.ts.net:38886");
+    expect(view?.details).toContain("https://bb-host.tailnet.ts.net");
     expect(view?.details).toContain("Window ▸ Server");
     expect(view?.details).toContain("This Mac");
     expect(view?.details).not.toContain("rejectAndCleanup");

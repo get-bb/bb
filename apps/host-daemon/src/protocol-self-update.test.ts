@@ -54,7 +54,7 @@ async function createFixture(
   const testLogger = logger();
   const updater = createProtocolSelfUpdater({
     dataDir,
-    enabled: args.enabled ?? true,
+    enabled: args.enabled ?? false,
     fetchFn,
     ...(args.useDefaultInstaller ? { runProcess } : { installTarball }),
     logger: testLogger,
@@ -73,7 +73,7 @@ afterEach(async () => {
 
 describe("protocol self-update", () => {
   it("installs exactly once when the server protocol is newer and enabled", async () => {
-    const test = await createFixture();
+    const test = await createFixture({ enabled: true });
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",
     );
@@ -83,7 +83,10 @@ describe("protocol self-update", () => {
 
   it("finds npm beside the running Node executable when the service PATH omits it", async () => {
     vi.stubEnv("PATH", "/usr/bin:/bin");
-    const test = await createFixture({ useDefaultInstaller: true });
+    const test = await createFixture({
+      enabled: true,
+      useDefaultInstaller: true,
+    });
 
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",
@@ -108,7 +111,10 @@ describe("protocol self-update", () => {
 
   it("updates an installer-managed bb-app inside its machine-specific prefix", async () => {
     vi.stubEnv("BB_APP_NPM_PREFIX", "/machine-data/npm");
-    const test = await createFixture({ useDefaultInstaller: true });
+    const test = await createFixture({
+      enabled: true,
+      useDefaultInstaller: true,
+    });
 
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",
@@ -130,7 +136,10 @@ describe("protocol self-update", () => {
 
   it("keeps legacy global updates when the installer prefix is blank", async () => {
     vi.stubEnv("BB_APP_NPM_PREFIX", " ");
-    const test = await createFixture({ useDefaultInstaller: true });
+    const test = await createFixture({
+      enabled: true,
+      useDefaultInstaller: true,
+    });
 
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",
@@ -148,8 +157,8 @@ describe("protocol self-update", () => {
     );
   });
 
-  it("does nothing when auto-update is disabled", async () => {
-    const test = await createFixture({ enabled: false });
+  it("does nothing when auto-update is disabled by default", async () => {
+    const test = await createFixture();
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "skipped",
     );
@@ -159,6 +168,7 @@ describe("protocol self-update", () => {
 
   it("refuses auto-update over non-loopback HTTP", async () => {
     const test = await createFixture({
+      enabled: true,
       serverUrl: "http://server.example.test",
     });
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe("failed");
@@ -171,7 +181,10 @@ describe("protocol self-update", () => {
   });
 
   it("allows auto-update over loopback HTTP", async () => {
-    const test = await createFixture({ serverUrl: "http://127.0.0.1:38886" });
+    const test = await createFixture({
+      enabled: true,
+      serverUrl: "http://127.0.0.1:38886",
+    });
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",
     );
@@ -183,7 +196,7 @@ describe("protocol self-update", () => {
       HOST_DAEMON_PROTOCOL_VERSION,
       HOST_DAEMON_PROTOCOL_VERSION - 1,
     ]) {
-      const test = await createFixture({ protocolVersion });
+      const test = await createFixture({ enabled: true, protocolVersion });
       await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
         "skipped",
       );
@@ -193,7 +206,7 @@ describe("protocol self-update", () => {
 
   it("persists a short exponential retry backoff capped at five minutes", async () => {
     let now = 10_000;
-    const test = await createFixture({ now: () => now });
+    const test = await createFixture({ enabled: true, now: () => now });
     await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
       "updated",
     );
@@ -227,6 +240,7 @@ describe("protocol self-update", () => {
 
   it("contains install failures and rate-limits their retry", async () => {
     const test = await createFixture({
+      enabled: true,
       installFailure: new Error("npm failed"),
       now: () => 25_000,
     });
@@ -244,6 +258,7 @@ describe("protocol self-update", () => {
   it("lets a user-requested retry bypass and reset the current backoff", async () => {
     let now = 25_000;
     const test = await createFixture({
+      enabled: true,
       installFailure: new Error("download failed"),
       now: () => now,
     });
@@ -265,7 +280,7 @@ describe("protocol self-update", () => {
   it("tries immediately when the server advances to another protocol", async () => {
     let now = 30_000;
     let protocolVersion = HOST_DAEMON_PROTOCOL_VERSION + 1;
-    const test = await createFixture({ now: () => now });
+    const test = await createFixture({ enabled: true, now: () => now });
     test.fetchFn.mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/install/version")) {

@@ -88,18 +88,10 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Ensure npm supports trusted publishing
+      - name: Install pinned npm for trusted publishing
         run: |
-          npm_version="$(npm --version)"
-          node - "$npm_version" <<'NODE' || npm install --global npm@latest
-          const version = process.argv[2];
-          const [major, minor, patch] = version.split(".").map(Number);
-          const supported =
-            major > 11 ||
-            (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
-          process.exit(supported ? 0 : 1);
-          NODE
-          npm --version
+          npm install --global npm@11.6.2
+          test "$(npm --version)" = "11.6.2"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -258,6 +250,12 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Require main branch
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Publish bb-app nightly must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -273,18 +271,10 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Ensure npm supports trusted publishing
+      - name: Install pinned npm for trusted publishing
         run: |
-          npm_version="$(npm --version)"
-          node - "$npm_version" <<'NODE' || npm install --global npm@latest
-          const version = process.argv[2];
-          const [major, minor, patch] = version.split(".").map(Number);
-          const supported =
-            major > 11 ||
-            (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
-          process.exit(supported ? 0 : 1);
-          NODE
-          npm --version
+          npm install --global npm@11.6.2
+          test "$(npm --version)" = "11.6.2"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -406,18 +396,10 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Ensure npm supports trusted publishing
+      - name: Install pinned npm for trusted publishing
         run: |
-          npm_version="$(npm --version)"
-          node - "$npm_version" <<'NODE' || npm install --global npm@latest
-          const version = process.argv[2];
-          const [major, minor, patch] = version.split(".").map(Number);
-          const supported =
-            major > 11 ||
-            (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
-          process.exit(supported ? 0 : 1);
-          NODE
-          npm --version
+          npm install --global npm@11.6.2
+          test "$(npm --version)" = "11.6.2"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -512,6 +494,14 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
     steps:
+      - name: Require main branch for manual nightly release
+        if: >-
+          ${{ github.event_name == 'workflow_dispatch'
+          && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Manual nightly desktop release must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -647,6 +637,14 @@ jobs:
       BB_DESKTOP_RELEASE_CHANNEL: nightly
 
     steps:
+      - name: Require main branch for manual nightly release
+        if: >-
+          ${{ github.event_name == 'workflow_dispatch'
+          && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Manual nightly desktop release must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -767,6 +765,8 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     # The workflow-level group splits nightly from ref, so a release run and the
     # cron can reach this job at the same time. Both delete every asset on the
     # moving release and upload their own, so a race can leave one platform's
@@ -776,6 +776,14 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Require main branch for manual nightly publication
+        if: >-
+          ${{ github.event_name == 'workflow_dispatch'
+          && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Manual nightly desktop publication must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -807,6 +815,15 @@ jobs:
         with:
           name: bb-nightly-desktop-linux-x64-${{ needs.nightly-desktop-linux.outputs.version }}
           path: release/linux
+
+      - name: Attest nightly desktop release binaries
+        id: attest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: |
+            release/macos/*.dmg
+            release/macos/*.zip
+            release/linux/*.AppImage
 
       - name: Publish moving nightly desktop release
         env:
@@ -882,12 +899,14 @@ jobs:
 
       - name: Summarize nightly desktop release
         env:
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
           VERSION: ${{ needs.nightly-desktop-macos.outputs.version }}
         run: |
           {
             echo "## bb Nightly desktop"
             echo
             echo "- version: \`$VERSION\`"
+            echo "- binary provenance attestation: \`${ATTESTATION_URL}\`"
             echo "- app identity: \`dev.bb.desktop.nightly\`"
             echo "- platforms: macOS arm64 (signed), Linux x64 AppImage"
             echo "- release: https://github.com/get-bb/bb/releases/tag/desktop-nightly"

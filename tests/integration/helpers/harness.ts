@@ -116,12 +116,6 @@ export interface CreateHarnessOptions {
    * harness backends (mobile e2e) need a stable URL for the app under test.
    */
   serverPort?: number;
-  /**
-   * Bind host. Defaults to loopback. `0.0.0.0` lets a physical phone on the
-   * same network reach the harness server; the client base URL stays on
-   * 127.0.0.1 either way.
-   */
-  bindHost?: "127.0.0.1" | "0.0.0.0";
 }
 
 export type WithHarnessCallback<T> = (
@@ -333,11 +327,11 @@ async function startIntegrationServer(
   let addressInfo: ListeningAddress | null = null;
   const server = serve(
     {
-      // The client always connects to 127.0.0.1, so bind the test server to
-      // 127.0.0.1 too. If we leave the host unspecified, this server can end
-      // up on ::1 while another local process owns 127.0.0.1 on the same
-      // port, and the client will hit that other process instead.
-      hostname: options.bindHost ?? TEST_SERVER_HOST,
+      // Keep the unauthenticated test server on loopback. If we leave the host
+      // unspecified, this server can end up on ::1 while another local process
+      // owns 127.0.0.1 on the same port, and the client will hit that other
+      // process instead.
+      hostname: TEST_SERVER_HOST,
       port: options.serverPort ?? 0,
       fetch: app.fetch,
     },

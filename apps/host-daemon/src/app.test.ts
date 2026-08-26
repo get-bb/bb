@@ -174,11 +174,15 @@ function createFetchRecorder(
       });
     }
 
-    if (/^\/internal\/plugins\/[^/]+\/host\/[a-f0-9]{64}$/u.test(url.pathname)) {
+    if (
+      /^\/internal\/plugins\/[^/]+\/host\/[a-f0-9]{64}$/u.test(url.pathname)
+    ) {
       // The bridge artifact every bridge launch in these tests names.
       return new Response(new Uint8Array(DISPATCH_TEST_ARTIFACT_BYTES), {
         status: 200,
-        headers: { "content-length": String(DISPATCH_TEST_ARTIFACT_BYTES.byteLength) },
+        headers: {
+          "content-length": String(DISPATCH_TEST_ARTIFACT_BYTES.byteLength),
+        },
       });
     }
 
@@ -808,7 +812,7 @@ describe("createHostDaemonApp", () => {
     }
   });
 
-  it("logs raw stderr for unexpected provider process exits", async () => {
+  it("redacts stderr for unexpected provider process exits", async () => {
     const { app, logger, runtimeOptions } = await createAppFixture();
     try {
       const workspacePath = await makeTempDir(
@@ -836,7 +840,7 @@ describe("createHostDaemonApp", () => {
         code: 1,
         expected: false,
         signal: null,
-        stderr: "OPENAI_API_KEY=sk-test-secret\nUsage limit reached.",
+        stderr: "OPENAI_API_KEY=sk-example-secret\nUsage limit reached.",
       });
 
       expect(logger.warn).toHaveBeenCalledWith(
@@ -845,7 +849,7 @@ describe("createHostDaemonApp", () => {
           threadIds: ["thr_provider_exit_log"],
           code: 1,
           signal: null,
-          stderr: "OPENAI_API_KEY=sk-test-secret\nUsage limit reached.",
+          stderr: "OPENAI_API_KEY=[REDACTED]\nUsage limit reached.",
         },
         "Unexpected provider process exited with stderr",
       );

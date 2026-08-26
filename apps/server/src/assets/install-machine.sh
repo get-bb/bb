@@ -2,12 +2,18 @@
 
 set -eu
 
+# Enrollment data contains host credentials and provider state. Do not let a
+# permissive caller umask expose newly created files or directories.
+umask 077
+
 usage() {
   cat >&2 <<'EOF'
-Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>]
+Usage: install.sh --join-code <code> --host-id <host-id> --server <url> [--machine-code <code>] [--host-daemon-port <port>] [--auto-update]
 
 The first three options are required. --machine-code is required through bb connect.
-By default, the installer assigns this enrolled daemon its own local API port.
+By default, the installer assigns this enrolled daemon its own local API port and
+leaves unattended daemon updates disabled. Pass --auto-update only after explicitly
+trusting this server's unsigned bb-app package for unattended updates.
 EOF
   exit 2
 }
@@ -17,6 +23,7 @@ host_id=
 server_url=
 machine_code=
 requested_host_daemon_port=
+auto_update=no
 
 CURL_CONNECT_TIMEOUT_SECONDS=10
 PACKAGE_DOWNLOAD_TIMEOUT_SECONDS=300
@@ -98,6 +105,10 @@ ready_row() {
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --auto-update)
+      auto_update=yes
+      shift
+      ;;
     --join-code|--host-id|--server|--machine-code|--host-daemon-port)
       [ "$#" -ge 2 ] || usage
       [ -n "$2" ] || usage
@@ -168,12 +179,37 @@ server_host=$(node -e '
   exit 1
 }
 service_slug=$(printf '%s' "$server_host" | tr '.' '-')
+server_loopback=$(node -e '
+  const url = new URL(process.argv[1]);
+  const hostname = url.hostname.toLowerCase();
+  const loopback =
+    hostname === "127.0.0.1" ||
+    hostname === "localhost" ||
+    hostname === "[::1]";
+  if (url.protocol === "https:") {
+    process.stdout.write("no");
+  } else if (url.protocol === "http:" && loopback) {
+    process.stdout.write("yes");
+  } else {
+    process.exit(1);
+  }
+' "$server_url" 2>/dev/null) || {
+  fail_step "Server URL must use HTTPS; HTTP is allowed only for loopback local development."
+  exit 1
+}
+if [ "$server_loopback" = yes ]; then
+  curl_allowed_protocols='=http,https'
+else
+  curl_allowed_protocols='=https'
+fi
+curl_allowed_redirect_protocols=$curl_allowed_protocols
 
 # Each server gets its own data dir and daemon instance, so one machine can
 # serve several bb servers and a full local bb install keeps ~/.bb to itself.
 data_dir=${BB_DATA_DIR:-"$HOME/.bb-machines/$server_host"}
 mkdir -p "$data_dir"
 mkdir -p "$data_dir/logs"
+chmod 700 "$data_dir" "$data_dir/logs"
 canonical_data_dir=$(node -e '
   const fs = require("node:fs");
   process.stdout.write(fs.realpathSync(process.argv[1]));
@@ -190,6 +226,7 @@ bb_app_native_modules="better-sqlite3,node-pty,@parcel/watcher"
 bb_app_allow_scripts="--allow-scripts=$bb_app_native_modules"
 port_registry_dir="$HOME/.bb-machines/host-daemon-ports"
 mkdir -p "$port_registry_dir"
+chmod 700 "$port_registry_dir"
 
 valid_port() {
   node -e '
@@ -369,9 +406,9 @@ if valid_port "$previous_host_daemon_port" && [ "$previous_host_daemon_port" != 
 fi
 complete_step "Using local host-daemon port $host_daemon_port"
 
-# The server's own build is always installed when it offers one: version
-# strings cannot distinguish unpublished builds, so an existing bb-app is
-# trusted only when the server provides no package (404) or is unreachable.
+# Enrollment installs only the package served by this server. There is no PATH
+# or npm-registry fallback: silently changing the publisher would defeat the
+# operator's explicit choice of server.
 package_url="${server_url%/}/install/bb-app.tgz"
 package_dir=$(mktemp -d "${TMPDIR:-/tmp}/bb-app.XXXXXX")
 package_file="$package_dir/bb-app.tgz"
@@ -383,6 +420,8 @@ if [ ! -t 2 ]; then
 fi
 active_step "Downloading the server's bb-app package (timeout: 5 minutes)"
 package_status=$(curl "$curl_output_mode" --show-error --location \
+  --proto "$curl_allowed_protocols" \
+  --proto-redir "$curl_allowed_redirect_protocols" \
   --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
   --max-time "$PACKAGE_DOWNLOAD_TIMEOUT_SECONDS" \
   --output "$package_file" \
@@ -402,27 +441,9 @@ if [ "$package_status" -ge 200 ] && [ "$package_status" -lt 300 ]; then
   fi
   bb_app_npm_prefix=$machine_npm_prefix
   complete_step "Installed the server's bb-app build"
-elif command -v bb-app >/dev/null 2>&1; then
-  bb_app=$(command -v bb-app)
-  if [ "$package_status" = 404 ]; then
-    warning_step "The server does not provide its bb-app package; using bb-app at $bb_app"
-  else
-    warning_step "Could not download the server's bb-app package (HTTP $package_status); using bb-app at $bb_app"
-  fi
-elif [ "$package_status" = 404 ]; then
-  require_npm
-  warning_step "The server does not provide its bb-app package"
-  active_step "Installing bb-app from the npm registry"
-  if ! npm install -g "$bb_app_allow_scripts" --prefix "$machine_npm_prefix" bb-app; then
-    rm -rf "$package_dir"
-    fail_step "Could not install bb-app for this machine. Check the npm error above, then rerun this command."
-    exit 1
-  fi
-  bb_app_npm_prefix=$machine_npm_prefix
-  complete_step "Installed bb-app from the npm registry"
 else
   rm -rf "$package_dir"
-  fail_step "Could not download the server's bb-app package from $package_url (HTTP $package_status)."
+  fail_step "Could not download the server's bb-app package from $package_url (HTTP $package_status); no PATH or npm fallback is permitted."
   exit 1
 fi
 rm -rf "$package_dir"
@@ -464,6 +485,8 @@ if [ -n "$machine_code" ]; then
   }
   active_step "Authorizing this machine with bb connect"
   redeem_response=$(curl -fsS \
+    --proto "$curl_allowed_protocols" \
+    --proto-redir "$curl_allowed_redirect_protocols" \
     --connect-timeout "$CURL_CONNECT_TIMEOUT_SECONDS" \
     --max-time "$MACHINE_CODE_REDEEM_TIMEOUT_SECONDS" \
     -X POST \
@@ -534,6 +557,15 @@ if [ -f "$data_dir/auth.json" ]; then
   fi
 fi
 
+auto_update_arg=
+launchd_auto_update_arg=
+systemd_auto_update_arg=
+if [ "$auto_update" = yes ]; then
+  auto_update_arg=--auto-update
+  launchd_auto_update_arg='    <string>--auto-update</string>'
+  systemd_auto_update_arg=' --auto-update'
+fi
+
 join_pid=
 if [ "$already_joined" = no ]; then
   join_log="$data_dir/install-join.log"
@@ -541,7 +573,7 @@ if [ "$already_joined" = no ]; then
   detail "Join progress is logged to $join_log"
   # The daemon passes this prefix back to npm during protocol self-updates.
   BB_APP_NPM_PREFIX="$bb_app_npm_prefix" BB_DATA_DIR="$data_dir" nohup "$bb_app" host-daemon join \
-    --auto-update \
+    $auto_update_arg \
     --host-daemon-port "$host_daemon_port" \
     --join-code "$join_code" \
     --host-id "$host_id" \
@@ -631,7 +663,7 @@ if [ "$platform" = darwin ]; then
     <string>$escaped_node_bin</string>
     <string>$escaped_bb_app</string>
     <string>host-daemon</string>
-    <string>--auto-update</string>
+$launchd_auto_update_arg
     <string>--host-daemon-port</string>
     <string>$host_daemon_port</string>
     <string>--server-url</string>
@@ -693,7 +725,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --auto-update --host-daemon-port "$host_daemon_port" --server-url "$escaped_server"
+ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon$systemd_auto_update_arg --host-daemon-port "$host_daemon_port" --server-url "$escaped_server"
 Environment="BB_APP_NPM_PREFIX=$escaped_bb_app_npm_prefix"
 Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always

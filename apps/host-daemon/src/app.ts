@@ -13,6 +13,7 @@ import { startEventLoopStallMonitor } from "./event-loop-stall-monitor.js";
 import { startHostDaemonHealthMonitor } from "./host-daemon-health-monitor.js";
 import { startLocalApiServer, type LocalApiServer } from "./local-api.js";
 import type { HostDaemonLocalApiConfig } from "./local-api-config.js";
+import { ensurePrivateDirectory, redactSensitiveText } from "@bb/logger";
 import type { HostDaemonLogger } from "./logger.js";
 import type { HostDaemonDaemonWsMessage } from "@bb/host-daemon-contract";
 import {
@@ -227,6 +228,7 @@ interface MaybeInvalidateSessionArgs {
 export async function createHostDaemonApp(
   options: CreateHostDaemonAppOptions,
 ): Promise<HostDaemonApp> {
+  ensurePrivateDirectory(options.dataDir);
   const threadStorageRootPath = await ensureThreadStorageRoot(options.dataDir);
   const dataDirSkillsRootPath = await ensureDataDirSkillsRootPath(
     options.dataDir,
@@ -622,14 +624,16 @@ export async function createHostDaemonApp(
     },
     onProcessExit: (info) => {
       const threadIds = info.threads.map((thread) => thread.threadId);
-      if (!info.expected && info.stderr) {
+      const stderr =
+        info.stderr === null ? null : redactSensitiveText(info.stderr);
+      if (!info.expected && stderr) {
         options.logger.warn(
           {
             providerId: info.providerId,
             threadIds,
             code: info.code,
             signal: info.signal,
-            stderr: info.stderr,
+            stderr,
           },
           "Unexpected provider process exited with stderr",
         );

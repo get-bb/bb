@@ -1,4 +1,3 @@
-import { AbortError } from "p-retry";
 import { describe, expect, it, vi } from "vitest";
 import type { PendingInteractionCreate } from "@bb/domain";
 import { HOST_ARTIFACT_MAX_BYTES } from "@bb/host-daemon-contract/protocol";
@@ -142,45 +141,48 @@ describe("createServerClient", () => {
     },
   );
 
-  it("refuses to fetch project attachments over insecure non-loopback HTTP", async () => {
+  it("rejects non-loopback HTTP at client construction", () => {
     const fetchFn = vi.fn<FetchFn>();
-    const client = createServerClient({
-      fetchFn,
-      getSessionId: () => "session-1",
-      hostKey: "host-key",
-      logger: createLogger(),
-      serverUrl: "http://bb.example.test",
-    });
 
-    await expect(
-      client.fetchProjectAttachment({
-        maxBytes: 25,
-        projectId: "project-1",
-        threadId: "thread-1",
-        path: "network-tab.har",
+    expect(() =>
+      createServerClient({
+        fetchFn,
+        getSessionId: () => "session-1",
+        hostKey: "host-key",
+        logger: createLogger(),
+        serverUrl: "http://bb.example.test",
       }),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).toThrow(/HTTPS/u);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it("refuses to fetch project attachments when the server URL is malformed", async () => {
+  it("rejects malformed server URLs at client construction", () => {
     const fetchFn = vi.fn<FetchFn>();
-    const client = createServerClient({
-      fetchFn,
-      getSessionId: () => "session-1",
-      hostKey: "host-key",
-      logger: createLogger(),
-      serverUrl: "not a url",
-    });
 
-    await expect(
-      client.fetchProjectAttachment({
-        maxBytes: 25,
-        projectId: "project-1",
-        threadId: "thread-1",
-        path: "network-tab.har",
+    expect(() =>
+      createServerClient({
+        fetchFn,
+        getSessionId: () => "session-1",
+        hostKey: "host-key",
+        logger: createLogger(),
+        serverUrl: "not a url",
       }),
-    ).rejects.toBeInstanceOf(AbortError);
+    ).toThrow(/valid URL/u);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-HTTP server URLs at client construction", () => {
+    const fetchFn = vi.fn<FetchFn>();
+
+    expect(() =>
+      createServerClient({
+        fetchFn,
+        getSessionId: () => "session-1",
+        hostKey: "host-key",
+        logger: createLogger(),
+        serverUrl: "ftp://127.0.0.1",
+      }),
+    ).toThrow(/HTTPS/u);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -245,7 +247,7 @@ describe("createServerClient", () => {
       getSessionId: () => "session-1",
       hostKey: "host-key",
       logger: createLogger(),
-      serverUrl: "http://192.168.1.10:3000",
+      serverUrl: "https://192.168.1.10:3000",
     });
 
     await expect(client.fetchSkillTree(treeHash)).resolves.toEqual({

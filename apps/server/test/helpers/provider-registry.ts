@@ -417,6 +417,7 @@ export async function registerFakeProviders(
             reasoningLevels: ["low", "medium", "high"],
           },
           composerActions: ["plan", "goal"],
+          env: { passthrough: ["SCRIPTED_ECHO_RECORD_PATH"] },
         }),
         readSettings: NO_PLUGIN_SETTINGS,
       }),

@@ -202,7 +202,11 @@ export async function ensureDataDirSkillsRootPath(
   dataDir: string,
 ): Promise<string> {
   const dataDirSkillsRootPath = resolveDataDirSkillsRootPath(dataDir);
-  await fs.mkdir(dataDirSkillsRootPath, { recursive: true });
+  await fs.mkdir(dataDirSkillsRootPath, {
+    mode: 0o700,
+    recursive: true,
+  });
+  await fs.chmod(dataDirSkillsRootPath, 0o700);
   return dataDirSkillsRootPath;
 }
 

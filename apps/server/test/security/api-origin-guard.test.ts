@@ -119,11 +119,20 @@ describe("/api/v1 browser origin guard", () => {
     ).toBe(403);
   });
 
-  it("accepts the app's own origin and the request host", async () => {
+  it("accepts the app's configured loopback origins", async () => {
     server = await startTestServer();
-    const origin = new URL(server.baseUrl).origin;
+    const base = new URL(server.baseUrl);
 
-    expect(await statusFor(server.baseUrl, { headers: { origin } })).toBe(200);
+    expect(
+      await statusFor(server.baseUrl, {
+        headers: { origin: base.origin },
+      }),
+    ).toBe(200);
+    expect(
+      await statusFor(server.baseUrl, {
+        headers: { origin: `http://localhost:${base.port}` },
+      }),
+    ).toBe(200);
   });
 
   // The bb Connect tunnel forwards a remote request to the loopback server
@@ -160,62 +169,40 @@ describe("/api/v1 browser origin guard", () => {
     ).toBe(403);
   });
 
-  // bb is commonly served over a LAN address or Tailscale Serve, which the
-  // server cannot enumerate into an allowlist. `isTrustedOrigin` admits those
-  // by matching the origin against the request `Host` (or `X-Forwarded-Host`
-  // with `X-Forwarded-Proto`). `fetch` silently drops a `Host` override, so
-  // these go over `http.request` — a `fetch`-based version of this test passes
-  // for the wrong reason.
-  it("accepts bb served over a LAN address or Tailscale Serve", async () => {
+  // Request authority is attacker-controlled when a browser can reach a
+  // loopback listener through a DNS-rebinding name. Neither Host nor
+  // X-Forwarded-Host may turn an unconfigured origin into a trusted one.
+  it("rejects hostile origins even when request authority matches", async () => {
     server = await startTestServer();
     const port = new URL(server.baseUrl).port;
 
-    // LAN: the reverse proxy passes Host through.
     expect(
       await rawStatus(server.baseUrl, {
         origin: `http://192.168.1.5:${port}`,
         host: `192.168.1.5:${port}`,
       }),
-    ).toBe(200);
+    ).toBe(403);
 
-    // Tailscale Serve: TLS terminated upstream, Host preserved. bb supports
-    // this shape deliberately (see the plugin-wire suite), so it must pass.
     expect(
       await rawStatus(server.baseUrl, {
         origin: "https://box.ts.net",
         host: "box.ts.net",
         "x-forwarded-proto": "https",
       }),
-    ).toBe(200);
+    ).toBe(403);
 
-    // A LAN deployment behind a proxy that rewrites Host but forwards it.
     expect(
       await rawStatus(server.baseUrl, {
         origin: `http://192.168.1.5:${port}`,
         host: `127.0.0.1:${port}`,
         "x-forwarded-host": `192.168.1.5:${port}`,
       }),
-    ).toBe(200);
+    ).toBe(403);
 
-    // IPv6 literals are addresses too.
     expect(
       await rawStatus(server.baseUrl, {
         origin: `http://[::1]:${port}`,
         host: `[::1]:${port}`,
-      }),
-    ).toBe(200);
-  });
-
-  // A rewriting proxy must forward the original authority. bb already imposes
-  // this on its plugin routes, which have used the same check all along.
-  it("requires a rewriting proxy to send X-Forwarded-Host", async () => {
-    server = await startTestServer();
-    const port = new URL(server.baseUrl).port;
-
-    expect(
-      await rawStatus(server.baseUrl, {
-        origin: `http://192.168.1.5:${port}`,
-        host: `127.0.0.1:${port}`,
       }),
     ).toBe(403);
   });

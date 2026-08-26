@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { validateServerUrl } from "@bb/config/public-url";
 import { dirname } from "node:path";
 import { z } from "zod";
 
@@ -96,7 +97,9 @@ export function normalizeCustomServerUrl(rawUrl: string): string | null {
   } catch {
     return null;
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  try {
+    validateServerUrl("server URL", trimmed);
+  } catch {
     return null;
   }
   parsed.hash = "";

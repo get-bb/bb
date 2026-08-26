@@ -45,14 +45,14 @@ including binding/ports, data and the dev-app port, telemetry, inherited skill
 roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
 `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
 `BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
-change, run `bb-app stop && bb-app start` or restart the desktop app. Until
-then, changing or unsetting `BB_SERVER_BIND_HOST` does not close a previous
-`0.0.0.0` listener.
+change, run `bb-app stop && bb-app start` or restart the desktop app. The
+unauthenticated server accepts only the loopback `BB_SERVER_BIND_HOST` value;
+off-loopback values are refused. The Origin check is a browser CSRF boundary,
+not authentication.
 
-With `--server-bind-host 0.0.0.0`, the startup listener and `app` rows show
-`http://0.0.0.0:<port>`. Health checks and the colocated daemon still connect
-through loopback; this does not narrow the IPv4 wildcard listener. Containers
-must also publish the port to the host.
+For remote access, use bb connect or a private Tailscale Serve route protected
+by ACLs. Containers must publish a loopback listener only through a private
+access boundary.
 
 Server helper completions use `BB_INFERENCE` first, then
 `BB_INFERENCE_FALLBACK` after a transient timeout, rate limit, or
