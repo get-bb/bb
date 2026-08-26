@@ -242,11 +242,23 @@ function SpatialFixture({ children }: { children: ReactNode }) {
       const authoredHeight = fixture.scrollHeight;
       // Scroll-invariant: the frame's offset within the scroll content, not
       // its live client position, so scrolling never re-scales the fixture.
+      // An open in-flow card is part of the page's height budget — without
+      // subtracting its footprint the fixture fills everything and pins
+      // every card's visible band to the fold, which reads as a fixed-height
+      // card and scrolls the page chrome away.
+      const flowCard = frame
+        .closest("section")
+        ?.querySelector<HTMLElement>("[data-guide-card-flow]");
+      const cardFootprint = flowCard
+        ? flowCard.getBoundingClientRect().height +
+          parseFloat(getComputedStyle(flowCard).marginTop || "0")
+        : 0;
       const availableHeight = viewport
         ? viewport.clientHeight -
           (frame.getBoundingClientRect().top -
             viewport.getBoundingClientRect().top +
             viewport.scrollTop) -
+          cardFootprint -
           8
         : undefined;
       const scale = spatialFixtureScale(
@@ -278,7 +290,28 @@ function SpatialFixture({ children }: { children: ReactNode }) {
     observer.observe(frame);
     observer.observe(fixture);
     if (viewport) observer.observe(viewport);
-    return () => observer.disconnect();
+    // The in-flow card mounts and unmounts with the open annotation; watch
+    // the section so its appearance re-budgets the height, and its own size
+    // while present.
+    const section = frame.closest("section");
+    let observedCard: Element | null = null;
+    const watchCard = () => {
+      const card = section?.querySelector("[data-guide-card-flow]") ?? null;
+      if (card === observedCard) return;
+      if (observedCard) observer.unobserve(observedCard);
+      observedCard = card;
+      if (card) observer.observe(card);
+      measure();
+    };
+    watchCard();
+    const cardObserver = section
+      ? new MutationObserver(watchCard)
+      : null;
+    cardObserver?.observe(section as Node, { childList: true });
+    return () => {
+      observer.disconnect();
+      cardObserver?.disconnect();
+    };
   }, []);
 
   const scaled = geometry.height !== null;
@@ -762,7 +795,10 @@ export function ProductMap({
                 the consumer declares the container (see the plugin's
                 scrollport); with none declared it keeps the 8px floor. */}
             {cardNode ? (
-              <div className="mx-auto mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full">
+              <div
+                data-guide-card-flow
+                className="mx-auto mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full"
+              >
                 {cardNode}
               </div>
             ) : null}

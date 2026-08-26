@@ -295,7 +295,10 @@ try {
           ringed,
           gap,
           scale,
-          cardInViewport: card ? card.getBoundingClientRect().bottom <= innerHeight + 1 : null,
+          cardInViewport: inFlowCard
+            ? inFlowCard.getBoundingClientRect().bottom <= innerHeight + 1
+            : null,
+          scrollTop: document.querySelector("[data-guide-stage-viewport]")?.scrollTop ?? 0,
           transient: transient ? transient.getBoundingClientRect().toJSON() : null,
           badges,
         };
@@ -305,6 +308,17 @@ try {
       }
       if (engaged.gap !== null && (engaged.gap < 7 || engaged.gap > 29)) {
         failures.push(`${viewport.tag}/composer: stage-to-card gap ${engaged.gap.toFixed(1)}px outside clamp`);
+      }
+      // The open card is part of the height budget: it must fit above the
+      // fold without scrolling the page chrome away (desktop classes; a
+      // compact viewport may float or scroll legitimately).
+      if (viewport.width >= 1000) {
+        if (engaged.cardInViewport === false) {
+          failures.push(`${viewport.tag}/composer: open ${id} card extends past the fold`);
+        }
+        if (engaged.scrollTop > 1) {
+          failures.push(`${viewport.tag}/composer: opening ${id} scrolled the page chrome away (${engaged.scrollTop}px)`);
+        }
       }
       if (engaged.transient) {
         for (const badge of engaged.badges) {
