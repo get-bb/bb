@@ -70,9 +70,6 @@ describe("command palette guide interaction", () => {
       '[data-guide-badge="command-palette-actions"]',
     );
     const listbox = container.querySelector('[role="listbox"]');
-    const annotationLayer = container.querySelector(
-      '[data-guide-annotation-layer="command-palette-actions"]',
-    );
 
     expect(action?.getAttribute("aria-selected")).toBe("true");
     expect(
@@ -83,11 +80,13 @@ describe("command palette guide interaction", () => {
     expect(
       container.querySelector('[data-guide-fixture="command-palette-overlay"]'),
     ).not.toBeNull();
-    expect(annotationLayer?.parentElement).toBe(
+    // The measured badge rides the dialog's margin, anchored to the row it
+    // annotates, and stays outside the clipping listbox.
+    expect(badge?.parentElement).toBe(
       container.querySelector('[data-guide-fixture="command-palette-dialog"]'),
     );
+    expect(badge?.getAttribute("data-guide-badge-placement")).toBe("start");
     expect(listbox?.contains(badge ?? null)).toBe(false);
-    expect(annotationLayer?.contains(action ?? null)).toBe(false);
 
     act(() => badge?.click());
 

@@ -28,6 +28,31 @@ export function annotationChipClass(active: boolean, className?: string) {
   );
 }
 
+/**
+ * Chip placement is a declared variant, never a per-instance offset. These
+ * four cover every in-target fixture site (exterior and lane chips measure
+ * their anchor instead — see MeasuredBadge); the rendered QA sweep asserts
+ * the result overlaps nothing, so a crowded site changes variant rather than
+ * gaining a bespoke coordinate.
+ */
+export type AnnotationChipPlacement =
+  | "corner"
+  | "corner-inset"
+  | "side"
+  | "outside-above";
+
+export const CHIP_PLACEMENT_CLASS: Record<AnnotationChipPlacement, string> = {
+  /** Outside the target's top-right corner — the default. */
+  corner: "-right-2 -top-2",
+  /** Inside the corner, for targets that hug a clipping frame edge. */
+  "corner-inset": "right-2 -top-2",
+  /** Riding the target's right edge, vertically centered. */
+  side: "-right-2 top-1/2 -translate-y-1/2",
+  /** Floating above the target, horizontally centered — for inline-text
+   * targets where a corner chip would land on the neighboring words. */
+  "outside-above": "left-1/2 -top-6 -translate-x-1/2",
+};
+
 export function ExperimentalBadge() {
   return (
     <span

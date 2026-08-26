@@ -22,6 +22,8 @@ import {
   Fragment,
   useContext,
   useEffect,
+  useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -55,7 +57,11 @@ import {
 } from "@hugeicons/core-free-icons";
 
 import { cn } from "./cn";
-import { annotationChipClass } from "./annotation";
+import {
+  annotationChipClass,
+  CHIP_PLACEMENT_CLASS,
+  type AnnotationChipPlacement,
+} from "./annotation";
 import anatomy from "./anatomy-manifest.json";
 
 export interface SurfaceMapState {
@@ -146,51 +152,59 @@ export const SETTINGS_MARKS = [
 
 /* ── primitives ─────────────────────────────────────────────────────── */
 
+/**
+ * The shared engagement triple every annotation reads. `active` drives the
+ * chip fill (an open card's marker stays lit); `outlined` is exclusive so two
+ * outlines are never on screen to overlap; `dimmed` recedes everything but a
+ * spotlighted surface.
+ */
+function useEngagement(id: string) {
+  const { activeId, expandedId, spotlightId } = useSurfaceMap();
+  return {
+    active: activeId === id || expandedId === id || spotlightId === id,
+    outlined:
+      activeId !== null
+        ? activeId === id
+        : expandedId === id || spotlightId === id,
+    dimmed: Boolean(spotlightId) && spotlightId !== id,
+  };
+}
+
+/**
+ * The engaged ring, applied to the target element itself. The ring's
+ * geometry is the target's geometry by construction — never a separately
+ * positioned box — so it wraps content, follows the target's own radius, and
+ * survives any fixture edit.
+ */
+function engagedRingClass(outlined: boolean) {
+  return outlined
+    ? "bg-surface-selected/30 ring-1 ring-inset ring-surface-selected-border"
+    : undefined;
+}
+
 function Mark({
   id,
   label,
   className,
-  chipClassName,
+  chip = "corner",
   showChip = true,
-  edge = false,
   onActivate,
   children,
 }: {
   id: string;
   label: string;
   className?: string;
-  chipClassName?: string;
+  /** Where the numbered chip sits relative to this target — a declared
+   * variant, never a per-instance offset. */
+  chip?: AnnotationChipPlacement;
   /** Whether this region renders its own numbered chip. */
   showChip?: boolean;
-  /**
-   * Anchor the chip to the diagram's gutter instead of to this mark, for a
-   * region that hugs an outer edge — those chips crowd the diagram's own
-   * chrome when they sit inside it.
-   *
-   * The mechanism is the containing block: dropping `relative` here makes
-   * the chip resolve against the nearest positioned ancestor, which is the
-   * `relative` gutter wrapper outside the frame. An absolutely positioned
-   * box is not clipped by an ancestor whose descendant its containing block
-   * is not, so the chip escapes the frame's `overflow-hidden`.
-   * `chipClassName` is then read as coordinates on the gutter, not the mark;
-   * ProductMap scrolls that entire annotated object together.
-   */
-  edge?: boolean;
   /** Runs the fixture interaction represented by this marker. */
   onActivate?: () => void;
   children?: ReactNode;
 }) {
-  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
-    useSurfaceMap();
-  const active = activeId === id || expandedId === id || spotlightId === id;
-  // The container outline is exclusive: while any region is hovered, only
-  // that region outlines, so two outlines are never on screen to overlap.
-  // The chip fill still follows `active`, so an open card's marker stays lit.
-  const outlined =
-    activeId !== null
-      ? activeId === id
-      : expandedId === id || spotlightId === id;
-  const dimmed = Boolean(spotlightId) && spotlightId !== id;
+  const { setActiveId, numberOf, onSelect } = useSurfaceMap();
+  const { active, outlined, dimmed } = useEngagement(id);
   return (
     <a
       data-guide-region={id}
@@ -213,8 +227,7 @@ function Mark({
       className={cn(
         // ring-inset keeps the outline inside this region's own bounds, so
         // it cannot bleed into a neighbor that shares an edge.
-        "rounded-md ring-1 ring-inset transition-all",
-        edge || "relative",
+        "relative rounded-md ring-1 ring-inset transition-all",
         outlined
           ? "bg-surface-selected ring-surface-selected-border"
           : "ring-transparent hover:bg-state-hover",
@@ -233,10 +246,7 @@ function Mark({
             active,
             // The ring is the only addition: it keeps the chip legible where it
             // overlaps the mockup's own grey bones.
-            cn(
-              "absolute z-50 ring-2 ring-card",
-              chipClassName ?? "-right-2 -top-2",
-            ),
+            cn("absolute z-50 ring-2 ring-card", CHIP_PLACEMENT_CLASS[chip]),
           )}
         >
           {numberOf(id)}
@@ -247,58 +257,11 @@ function Mark({
   );
 }
 
-/**
- * The numbered Guide control lives in a separate overlay outside the
- * palette's clipping listbox. This keeps the source palette's padding and row
- * alignment intact while preserving a distinct target for reading the card.
- */
-function CommandPaletteActionBadge() {
-  const id = "command-palette-actions";
-  const label = "Plugin actions in bb's quick command palette";
-  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
-    useSurfaceMap();
-  const active = activeId === id || expandedId === id || spotlightId === id;
-
-  return (
-    <a
-      data-guide-badge={id}
-      data-guide-badge-placement="outside-before"
-      href={`#surface-${id}`}
-      aria-label={`${label} — jump to details`}
-      onClick={
-        onSelect
-          ? (event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onSelect(id);
-            }
-          : undefined
-      }
-      onMouseEnter={() => setActiveId(id)}
-      onMouseLeave={() => setActiveId(null)}
-      onFocus={() => setActiveId(id)}
-      onBlur={() => setActiveId(null)}
-      className="pointer-events-auto row-start-2 self-center justify-self-start -ml-5 -translate-x-full"
-    >
-      <span
-        aria-hidden
-        className={annotationChipClass(active, "ring-2 ring-card")}
-      >
-        {numberOf(id)}
-      </span>
-    </a>
-  );
-}
-
 /** The palette row remains the real product action, separate from the badge. */
 function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
   const id = "command-palette-actions";
-  const { activeId, setActiveId, expandedId, spotlightId } = useSurfaceMap();
-  const outlined =
-    activeId !== null
-      ? activeId === id
-      : expandedId === id || spotlightId === id;
-  const dimmed = Boolean(spotlightId) && spotlightId !== id;
+  const { setActiveId } = useSurfaceMap();
+  const { outlined, dimmed } = useEngagement(id);
 
   return (
     <button
@@ -327,35 +290,31 @@ function CommandPaletteActionMark({ onRun }: { onRun: () => void }) {
 /**
  * An annotation whose boundary is the fixture element it describes.
  *
- * Unlike OverlayMark, this component does not measure a rectangle against a
- * slide. Its interactive layer fills the content wrapper, so the outline and
- * marker move with that content. The overlay is a sibling of `children`, so
- * fixture content does not have to become part of the interactive anchor.
+ * Unlike MeasuredBadge, this component measures nothing. Its interactive
+ * layer fills the content wrapper, so the outline and marker move with that
+ * content. The overlay is a sibling of `children`, so fixture content does
+ * not have to become part of the interactive anchor.
  */
 function RegionMark({
   id,
   label,
   className,
-  chipClassName,
+  chip = "corner",
   showChip = true,
   children,
 }: {
   id: string;
   label: string;
   className?: string;
-  chipClassName?: string;
+  /** Where the numbered chip sits relative to this target — a declared
+   * variant, never a per-instance offset. */
+  chip?: AnnotationChipPlacement;
   /** Whether this region renders its own numbered chip. */
   showChip?: boolean;
   children: ReactNode;
 }) {
-  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
-    useSurfaceMap();
-  const active = activeId === id || expandedId === id || spotlightId === id;
-  const outlined =
-    activeId !== null
-      ? activeId === id
-      : expandedId === id || spotlightId === id;
-  const dimmed = Boolean(spotlightId) && spotlightId !== id;
+  const { setActiveId, numberOf, onSelect } = useSurfaceMap();
+  const { active, outlined, dimmed } = useEngagement(id);
 
   return (
     <div
@@ -390,10 +349,7 @@ function RegionMark({
             data-guide-badge={id}
             className={annotationChipClass(
               active,
-              cn(
-                "absolute z-50 ring-2 ring-card",
-                chipClassName ?? "-right-2 -top-2",
-              ),
+              cn("absolute z-50 ring-2 ring-card", CHIP_PLACEMENT_CLASS[chip]),
             )}
           >
             {numberOf(id)}
@@ -402,6 +358,159 @@ function RegionMark({
       </a>
       {children}
     </div>
+  );
+}
+
+const useBrowserLayoutEffect =
+  typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/** Chip diameter (annotationChipClass `size-5`) plus its breathing gap. */
+const CHIP_SIZE = 20;
+const CHIP_GAP = 8;
+
+/**
+ * A numbered chip whose position is measured from its anchor element instead
+ * of authored. For annotations whose chip cannot live inside the target's
+ * own subtree — exterior gutters, the tab lane, dialog margins — the chip
+ * derives its place from the anchor's rendered box within the positioning
+ * parent, so any fixture change moves the chip with it. Positions are
+ * computed in layout coordinates (client deltas divided by the wrapper's
+ * scale), which are invariant under the scale-together transform.
+ *
+ * Placement is measured at runtime, so static markup tests can assert this
+ * chip exists but not where it sits — the rendered QA sweep is the placement
+ * gate for these badges.
+ */
+function MeasuredBadge({
+  id,
+  label,
+  anchor,
+  at,
+  align = "center",
+  onActivate,
+}: {
+  id: string;
+  label: string;
+  /** Selector for the anchor element, resolved inside the positioning parent. */
+  anchor: string;
+  /**
+   * start/end: the exterior gutter columns beside the positioning parent,
+   * vertically tracking the anchor; above: floating over the anchor; lane:
+   * the reserved band above the window frame, horizontally tracking it.
+   */
+  at: "start" | "end" | "above" | "lane";
+  /** Vertical alignment against the anchor for start/end placements. */
+  align?: "center" | "end";
+  /** Runs the fixture interaction represented by this badge. */
+  onActivate?: () => void;
+}) {
+  const { setActiveId, numberOf, onSelect } = useSurfaceMap();
+  const { active } = useEngagement(id);
+  const ref = useRef<HTMLAnchorElement>(null);
+  const [position, setPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useBrowserLayoutEffect(() => {
+    const element = ref.current;
+    const container = element?.offsetParent;
+    if (!element || !(container instanceof HTMLElement)) return;
+    // Anchors can live outside the positioning parent (a sibling frame), so
+    // resolve within the slide; ids repeat across slides, so never wider.
+    const scope = container.closest<HTMLElement>("[data-map-section]") ?? container;
+    const target = scope.querySelector<HTMLElement>(anchor);
+    if (!target) return;
+
+    const measure = () => {
+      const scaleWrapper = container.closest<HTMLElement>(
+        "[data-guide-responsive-strategy]",
+      );
+      const scale = Number(scaleWrapper?.dataset.guideScale ?? "1") || 1;
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const local = {
+        left: (targetRect.left - containerRect.left) / scale,
+        top: (targetRect.top - containerRect.top) / scale,
+        width: targetRect.width / scale,
+        height: targetRect.height / scale,
+      };
+      const centerY = local.top + local.height / 2 - CHIP_SIZE / 2;
+      const anchoredY =
+        align === "end" ? local.top + local.height - CHIP_SIZE : centerY;
+      // The exterior columns and the lane derive from the window frame's own
+      // box: chips sit just outside the frame edge (inside the slide gutter,
+      // so nothing clips them) and the lane centers in the band the gutter
+      // reserves above the frame. Without a frame, the container stands in.
+      const frame = container.querySelector<HTMLElement>("[data-guide-frame]");
+      const frameRect = frame?.getBoundingClientRect() ?? containerRect;
+      const frameLocal = {
+        left: (frameRect.left - containerRect.left) / scale,
+        right: (frameRect.right - containerRect.left) / scale,
+        top: (frameRect.top - containerRect.top) / scale,
+      };
+      const next =
+        at === "start"
+          ? { left: frameLocal.left - CHIP_SIZE - CHIP_GAP, top: anchoredY }
+          : at === "end"
+            ? { left: frameLocal.right + CHIP_GAP, top: anchoredY }
+            : at === "above"
+              ? {
+                  left: local.left + local.width / 2 - CHIP_SIZE / 2,
+                  top: local.top - CHIP_SIZE - 4,
+                }
+              : {
+                  left: local.left + local.width / 2 - CHIP_SIZE / 2,
+                  top: Math.max(0, (frameLocal.top - CHIP_SIZE) / 2),
+                };
+      setPosition((current) =>
+        current &&
+        Math.abs(current.left - next.left) < 0.5 &&
+        Math.abs(current.top - next.top) < 0.5
+          ? current
+          : next,
+      );
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(target);
+    const scaleWrapper = container.closest<HTMLElement>(
+      "[data-guide-responsive-strategy]",
+    );
+    if (scaleWrapper) observer.observe(scaleWrapper);
+    return () => observer.disconnect();
+  }, [anchor, at, align]);
+
+  return (
+    <a
+      ref={ref}
+      data-guide-badge={id}
+      data-guide-badge-placement={at}
+      href={`#surface-${id}`}
+      aria-label={`${label} — jump to details`}
+      onClick={(event) => {
+        onActivate?.();
+        if (!onSelect) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect(id);
+      }}
+      onMouseEnter={() => setActiveId(id)}
+      onMouseLeave={() => setActiveId(null)}
+      onFocus={() => setActiveId(id)}
+      onBlur={() => setActiveId(null)}
+      className="pointer-events-auto absolute z-50"
+      style={position ?? undefined}
+    >
+      <span
+        aria-hidden
+        className={annotationChipClass(active, "ring-2 ring-card")}
+      >
+        {numberOf(id)}
+      </span>
+    </a>
   );
 }
 
@@ -439,6 +548,7 @@ function WindowFrame({
 }) {
   return (
     <div
+      data-guide-frame
       className={cn(
         // bg-background: the window's content areas use the same canvas the
         // real app paints, so the sidebar (var(--sidebar)) sits against it
@@ -554,9 +664,6 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
               id="thread-row-status"
               label="A thread row status set by a plugin"
               className="z-[2] flex size-5 shrink-0 items-center justify-center"
-              // Top-right of the glyph and clear of it; the sidebar's padding
-              // still has room for the chip before the panel's edge.
-              chipClassName="-right-4 -top-2"
             >
               <span
                 aria-hidden
@@ -587,7 +694,6 @@ const SIDEBAR_SECTION_RENDERERS: Record<string, () => ReactNode> = {
       id="sidebar-footer"
       label="Plugin footer buttons, between Settings and Report a bug"
       className="mx-1.5 mb-1.5 flex w-fit items-center gap-2 px-2.5 py-2"
-      chipClassName="-right-2 -top-2"
     >
       {anatomy.sidebarFooter.map((key) => (
         <Fragment key={key}>{FOOTER_ITEM_RENDERERS[key]?.()}</Fragment>
@@ -623,93 +729,40 @@ export type AppShellRightPanelTab =
   | "file-opener"
   | "code-renderers";
 
-function RightPanelTabBadge({
-  id,
-  label,
-  onActivate,
-  children,
-}: {
-  id: AppShellRightPanelTab;
-  label: string;
-  onActivate: () => void;
-  children: ReactNode;
-}) {
-  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
-    useSurfaceMap();
-  const active = activeId === id || expandedId === id || spotlightId === id;
-
-  return (
-    <span className="relative flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap pl-1.5 pr-2">
-      {/* Invisible source-sized content keeps this Guide-owned column aligned
-          with its real tab without moving or padding the host tab strip. */}
-      <span aria-hidden className="invisible contents">
-        {children}
-      </span>
-      <a
-        data-guide-badge={id}
-        data-guide-badge-placement="outside-before"
-        href={`#surface-${id}`}
-        aria-label={`${label} — jump to details`}
-        onClick={(event) => {
-          onActivate();
-          if (!onSelect) return;
-          event.preventDefault();
-          event.stopPropagation();
-          onSelect(id);
-        }}
-        onMouseEnter={() => setActiveId(id)}
-        onMouseLeave={() => setActiveId(null)}
-        onFocus={() => setActiveId(id)}
-        onBlur={() => setActiveId(null)}
-        className="pointer-events-auto absolute left-1/2 top-0 -translate-x-1/2"
-      >
-        <span
-          aria-hidden
-          className={annotationChipClass(active, "ring-2 ring-card")}
-        >
-          {numberOf(id)}
-        </span>
-      </a>
-    </span>
-  );
-}
-
-function RightPanelTabAnnotationLayer({
+/**
+ * The three right-panel tab chips ride the lane the gutter reserves above the
+ * window frame, each measured from its own tab element — the lane layer no
+ * longer duplicates the panel's geometry.
+ */
+function RightPanelTabLaneBadges({
   onTabSelect,
 }: {
   onTabSelect: (tab: AppShellRightPanelTab) => void;
 }) {
   return (
-    <div
-      data-guide-annotation-layer="right-panel-tabs"
-      className="absolute right-10 top-0 z-50 flex h-7 w-[380px] items-center gap-1.5 px-3 text-xs leading-none"
-    >
-      <span aria-hidden className="w-[26px] shrink-0" />
-      <RightPanelTabBadge
+    <>
+      <MeasuredBadge
         id="code-renderers"
         label="Plugin code and diff renderers on bb's Diff tab"
+        anchor='[data-guide-tab="code-renderers"]'
+        at="lane"
         onActivate={() => onTabSelect("code-renderers")}
-      >
-        <MiniIcon icon={PlusMinusSquare01Icon} className="size-3.5" />
-        <span>Diff</span>
-      </RightPanelTabBadge>
-      <RightPanelTabBadge
+      />
+      <MeasuredBadge
         id="thread-panel"
         label="A plugin tab in the thread side panel"
+        anchor='[data-guide-tab="thread-panel"]'
+        at="lane"
         onActivate={() => onTabSelect("thread-panel")}
-      >
-        <PluginGlyph className="size-3.5" />
-        <span>Your tab</span>
-      </RightPanelTabBadge>
-      <RightPanelTabBadge
+      />
+      <MeasuredBadge
         id="file-opener"
         label="A plugin file viewer or editor tab"
+        anchor='[data-guide-tab="file-opener"]'
+        at="lane"
         onActivate={() => onTabSelect("file-opener")}
-      >
-        <MiniIcon icon={File01Icon} className="size-3.5" />
-        <span>retry-notes.md</span>
-      </RightPanelTabBadge>
-    </div>
+      />
+    </>
   );
 }
 
@@ -911,12 +964,14 @@ export function CommandPaletteWireframe() {
                     </span>
                   </span>
                 </div>
-                <div
-                  data-guide-annotation-layer="command-palette-actions"
-                  className="pointer-events-none absolute inset-x-0 bottom-0 top-11 z-50 grid grid-rows-3 p-1"
-                >
-                  <CommandPaletteActionBadge />
-                </div>
+                {/* The numbered chip rides the row it annotates, measured from
+                    the row's own box so palette content changes move it. */}
+                <MeasuredBadge
+                  id="command-palette-actions"
+                  label="Plugin actions in bb's quick command palette"
+                  anchor='[data-guide-region="command-palette-actions"]'
+                  at="start"
+                />
               </div>
             </div>
           ) : null}
@@ -952,34 +1007,37 @@ export function AppShellWireframe() {
     // readable minimum size. ProductMap supplies the single scroll owner so
     // the exterior gutter and all badges move with the frame.
     <div className="relative min-w-[1260px] px-10 pb-0 pt-[26px]">
-      {/* The first two surfaces belong to the sidebar as a whole. Keep their
-            chips in the exterior annotation gutter, matching the shipped Guide,
-            while the in-frame regions remain independently clickable. */}
-      <OverlayMark
+      {/* The first two surfaces belong to the sidebar as a whole. Their chips
+            ride the exterior gutter column, each measured from the region it
+            annotates, while the in-frame regions remain independently
+            clickable. */}
+      <MeasuredBadge
         id="nav-panel"
         label="Plugin nav panels, above the thread list"
-        className="left-4 top-[124px]"
+        anchor='[data-guide-region="nav-panel"]'
+        at="start"
       />
-      <OverlayMark
+      <MeasuredBadge
         id="thread-list"
         label="The thread list, replaceable by one plugin"
-        className="left-4 top-[190px]"
+        anchor='[data-guide-region="thread-list"]'
+        at="start"
       />
       {/* Content scripts have no slot of their own — they run across the
-            whole window, so the marker annotates the frame itself. */}
-      <OverlayMark
+            whole window, so the badge and the engaged tint annotate the frame
+            itself. */}
+      <MeasuredBadge
         id="content-scripts"
         label="App-wide plugin scripts, running in the whole window"
-        className="right-4 bottom-4"
-        region="inset-x-10 bottom-0 top-[26px]"
+        anchor="[data-guide-frame]"
+        at="end"
+        align="end"
       />
-      <RightPanelTabAnnotationLayer onTabSelect={setRightPanelTab} />
-      <div className="min-w-[1180px]">
-        <AppShellWireframeBody
-          rightPanelTab={rightPanelTab}
-          onRightPanelTabSelect={setRightPanelTab}
-        />
-      </div>
+      <RightPanelTabLaneBadges onTabSelect={setRightPanelTab} />
+      <AppShellWireframeBody
+        rightPanelTab={rightPanelTab}
+        onRightPanelTabSelect={setRightPanelTab}
+      />
     </div>
   );
 }
@@ -993,12 +1051,24 @@ function AppShellWireframeBody({
 }) {
   const { expandedId } = useSurfaceMap();
   const [assistantMessageHovered, setAssistantMessageHovered] = useState(false);
+  const contentScripts = useEngagement("content-scripts");
   const messageActionsSelected = expandedId === "message-actions";
   const messageActionRowVisible =
     assistantMessageHovered || messageActionsSelected;
 
   return (
     <WindowFrame className="relative">
+      {/* Content scripts run across the whole window, so their target — and
+          the engaged tint — is the frame itself, never a separately authored
+          region. */}
+      <span
+        aria-hidden
+        data-guide-target="content-scripts"
+        className={cn(
+          "pointer-events-none absolute inset-0 z-[5] rounded-lg",
+          engagedRingClass(contentScripts.outlined),
+        )}
+      />
       {/* AppLayout owns this trigger as a pinned overlay. AppSidebar's top
           reserve deliberately contains only history navigation. */}
       <span
@@ -1034,10 +1104,6 @@ function AppShellWireframeBody({
               id="thread-header"
               label="Plugin thread-header control, left end of the action row"
               className="flex h-6.5 items-center gap-1 px-2"
-              // Top-right of the glyph, clear of it: the frame clips at its
-              // own top edge (this row is the first thing under it), and
-              // px-3 on the row leaves exactly 12px before the frame's edge.
-              chipClassName="-top-1.5 -right-3"
             >
               <PluginGlyph className="size-3.5" />
             </Mark>
@@ -1067,7 +1133,7 @@ function AppShellWireframeBody({
                 id="timeline-renderers"
                 label="Plugin-owned content inside a timeline entry"
                 className="ml-5 block space-y-1 px-2.5 py-2"
-                chipClassName="-right-2 top-1/2 -translate-y-1/2"
+                chip="side"
               >
                 <div className="flex items-center gap-2" aria-hidden>
                   <span className="h-1.5 w-2/3 rounded-sm bg-muted/60" />
@@ -1092,7 +1158,6 @@ function AppShellWireframeBody({
                 id="message-directives"
                 label="A plugin component rendered inline by a message directive"
                 className="block w-3/5 px-2.5 py-2.5"
-                chipClassName="-right-2 top-0"
               >
                 <span className="flex items-end gap-1.5" aria-hidden>
                   <span className="h-4 w-3.5 rounded-sm bg-muted" />
@@ -1171,7 +1236,6 @@ function AppShellWireframeBody({
               id="pending-interaction"
               label="A plugin ask-the-user form, shown in place of the composer"
               className="block border border-border bg-card p-3"
-              chipClassName="-top-2 right-1.5"
             >
               <span className="flex items-center gap-1.5 text-foreground">
                 <PluginGlyph className="size-3.5" />
@@ -1384,110 +1448,22 @@ export function AppShellRightPanel({
 /* ── close-up composer anatomy ─────────────────────────────────────── */
 
 /**
- * Marker for a real host component: the numbered chip, plus an optional
- * highlight rectangle over the region it points at. The highlight uses the
- * same selected-surface tokens the fixture `Mark` regions use, so a live
- * component and a mockup light up the same way.
- */
-function OverlayMark({
-  id,
-  label,
-  className,
-  region,
-}: {
-  id: string;
-  label: string;
-  /** Chip position, relative to the annotated container. */
-  className?: string;
-  /** Region to highlight while active, as inset utilities. */
-  region?: string;
-}) {
-  return (
-    <>
-      {region ? <GuideHighlight id={id} className={region} /> : null}
-      <GuideBadge id={id} label={label} className={className} />
-    </>
-  );
-}
-
-/** A Guide-owned badge, deliberately independent from host target markup. */
-function GuideBadge({
-  id,
-  label,
-  className,
-  placement,
-}: {
-  id: string;
-  label: string;
-  className?: string;
-  placement?: "outside-before";
-}) {
-  const { activeId, setActiveId, expandedId, spotlightId, numberOf, onSelect } =
-    useSurfaceMap();
-  const active = activeId === id || expandedId === id || spotlightId === id;
-  return (
-    <a
-      data-guide-badge={id}
-      data-guide-badge-placement={placement}
-      href={`#surface-${id}`}
-      aria-label={`${label} — jump to details`}
-      onClick={
-        onSelect
-          ? (event) => {
-              event.preventDefault();
-              onSelect(id);
-            }
-          : undefined
-      }
-      onMouseEnter={() => setActiveId(id)}
-      onMouseLeave={() => setActiveId(null)}
-      onFocus={() => setActiveId(id)}
-      onBlur={() => setActiveId(null)}
-      className={cn("pointer-events-auto absolute z-50", className)}
-    >
-      <span
-        aria-hidden
-        className={annotationChipClass(active, "ring-2 ring-card")}
-      >
-        {numberOf(id)}
-      </span>
-    </a>
-  );
-}
-
-/** The Guide highlight follows a real target but never owns its content. */
-function GuideHighlight({ id, className }: { id: string; className: string }) {
-  const { activeId, expandedId, spotlightId } = useSurfaceMap();
-  const outlined =
-    activeId !== null
-      ? activeId === id
-      : expandedId === id || spotlightId === id;
-  return outlined ? (
-    <span
-      aria-hidden
-      data-guide-highlight={id}
-      className={cn(
-        "pointer-events-none absolute z-[5] rounded-md bg-surface-selected/30 ring-1 ring-inset ring-surface-selected-border",
-        className,
-      )}
-    />
-  ) : null;
-}
-
-/**
  * The close-up composer is seated in the thread chrome it actually lives in:
  * window bar, a short exchange above, and the reply box at the bottom. The
  * fixture owns the exact geometry so installed plugin customizations cannot
  * move, rewrite, or add controls inside the Guide illustration.
  *
- * Over the editor's first line sits a mention pill and a painted range. The
- * composer's two menus stay collapsed; each expands only while its own
- * annotation is engaged. The + menu opens upward, as the real one does when
- * the composer sits at the bottom of the window.
+ * Composer controls sit against clipping and transient surfaces, so their
+ * chips live in one Guide-owned sibling layer outside the WindowFrame — each
+ * measured from the target it annotates, so a fixture change moves its chip
+ * with it. The composer's two menus stay collapsed; each expands only while
+ * its own annotation is engaged, anchored to the element the real menu flips
+ * against. The + menu opens upward, as the real one does when the composer
+ * sits at the bottom of the window.
  */
 export function RealComposerAnnotated() {
-  const { activeId, expandedId } = useSurfaceMap();
-  const engaged = (id: string) => activeId === id || expandedId === id;
+  const banners = useEngagement("composer-banners");
+  const mention = useEngagement("mention-provider");
   return (
     // The same gutter geometry as the other window slides, so the nav above
     // and the card below sit the same distance from every frame.
@@ -1495,43 +1471,39 @@ export function RealComposerAnnotated() {
       {/* ProductMap keeps the full-width anatomy and its markers inside the
           same scale-together wrapper at every panel width. */}
       <div className="relative mx-auto w-full min-w-[720px] max-w-3xl select-none text-xs leading-none text-muted-foreground">
-        {/* Composer controls sit against clipping and transient surfaces, so
-            their badges belong to one Guide-owned sibling layer outside the
-            WindowFrame. Coordinates are tied to the bottom-pinned composer,
-            while actual targets remain in StaticEmbeddedComposer below. */}
         <div
           data-guide-annotation-layer="composer-controls"
           className="pointer-events-none absolute inset-0 z-50"
         >
-          <GuideBadge
+          <MeasuredBadge
             id="composer-banners"
             label="Plugin composer banners, above the prompt box"
-            className="-right-6 bottom-[186px]"
-            placement="outside-before"
+            anchor='[data-guide-target="composer-banners"]'
+            at="end"
           />
-          <GuideBadge
+          <MeasuredBadge
             id="composer-state"
             label="The draft prompt a plugin can read and lock"
-            className="-left-6 bottom-[127px]"
-            placement="outside-before"
+            anchor='[data-guide-target="composer-state"]'
+            at="start"
           />
-          <GuideBadge
+          <MeasuredBadge
             id="composer-plus-menu"
             label="Plugin rows in the composer's + menu"
-            className="-left-6 bottom-14"
-            placement="outside-before"
+            anchor='[data-guide-target="composer-plus-menu"]'
+            at="start"
           />
-          <GuideBadge
+          <MeasuredBadge
             id="provider-picker"
             label="Your agent provider and its mark, in the model picker"
-            className="left-[206px] bottom-[93px]"
-            placement="outside-before"
+            anchor='[data-guide-target="provider-picker"]'
+            at="above"
           />
-          <GuideBadge
+          <MeasuredBadge
             id="composer-actions"
             label="Plugin composer actions, before voice and send"
-            className="right-[112px] bottom-[91px]"
-            placement="outside-before"
+            anchor='[data-guide-target="composer-actions"]'
+            at="above"
           />
         </div>
         <WindowFrame>
@@ -1569,76 +1541,24 @@ export function RealComposerAnnotated() {
               real product's footprint: the actual composer spans ~two thirds
               of the thread column, not edge to edge. */}
             <div className="px-4 pb-4">
-              {/* banner: a plugin banner renders in this slot, above the box */}
+              {/* banner: a plugin banner renders in this slot, above the box.
+                  The mention menu anchors to it — the real MentionMenu flips
+                  above the composer, seating itself over this slot — so its
+                  clearance derives from the banner's own box. */}
               <div
                 data-guide-target="composer-banners"
-                className="relative mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm"
+                className={cn(
+                  "relative mb-2.5 flex items-center gap-2 rounded-md border border-border-hairline bg-surface-raised px-3 py-3 text-sm",
+                  engagedRingClass(banners.outlined),
+                )}
               >
-                <GuideHighlight id="composer-banners" className="inset-0" />
-                <PluginGlyph className="size-3.5" />
-                <span className="text-foreground">Your banner</span>
-              </div>
-
-              <div className="relative">
-                <StaticEmbeddedComposer />
-
-                {/* The drawn draft, covering the editor's first line: a real
-                  mention pill and a plugin-painted range. Its fill matches
-                  the prompt box's own background, so it disappears into the
-                  product chrome instead of reading as a pasted-on strip. */}
-                <div
-                  data-guide-target="composer-state"
-                  className="absolute left-4 right-12 top-[13px] flex h-7 items-center bg-[var(--background)] text-sm leading-none text-foreground"
-                >
-                  <span aria-hidden className="whitespace-pre">
-                    Summarize{" "}
-                  </span>
-                  <RegionMark
-                    id="mention-provider"
-                    label="Plugin mention results in the @ typeahead"
-                    className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
-                    chipClassName="left-full ml-1.5 -top-6"
-                  >
-                    <span aria-hidden>@release-notes</span>
-                  </RegionMark>
-                  <span aria-hidden className="whitespace-pre">
-                    {" "}
-                    and fix the{" "}
-                  </span>
-                  <RegionMark
-                    id="composer-rich-text"
-                    label="Plugin highlighting, painted over the draft prompt"
-                    className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
-                    chipClassName="left-1/2 -top-6 -translate-x-1/2"
-                  >
-                    <span aria-hidden>TODO</span>
-                  </RegionMark>
-                  <span aria-hidden className="whitespace-pre">
-                    {" "}
-                    in checkout.
-                  </span>
-                </div>
-
-                {/* the draft itself: what useComposer reads and locks */}
-                <GuideHighlight
-                  id="composer-state"
-                  className="left-[12px] right-[40px] top-[9px] h-9"
-                />
-                {/* The mention pill and highlighted range carry their own
-                      RegionMarks above, so their boundaries follow the
-                      rendered fixture text rather than slide coordinates. */}
-                {engaged("mention-provider") ? (
+                {mention.outlined ? (
                   <div
                     aria-hidden
                     data-guide-transient-for="mention-provider"
-                    // Placed like the real MentionMenu in a bottom-pinned
-                    // composer: the prompt box's full width (-left-px /
-                    // -right-px, over its 1px border) and above every
-                    // annotation. The Guide-owned 60px offset seats the menu
-                    // above the banner rather than covering either surface.
-                    className="pointer-events-none absolute -left-px -right-px bottom-full z-20 mb-15 overflow-hidden rounded-md border border-border bg-popover pb-1 shadow-md"
+                    className="pointer-events-none absolute inset-x-0 bottom-full z-20 mb-1 overflow-hidden rounded-md border border-border bg-popover pb-1 text-xs shadow-md"
                   >
-                    <span className="block px-3 pb-1 pt-1.5 text-xs text-muted-foreground">
+                    <span className="block px-3 pb-1 pt-1.5 text-muted-foreground">
                       Your plugin
                     </span>
                     <span className="mx-1 flex h-7 items-center gap-1.5 rounded-md bg-state-hover px-2 text-foreground">
@@ -1651,38 +1571,11 @@ export function RealComposerAnnotated() {
                     </span>
                   </div>
                 ) : null}
-
-                {/* + menu: opens upward while engaged, the direction the
-                  real menu takes at the window's bottom. Its highlight ring
-                  lives inside StaticEmbeddedComposer with the other
-                  bottom-anchored rings. */}
-                {engaged("composer-plus-menu") ? (
-                  <div
-                    aria-hidden
-                    data-guide-transient-for="composer-plus-menu"
-                    // Placed like the real PromptBoxActionsMenu (Radix,
-                    // align="start", sideOffset 4, flipped upward at the
-                    // window's bottom): left edge on the + button, bottom
-                    // edge at least 4px above its rendered top, above every
-                    // annotation in the exterior Guide layer.
-                    className="pointer-events-none absolute bottom-[calc(100%-72px)] left-2 z-20 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
-                  >
-                    <span className="flex h-6 items-center gap-1.5 px-1.5">
-                      <MiniIcon icon={File01Icon} className="size-3.5" />
-                      Attach files
-                    </span>
-                    <span className="flex h-6 items-center gap-1.5 px-1.5">
-                      <MiniIcon icon={ToolboxIcon} className="size-3.5" />
-                      Skills
-                    </span>
-                    <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
-                      <PluginGlyph className="size-3.5" />
-                      Your action
-                    </span>
-                  </div>
-                ) : null}
-
+                <PluginGlyph className="size-3.5" />
+                <span className="text-foreground">Your banner</span>
               </div>
+
+              <StaticEmbeddedComposer />
             </div>
           </div>
         </WindowFrame>
@@ -1691,22 +1584,100 @@ export function RealComposerAnnotated() {
   );
 }
 
-/** Product-shaped prompt-box chrome underneath the annotation overlays. */
+/**
+ * Product-shaped prompt-box chrome, drawn in flow: the draft line and the
+ * control row are the box's own content, so every target's ring and chip
+ * derive from elements the layout itself positions — no hand-synced
+ * coordinate pair between an overlay and a reservation.
+ */
 function StaticEmbeddedComposer() {
+  const draft = useEngagement("composer-state");
+  const plus = useEngagement("composer-plus-menu");
+  const picker = useEngagement("provider-picker");
+  const actions = useEngagement("composer-actions");
   return (
     <div data-guide-fixture="embedded-composer" className="space-y-2">
-      <div className="relative h-[126px] rounded-xl border border-border bg-background shadow-lift">
-        <div className="absolute inset-x-3 top-3 h-8" aria-hidden />
-        <div className="absolute inset-x-2 bottom-2 flex h-10 items-center gap-1">
+      <div className="relative flex h-[126px] flex-col rounded-xl border border-border bg-background px-2 pb-2 pt-3 shadow-lift">
+        {/* + menu: opens upward while engaged, the direction the real menu
+            takes at the window's bottom, anchored to the box the real menu
+            flips against. */}
+        {plus.outlined ? (
+          <div
+            aria-hidden
+            data-guide-transient-for="composer-plus-menu"
+            className="pointer-events-none absolute bottom-full left-2 z-20 mb-1 w-44 rounded-md border border-border bg-popover p-1 shadow-md"
+          >
+            <span className="flex h-6 items-center gap-1.5 px-1.5">
+              <MiniIcon icon={File01Icon} className="size-3.5" />
+              Attach files
+            </span>
+            <span className="flex h-6 items-center gap-1.5 px-1.5">
+              <MiniIcon icon={ToolboxIcon} className="size-3.5" />
+              Skills
+            </span>
+            <span className="flex h-6 items-center gap-1.5 rounded bg-state-hover px-1.5 text-foreground">
+              <PluginGlyph className="size-3.5" />
+              Your action
+            </span>
+          </div>
+        ) : null}
+
+        {/* The drawn draft: the editor's first line, in flow. A real mention
+            pill and a plugin-painted range ride inside it, each its own
+            annotation whose boundary follows the rendered text. */}
+        <div
+          data-guide-target="composer-state"
+          className={cn(
+            "mx-2 flex h-7 items-center rounded-md text-sm leading-none text-foreground",
+            engagedRingClass(draft.outlined),
+          )}
+        >
+          <span aria-hidden className="whitespace-pre">
+            Summarize{" "}
+          </span>
+          <RegionMark
+            id="mention-provider"
+            label="Plugin mention results in the @ typeahead"
+            className="flex h-5.5 items-center rounded-full border border-surface-selected-border bg-surface-selected px-1.5"
+            chip="outside-above"
+          >
+            <span aria-hidden>@release-notes</span>
+          </RegionMark>
+          <span aria-hidden className="whitespace-pre">
+            {" "}
+            and fix the{" "}
+          </span>
+          <RegionMark
+            id="composer-rich-text"
+            label="Plugin highlighting, painted over the draft prompt"
+            className="flex h-5.5 items-center rounded bg-warning/25 px-1 ring-1 ring-warning/40"
+            chip="outside-above"
+          >
+            <span aria-hidden>TODO</span>
+          </RegionMark>
+          <span aria-hidden className="whitespace-pre">
+            {" "}
+            in checkout.
+          </span>
+        </div>
+
+        {/* bottom controls, at the real product's sizes and order */}
+        <div className="mt-auto flex h-10 items-center gap-1">
           <span
             data-guide-target="composer-plus-menu"
-            className="flex size-10 items-center justify-center rounded-md"
+            className={cn(
+              "flex size-10 items-center justify-center rounded-md",
+              engagedRingClass(plus.outlined),
+            )}
           >
             <MiniIcon icon={PlusSignIcon} className="size-4" />
           </span>
           <span
             data-guide-target="provider-picker"
-            className="flex h-10 w-[157px] items-center gap-1.5 rounded-md px-2 text-foreground"
+            className={cn(
+              "flex h-10 items-center gap-1.5 rounded-md px-2 text-foreground",
+              engagedRingClass(picker.outlined),
+            )}
           >
             <MiniIcon icon={SparklesIcon} className="size-3.5" />
             Fable 5<span className="text-subtle-foreground">High</span>
@@ -1715,7 +1686,10 @@ function StaticEmbeddedComposer() {
           <span
             data-guide-target="composer-actions"
             data-guide-fixture="plugin-composer-action"
-            className="flex size-9 items-center justify-center rounded-md bg-state-hover"
+            className={cn(
+              "flex size-9 items-center justify-center rounded-md bg-state-hover",
+              engagedRingClass(actions.outlined),
+            )}
           >
             <PluginGlyph className="size-3.5" />
           </span>
@@ -1732,22 +1706,6 @@ function StaticEmbeddedComposer() {
             />
           </span>
         </div>
-        {/* Bottom-anchored highlight rings must share the prompt box's
-            coordinate space: the wrapper outside also contains the
-            sub-composer strip, so a bottom-* anchor there lands below the
-            control row it rings. */}
-        <GuideHighlight
-          id="composer-plus-menu"
-          className="bottom-2 left-2 size-10"
-        />
-        <GuideHighlight
-          id="provider-picker"
-          className="bottom-2 left-[52px] h-10 w-[157px]"
-        />
-        <GuideHighlight
-          id="composer-actions"
-          className="bottom-[10px] right-[88px] size-9"
-        />
       </div>
       <div className="flex items-center justify-between px-2.5" aria-hidden>
         <span className="flex items-center gap-1.5">
@@ -1771,6 +1729,12 @@ export function ComposeScreenWireframe({
   return (
     // Padded for the same annotation gutter as the app-window diagram.
     <div className="relative px-7 pb-2 pt-4">
+      <MeasuredBadge
+        id="new-thread-panel"
+        label="A plugin action in the new-thread panel launcher"
+        anchor='[data-guide-region="new-thread-panel"]'
+        at="end"
+      />
       <div className="min-w-[560px]">
         <ComposeScreenWireframeBody composer={composer} />
       </div>
@@ -1803,7 +1767,6 @@ function ComposeScreenWireframeBody({ composer }: { composer?: ReactNode }) {
               id="homepage-section"
               label="A plugin homepage section, below the composer"
               className="mt-4 block px-3 py-2.5"
-              chipClassName="-top-1 right-0"
             >
               <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
                 <PluginGlyph className="size-3.5" />
@@ -1838,12 +1801,13 @@ function ComposeScreenWireframeBody({ composer }: { composer?: ReactNode }) {
             <MiniIcon icon={TerminalIcon} className="size-3.5" />
             Start terminal
           </span>
+          {/* The row hugs the frame's right edge, so its chip rides the
+              exterior gutter column, measured from the row itself. */}
           <Mark
             id="new-thread-panel"
             label="A plugin action in the new-thread panel launcher"
             className="flex h-6.5 items-center gap-2 px-2.5"
-            edge
-            chipClassName="right-1 top-[124px]"
+            showChip={false}
           >
             <PluginGlyph className="size-3.5" />
             <span className="text-foreground">Your action</span>
@@ -1891,7 +1855,6 @@ export function SettingsWireframe() {
             id="declarative-settings"
             label="The form bb generates from the fields you declare"
             className="block bg-surface-recessed-solid p-3"
-            chipClassName="-right-2 -top-2"
           >
             <span className="flex items-start justify-between gap-3 py-1.5">
               <span className="min-w-0">
@@ -1940,7 +1903,6 @@ export function SettingsWireframe() {
             id="settings-section"
             label="A React component you write, under the generated form"
             className="block px-1 pb-2 pt-2"
-            chipClassName="-right-2 -top-1"
           >
             <span className="flex items-center gap-1.5 pb-2 font-medium text-foreground">
               <PluginGlyph className="size-3.5" />
@@ -2000,9 +1962,9 @@ export function ExtensionsPluginPageWireframe() {
           id="plugin-status"
           label="The needs-configuration banner bb shows for a plugin that reports it"
           className="flex items-start gap-2 border-b border-border bg-surface-recessed/55 px-5 py-2.5 text-sm"
-          // Inside the bar's corner: the bar spans the whole frame, so a chip
-          // hung past its right edge would be clipped by the frame.
-          chipClassName="right-2 -top-2"
+          // The banner hugs the clipping frame edge, so the chip keeps to
+          // the inside corner.
+          chip="corner-inset"
         >
           <MiniIcon
             icon={Settings02Icon}

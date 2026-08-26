@@ -120,29 +120,24 @@ describe("guide fixture boundaries", () => {
       panelMarkup.indexOf("data-guide-tab-body="),
     );
     const appMarkup = renderWireframe(createElement(AppShellWireframe));
-    const annotationLayer = appMarkup.indexOf(
-      'data-guide-annotation-layer="right-panel-tabs"',
-    );
-    const hostTabStrip = appMarkup.indexOf(
-      'data-guide-fixture="right-panel-tab-strip"',
-    );
-    const layerMarkup = appMarkup.slice(annotationLayer, hostTabStrip);
 
     expect(tabStrip).toContain("h-12 items-center");
     expect(tabStrip).not.toContain("h-16");
     expect(tabStrip).not.toContain("items-end");
     expect(tabStrip).not.toContain("pb-2");
     expect(tabStrip).not.toContain("data-guide-badge=");
-    expect(annotationLayer).toBeGreaterThan(-1);
-    expect(hostTabStrip).toBeGreaterThan(annotationLayer);
-    expect(layerMarkup).not.toContain("pointer-events-none");
+    // The tab chips ride the lane the gutter reserves above the frame, each
+    // measured from its own tab — no layer duplicating panel geometry.
     for (const id of ["thread-panel", "file-opener", "code-renderers"]) {
       expect(appMarkup).toMatch(
         new RegExp(
-          `data-guide-badge="${id}"[\\s\\S]*?data-guide-badge-placement="outside-before"`,
+          `data-guide-badge="${id}"[\\s\\S]*?data-guide-badge-placement="lane"`,
         ),
       );
     }
+    expect(appMarkup).not.toContain(
+      'data-guide-annotation-layer="right-panel-tabs"',
+    );
   });
 
   it("mirrors bb's fixed Info/Diff tabs before plugin-owned content tabs", () => {
@@ -175,19 +170,26 @@ describe("guide fixture boundaries", () => {
     );
   });
 
-  it("places the first two sidebar badges in the exterior annotation gutter", () => {
+  it("places the sidebar and frame badges in the measured exterior gutter", () => {
     const markup = renderWireframe(createElement(AppShellWireframe));
 
+    // Exterior chips are measured from the regions they annotate — the
+    // markup carries the placement declaration; the rendered QA sweep is the
+    // geometry gate.
     expect(markup).toMatch(
-      /data-guide-badge="nav-panel"[\s\S]*left-4 top-\[124px\]/,
+      /data-guide-badge="nav-panel"[\s\S]*?data-guide-badge-placement="start"/,
     );
     expect(markup).toMatch(
-      /data-guide-badge="thread-list"[\s\S]*left-4 top-\[190px\]/,
+      /data-guide-badge="thread-list"[\s\S]*?data-guide-badge-placement="start"/,
+    );
+    expect(markup).toMatch(
+      /data-guide-badge="content-scripts"[\s\S]*?data-guide-badge-placement="end"/,
     );
     expect(markup).not.toContain("overflow-x-auto");
     expect(markup).toContain("relative min-w-[1260px] px-10 pb-0 pt-[26px]");
+    // The engaged tint for content scripts is the frame's own box.
     expect(markup).toMatch(
-      /data-guide-badge="content-scripts"[\s\S]*right-4 bottom-4/,
+      /data-guide-target="content-scripts"[^>]*class="[^"]*absolute inset-0/,
     );
   });
 
@@ -215,7 +217,9 @@ describe("guide fixture boundaries", () => {
       markup.indexOf("Fix the flaky checkout tests"),
     );
 
-    expect(markup).toContain("min-w-[1180px]");
+    // One width owner: the gutter wrapper's floor; the frame fills it minus
+    // the gutter, so a second inner floor would just be a copy to drift.
+    expect(markup).not.toContain("min-w-[1180px]");
     expect(markup).toContain(
       "flex min-h-[clamp(500px,calc(100dvh-528px),650px)] items-stretch",
     );
@@ -272,16 +276,7 @@ describe("guide fixture boundaries", () => {
     expect(markup).toContain('data-guide-region="command-palette-actions"');
     expect(markup).toContain('data-guide-fixture="command-palette-action"');
     expect(markup).toMatch(
-      /data-guide-badge="command-palette-actions"[\s\S]*?data-guide-badge-placement="outside-before"/,
-    );
-    expect(markup).toContain(
-      'data-guide-annotation-layer="command-palette-actions"',
-    );
-    expect(markup).toContain(
-      "pointer-events-none absolute inset-x-0 bottom-0 top-11 z-50 grid grid-rows-3 p-1",
-    );
-    expect(markup).toContain(
-      "pointer-events-auto row-start-2 self-center justify-self-start -ml-5 -translate-x-full",
+      /data-guide-badge="command-palette-actions"[\s\S]*?data-guide-badge-placement="start"/,
     );
     expect(markup).toContain(
       "max-h-[min(24rem,50dvh)] overflow-y-auto p-1 text-sm",
@@ -344,9 +339,21 @@ describe("guide fixture boundaries", () => {
     });
 
     expect(markup).toContain('data-guide-transient-for="mention-provider"');
-    expect(markup).toContain("bottom-full z-20 mb-15");
-    expect(markup).not.toMatch(
-      /data-guide-transient-for="mention-provider"[^>]*>[\s\S]*data-guide-badge="mention-provider"/,
+    // The menu anchors to the banner it seats above, so its clearance
+    // derives from the banner's own box rather than an authored offset.
+    expect(markup).toMatch(
+      /data-guide-target="composer-banners"[^>]*>[\s\S]*?data-guide-transient-for="mention-provider"/,
+    );
+    expect(markup).toContain("bottom-full z-20 mb-1");
+    const transientStart = markup.indexOf(
+      'data-guide-transient-for="mention-provider"',
+    );
+    const transientMarkup = markup.slice(
+      transientStart,
+      markup.indexOf("</div>", transientStart),
+    );
+    expect(transientMarkup).not.toContain(
+      'data-guide-badge="mention-provider"',
     );
   });
 
