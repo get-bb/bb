@@ -255,9 +255,17 @@ describe("parseTerminalPageMessage", () => {
   it("only lets http(s) links out of the page", () => {
     expect(
       parseTerminalPageMessage(
-        JSON.stringify({ type: "link", url: "https://example.com/x?y=1" }),
+        JSON.stringify({
+          type: "link",
+          source: "osc8",
+          url: "https://example.com/x?y=1",
+        }),
       ),
-    ).toEqual({ type: "link", url: "https://example.com/x?y=1" });
+    ).toEqual({
+      type: "link",
+      source: "osc8",
+      url: "https://example.com/x?y=1",
+    });
     for (const url of [
       "javascript:alert(1)",
       "file:///etc/passwd",
@@ -265,7 +273,9 @@ describe("parseTerminalPageMessage", () => {
       "example.com",
     ]) {
       expect(
-        parseTerminalPageMessage(JSON.stringify({ type: "link", url })),
+        parseTerminalPageMessage(
+          JSON.stringify({ type: "link", source: "osc8", url }),
+        ),
       ).toBeNull();
     }
   });

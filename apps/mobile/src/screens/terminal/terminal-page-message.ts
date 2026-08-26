@@ -28,6 +28,7 @@ const terminalPageMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("link"),
+    source: z.enum(["detected-url", "osc8"]),
     // Link text comes from terminal output (anything the host process
     // prints); only web URLs may leave the page.
     url: z.string().url().refine(isWebUrl, "http(s) only"),

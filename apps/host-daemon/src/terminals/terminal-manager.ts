@@ -356,6 +356,11 @@ function buildTerminalEnv(args: BuildTerminalEnvArgs): NodeJS.ProcessEnv {
     BB_TERMINAL_SESSION_ID: args.terminalId,
     COLORTERM: "truecolor",
     DISABLE_AUTO_TITLE: "true",
+    // xterm renders OSC-8 hyperlinks and bb owns their activation. Programs
+    // that honor this opt-in preserve the target instead of flattening links
+    // into display text. The inherited override also applies to redirected
+    // commands; callers that require plain output can set it to 0.
+    FORCE_HYPERLINK: "1",
     // zsh emits a highlighted "%" by default when a prompt follows output
     // without a newline. It becomes noisy when scrollback is replayed.
     PROMPT_EOL_MARK: "",

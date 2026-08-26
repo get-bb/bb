@@ -203,7 +203,11 @@ export type TerminalPageMessage =
   /** Keystrokes and terminal replies (base64 bytes, one wire chunk each). */
   | { type: "data"; dataBase64: string }
   | { type: "resize"; cols: number; rows: number }
-  | { type: "link"; url: string }
+  | {
+      type: "link";
+      source: "detected-url" | "osc8";
+      url: string;
+    }
   | { type: "title"; title: string }
   /** Last lines of the viewport (dev / e2e only, see `init.textMirror`). */
   | { type: "text-mirror"; lines: string[] }

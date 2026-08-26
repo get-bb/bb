@@ -12,6 +12,7 @@ import {
   useRef,
 } from "react";
 import {
+  Alert,
   AppState,
   Linking,
   View,
@@ -38,6 +39,7 @@ import {
   createTerminalStreamController,
   type TerminalStreamController,
 } from "./terminal-stream";
+import { requestTerminalLinkOpen } from "./terminal-link-open";
 import {
   buildTerminalThemeFromTokens,
   TERMINAL_FONT_SIZE,
@@ -296,7 +298,27 @@ export const TerminalView = forwardRef<TerminalViewHandle, TerminalViewProps>(
             transportRef.current?.sendResize(message.cols, message.rows);
             return;
           case "link":
-            void Linking.openURL(message.url).catch(() => undefined);
+            requestTerminalLinkOpen({
+              confirm: ({
+                actionLabel,
+                message: confirmationMessage,
+                onConfirm,
+                title,
+              }) => {
+                Alert.alert(
+                  title,
+                  confirmationMessage,
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: actionLabel, onPress: onConfirm },
+                  ],
+                  { cancelable: true },
+                );
+              },
+              openUrl: (url) => Linking.openURL(url).catch(() => undefined),
+              source: message.source,
+              url: message.url,
+            });
             return;
           case "title":
             if (sessionStatusRef.current !== "running") return;

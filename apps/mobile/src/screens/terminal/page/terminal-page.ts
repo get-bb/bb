@@ -99,6 +99,11 @@ function main(): void {
     cursorBlink: true,
     fontFamily: TERMINAL_FONT_FAMILY,
     fontSize: 12,
+    linkHandler: {
+      activate: (_event, uri) => {
+        post({ type: "link", source: "osc8", url: uri });
+      },
+    },
     scrollback: 10_000,
     // The DOM renderer; WebGL is skipped on purpose (context loss on
     // background / resume and no measurable gain on a phone-sized grid).
@@ -110,7 +115,7 @@ function main(): void {
   terminal.loadAddon(
     new WebLinksAddon((event, uri) => {
       event.preventDefault();
-      post({ type: "link", url: uri });
+      post({ type: "link", source: "detected-url", url: uri });
     }),
   );
   terminal.open(container);
