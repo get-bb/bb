@@ -245,6 +245,8 @@ export default function bbExtension(pi) {
       }
       case "leaf":
         return { leafId: currentLeafId() };
+      case "model-scope":
+        return currentModelScope();
       default:
         throw new Error("unknown bridge request " + String(message.method));
     }
@@ -252,6 +254,17 @@ export default function bbExtension(pi) {
 
   function currentLeafId() {
     return sessionContext?.sessionManager?.getLeafId?.() ?? null;
+  }
+
+  function currentModelScope() {
+    return {
+      scopedModelIds: (sessionContext?.scopedModels ?? []).map(
+        ({ model }) => model.provider + "/" + model.id,
+      ),
+      defaultModelId: sessionContext?.model
+        ? sessionContext.model.provider + "/" + sessionContext.model.id
+        : null,
+    };
   }
 
   for (const tool of tools) {
@@ -291,6 +304,10 @@ export default function bbExtension(pi) {
 
   pi.on("session_start", async (_event, ctx) => {
     sessionContext = ctx;
+    writeLine(CHILD_TO_BRIDGE_FD, {
+      kind: "model-scope",
+      ...currentModelScope(),
+    });
     // Pi's active-tool set is session state; a resumed or forked session can
     // predate the bb tools, so make sure every injected tool is active.
     if (tools.length > 0 && typeof pi.setActiveTools === "function") {
