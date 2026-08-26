@@ -1,6 +1,6 @@
 import type { ThreadResponse } from "@bb/server-contract";
 import { Stack } from "expo-router";
-import { Pressable, View } from "react-native";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import { useTheme } from "@/theme";
 import { cn, Icon, sfSymbolFor, Text } from "@/ui";
 import { PanelToggleButton } from "../panel/PanelToggleButton";
@@ -8,6 +8,16 @@ import { useThreadActions } from "./actions/use-thread-actions";
 import type { ThreadStatusPill } from "./thread-detail-header-model";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
+/**
+ * Room the bar items take on one side: the iOS 26 glass group holding the
+ * panel and menu buttons (about 110pt) plus its margins. The back button
+ * side is narrower, but the title is centered, so the wider side bounds
+ * both.
+ */
+const BAR_ITEMS_INSET = 131;
+/** The minimal back button plus its margins. */
+const BACK_ITEM_INSET = 68;
+const TITLE_MIN_WIDTH = 120;
 
 /**
  * The thread screen's native header pieces. There is one header only: the
@@ -53,6 +63,15 @@ export function ThreadHeaderTitle({
   onPressTitle,
 }: ThreadHeaderTitleProps) {
   const { tokens } = useTheme();
+  const { width } = useWindowDimensions();
+  // UIKit centers a custom title view in the bar and sizes it from our
+  // layout, so it never shrinks to the room between the bar items: bound it
+  // by the wider side (the two-item right group) on both sides, or a long
+  // title runs under the buttons.
+  const maxWidth = Math.max(
+    TITLE_MIN_WIDTH,
+    width - BACK_ITEM_INSET - BAR_ITEMS_INSET,
+  );
   const subtitle = headerSubtitle(statusPill, childPillLabel);
   const subtitleColor =
     statusPill.tone === "error"
@@ -68,7 +87,8 @@ export function ThreadHeaderTitle({
       disabled={!onPressTitle}
       onPress={onPressTitle ?? undefined}
       hitSlop={8}
-      className="max-w-[240px] items-center"
+      className="items-center"
+      style={{ maxWidth }}
       testID="thread-detail-header"
     >
       <Text

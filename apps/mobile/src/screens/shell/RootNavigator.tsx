@@ -8,17 +8,21 @@ import {
 import { useMemo } from "react";
 import { Platform } from "react-native";
 import { useTheme } from "@/theme";
+import { HeaderGlass } from "./HeaderGlass";
 import { LIST_SCREEN_OPTIONS, MODAL_SCREEN_OPTIONS } from "./screen-options";
 
 const IS_IOS = process.env.EXPO_OS === "ios";
 /**
  * iOS 26 draws its own scroll-edge effect under transparent headers. We
- * want a frosted bar instead, so the material is the edge treatment there
- * and the system effect is hidden. Earlier iOS gets the classic chrome
- * material bar.
+ * want frosted bars instead: Liquid Glass behind inline bars, the classic
+ * frosted blur behind large-title bars, and the system effect hidden so it
+ * does not double them. Earlier iOS gets the classic chrome material bar.
  */
 const IOS_MAJOR = IS_IOS ? Number.parseInt(String(Platform.Version), 10) : 0;
 const IOS_SYSTEM_BAR = IOS_MAJOR >= 26;
+const GLASS_HEADER = IS_IOS && IOS_SYSTEM_BAR;
+
+const renderHeaderGlass = () => <HeaderGlass />;
 
 /**
  * Root native stack: home (the thread list) at the bottom, thread /
@@ -53,29 +57,42 @@ export function RootNavigator() {
     };
   }, [mode, tokens]);
   const headerSurface: NativeStackNavigationOptions = IS_IOS
-    ? IOS_SYSTEM_BAR
+    ? GLASS_HEADER
       ? {
-          // Frosted bar: a transparent bar color (implied by
-          // `headerTransparent`) with a thin material, so content visibly
-          // blurs through instead of sitting under a near-opaque chrome fill.
-          // The material adapts to the bar's trait, which the navigation
-          // theme above keeps in sync with the app mode.
+          // Inline bars: a Liquid Glass sheet (the composer's material),
+          // rendered by the stack as the header background behind a
+          // transparent bar, so the timeline refracts through it.
           headerTransparent: true,
-          headerBlurEffect: "systemUltraThinMaterial",
-          // At rest the large-title area stays transparent; the material
-          // only backs the compact bar once content scrolls under it.
+          headerBlurEffect: "none",
+          headerBackground: renderHeaderGlass,
           headerLargeStyle: { backgroundColor: "transparent" },
-          // The material is the edge treatment; the system edge effect
-          // would double it.
           scrollEdgeEffects: { top: "hidden" },
         }
       : { headerTransparent: true, headerBlurEffect: "systemChromeMaterial" }
     : { headerStyle: { backgroundColor: tokens.background } };
-  // Opaque, inline bar with a hairline edge: the thread timeline (nothing
-  // scrolls under the title/status line) and the terminal (a WebView that
-  // manages its own insets, `never`). Every platform.
+  // Large-title bars: the stack debounces their height while the title
+  // collapses, so a glass sheet would lag behind the bar. The classic
+  // frosted blur backs the compact bar instead (transparent at rest, under
+  // the large title). The blur adapts to the bar's trait, which the
+  // navigation theme above keeps in sync with the app mode.
+  const listScreen: NativeStackNavigationOptions = GLASS_HEADER
+    ? {
+        ...LIST_SCREEN_OPTIONS,
+        headerBackground: undefined,
+        headerBlurEffect: "regular",
+      }
+    : LIST_SCREEN_OPTIONS;
+  // The stack renders the header background even for hidden headers.
+  const hiddenHeader: NativeStackNavigationOptions = {
+    headerShown: false,
+    headerBackground: undefined,
+  };
+  // Opaque, inline bar with a hairline edge for the terminal: a WebView that
+  // manages its own insets (`never`), so nothing scrolls under the bar.
+  // Every platform.
   const opaqueHeader: NativeStackNavigationOptions = {
     headerTransparent: false,
+    headerBackground: undefined,
     headerStyle: { backgroundColor: tokens.background },
     headerShadowVisible: true,
   };
@@ -94,10 +111,7 @@ export function RootNavigator() {
           contentStyle: { backgroundColor: tokens.background },
         }}
       >
-        <Stack.Screen
-          name="index"
-          options={{ title: "bb", ...LIST_SCREEN_OPTIONS }}
-        />
+        <Stack.Screen name="index" options={{ title: "bb", ...listScreen }} />
         <Stack.Screen name="threads/[id]" options={{ title: "Thread" }} />
         <Stack.Screen name="threads/search" options={{ title: "Search" }} />
         <Stack.Screen name="threads/[id]/files" options={{ title: "Files" }} />
@@ -111,11 +125,11 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="settings/index"
-          options={{ title: "Settings", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Settings", ...listScreen }}
         />
         <Stack.Screen
           name="settings/archived"
-          options={{ title: "Archived threads", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Archived threads", ...listScreen }}
         />
         <Stack.Screen
           name="settings/server"
@@ -123,7 +137,7 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="settings/servers/index"
-          options={{ title: "Servers", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Servers", ...listScreen }}
         />
         <Stack.Screen
           name="settings/servers/add"
@@ -140,15 +154,15 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="settings/usage"
-          options={{ title: "Usage limits", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Usage limits", ...listScreen }}
         />
         <Stack.Screen
           name="settings/updates"
-          options={{ title: "Updates", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Updates", ...listScreen }}
         />
         <Stack.Screen
           name="settings/machines/index"
-          options={{ title: "Machines", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Machines", ...listScreen }}
         />
         <Stack.Screen
           name="settings/machines/[hostId]"
@@ -156,11 +170,11 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="settings/plugins/index"
-          options={{ title: "Plugins", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Plugins", ...listScreen }}
         />
         <Stack.Screen
           name="settings/plugins/browse"
-          options={{ title: "Browse plugins", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Browse plugins", ...listScreen }}
         />
         <Stack.Screen
           name="settings/plugins/[pluginId]/index"
@@ -172,11 +186,11 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="settings/marketplaces"
-          options={{ title: "Marketplaces", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Marketplaces", ...listScreen }}
         />
         <Stack.Screen
           name="settings/skills/index"
-          options={{ title: "Skills", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Skills", ...listScreen }}
         />
         <Stack.Screen
           name="settings/skills/[skillId]"
@@ -184,7 +198,7 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="settings/skills/registry/index"
-          options={{ title: "Browse skills", ...LIST_SCREEN_OPTIONS }}
+          options={{ title: "Browse skills", ...listScreen }}
         />
         <Stack.Screen
           name="settings/skills/registry/[registrySkillId]"
@@ -207,7 +221,7 @@ export function RootNavigator() {
           name="dev/connect-spike"
           options={{ title: "Connect spike" }}
         />
-        <Stack.Screen name="e2e/reset" options={{ headerShown: false }} />
+        <Stack.Screen name="e2e/reset" options={hiddenHeader} />
         <Stack.Screen
           name="projects/new"
           options={{ title: "New project", ...MODAL_SCREEN_OPTIONS }}
@@ -218,7 +232,7 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="projects/[id]/threads/[threadId]"
-          options={{ headerShown: false }}
+          options={hiddenHeader}
         />
       </Stack>
     </NavigationThemeProvider>
