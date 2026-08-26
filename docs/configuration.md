@@ -903,6 +903,16 @@ checkout instance id is the sanitized path to the checkout, relative to your
 home directory, plus a short hash suffix. Use `--data-dir` to point packaged-app
 instances at different data directories for fully isolated environments.
 
+bb creates or repairs its data and log directories with owner-only permissions
+(`0700` on macOS/Linux) and uses restrictive file modes for sensitive files it
+creates. This is access control, not encryption: prompts, events, attachments,
+SQLite state, and logs remain readable to the local account (or a process with
+that account's access), and existing files are not retroactively encrypted.
+Protect the host account, use full-disk encryption and encrypted backups, and
+avoid copying the data directory to an untrusted volume. Provider/plugin output
+redaction is a best-effort safety net for recognizable credentials; it cannot
+reliably identify arbitrary source fragments, PHI, or every secret format.
+
 If the default ports are already in use, set explicit ports before starting:
 
 ```bash

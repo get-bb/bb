@@ -35,6 +35,7 @@ import {
 import { PluginHostArtifactRegistry } from "./plugin-host-artifact-registry.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
+import { redactSensitiveText } from "@bb/logger";
 import { experimental_aiServicesHostContract } from "@get-bb/plugin-sdk/ai-services";
 import {
   getInstalledPlugin,
@@ -493,13 +494,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     status: PluginRuntimeStatus,
     detail: string | null = null,
   ): void {
-    baseStatuses.set(id, { status, detail });
+    const safeDetail = detail === null ? null : redactSensitiveText(detail);
+    baseStatuses.set(id, { status, detail: safeDetail });
     const buildProblems = devBuildProblems.get(id);
     publishStatus(
       id,
       status,
-      [detail, buildProblems?.frontend, buildProblems?.host]
+      [safeDetail, buildProblems?.frontend, buildProblems?.host]
         .filter((part): part is string => part !== null && part !== undefined)
+        .map(redactSensitiveText)
         .join("; ") || null,
     );
   }
@@ -514,7 +517,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       if (problems[kind] === undefined) return;
       delete problems[kind];
     } else {
-      problems[kind] = `${DEV_BUILD_PROBLEM_LABELS[kind]}: ${message}`;
+      problems[kind] =
+        `${DEV_BUILD_PROBLEM_LABELS[kind]}: ${redactSensitiveText(message)}`;
     }
     if (Object.keys(problems).length === 0) devBuildProblems.delete(id);
     else devBuildProblems.set(id, problems);
@@ -1603,13 +1607,13 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...declaration,
           pluginId: row.id,
           completeInference: async (input, options) =>
-            experimental_aiServicesHostContract["ai.inference.complete"].output.parse(
-              await call("ai.inference.complete", input, options),
-            ),
+            experimental_aiServicesHostContract[
+              "ai.inference.complete"
+            ].output.parse(await call("ai.inference.complete", input, options)),
           transcribeVoice: async (input, options) =>
-            experimental_aiServicesHostContract["ai.voice.transcribe"].output.parse(
-              await call("ai.voice.transcribe", input, options),
-            ),
+            experimental_aiServicesHostContract[
+              "ai.voice.transcribe"
+            ].output.parse(await call("ai.voice.transcribe", input, options)),
         });
       },
       registerProvider: (declaration) => {

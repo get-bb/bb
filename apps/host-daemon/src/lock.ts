@@ -53,7 +53,8 @@ export async function acquireDaemonLock(
   dataDir: string,
   options: AcquireDaemonLockOptions = {},
 ): Promise<() => Promise<void>> {
-  await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(dataDir, { mode: 0o700, recursive: true });
+  await fs.chmod(dataDir, 0o700);
 
   const lockPath = path.join(dataDir, DAEMON_LOCK_FILE_NAME);
   await fs.writeFile(lockPath, "", { encoding: "utf8", flag: "a" });

@@ -762,14 +762,16 @@ describe("RuntimeManager", () => {
     // pending, its catalog is staged, and nothing in `entries` names it yet.
     const provisionStarted = createDeferredPromise<void>();
     const releaseProvision = createDeferredPromise<void>();
-    const provisionWorkspace = vi.fn(async (options: ProvisionWorkspaceArgs) => {
-      const targetPath = "path" in options ? options.path : undefined;
-      if (targetPath === "/tmp/env-a") {
-        provisionStarted.resolve();
-        await releaseProvision.promise;
-      }
-      return createFakeWorkspace(targetPath ?? "/tmp/env");
-    });
+    const provisionWorkspace = vi.fn(
+      async (options: ProvisionWorkspaceArgs) => {
+        const targetPath = "path" in options ? options.path : undefined;
+        if (targetPath === "/tmp/env-a") {
+          provisionStarted.resolve();
+          await releaseProvision.promise;
+        }
+        return createFakeWorkspace(targetPath ?? "/tmp/env");
+      },
+    );
     const manager = new RuntimeManager({
       dataDir,
       provisionWorkspace,
@@ -2087,7 +2089,7 @@ describe("RuntimeManager", () => {
       code: 1,
       expected: false,
       signal: null,
-      stderr: "OPENAI_API_KEY=sk-test-secret\nUsage limit reached.",
+      stderr: "OPENAI_API_KEY=sk-example-secret\nUsage limit reached.",
     });
 
     expect(emittedEvents).toEqual([
@@ -2121,14 +2123,13 @@ describe("RuntimeManager", () => {
           scope: turnScope("turn-1"),
           code: "provider_process_exited",
           message: 'Provider "codex" exited unexpectedly with code 1',
-          detail:
-            "stderr:\nOPENAI_API_KEY=sk-test-secret\nUsage limit reached.",
+          detail: "stderr:\nOPENAI_API_KEY=[REDACTED]\nUsage limit reached.",
         },
       },
     ]);
     expect(forwardedProcessExits).toEqual([
       expect.objectContaining({
-        stderr: "OPENAI_API_KEY=sk-test-secret\nUsage limit reached.",
+        stderr: "OPENAI_API_KEY=[REDACTED]\nUsage limit reached.",
       }),
     ]);
   });

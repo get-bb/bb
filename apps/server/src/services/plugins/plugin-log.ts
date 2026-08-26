@@ -1,6 +1,13 @@
-import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
+import {
+  appendFileSync,
+  chmodSync,
+  mkdirSync,
+  renameSync,
+  statSync,
+} from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { redactSensitiveText } from "@bb/logger";
 
 /**
  * Per-plugin log file (design §3 observability): every `bb.log` line is
@@ -31,7 +38,8 @@ export function appendPluginLogLine(
 ): void {
   try {
     const dir = pluginLogsDir(dataDir, pluginId);
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { mode: 0o700, recursive: true });
+    chmodSync(dir, 0o700);
     const file = join(dir, PLUGIN_LOG_FILE);
     try {
       if (statSync(file).size > PLUGIN_LOG_MAX_BYTES) {
@@ -40,8 +48,13 @@ export function appendPluginLogLine(
     } catch {
       // Missing file: nothing to rotate.
     }
-    const line = JSON.stringify({ ts: Date.now(), level, message });
+    const line = JSON.stringify({
+      ts: Date.now(),
+      level,
+      message: redactSensitiveText(message),
+    });
     appendFileSync(file, `${line}\n`, "utf8");
+    chmodSync(file, 0o600);
   } catch {
     // Best effort only.
   }
@@ -69,5 +82,5 @@ export async function readPluginLogTail(
       // Missing file: nothing logged there yet.
     }
   }
-  return tail <= 0 ? [] : lines.slice(-tail);
+  return tail <= 0 ? [] : lines.slice(-tail).map(redactSensitiveText);
 }

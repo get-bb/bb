@@ -46,6 +46,15 @@ describe("acquireDaemonLock compromise handling", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("repairs the data directory to owner-only permissions", async () => {
+    await fs.chmod(dataDir, 0o755);
+
+    const release = await acquireDaemonLock(dataDir);
+
+    expect((await fs.stat(dataDir)).mode & 0o777).toBe(0o700);
+    await release();
+  });
+
   it("re-acquires a compromised lock instead of crashing the daemon", async () => {
     const { logger, warnings } = createRecordingLogger();
     const onLockLost = vi.fn();

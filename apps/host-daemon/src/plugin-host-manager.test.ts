@@ -33,6 +33,7 @@ export default {
     echo: { input: anySchema, output: anySchema },
     env: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
+    stderr: { input: anySchema, output: anySchema },
     crash: { input: anySchema, output: anySchema },
     stringEcho: { input: stringSchema, output: stringSchema },
     invalidOutput: { input: anySchema, output: stringSchema },
@@ -59,6 +60,7 @@ export default {
         context.signal.addEventListener("abort", () => resolve({ aborted: true }), { once: true });
       });
     },
+    stderr(input) { process.stderr.write(String(input.text) + String.fromCharCode(10)); return { ok: true }; },
     crash() { process.exit(17); },
     stringEcho(input) { return input; },
     invalidOutput() { return { nope: true }; },
@@ -247,6 +249,35 @@ describe("PluginHostManager", () => {
     );
     expect(logger.info).toHaveBeenCalledTimes(2);
     expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("redacts host plugin stderr before logging it", async () => {
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const manager = await createManager({ logger });
+    const credential = "sk-example-host-stderr";
+
+    await manager.call(
+      callCommand({
+        method: "stderr",
+        input: { text: `OPENAI_API_KEY=${credential}` },
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        {
+          pluginId: "fixture",
+          origin: "host",
+          stderr: "OPENAI_API_KEY=[REDACTED]",
+        },
+        "Host plugin stderr",
+      ),
+    );
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(credential);
   });
 
   it("bounds call count and input bytes while worker startup is pending", async () => {

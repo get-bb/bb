@@ -19,6 +19,7 @@ import {
   omitNpmScriptPolicyEnv,
   spawnPortableOutputProcess,
 } from "@bb/process-utils";
+import { redactSensitiveText } from "@bb/logger";
 
 /**
  * What a `git:` spec asks for.
@@ -750,7 +751,7 @@ export async function runInstallCommand(
         resolve();
         return;
       }
-      const tail = stderr.trim().slice(-1000);
+      const tail = redactSensitiveText(stderr.trim()).slice(-1000);
       reject(
         new Error(
           `${command} ${args[0]} failed (exit ${code ?? "signal"})${tail ? `: ${tail}` : ""}`,

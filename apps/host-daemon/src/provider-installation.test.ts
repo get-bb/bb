@@ -88,6 +88,38 @@ describe("streamProviderInstallation", () => {
     });
   });
 
+  it("redacts credential-shaped provider stderr in streamed events", async () => {
+    const process = fakeProcess();
+    const stream = streamProviderInstallation({
+      providerId: "example-provider",
+      plan: { command: "example", args: [], displayCommand: "example" },
+      processSpawner: { spawn: () => process },
+    });
+    process.stderr.write("OPENAI_API_KEY=sk-example-install-secret\n");
+    process.close(1);
+
+    await expect(readEvents(stream)).resolves.toEqual([
+      {
+        type: "started",
+        provider: "example-provider",
+        command: "example",
+      },
+      {
+        type: "output",
+        provider: "example-provider",
+        stream: "stderr",
+        text: "OPENAI_API_KEY=[REDACTED]\n",
+      },
+      {
+        type: "completed",
+        provider: "example-provider",
+        exitCode: 1,
+        signal: null,
+        success: false,
+      },
+    ]);
+  });
+
   it("allows only one installation process at a time", async () => {
     const firstProcess = fakeProcess();
     const first = streamProviderInstallation({

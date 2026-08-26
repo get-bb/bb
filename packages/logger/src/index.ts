@@ -1,8 +1,15 @@
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import pino from "pino";
 import type { Logger } from "pino";
 import { loadLoggerConfig } from "@bb/config/logger";
+import {
+  ensurePrivateDirectory,
+  redactSensitiveLogObject,
+  redactSensitiveLogValue,
+  redactSensitiveText,
+} from "./privacy.js";
+
+export { ensurePrivateDirectory, redactSensitiveText } from "./privacy.js";
 
 export type { Logger };
 
@@ -29,16 +36,39 @@ export function createLogger(options: CreateLoggerOptions): Logger {
   const loggerConfig = loadLoggerConfig({ dataDir: options.dataDir });
   const dataDir = loggerConfig.BB_DATA_DIR;
   const logDir = join(dataDir, "logs");
-  mkdirSync(logDir, { recursive: true });
+  ensurePrivateDirectory(dataDir);
+  ensurePrivateDirectory(logDir);
   const loggerOptions = {
     level: loggerConfig.BB_LOG_LEVEL,
     base: {
       component,
       ...(options.base ?? {}),
     },
+    formatters: {
+      bindings: (bindings) => redactSensitiveLogObject(bindings),
+      log: (object) => redactSensitiveLogObject(object),
+    },
+    hooks: {
+      logMethod(inputArgs, method) {
+        const firstArgument = redactSensitiveLogValue(inputArgs[0]);
+        if (inputArgs.length === 1) {
+          method.call(this, firstArgument);
+          return;
+        }
+        const message = inputArgs[1];
+        method.call(
+          this,
+          firstArgument,
+          message === undefined ? undefined : redactSensitiveText(message),
+          ...inputArgs.slice(2).map(redactSensitiveLogValue),
+        );
+      },
+    },
     serializers: {
-      err: pino.stdSerializers.errWithCause,
-      error: pino.stdSerializers.errWithCause,
+      err: (error: Error) =>
+        redactSensitiveLogValue(pino.stdSerializers.errWithCause(error)),
+      error: (error: Error) =>
+        redactSensitiveLogValue(pino.stdSerializers.errWithCause(error)),
     },
   } satisfies pino.LoggerOptions;
   const transportMode = options.transportMode ?? "worker";

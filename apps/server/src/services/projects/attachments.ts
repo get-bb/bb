@@ -1,7 +1,7 @@
 // For now, we store attachments on the server's local file system.
 // We might move this to something like R2 or S3 in the future.
 // oxlint-disable-next-line no-restricted-imports
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import {
   basename,
   dirname,
@@ -180,12 +180,14 @@ export async function storeAttachment(
   }
 
   const dir = projectAttachmentDir(dataDir, projectId);
-  await mkdir(dir, { recursive: true });
+  await mkdir(dir, { mode: 0o700, recursive: true });
+  await chmod(dir, 0o700);
 
   const storedName = buildStoredFilename(file.name);
   const outputPath = join(dir, storedName);
   const bytes = Buffer.from(await file.arrayBuffer());
-  await writeFile(outputPath, bytes);
+  await writeFile(outputPath, bytes, { mode: 0o600 });
+  await chmod(outputPath, 0o600);
 
   return {
     type: isImage ? "localImage" : "localFile",
@@ -249,8 +251,11 @@ export async function copyProjectAttachments(
 
   await Promise.all(
     attachments.map(async ({ content, targetPath }) => {
-      await mkdir(dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, content);
+      const targetDirectory = dirname(targetPath);
+      await mkdir(targetDirectory, { mode: 0o700, recursive: true });
+      await chmod(targetDirectory, 0o700);
+      await writeFile(targetPath, content, { mode: 0o600 });
+      await chmod(targetPath, 0o600);
     }),
   );
 }

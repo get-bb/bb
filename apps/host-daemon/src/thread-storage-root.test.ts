@@ -33,6 +33,7 @@ describe("thread storage root", () => {
 
     expect(rootPath).toBe(threadStorageRootPath(dataDir));
     expect(stats.isDirectory()).toBe(true);
+    expect(stats.mode & 0o777).toBe(0o700);
   });
 
   it("ignores a parent agent thread's ambient storage path", async () => {

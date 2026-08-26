@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { loadServerConfig } from "@bb/config/server";
+import { ensurePrivateDirectory } from "@bb/logger";
 import {
   installSafeProcessDiagnostics,
   writeSafeProcessDiagnosticReport,
@@ -7,6 +8,7 @@ import {
 
 const serverConfig = loadServerConfig();
 const diagnosticsLogsDir = join(serverConfig.BB_DATA_DIR, "logs");
+ensurePrivateDirectory(diagnosticsLogsDir);
 
 installSafeProcessDiagnostics({
   logsDir: diagnosticsLogsDir,

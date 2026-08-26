@@ -8,7 +8,7 @@ import {
   type AgentRuntimeProcessExitInfo,
   type ReapedIdleProviderSession,
 } from "@bb/agent-runtime";
-import type { Logger } from "@bb/logger";
+import { redactSensitiveText, type Logger } from "@bb/logger";
 import { killProcessesWithCwdUnder } from "@bb/process-utils";
 import type {
   PendingInteractionCreate,
@@ -127,6 +127,15 @@ function buildProviderProcessExitMessage(
   info: AgentRuntimeProcessExitInfo,
 ): string {
   return `Provider "${info.providerId}" exited unexpectedly with ${formatProviderProcessExitStatus(info)}`;
+}
+
+function sanitizeProviderProcessExitInfo(
+  info: AgentRuntimeProcessExitInfo,
+): AgentRuntimeProcessExitInfo {
+  if (info.stderr === null) {
+    return info;
+  }
+  return { ...info, stderr: redactSensitiveText(info.stderr) };
 }
 
 function buildProviderProcessExitDetail(
@@ -1431,7 +1440,8 @@ export class RuntimeManager {
           success: true,
         })),
       onInteractiveRequest: this.options.onInteractiveRequest,
-      onStderr: this.options.onStderr,
+      onStderr: (line, threadId) =>
+        this.options.onStderr?.(redactSensitiveText(line), threadId),
       onProcessExit: (info) => {
         if (
           runtime &&
@@ -1440,7 +1450,7 @@ export class RuntimeManager {
         ) {
           this.providerMaintenanceRuntime = null;
         }
-        this.options.onProcessExit?.(info);
+        this.options.onProcessExit?.(sanitizeProviderProcessExitInfo(info));
       },
     });
     return runtime;
@@ -1500,7 +1510,8 @@ export class RuntimeManager {
           success: true,
         })),
       onInteractiveRequest: this.options.onInteractiveRequest,
-      onStderr: this.options.onStderr,
+      onStderr: (line, threadId) =>
+        this.options.onStderr?.(redactSensitiveText(line), threadId),
       onProviderRecovery: (hint) => {
         // The runtime has already acted on the kind (unarchive-and-retry,
         // typed auth_required rejection, bridge restart, stale-steer drop,
@@ -1522,8 +1533,11 @@ export class RuntimeManager {
         );
       },
       onProcessExit: (info) => {
-        if (!info.expected) {
-          for (const event of this.buildUnexpectedProviderExitEvents(info)) {
+        const sanitizedInfo = sanitizeProviderProcessExitInfo(info);
+        if (!sanitizedInfo.expected) {
+          for (const event of this.buildUnexpectedProviderExitEvents(
+            sanitizedInfo,
+          )) {
             this.options.onEvent?.({
               environmentId: args.environmentId,
               event,
@@ -1532,13 +1546,13 @@ export class RuntimeManager {
         }
         const current = this.entries.get(args.environmentId);
         if (
-          !info.expected &&
+          !sanitizedInfo.expected &&
           current?.runtime === runtime &&
           runtime.listRunningProviders().length === 0
         ) {
           this.entries.delete(args.environmentId);
         }
-        this.options.onProcessExit?.(info);
+        this.options.onProcessExit?.(sanitizedInfo);
       },
     });
 

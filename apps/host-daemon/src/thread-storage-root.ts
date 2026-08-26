@@ -9,6 +9,7 @@ export async function ensureThreadStorageRoot(
   dataDir: string,
 ): Promise<string> {
   const rootPath = threadStorageRootPath(dataDir);
-  await fs.mkdir(rootPath, { recursive: true });
+  await fs.mkdir(rootPath, { mode: 0o700, recursive: true });
+  await fs.chmod(rootPath, 0o700);
   return rootPath;
 }

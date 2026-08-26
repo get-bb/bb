@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { ensurePrivateDirectory, redactSensitiveText } from "../src/privacy.js";
 
 const LOGGER_IMPORT_SPECIFIER = "@bb/logger";
 
@@ -180,6 +181,91 @@ afterAll(async () => {
   for (const tempDir of tempDirs.splice(0)) {
     fs.rmSync(tempDir, { force: true, recursive: true });
   }
+});
+
+describe("logger privacy", () => {
+  it("redacts common credential formats while keeping diagnostic context", () => {
+    const credential = "sk-example-secret-value";
+    const text = [
+      `OPENAI_API_KEY=${credential}`,
+      "Authorization: Bearer bearer-example-value",
+      "request failed after 2 retries",
+      "jwt eyJhbGciOiJIUzI1NiJ9.payload.signature",
+    ].join("\n");
+
+    const redacted = redactSensitiveText(text);
+
+    expect(redacted).toContain("OPENAI_API_KEY=[REDACTED]");
+    expect(redacted).toContain("Authorization: Bearer [REDACTED]");
+    expect(redacted).toContain("request failed after 2 retries");
+    expect(redacted).toContain("jwt [REDACTED]");
+    expect(redacted).not.toContain(credential);
+    expect(redacted).not.toContain("bearer-example-value");
+  });
+
+  it("creates and repairs data and log directories with owner-only permissions", () => {
+    const dataDir = createTempDir();
+    fs.chmodSync(dataDir, 0o755);
+    const logDir = path.join(dataDir, "logs");
+
+    ensurePrivateDirectory(logDir);
+
+    expect(fs.statSync(dataDir).mode & 0o777).toBe(0o755);
+    expect(fs.statSync(logDir).mode & 0o777).toBe(0o700);
+
+    ensurePrivateDirectory(dataDir);
+    expect(fs.statSync(dataDir).mode & 0o777).toBe(0o700);
+  });
+
+  it("redacts credential-shaped fields before persisting logs", async () => {
+    const dataDir = createTempDir();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BB_DATA_DIR", dataDir);
+
+    const { createLogger } = await importFreshLogger();
+    const logger = createLogger({ component: "privacy" });
+    const logDir = path.join(dataDir, "logs");
+    const credential = "sk-example-persisted-value";
+
+    logger.error(
+      {
+        stderr: `OPENAI_API_KEY=${credential}`,
+        token: credential,
+      },
+      `provider failed with ${credential}`,
+    );
+    await waitFor(() => readComponentLogLines(logDir, "privacy").length === 1);
+
+    const serialized = JSON.stringify(readComponentLogLines(logDir, "privacy"));
+    expect(serialized).not.toContain(credential);
+    expect(serialized).toContain("[REDACTED]");
+  });
+
+  it("redacts nested error messages and causes before persistence", async () => {
+    const dataDir = createTempDir();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("BB_DATA_DIR", dataDir);
+
+    const { createLogger } = await importFreshLogger();
+    const logger = createLogger({ component: "error-privacy" });
+    const logDir = path.join(dataDir, "logs");
+    const credential = "sk-example-error-secret";
+    const error = new Error(`provider failed: ${credential}`, {
+      cause: new Error(`OPENAI_API_KEY=${credential}`),
+    });
+
+    logger.error({ err: error }, "provider error");
+    await waitFor(
+      () => readComponentLogLines(logDir, "error-privacy").length === 1,
+    );
+
+    const serialized = JSON.stringify(
+      readComponentLogLines(logDir, "error-privacy"),
+    );
+    expect(serialized).not.toContain(credential);
+    expect(serialized).toContain("provider failed: [REDACTED]");
+    expect(serialized).toContain("OPENAI_API_KEY=[REDACTED]");
+  });
 });
 
 describe("createLogger", () => {

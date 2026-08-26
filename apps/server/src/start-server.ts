@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import type { ServerConfig } from "@bb/config/server";
 import { isLoopbackHostname } from "@bb/config/loopback";
 import { toOptionalString } from "@bb/config/strings";
-import { createLogger } from "@bb/logger";
+import { createLogger, ensurePrivateDirectory } from "@bb/logger";
 import { getAppSettings } from "@bb/db";
 import { initDb } from "./db.js";
 import { createApp } from "./server.js";
@@ -57,6 +57,7 @@ export function startHttpListener(args: StartHttpListenerArgs) {
 }
 
 export async function runServer(serverConfig: ServerConfig): Promise<void> {
+  ensurePrivateDirectory(serverConfig.BB_DATA_DIR);
   const logger = createLogger({
     component: "server",
     dataDir: serverConfig.BB_DATA_DIR,
