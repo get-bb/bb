@@ -16,9 +16,7 @@
     },
     "server": "./server.ts",
     "app": "./app.tsx",
-    "skills": [
-      "skills"
-    ]
+    "skills": []
   },
   "keywords": [
     "bb-plugin"

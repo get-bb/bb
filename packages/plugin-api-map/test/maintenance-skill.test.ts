@@ -1,24 +1,36 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const PLUGIN_ROOT = join(
+const REPOSITORY_ROOT = join(import.meta.dirname, "../../..");
+const PLUGIN_ROOT = join(REPOSITORY_ROOT, "plugins/plugin-api-docs");
+const MAINTENANCE_SKILL_ROOT = join(
+  REPOSITORY_ROOT,
+  ".agents/skills/plugin-guide-maintenance",
+);
+const LEGACY_PLUGIN_SKILL_ROOT = join(
   import.meta.dirname,
-  "../../../plugins/plugin-api-docs",
+  "../../../plugins/plugin-api-docs/skills/plugin-guide-maintenance",
 );
 
 describe("Plugin Guide maintenance skill", () => {
-  it("ships from the plugin manifest with the API-sync workflow", () => {
+  it("is a repository maintainer skill that the plugin does not ship", () => {
     const manifest = JSON.parse(
       readFileSync(join(PLUGIN_ROOT, "package.json"), "utf8"),
     );
     const skill = readFileSync(
-      join(PLUGIN_ROOT, "skills/plugin-guide-maintenance/SKILL.md"),
+      join(MAINTENANCE_SKILL_ROOT, "SKILL.md"),
       "utf8",
     );
 
-    expect(manifest.bb.skills).toContain("skills");
+    expect(manifest.bb.skills).toEqual([]);
+    expect(existsSync(LEGACY_PLUGIN_SKILL_ROOT)).toBe(false);
+    expect(
+      existsSync(
+        join(MAINTENANCE_SKILL_ROOT, "scripts/verify-guide-chrome.mjs"),
+      ),
+    ).toBe(true);
     expect(skill).toContain("name: plugin-guide-maintenance");
     expect(skill).toContain("packages/plugin-api-map/src/surfaces.ts");
     expect(skill).toContain("scaffold:surface-entry");
@@ -47,7 +59,7 @@ describe("Plugin Guide maintenance skill", () => {
 
   it("codifies the fixture conventions established across every Guide page", () => {
     const skill = readFileSync(
-      join(PLUGIN_ROOT, "skills/plugin-guide-maintenance/SKILL.md"),
+      join(MAINTENANCE_SKILL_ROOT, "SKILL.md"),
       "utf8",
     );
     const normalized = skill.replace(/\s+/g, " ");
