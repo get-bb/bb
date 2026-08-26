@@ -4,5 +4,6 @@ export interface SdkPublicApiInventory {
 }
 
 export const INVENTORY_PATH: string;
+export function hashDeclarationTokens(source: string): string;
 export function createSdkPublicApiInventory(): SdkPublicApiInventory;
 export function readSdkPublicApiInventory(): SdkPublicApiInventory;

@@ -9,23 +9,27 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SDK_ROOT = resolve(PACKAGE_ROOT, "../plugin-sdk");
 export const INVENTORY_PATH = join(PACKAGE_ROOT, "sdk-public-api.json");
 
-function canonicalDeclaration(source, fileName) {
-  const sourceFile = ts.createSourceFile(
-    fileName,
-    source,
+export function hashDeclarationTokens(source) {
+  // build:types has already parsed and normalized these declarations. Scanning
+  // their tokens keeps the inventory insensitive to comments and formatting
+  // without repeating a full TypeScript parse and print for every subpath.
+  const hash = createHash("sha256");
+  const scanner = ts.createScanner(
     ts.ScriptTarget.Latest,
     true,
-    ts.ScriptKind.TS,
+    ts.LanguageVariant.Standard,
+    source,
   );
-  const printer = ts.createPrinter({
-    newLine: ts.NewLineKind.LineFeed,
-    removeComments: true,
-  });
-  return sourceFile.statements
-    .map((statement) =>
-      printer.printNode(ts.EmitHint.Unspecified, statement, sourceFile),
-    )
-    .join("\n");
+  for (
+    let token = scanner.scan();
+    token !== ts.SyntaxKind.EndOfFileToken;
+    token = scanner.scan()
+  ) {
+    const text = scanner.getTokenText();
+    hash.update(`${token}:${Buffer.byteLength(text)}:`);
+    hash.update(text);
+  }
+  return hash.digest("hex");
 }
 
 function publicTypeEntries() {
@@ -55,15 +59,11 @@ export function createSdkPublicApiInventory() {
     schemaVersion: 1,
     entries: Object.fromEntries(
       publicTypeEntries().map(([subpath, entry]) => {
-        const canonical = canonicalDeclaration(
-          readFileSync(entry.path, "utf8"),
-          entry.path,
-        );
         return [
           subpath,
           {
             types: entry.types,
-            sha256: createHash("sha256").update(canonical).digest("hex"),
+            sha256: hashDeclarationTokens(readFileSync(entry.path, "utf8")),
           },
         ];
       }),

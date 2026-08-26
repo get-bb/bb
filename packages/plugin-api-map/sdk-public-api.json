@@ -3,43 +3,43 @@
   "entries": {
     ".": {
       "types": "bundled-types/bb-plugin-sdk.d.ts",
-      "sha256": "840e5e196f66d9b0ba57097c9eb23e75ed638d8483d5fcb6f17a9d9dddfe516a"
+      "sha256": "7994e5e3cc8a3f743d1098cb09334201ae359aac5148bd945fb1ac429908c80f"
     },
     "./ai-services": {
       "types": "bundled-types/bb-plugin-sdk-ai-services.d.ts",
-      "sha256": "97b4294f28f476c4c2fbe5db621686ae66ddee616f2ba6bed2fc29e7cb122317"
+      "sha256": "da4f251124361cf0d1bf1d21168d81a4f064bbc71aee1e15d89d351e92b34234"
     },
     "./app": {
       "types": "bundled-types/bb-plugin-sdk-app.d.ts",
-      "sha256": "2b9516df9eacc9b8e6f0b9695c9a1117bcc135e62e0541434dc53817939c5c85"
+      "sha256": "d5a5ca8bb14f04dbe5d53dc47470412337ce1fcf8a8019c692479620b05ef7c2"
     },
     "./host": {
       "types": "bundled-types/bb-plugin-sdk-host.d.ts",
-      "sha256": "4b07e41aecd8f0668324c8016633237037bf4b325f00d12c8dbb5e1bf568385f"
+      "sha256": "355d8480a6d834206efbd02f1e8537d146a4d0dcbe73a9ae99c86c4929d4f7ea"
     },
     "./provider-bridge": {
       "types": "bundled-types/bb-plugin-sdk-provider-bridge.d.ts",
-      "sha256": "1ef4800cd3125f662d6dde23ede7c58713ada026124e47af7cf07f03e2b0e1ff"
+      "sha256": "92fe1b5ad8514c8b9f758f7119821137433c1d7fd27e6109e94de6beed053243"
     },
     "./provider-bridge/acp": {
       "types": "bundled-types/bb-plugin-sdk-provider-bridge-acp.d.ts",
-      "sha256": "b0f99e3f95243581363f764f34036c1ca4ef65f12f940ac53c8b897789960aaa"
+      "sha256": "45536c1752a316b4fe3c4267efe6178114a3a534d1af38e1980a503b164aa5e1"
     },
     "./provider-bridge/testing": {
       "types": "bundled-types/bb-plugin-sdk-provider-bridge-testing.d.ts",
-      "sha256": "1b722f069b8da3519c840bbfa964a29452227a7017095116f0f52186290abf7a"
+      "sha256": "7c97c6976876e450ecc9dab36314a48215aae11054e410f985433cd322f9cde8"
     },
     "./testing": {
       "types": "bundled-types/bb-plugin-sdk-testing.d.ts",
-      "sha256": "693ff804ff2a80f4ae1041f623ca01b58e48ff833a82b952c989c6589afbbbf7"
+      "sha256": "3fb82277e547add8ba4df1014809d4b0aae89bcbed3263a7ae1da1d5fb2021f4"
     },
     "./testing/app": {
       "types": "bundled-types/bb-plugin-sdk-testing-app.d.ts",
-      "sha256": "c9de1acc9d5d24da0dccab82577975d58bee9a99c48ed5c2063a1301d723eac4"
+      "sha256": "e618f89997828f11b10520e9dcd00b4b26e0fad7f49fb6030b55189c3247b3ba"
     },
     "./testing/host": {
       "types": "bundled-types/bb-plugin-sdk-testing-host.d.ts",
-      "sha256": "4a03019a60ef5950c9df363e330995f928b5f73a2c6b9ccf93c033717c27a297"
+      "sha256": "5c3f3e6971ce1e0bf9e46db7bbada5090e51442e9f2951ecfb84058d3db1b80b"
     }
   }
 }

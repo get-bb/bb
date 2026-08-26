@@ -16,6 +16,7 @@ import { describe, expect, it } from "vitest";
 import { SURFACE_GROUPS } from "../src/index";
 import {
   createSdkPublicApiInventory,
+  hashDeclarationTokens,
   readSdkPublicApiInventory,
 } from "../scripts/sdk-api-inventory.mjs";
 
@@ -52,6 +53,25 @@ const EXPORTED = new Set(
 const SURFACES = SURFACE_GROUPS.flatMap((group) => group.surfaces);
 
 describe("public SDK inventory", () => {
+  it("ignores declaration trivia but preserves every API token", () => {
+    const compact =
+      "export interface PluginApi { run(input: string): Promise<void>; }";
+    const formatted = `
+      /** Public plugin API. */
+      export interface PluginApi {
+        // Run the plugin.
+        run(input: string): Promise<void>;
+      }
+    `;
+
+    expect(hashDeclarationTokens(formatted)).toBe(
+      hashDeclarationTokens(compact),
+    );
+    expect(hashDeclarationTokens(compact.replace("string", "number"))).not.toBe(
+      hashDeclarationTokens(compact),
+    );
+  });
+
   it("matches every non-internal published declaration subpath", () => {
     // This is intentionally an exact declaration-shape gate, not only an
     // export-name list: adding a BbPluginApi property or an interface method
