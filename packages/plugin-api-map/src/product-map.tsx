@@ -264,13 +264,14 @@ function SpatialFixture({
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const fixtureRef = useRef<HTMLDivElement>(null);
-  // While cards stay open, the reserved footprint only ratchets up to the
-  // largest card seen, and resets when every card closes. Deriving it from
-  // each card's exact height re-scaled the fixture a few percent on every
-  // Previous/Next between cards of different heights — a startling jitter
-  // for no reader benefit. The ratchet moves at most once per open run
-  // (when a taller card first needs the room); a shorter card just keeps
-  // the whitespace.
+  // The reserved card footprint only ratchets up — to the largest card seen
+  // over this slide's lifetime — and never resets on close. Deriving it from
+  // each card's exact height re-scaled the fixture on every Previous/Next,
+  // and resetting on close replayed the whole make-room swing on every
+  // reopen (click card, click away, click another card = shrink, grow,
+  // shrink). With the persistent ratchet the fixture makes room once, keeps
+  // honest whitespace while no card is open, and later opens move it only
+  // when a strictly taller card first needs the room.
   const cardReserveRef = useRef(0);
   const [geometry, setGeometry] = useState({
     scale: 1,
@@ -297,13 +298,13 @@ function SpatialFixture({
       const flowCard = frame
         .closest("section")
         ?.querySelector<HTMLElement>("[data-guide-card-flow]");
-      cardReserveRef.current = flowCard
-        ? Math.max(
-            cardReserveRef.current,
-            flowCard.getBoundingClientRect().height +
-              parseFloat(getComputedStyle(flowCard).marginTop || "0"),
-          )
-        : 0;
+      if (flowCard) {
+        cardReserveRef.current = Math.max(
+          cardReserveRef.current,
+          flowCard.getBoundingClientRect().height +
+            parseFloat(getComputedStyle(flowCard).marginTop || "0"),
+        );
+      }
       const cardFootprint = cardReserveRef.current;
       const availableHeight = viewport
         ? viewport.clientHeight -

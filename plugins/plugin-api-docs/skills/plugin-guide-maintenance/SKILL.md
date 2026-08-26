@@ -152,9 +152,10 @@ on a nested wrapper is invisible to the measurement, because a block's
 
 An open in-flow card is part of the height budget: its footprint subtracts
 from the fixture's available height so the card ends where its content ends
-without scrolling the page chrome. The reserve ratchets — while cards stay
-open it only grows to the tallest card seen, resetting when every card closes
-— so Previous/Next between cards never re-scales the fixture per card, and
+without scrolling the page chrome. The reserve ratchets — over the slide's lifetime it only grows to the
+tallest card seen and never resets on close — so opening, closing, and
+revisiting cards never re-scales the fixture (the make-room step happens
+once; closed pages keep honest whitespace), and
 the reserve, transform, and centering glide on the stage's 300ms ease rather
 than snapping.
 
