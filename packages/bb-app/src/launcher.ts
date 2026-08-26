@@ -56,10 +56,7 @@ import {
   validateTranscriptionModel,
 } from "@bb/config/inference-model";
 import { validateLogLevel } from "@bb/config/log-level";
-import {
-  validateOptionalUrl,
-  validateServerUrl,
-} from "@bb/config/public-url";
+import { validateOptionalUrl, validateServerUrl } from "@bb/config/public-url";
 import { parseServerBindHost, type ServerBindHost } from "@bb/config/server";
 import { toOptionalString } from "@bb/config/strings";
 import {

@@ -33,5 +33,4 @@ describe("desktop update support", () => {
       }),
     ).toEqual({ autoUpdate: false, versionCheck: true });
   });
-
 });

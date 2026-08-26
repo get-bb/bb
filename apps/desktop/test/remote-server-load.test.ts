@@ -28,8 +28,7 @@ function createElectronLoadError(url: string): Error {
 function createHarness(
   overrides: Partial<LoadRemoteServerPageArgs> = {},
 ): TestHarness {
-  const serverUrl =
-    overrides.serverUrl ?? "https://bb-host.tailnet.ts.net";
+  const serverUrl = overrides.serverUrl ?? "https://bb-host.tailnet.ts.net";
   const shownErrors: StartupErrorView[] = [];
   const warnings: string[] = [];
   return {

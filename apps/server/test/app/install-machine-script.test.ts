@@ -473,13 +473,9 @@ describe("machine install script", () => {
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "no PATH or npm fallback is permitted",
-    );
+    expect(result.stderr).toContain("no PATH or npm fallback is permitted");
     expect(existsSync(join(fixture.dataDir, "npm.log"))).toBe(false);
-    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(
-      false,
-    );
+    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(false);
   });
 
   it("fails loudly when npm skipped the native add-on install scripts", () => {

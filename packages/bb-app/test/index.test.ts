@@ -770,12 +770,7 @@ describe("bb-app launcher", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "bb-app-bind-host-"));
 
     await expect(
-      runBbApp([
-        "--data-dir",
-        dataDir,
-        "--server-bind-host",
-        "0.0.0.0",
-      ]),
+      runBbApp(["--data-dir", dataDir, "--server-bind-host", "0.0.0.0"]),
     ).rejects.toThrow(/loopback/u);
   });
 
