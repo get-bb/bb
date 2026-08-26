@@ -69,6 +69,14 @@ jobs:
       cancel-in-progress: false
 
     steps:
+      - name: Require main branch for TestFlight submission
+        if: >-
+          ${{ inputs.submit == true
+          && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::TestFlight submission must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

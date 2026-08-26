@@ -38,6 +38,15 @@ jobs:
       has_signing_secrets: ${{ steps.signing.outputs.has_signing_secrets }}
 
     steps:
+      - name: Require main branch for stable publication
+        if: >-
+          ${{ inputs.publish == true
+          && inputs.release_channel == 'stable'
+          && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Stable desktop publication must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -70,6 +79,7 @@ jobs:
 
       - name: Validate macOS signing secrets
         id: signing
+        if: ${{ inputs.publish == true && inputs.release_channel == 'stable' }}
         env:
           MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -112,12 +122,12 @@ jobs:
 
       - name: Package arm64 desktop artifacts
         env:
-          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          CSC_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ inputs.publish == true && inputs.release_channel == 'stable' && secrets.MACOS_CERTIFICATE_P12 || '' }}
+          CSC_KEY_PASSWORD: ${{ inputs.publish == true && inputs.release_channel == 'stable' && secrets.MACOS_CERTIFICATE_PASSWORD || '' }}
+          CSC_NAME: ${{ inputs.publish == true && inputs.release_channel == 'stable' && secrets.MACOS_CERTIFICATE_NAME || '' }}
+          APPLE_ID: ${{ inputs.publish == true && inputs.release_channel == 'stable' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ inputs.publish == true && inputs.release_channel == 'stable' && secrets.APPLE_APP_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ inputs.publish == true && inputs.release_channel == 'stable' && secrets.APPLE_TEAM_ID || '' }}
         run: pnpm exec turbo run desktop:build --filter=@bb/desktop --force --output-logs=new-only
 
       - name: Smoke test packaged desktop app
@@ -147,6 +157,15 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      - name: Require main branch for stable publication
+        if: >-
+          ${{ inputs.publish == true
+          && inputs.release_channel == 'stable'
+          && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Stable desktop publication must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -207,8 +226,19 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
+      - name: Require main branch for stable publication
+        if: >-
+          ${{ inputs.publish == true
+          && inputs.release_channel == 'stable'
+          && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Stable desktop publication must run from the main branch, got ${GITHUB_REF}."
+          exit 1
+
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -263,6 +293,16 @@ jobs:
         with:
           name: bb-desktop-linux-x64
           path: release/linux
+
+      - name: Attest desktop release binaries
+        if: steps.release_plan.outputs.should_publish == 'true'
+        id: attest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        with:
+          subject-path: |
+            release/macos/*.dmg
+            release/macos/*.zip
+            release/linux/*.AppImage
 
       - name: Publish stable desktop release feed
         if: steps.release_plan.outputs.should_publish == 'true'
@@ -360,6 +400,7 @@ jobs:
 
       - name: Summarize
         env:
+          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
           IS_PRERELEASE: ${{ steps.release_plan.outputs.is_prerelease }}
           PUBLISH_MACOS_BINARIES: ${{ steps.release_plan.outputs.publish_macos_binaries }}
           SHOULD_PUBLISH: ${{ steps.release_plan.outputs.should_publish }}
@@ -376,4 +417,5 @@ jobs:
             echo "- macOS release binary upload enabled: ${PUBLISH_MACOS_BINARIES}"
             echo "- macOS feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version.json"
             echo "- Linux feed URL: https://github.com/get-bb/bb/releases/download/desktop-latest/desktop-version-linux.json"
+            echo "- binary provenance attestation: ${ATTESTATION_URL}"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -121,10 +121,13 @@ Linux gets both update paths, but they are not equivalent:
 
 The Linux AppImage is unsigned, and electron-updater performs no signature
 check on Linux: it verifies only the SHA-512 recorded in the update metadata
-that ships beside it. macOS installs through Squirrel, which additionally
-requires the replacement to satisfy the running app's code-signing
-requirement. Write access to the release assets is therefore sufficient to
-push code to Linux clients. Treat the release token accordingly.
+that ships beside it. The release publisher also creates a GitHub Artifact
+Attestation for the desktop binaries; verify a downloaded asset with
+`gh attestation verify <asset> -R get-bb/bb`. That attestation is Sigstore-signed
+publisher provenance, not a Linux code signature. macOS installs through
+Squirrel, which additionally requires the replacement to satisfy the running
+app's code-signing requirement. Write access to the release assets is therefore
+sufficient to push code to Linux clients. Treat the release token accordingly.
 
 ## Releasing
 

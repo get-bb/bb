@@ -61,6 +61,10 @@ succeeds, so a nightly failure cannot affect the release that already shipped.
   release policy explicitly says to.
 - Always report the exact Git commit, npm version, dist-tags, validation, and
   workflow run status.
+- Privileged manual paths are main-only. QA desktop builds and non-submitting
+  iOS EAS builds remain available from other branches.
+- npm Trusted Publishing jobs install npm `11.6.2` exactly; do not replace that
+  pin with `npm@latest`.
 
 ## Inputs
 
@@ -226,6 +230,14 @@ gh workflow run build-desktop.yml \
   withholds the unsigned `.dmg`/`.zip` and publishes both version feeds plus the
   Linux AppImage. Linux has no notarization equivalent, so it never waits on the
   Apple secrets.
+- The stable and nightly desktop publishers create a GitHub Artifact Attestation
+  for the release binaries before uploading them. Verify a downloaded asset
+  with `gh attestation verify <asset> -R get-bb/bb`. This is Sigstore-signed
+  publisher provenance, not a replacement for macOS Developer ID signing or a
+  code signature for Linux; Linux AppImages remain unsigned and their updater
+  still relies on the feed's SHA-512 metadata. Artifact attestations also
+  require the repository plan and Actions `id-token`/`attestations` permissions
+  to be enabled.
 - The `desktop-v<version>` release is immutable: if it already exists the
   workflow fails. Bump to a new version rather than re-running the same one.
 - The immutable `desktop-v<version>` release owns GitHub's repository-wide
