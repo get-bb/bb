@@ -123,10 +123,18 @@ export function SurfaceCard({
   }, [onDismiss, probe]);
 
   // The card sits below the diagram, so on a short screen it can open past
-  // the fold; bring it into view whenever the open surface changes.
+  // the fold; bring it into view whenever the open surface changes. Wait
+  // out the stage's 300ms re-budget first: the shrink usually brings the
+  // card above the fold on its own, and scrolling during the glide layers
+  // a second motion on top of it — jump down to the still-unshrunken
+  // layout, then clamp back up as the page shortens. After settle,
+  // "nearest" is a no-op unless the card is still genuinely out of view.
   useEffect(() => {
     if (probe) return;
-    cardRef.current?.scrollIntoView({ block: "nearest" });
+    const timer = window.setTimeout(() => {
+      cardRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, 350);
+    return () => window.clearTimeout(timer);
   }, [surface.id, probe]);
 
   return (
