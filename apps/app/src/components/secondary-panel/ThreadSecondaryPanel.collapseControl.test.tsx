@@ -57,11 +57,12 @@ const infoAndDiffFixedTabs = [
 function createTestRenderableTab(
   tab: SecondaryFileFixedPanelTab,
   renderContent: SecondaryPanelRenderableTab["renderContent"] = () => null,
+  onClose: () => void = noop,
 ): SecondaryPanelRenderableTab {
   return {
     label: "index.ts",
     leadingVisual: null,
-    onClose: noop,
+    onClose,
     onSelect: noop,
     renderContent,
     statusLabel: null,
@@ -96,6 +97,58 @@ function renderPanel(args: {
           />
         </PanelGroup>
       </TooltipProvider>
+    </Wrapper>,
+  );
+}
+
+function renderFixedTabSplit({
+  keyboardKey,
+}: {
+  keyboardKey?: "Enter" | " ";
+} = {}) {
+  const { wrapper: Wrapper } = createQueryClientTestHarness();
+  const panelStateId = `fixed-tab-remove-split-${keyboardKey ?? "pointer"}`;
+  const initial = createSidebarSplitState(
+    [infoFixedTab.id, diffFixedTab.id],
+    diffFixedTab.id,
+  );
+  const split = moveSidebarTab(
+    initial,
+    initial.layout.focusedPaneId,
+    diffFixedTab.id,
+    { paneId: initial.layout.focusedPaneId, zone: "right" },
+    { groupId: "group-diff" },
+  );
+  window.localStorage.setItem(
+    sidebarSplitStorageKey(panelStateId),
+    serializeSidebarSplitState(split),
+  );
+
+  return render(
+    <Wrapper>
+      <SidebarProvider>
+        <TooltipProvider>
+          <PanelGroup direction="horizontal">
+            <ThreadSecondaryPanel
+              activeTab={diffFixedTab}
+              canUseGitUi
+              fixedTabs={infoAndDiffFixedTabs}
+              tabs={[]}
+              isConversationCollapsed={false}
+              isOpen
+              metadataContent={<div>Thread metadata</div>}
+              onClose={noop}
+              onCollapse={noop}
+              onTabReorder={noop}
+              onOpenNewTab={noop}
+              onPanelFocus={noop}
+              onToggleConversationCollapse={noop}
+              renderAsDrawer={false}
+              splitPanelStateId={panelStateId}
+            />
+          </PanelGroup>
+        </TooltipProvider>
+      </SidebarProvider>
     </Wrapper>,
   );
 }
@@ -272,6 +325,8 @@ describe("ThreadSecondaryPanel compact file content", () => {
       sidebarSplitStorageKey(panelStateId),
       serializeSidebarSplitState(split),
     );
+    const closeFirstTab = vi.fn();
+    const closeSecondTab = vi.fn();
 
     render(
       <Wrapper>
@@ -295,15 +350,19 @@ describe("ThreadSecondaryPanel compact file content", () => {
                 splitPanelStateId={panelStateId}
                 tabs={[
                   {
-                    ...createTestRenderableTab(firstTab, () => (
-                      <div>First tab body</div>
-                    )),
+                    ...createTestRenderableTab(
+                      firstTab,
+                      () => <div>First tab body</div>,
+                      closeFirstTab,
+                    ),
                     label: "first.ts",
                   },
                   {
-                    ...createTestRenderableTab(secondTab, () => (
-                      <div>Second tab body</div>
-                    )),
+                    ...createTestRenderableTab(
+                      secondTab,
+                      () => <div>Second tab body</div>,
+                      closeSecondTab,
+                    ),
                     label: "second.ts",
                   },
                 ]}
@@ -317,6 +376,12 @@ describe("ThreadSecondaryPanel compact file content", () => {
     expect(screen.getByText("First tab body")).toBeTruthy();
     expect(screen.getByText("Second tab body")).toBeTruthy();
     expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: "Remove split" }),
+    ).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Close first.ts" }));
+    expect(closeFirstTab).toHaveBeenCalledTimes(1);
+    expect(closeSecondTab).not.toHaveBeenCalled();
   });
 
   it("retains the active file body after the persistent drawer closes", () => {
@@ -446,6 +511,73 @@ describe("ThreadSecondaryPanel compact file content", () => {
     );
     expect(window.localStorage.getItem(storageKey)).toBe(storedSplit);
   });
+});
+
+describe("ThreadSecondaryPanel remove-split control", () => {
+  it("is absent when unsplit and appears at the trailing edge of every split pane", () => {
+    const unsplit = renderPanel({
+      isConversationCollapsed: false,
+      onToggleConversationCollapse: noop,
+    });
+    expect(unsplit.queryByRole("button", { name: "Remove split" })).toBeNull();
+    unsplit.unmount();
+
+    renderFixedTabSplit();
+
+    const panes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-split-pane-id]"),
+    );
+    const removeControls = screen.getAllByRole("button", {
+      name: "Remove split",
+    });
+    expect(panes).toHaveLength(2);
+    expect(removeControls).toHaveLength(2);
+    expect(
+      panes.every((pane) => {
+        const chrome = pane.querySelector(
+          '[data-testid="thread-secondary-panel-top-chrome"]',
+        );
+        const removeControl = pane.querySelector('[aria-label="Remove split"]');
+        return (
+          chrome?.lastElementChild instanceof HTMLElement &&
+          removeControl instanceof HTMLButtonElement &&
+          chrome.lastElementChild.contains(removeControl)
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it.each(["Enter", " "] as const)(
+    "keeps Info and Diff open when removing their split with %j",
+    (key) => {
+      renderFixedTabSplit({ keyboardKey: key });
+
+      const removeControl = screen.getAllByRole("button", {
+        name: "Remove split",
+      })[1];
+      expect(removeControl).toBeInstanceOf(HTMLButtonElement);
+      if (!(removeControl instanceof HTMLButtonElement)) return;
+      removeControl.focus();
+      expect(document.activeElement).toBe(removeControl);
+      expect(removeControl.tabIndex).toBe(0);
+
+      // jsdom does not synthesize a button's browser-default click from key
+      // events. Dispatch the key pair, then the detail=0 click a browser emits
+      // for keyboard activation so this still exercises the native button path.
+      fireEvent.keyDown(removeControl, { key });
+      fireEvent.keyUp(removeControl, { key });
+      fireEvent.click(removeControl, { detail: 0 });
+
+      expect(document.querySelectorAll("[data-split-pane-id]")).toHaveLength(0);
+      expect(screen.queryByRole("button", { name: "Remove split" })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Show thread info panel" }),
+      ).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: "Show diff panel" }),
+      ).toBeTruthy();
+    },
+  );
 });
 
 describe("ThreadSecondaryPanel Diff eligibility", () => {

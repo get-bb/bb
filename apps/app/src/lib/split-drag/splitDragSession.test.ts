@@ -194,4 +194,88 @@ describe("beginSplitDrag — sidebar gesture arbitration and fallback", () => {
     });
     container.remove();
   });
+
+  it("rejects marked panes outside a supplied target boundary", () => {
+    const boundary = document.createElement("aside");
+    document.body.append(boundary);
+    const config = baseConfig({ targetBoundary: boundary });
+
+    beginSplitDrag(config);
+    fireWindowPointer("pointermove", 900, 400);
+    fireWindowPointer("pointerup", 900, 400);
+
+    expect(config.onDrop).not.toHaveBeenCalled();
+    boundary.remove();
+  });
+
+  it("accepts marked panes inside a supplied target boundary", () => {
+    const boundary = document.createElement("aside");
+    boundary.append(paneEl);
+    document.body.append(boundary);
+    const config = baseConfig({ targetBoundary: boundary });
+
+    beginSplitDrag(config);
+    fireWindowPointer("pointermove", 900, 400);
+    fireWindowPointer("pointerup", 900, 400);
+
+    expect(config.onDrop).toHaveBeenCalledWith({
+      paneId: "pane-1",
+      zone: "center",
+    });
+    boundary.remove();
+  });
+
+  it("preserves fallback targeting when its container is inside the boundary", () => {
+    document.elementsFromPoint = vi.fn(
+      () => [],
+    ) as typeof document.elementsFromPoint;
+    const boundary = document.createElement("aside");
+    const container = document.createElement("main");
+    Object.defineProperty(container, "getBoundingClientRect", {
+      value: () => PANE_RECT,
+      configurable: true,
+    });
+    boundary.append(container);
+    document.body.append(boundary);
+    const config = baseConfig({
+      targetBoundary: boundary,
+      fallback: { paneId: "pane-1", container },
+    });
+
+    beginSplitDrag(config);
+    fireWindowPointer("pointermove", 900, 400);
+    fireWindowPointer("pointermove", 1150, 400);
+    fireWindowPointer("pointerup", 1150, 400);
+
+    expect(config.onDrop).toHaveBeenCalledWith({
+      paneId: "pane-1",
+      zone: "right",
+    });
+    boundary.remove();
+  });
+
+  it("rejects a fallback target outside a supplied target boundary", () => {
+    document.elementsFromPoint = vi.fn(
+      () => [],
+    ) as typeof document.elementsFromPoint;
+    const boundary = document.createElement("aside");
+    const container = document.createElement("main");
+    Object.defineProperty(container, "getBoundingClientRect", {
+      value: () => PANE_RECT,
+      configurable: true,
+    });
+    document.body.append(boundary, container);
+    const config = baseConfig({
+      targetBoundary: boundary,
+      fallback: { paneId: "pane-1", container },
+    });
+
+    beginSplitDrag(config);
+    fireWindowPointer("pointermove", 900, 400);
+    fireWindowPointer("pointerup", 900, 400);
+
+    expect(config.onDrop).not.toHaveBeenCalled();
+    boundary.remove();
+    container.remove();
+  });
 });

@@ -38,6 +38,7 @@ import {
   parseSidebarSplitState,
   pruneSidebarSplitStorage,
   reconcileSidebarSplitState,
+  removeSidebarSplit,
   reorderSidebarTab,
   replaceSidebarTab,
   resizeSidebarSplit,
@@ -69,6 +70,7 @@ export interface SidebarSplitPaneRenderArgs {
   ) => void;
   onReorderTab: (request: SecondaryPanelTabReorderRequest) => void;
   onFocusPane: () => void;
+  onRemoveSplit?: () => void;
   onMoveActiveTabToSide?: (side: SplitSide) => void;
   onSelectTab: (tabId: string) => void;
   paneId: string;
@@ -230,6 +232,13 @@ export function SidebarSplitContainer({
     [commitState],
   );
 
+  const removeSplit = useCallback(
+    (paneId: string) => {
+      commitState((current) => removeSidebarSplit(current, paneId), true);
+    },
+    [commitState],
+  );
+
   const moveActiveTabToSide = useCallback(
     (side: SplitSide) => {
       commitState((current) => {
@@ -298,6 +307,10 @@ export function SidebarSplitContainer({
       if (event.button !== 0) return;
       const sourceGroup = getSidebarGroupForPane(state, sourcePaneId);
       const sourceElement = event.currentTarget;
+      const targetBoundary = sourceElement.closest<HTMLElement>("aside");
+      // Sidebar tab splits only target their owning right panel. Fail closed if
+      // the shared container is ever rendered outside that product boundary.
+      if (targetBoundary === null) return;
       const chrome = sourceElement.closest<HTMLElement>(
         '[data-testid="thread-secondary-panel-top-chrome"]',
       );
@@ -308,9 +321,10 @@ export function SidebarSplitContainer({
       beginSplitDrag({
         ghostLabel: label,
         sourceEl: sourceElement,
+        targetBoundary,
         fallback: {
           paneId: sourcePaneId,
-          container: sourceElement.closest<HTMLElement>("aside"),
+          container: targetBoundary,
         },
         cancelSidebarReorderOnEngage: true,
         shouldEngage: (x, y) => {
@@ -399,6 +413,7 @@ export function SidebarSplitContainer({
         beginTabDrag(firstPane.paneId, tabId, event),
       onReorderTab: (request) => reorderTab(firstPane.paneId, request),
       onFocusPane: () => focusPane(firstPane.paneId),
+      onRemoveSplit: undefined,
       onMoveActiveTabToSide: activeTabPositionHandler,
       onSelectTab: (tabId) => selectTab(firstPane.paneId, tabId),
       paneId: firstPane.paneId,
@@ -423,6 +438,7 @@ export function SidebarSplitContainer({
         state={state}
         onBeginTabDrag={beginTabDrag}
         onFocusPane={focusPane}
+        onRemoveSplit={removeSplit}
         onMoveActiveTabToSide={activeTabPositionHandler}
         onReorderTab={reorderTab}
         onResize={resize}
@@ -450,6 +466,7 @@ interface SidebarSplitTreeProps {
     event: ReactPointerEvent<HTMLElement>,
   ) => void;
   onFocusPane: (paneId: string) => void;
+  onRemoveSplit: (paneId: string) => void;
   onMoveActiveTabToSide?: (side: SplitSide) => void;
   onReorderTab: (
     paneId: string,
@@ -553,6 +570,7 @@ function SidebarSplitLeaf(
               props.onBeginTabDrag(pane.paneId, tabId, event),
             onReorderTab: (request) => props.onReorderTab(pane.paneId, request),
             onFocusPane: () => props.onFocusPane(pane.paneId),
+            onRemoveSplit: () => props.onRemoveSplit(pane.paneId),
             onMoveActiveTabToSide: props.onMoveActiveTabToSide,
             onSelectTab: (tabId) => props.onSelectTab(pane.paneId, tabId),
             paneId: pane.paneId,

@@ -18,6 +18,7 @@ import {
   parseSidebarSplitState,
   pruneSidebarSplitStorage,
   reconcileSidebarSplitState,
+  removeSidebarSplit,
   reorderSidebarTab,
   replaceSidebarTab,
   resizeSidebarSplit,
@@ -448,6 +449,59 @@ describe("sidebar split layout", () => {
       { groupId: "group-file-a" },
     );
     expect(collided).toBe(state);
+  });
+
+  it("removes the focused split while rehoming every tab and its active selection", () => {
+    const split = splitOff(
+      createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),
+      "file-a",
+    );
+    const removedPaneId = split.layout.focusedPaneId;
+
+    const unsplit = removeSidebarSplit(split, removedPaneId);
+    const survivor = getSidebarGroupForPane(
+      unsplit,
+      unsplit.layout.focusedPaneId,
+    );
+
+    expect(countPanes(unsplit.layout.root)).toBe(1);
+    expect(survivor?.tabIds).toEqual([
+      SIDEBAR_FIXED_INFO_TAB_ID,
+      SIDEBAR_FIXED_DIFF_TAB_ID,
+      "file-a",
+    ]);
+    expect(survivor?.activeTabId).toBe("file-a");
+  });
+
+  it("removes an unfocused split without stealing focus or active selection", () => {
+    const split = splitOff(
+      createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID),
+      "file-a",
+    );
+    const focusedPaneId = split.layout.focusedPaneId;
+    const removedPaneId = listPanes(split.layout.root).find(
+      (pane) => pane.paneId !== focusedPaneId,
+    )?.paneId;
+    expect(removedPaneId).toBeDefined();
+    if (removedPaneId === undefined) return;
+
+    const unsplit = removeSidebarSplit(split, removedPaneId);
+    const survivor = getSidebarGroupForPane(unsplit, focusedPaneId);
+
+    expect(unsplit.layout.focusedPaneId).toBe(focusedPaneId);
+    expect(survivor?.tabIds).toEqual([
+      "file-a",
+      SIDEBAR_FIXED_INFO_TAB_ID,
+      SIDEBAR_FIXED_DIFF_TAB_ID,
+    ]);
+    expect(survivor?.activeTabId).toBe("file-a");
+  });
+
+  it("does not remove the only sidebar pane or an unknown pane", () => {
+    const state = createSidebarSplitState(TABS, SIDEBAR_FIXED_INFO_TAB_ID);
+
+    expect(removeSidebarSplit(state, state.layout.focusedPaneId)).toBe(state);
+    expect(removeSidebarSplit(state, "pane-missing")).toBe(state);
   });
 
   it("moves panes through the shared split operations", () => {

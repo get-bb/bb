@@ -52,6 +52,11 @@ export interface SplitDragConfig {
    */
   fallback?: SplitDragFallbackTarget;
   /**
+   * Optional container that confines marked panes and the fallback target.
+   * Omit it to preserve the shared session's existing document-wide hit test.
+   */
+  targetBoundary?: HTMLElement;
+  /**
    * When true, engaging the drag cancels any in-flight dnd-kit reorder so a
    * sidebar tear-out can't both split and reorder the same row (Finding 1).
    * The two gestures become mutually exclusive: a tear-out that crosses the
@@ -116,11 +121,20 @@ export function beginSplitDrag(config: SplitDragConfig): void {
   ): ResolvedTarget | null => {
     const paneEl = paneElementAt(clientX, clientY);
     const paneId = paneEl?.getAttribute(SPLIT_PANE_DATA_ATTR) ?? null;
-    if (paneEl && paneId !== null) {
+    if (
+      paneEl &&
+      paneId !== null &&
+      (config.targetBoundary == null || config.targetBoundary.contains(paneEl))
+    ) {
       return { paneId, rect: paneEl.getBoundingClientRect() };
     }
     const fallback = config.fallback;
-    if (fallback && fallback.container) {
+    if (
+      fallback &&
+      fallback.container &&
+      (config.targetBoundary == null ||
+        config.targetBoundary.contains(fallback.container))
+    ) {
       const rect = fallback.container.getBoundingClientRect();
       if (
         clientX >= rect.left &&

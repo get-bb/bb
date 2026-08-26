@@ -560,6 +560,7 @@ export function ThreadSecondaryPanel({
       event: ReactPointerEvent<HTMLElement>,
     ) => void;
     onMoveActiveTabToSide?: (side: SplitSide) => void;
+    onRemoveSplit?: () => void;
     onFocusPane: () => void;
     onSurfaceTabReorder: SecondaryPanelTabReorderHandler;
     paneId: string | null;
@@ -608,6 +609,25 @@ export function ThreadSecondaryPanel({
       />
     </Button>
   );
+
+  const renderRemoveSplitButton = (onRemoveSplit?: () => void) =>
+    onRemoveSplit ? (
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className={cn(
+          HEADER_PANE_ACTION_ICON_BUTTON_CLASS,
+          CHROME_SUBTLE_ICON_BUTTON_FOREGROUND_CLASS,
+          "shrink-0",
+          usesDesktopChrome && MACOS_WINDOW_NO_DRAG_CLASS,
+        )}
+        aria-label="Remove split"
+        onClick={onRemoveSplit}
+      >
+        <Icon name="CloseThreadPane" />
+      </Button>
+    ) : null;
 
   const renderConversationCollapseButton = ({
     onMoveActiveTabToSide,
@@ -734,6 +754,7 @@ export function ThreadSecondaryPanel({
     onBeginTabDrag,
     onFocusPane,
     onMoveActiveTabToSide,
+    onRemoveSplit,
     onSurfaceTabReorder,
     paneId,
     reserveLeadingChrome,
@@ -812,24 +833,29 @@ export function ThreadSecondaryPanel({
                 showNewTabButton: showNewTabControl,
               })}
             </div>
-            {showOuterControls ? (
+            {showOuterControls || onRemoveSplit ? (
               <div
                 className="flex min-w-0 shrink-0 items-center gap-1"
                 onPointerDown={(event) => event.stopPropagation()}
               >
-                {renderConversationCollapseButton({
-                  onMoveActiveTabToSide,
-                  usesPaneArrangementControl,
-                })}
-                {renderAsDrawer || inlinePanelToggle === "button" ? (
-                  renderHidePanelButton()
-                ) : inlinePanelToggle === "reserved" ? (
-                  <div
-                    aria-hidden
-                    className={getReservedInlinePanelToggleClassName(
-                      usesDesktopChrome,
-                    )}
-                  />
+                {showOuterControls
+                  ? renderConversationCollapseButton({
+                      onMoveActiveTabToSide,
+                      usesPaneArrangementControl,
+                    })
+                  : null}
+                {renderRemoveSplitButton(onRemoveSplit)}
+                {showOuterControls ? (
+                  renderAsDrawer || inlinePanelToggle === "button" ? (
+                    renderHidePanelButton()
+                  ) : inlinePanelToggle === "reserved" ? (
+                    <div
+                      aria-hidden
+                      className={getReservedInlinePanelToggleClassName(
+                        usesDesktopChrome,
+                      )}
+                    />
+                  ) : null
                 ) : null}
               </div>
             ) : null}
@@ -1002,6 +1028,7 @@ export function ThreadSecondaryPanel({
           onBeginTabDrag: pane.onBeginTabDrag,
           onFocusPane: pane.onFocusPane,
           onMoveActiveTabToSide: pane.onMoveActiveTabToSide,
+          onRemoveSplit: pane.onRemoveSplit,
           onSurfaceTabReorder: pane.onReorderTab,
           paneId: pane.paneId,
           reserveLeadingChrome: pane.isTopRow && pane.isLeftEdge,

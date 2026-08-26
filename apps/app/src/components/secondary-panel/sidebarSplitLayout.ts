@@ -416,6 +416,49 @@ function removeEmptySidebarPane(
   return { ...state, groups, layout: removePane(state.layout, paneId) };
 }
 
+/**
+ * Removes one pane without closing any of its tabs. The removed group's tabs
+ * join the pane that owns focus after the layout collapses. When the removed
+ * pane was focused, its active tab stays active in that survivor; removing an
+ * unfocused pane leaves the survivor's current selection unchanged.
+ */
+export function removeSidebarSplit(
+  state: SidebarSplitState,
+  paneId: string,
+): SidebarSplitState {
+  if (countPanes(state.layout.root) <= 1) return state;
+  const pane = findPane(state.layout.root, paneId);
+  const removedGroupId = pane === null ? null : sidebarPaneGroupId(pane);
+  const removedGroup =
+    removedGroupId === null ? undefined : state.groups[removedGroupId];
+  if (removedGroupId === null || removedGroup === undefined) return state;
+
+  const removedFocusedPane = state.layout.focusedPaneId === paneId;
+  const layout = removePane(state.layout, paneId);
+  const survivorPane = findPane(layout.root, layout.focusedPaneId);
+  const survivorGroupId =
+    survivorPane === null ? null : sidebarPaneGroupId(survivorPane);
+  const survivorGroup =
+    survivorGroupId === null ? undefined : state.groups[survivorGroupId];
+  if (survivorGroupId === null || survivorGroup === undefined) return state;
+
+  const groups = { ...state.groups };
+  delete groups[removedGroupId];
+  groups[survivorGroupId] = {
+    ...survivorGroup,
+    tabIds: [
+      ...survivorGroup.tabIds,
+      ...removedGroup.tabIds.filter(
+        (tabId) => !survivorGroup.tabIds.includes(tabId),
+      ),
+    ],
+    activeTabId: removedFocusedPane
+      ? removedGroup.activeTabId
+      : survivorGroup.activeTabId,
+  };
+  return { ...state, groups, layout };
+}
+
 export function moveSidebarPaneToSide(
   state: SidebarSplitState,
   paneId: string,
