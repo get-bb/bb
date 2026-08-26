@@ -1102,14 +1102,7 @@ export class Workspace {
   ): Promise<SquashMergeResult> {
     await ensureGitRepo(this.path, this.gitProcessOptions);
 
-    const sourceBranch = await this.currentBranch;
-    if (!sourceBranch) {
-      throw new WorkspaceError(
-        "detached_head",
-        "Cannot squash merge from a detached workspace",
-      );
-    }
-
+    const sourceBranch = await this.resolveSquashMergeSource();
     const target = await this.resolveSquashMergeTarget(options.targetBranch);
     const tempDir = await createTempDir("bb-squash-");
     const tempDirPath = path.resolve(tempDir);
@@ -1123,9 +1116,17 @@ export class Workspace {
         tempDir,
         this.gitProcessOptions,
       ).withMutation(async () => {
-        await this.runGit(["merge", "--squash", sourceBranch], {
-          cwd: tempDir,
-        });
+        // -c merge.ff=true: git refuses --squash outright when the user
+        // configured merge.ff=false, and this merge is bb's own, not theirs.
+        await this.runGit(
+          ["-c", "merge.ff=true", "merge", "--squash", sourceBranch],
+          {
+            cwd: tempDir,
+          },
+        );
+        // A squash of a branch with no committed work ahead of the target
+        // stages nothing; surface that as a typed no_changes condition the
+        // server maps to 409, not a generic git "nothing to commit" failure.
         const staged = await this.runGit(["diff", "--cached", "--quiet"], {
           cwd: tempDir,
           allowFailure: true,
@@ -1182,6 +1183,23 @@ export class Workspace {
         );
       }
     }
+  }
+
+  /**
+   * The revision whose work gets squashed into the target branch. A git
+   * checkout squashes its branch; a detached one has nothing to name, so the
+   * merge is refused. {@link JjWorkspace} overrides this because its work is
+   * named by a jj bookmark rather than a git branch.
+   */
+  protected async resolveSquashMergeSource(): Promise<string> {
+    const sourceBranch = await this.currentBranch;
+    if (!sourceBranch) {
+      throw new WorkspaceError(
+        "detached_head",
+        "Cannot squash merge from a detached workspace",
+      );
+    }
+    return sourceBranch;
   }
 
   private async resolveSquashMergeTarget(
