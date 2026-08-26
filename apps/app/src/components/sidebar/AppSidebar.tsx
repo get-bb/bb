@@ -243,6 +243,9 @@ export function AppSidebar({
         splitEnabled
         toolsRoutePath={toolsRoutePath}
       />
+      <div className="relative z-10 shrink-0 group-data-[collapsible=icon]:hidden">
+        <OverflowFade placement="below" tone="sidebar" size="sm" />
+      </div>
       <SidebarContent>
         <PluginThreadList
           replacement={threadListReplacement}

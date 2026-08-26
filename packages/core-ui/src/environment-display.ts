@@ -16,6 +16,8 @@ export interface EnvironmentDisplayHostContext {
 export interface EnvironmentDisplayInfo {
   modeLabel: string;
   compactModeLabel: string;
+  /** Lifecycle state that must take precedence over workspace classification. */
+  lifecycle: "provisioning" | "destroying" | "destroyed" | null;
   id: string;
   mode: "direct" | "worktree";
   workspaceDisplayKind: EnvironmentWorkspaceDisplayKind;
@@ -71,10 +73,18 @@ export function formatEnvironmentDisplay({
         : directCompactModeLabel;
   const modeLabel = environment.name ?? generatedModeLabel;
   const compactModeLabel = environment.name ?? generatedCompactModeLabel;
+  const lifecycle = isProvisioningDisplay
+    ? "provisioning"
+    : environment.status === "destroying"
+      ? "destroying"
+      : environment.status === "destroyed"
+        ? "destroyed"
+        : null;
 
   return {
     modeLabel,
     compactModeLabel,
+    lifecycle,
     id: environment.id,
     mode,
     workspaceDisplayKind,

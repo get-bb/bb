@@ -105,7 +105,9 @@ import {
   useCreateThreadTerminal,
   useThreadTerminals,
 } from "@/hooks/queries/thread-terminal-queries";
-import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import {
+  getEnvironmentWorkspaceSummaryDisplay,
+} from "@/lib/environment-workspace-display";
 import { formatWorkspaceCheckoutDisplay } from "@/lib/workspace-checkout-display";
 import {
   getAbsoluteDirname,
@@ -916,13 +918,16 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       ),
     [hostsQuery.data],
   );
-  const threadEnvironmentHost = useMemo(() => {
+  const resolvedThreadEnvironmentHost = useMemo(() => {
     const hosts = hostsQuery.data ?? [];
-    if (hosts.length <= 1) return null;
     const environmentHostId = environment?.hostId;
     if (!environmentHostId) return null;
     return hosts.find((host) => host.id === environmentHostId) ?? null;
   }, [environment?.hostId, hostsQuery.data]);
+  // Name the thread's machine on multi-machine setups so offline notices and
+  // metadata say which computer is involved instead of a generic "host".
+  const threadEnvironmentHost =
+    (hostsQuery.data?.length ?? 0) > 1 ? resolvedThreadEnvironmentHost : null;
   const hostConnectionNotice = useMemo(
     () =>
       thread
@@ -2341,11 +2346,15 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
     : undefined;
   const environmentMachinePrefix =
     threadEnvironmentHost !== null ? `${threadEnvironmentHost.name} · ` : "";
-  const threadEnvironmentIcon = threadEnvironmentDisplay
-    ? getEnvironmentWorkspaceLabelIconName(
-        threadEnvironmentDisplay.workspaceDisplayKind,
-      )
-    : null;
+  const composerEnvironmentSummary = threadEnvironmentDisplay
+    ? getEnvironmentWorkspaceSummaryDisplay({
+        display: threadEnvironmentDisplay,
+        environmentName: environment?.name ?? null,
+        locality: environmentDisplayHostContext.locality,
+        hostName: resolvedThreadEnvironmentHost?.name,
+        machinePrefix: environmentMachinePrefix,
+      })
+    : undefined;
   const isThreadOnProvisionedWorktreeEnvironment =
     environment !== undefined &&
     environment.status === "ready" &&
@@ -2472,17 +2481,10 @@ function ThreadDetailViewInternal(props: ThreadRoutePathArgs) {
       canUseGitUi={canUseGitUi}
       contextWindowUsage={contextWindowUsage}
       environmentCheckout={threadCheckoutDisplay}
-      environmentCompactLabel={
-        threadEnvironmentDisplay
-          ? threadEnvironmentDisplay.compactModeLabel
-          : undefined
-      }
-      environmentIcon={threadEnvironmentIcon ?? undefined}
-      environmentLabel={
-        threadEnvironmentDisplay
-          ? `${environmentMachinePrefix}${threadEnvironmentDisplay.modeLabel}`
-          : undefined
-      }
+      environmentCompactLabel={composerEnvironmentSummary?.compactLabel}
+      environmentIcon={composerEnvironmentSummary?.icon}
+      environmentLabel={composerEnvironmentSummary?.label}
+      environmentTypeLabel={composerEnvironmentSummary?.typeLabel}
       environmentGoneStatus={threadEnvironmentGoneStatus}
       environmentHostId={environment?.hostId}
       isEnvironmentActionPending={requestEnvironmentAction.isPending}

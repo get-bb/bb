@@ -24,7 +24,9 @@ import {
   getFollowUpPromptPlaceholder,
   getCompactFollowUpPromptPlaceholder,
 } from "@/components/promptbox/follow-up-placeholder";
-import { getEnvironmentWorkspaceLabelIconName } from "@/lib/environment-workspace-display";
+import {
+  getEnvironmentWorkspaceSummaryDisplay,
+} from "@/lib/environment-workspace-display";
 import {
   INERT_TYPEAHEAD_COMMAND_CONFIG,
   type AttachmentsConfig,
@@ -168,6 +170,8 @@ const readOnlyPermission: ExecutionPermissionConfig = {
 interface EnvironmentSummaryArgs {
   environment: Environment;
   host: EnvironmentDisplayHostContext;
+  projectName?: string;
+  machineName?: string;
   branchName?: string;
   environmentCheckout?: WorkspaceCheckoutDisplay;
   onCreateNewThreadInWorktree?: () => void;
@@ -176,6 +180,8 @@ interface EnvironmentSummaryArgs {
 function makeEnvironmentSummary({
   environment,
   host,
+  projectName,
+  machineName,
   branchName,
   environmentCheckout,
   onCreateNewThreadInWorktree,
@@ -183,6 +189,13 @@ function makeEnvironmentSummary({
   const display = formatEnvironmentDisplay({
     environment,
     host,
+  });
+  const summaryDisplay = getEnvironmentWorkspaceSummaryDisplay({
+    display,
+    environmentName: environment.name,
+    locality: host.locality,
+    hostName: machineName,
+    machinePrefix: machineName ? `${machineName} · ` : "",
   });
   const checkoutDisplay =
     environmentCheckout ??
@@ -197,11 +210,11 @@ function makeEnvironmentSummary({
       : undefined);
   return (
     <ThreadEnvironmentSummary
-      environmentLabel={display.modeLabel}
-      environmentCompactLabel={display.compactModeLabel}
-      environmentIcon={getEnvironmentWorkspaceLabelIconName(
-        display.workspaceDisplayKind,
-      )}
+      projectName={projectName}
+      environmentLabel={summaryDisplay.label}
+      environmentCompactLabel={summaryDisplay.compactLabel}
+      environmentIcon={summaryDisplay.icon}
+      environmentTypeLabel={summaryDisplay.typeLabel}
       environmentCheckout={checkoutDisplay}
       onCreateNewThreadInWorktree={onCreateNewThreadInWorktree}
     />
@@ -226,6 +239,20 @@ const localEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: localEnvironmentDisplayHost,
+  machineName: "Bersabel's MacBook Pro",
+  branchName: STORY_BRANCH_NAME,
+});
+
+const longHostEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    managed: false,
+    isWorktree: false,
+    workspaceProvisionType: "unmanaged",
+    status: "ready",
+  }),
+  host: localEnvironmentDisplayHost,
+  projectName: "bb UI QA",
+  machineName: "Bersabel's MacBook Pro",
   branchName: STORY_BRANCH_NAME,
 });
 
@@ -237,11 +264,37 @@ const remoteEnvironmentSummary: ReactNode = makeEnvironmentSummary({
     status: "ready",
   }),
   host: remoteEnvironmentDisplayHost,
+  machineName: "Build Mac mini",
   branchName: STORY_BRANCH_NAME,
 });
 
 const worktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
   environment: makeEnvironment({
+    isWorktree: true,
+    workspaceProvisionType: "managed-worktree",
+    status: "ready",
+  }),
+  host: localEnvironmentDisplayHost,
+  machineName: "Bersabel's MacBook Pro",
+  branchName: STORY_BRANCH_NAME,
+  onCreateNewThreadInWorktree: noop,
+});
+
+const remoteWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    isWorktree: true,
+    workspaceProvisionType: "managed-worktree",
+    status: "ready",
+  }),
+  host: remoteEnvironmentDisplayHost,
+  machineName: "Build Mac mini",
+  branchName: STORY_BRANCH_NAME,
+  onCreateNewThreadInWorktree: noop,
+});
+
+const namedWorktreeEnvironmentSummary: ReactNode = makeEnvironmentSummary({
+  environment: makeEnvironment({
+    name: "Design system polish",
     isWorktree: true,
     workspaceProvisionType: "managed-worktree",
     status: "ready",
@@ -969,6 +1022,33 @@ export function Overview() {
           environmentSummary={worktreeEnvironmentSummary}
         />
       </StoryRow>
+      <StoryRow
+        label="env: remote worktree"
+        hint="remote host + worktree type stay distinguishable"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={remoteWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="env: named worktree"
+        hint="existing environment name + worktree icon"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={namedWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="env: long local host"
+        hint="full machine name when space allows; product tooltip when constrained"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={longHostEnvironmentSummary}
+        />
+      </StoryRow>
       <StoryRow label="env: detached" hint="detached checkout label">
         <Row
           submitMode={{ kind: "ready" }}
@@ -1004,6 +1084,63 @@ export function StackedCardsWithPills() {
         hint="banner + queued messages above a composer seeded with mention pills"
       >
         <StackedCardsWithPillsRow />
+      </StoryRow>
+    </StoryCard>
+  );
+}
+
+export function EnvironmentMatrix() {
+  return (
+    <StoryCard>
+      <StoryRow
+        label="provisioning"
+        hint="runtime loading icon + lifecycle label; no environment-type tooltip yet"
+      >
+        <Row
+          submitMode={{ kind: "stop-only", onStop: noop }}
+          threadRuntimeDisplayStatus="starting"
+          environmentSummary={provisioningEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow label="ready · local" hint="laptop icon · Local tooltip">
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={localEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow label="ready · remote" hint="laptop icon · Remote tooltip">
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={remoteEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · local worktree"
+        hint="worktree icon · Local worktree tooltip"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={worktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="ready · remote worktree"
+        hint="worktree icon · Remote worktree tooltip"
+      >
+        <Row
+          submitMode={{ kind: "ready" }}
+          environmentSummary={remoteWorktreeEnvironmentSummary}
+        />
+      </StoryRow>
+      <StoryRow
+        label="destroying / destroyed"
+        hint="composer hidden; lifecycle state remains in the context banner"
+      >
+        <Row
+          submitMode={{ kind: "blocked", reason: "pending-interaction" }}
+          stack={environmentGoneContextBannerElement}
+          hideComposer
+        />
       </StoryRow>
     </StoryCard>
   );
