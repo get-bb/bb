@@ -240,6 +240,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxTransparent: false,
       isLinuxFrameless: false,
       isQuitting() {
         return false;
@@ -336,6 +337,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxTransparent: false,
       isLinuxFrameless: false,
       isQuitting() {
         return false;
@@ -395,6 +397,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxTransparent: false,
       isLinuxFrameless: false,
       isQuitting() {
         return false;
@@ -451,6 +454,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxTransparent: false,
       isLinuxFrameless: false,
       isQuitting() {
         return false;
@@ -509,6 +513,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxTransparent: false,
       isLinuxFrameless: false,
       isQuitting() {
         return false;
@@ -570,6 +575,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: true,
+      isLinuxTransparent: false,
       isLinuxFrameless: false,
       isQuitting() {
         return false;
@@ -629,6 +635,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: false,
+      isLinuxTransparent: false,
       isLinuxFrameless: false,
       isQuitting() {
         return false;
@@ -645,6 +652,41 @@ describe("desktop window factory", () => {
     expect(createdWindows[0]?.options).not.toHaveProperty(
       "trafficLightPosition",
     );
+  });
+
+  it("enables transparent Linux windows when requested", async () => {
+    const tempDir = await createTempDir();
+    const createdWindows: FakeDesktopWindow[] = [];
+    const browserWindowCreator: DesktopBrowserWindowCreator = {
+      create(options) {
+        const browserWindow = new FakeDesktopWindow({ options });
+        createdWindows.push(browserWindow);
+        return browserWindow;
+      },
+    };
+    const factory = createDesktopWindowFactory({
+      browserWindowCreator,
+      createWindowStateKey() {
+        return "transparent-linux-window";
+      },
+      displayWorkAreas: [{ height: 900, width: 1440, x: 0, y: 0 }],
+      icon: undefined,
+      isLinuxTransparent: true,
+      isMac: false,
+      isLinuxFrameless: false,
+      isQuitting() {
+        return false;
+      },
+      openExternalUrl() {},
+      preloadPath: "/tmp/preload.cjs",
+      userDataPath: tempDir.path,
+    });
+
+    await factory.createWindow({ initialUrl: null, stateKey: null });
+
+    expect(createdWindows[0]?.options.transparent).toBe(true);
+    expect(createdWindows[0]?.options.backgroundColor).toBe("#00000000");
+    expect(createdWindows[0]?.options).not.toHaveProperty("frame");
   });
 
   it("removes the native window frame when requested on Linux", async () => {
@@ -672,6 +714,7 @@ describe("desktop window factory", () => {
       ],
       icon: undefined,
       isMac: false,
+      isLinuxTransparent: false,
       isLinuxFrameless: true,
       isQuitting() {
         return false;

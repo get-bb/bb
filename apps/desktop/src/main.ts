@@ -110,6 +110,7 @@ import {
   type DesktopWindowFactory,
 } from "./desktop-window-factory.js";
 import { shouldUseLinuxFramelessWindow } from "./desktop-window-frame.js";
+import { shouldUseLinuxTransparentWindow } from "./desktop-window-transparency.js";
 import {
   createDesktopAboutDialogOptions,
   createDesktopAboutPanelOptions,
@@ -2372,6 +2373,10 @@ async function runDesktopApp(): Promise<void> {
     },
     displayWorkAreas: null,
     icon: nativeImage.createFromPath(iconPath),
+    isLinuxTransparent: shouldUseLinuxTransparentWindow({
+      argv: process.argv,
+      platform: process.platform,
+    }),
     isMac: process.platform === "darwin",
     isLinuxFrameless: shouldUseLinuxFramelessWindow({
       argv: process.argv,
