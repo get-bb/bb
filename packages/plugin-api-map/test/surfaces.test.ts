@@ -152,6 +152,10 @@ describe("product-map surfaces", () => {
     );
     expect([...sectioned].sort()).toEqual(surfaceIds("headless").sort());
     expect(new Set(sectioned).size).toBe(sectioned.length);
+    // The flat surface array drives card Previous/Next, and the sections
+    // drive the rendered grid — order equality keeps navigation from jumping
+    // between sections and back.
+    expect(surfaceIds("headless")).toEqual(sectioned);
   });
 
   it("keeps the headless group off the surface fixtures", () => {

@@ -633,31 +633,6 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         ],
       },
       {
-        id: "storage",
-        tagline: "Namespaced KV plus your own SQLite",
-        title: "Storage",
-        summary:
-          "Stores the plugin's data on the bb server. With this, a plugin can:",
-        bullets: [
-          "Get a key-value store for small values such as flags and cursors",
-          "Get its own SQLite database, with migrations, for larger or relational data",
-          "Read and write only its own namespace; other plugins cannot see it",
-        ],
-        apiSymbols: ["PluginStorage"],
-        firstParty: [
-          "Automations",
-          "Custom instructions",
-          "Docs",
-          "GitHub",
-          "Keep Awake",
-          "Memory",
-          "Remote access",
-          "Side chat",
-          "Tasks",
-          "Workflows",
-        ],
-      },
-      {
         id: "thread-events",
         tagline: "React when threads start, finish, or fail",
         title: "Thread lifecycle events",
@@ -685,6 +660,31 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         apiSymbols: ["PluginHosts"],
         firstParty: ["Keep Awake", "Remote access"],
         experimental: true,
+      },
+      {
+        id: "storage",
+        tagline: "Namespaced KV plus your own SQLite",
+        title: "Storage",
+        summary:
+          "Stores the plugin's data on the bb server. With this, a plugin can:",
+        bullets: [
+          "Get a key-value store for small values such as flags and cursors",
+          "Get its own SQLite database, with migrations, for larger or relational data",
+          "Read and write only its own namespace; other plugins cannot see it",
+        ],
+        apiSymbols: ["PluginStorage"],
+        firstParty: [
+          "Automations",
+          "Custom instructions",
+          "Docs",
+          "GitHub",
+          "Keep Awake",
+          "Memory",
+          "Remote access",
+          "Side chat",
+          "Tasks",
+          "Workflows",
+        ],
       },
       {
         id: "bb-sdk",

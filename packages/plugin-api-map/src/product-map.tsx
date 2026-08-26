@@ -168,9 +168,13 @@ function PlatformSlide({ group }: { group: SurfaceGroup }) {
   );
 }
 
-/** Matches the stage's `duration-300` pan, so a followed reference opens
- * its card only once the target slide has actually arrived. */
-const SLIDE_PAN_MS = 300;
+/**
+ * Fallback for environments where the pan's CSS transition never fires a
+ * `transitionend` (reduced motion, detached layout, jsdom). The normal path
+ * opens a followed reference's card on the transition's own end event, so
+ * this is a ceiling, not the pacing.
+ */
+const PAN_FALLBACK_MS = 600;
 
 /**
  * A spatial fixture is authored at product scale, then shrinks only when its
@@ -408,6 +412,7 @@ export function ProductMap({
   const pageButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const card = useSurfaceCard();
   const [hoverId, setHoverId] = useState<string | null>(null);
+  const [pendingOpenId, setPendingOpenId] = useState<string | null>(null);
   const [index, setIndex] = useState(() =>
     Math.max(
       0,
@@ -434,12 +439,15 @@ export function ProductMap({
   const carets = panCarets(index, slides.length);
 
   // Panning away from a card's marker would strand the card, so it closes.
+  // A pan also supersedes any reference-follow still waiting on a previous
+  // pan, so a stale open can never land on the wrong slide.
   const show = (next: number) => {
     if (next < 0 || next >= slides.length) {
       return;
     }
     card.close();
     setHoverId(null);
+    setPendingOpenId(null);
     setIndex(next);
     onSlideChange?.(slides[next].id);
   };
@@ -448,7 +456,9 @@ export function ProductMap({
    * Follows a card's cross-reference: pan to the slide that draws the named
    * surface, then open its card. The open waits for the pan to land because
    * the card measures its marker's live geometry to place itself, and an
-   * off-stage marker measures where it is parked, not where it will be.
+   * off-stage marker measures where it is parked, not where it will be. The
+   * landing signal is the track's own `transitionend` (see the stage below);
+   * the effect provides only a ceiling for environments without one.
    */
   const goToSurface = (id: string) => {
     const group = GROUP_BY_SURFACE_ID.get(id);
@@ -460,8 +470,19 @@ export function ProductMap({
       return;
     }
     show(target);
-    window.setTimeout(() => card.open(id), SLIDE_PAN_MS);
+    setPendingOpenId(id);
   };
+
+  useEffect(() => {
+    if (pendingOpenId === null) return;
+    const timer = window.setTimeout(() => {
+      setPendingOpenId(null);
+      card.open(pendingOpenId);
+    }, PAN_FALLBACK_MS);
+    return () => window.clearTimeout(timer);
+    // `card.open` is rebuilt each render by design: it reads live geometry.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpenId]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "ArrowRight") {
@@ -612,6 +633,17 @@ export function ProductMap({
               <div
                 className="flex transition-transform duration-300 ease-out"
                 style={{ transform: `translateX(-${index * 100}%)` }}
+                onTransitionEnd={(event) => {
+                  if (
+                    event.target !== event.currentTarget ||
+                    event.propertyName !== "transform" ||
+                    pendingOpenId === null
+                  ) {
+                    return;
+                  }
+                  setPendingOpenId(null);
+                  card.open(pendingOpenId);
+                }}
               >
                 {slides.map((entry, slideIndex) => (
                   <div

@@ -47,7 +47,6 @@ export {
 export {
   AppShellWireframe,
   CommandPaletteWireframe,
-  ComposerWireframe,
   ComposeScreenWireframe,
   ExtensionsPluginPageWireframe,
   SettingsWireframe,
