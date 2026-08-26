@@ -152,16 +152,23 @@ on a nested wrapper is invisible to the measurement, because a block's
 
 An open in-flow card is part of the height budget: its footprint subtracts
 from the fixture's available height so the card ends where its content ends
-without scrolling the page chrome. The fixture moves at most once per slide:
-the landing view reserves nothing and renders at its full derived size; the
-first card open glides once — on the stage's 300ms ease — to the size that
-fits the slide's tallest card, pre-measured by a hidden probe that renders
-every card the slide can open; after that nothing re-scales for the slide's
-lifetime, not on close, reopen, or Previous/Next through any card. The
-reserve ratchets as a probe-less backstop — it only grows and never resets
-on close. Sizing the reserve from each card individually re-scales the
-fixture per card, and reserving the tallest card before any open shrinks
-every landing view.
+without scrolling the page chrome. The reserve exists only while a card is
+open: the landing view renders at its full derived size, opening a card
+glides the fixture down once to the size that fits the slide's tallest card
+— pre-measured by a hidden probe that renders every card the slide can open,
+so Previous/Next through shorter and taller cards never re-scales — and
+closing glides it back up. The live ratchet is a probe-less backstop and
+resets when the card leaves the flow. Sizing the reserve from each card
+individually re-scales the fixture per card, and keeping the reserve after
+close strands card-sized whitespace under every closed page.
+
+Every re-budget is one center-outward gesture. The fixture scales from a
+top-center origin around a static centering offset that depends only on the
+frame and authored widths — never on the scale — so a card opening or
+closing animates exactly two properties, the frame height and the fixture
+transform, on the same 300ms ease. Animating a scale-dependent horizontal
+offset alongside a corner transform origin reads as stepped diagonal motion
+(down, right, back left) instead of one gesture.
 
 The scaled fixture reserves exactly `authoredHeight * scale` in normal flow,
 whether shrunken or grown. It must have no horizontal scrollbar, clipped

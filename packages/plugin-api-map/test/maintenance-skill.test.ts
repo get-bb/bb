@@ -86,8 +86,8 @@ describe("Plugin Guide maintenance skill", () => {
     );
     expect(normalized).toContain("clamp(8px, 3cqh, 28px)");
     expect(normalized).toContain("`FIXTURE_WIDTH_BANDS` table");
-    expect(normalized).toContain("moves at most once per slide");
-    expect(normalized).toContain("The reserve ratchets");
+    expect(normalized).toContain("only while a card is open");
+    expect(normalized).toContain("one center-outward gesture");
     expect(normalized).toContain("shared chip-bar treatment from `scroll-edges.ts`");
     expect(normalized).toContain("`FOCUS_RING_CLASS` owner");
     expect(normalized).toContain(

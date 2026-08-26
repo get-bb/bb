@@ -264,15 +264,13 @@ function SpatialFixture({
 }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const fixtureRef = useRef<HTMLDivElement>(null);
-  // Card-reserve state. The landing view reserves nothing — the fixture
-  // renders at its full derived size until the reader opens a card. The
-  // first open glides once to the final size (the hidden probe already
-  // knows the tallest card this slide can open), and after that nothing
-  // moves again for the slide's lifetime: not on close, not on reopen, not
-  // on Previous/Next through any card. Anything less stable re-scaled the
-  // fixture per card (jitter); anything more eager reserved the tallest
-  // card permanently and shrank every landing view (squished).
-  const everOpenedRef = useRef(false);
+  // Card-reserve state. The reserve exists only while a card is open: the
+  // landing view renders at its full derived size, opening a card glides
+  // the fixture down once to the size that fits the slide's tallest card
+  // (the hidden probe pre-measures them all, so Previous/Next through
+  // shorter and taller cards never re-scales), and closing glides it back
+  // up. The live ratchet is a probe-less backstop and resets when the card
+  // leaves the flow.
   const cardReserveRef = useRef(0);
   const [geometry, setGeometry] = useState({
     scale: 1,
@@ -300,12 +298,13 @@ function SpatialFixture({
         .closest("section")
         ?.querySelector<HTMLElement>("[data-guide-card-flow]");
       if (flowCard) {
-        everOpenedRef.current = true;
         cardReserveRef.current = Math.max(
           cardReserveRef.current,
           flowCard.getBoundingClientRect().height +
             parseFloat(getComputedStyle(flowCard).marginTop || "0"),
         );
+      } else {
+        cardReserveRef.current = 0;
       }
       // The hidden probe knows every card this slide can open, so the first
       // open lands directly on the final size; the live ratchet above
@@ -324,7 +323,7 @@ function SpatialFixture({
           );
         }
       }
-      const cardFootprint = everOpenedRef.current
+      const cardFootprint = flowCard
         ? Math.max(probeReserve, cardReserveRef.current)
         : 0;
       const availableHeight = viewport
@@ -346,9 +345,11 @@ function SpatialFixture({
       // room in flow just as a shrunken one returns its spare room.
       const height = scaled ? authoredHeight * scale : null;
       const width = scaled ? authoredWidth : null;
-      const offsetX = scaled
-        ? Math.max(0, (frame.clientWidth - authoredWidth * scale) / 2)
-        : 0;
+      // Static centering of the layout box: the offset depends only on the
+      // frame and authored widths, never on the scale, so a card opening or
+      // closing animates exactly one transform — a symmetric center-outward
+      // gesture around the top-center origin — with no horizontal drift.
+      const offsetX = scaled ? (frame.clientWidth - authoredWidth) / 2 : 0;
       setGeometry((current) =>
         Math.abs(current.scale - scale) < 0.0001 &&
         current.height === height &&
@@ -408,7 +409,7 @@ function SpatialFixture({
     >
       <div
         ref={fixtureRef}
-        className="mx-auto w-full origin-top-left transition-[transform,margin-left] duration-300 ease-out"
+        className="mx-auto w-full origin-top transition-transform duration-300 ease-out"
         style={{
           minWidth: band?.min,
           maxWidth: band?.max,
