@@ -14,7 +14,7 @@ import { jsonValueSchema, type JsonValue } from "@bb/domain";
 import {
   createPluginProcessTempDir,
   ensurePluginProcessDataDir,
-  sanitizeInheritedChildProcessEnv,
+  sanitizePluginProcessEnv,
 } from "@bb/process-utils";
 import type { HostDaemonLogger } from "./logger.js";
 import { ensureCachedPluginHostArtifact } from "./plugin-host-artifact-cache.js";
@@ -465,9 +465,11 @@ export class PluginHostManager {
         defaultWorkerEntryPath(),
         [artifactPath, command.pluginId, command.generation, dataDir, tempDir],
         {
-          // Same answer every daemon-spawned child gets, plus the user's
-          // login-shell PATH so a host plugin can find their executables.
-          env: sanitizeInheritedChildProcessEnv({
+          // Host workers get only the process-execution baseline, plus the
+          // user's login-shell PATH so a host plugin can find executables.
+          // Plugin-specific credentials must be overlaid explicitly by the
+          // caller; never hand the worker the daemon's ambient env.
+          env: sanitizePluginProcessEnv({
             env: process.env,
             ...(shellPath !== undefined ? { shellPath } : {}),
           }),

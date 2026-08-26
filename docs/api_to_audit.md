@@ -733,7 +733,11 @@ unexpected-exit recovery without feature-specific core hooks.
    retaining only the most recently materialized artifact digest per plugin is
    sufficient.
 7. **Environment.** Confirm executable discovery through normalized `PATH`
-   and stripping all daemon-owned `BB_*` variables.
+   and the minimal plugin/provider environment baseline. Host workers and
+   provider bridges must receive provider/plugin-specific credentials only
+   through explicit caller overlays; ambient secret-shaped variables are not
+   inherited. This does not sandbox in-process server plugins: they remain
+   full-trust Node programs.
 8. **Trust and dependencies.** V1 host plugins are trusted Node programs that
    may use `child_process`, filesystem, and network APIs. Decide whether later
    permissions, native artifacts, or an explicit dependency installer can be

@@ -2,7 +2,7 @@ import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
-  sanitizeInheritedChildProcessEnv,
+  sanitizePluginProcessEnv,
   killProcessGroup,
   spawnPortablePipedProcess,
   stopProcessGroupLeaderFirst,
@@ -411,7 +411,10 @@ export class RuntimeProviderProcessManager {
   private spawnProvider(args: SpawnProviderArgs): RuntimeProviderProcess {
     const processConfig = args.adapter.process;
     const env: NodeJS.ProcessEnv = {
-      ...sanitizeInheritedChildProcessEnv({ env: process.env }),
+      // The bridge is plugin-delivered code. Start it with only the
+      // execution baseline, then overlay values explicitly supplied by the
+      // runtime and the provider adapter (including credentials).
+      ...sanitizePluginProcessEnv({ env: process.env }),
       ...this.args.env,
       ...processConfig.env,
     };

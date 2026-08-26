@@ -1333,17 +1333,21 @@ describe("createAgentRuntime process lifecycle", () => {
 
   // ---- Spawn environment ----
 
-  it("scrubs inherited bb runtime env vars before spawning provider processes", async () => {
+  it("uses explicit provider env without forwarding ambient secrets", async () => {
+    vi.stubEnv("AWS_SECRET_ACCESS_KEY", "ambient-aws-secret");
     vi.stubEnv("BB_DATA_DIR", "/tmp/leaked-bb-data");
     vi.stubEnv("BB_SERVER_PORT", "38886");
+    vi.stubEnv("GITHUB_TOKEN", "ambient-github-secret");
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("OPENAI_API_KEY", "external-secret");
+    vi.stubEnv("OPENAI_API_KEY", "ambient-openai-secret");
     const envScript = join(tmpDir, "env-provider.cjs");
     writeFileSync(
       envScript,
       `const values = [
+        process.env.AWS_SECRET_ACCESS_KEY ?? "missing",
         process.env.BB_DATA_DIR ?? "missing",
         process.env.BB_SERVER_PORT ?? "missing",
+        process.env.GITHUB_TOKEN ?? "missing",
         process.env.NODE_ENV ?? "missing",
         process.env.OPENAI_API_KEY ?? "missing",
         process.env.BB_THREAD_ID ?? "missing"
@@ -1355,6 +1359,7 @@ describe("createAgentRuntime process lifecycle", () => {
     const manager = createProviderProcessManager({
       env: {
         BB_THREAD_ID: "thr_explicit",
+        OPENAI_API_KEY: "explicit-provider-secret",
       },
       onProcessExit: vi.fn(),
       onStderr: (line) => {
@@ -1379,7 +1384,7 @@ describe("createAgentRuntime process lifecycle", () => {
         predicate: () => stderrLines.length > 0,
       });
       expect(stderrLines[0]).toBe(
-        "missing|missing|missing|external-secret|thr_explicit",
+        "missing|missing|missing|missing|missing|explicit-provider-secret|thr_explicit",
       );
       await manager.shutdown();
       await ensure;
