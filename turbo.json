@@ -46,9 +46,10 @@
         "$TURBO_ROOT$/packages/plugin-sdk/bundled-types/**",
         "$TURBO_ROOT$/packages/plugin-sdk/package.json",
         // wireframes.test.ts asserts fixture fidelity against the real app
-        // source, and maintenance-skill.test.ts reads the shipped skill, so
-        // both are inputs — otherwise edits to them cache-hit a stale pass.
+        // source, and maintenance-skill.test.ts reads the repository skill plus
+        // Plugin Guide source; all are inputs to prevent stale cache hits.
         "$TURBO_ROOT$/apps/app/src/views/thread-detail/ThreadDetailView.tsx",
+        "$TURBO_ROOT$/.bb/skills/plugin-guide-maintenance/**",
         "$TURBO_ROOT$/plugins/plugin-api-docs/**",
         "$TURBO_ROOT$/vitest.shared.ts"
       ]
