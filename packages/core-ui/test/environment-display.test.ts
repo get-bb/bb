@@ -25,6 +25,7 @@ function makeEnvironment(overrides?: Partial<Environment>): Environment {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    vcs: null,
     workspaceProvisionType: "unmanaged",
     baseBranch: null,
     branchName: null,
@@ -52,6 +53,50 @@ describe("formatEnvironmentDisplay", () => {
         mode: "direct",
         workspaceDisplayKind: "other",
       });
+    });
+
+    it("calls a jj managed checkout a workspace, not a worktree", () => {
+      const result = formatEnvironmentDisplay({
+        environment: makeEnvironment({
+          isWorktree: true,
+          workspaceProvisionType: "managed-worktree",
+          vcs: "jj",
+        }),
+        host: localHostContext,
+      });
+      expect(result.modeLabel).toBe("Workspace");
+      expect(result.compactModeLabel).toBe("Workspace");
+    });
+
+    it("recognizes a jj workspace whose row predates bb recording the tool", () => {
+      // Environments provisioned before the vcs column exists read as null
+      // until the daemon's next metadata refresh backfills them.
+      const result = formatEnvironmentDisplay({
+        environment: makeEnvironment({
+          isWorktree: true,
+          workspaceProvisionType: "managed-worktree",
+          vcs: null,
+        }),
+        checkout: {
+          kind: "detached",
+          headSha: "faecdf2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          jj: { bookmark: null },
+        },
+        host: localHostContext,
+      });
+      expect(result.modeLabel).toBe("Workspace");
+    });
+
+    it("keeps calling a git managed checkout a worktree", () => {
+      const result = formatEnvironmentDisplay({
+        environment: makeEnvironment({
+          isWorktree: true,
+          workspaceProvisionType: "managed-worktree",
+          vcs: "git",
+        }),
+        host: localHostContext,
+      });
+      expect(result.modeLabel).toBe("Worktree");
     });
 
     it("returns a remote label for remote unmanaged workspace", () => {

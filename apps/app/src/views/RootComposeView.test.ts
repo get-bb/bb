@@ -312,6 +312,7 @@ function makeThread(args: MakeThreadArgs): ThreadListEntry {
     environmentBranchName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,

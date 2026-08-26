@@ -593,6 +593,7 @@ export function settleEnvironmentProvisionCommandResult(
         path: args.report.result.path,
         isGitRepo: args.report.result.isGitRepo,
         isWorktree: args.report.result.isWorktree,
+        vcs: args.report.result.vcs,
         branchName: args.report.result.branchName,
         defaultBranch: args.report.result.defaultBranch,
         ...resolveProvisionedEnvironmentBranchMetadata(args.command),

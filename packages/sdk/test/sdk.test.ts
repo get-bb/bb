@@ -34,6 +34,7 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    vcs: null,
     workspaceProvisionType: "unmanaged",
     baseBranch: null,
     branchName: null,

@@ -322,6 +322,7 @@ function dropRewindAddedTables(db: DbConnection): void {
     .run();
   dropHostMaxPermissionModeColumn(db);
   dropEnvironmentRetireRequestedAtColumn(db);
+  dropEnvironmentVcsColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
   dropThreadSectionSchema(db);
   restoreWideExperimentsTable(db);
@@ -761,6 +762,15 @@ function dropPluginArtifactGitCheckoutRootColumn(db: DbConnection): void {
   }
 }
 
+function dropEnvironmentVcsColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
+    .all();
+  if (columns.some((column) => column.name === "vcs")) {
+    db.$client.prepare("ALTER TABLE environments DROP COLUMN vcs").run();
+  }
+}
+
 function dropEnvironmentRetireRequestedAtColumn(db: DbConnection): void {
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(environments)")
@@ -813,6 +823,7 @@ function dropPost0023Tables(db: DbConnection): void {
   dropEventParentToolCallIdColumn(db);
   dropQueueReworkSchema(db);
   dropEnvironmentRetireRequestedAtColumn(db);
+  dropEnvironmentVcsColumn(db);
   dropPluginArtifactGitCheckoutRootColumn(db);
   dropProjectGitRemoteUrlColumn(db);
   db.$client.prepare("DROP TABLE IF EXISTS thread_tabs").run();
@@ -2149,6 +2160,7 @@ describe("migrate", () => {
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropEnvironmentVcsColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
@@ -2554,6 +2566,7 @@ describe("migrate", () => {
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropEnvironmentVcsColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
@@ -2656,6 +2669,7 @@ describe("migrate", () => {
       dropNewOnboardingExperimentColumn(db);
       dropHostMaxPermissionModeColumn(db);
       dropEnvironmentRetireRequestedAtColumn(db);
+      dropEnvironmentVcsColumn(db);
       dropPluginArtifactGitCheckoutRootColumn(db);
       dropMarketplaceCatalogSchema(db);
       dropEventParentToolCallIdColumn(db);
@@ -5229,6 +5243,7 @@ describe("migrate", () => {
       dropEventParentToolCallIdColumn(db);
       dropMarketplaceStatsColumn(db);
       dropQueueReworkSchema(db);
+      dropEnvironmentVcsColumn(db);
       db.$client
         .prepare<DeleteMigrationParameters>(
           "DELETE FROM __drizzle_migrations WHERE created_at >= ?",

@@ -79,6 +79,7 @@ import {
   type RootComposeBranchEnvironmentMode,
 } from "@/views/root-compose-branch-ui";
 import { useScopedBranchSelection } from "@/views/root-compose-branch-selection";
+import type { WorkspaceVcs } from "@bb/domain";
 import {
   buildReuseThreadOptions,
   resolveProjectSourceWorktreeDisabledReason,
@@ -676,6 +677,14 @@ export function NewThreadComposer({
     branchesQuery.data,
   );
   const worktreeUnavailable = worktreeDisabledReason !== null;
+  // jj sources get workspaces, not worktrees; the picker names them from this.
+  const projectSourceCheckout = branchesQuery.data?.checkout;
+  const projectSourceVcs: WorkspaceVcs | null =
+    projectSourceCheckout?.kind === "detached" && projectSourceCheckout.jj
+      ? "jj"
+      : projectSourceCheckout
+        ? "git"
+        : null;
   const requestsManagedWorktree =
     isHostMode && parsedEnvironment.mode === "worktree";
   const managedWorktreeUnavailable =
@@ -1284,6 +1293,7 @@ export function NewThreadComposer({
               sources: projectSources,
               reuseDisabled: reuseThreadOptions.length === 0,
               worktreeDisabledReason,
+              vcs: projectSourceVcs,
               disabled: locks.environment,
               ...(!isProjectless && options.onRequestMachineSetup
                 ? { onRequestMachineSetup: options.onRequestMachineSetup }
@@ -1451,6 +1461,7 @@ export function NewThreadComposer({
       supportsServiceTier,
       submitDisabledReason,
       textEffects,
+      projectSourceVcs,
       worktreeDisabledReason,
       worktreeUnavailable,
       serviceTierFastLabel,

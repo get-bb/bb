@@ -181,6 +181,10 @@ agent) doesn't stick. jj never sees it, and the next time bb reads the
 workspace the changes show up as uncommitted again — nothing is lost, but the
 commit is. Use jj, or bb's own commit action, to commit there.
 
+bb also calls these checkouts what jj calls them. In a jj project the sidebar,
+the environment picker, the thread panel, the provisioning transcript and
+`bb environment show` all say "workspace" where a git project says "worktree".
+
 ### The main workspace
 
 Opening your repository directly (an unmanaged environment) still reads through

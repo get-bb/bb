@@ -155,6 +155,7 @@ export function createFakeWorkspace(pathname: string) {
     managed: false,
     isGitRepo: true,
     isWorktree: false,
+    vcs: "git" as const,
     async getDefaultBranch() {
       return "main";
     },

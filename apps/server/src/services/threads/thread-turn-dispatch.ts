@@ -29,6 +29,7 @@ import {
 import { requestThreadReprovision } from "./thread-provisioning.js";
 import { applyLoggedThreadLifecycleEvent } from "./lifecycle-outcome.js";
 import { applyLoggedEnvironmentLifecycleEvent } from "../environments/lifecycle-outcome.js";
+import { managedCheckoutNoun } from "@bb/domain";
 
 export interface ReadyThreadEnvironment extends Environment {
   path: string;
@@ -49,12 +50,10 @@ interface DispatchTurnDuringReprovisionArgs {
   thread: Thread;
 }
 
-function reprovisionStartedText(
-  workspaceProvisionType: Environment["workspaceProvisionType"],
-): string {
-  switch (workspaceProvisionType) {
+function reprovisionStartedText(environment: Environment): string {
+  switch (environment.workspaceProvisionType) {
     case "managed-worktree":
-      return "Restoring worktree";
+      return `Restoring ${managedCheckoutNoun(environment.vcs)}`;
     case "personal":
       return "Restoring personal workspace";
     case "unmanaged":
@@ -143,7 +142,7 @@ export async function dispatchTurnDuringReprovision(
       {
         type: "step",
         key: "workspace-restore-started",
-        text: reprovisionStartedText(args.environment.workspaceProvisionType),
+        text: reprovisionStartedText(args.environment),
         status: "started",
       },
     ],

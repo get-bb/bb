@@ -6,6 +6,7 @@ import type {
   EnvironmentLifecycleNoopReason,
   EnvironmentStatus,
   WorkspaceProvisionType,
+  WorkspaceVcs,
 } from "@bb/domain";
 import { evaluateEnvironmentLifecycleEvent } from "@bb/domain";
 import type { DbConnection, DbTransaction } from "../connection.js";
@@ -26,6 +27,7 @@ export interface CreateEnvironmentInput {
   managed?: boolean;
   isGitRepo?: boolean;
   isWorktree?: boolean;
+  vcs?: WorkspaceVcs | null;
   branchName?: string | null;
   baseBranch?: string | null;
   defaultBranch?: string | null;
@@ -51,6 +53,7 @@ export function createEnvironment(
       managed: input.managed ?? false,
       isGitRepo: input.isGitRepo ?? false,
       isWorktree: input.isWorktree ?? false,
+      vcs: input.vcs ?? null,
       branchName: input.branchName ?? null,
       baseBranch: input.baseBranch ?? null,
       defaultBranch: input.defaultBranch ?? null,
@@ -138,6 +141,7 @@ interface EnvironmentMetadataUpdateColumns {
   defaultBranch?: string | null;
   isGitRepo?: boolean;
   isWorktree?: boolean;
+  vcs?: WorkspaceVcs | null;
   mergeBaseBranch?: string | null;
   name?: string | null;
   path?: string | null;
@@ -201,6 +205,7 @@ function buildEnvironmentMetadataUpdateSet(
   if ("path" in input) set.path = input.path;
   if ("isGitRepo" in input) set.isGitRepo = input.isGitRepo;
   if ("isWorktree" in input) set.isWorktree = input.isWorktree;
+  if ("vcs" in input) set.vcs = input.vcs;
   if ("branchName" in input) set.branchName = input.branchName;
   if ("defaultBranch" in input) set.defaultBranch = input.defaultBranch;
   if ("mergeBaseBranch" in input) set.mergeBaseBranch = input.mergeBaseBranch;
@@ -219,6 +224,7 @@ function environmentMetadataChanged(
       args.updated.isGitRepo !== args.existing.isGitRepo) ||
     ("isWorktree" in args.metadata &&
       args.updated.isWorktree !== args.existing.isWorktree) ||
+    ("vcs" in args.metadata && args.updated.vcs !== args.existing.vcs) ||
     ("branchName" in args.metadata &&
       args.updated.branchName !== args.existing.branchName) ||
     ("defaultBranch" in args.metadata &&
@@ -295,6 +301,7 @@ export function recordProvisionedEnvironmentWorkspace(
     path: input.path,
     isGitRepo: input.isGitRepo,
     isWorktree: input.isWorktree,
+    vcs: input.vcs,
     branchName: input.branchName,
     defaultBranch: input.defaultBranch,
     ...(input.baseBranch !== undefined ? { baseBranch: input.baseBranch } : {}),

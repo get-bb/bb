@@ -94,6 +94,8 @@ describe.skipIf(!jjAvailable)("provisioning against a colocated jj source", () =
       timeoutMs: 60_000,
     });
     expect(hostWorkspace.isWorktree).toBe(true);
+    // The server names the checkout from this: a jj source gets a workspace.
+    expect(hostWorkspace.vcs).toBe("jj");
 
     await fs.writeFile(path.join(targetPath, "work.txt"), "work\n", "utf8");
     const status = await hostWorkspace.getStatus();
@@ -127,7 +129,12 @@ describe.skipIf(!jjAvailable)("provisioning against a colocated jj source", () =
     const sourcePath = await initColocatedSource();
     const targetPath = await provision(sourcePath, "bb/thread-1");
 
-    await removeWorktree({ path: targetPath, force: true, pruneEmptyParent: true });
+    await removeWorktree({
+      path: targetPath,
+      force: true,
+      pruneEmptyParent: true,
+      timeoutMs: 60_000,
+    });
 
     const workspaces = await runJj(
       ["workspace", "list", "-T", 'name ++ "\\n"'],
@@ -241,6 +248,11 @@ describe.skipIf(!jjAvailable)("provisioning against a colocated jj source", () =
       cwd: targetPath,
     });
     expect(branch.stdout.trim()).toBe("bb/thread-1");
+    const hostWorkspace = await provisionWorkspace({
+      workspaceProvisionType: "reconnect-managed-worktree",
+      path: targetPath,
+    });
+    expect(hostWorkspace.vcs).toBe("git");
     await expect(fs.stat(path.join(targetPath, ".jj"))).rejects.toMatchObject({
       code: "ENOENT",
     });

@@ -125,6 +125,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     environmentBranchName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
   };

@@ -722,7 +722,7 @@ export async function createWorktree(
       emitStep({
         onProgress: args.onProgress,
         key: "git-worktree-failed",
-        text: "Worktree setup failed",
+        text: usesJj ? "jj workspace setup failed" : "Worktree setup failed",
         status: "failed",
         startedAt: worktreeStartedAt,
         metadata: { durationMs: Date.now() - worktreeStartedAt },

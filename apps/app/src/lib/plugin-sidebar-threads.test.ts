@@ -38,6 +38,7 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
     environmentBranchName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
   };
@@ -150,6 +151,7 @@ describe("toPluginSidebarThread", () => {
         environmentBranchName: "bb/feature",
         queuedWork: "none",
         environmentWorkspaceDisplayKind: "managed-worktree",
+        environmentVcs: null,
       }),
     );
     expect(mapped.isPinned).toBe(true);

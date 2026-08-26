@@ -86,6 +86,7 @@ function makeThreadListEntry(
     environmentBranchName: "main",
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
+    environmentVcs: null,
     ...thread,
   };
 }

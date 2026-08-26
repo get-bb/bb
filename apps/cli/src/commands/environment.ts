@@ -11,6 +11,7 @@ import type {
 } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import { managedCheckoutNoun } from "@bb/domain";
 import {
   outputJson,
   prependErrorContext,
@@ -335,7 +336,9 @@ export function registerEnvironmentCommands(
           console.log(`  Merge base: ${env.mergeBaseBranch}`);
         }
         console.log(`  Git repo: ${env.isGitRepo}`);
-        console.log(`  Worktree: ${env.isWorktree}`);
+        console.log(
+          `  ${managedCheckoutNoun(env.vcs, { capitalized: true })}: ${env.isWorktree}`,
+        );
         console.log(`  Created: ${new Date(env.createdAt).toLocaleString()}`);
         console.log(`  Updated: ${new Date(env.updatedAt).toLocaleString()}`);
       }),

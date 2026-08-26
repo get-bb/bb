@@ -25,6 +25,7 @@ import type {
   ThreadStatus,
   ThreadVisibility,
   WorkspaceProvisionType,
+  WorkspaceVcs,
 } from "@bb/domain";
 import {
   evaluateThreadLifecycleEvent,
@@ -513,6 +514,7 @@ function threadWithPendingInteractionBaseQuery(db: DbConnection) {
       environmentHostId: environments.hostId,
       environmentIsWorktree: environments.isWorktree,
       environmentName: environments.name,
+      environmentVcs: environments.vcs,
       environmentWorkspaceProvisionType: environments.workspaceProvisionType,
       hasPendingInteraction: sql<number>`EXISTS (SELECT 1 FROM ${pendingInteractions} WHERE ${pendingInteractions.threadId} = ${threads.id} AND ${pendingInteractions.status} = 'pending')`,
     })
@@ -554,6 +556,7 @@ export interface ThreadWithPendingInteractionState extends ThreadRow {
   environmentName: string | null;
   hasPendingInteraction: boolean;
   environmentWorkspaceDisplayKind: EnvironmentWorkspaceDisplayKind;
+  environmentVcs: WorkspaceVcs | null;
 }
 
 interface ThreadWithPendingInteractionStateRow extends ThreadRow {
@@ -561,6 +564,7 @@ interface ThreadWithPendingInteractionStateRow extends ThreadRow {
   environmentHostId: string | null;
   environmentIsWorktree: boolean | null;
   environmentName: string | null;
+  environmentVcs: WorkspaceVcs | null;
   environmentWorkspaceProvisionType: WorkspaceProvisionType | null;
   hasPendingInteraction: number;
 }
@@ -741,6 +745,7 @@ function toThreadWithPendingInteractionState(
     environmentBranchName,
     environmentHostId,
     environmentName,
+    environmentVcs,
     hasPendingInteraction,
     ...thread
   } = row;
@@ -749,6 +754,7 @@ function toThreadWithPendingInteractionState(
     environmentBranchName,
     environmentHostId,
     environmentName,
+    environmentVcs,
     environmentWorkspaceDisplayKind: resolveEnvironmentWorkspaceDisplayKind({
       environment: {
         isWorktree: environmentIsWorktree,

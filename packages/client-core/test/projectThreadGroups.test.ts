@@ -80,6 +80,7 @@ function createThread(
     environmentBranchName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     runtime: {
       displayStatus: "idle",
       hostReconnectGraceExpiresAt: null,

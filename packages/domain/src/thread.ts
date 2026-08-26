@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
+import {
+  environmentWorkspaceDisplayKindSchema,
+  workspaceVcsSchema,
+} from "./environment.js";
 import { gitCheckoutRefSchema } from "./git-checkout.js";
 import {
   queuedMessageFailureReasonSchema,
@@ -440,5 +443,8 @@ export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   environmentName: z.string().nullable(),
   environmentBranchName: z.string().nullable(),
   environmentWorkspaceDisplayKind: environmentWorkspaceDisplayKindSchema,
+  // Names the checkout in the sidebar: jj environments are workspaces, git
+  // ones worktrees. Null for environments with no workspace discovered yet.
+  environmentVcs: workspaceVcsSchema.nullable(),
 });
 export type ThreadListEntry = z.infer<typeof threadListEntrySchema>;

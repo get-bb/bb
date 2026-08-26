@@ -52,6 +52,7 @@ function makeEnvironment(overrides: Partial<Environment> = {}): Environment {
     managed: true,
     isGitRepo: true,
     isWorktree: true,
+    vcs: null,
     workspaceProvisionType: "managed-worktree",
     branchName: "feature",
     baseBranch: "main",
@@ -71,6 +72,7 @@ function renderEnvironmentRow(environment: Environment): string {
         <EnvironmentRow
           thread={makeThread({ environmentId: environment.id })}
           environment={environment}
+          environmentCheckout={null}
           environmentDisplayHost={localHost}
         />
       </MemoryRouter>
@@ -124,6 +126,7 @@ describe("EnvironmentRow", () => {
           <EnvironmentRow
             thread={makeThread()}
             environment={makeEnvironment()}
+            environmentCheckout={null}
             environmentDisplayHost={localHost}
           />
         </MemoryRouter>

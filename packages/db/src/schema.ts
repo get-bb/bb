@@ -33,6 +33,7 @@ import type {
   ThreadEventScopeKind,
   ThreadEventType,
   WorkspaceProvisionType,
+  WorkspaceVcs,
   ProjectKind,
 } from "@bb/domain";
 
@@ -450,6 +451,9 @@ export const environments = sqliteTable(
     isWorktree: integer("is_worktree", { mode: "boolean" })
       .notNull()
       .default(false),
+    // Null until the workspace is discovered, and for rows written before bb
+    // supported jj. Both read as git.
+    vcs: text("vcs").$type<WorkspaceVcs>(),
     branchName: text("branch_name"),
     baseBranch: text("base_branch"),
     defaultBranch: text("default_branch"),

@@ -11,6 +11,7 @@ import type { ThreadStorageBrowserController } from "./useThreadStorageBrowser";
 import { Link } from "react-router-dom";
 import type {
   Environment,
+  GitCheckoutRef,
   GitBranchRefClassification,
   Thread,
   ThreadListEntry,
@@ -74,6 +75,7 @@ import {
 import { GithubFaviconIcon } from "@/components/pull-request/GithubFaviconIcon";
 import { useUrlAnchorClickHandler } from "@/lib/url-open-routing";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
+import { managedCheckoutNoun, resolveWorkspaceVcs } from "@bb/domain";
 
 interface ParentSelectorRowProps {
   thread: Thread;
@@ -224,12 +226,18 @@ function ForksRow({ thread, projectId }: ForksRowProps) {
 interface EnvironmentRowProps {
   thread: Thread;
   environment: Environment | null;
+  /**
+   * Live checkout, when known. Only used to recognize a jj workspace whose
+   * environment row predates bb recording which tool owns it.
+   */
+  environmentCheckout: GitCheckoutRef | null;
   environmentDisplayHost: EnvironmentDisplayHostContext;
 }
 
 export function EnvironmentRow({
   thread,
   environment,
+  environmentCheckout,
   environmentDisplayHost,
 }: EnvironmentRowProps) {
   const createThreadInWorktree = useCreateThreadInWorktree({
@@ -239,8 +247,15 @@ export function EnvironmentRow({
   if (!environment) return null;
   const display = formatEnvironmentDisplay({
     environment,
+    checkout: environmentCheckout,
     host: environmentDisplayHost,
   });
+  const checkoutNoun = managedCheckoutNoun(
+    resolveWorkspaceVcs({
+      vcs: environment.vcs,
+      checkout: environmentCheckout,
+    }),
+  );
   const showCreateThreadButton = isProvisionedWorktreeEnvironment(environment);
   return (
     <DetailRow
@@ -277,14 +292,14 @@ export function EnvironmentRow({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                aria-label="Create thread in worktree"
+                aria-label={`Create thread in ${checkoutNoun}`}
                 onClick={createThreadInWorktree}
                 className="inline-flex shrink-0 items-center justify-center rounded-md p-0.5 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
               >
                 <Icon name="MessageSquarePlus" className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Create thread in worktree</TooltipContent>
+            <TooltipContent>{`Create thread in ${checkoutNoun}`}</TooltipContent>
           </Tooltip>
         ) : null}
       </span>
@@ -969,6 +984,7 @@ export function ThreadMetadataContent(props: ThreadMetadataContentProps) {
       <EnvironmentRow
         thread={thread}
         environment={environment}
+        environmentCheckout={workspaceStatus?.checkout ?? null}
         environmentDisplayHost={environmentDisplayHost}
       />
       <WorkspacePathRow environment={environment} />

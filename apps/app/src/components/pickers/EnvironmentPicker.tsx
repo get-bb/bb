@@ -1,7 +1,10 @@
 import { useMemo } from "react";
-import type { Host, ProjectSource } from "@bb/domain";
+import type { Host, ProjectSource, WorkspaceVcs } from "@bb/domain";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
-import { findLocalPathProjectSourceForHost } from "@bb/domain";
+import {
+  findLocalPathProjectSourceForHost,
+  managedCheckoutNoun,
+} from "@bb/domain";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -56,6 +59,12 @@ export interface EnvironmentPickerUIProps {
   isLocal: boolean;
   reuseDisabled?: boolean;
   worktreeDisabledReason?: string | null;
+  /**
+   * Which tool owns the project source's checkout. jj sources get workspaces
+   * rather than worktrees, and the picker names them that way.
+   */
+  vcs?: WorkspaceVcs | null;
+  /** Render with the dim, hover-to-foreground treatment used inside the prompt box. */
   muted?: boolean;
   disabled?: boolean;
   className?: string;
@@ -73,6 +82,7 @@ export function EnvironmentPickerUI({
   isLocal,
   reuseDisabled,
   worktreeDisabledReason,
+  vcs,
   muted,
   disabled = false,
   className,
@@ -81,6 +91,11 @@ export function EnvironmentPickerUI({
   machines,
   onRequestMachineSetup,
 }: EnvironmentPickerUIProps) {
+  const checkoutNoun = managedCheckoutNoun(vcs);
+  const checkoutNounCapitalized = managedCheckoutNoun(vcs, {
+    capitalized: true,
+  });
+  const checkoutNounPlural = managedCheckoutNoun(vcs, { plural: true });
   const hostId = host?.id ?? null;
   const isMachineMenu = (machines?.hosts.length ?? 0) > 1;
   const hostConnected = host?.status === "connected";
@@ -103,7 +118,7 @@ export function EnvironmentPickerUI({
   const newWorktreeDisabledReason =
     workspaceDisabledReason ?? worktreeDisabledReason ?? null;
   const reuseDisabledReason = reuseDisabled
-    ? "No worktrees in this project yet"
+    ? `No ${checkoutNounPlural} in this project yet`
     : null;
 
   const parsed = useMemo(() => parseEnvironmentValue(value), [value]);
@@ -135,14 +150,19 @@ export function EnvironmentPickerUI({
     }
     if (parsed.type === "reuse") {
       return {
-        modeLabel: "Reuse worktree",
+        modeLabel: `Reuse ${checkoutNoun}`,
         compactModeLabel: "Reuse",
         icon: getEnvironmentWorkspaceLabelIconName("managed-worktree"),
       };
     }
-    const modeLabel = parsed.mode === "worktree" ? "New worktree" : localLabel;
+    const modeLabel =
+      parsed.mode === "worktree" ? `New ${checkoutNoun}` : localLabel;
     const compactModeLabel =
-      parsed.mode === "worktree" ? "Worktree" : isLocal ? "Local" : "Remote";
+      parsed.mode === "worktree"
+        ? checkoutNounCapitalized
+        : isLocal
+          ? "Local"
+          : "Remote";
     const icon = getEnvironmentWorkspaceLabelIconName(
       parsed.mode === "worktree" ? "managed-worktree" : "other",
     );
@@ -154,6 +174,8 @@ export function EnvironmentPickerUI({
       icon,
     };
   }, [
+    checkoutNoun,
+    checkoutNounCapitalized,
     parsed,
     localLabel,
     isLocal,
@@ -219,6 +241,7 @@ export function EnvironmentPickerUI({
             sources={sources}
             selectedHostId={parsed?.type === "host" ? parsed.hostId : hostId}
             worktreeDisabledReason={worktreeDisabledReason ?? null}
+            vcs={vcs}
             reuseDisabledReason={reuseDisabledReason}
             selectedType={parsed?.type}
             value={value}
@@ -233,6 +256,7 @@ export function EnvironmentPickerUI({
             localLabel={localLabel}
             workspaceDisabledReason={workspaceDisabledReason}
             worktreeDisabledReason={newWorktreeDisabledReason}
+            vcs={vcs}
             reuseDisabledReason={reuseDisabledReason}
             selectedType={parsed?.type}
             value={value}
@@ -251,6 +275,9 @@ interface EnvironmentOptionsSectionProps {
   localLabel: string;
   workspaceDisabledReason: string | null;
   worktreeDisabledReason: string | null;
+  /** Which tool owns the source checkout, so rows name it correctly. */
+  vcs: WorkspaceVcs | null | undefined;
+  /** Why the reuse option is unavailable, or null when usable. */
   reuseDisabledReason: string | null;
   selectedType:
     | NonNullable<ReturnType<typeof parseEnvironmentValue>>["type"]
@@ -266,11 +293,13 @@ function EnvironmentOptionsSection({
   localLabel,
   workspaceDisabledReason,
   worktreeDisabledReason,
+  vcs,
   reuseDisabledReason,
   selectedType,
   value,
   onChange,
 }: EnvironmentOptionsSectionProps) {
+  const checkoutNoun = managedCheckoutNoun(vcs);
   const localValue = hostId ? encodeHostValue(hostId, "local") : null;
   const worktreeValue = hostId ? encodeHostValue(hostId, "worktree") : null;
   const workspaceDisabled = workspaceDisabledReason !== null;
@@ -305,7 +334,7 @@ function EnvironmentOptionsSection({
             }}
           />
           <EnvironmentMenuItem
-            label="New worktree"
+            label={`New ${checkoutNoun}`}
             description={worktreeDisabledDescription}
             icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
             selected={worktreeValue !== null && value === worktreeValue}
@@ -315,7 +344,7 @@ function EnvironmentOptionsSection({
             }}
           />
           <EnvironmentMenuItem
-            label="Existing worktree"
+            label={`Existing ${checkoutNoun}`}
             description={reuseDisabledReason ?? undefined}
             icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
             selected={selectedType === "reuse"}
@@ -336,6 +365,8 @@ interface MachineGroupedEnvironmentOptionsProps {
   sources: readonly ProjectSource[];
   selectedHostId: string | null;
   worktreeDisabledReason: string | null;
+  /** Source checkout's tool, known only for the selected host. */
+  vcs: WorkspaceVcs | null | undefined;
   reuseDisabledReason: string | null;
   selectedType:
     | NonNullable<ReturnType<typeof parseEnvironmentValue>>["type"]
@@ -350,6 +381,7 @@ function MachineGroupedEnvironmentOptions({
   sources,
   selectedHostId,
   worktreeDisabledReason,
+  vcs,
   reuseDisabledReason,
   selectedType,
   value,
@@ -375,6 +407,7 @@ function MachineGroupedEnvironmentOptions({
           worktreeDisabledReason={
             machineHost.id === selectedHostId ? worktreeDisabledReason : null
           }
+          vcs={machineHost.id === selectedHostId ? vcs : null}
           now={now}
           value={value}
           onChange={onChange}
@@ -384,7 +417,7 @@ function MachineGroupedEnvironmentOptions({
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
         <EnvironmentMenuItem
-          label="Existing worktree"
+          label={`Existing ${managedCheckoutNoun(vcs)}`}
           description={reuseDisabledReason ?? undefined}
           icon={getEnvironmentWorkspaceLabelIconName("managed-worktree")}
           selected={selectedType === "reuse"}
@@ -401,6 +434,8 @@ interface MachineSectionProps {
   isThisMachine: boolean;
   source: ProjectSource | null;
   worktreeDisabledReason: string | null;
+  /** Source checkout's tool, or null when this machine's is unknown. */
+  vcs: WorkspaceVcs | null | undefined;
   now: number;
   value: string;
   onChange: (value: string) => void;
@@ -412,6 +447,7 @@ function MachineSection({
   isThisMachine,
   source,
   worktreeDisabledReason,
+  vcs,
   now,
   value,
   onChange,
@@ -452,7 +488,7 @@ function MachineSection({
             onSelect={() => onChange(localValue)}
           />
           <EnvironmentMenuItem
-            label="New worktree"
+            label={`New ${managedCheckoutNoun(vcs)}`}
             description={
               connected ? (worktreeDisabledReason ?? undefined) : undefined
             }

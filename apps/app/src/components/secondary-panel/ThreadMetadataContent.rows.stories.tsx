@@ -136,6 +136,7 @@ export function Environment() {
           <EnvironmentRow
             thread={makeThread()}
             environment={makeEnvironment()}
+            environmentCheckout={null}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
@@ -148,6 +149,7 @@ export function Environment() {
               isWorktree: false,
               workspaceProvisionType: "unmanaged",
             })}
+            environmentCheckout={null}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>
@@ -160,6 +162,7 @@ export function Environment() {
               isWorktree: false,
               workspaceProvisionType: "unmanaged",
             })}
+            environmentCheckout={null}
             environmentDisplayHost={remoteEnvironmentDisplayHost}
           />
         </RowStage>
@@ -173,6 +176,7 @@ export function Environment() {
               isWorktree: false,
               workspaceProvisionType: "managed-worktree",
             })}
+            environmentCheckout={null}
             environmentDisplayHost={localEnvironmentDisplayHost}
           />
         </RowStage>

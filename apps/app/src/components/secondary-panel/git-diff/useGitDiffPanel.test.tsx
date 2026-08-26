@@ -61,6 +61,7 @@ function makeEnvironment(id: string, mergeBaseBranch: string): Environment {
     name: null,
     isGitRepo: true,
     isWorktree: true,
+    vcs: null,
     managed: true,
     mergeBaseBranch,
     path: `/tmp/${id}`,

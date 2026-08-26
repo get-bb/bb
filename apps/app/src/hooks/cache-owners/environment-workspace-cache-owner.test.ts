@@ -14,6 +14,7 @@ function createEnvironment(): Environment {
     id: "env_1",
     isGitRepo: true,
     isWorktree: true,
+    vcs: null,
     managed: true,
     mergeBaseBranch: null,
     name: "Renamed environment",

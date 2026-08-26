@@ -35,6 +35,7 @@ function createFakeWorkspace(path: string, isGitRepo = true) {
     managed: false,
     isGitRepo,
     isWorktree: false,
+    vcs: "git" as const,
     getDefaultBranch: vi.fn(async () => "main"),
     getCurrentBranch: vi.fn(async () => "main"),
     getHeadSha: vi.fn(async () => "commit-1"),

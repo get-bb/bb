@@ -25,6 +25,7 @@ function makeThread(overrides: ThreadListEntryOverrides = {}): ThreadListEntry {
     environmentName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     hasPendingInteraction: false,
     id: "thr_1",
     lastReadAt: null,

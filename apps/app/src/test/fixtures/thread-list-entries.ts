@@ -38,6 +38,7 @@ export function makeThreadListEntry(
     environmentBranchName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
   };
   return { ...base, ...overrides };

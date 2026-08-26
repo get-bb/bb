@@ -80,6 +80,7 @@ export function threadListEntry(
     environmentBranchName: "main",
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
   };
 }
 

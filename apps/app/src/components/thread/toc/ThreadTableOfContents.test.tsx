@@ -255,6 +255,7 @@ function threadListEntry(
     environmentBranchName: "main",
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "managed-worktree",
+    environmentVcs: null,
     ...thread,
   };
 }

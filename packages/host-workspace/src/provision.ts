@@ -1,6 +1,10 @@
 import { mkdir, realpath, rm } from "node:fs/promises";
 import path from "node:path";
-import type { ProvisioningTranscriptEntry, WorkspaceStatus } from "@bb/domain";
+import type {
+  ProvisioningTranscriptEntry,
+  WorkspaceStatus,
+  WorkspaceVcs,
+} from "@bb/domain";
 import type {
   CommitOptions,
   CommitResult,
@@ -121,6 +125,12 @@ export interface HostWorkspace {
   readonly managed: boolean;
   readonly isGitRepo: boolean;
   readonly isWorktree: boolean;
+  /**
+   * Which tool owns the working copy. "jj" for a Jujutsu workspace, which bb
+   * reads through a git checkout kept alongside jj — so `isGitRepo` and
+   * `isWorktree` are true there as well.
+   */
+  readonly vcs: WorkspaceVcs;
 
   getDefaultBranch(): Promise<string | null>;
   getCurrentBranch(): Promise<string | null>;
@@ -198,6 +208,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
   readonly managed: boolean;
   readonly isGitRepo: boolean;
   readonly isWorktree: boolean;
+  readonly vcs: WorkspaceVcs;
 
   private readonly ws: Workspace;
   private readonly gitProcessOptions: GitProcessOptions;
@@ -221,6 +232,7 @@ class ProvisionedHostWorkspace implements HostWorkspace {
     };
     this.ws =
       opts.workspace ?? new Workspace(opts.path, this.gitProcessOptions);
+    this.vcs = this.ws instanceof JjWorkspace ? "jj" : "git";
     this.destroyFn = opts.destroyFn;
   }
 

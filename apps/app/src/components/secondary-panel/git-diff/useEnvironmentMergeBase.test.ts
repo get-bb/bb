@@ -20,6 +20,7 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     name: null,
     isGitRepo: true,
     isWorktree: true,
+    vcs: null,
     managed: true,
     mergeBaseBranch: null,
     path: "/tmp/workspace",

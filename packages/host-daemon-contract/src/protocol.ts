@@ -1,3 +1,12 @@
+// Version 177 supports Jujutsu sources. Managed checkouts on a colocated jj
+// repo are provisioned as jj workspaces rather than git worktrees, the
+// `detached` checkout variant can carry a `jj` object naming the bookmark at
+// HEAD, `workspace.commit` refuses to run in a jj main workspace with a typed
+// `jj_workspace` error the server maps to 409, and discovered workspace
+// properties carry a required `vcs` field ("git" or "jj") that the server
+// persists and names managed checkouts after. An older daemon omits `vcs`
+// entirely and reports no jj checkouts, so a mixed pairing fails validation.
+//
 // Version 176 is this branch's single bump, on top of main's 175. The
 // dispatch-queue rework stacked several branch-local bumps whose numbers had
 // drifted into main's own, which mean unrelated things, and most of which
@@ -22,6 +31,6 @@
 //
 // The version mismatch is what triggers the enrolled daemon's automatic update
 // instead of an `invalid-message` reconnect loop.
-export const HOST_DAEMON_PROTOCOL_VERSION = 176 as const;
+export const HOST_DAEMON_PROTOCOL_VERSION = 177 as const;
 
 export const HOST_ARTIFACT_MAX_BYTES = 256 * 1024 * 1024;

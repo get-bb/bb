@@ -132,6 +132,7 @@ export function makeEnvironment(overrides: MakeEnvironmentArgs): Environment {
     path: "/tmp/environment",
     managed: false,
     isGitRepo: true,
+    vcs: null,
     isWorktree: false,
     workspaceProvisionType: "unmanaged",
     branchName: "bb/thread",

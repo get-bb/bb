@@ -58,6 +58,7 @@ function createThreadListEntry({
     environmentName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     hasPendingInteraction: false,
     id,
     lastReadAt: null,

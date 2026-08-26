@@ -56,6 +56,7 @@ export function threadListEntry(
     environmentBranchName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
     ...overrides,
   };

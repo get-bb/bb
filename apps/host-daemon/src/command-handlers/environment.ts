@@ -95,6 +95,7 @@ export async function provisionEnvironment(
       path: entry.workspace.path,
       isGitRepo: entry.workspace.isGitRepo,
       isWorktree: entry.workspace.isWorktree,
+      vcs: entry.workspace.vcs,
       branchName,
       defaultBranch,
       transcript: alreadyExists ? [] : transcript,

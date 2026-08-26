@@ -9,7 +9,12 @@ import {
   type Ref,
   type RefObject,
 } from "react";
-import type { Host, ProjectSource, PromptTextMention } from "@bb/domain";
+import type {
+  Host,
+  ProjectSource,
+  PromptTextMention,
+  WorkspaceVcs,
+} from "@bb/domain";
 import type { ComposerView } from "@get-bb/plugin-sdk";
 import type { ComposerTextEffectSource } from "@/lib/composer-text-effects";
 import { ComposerBannersSlot } from "@/components/plugin/PluginComposerBanners";
@@ -85,6 +90,8 @@ export interface NewThreadEnvironmentConfig {
   onRequestMachineSetup?: (host: Host) => void;
   reuseDisabled?: boolean;
   worktreeDisabledReason?: string | null;
+  /** Which tool owns the source checkout, so the picker names it correctly. */
+  vcs?: WorkspaceVcs | null;
   disabled?: boolean;
 }
 
@@ -462,6 +469,7 @@ export function ThreadEnvSlot({
         onRequestMachineSetup={environment.onRequestMachineSetup}
         reuseDisabled={environment.reuseDisabled}
         worktreeDisabledReason={environment.worktreeDisabledReason}
+        vcs={environment.vcs}
         disabled={environment.disabled}
         className="shrink-0"
         muted

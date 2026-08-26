@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  managedCheckoutNoun,
   resolveEnvironmentMergeBaseBranch,
   resolveEnvironmentWorkspaceDisplayKind,
 } from "../src/environment.js";
@@ -46,5 +47,22 @@ describe("resolveEnvironmentWorkspaceDisplayKind", () => {
         },
       }),
     ).toBe("other");
+  });
+});
+
+describe("managedCheckoutNoun", () => {
+  it("names the checkout after the tool that owns it", () => {
+    expect(managedCheckoutNoun("jj")).toBe("workspace");
+    expect(managedCheckoutNoun("git")).toBe("worktree");
+    // Environments provisioned before bb knew about jj read as git.
+    expect(managedCheckoutNoun(null)).toBe("worktree");
+  });
+
+  it("capitalizes and pluralizes for the surfaces that need it", () => {
+    expect(managedCheckoutNoun("jj", { capitalized: true })).toBe("Workspace");
+    expect(managedCheckoutNoun("jj", { plural: true })).toBe("workspaces");
+    expect(managedCheckoutNoun("git", { capitalized: true, plural: true })).toBe(
+      "Worktrees",
+    );
   });
 });

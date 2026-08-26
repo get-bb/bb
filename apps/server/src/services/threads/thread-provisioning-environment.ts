@@ -13,6 +13,7 @@ import {
   type Environment,
   type ProvisioningTranscriptEntry,
   type Thread,
+  managedCheckoutNoun,
 } from "@bb/domain";
 import type { BaseBranchSpec, UnmanagedBranchSpec } from "@bb/server-contract";
 import type { AppDeps } from "../../types.js";
@@ -92,11 +93,18 @@ type NewThreadProvisionEnvironmentIntent = Exclude<
   { type: "reuse" } | { type: "checkout-unmanaged" }
 >;
 
-const INITIAL_PROVISIONING_TEXT_BY_WORKSPACE_TYPE = {
-  unmanaged: "Preparing workspace",
-  "managed-worktree": "Preparing worktree",
-  personal: "Preparing personal workspace",
-} satisfies Record<Environment["workspaceProvisionType"], string>;
+function initialProvisioningText(
+  environment: Pick<Environment, "workspaceProvisionType" | "vcs">,
+): string {
+  switch (environment.workspaceProvisionType) {
+    case "unmanaged":
+      return "Preparing workspace";
+    case "managed-worktree":
+      return `Preparing ${managedCheckoutNoun(environment.vcs)}`;
+    case "personal":
+      return "Preparing personal workspace";
+  }
+}
 
 interface EnsureWorkspaceReadyEventArgs {
   context?: ThreadProvisionAttachableContext;
@@ -249,15 +257,13 @@ interface ThreadProvisionReadyEnvironment {
 }
 
 function initialProvisioningEntries(
-  environment: Pick<Environment, "workspaceProvisionType">,
+  environment: Pick<Environment, "workspaceProvisionType" | "vcs">,
 ): ProvisioningTranscriptEntry[] {
   return [
     {
       type: "step",
       key: "workspace-started",
-      text: INITIAL_PROVISIONING_TEXT_BY_WORKSPACE_TYPE[
-        environment.workspaceProvisionType
-      ],
+      text: initialProvisioningText(environment),
       status: "started",
     },
   ];

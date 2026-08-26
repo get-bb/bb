@@ -393,6 +393,7 @@ export function makeThreadListEntry(
     environmentBranchName: null,
     queuedWork: "none",
     environmentWorkspaceDisplayKind: "other",
+    environmentVcs: null,
     runtime: { displayStatus: "idle", hostReconnectGraceExpiresAt: null },
   };
   return { ...base, ...overrides };
@@ -468,6 +469,7 @@ export function makeEnvironment(
     managed: true,
     isGitRepo: true,
     isWorktree: true,
+    vcs: null,
     workspaceProvisionType: "managed-worktree",
     branchName: BRANCH_NAMES.feature,
     baseBranch: BRANCH_NAMES.default,

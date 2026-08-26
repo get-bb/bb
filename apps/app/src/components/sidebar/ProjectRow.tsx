@@ -14,7 +14,11 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { createPortal } from "react-dom";
-import { PERSONAL_PROJECT_ID, type ThreadListEntry } from "@bb/domain";
+import {
+  managedCheckoutNoun,
+  PERSONAL_PROJECT_ID,
+  type ThreadListEntry,
+} from "@bb/domain";
 import type { ProjectResponse } from "@bb/server-contract";
 import { NavLink } from "react-router-dom";
 import { useCreateThreadInWorktree } from "@/hooks/useCreateThreadInWorktree";
@@ -397,6 +401,7 @@ interface EnvironmentThreadGroupHeaderProps {
 }
 
 interface EnvironmentThreadGroupHeaderActionsProps {
+  checkoutNoun: string;
   archiveThreadsPending: boolean;
   onArchiveThreads: () => void;
   onCreateNewThread: () => void;
@@ -833,6 +838,7 @@ function useEnvironmentThreadGroupRenameAction({
 }
 
 function EnvironmentThreadGroupHeaderActions({
+  checkoutNoun,
   archiveThreadsPending,
   onArchiveThreads,
   onCreateNewThread,
@@ -847,7 +853,7 @@ function EnvironmentThreadGroupHeaderActions({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Worktree actions"
+            aria-label={`${checkoutNoun} actions`}
             className={cn(
               "rounded-md p-0 text-muted-foreground",
               "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-foreground",
@@ -884,7 +890,7 @@ function EnvironmentThreadGroupHeaderActions({
             }}
           >
             <Icon name="Archive" aria-hidden="true" />
-            Archive worktree
+            {`Archive ${checkoutNoun.toLowerCase()}`}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -909,7 +915,11 @@ function EnvironmentThreadGroupHeader({
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const environmentName = representativeThread.environmentName;
   const branchName = representativeThread.environmentBranchName;
-  const displayName = environmentName || branchName || "Worktree";
+  const checkoutNoun = managedCheckoutNoun(
+    representativeThread.environmentVcs,
+    { capitalized: true },
+  );
+  const displayName = environmentName || branchName || checkoutNoun;
   const iconName: IconName = "FolderGit";
   const showRollupGlyph =
     isCollapsed &&
@@ -982,6 +992,7 @@ function EnvironmentThreadGroupHeader({
           )}
         >
           <EnvironmentThreadGroupHeaderActions
+            checkoutNoun={checkoutNoun}
             archiveThreadsPending={archiveThreadsPending}
             onArchiveThreads={onArchiveThreads}
             onCreateNewThread={onCreateNewThread}

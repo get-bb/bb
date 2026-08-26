@@ -132,6 +132,7 @@ describe("environments", () => {
         path: "/tmp/project",
         isGitRepo: true,
         isWorktree: false,
+        vcs: "git",
         branchName: "bb/test",
         defaultBranch: "main",
       },

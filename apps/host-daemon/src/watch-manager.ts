@@ -474,6 +474,7 @@ export class WatchManager {
         path: workspace.path,
         isGitRepo: true,
         isWorktree: workspace.isWorktree,
+        vcs: workspace.vcs,
         branchName,
         defaultBranch: resolvedDefaultBranch ?? branchName,
       },
