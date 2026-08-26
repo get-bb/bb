@@ -3,6 +3,25 @@ import type { DbConnection } from "../../src/index.js";
 
 let migratedTemplate: Buffer | null = null;
 
+function getMigratedTemplate(): Buffer {
+  if (migratedTemplate === null) {
+    const db = createConnection(":memory:");
+    try {
+      migrate(db);
+      migratedTemplate = db.$client.serialize();
+    } finally {
+      db.$client.close();
+    }
+  }
+
+  return migratedTemplate;
+}
+
+/** Build the shared template outside a test's timeout budget. */
+export function prepareMigratedConnectionTemplate(): void {
+  getMigratedTemplate();
+}
+
 /**
  * A fresh in-memory database with every migration applied, exactly as
  * `createConnection(":memory:")` followed by `migrate(db)` leaves it. The
@@ -10,13 +29,10 @@ let migratedTemplate: Buffer | null = null;
  * call opens an independent copy of that image. Replaying the 100+
  * migrations costs ~57ms, which the data suites paid once per test.
  *
- * Suites that exercise `migrate` itself keep calling it directly.
+ * Tests that exercise the initial migration keep calling `migrate` directly.
+ * Migration tests may use this only for current-schema setup that they rewind
+ * before exercising a later `migrate` boundary.
  */
 export function createMigratedConnection(): DbConnection {
-  if (migratedTemplate === null) {
-    const db = createConnection(":memory:");
-    migrate(db);
-    migratedTemplate = db.$client.serialize();
-  }
-  return createConnection(migratedTemplate);
+  return createConnection(getMigratedTemplate());
 }
