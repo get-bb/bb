@@ -145,7 +145,18 @@ anatomy, exterior chips, engaged rings, and menus together — shrinking under
 pressure and growing toward the legibility cap when the panel has room. The
 non-spatial capability grid is the only reflowing fixture. Never scale the
 annotation card or let an individual fixture choose a different responsive
-mode.
+mode. Each fixture's width band lives in ProductMap's one
+`FIXTURE_WIDTH_BANDS` table, applied to the measured element itself — a band
+on a nested wrapper is invisible to the measurement, because a block's
+`scrollWidth` can never be smaller than its own `clientWidth`.
+
+An open in-flow card is part of the height budget: its footprint subtracts
+from the fixture's available height so the card ends where its content ends
+without scrolling the page chrome. The reserve ratchets — while cards stay
+open it only grows to the tallest card seen, resetting when every card closes
+— so Previous/Next between cards never re-scales the fixture per card, and
+the reserve, transform, and centering glide on the stage's 300ms ease rather
+than snapping.
 
 The scaled fixture reserves exactly `authoredHeight * scale` in normal flow,
 whether shrunken or grown. It must have no horizontal scrollbar, clipped
@@ -159,7 +170,10 @@ The page selector is the sole narrow-width horizontal scroll owner. Its
 carets hug the label strip: the caret+labels group shrink-wraps and centers
 as one unit, and the carets only reach the row's edges when the labels
 genuinely overflow. Horizontally reveal the active label after arrow, click,
-or linked navigation.
+or linked navigation. Every horizontal scroller uses the shared chip-bar
+treatment from `scroll-edges.ts`: hidden native scrollbar plus an edge fade
+on whichever side has overflow, so cut entries read as scrollable rather than
+torn.
 
 The carousel item owns the available width and must be shrinkable before a
 spatial fixture measures itself. Put `min-width: 0` on that item; never let an
@@ -220,6 +234,10 @@ pixel nudge:
   occlusion only after the badge escapes clipping; it cannot repair geometry
   that leaves the badge inside a scroll container or puts half of it beyond a
   clipped boundary.
+- Every Guide interactive — annotation anchors, measured badges, pan carets,
+  page buttons, platform cards — takes keyboard focus through the one shared
+  `FOCUS_RING_CLASS` owner (the product ring token), never the browser
+  default outline or a per-site style.
 - Keep the badge clear of the entry point's icon, label, selection, and hit
   target. Keep every transient menu, palette, popover, or toolbar clear of both
   its annotation and annotated target, and anchor a transient to the element

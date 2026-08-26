@@ -85,6 +85,10 @@ describe("Plugin Guide maintenance skill", () => {
       "The non-spatial capability grid is the only reflowing fixture",
     );
     expect(normalized).toContain("clamp(8px, 3cqh, 28px)");
+    expect(normalized).toContain("`FIXTURE_WIDTH_BANDS` table");
+    expect(normalized).toContain("The reserve ratchets");
+    expect(normalized).toContain("shared chip-bar treatment from `scroll-edges.ts`");
+    expect(normalized).toContain("`FOCUS_RING_CLASS` owner");
     expect(normalized).toContain(
       "Page tabs are one horizontally scrolling, non-wrapping row",
     );
