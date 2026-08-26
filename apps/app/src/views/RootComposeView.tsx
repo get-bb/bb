@@ -86,6 +86,10 @@ import {
 } from "@bb/client-core";
 import { useNavigateToThreadAfterCreatePreference } from "@/lib/root-compose-create-preference";
 import {
+  readInitialPromptFromSearch,
+  stripInitialPromptFromSearch,
+} from "./root-compose-initial-prompt";
+import {
   getThreadRoutePath,
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
@@ -705,6 +709,26 @@ function RootComposeSurface({
   // until React aborts the loop. Depend on the stable setters instead.
   const setPromptDraft = promptDraft.setDraft;
   const restorePromptDraftIfEmpty = promptDraft.restoreIfEmpty;
+
+  // `?initialPrompt=` seeds the composer from outside the app — the mobile
+  // shell's share extension, a bookmark, a shortcut. The parameter is removed
+  // straight away so a reload or a back navigation does not seed it twice.
+  useEffect(() => {
+    const initialPrompt = readInitialPromptFromSearch(location.search);
+    if (initialPrompt === null) return;
+    setStartedComposing(true);
+    setPromptDraft({ text: initialPrompt, mentions: [], attachments: [] });
+    navigate(
+      getRootComposeRoutePath() + stripInitialPromptFromSearch(location.search),
+      { replace: true, state: location.state },
+    );
+  }, [
+    location.search,
+    location.state,
+    navigate,
+    setPromptDraft,
+    setStartedComposing,
+  ]);
   useEffect(() => {
     const sectionTarget = readRootComposeSectionTargetFromLocationState(
       location.state,

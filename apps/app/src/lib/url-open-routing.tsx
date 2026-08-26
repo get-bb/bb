@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import { shellOpenExternal } from "@/lib/native-shell";
 import {
   openUrlByPreference,
   useOpenLinksInAppBrowserPreference,
@@ -34,6 +35,9 @@ export function openUrlInExternalBrowser(url: string): void {
     desktopInfo.openExternalUrl(url);
     return;
   }
+  // The mobile shell opens the system browser. A `window.open` inside a
+  // WebView either gets blocked or opens a chrome-less view with no way back.
+  if (shellOpenExternal(url)) return;
   if (typeof window !== "undefined") {
     window.open(url, "_blank", "noopener,noreferrer");
   }

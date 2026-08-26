@@ -18,6 +18,22 @@ export function shouldRestoreIOSViewportOnKeyboardDismissal({
   return isAppleWebKit && isIOSDevice;
 }
 
+/**
+ * The bottom padding the app shell applies. It normally follows
+ * `env(safe-area-inset-bottom)`, but iOS keeps that inset at its full value
+ * while the soft keyboard is open, even though the keyboard already covers
+ * the home indicator. The result is a dead band between the composer and the
+ * keys — measured at about 45 CSS px on an iPhone 17 Pro (plan section 11.4).
+ */
+export const SHELL_SAFE_AREA_BOTTOM_PROPERTY = "--bb-safe-area-bottom";
+
+/**
+ * How much shorter the visual viewport must get before a focused editor
+ * counts as "the keyboard is open". Well above a URL-bar collapse, well below
+ * the shortest soft keyboard.
+ */
+export const KEYBOARD_OPEN_MIN_SHRINK_PX = 80;
+
 function getVisualViewportPageTop(visualViewport: VisualViewport) {
   return Math.round(window.scrollY + visualViewport.offsetTop);
 }
@@ -68,6 +84,36 @@ export function useMobileVisualViewportHeight(
     // only the visual viewport.
     let shellContainingBlockHeight = 0;
     let shellContainingBlockHeightStale = true;
+    // The visual-viewport height captured when an editor took focus, and
+    // whether the keyboard is currently judged open. Both drive only the
+    // bottom-inset override, never the height override.
+    let viewportHeightBeforeKeyboard: number | null = null;
+    let appliedKeyboardInset = false;
+    const setKeyboardInset = (open: boolean) => {
+      if (open === appliedKeyboardInset) return;
+      appliedKeyboardInset = open;
+      if (open) {
+        shellHeightRoot.style.setProperty(
+          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
+          "0px",
+        );
+      } else {
+        shellHeightRoot.style.removeProperty(SHELL_SAFE_AREA_BOTTOM_PROPERTY);
+      }
+    };
+    const updateKeyboardInset = () => {
+      if (
+        viewportHeightBeforeKeyboard === null ||
+        !isKeyboardFocusTarget(document.activeElement)
+      ) {
+        setKeyboardInset(false);
+        return;
+      }
+      setKeyboardInset(
+        viewportHeightBeforeKeyboard - visualViewport.height >=
+          KEYBOARD_OPEN_MIN_SHRINK_PX,
+      );
+    };
     const clearViewportOverride = () => {
       if (appliedOverride === null) return;
       appliedOverride = null;
@@ -77,6 +123,7 @@ export function useMobileVisualViewportHeight(
     };
     const updateHeight = () => {
       animationFrame = null;
+      updateKeyboardInset();
       if (visualViewport.scale !== 1) {
         clearViewportOverride();
         return;
@@ -165,6 +212,11 @@ export function useMobileVisualViewportHeight(
     const handleFocusOut = (event: FocusEvent) => {
       if (!isKeyboardFocusTarget(event.target)) return;
       if (isKeyboardFocusTarget(event.relatedTarget)) return;
+      viewportHeightBeforeKeyboard = null;
+      setKeyboardInset(false);
+      // Clearing the height override on focus loss is the iOS-only behaviour
+      // described above; the bottom inset resets on every platform.
+      if (!restoreImmediatelyOnKeyboardDismissal) return;
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
         animationFrame = null;
@@ -173,6 +225,10 @@ export function useMobileVisualViewportHeight(
     };
     const handleFocusIn = (event: FocusEvent) => {
       if (!isKeyboardFocusTarget(event.target)) return;
+      // Remember the height before the keyboard animates in; the shrink from
+      // this value is the only reliable signal that it opened, because iOS may
+      // resize the layout viewport too and hide the difference.
+      viewportHeightBeforeKeyboard ??= visualViewport.height;
       // Programmatic focus (composer autofocus) can be the only trigger for a
       // keyboard, so this must always schedule a full, freshly measured pass.
       scheduleContainingBlockUpdate();
@@ -183,10 +239,10 @@ export function useMobileVisualViewportHeight(
     visualViewport.addEventListener("scroll", handleVisualViewportScroll);
     window.addEventListener("resize", scheduleContainingBlockUpdate);
     window.addEventListener("orientationchange", scheduleContainingBlockUpdate);
-    if (restoreImmediatelyOnKeyboardDismissal) {
-      document.addEventListener("focusout", handleFocusOut);
-      document.addEventListener("focusin", handleFocusIn);
-    }
+    // The focus listeners drive the bottom-inset override on every platform,
+    // so they are no longer gated on the iOS keyboard-dismissal behaviour.
+    document.addEventListener("focusout", handleFocusOut);
+    document.addEventListener("focusin", handleFocusIn);
 
     return () => {
       visualViewport.removeEventListener("resize", scheduleUpdate);
@@ -196,13 +252,12 @@ export function useMobileVisualViewportHeight(
         "orientationchange",
         scheduleContainingBlockUpdate,
       );
-      if (restoreImmediatelyOnKeyboardDismissal) {
-        document.removeEventListener("focusout", handleFocusOut);
-        document.removeEventListener("focusin", handleFocusIn);
-      }
+      document.removeEventListener("focusout", handleFocusOut);
+      document.removeEventListener("focusin", handleFocusIn);
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
       }
+      setKeyboardInset(false);
       clearViewportOverride();
     };
   }, [

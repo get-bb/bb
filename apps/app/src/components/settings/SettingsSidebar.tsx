@@ -4,8 +4,10 @@ import {
   SectionSidebar,
   SectionSidebarIcon,
   SectionSidebarLabel,
+  SectionSidebarActionRow,
   SectionSidebarRow,
 } from "@/components/sidebar/SectionSidebar";
+import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
 import {
   SETTINGS_ROUTE_PATH,
   getPluginConfigurationRoutePath,
@@ -98,6 +100,22 @@ export function SettingsSidebarContent({
                 />
               </SectionSidebarRow>
             ))}
+          </div>
+        </>
+      ) : null}
+      {canOpenNativeScreen() ? (
+        <>
+          <div className="mt-4">
+            <SectionSidebarLabel>This phone</SectionSidebarLabel>
+          </div>
+          <div className="mt-1 space-y-0.5">
+            <SectionSidebarActionRow
+              label="This device"
+              testId="settings-nav-native-device"
+              onClick={() => shellOpenNative("device-settings")}
+            >
+              <SectionSidebarIcon name="Smartphone" />
+            </SectionSidebarActionRow>
           </div>
         </>
       ) : null}

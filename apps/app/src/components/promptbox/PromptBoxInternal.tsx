@@ -41,6 +41,10 @@ import {
   useAppCommandShortcut,
 } from "@/components/commands/AppCommandProvider";
 import { canLoadMoreCommandResults } from "@/components/promptbox/mentions/mention-menu-scroll";
+import {
+  voiceUnsupportedMessage,
+  type VoiceUnsupportedReason,
+} from "@/hooks/voice-input-support";
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import {
@@ -377,6 +381,8 @@ type PromptVoiceState = "idle" | "recording" | "transcribing" | "error";
 export interface PromptVoiceConfig {
   state: PromptVoiceState;
   isSupported: boolean;
+  /** Why voice is unavailable; absent when it is supported. */
+  unsupportedReason?: VoiceUnsupportedReason | null;
   stream: MediaStream | null;
   start: () => void | Promise<void>;
   stop: () => void;
@@ -3397,7 +3403,9 @@ export function PromptBoxInternal({
                           variant="ghost"
                           aria-label={
                             !voice.isSupported
-                              ? "Voice input is not supported in this browser"
+                              ? voiceUnsupportedMessage(
+                                  voice.unsupportedReason ?? null,
+                                )
                               : "Start voice input"
                           }
                           disabled={!canStartVoiceInput}

@@ -4,6 +4,8 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  KEYBOARD_OPEN_MIN_SHRINK_PX,
+  SHELL_SAFE_AREA_BOTTOM_PROPERTY,
   shouldRestoreIOSViewportOnKeyboardDismissal,
   useMobileVisualViewportHeight,
 } from "./useMobileVisualViewportHeight";
@@ -302,6 +304,80 @@ describe("useMobileVisualViewportHeight", () => {
 
       expect(shell.style.height).toBe("300px");
       expect(shell.style.transition).toBe("");
+    });
+  });
+
+
+  it("collapses the bottom safe-area inset while the keyboard is open", async () => {
+    // iOS keeps env(safe-area-inset-bottom) at its full value with the
+    // keyboard up, even though the keyboard covers the home indicator. That
+    // leaves a dead band between the composer and the keys (plan 11.4).
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const shellHeightRoot = screen.getByTestId("shell-height-root");
+      const editor = screen.getByTestId("editor");
+      expect(
+        shellHeightRoot.style.getPropertyValue(
+          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
+        ),
+      ).toBe("");
+
+      act(() => {
+        editor.focus();
+      });
+      await flushScheduledViewportPass();
+      // Focus alone is not the keyboard; a hardware keyboard shrinks nothing.
+      expect(
+        shellHeightRoot.style.getPropertyValue(
+          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
+        ),
+      ).toBe("");
+
+      act(() => {
+        visualViewport.height = 500 - KEYBOARD_OPEN_MIN_SHRINK_PX;
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await flushScheduledViewportPass();
+      expect(
+        shellHeightRoot.style.getPropertyValue(
+          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
+        ),
+      ).toBe("0px");
+
+      act(() => {
+        editor.blur();
+      });
+      await flushScheduledViewportPass();
+      expect(
+        shellHeightRoot.style.getPropertyValue(
+          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
+        ),
+      ).toBe("");
+    });
+  });
+
+  it("does not collapse the inset for a URL bar that only shrinks a little", async () => {
+    const visualViewport = new FakeVisualViewport();
+    visualViewport.offsetTop = 0;
+    await withFakeVisualViewport(visualViewport, async () => {
+      render(<VisualViewportShell enabled />);
+      const shellHeightRoot = screen.getByTestId("shell-height-root");
+      act(() => {
+        screen.getByTestId("editor").focus();
+      });
+      await flushScheduledViewportPass();
+      act(() => {
+        visualViewport.height = 500 - (KEYBOARD_OPEN_MIN_SHRINK_PX - 1);
+        visualViewport.dispatchEvent(new Event("resize"));
+      });
+      await flushScheduledViewportPass();
+      expect(
+        shellHeightRoot.style.getPropertyValue(
+          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
+        ),
+      ).toBe("");
     });
   });
 
