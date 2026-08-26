@@ -1083,7 +1083,7 @@ function AppShellWireframeBody({
           the fold; each extra viewport pixel then restores one pixel of blank
           canvas until the original 650px minimum is reached. Real content may
           still grow past that minimum rather than being clipped. */}
-      <div className="flex min-h-[clamp(500px,calc(100dvh-528px),650px)] items-stretch">
+      <div className="flex min-h-[650px] items-stretch">
         {/* ── sidebar, sections in anatomy-manifest order ── */}
         <div className="flex w-[300px] shrink-0 flex-col border-r border-border-seam bg-sidebar text-sidebar-foreground">
           {anatomy.appSidebar.map((key) => (
@@ -1112,7 +1112,7 @@ function AppShellWireframeBody({
           {/* timeline */}
           <div
             data-guide-fixture="app-window-timeline"
-            className="min-h-[clamp(350px,calc(100dvh-678px),510px)] flex-1 space-y-7 overflow-hidden px-5 py-6"
+            className="min-h-[510px] flex-1 space-y-7 overflow-hidden px-5 py-6"
           >
             {/* user message: right-aligned bubble */}
             <div className="flex justify-end">

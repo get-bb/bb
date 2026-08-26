@@ -137,46 +137,44 @@ replaced boundary and preserve any fallback or original ownership required by
 the API.
 
 Derive responsive behavior from fixture ownership; do not choose it per page.
-Every spatial fixture scales down as one annotated composition when its
-authored product geometry cannot fit. The non-spatial capability grid is the
-only reflowing fixture. ProductMap measures the fixture's authored `scrollWidth`
-and applies exactly `min(1, availableWidth / authoredWidth)` to the host
-anatomy, exterior annotation gutter, highlight rings, menus, and badges
-together. Never upscale above `1`, scale the annotation card, or let an
-individual fixture choose a different responsive mode.
+Every spatial fixture scales as one annotated composition. ProductMap measures
+the fixture's authored `scrollWidth`/`scrollHeight` and the consumer's
+declared scroll viewport (`data-guide-stage-viewport`), and applies exactly
+`min(MAX_FIXTURE_SCALE, availW / authoredW, availH / authoredH)` to the host
+anatomy, exterior chips, engaged rings, and menus together — shrinking under
+pressure and growing toward the legibility cap when the panel has room. The
+non-spatial capability grid is the only reflowing fixture. Never scale the
+annotation card or let an individual fixture choose a different responsive
+mode.
 
-The scaled fixture reserves exactly `authoredHeight * scale` in normal flow.
-It must have no horizontal scrollbar, clipped content, or page-level inline
-overflow at any width; require `scrollWidth <= clientWidth + 1` on its outer
-frame after settling. Off-stage carousel pages must not contribute inline
-overflow to the Guide page. Clip the carousel's inline axis while leaving its
-block axis available to real menus that escape downward.
+The scaled fixture reserves exactly `authoredHeight * scale` in normal flow,
+whether shrunken or grown. It must have no horizontal scrollbar, clipped
+content, or page-level inline overflow at any width; require
+`scrollWidth <= clientWidth + 1` on its outer frame after settling.
+Off-stage carousel pages must not contribute inline overflow to the Guide
+page. Clip the carousel's inline axis while leaving its block axis available
+to real menus that escape downward.
 
-The page selector is the sole narrow-width horizontal scroll owner. Keep its
-labels in one non-wrapping row between fixed Previous and Next carets, and
-horizontally reveal the active label after arrow, click, or linked navigation.
-At wide widths the same row stays centered and does not scroll.
+The page selector is the sole narrow-width horizontal scroll owner. Its
+carets hug the label strip: the caret+labels group shrink-wraps and centers
+as one unit, and the carets only reach the row's edges when the labels
+genuinely overflow. Horizontally reveal the active label after arrow, click,
+or linked navigation.
 
 The carousel item owns the available width and must be shrinkable before a
 spatial fixture measures itself. Put `min-width: 0` on that item; never let an
 authored fixture minimum inflate the measurement frame and turn a narrow pane
 into a false `scale=1` result.
 
-The desktop app-window fixture and every open annotation card fit above the
-fold in the 980px-tall plugin content region left by a 2048 by 1080 bb window.
-Preserve product-control density and the timeline's readable internal spacing;
-take height from flexible blank timeline canvas rather than shrinking labels,
-controls, or the card. Shorter viewports may scroll vertically to keep the
-card reachable.
-
-Above that reference, restore the roomier app-window fixture deterministically:
-the 500px app-body minimum grows one CSS pixel per additional viewport pixel
-and caps at 650px; its 350px timeline minimum grows at the same rate and caps
-at 510px. These are blank-canvas bounds, not fixed heights: real content may
-grow beyond them and must not be clipped. Do not grow from display width alone:
-vertical room determines whether the in-flow card can remain visible. Keep the
-cap even on very tall displays so blank timeline canvas does not outweigh the
-documented controls and content.
+Each fixture declares one authored geometry — a single minimum height and, for
+non-fluid fixtures, one width floor with one owner — and never encodes the app
+chrome around it (no `100dvh` arithmetic). Vertical fit at every panel size
+is the scale formula's job: the desktop app-window fixture and every open
+annotation card stay reachable in the 980px-tall plugin content region left by
+a 2048 by 1080 bb window, with shorter viewports scrolling vertically and
+taller ones growing the fixture toward the cap. Preserve product-control
+density; blank canvas bounds are minimums, not fixed heights, and real content
+may grow beyond them without being clipped.
 
 Never reflow a spatial fixture into anatomy bb does not have, scale any part of
 it independently, or add blank canvas to match the tallest page.
@@ -210,17 +208,23 @@ pixel nudge:
   and a composer contribution on its real control or content. Selecting the
   annotation reveals that entry point's corresponding state or tab body.
 - Annotation space is Guide-owned and must not change the host surface's geometry,
-  including its width, padding, row alignment, or item density. Put an
-  edge-hugging badge in a separate top-layer sibling outside the clipping
-  subtree, then place it beside the host boundary. The badge must stay fully
-  visible inside the fixture and viewport, clear of every clipping ancestor.
-  A high `z-index` prevents occlusion only after the badge escapes
-  clipping; it cannot repair geometry that leaves the badge inside a scroll
-  container or puts half of it beyond a clipped boundary.
+  including its width, padding, row alignment, or item density. A chip's
+  position is never an authored coordinate: an in-target chip declares one of
+  the shared placement variants (`corner`, `corner-inset`, `side`,
+  `outside-above`), and a chip that cannot live inside its target's clipping
+  subtree is a measured badge (`start`/`end` gutter columns, `above`, or the
+  `lane` above the frame) that derives its place from the element it
+  annotates. The badge must stay fully visible inside the fixture and
+  viewport, clear of every clipping ancestor. A high `z-index` prevents
+  occlusion only after the badge escapes clipping; it cannot repair geometry
+  that leaves the badge inside a scroll container or puts half of it beyond a
+  clipped boundary.
 - Keep the badge clear of the entry point's icon, label, selection, and hit
   target. Keep every transient menu, palette, popover, or toolbar clear of both
-  its annotation and annotated target. Prefer semantic before/after placement
-  in the Guide layer over an arbitrary negative inset in host content.
+  its annotation and annotated target, and anchor a transient to the element
+  the real product flips it against — never to an authored offset. If a
+  placement collides, change the declared variant; do not add a bespoke
+  coordinate.
 - Keep annotations on each page sequential by annotation number. Previous and
   next controls use that page order, including first and last disabled states,
   so readers never have to hunt across the fixture.
@@ -287,9 +291,11 @@ in the top visual layer rather than merely having an unclipped rectangle.
 - Open the annotation card in normal flow below the fixture so it never covers
   the entry point. Panning pages closes the old card; following a cross-page
   reference lands on the destination before opening its card.
-- Use one Guide-owned gap between a fixture and its card: the card wrapper owns
-  exactly 8 CSS pixels. The active carousel slide and the fixture itself add no
-  block-end spacing, so stacked padding cannot manufacture page overflow.
+- Use one Guide-owned gap between a fixture and its card: the card wrapper
+  owns `clamp(8px, 3cqh, 28px)`, derived from the consumer's declared
+  container and floored at 8 CSS pixels without one. The active carousel slide
+  and the fixture itself add no block-end spacing, so stacked padding cannot
+  manufacture page overflow.
 - Keep Previous and Next annotation controls compact in the card header. Both
   remain visible, navigate the current page's numeric order, and expose a
   disabled endpoint rather than wrapping to another page.

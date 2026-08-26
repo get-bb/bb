@@ -87,7 +87,16 @@ function PluginApiMapPage({ subPath }: { subPath: string }) {
     // detail card, on a short window) is cut off rather than scrollable.
     // Full width, no reading-column cap: the fixture and its in-flow card use
     // the available panel width before either needs to scroll.
-    <div className="h-full min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6 pt-5 lg:pb-0 lg:pt-4">
+    //
+    // data-guide-stage-viewport + the container declaration are ProductMap's
+    // height contract: fixtures derive their scale from this scrollport's
+    // height, and the stage-to-card gap grows with it (3cqh within its
+    // clamp). Without a declared container the map keeps its 8px gap floor
+    // and width-only scaling.
+    <div
+      data-guide-stage-viewport
+      className="h-full min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6 pt-5 [container-type:size] [--guide-stage-gap:3cqh] lg:pb-0 lg:pt-4"
+    >
       <ProductMap
         pluginPageHref={pluginPageHref}
         initialSlideId={subPath.split("/")[0] || undefined}

@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  MAX_FIXTURE_SCALE,
   ProductMap,
   spatialFixtureScale,
   SURFACE_NUMBERS,
@@ -48,9 +49,15 @@ describe("guide fixture boundaries", () => {
     expect(
       markup.match(/data-guide-responsive-strategy="reflow"/g),
     ).toHaveLength(1);
+    // Two-axis, capped: width or height pressure shrinks; headroom grows the
+    // fixture toward the legibility ceiling, never past it.
     expect(spatialFixtureScale(360, 720)).toBe(0.5);
     expect(spatialFixtureScale(720, 720)).toBe(1);
-    expect(spatialFixtureScale(1280, 720)).toBe(1);
+    expect(spatialFixtureScale(1280, 720)).toBe(MAX_FIXTURE_SCALE);
+    expect(spatialFixtureScale(1280, 720, 700, 700)).toBe(1);
+    expect(spatialFixtureScale(1280, 720, 350, 700)).toBe(0.5);
+    expect(spatialFixtureScale(1280, 720, 7000, 700)).toBe(MAX_FIXTURE_SCALE);
+    expect(spatialFixtureScale(360, 720, 7000, 700)).toBe(0.5);
   });
 
   it("scrolls only the one-line page list and clips off-stage fixture overflow", () => {
@@ -59,15 +66,15 @@ describe("guide fixture boundaries", () => {
     expect(markup).toContain(
       "overflow-x-clip transition-[height] duration-300 ease-out",
     );
-    expect(markup).toContain(
-      "mx-auto w-full min-w-[720px] max-w-7xl origin-top-left",
-    );
+    // The caret+label group shrink-wraps and centers as one unit, so the
+    // carets hug the strip; the scroller stays the sole horizontal owner.
+    expect(markup).toContain("mx-auto flex w-fit max-w-full items-center");
     expect(markup).toContain("data-guide-page-list-scroll");
-    expect(markup).toContain("min-w-0 flex-1 overflow-x-auto");
-    expect(markup).toContain("w-max min-w-full flex-nowrap");
+    expect(markup).toContain("min-w-0 overflow-x-auto");
+    expect(markup).toContain("w-max flex-nowrap");
     expect(markup).toContain("min-w-0 w-full shrink-0 self-start px-1 pt-2");
     expect(markup).not.toContain("flex flex-wrap items-center justify-center");
-    expect(markup).not.toContain("mx-auto w-full min-w-[720px] max-w-5xl");
+    expect(markup).not.toContain("min-w-full flex-nowrap");
   });
 
   it("does not reserve the full header gap when the compact plugin page omits its header", () => {
@@ -220,13 +227,12 @@ describe("guide fixture boundaries", () => {
     // One width owner: the gutter wrapper's floor; the frame fills it minus
     // the gutter, so a second inner floor would just be a copy to drift.
     expect(markup).not.toContain("min-w-[1180px]");
-    expect(markup).toContain(
-      "flex min-h-[clamp(500px,calc(100dvh-528px),650px)] items-stretch",
-    );
+    // One authored height per fixture — no frozen app-chrome arithmetic. The
+    // two-axis fixture scale is what fits short panels.
+    expect(markup).not.toContain("100dvh");
+    expect(markup).toContain("flex min-h-[650px] items-stretch");
     expect(markup).toContain("flex w-[300px] shrink-0 flex-col");
-    expect(timeline).toContain(
-      "min-h-[clamp(350px,calc(100dvh-678px),510px)] flex-1 space-y-7",
-    );
+    expect(timeline).toContain("min-h-[510px] flex-1 space-y-7");
     expect(timeline).toContain("px-5 py-6");
   });
 

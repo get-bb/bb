@@ -59,37 +59,32 @@ describe("Plugin Guide maintenance skill", () => {
     expect(normalized).toContain(
       "Loaded content and its loading skeleton must use aligned height and vertical spacing",
     );
-    expect(normalized).toContain("scales down as one annotated composition");
+    expect(normalized).toContain("scales as one annotated composition");
     expect(normalized).toContain("installed plugin customizations");
     expect(normalized).toContain("visible host scope");
     expect(normalized).toContain("host-owned wrapper or header");
     expect(normalized).toContain("Derive fidelity; do not choose it");
     expect(normalized).toContain("no meaningful spatial owner");
-    expect(normalized).toContain("min(1, availableWidth / authoredWidth)");
+    // The geometry rules are derivation contracts, not authored constants.
+    expect(normalized).toContain(
+      "min(MAX_FIXTURE_SCALE, availW / authoredW, availH / authoredH)",
+    );
     expect(normalized).toContain(
       "page selector is the sole narrow-width horizontal scroll owner",
     );
+    expect(normalized).toContain("carets hug the label strip");
     expect(normalized).toContain(
       "Off-stage carousel pages must not contribute inline overflow",
     );
-    expect(normalized).toContain(
-      "fixture and every open annotation card fit above the fold",
-    );
     expect(skill).toContain("980px-tall plugin content region");
+    expect(normalized).toContain("no `100dvh` arithmetic");
     expect(normalized).toContain(
-      "the 500px app-body minimum grows one CSS pixel per additional viewport pixel and caps at 650px",
+      "blank canvas bounds are minimums, not fixed heights",
     );
-    expect(normalized).toContain(
-      "its 350px timeline minimum grows at the same rate and caps at 510px",
-    );
-    expect(normalized).toContain(
-      "These are blank-canvas bounds, not fixed heights",
-    );
-    expect(normalized).toContain("Do not grow from display width alone");
     expect(normalized).toContain(
       "The non-spatial capability grid is the only reflowing fixture",
     );
-    expect(normalized).toContain("Never upscale above `1`");
+    expect(normalized).toContain("clamp(8px, 3cqh, 28px)");
     expect(normalized).toContain(
       "Page tabs are one horizontally scrolling, non-wrapping row",
     );

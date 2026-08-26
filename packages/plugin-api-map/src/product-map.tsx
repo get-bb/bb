@@ -177,42 +177,99 @@ function PlatformSlide({ group }: { group: SurfaceGroup }) {
 const PAN_FALLBACK_MS = 600;
 
 /**
- * A spatial fixture is authored at product scale, then shrinks only when its
- * complete anatomy cannot fit. The returned value is pure so the boundary is
- * testable without a layout engine.
+ * Fixtures render proportionally larger on roomy displays, up to this
+ * legibility ceiling — past it, transform-scaled product chrome starts to
+ * read as a zoomed screenshot rather than a diagram.
+ */
+export const MAX_FIXTURE_SCALE = 1.3;
+
+/**
+ * A spatial fixture is authored at product scale, then derives its render
+ * scale from both viewport axes: it shrinks when its complete anatomy cannot
+ * fit, and grows toward {@link MAX_FIXTURE_SCALE} when the panel has room.
+ * The returned value is pure so the boundary is testable without a layout
+ * engine.
  */
 export function spatialFixtureScale(
   availableWidth: number,
   authoredWidth: number,
+  availableHeight?: number,
+  authoredHeight?: number,
 ): number {
   if (availableWidth <= 0 || authoredWidth <= 0) return 1;
-  return Math.min(1, availableWidth / authoredWidth);
+  const heightScale =
+    availableHeight !== undefined &&
+    authoredHeight !== undefined &&
+    availableHeight > 0 &&
+    authoredHeight > 0
+      ? availableHeight / authoredHeight
+      : Number.POSITIVE_INFINITY;
+  return Math.min(
+    MAX_FIXTURE_SCALE,
+    availableWidth / authoredWidth,
+    heightScale,
+  );
 }
 
 const useBrowserLayoutEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
-/** One owner for every spatial fixture's responsive geometry. */
+/**
+ * One owner for every spatial fixture's responsive geometry. Available width
+ * comes from the frame; available height comes from the consumer's declared
+ * scroll viewport (`data-guide-stage-viewport`), measured strictly upstream —
+ * scrollport bottom minus the frame's own top — so nothing the scale itself
+ * resizes feeds back into it.
+ */
 function SpatialFixture({ children }: { children: ReactNode }) {
   const frameRef = useRef<HTMLDivElement>(null);
   const fixtureRef = useRef<HTMLDivElement>(null);
   const [geometry, setGeometry] = useState({
     scale: 1,
     height: null as number | null,
+    width: null as number | null,
+    offsetX: 0,
   });
 
   useBrowserLayoutEffect(() => {
     const frame = frameRef.current;
     const fixture = fixtureRef.current;
     if (!frame || !fixture) return;
+    const viewport = frame.closest<HTMLElement>("[data-guide-stage-viewport]");
 
     const measure = () => {
-      const scale = spatialFixtureScale(frame.clientWidth, fixture.scrollWidth);
-      const height = scale < 1 ? fixture.scrollHeight * scale : null;
+      const authoredWidth = fixture.scrollWidth;
+      const authoredHeight = fixture.scrollHeight;
+      // Scroll-invariant: the frame's offset within the scroll content, not
+      // its live client position, so scrolling never re-scales the fixture.
+      const availableHeight = viewport
+        ? viewport.clientHeight -
+          (frame.getBoundingClientRect().top -
+            viewport.getBoundingClientRect().top +
+            viewport.scrollTop) -
+          8
+        : undefined;
+      const scale = spatialFixtureScale(
+        frame.clientWidth,
+        authoredWidth,
+        availableHeight,
+        authoredHeight,
+      );
+      const scaled = Math.abs(scale - 1) >= 0.0001;
+      // The reserve is unconditional: an upscaled fixture needs its extra
+      // room in flow just as a shrunken one returns its spare room.
+      const height = scaled ? authoredHeight * scale : null;
+      const width = scaled ? authoredWidth : null;
+      const offsetX = scaled
+        ? Math.max(0, (frame.clientWidth - authoredWidth * scale) / 2)
+        : 0;
       setGeometry((current) =>
-        Math.abs(current.scale - scale) < 0.0001 && current.height === height
+        Math.abs(current.scale - scale) < 0.0001 &&
+        current.height === height &&
+        current.width === width &&
+        Math.abs(current.offsetX - offsetX) < 0.5
           ? current
-          : { scale, height },
+          : { scale, height, width, offsetX },
       );
     };
 
@@ -220,26 +277,31 @@ function SpatialFixture({ children }: { children: ReactNode }) {
     const observer = new ResizeObserver(measure);
     observer.observe(frame);
     observer.observe(fixture);
+    if (viewport) observer.observe(viewport);
     return () => observer.disconnect();
   }, []);
 
-  const scaled = geometry.scale < 1;
+  const scaled = geometry.height !== null;
   return (
     <div
       ref={frameRef}
       data-guide-responsive-strategy="scale-together"
       data-guide-scale={geometry.scale.toFixed(4)}
       className="w-full overflow-x-clip"
-      style={
-        scaled && geometry.height !== null
-          ? { height: geometry.height }
-          : undefined
-      }
+      style={scaled ? { height: geometry.height ?? undefined } : undefined}
     >
       <div
         ref={fixtureRef}
-        className="mx-auto w-full min-w-[720px] max-w-7xl origin-top-left"
-        style={scaled ? { transform: `scale(${geometry.scale})` } : undefined}
+        className="w-full origin-top-left"
+        style={
+          scaled
+            ? {
+                transform: `scale(${geometry.scale})`,
+                width: geometry.width ?? undefined,
+                marginLeft: geometry.offsetX,
+              }
+            : undefined
+        }
       >
         {children}
       </div>
@@ -269,10 +331,7 @@ function SlideContent({ group }: { group: SurfaceGroup }) {
 function Slide({ group }: { group: SurfaceGroup }) {
   if (fixtureResponsiveStrategy(group) === "reflow") {
     return (
-      <div
-        data-guide-responsive-strategy="reflow"
-        className="mx-auto max-w-5xl"
-      >
+      <div data-guide-responsive-strategy="reflow" className="w-full">
         <SlideContent group={group} />
       </div>
     );
@@ -553,7 +612,13 @@ export function ProductMap({
   return (
     <SurfaceMapContext.Provider value={mapState}>
       <div ref={containerRef} className="relative">
-        <div data-map-column className="mx-auto max-w-7xl">
+        {/* The one content-width token: the column, the stage, and the card
+            all fill it, so their edges align at every viewport. It grows on
+            wide displays — that headroom is what lets fixtures render above
+            authored size instead of floating in margin. The per-slide blurb
+            keeps its own narrower reading measure, a line-length constraint
+            rather than a layout width. */}
+        <div data-map-column className="mx-auto w-full max-w-[100rem]">
           {header}
 
           <section
@@ -578,7 +643,12 @@ export function ProductMap({
                 {slides[index].blurb}
               </p>
             </div>
-            <div className="flex min-w-0 items-center gap-2">
+            {/* Carets hug the label strip: the group shrink-wraps and centers
+                as one unit, so the carets sit flush against the labels and
+                only reach the row's edges when the list genuinely overflows
+                (max-w-full pins the group; the scroller keeps sole
+                horizontal-scroll ownership). */}
+            <div className="mx-auto flex w-fit max-w-full items-center gap-1">
               <PanButton
                 direction="previous"
                 disabled={!carets.previous}
@@ -587,9 +657,9 @@ export function ProductMap({
               <div
                 ref={pageListRef}
                 data-guide-page-list-scroll
-                className="min-w-0 flex-1 overflow-x-auto"
+                className="min-w-0 overflow-x-auto"
               >
-                <ul className="flex w-max min-w-full flex-nowrap items-center justify-center gap-1">
+                <ul className="flex w-max flex-nowrap items-center gap-1">
                   {slides.map((entry, slideIndex) => (
                     <li key={entry.id} className="shrink-0">
                       <button
@@ -676,7 +746,7 @@ export function ProductMap({
                     // SpatialFixture measures the frame, making the measured
                     // "available" width equal the authored width and
                     // incorrectly producing scale=1 in split panes.
-                    // The detail gap has one owner (`mt-2` below), so slides
+                    // The detail gap has one owner (the clamp below), so slides
                     // contribute no second block-end gap.
                     className="min-w-0 w-full shrink-0 self-start px-1 pt-2"
                   >
@@ -686,10 +756,15 @@ export function ProductMap({
               </div>
             </div>
 
-            {/* The detail card, when no gutter can hold it: in flow, tight
-                under the diagram, never covering it. */}
+            {/* The detail card, when no gutter can hold it: in flow under the
+                diagram, never covering it. The gap is the one owner of the
+                stage-to-card rhythm and derives from the panel's height —
+                the consumer declares the container (see the plugin's
+                scrollport); with none declared it keeps the 8px floor. */}
             {cardNode ? (
-              <div className="mx-auto mt-2 max-w-5xl">{cardNode}</div>
+              <div className="mx-auto mt-[clamp(8px,var(--guide-stage-gap,8px),28px)] w-full">
+                {cardNode}
+              </div>
             ) : null}
           </section>
         </div>
