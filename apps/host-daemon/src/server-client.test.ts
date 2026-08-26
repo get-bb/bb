@@ -184,6 +184,27 @@ describe("createServerClient", () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it("refuses non-HTTP loopback server URLs", async () => {
+    const fetchFn = vi.fn<FetchFn>();
+    const client = createServerClient({
+      fetchFn,
+      getSessionId: () => "session-1",
+      hostKey: "host-key",
+      logger: createLogger(),
+      serverUrl: "ftp://127.0.0.1",
+    });
+
+    await expect(
+      client.fetchProjectAttachment({
+        maxBytes: 25,
+        projectId: "project-1",
+        threadId: "thread-1",
+        path: "network-tab.har",
+      }),
+    ).rejects.toBeInstanceOf(AbortError);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
   it("fetches project attachment bytes over HTTPS", async () => {
     const fetchFn = vi.fn<FetchFn>(async (input) => {
       const url = new URL(String(input));

@@ -45,7 +45,7 @@ interface SelfUpdateProcessRunner {
 
 interface CreateProtocolSelfUpdaterOptions {
   dataDir: string;
-  enabled: boolean;
+  enabled?: boolean;
   logger: HostDaemonLogger;
   serverUrl: string;
   fetchFn?: FetchFn;
@@ -139,6 +139,8 @@ async function defaultInstallTarball(
   tarballPath: string,
   runProcess: SelfUpdateProcessRunner,
 ): Promise<void> {
+  // No publisher signature or digest-distribution contract exists yet. This
+  // installer is only reachable after the explicit --auto-update opt-in.
   const executableDirectory = dirname(process.execPath);
   const inheritedPath = process.env.PATH;
   const path = inheritedPath
@@ -198,7 +200,10 @@ export function createProtocolSelfUpdater(
 
       try {
         const versionUrl = new URL("/install/version", options.serverUrl);
-        const versionResponse = await fetchFn(versionUrl, { method: "GET" });
+        const versionResponse = await fetchFn(versionUrl, {
+          method: "GET",
+          redirect: "error",
+        });
         if (!versionResponse.ok) {
           throw new Error(
             `Version check failed: ${versionResponse.status} ${versionResponse.statusText}`,
@@ -261,7 +266,10 @@ export function createProtocolSelfUpdater(
         );
         try {
           const tarballUrl = new URL("/install/bb-app.tgz", options.serverUrl);
-          const response = await fetchFn(tarballUrl, { method: "GET" });
+          const response = await fetchFn(tarballUrl, {
+            method: "GET",
+            redirect: "error",
+          });
           if (!response.ok) {
             throw new Error(
               `Package download failed: ${response.status} ${response.statusText}`,

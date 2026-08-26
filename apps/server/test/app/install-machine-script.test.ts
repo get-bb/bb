@@ -169,6 +169,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 function writeServerInstallTools(
   fixture: ReturnType<typeof createFixture>,
   artifactStatus: 200 | 404,
+  bbAppScript = createEnrollingBbAppScript({ hostId: "host-test" }),
 ): void {
   const curlLog = join(fixture.dataDir, "curl.log");
   const npmLog = join(fixture.dataDir, "npm.log");
@@ -190,10 +191,7 @@ esac
 `,
   );
   const bbAppTemplatePath = join(fixture.dataDir, "bb-app-template");
-  writeExecutable(
-    bbAppTemplatePath,
-    createEnrollingBbAppScript({ hostId: "host-test" }),
-  );
+  writeExecutable(bbAppTemplatePath, bbAppScript);
   writeExecutable(
     join(fixture.binDir, "npm"),
     `#!/bin/sh
@@ -212,35 +210,6 @@ for module in better-sqlite3 node-pty; do
     printf '%s\n' 'module.exports = {};' >"$prefix/lib/node_modules/bb-app/node_modules/$module/index.js"
   fi
 done
-`,
-  );
-}
-
-function writeEnrollingBbApp(
-  fixture: ReturnType<typeof createFixture>,
-  invocationPath: string,
-  hostId = "host-test",
-  statusServerUrl?: string,
-): void {
-  writeExecutable(
-    join(fixture.binDir, "bb-app"),
-    createEnrollingBbAppScript({ hostId, invocationPath, statusServerUrl }),
-  );
-}
-
-function writeCurlArtifactMock(
-  fixture: ReturnType<typeof createFixture>,
-  artifactStatus: number,
-): void {
-  writeExecutable(
-    join(fixture.binDir, "curl"),
-    `#!/bin/sh
-output=
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = --output ]; then output=$2; shift 2; else shift; fi
-done
-[ -z "$output" ] || printf '%s' 'fixture-tarball' >"$output"
-printf '%s' '${artifactStatus}'
 `,
   );
 }
@@ -302,12 +271,77 @@ describe("machine install script", () => {
     expect(result.stderr).not.toContain("TypeError");
   });
 
-  it("uses bb-app from PATH and passes the launcher join flags verbatim", () => {
+  it("rejects non-loopback HTTP before downloading an install artifact", () => {
+    const fixture = createFixture();
+    const result = runScript(
+      [
+        "--join-code",
+        "join-secret",
+        "--host-id",
+        "host-test",
+        "--server",
+        "http://machine.getbb.app",
+      ],
+      fixture,
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "Server URL must use HTTPS; HTTP is allowed only for loopback local development.",
+    );
+    expect(existsSync(join(fixture.dataDir, "curl.log"))).toBe(false);
+  });
+
+  it("installs the server package and leaves auto-update disabled by default", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
-    writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, invocationPath);
+    writeServerInstallTools(
+      fixture,
+      200,
+      createEnrollingBbAppScript({
+        hostId: "host-test",
+        invocationPath,
+      }),
+    );
     const result = runScript(JOIN_ARGS, fixture, {
+      BB_INSTALL_SKIP_SERVICE: "1",
+    });
+
+    expect(result.status, result.stderr).toBe(0);
+    const selectedPort = readFileSync(
+      join(fixture.dataDir, "host-daemon-port"),
+      "utf8",
+    ).trim();
+    expect(readFileSync(invocationPath, "utf8").trim().split("\n")).toEqual([
+      "host-daemon",
+      "join",
+      "--host-daemon-port",
+      selectedPort,
+      "--join-code",
+      "join-secret",
+      "--host-id",
+      "host-test",
+      "--server-url",
+      "https://machine.getbb.app",
+    ]);
+    const daemonPid = Number(
+      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    );
+    process.kill(daemonPid, "SIGTERM");
+  });
+
+  it("passes auto-update only when the installer explicitly opts in", () => {
+    const fixture = createFixture();
+    const invocationPath = join(fixture.dataDir, "invocation");
+    writeServerInstallTools(
+      fixture,
+      200,
+      createEnrollingBbAppScript({
+        hostId: "host-test",
+        invocationPath,
+      }),
+    );
+    const result = runScript([...JOIN_ARGS, "--auto-update"], fixture, {
       BB_INSTALL_SKIP_SERVICE: "1",
     });
 
@@ -337,14 +371,7 @@ describe("machine install script", () => {
 
   it("accepts the daemon's normalized loopback server URL", () => {
     const fixture = createFixture();
-    const invocationPath = join(fixture.dataDir, "invocation");
-    writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(
-      fixture,
-      invocationPath,
-      "host-test",
-      "http://127.0.0.1:20101",
-    );
+    writeServerInstallTools(fixture, 200);
     const result = runScript(
       [
         "--join-code",
@@ -388,7 +415,7 @@ describe("machine install script", () => {
     process.kill(daemonPid, "SIGTERM");
   });
 
-  it("prefers the server-matched tarball when bb-app is absent", () => {
+  it("installs the server-matched tarball when bb-app is absent", () => {
     const fixture = createFixture();
     writeServerInstallTools(fixture, 200);
     const result = runScript(JOIN_ARGS, fixture, {
@@ -405,7 +432,7 @@ describe("machine install script", () => {
     );
     expect(npmInvocation).not.toContain("bb-app\n");
     expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
-      "--silent --show-error --location --connect-timeout 10 --max-time 300",
+      "--silent --show-error --location --proto =https --proto-redir =https --connect-timeout 10 --max-time 300",
     );
     expect(result.stdout).toContain(
       "Setting up this machine as host-test for https://machine.getbb.app",
@@ -434,21 +461,22 @@ describe("machine install script", () => {
     process.kill(daemonPid, "SIGTERM");
   });
 
-  it("falls back to npm only when the server artifact returns 404", () => {
+  it("fails without a PATH or npm fallback when the server artifact is unavailable", () => {
     const fixture = createFixture();
     writeServerInstallTools(fixture, 404);
+    writeExecutable(join(fixture.binDir, "bb-app"), "#!/bin/sh\nexit 99\n");
     const result = runScript(JOIN_ARGS, fixture, {
       BB_INSTALL_SKIP_SERVICE: "1",
     });
 
-    expect(result.status, result.stderr).toBe(0);
-    expect(readFileSync(join(fixture.dataDir, "npm.log"), "utf8")).toMatch(
-      /^install -g --allow-scripts=better-sqlite3,node-pty,@parcel\/watcher --prefix \/.*\/data\/npm bb-app\n$/u,
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "no PATH or npm fallback is permitted",
     );
-    const daemonPid = Number(
-      readFileSync(join(fixture.dataDir, "install-daemon.pid"), "utf8"),
+    expect(existsSync(join(fixture.dataDir, "npm.log"))).toBe(false);
+    expect(existsSync(join(fixture.dataDir, "install-daemon.pid"))).toBe(
+      false,
     );
-    process.kill(daemonPid, "SIGTERM");
   });
 
   it("fails loudly when npm skipped the native add-on install scripts", () => {
@@ -494,8 +522,7 @@ describe("machine install script", () => {
 
   it("refuses a data dir enrolled for a different host instead of faking success", () => {
     const fixture = createFixture();
-    writeCurlArtifactMock(fixture, 404);
-    writeExecutable(join(fixture.binDir, "bb-app"), "#!/bin/sh\nexit 99\n");
+    writeServerInstallTools(fixture, 200);
     writeJoinedState(fixture, "https://machine.getbb.app", "host-other");
     const result = runScript(JOIN_ARGS, fixture, {
       BB_INSTALL_SKIP_SERVICE: "1",
@@ -528,8 +555,11 @@ describe("machine install script", () => {
     });
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
-    writeCurlArtifactMock(fixture, 404);
-    writeEnrollingBbApp(fixture, invocationPath);
+    writeServerInstallTools(
+      fixture,
+      200,
+      createEnrollingBbAppScript({ hostId: "host-test", invocationPath }),
+    );
 
     try {
       const result = runScript(JOIN_ARGS, fixture, {
@@ -560,6 +590,7 @@ describe("machine install script", () => {
 
   it("atomically reserves different ports for concurrent custom data directories", async () => {
     const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
     const firstDataDir = join(fixture.homeDir, "custom-machine-one");
     const secondDataDir = join(fixture.homeDir, "custom-machine-two");
     mkdirSync(firstDataDir, { recursive: true });
@@ -568,8 +599,6 @@ describe("machine install script", () => {
     const secondFixture = { ...fixture, dataDir: secondDataDir };
     writeJoinedState(firstFixture);
     writeJoinedState(secondFixture);
-    writeCurlArtifactMock(fixture, 404);
-    writeExecutable(join(fixture.binDir, "bb-app"), "#!/bin/sh\nexit 99\n");
 
     const [firstResult, secondResult] = await Promise.all([
       runScriptAsync(JOIN_ARGS, firstFixture, { BB_INSTALL_SKIP_SERVICE: "1" }),
@@ -603,8 +632,11 @@ describe("machine install script", () => {
   it("redeems and persists a connect machine code before joining through the tunnel", () => {
     const fixture = createFixture();
     const invocationPath = join(fixture.dataDir, "invocation");
-    writeServerInstallTools(fixture, 404);
-    writeEnrollingBbApp(fixture, invocationPath);
+    writeServerInstallTools(
+      fixture,
+      200,
+      createEnrollingBbAppScript({ hostId: "host-test", invocationPath }),
+    );
     const result = runScript(
       [
         "--join-code",
@@ -622,7 +654,7 @@ describe("machine install script", () => {
 
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(fixture.dataDir, "curl.log"), "utf8")).toContain(
-      "--connect-timeout 10 --max-time 30 -X POST",
+      "--proto =https --proto-redir =https --connect-timeout 10 --max-time 30 -X POST",
     );
     expect(readFileSync(invocationPath, "utf8")).not.toContain("bbcm_durable");
     expect(readFileSync(invocationPath, "utf8")).not.toContain(
@@ -643,9 +675,9 @@ describe("machine install script", () => {
 
   it("reports periodic progress while a host daemon is still joining", () => {
     const fixture = createFixture();
-    writeCurlArtifactMock(fixture, 404);
-    writeExecutable(
-      join(fixture.binDir, "bb-app"),
+    writeServerInstallTools(
+      fixture,
+      200,
       `#!/usr/bin/env node
 setInterval(() => {}, 1000);
 `,
@@ -666,7 +698,7 @@ setInterval(() => {}, 1000);
     expect(result.stderr).toContain("Timed out waiting for host daemon");
   });
 
-  it("installs an idempotent macOS launch agent for joined state", () => {
+  it("installs an idempotent macOS launch agent with explicit auto-update opt-in", () => {
     const fixture = createFixture();
     writeJoinedState(fixture);
     writeServerInstallTools(fixture, 200);
@@ -691,6 +723,7 @@ fi
         "host-test",
         "--server",
         "https://machine.getbb.app",
+        "--auto-update",
       ],
       fixture,
     );
@@ -784,7 +817,7 @@ fi
       "utf8",
     ).trim();
     expect(unit).toContain(
-      `host-daemon --auto-update --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
+      `host-daemon --host-daemon-port "${selectedPort}" --server-url "https://machine.getbb.app"`,
     );
     expect(unit).toContain(
       `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,

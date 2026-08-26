@@ -219,9 +219,11 @@ export function usesSecureInternalFetchTransport(serverUrl: string): boolean {
   }
 
   return (
-    parsed.hostname === "127.0.0.1" ||
-    parsed.hostname === "localhost" ||
-    parsed.hostname === "::1"
+    parsed.protocol === "http:" &&
+    (parsed.hostname === "127.0.0.1" ||
+      parsed.hostname === "localhost" ||
+      parsed.hostname === "::1" ||
+      parsed.hostname === "[::1]")
   );
 }
 

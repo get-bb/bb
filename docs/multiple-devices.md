@@ -139,16 +139,19 @@ not directly reachable from another machine. When bb connect is not paired and
 the server URL is a loopback or unspecified address, the dialog does not show an
 installer. It links to Settings → Remote access instead.
 
-The installer always installs the exact `bb-app` package exposed by that
-server at `/install/bb-app.tgz`; a `bb-app` already on PATH is reused, and the
-npm registry consulted, only when the server provides no package. Version
-strings cannot distinguish unpublished builds, so this keeps remote machines
-aligned with development and pre-release servers whose build may not exist on
-npm. The package route is public like `/install.sh`: `bb-app` is public
-software, and exposing an unpublished build slightly early through a paired
-tunnel is an accepted tradeoff. npm installs the package into the machine's bb
-data directory, not its system-wide global prefix, so enrollment needs neither
+The installer requires HTTPS for non-loopback server URLs; HTTP is accepted only
+for explicit loopback local development (`127.0.0.1`, `localhost`, or `::1`). It
+installs only the exact `bb-app` package exposed by that server at
+`/install/bb-app.tgz` and fails if the route is unavailable. It never reuses a
+`bb-app` from PATH or falls back to the npm registry, so enrollment cannot
+silently change publishers. npm installs the package into the machine's bb data
+directory, not its system-wide global prefix, so enrollment needs neither
 `sudo` nor a PATH change.
+
+The package route is public like `/install.sh`. The initial exact-package
+installation is an intentional consequence of running the installer for this
+server; the package is not currently publisher-signed or client-side digest
+bound, so use a trusted HTTPS server and review the server/build pipeline.
 
 Each joined server gets its own daemon instance, data directory
 (`~/.bb-machines/<server-host>`, override with `BB_DATA_DIR` when running the
@@ -159,20 +162,23 @@ elsewhere. Subsequent runs reuse the reservation; pass `--host-daemon-port
 <port>` to the installer to override the selection. One machine can therefore
 serve several bb servers at once, and joining never touches a full local bb
 install's `~/.bb`. Each instance keeps its own `bb-app` under that data
-directory and self-updates against its own server, so servers running different
-bb versions on one machine remain isolated.
+directory and can self-update against its own server when the operator has
+explicitly opted in, so servers running different bb versions on one machine
+remain isolated.
 
-The installed launchd/systemd service enables `--auto-update`. If session open
-reports a newer server protocol, the daemon downloads the server artifact,
-updates its private install, then exits so the service manager restarts it.
-Failed attempts fall back to normal reconnect behavior with a persisted
-exponential retry backoff from 5 seconds to 5 minutes. Settings → Machines and
-`bb machine retry-update <id-or-name>` can bypass the current backoff. A daemon
-never downgrades itself to an older server protocol. To opt out, remove
-`--auto-update` from
-`~/Library/LaunchAgents/app.getbb.host-daemon.<server>.plist` or
-`~/.config/systemd/user/bb-host-daemon-<server>.service`, then reload the
-service.
+The installed launchd/systemd service leaves unattended daemon auto-update off
+by default. If the operator explicitly passes `--auto-update` to the installer,
+the service may, on a newer server protocol, download the server artifact, update
+its private install, and exit so the service manager restarts it. This is an
+explicit trust decision for an unsigned server-delivered package; HTTPS protects
+transport but does not replace publisher signing or digest verification. Keep
+this opt-in disabled until that distribution contract exists unless the server
+and its build pipeline are trusted. Failed attempts fall back to normal
+reconnect behavior with a persisted exponential retry backoff from 5 seconds to
+5 minutes. Settings → Machines and `bb machine retry-update <id-or-name>` can
+bypass the current backoff. A daemon never downgrades itself to an older server
+protocol. Existing service files that already contain `--auto-update` must have
+that flag removed manually to opt out, then the service reloaded.
 
 After it connects:
 

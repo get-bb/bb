@@ -246,15 +246,23 @@ connect` restores the command. Plugins → Connect shows the current URL, QR
 - Add remote execution machines from Settings → Machines. Its one-line
   installer stores the bb connect machine credential locally and configures
   both the daemon protocol and agent-launched `bb` CLI to traverse the account
-  gate; revoke a lost machine from the getbb.app dashboard. The installer uses
-  the server's exact `/install/bb-app.tgz` artifact and uses the npm registry
-  only on a 404. It installs under the enrollment's bb data directory, without
-  `sudo` or a global npm configuration, and enables daemon `--auto-update`.
-  Newer protocol mismatches update that private install with a persisted
-  exponential retry backoff from 5 seconds to 5 minutes, then let
-  launchd/systemd restart the daemon. Auto-update never downgrades. To bypass a
-  transient backoff, use `bb machine retry-update <id-or-name>`. Remove
-  `--auto-update` from the service definition and reload it to opt out.
+  gate; revoke a lost machine from the getbb.app dashboard. The installer
+  requires HTTPS for non-loopback server URLs (HTTP is allowed only for explicit
+  loopback local development), installs only the server's exact
+  `/install/bb-app.tgz` artifact, and fails if it is unavailable. It never
+  reuses PATH or falls back to the npm registry. It installs under the
+  enrollment's bb data directory, without `sudo` or a global npm configuration.
+  Installed services leave daemon auto-update off by default; pass
+  `--auto-update` to the installer only after explicitly trusting that server's
+  unsigned package for unattended updates. Newer protocol mismatches then update
+  that private install with a persisted exponential retry backoff from 5 seconds
+  to 5 minutes, then let launchd/systemd restart the daemon. HTTPS protects
+  transport but does not provide publisher signing or digest binding, so keep
+  this opt-in disabled until that distribution contract exists unless the server
+  and build pipeline are trusted. Auto-update never downgrades. To bypass a
+  transient backoff, use `bb machine retry-update <id-or-name>`. Existing service
+  files containing `--auto-update` must have that flag removed manually and the
+  service reloaded to opt out.
 - Run `bb machine list` to see machine names, IDs, connection status, and last
   seen time (`--json` returns the raw host list). Use `--machine <id-or-name>`
   (alias `--host`) on `bb thread spawn` to run in a personal or unmanaged
