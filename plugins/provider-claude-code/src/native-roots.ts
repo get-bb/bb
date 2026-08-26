@@ -19,6 +19,7 @@ import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
   experimental_filterResolvedNativeRoots,
   experimental_resolveClaudePluginRoots,
+  type ExperimentalClaudePluginRoots,
   type ExperimentalClaudePluginRootsArgs,
   type ExperimentalVendorPluginRoots,
 } from "@get-bb/plugin-sdk/host";
@@ -64,19 +65,16 @@ const CLAUDE_PLUGIN_MANIFEST_MARKER = ".claude-plugin/plugin.json";
 type ClaudeResolvedRoot = ExperimentalVendorPluginRoots["skills"][number];
 
 /**
- * The Claude Code roots that only this host can name, for one workspace.
- * Always: the user `skills` and `commands` directories under the config
- * directory. Then, per enabled Claude plugin (installed ones, then plugins
- * found inside the project and user `skills` directories): its root
- * `SKILL.md`, `skills/`, `commands/`, and the manifest's `skills` and
- * `commands` entries, each prefixed `<plugin>:`. Project roots (the project
- * `skills` directory's plugins, project- and local-scoped installs inside the
- * workspace) appear only when `cwd` is given.
+ * Put Claude's own user roots before the already-discovered plugin roots,
+ * remove duplicate user paths, and apply the resolved-roots contract. Keeping
+ * this synchronous lets the ordering and cap be proved without manufacturing
+ * hundreds of plugins on disk; plugin discovery keeps its separate filesystem
+ * integration coverage.
  */
-export async function resolveClaudeNativeRoots(
-  args: ExperimentalClaudePluginRootsArgs,
-): Promise<ExperimentalVendorPluginRoots> {
-  const plugins = await experimental_resolveClaudePluginRoots(args);
+export function filterClaudeNativeRoots(
+  plugins: ExperimentalClaudePluginRoots,
+  warn: (message: string) => void,
+): ExperimentalVendorPluginRoots {
   const userSkillsRoot: ClaudeResolvedRoot = {
     path: path.join(plugins.claudeDir, "skills"),
     origin: "user",
@@ -109,6 +107,23 @@ export async function resolveClaudeNativeRoots(
         ),
       ],
     },
-    { warn: console.warn },
+    { warn },
   ).answer;
+}
+
+/**
+ * The Claude Code roots that only this host can name, for one workspace.
+ * Always: the user `skills` and `commands` directories under the config
+ * directory. Then, per enabled Claude plugin (installed ones, then plugins
+ * found inside the project and user `skills` directories): its root
+ * `SKILL.md`, `skills/`, `commands/`, and the manifest's `skills` and
+ * `commands` entries, each prefixed `<plugin>:`. Project roots (the project
+ * `skills` directory's plugins, project- and local-scoped installs inside the
+ * workspace) appear only when `cwd` is given.
+ */
+export async function resolveClaudeNativeRoots(
+  args: ExperimentalClaudePluginRootsArgs,
+): Promise<ExperimentalVendorPluginRoots> {
+  const plugins = await experimental_resolveClaudePluginRoots(args);
+  return filterClaudeNativeRoots(plugins, console.warn);
 }
