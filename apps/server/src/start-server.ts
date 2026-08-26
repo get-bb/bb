@@ -36,10 +36,19 @@ import { HostSharedPortCoordinator } from "./ws/host-shared-ports.js";
 
 interface StartHttpListenerArgs {
   fetch: Parameters<typeof serve>[0]["fetch"];
-  serverConfig: Pick<ServerConfig, "BB_SERVER_BIND_HOST" | "BB_SERVER_PORT">;
+  serverConfig: {
+    BB_SERVER_BIND_HOST: string;
+    BB_SERVER_PORT: number;
+  };
 }
 
 export function startHttpListener(args: StartHttpListenerArgs) {
+  if (!isLoopbackHostname(args.serverConfig.BB_SERVER_BIND_HOST)) {
+    throw new Error(
+      "Refusing to start the unauthenticated server on a non-loopback address",
+    );
+  }
+
   return serve({
     hostname: args.serverConfig.BB_SERVER_BIND_HOST,
     port: args.serverConfig.BB_SERVER_PORT,
@@ -215,13 +224,6 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
   await runStartupRecoverySweep(sweepDeps).catch((error) => {
     logger.error({ err: error }, "Startup recovery sweep failed");
   });
-
-  if (!isLoopbackHostname(serverConfig.BB_SERVER_BIND_HOST)) {
-    logger.warn(
-      { bindHost: serverConfig.BB_SERVER_BIND_HOST },
-      "SECURITY WARNING: The public API is unauthenticated and permits command execution and file reads. Wildcard server binding must only be used behind a trusted network boundary.",
-    );
-  }
 
   const server = startHttpListener({
     fetch: app.fetch,

@@ -18,7 +18,7 @@ import { validateLogLevel } from "./log-level.js";
 import { validateOptionalUrl, validateRequiredUrl } from "./public-url.js";
 import { BB_LOOPBACK_HOST, parsePortValue } from "./runtime.js";
 
-export type ServerBindHost = "127.0.0.1" | "0.0.0.0";
+export type ServerBindHost = "127.0.0.1";
 
 function parseBooleanEnvValue(args: EnvVarParseArgs): boolean {
   const normalizedValue = args.value.trim().toLowerCase();
@@ -95,12 +95,13 @@ function parsePortEnvValue(args: EnvVarParseArgs): number {
 }
 
 export function parseServerBindHost(value: string): ServerBindHost {
-  const trimmedValue = value.trim();
-  if (trimmedValue === "127.0.0.1" || trimmedValue === "0.0.0.0") {
-    return trimmedValue;
+  if (value.trim() === "127.0.0.1") {
+    return "127.0.0.1";
   }
 
-  throw new Error('BB_SERVER_BIND_HOST must be "127.0.0.1" or "0.0.0.0"');
+  throw new Error(
+    'BB_SERVER_BIND_HOST must be the loopback address "127.0.0.1"',
+  );
 }
 
 function parseServerBindHostEnvValue(args: EnvVarParseArgs): ServerBindHost {
@@ -166,7 +167,7 @@ export const BB_SERVER_PORT_ENV = defineEnvVar<number>({
 });
 
 export const BB_SERVER_BIND_HOST_ENV = defineEnvVar<ServerBindHost>({
-  description: "HTTP bind host for the server",
+  description: "Loopback HTTP bind host for the server",
   name: "BB_SERVER_BIND_HOST",
   parse: parseServerBindHostEnvValue,
 });

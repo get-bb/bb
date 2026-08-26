@@ -22,14 +22,12 @@ message agents, or inspect projects, providers, and environments.
   targets. The Add machine installer injects its enrolled daemon's selected
   local API port automatically and atomically reserves it across default and
   custom machine data directories.
-- The main server and source Vite app bind to loopback by default. Use bb
-  connect or a private Tailscale Serve URL for remote browsers and execution
-  machines. `--server-bind-host 0.0.0.0` is a compatibility escape hatch only:
-  the public API is unauthenticated and permits command execution and file
-  reads, so wildcard binding requires a trusted network boundary. The startup
-  listener and `app` rows then show `http://0.0.0.0:<port>`; health checks and
-  the colocated daemon still use loopback. This opt-in is IPv4-only. Containers
-  must also publish the port to the host.
+- The main server and source Vite app bind to loopback. Use bb connect or a
+  private Tailscale Serve URL for remote browsers and execution machines. The
+  public API is unauthenticated and permits command execution and file reads,
+  so off-loopback `BB_SERVER_BIND_HOST` values are refused. The Origin check is
+  a browser CSRF boundary, not authentication. Containers must publish a
+  loopback listener only through a private access boundary.
 
 ## Environment Setup Script
 
@@ -73,9 +71,9 @@ message agents, or inspect projects, providers, and environments.
   roots, and `BB_FF_*` flags. `BB_LOG_LEVEL` is also startup-only. Use
   `bb-app config`, not `bb-app env`, to change `BB_APP_URL`, `BB_INFERENCE`,
   `BB_INFERENCE_FALLBACK`, or `BB_TRANSCRIPTION` live. After a startup-only
-  change, run `bb-app stop && bb-app start` or restart the desktop app. Until
-  then, a server previously bound to `0.0.0.0` remains exposed even if
-  `BB_SERVER_BIND_HOST` was changed or unset.
+  change, run `bb-app stop && bb-app start` or restart the desktop app. A server
+  from an older release that was bound off-loopback remains exposed until it is
+  restarted.
 - Settings → General holds server-backed app-wide preferences. For details, read
   `references/app-settings.md` (in this skill's directory).
 - Keep Awake is a standalone builtin plugin. Use `bb keep-awake enable` and

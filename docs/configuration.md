@@ -98,7 +98,8 @@ Setting or unsetting one still runs the reload for any other pending changes,
 but the running processes keep their current values. Apply it with a full
 launcher restart (`bb-app stop && bb-app start`) or by restarting the desktop
 app. In particular, changing or unsetting `BB_SERVER_BIND_HOST` does not close
-an existing `0.0.0.0` listener until that restart.
+an existing listener until that restart. A listener from an older release that
+was bound off-loopback remains exposed until it is restarted.
 
 `bb-app config refresh` also notes any startup-only keys currently present in
 `config.json` or `env.json`; those values apply on the next full restart.
@@ -133,7 +134,7 @@ signal it, so a stale file left by a crash cannot stop an unrelated process.
 | `BB_TRANSCRIPTION`      | `bb-app config`                                    | Optional                | Voice transcription model in `<service>/<model>` format: a plugin-registered AI service (`codex` with the codex plugin; audio up to 5MB) or `openai/<model>` with `OPENAI_API_KEY`. Defaults to `codex/gpt-transcribe`.                                                                                                                                                                               |
 | `BB_MARKETPLACE_URL`    | `bb-app env`, or environment                       | Startup-only testing    | Manifest URL of the reserved `bb-community` plugin marketplace, which lists as BB Community. Defaults to `https://getbb.app/marketplace/v1/marketplace.json`; point it at a local file server to test catalog refreshes. It sets only the reserved `bb-community` marketplace; other marketplaces are added at runtime with `bb marketplace add`. A full launcher or desktop app restart is required. |
 | `BB_SERVER_URL`         | `bb-app config`                                    | Remote CLI/host use     | Server URL for standalone `bb` CLI and `host-daemon` commands on the current machine. The CLI defaults to `http://127.0.0.1:38886` when unset.                                                                                                                                                                                                                                                        |
-| `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. Defaults to `127.0.0.1`; accepts only `127.0.0.1` or `0.0.0.0`. A full launcher or desktop app restart is required; until then, a previous `0.0.0.0` listener remains exposed. This is not a `bb-app config` key.                                                                                                                                                               |
+| `BB_SERVER_BIND_HOST`   | `bb-app env`, environment, or `--server-bind-host` | Startup-only            | Server listener host. The only accepted value is the loopback address `127.0.0.1`; off-loopback binding is refused because the public API is unauthenticated. A full launcher or desktop app restart is required. This is not a `bb-app config` key.                                                                                                                                                                  |
 | `BB_SERVER_PORT`        | `bb-app env`, environment, or `--server-port`      | Startup-only            | HTTP listener port. Defaults to `38886`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                          |
 | `BB_HOST_DAEMON_PORT`   | `bb-app env`, environment, or `--host-daemon-port` | Startup-only            | Local host-daemon API port. Defaults to `38887`. A full launcher or desktop app restart is required after a persistent set or unset.                                                                                                                                                                                                                                                                  |
 | `BB_LOG_LEVEL`          | `bb-app config`                                    | Startup-only debugging  | Log level: `trace`, `debug`, `info`, `warn`, `error`, or `fatal`. A full launcher or desktop app restart is required.                                                                                                                                                                                                                                                                                 |
@@ -872,19 +873,19 @@ Use launcher flags for per-run startup details:
 npx bb-app --data-dir ~/.bb-test --server-port 48886 --host-daemon-port 48887
 ```
 
-The server listens on `127.0.0.1` by default. Set
-`--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) only when a
-trusted network boundary must reach the listener directly. The public API is
-unauthenticated and permits command execution and file reads, so never expose a
-wildcard-bound server to an untrusted network. The only accepted bind hosts are
-`127.0.0.1` and `0.0.0.0`; this startup-only setting is not available through
-`bb-app config`.
+The server always listens on the IPv4 loopback address `127.0.0.1`. The public
+API is unauthenticated and permits command execution, file access, terminal
+control, thread changes, and plugin capabilities, so off-loopback binding is
+refused rather than being an unsafe opt-in. `BB_SERVER_BIND_HOST` is retained
+for compatibility but accepts only `127.0.0.1`; this startup-only setting is not
+available through `bb-app config`.
 
-The startup `Server listening` and `app` lines show the actual listener address.
-With wildcard binding they show `http://0.0.0.0:<port>`, while bb's health check
-and colocated host daemon continue to connect through `127.0.0.1`. That local
-connection does not narrow the listener. `0.0.0.0` exposes IPv4 interfaces only;
-bb does not currently offer an IPv6 wildcard bind option.
+The startup `Server listening` and `app` lines show the loopback listener. The
+health check and colocated host daemon use the same address. For remote access,
+use bb connect or publish the loopback listener through a private Tailscale
+Serve route protected by Tailscale ACLs; do not expose the unauthenticated API
+through a public proxy or Funnel. The Origin check is CSRF protection for
+browsers, not authentication.
 
 The data directory is the root directory for all bb-managed state: the SQLite
 database, logs, host identity, thread storage, custom themes (`theme/`,
@@ -922,9 +923,9 @@ selectors (`BB_DATA_DIR`, server URL/port, host-daemon local API port, and Vite
 port) with deterministic values derived from the checkout path. The SQLite
 database path is always derived from `BB_DATA_DIR`. Both the main server and
 Vite app bind to loopback by default; an explicit `BB_DEV_APP_HOST` still
-overrides the Vite listener. Remote HTTP dev via `BB_DEV_APP_HOST` also requires
-`BB_SERVER_BIND_HOST=0.0.0.0` for realtime updates; the Tailscale Serve HTTPS
-path avoids this because WebSocket traffic goes through the Vite proxy.
+overrides the Vite listener. Remote HTTP development should use bb connect or
+a private Tailscale Serve route; the server no longer supports direct
+wildcard-bound development listeners.
 `pnpm start:worktree` loads the same development dotenv cascade and uses the
 same checkout-specific data directory, server port, and host-daemon port. It
 builds production artifacts and serves the frontend bundle from the main

@@ -35,15 +35,14 @@ Settings → Machines so its installer records the account-gated route. The
 private alternative is to open bb through the Tailscale Serve URL and re-run
 the Add machine installer from there.
 
-For compatibility only, `npx bb-app --server-bind-host 0.0.0.0` restores direct
-IPv4 network access. The public API is unauthenticated and permits command
-execution and file reads, so use wildcard binding only behind a trusted network
-boundary and never through Funnel or the public internet.
+The server does not support direct LAN or tailnet binding: its unauthenticated
+API always listens on loopback, and off-loopback `BB_SERVER_BIND_HOST` values are
+refused. Use bb connect or Tailscale Serve with private ACLs for remote access.
+The Origin check is a browser CSRF boundary, not authentication.
 
-Inside a container, `0.0.0.0` listens on the container's IPv4 interfaces; the
-container runtime must still publish that port to the host (for example,
-`docker run -p 3000:3000 ...`). Host firewall and upstream network rules also
-remain separate from bb's bind setting.
+Inside a container, publish a loopback listener through a private access
+boundary rather than exposing the unauthenticated API itself. Host firewall and
+upstream network rules remain separate from bb's bind setting.
 
 ### Use editors installed on the browser device
 
@@ -106,10 +105,10 @@ The phone keeps its credential in the device keychain and mints short-lived
 sessions from it; it never holds the server's pairing secret. To cut a phone
 off, revoke it in the getbb.app dashboard machine list. Every phone takes one of
 the account's machine slots, so a machine-limit error means an unused device
-should be revoked first. On a trusted network the app can also use a direct
-server URL (Tailscale Serve or `--server-bind-host 0.0.0.0`) with the same
-caveats as a browser. Platforms (iOS first) and what the phone cannot do are
-listed in [platform-support.md](platform-support.md).
+should be revoked first. The app can use a Tailscale Serve URL protected by
+private ACLs, or bb connect; direct LAN/tailnet server URLs are not supported.
+Platforms (iOS first) and what the phone cannot do are listed in
+[platform-support.md](platform-support.md).
 
 ## Point the desktop app at another bb
 

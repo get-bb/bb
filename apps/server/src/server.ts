@@ -486,13 +486,8 @@ export function createApp(
   app.use(
     "*",
     cors({
-      origin: (origin, context) => {
-        const allowedCorsOrigins = allowedAppOrigins(deps);
-        const requestOrigin = new URL(context.req.url).origin;
-        if (origin === requestOrigin || allowedCorsOrigins.has(origin)) {
-          return origin;
-        }
-        return null;
+      origin: (origin) => {
+        return allowedAppOrigins(deps).has(origin) ? origin : null;
       },
     }),
   );
@@ -646,10 +641,11 @@ export function createApp(
   // origin could drive this API blind. Reject a foreign browser origin here
   // instead. `requireJsonForMutation` is deliberately NOT set: it answers 415
   // to any mutation without `application/json`, which would break every
-  // existing `curl -d` caller. The origin check alone stops browser CSRF,
-  // because a browser always sends `Origin` on a cross-origin mutation.
-  // Non-browser callers (curl, the `bb` CLI, the SDK) send no `Origin` and pass
-  // through untouched.
+  // existing `curl -d` caller. The origin check is a browser CSRF boundary,
+  // not authentication. It stops cross-origin browser requests because
+  // browsers send `Origin` on a cross-origin mutation. Non-browser callers
+  // (curl, the `bb` CLI, the SDK) send no `Origin` and pass through untouched;
+  // the server itself must remain loopback-bound.
   publicApi.use("*", async (context, next) => {
     // A plugin's own HTTP routes declare their auth mode (`local` | `token` |
     // `none`). `none` is deliberately reachable from any origin, and `token`

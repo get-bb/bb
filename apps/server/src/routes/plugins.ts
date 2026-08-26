@@ -120,9 +120,8 @@ function parsePluginMentionTrigger(
  * "local" auth (design §4.6): the request must come from the BB app itself.
  * The load-bearing CSRF defense is the JSON-only rule below — a cross-origin
  * JSON POST always triggers a CORS preflight, which the server's allowlist
- * denies. The shared Origin check also tolerates BB being served over
- * LAN/Tailscale addresses the server cannot enumerate, but only when the
- * origin hostname is bound to the request hostname.
+ * denies. The shared Origin check accepts only configured BB app origins;
+ * request Host and X-Forwarded-Host headers never expand that allowlist.
  */
 function localAuthProblem(
   context: Context,
@@ -634,7 +633,7 @@ export function registerPluginRoutes(
   });
 
   // bb.rpc dispatcher (design §4.6): always "local" auth semantics —
-  // JSON-only body plus the Origin/Host check.
+  // JSON-only body plus the configured-origin check.
   app.post("/plugins/:id/rpc/:method", async (context) => {
     const id = context.req.param("id");
     const method = context.req.param("method");
